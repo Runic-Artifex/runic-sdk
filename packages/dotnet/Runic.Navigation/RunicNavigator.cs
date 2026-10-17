@@ -58,7 +58,8 @@ public sealed class RunicNavigatorOptions
 /// <remarks>
 /// <para>
 /// Each region admits one transition at a time: a later request supersedes earlier ones that have not
-/// started committing. Guards, initialize and resume run outside model turns; a commit re-checks the
+/// started committing, or, in a region created with <see cref="NavigationAdmission.RejectWhileBusy"/>, is rejected
+/// while an earlier one runs. Guards, initialize and resume run outside model turns; a commit re-checks the
 /// region and applies the new state in one turn. Disposing the navigator cancels in-flight transitions
 /// and retires every entry; owned content is disposed outside model turns.
 /// </para>
@@ -205,7 +206,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             ObjectDisposedException.ThrowIf(_closing, this);
             region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
-                options?.WhileParentRetained ?? NavigationChildRetention.Keep);
+                options?.WhileParentRetained ?? NavigationChildRetention.Keep, options?.Admission ?? NavigationAdmission.Supersede);
             if (target is not null)
             {
                 region.Started = true;
@@ -537,6 +538,18 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
     }
 
+    // NavigationRegion<TContent>.WhenIdleAsync: the region's running transitions, until none is left.
+    internal async ValueTask WhenRegionIdleAsync(NavigationRegionCore region, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task[] pending;
+            lock (Gate) pending = [.. region.Running.Select(transition => transition.Finished.Task)];
+            if (pending.Length == 0) return;
+            await this.AfterUserCode(Task.WhenAll(pending).WaitAsync(cancellationToken));
+        }
+    }
+
     /// <summary>
     /// Refuses new requests and ends every open <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/>
     /// request as <see cref="NavigationCompletion{TResult}.Dismissed"/> (or <see cref="NavigationCompletion{TResult}.Completed"/>
@@ -689,14 +702,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     internal Task<TransitionOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
         CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
-        bool runDetached = false)
+        bool runDetached = false, NavigationAdmission? admission = null)
     {
         TransitionOutcome? rejected = null;
         NavigationTransition? transition = null;
         NavigationTransition? joined = null;
         NavigationBackCaller? backCaller = null;
         List<NavigationTransition> superseded = [];
-        var transitioningChanged = false;
+        var changes = NavigationRegionChanges.None;
         lock (Gate)
         {
             region.Requested = true;
@@ -722,6 +735,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 joined = pendingBack;
                 backCaller = pendingBack.AddBackCallerLocked(cancellationToken);
             }
+            else if ((admission ?? region.Admission) == NavigationAdmission.RejectWhileBusy && region.IsBusyLocked)
+                // After the Back join: a double click joins the pending Back rather than being refused.
+                rejected = TransitionOutcome.Reject(NavigationRejection.Busy);
             else
             {
                 NavigationEntryCore? pending = null;
@@ -771,8 +787,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (joinable) backCaller = transition.AddBackCallerLocked(cancellationToken);
                 if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
-                transitioningChanged = region.InFlight.Count == 1;
+                if (region.InFlight.Count == 1) changes |= NavigationRegionChanges.Transitioning;
                 _running.Add(transition);
+                region.Running.Add(transition);
+                if (region.Running.Count == 1) changes |= NavigationRegionChanges.Busy;
             }
         }
 
@@ -791,7 +809,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         var result = BackCallerResult(transition!, backCaller);
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
-        if (transitioningChanged) Notify(region, NavigationRegionChanges.Transitioning);
+        if (changes != NavigationRegionChanges.None) Notify(region, changes);
         // No hook ever runs in the caller's turn.
         if (runDetached)
             // Admitted here; the phases run on the thread pool without this thread's execution context.
@@ -911,7 +929,15 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         finally
         {
             transition.Dispose();
-            lock (Gate) _running.Remove(transition);
+            bool idle;
+            lock (Gate)
+            {
+                _running.Remove(transition);
+                // Before the result is set, so a request made once the caller resumed never finds the region busy
+                // because of this transition.
+                idle = transition.Region.Running.Remove(transition) && !transition.Region.IsBusyLocked;
+            }
+            if (idle) Notify(transition.Region, NavigationRegionChanges.Busy);
             transition.Finished.TrySetResult();
             // The settlement never stays open, even after a defect (a no-op once Settle ran).
             transition.Settlement.Settle(new(NavigationDepartureOutcome.Ended, null));

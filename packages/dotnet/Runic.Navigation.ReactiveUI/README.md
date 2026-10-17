@@ -5,8 +5,8 @@ regions to ReactiveUI 26 (the `ReactiveUI.Primitives` flavor). It depends on
 `Runic.Navigation` and `ReactiveUI` only: no `Runic.Application.Views`, generator or
 host, so it works in a WPF or console app. It provides, in the
 `Runic.Navigation.ReactiveUI` namespace, `WhenCurrentChanged()`,
-`WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`
-and `CreateBackCommand()` for `NavigationRegion<TContent>`; `WhenNavigatedTo()`,
+`WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`,
+`WhenIsBusyChanged()` and `CreateBackCommand()` for `NavigationRegion<TContent>`; `WhenNavigatedTo()`,
 `WhenNavigatedFrom()`, `CreateCompleteCommand()`, `CreateDismissCommand()` and
 `CreateCloseCommand()` for an entry's `NavigationEntryContext`; and
 `ReactiveLeaveConfirmation.WithInteraction()`, a leave confirmation asked through a
@@ -201,7 +201,12 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   distinct values observed at region change notifications. Neither includes
   an ancestor region's state. Back history availability stays true while a
   guard waits; combine it with transition state when composing a command.
-- All four emit the initial value on the subscribing thread, inside `Subscribe`,
+- `WhenIsBusyChanged()` emits whether a request of the region has not
+  completed (`IsBusy`). It stays true after the commit until the request's
+  task completes, while departed entries retire. Use it for a region created
+  with `Admission = NavigationAdmission.RejectWhileBusy`, which refuses
+  requests as `Rejected(Busy)` meanwhile.
+- All five emit the initial value on the subscribing thread, inside `Subscribe`,
   and later values on the model turn that raises the change. Content changes
   arrive on the navigation's commit turn. Use `ObserveOn` to deliver elsewhere.
   They never complete, and stop when the subscription is disposed.
@@ -212,7 +217,8 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   can bind the command. For the full `NavigationResult<TContent>`, such as a
   failure's exception, await `BackAsync` in your own command. The command can
   execute while `CanGoBack` is true and `IsTransitioning` is false, including
-  transitions it did not start. `CanExecute` turns false in the same
+  transitions it did not start, and, in a region that rejects requests while
+  busy, while `IsBusy` is false. `CanExecute` turns false in the same
   notification that starts a transition, without a scheduler hop.
   It reflects this region only: a transition of
   an ancestor region does not disable it. The command observes the region

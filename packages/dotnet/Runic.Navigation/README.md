@@ -145,7 +145,8 @@ See [Container-resolved targets](#container-resolved-targets).
   returned, never thrown:
   - `Committed`, with the new current entry and the retired entries.
   - `Rejected`, with a `Reason`: `Guard`, `Cancelled`, `Closed`, `Reentrant`,
-    `NoHistory`, `NotCurrent` or `EntryNotFound`.
+    `NoHistory`, `NotCurrent`, `EntryNotFound` or `Busy` (see
+    [Rejecting requests while busy](#rejecting-requests-while-busy)).
   - `Failed`, with the `Phase` (`Guarding`, `Preparing` or `Committing`) and
     the exception (`Error`).
   - `Superseded`.
@@ -166,9 +167,9 @@ See [Container-resolved targets](#container-resolved-targets).
   commit. Use it, or `NavigationEntryContext.BackAsync`, for work that
   completes late, such as a double click or a dialog that answers after the
   user moved on.
-- A region exposes `Current`, `CurrentEntry`, `History`, `CanGoBack` and
-  `IsTransitioning`. It raises `PropertyChanged` for them inside a model turn,
-  the commit turn for a navigation.
+- A region exposes `Current`, `CurrentEntry`, `History`, `CanGoBack`,
+  `IsTransitioning` and `IsBusy`. It raises `PropertyChanged` for them inside a
+  model turn, the commit turn for a navigation.
 
 ### Entry lifecycle
 
@@ -282,11 +283,11 @@ A failed step is logged as event 1064.
 
 | Phase | Where | What happens |
 | --- | --- | --- |
-| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
+| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; `Cancelled`, for a token that is already cancelled; or `Busy`, in a region that rejects requests while busy. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
 | Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies, runs the departure's `OnCommitted` actions, raises the entries' `StateChanged` and `INavigationAware` notifications (event 1075 for a handler that throws), and raises `PropertyChanged`. A `PropertyChanged` handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
-| Committed | Outside model turns | Admission is released, and departing entries retire. The returned `ValueTask` completes after that cleanup. |
+| Committed | Outside model turns | Admission is released in the commit turn (`IsTransitioning` turns `false`), and departing entries retire. The returned `ValueTask` completes after that cleanup; the region stays `IsBusy` until then. |
 
 - A `BackAsync()` that arrives while the region's
   latest request is another Back that hasn't committed, and neither the
@@ -334,6 +335,47 @@ A failed step is logged as event 1064.
   supersedes it, so the rerun doesn't ask again. When a change in another
   region, rather than a later request, superseded the transition, the yes
   ends, and the user may be asked twice.
+
+### Rejecting requests while busy
+
+By default a later request supersedes the earlier ones that haven't
+committed. A region whose page loads data after a click, and that must not
+start a second navigation meanwhile, can refuse requests instead:
+
+```csharp
+Main = navigator.CreateRegion<IPage>(this, initial,
+    new NavigationRegionOptions { Admission = NavigationAdmission.RejectWhileBusy });
+
+// Elsewhere, while a request of Main is still running:
+var result = await Main.PushAsync<DetailViewModel>(); // Rejected(Busy)
+```
+
+- A region is busy (`IsBusy`) from a request's admission until its task
+  completes: the guards, the preparation, the commit and the retirement of the
+  departed entries. `IsTransitioning` ends earlier, in the commit turn.
+- With `RejectWhileBusy`, a request to a busy region is `Rejected(Busy)` at
+  admission, after the other admission checks. A Back that can join the
+  pending Back still joins it, so a double click asks once and gets one
+  result. Returns from a result entry (`CompleteAsync`, `DismissAsync`, the
+  Back of a cancelled `PushForResult` caller) are refused like any other
+  request; repeat them once the region is idle.
+- The region's task is removed from the busy set before its result is set, so
+  a request made after `await region.PushAsync(...)` resumed is never `Busy`
+  because of that push.
+- `NavigationRequestOptions.Admission` overrides the region's policy for one
+  request. Pass `NavigationAdmission.Supersede` for a request that must win,
+  such as the clear of a window close: the WPF window close guard and dialog
+  host, and Runic.Application.Views' `CanCloseAsync`, do. Pass
+  `RejectWhileBusy` to refuse one request in a region that otherwise
+  supersedes.
+- The policy covers requests made to the region. A parent request whose plan
+  resets or closes a busy child region still supersedes the child's requests.
+- `IsBusy` is raised in a model turn, like `IsTransitioning`. The change to
+  `false` is posted, so the notification can trail the request's task; the
+  property itself is always current. Back-to-back requests can keep it `true`
+  without a `false` in between.
+- `region.WhenIdleAsync()` completes when the region is not busy. Unlike
+  `RunicNavigator.WhenIdleAsync()`, it doesn't wait for other regions.
 
 ### Ownership
 
@@ -606,7 +648,8 @@ Runic Desktop's embedded window) or `GuardWindowClose` on a WPF
 `NavigationHost` (Runic.Navigation.Wpf). Either clears the window's regions
 before it closes, and a guard that rejects or fails keeps the window open.
 
-`WhenIdleAsync()` waits until no transition or retirement is running.
+`WhenIdleAsync()` waits until no transition or retirement is running;
+`NavigationRegion<T>.WhenIdleAsync()` waits only for the requests of one region.
 
 ### Threading
 
@@ -659,7 +702,8 @@ resumes on its own context as usual.
 - A hook that disposes its own navigator stalls disposal for `CloseTimeout`,
   because disposal waits for the transition that runs the hook.
 - A hook that awaits `WhenIdleAsync()` deadlocks: the navigator is not idle
-  while that hook runs.
+  while that hook runs. The same holds for the `WhenIdleAsync()` of the hook's
+  region.
 - A child guard that commits a change in its own region supersedes the
   parent's transition, because the parent's commit sees the child's version
   change.

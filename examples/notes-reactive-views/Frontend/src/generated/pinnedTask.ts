@@ -29,7 +29,7 @@ function hydrate(wire: WireState): PinnedTaskState {
     priority: bridgeWire.string(wire.priority),
   };
 }
-const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:905A986DAD0ADA0C639A903EE9562DD02E2230A88D54D4B8CA3AA50F806AB523";
+const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F";
 
 /**
  * Connects a PinnedTask client. It waits up to `options.timeout` milliseconds (default 5000) for the

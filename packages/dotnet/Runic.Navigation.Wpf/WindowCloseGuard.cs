@@ -18,6 +18,8 @@ internal sealed class WindowCloseGuard
     // The guard that lists each region: one window per region.
     private static readonly ConditionalWeakTable<INavigationRegion, WeakReference<WindowCloseGuard>> Owners = new();
 
+    private static readonly NavigationRequestOptions SupersedeOptions = new() { Admission = NavigationAdmission.Supersede };
+
     private readonly Window _window;
     // In the order their hosts first loaded.
     private readonly List<WeakReference<INavigationRegion>> _regions = [];
@@ -132,7 +134,8 @@ internal sealed class WindowCloseGuard
                 clearing = _clearing = region;
                 _closeAgain = false;
                 // The plan of any other clear: every entry's guard and the guards of the child regions the entries own.
-                var result = await region.ClearAsync();
+                // Supersede: a close is never refused because the region is busy, also under RejectWhileBusy.
+                var result = await region.ClearAsync(SupersedeOptions);
                 if (result is not NavigationResult<object>.Committed) return;
             }
             await _window.Dispatcher.InvokeAsync(() =>

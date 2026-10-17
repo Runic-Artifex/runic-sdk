@@ -1,1 +1,15 @@
 #nullable enable
+Runic.Navigation.INavigationRegion.Admission.get -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.INavigationRegion.IsBusy.get -> bool
+Runic.Navigation.INavigationRegion.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationAdmission.RejectWhileBusy = 1 -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationAdmission.Supersede = 0 -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationRegion<TContent>.Admission.get -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationRegion<TContent>.IsBusy.get -> bool
+Runic.Navigation.NavigationRegion<TContent>.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.NavigationRegionOptions.Admission.get -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationRegionOptions.Admission.init -> void
+Runic.Navigation.NavigationRejection.Busy = 7 -> Runic.Navigation.NavigationRejection
+Runic.Navigation.NavigationRequestOptions.Admission.get -> Runic.Navigation.NavigationAdmission?
+Runic.Navigation.NavigationRequestOptions.Admission.init -> void

@@ -181,13 +181,14 @@ internal sealed class EditorViewModel() : Page("editor"), INavigationDepartureGu
 // The owner window with one dialog host for one dialog region.
 internal sealed class DialogScene : IDisposable
 {
-    public DialogScene(Action<NavigationDialogHost>? configure = null, NavFixture? fixture = null)
+    public DialogScene(Action<NavigationDialogHost>? configure = null, NavFixture? fixture = null, NavigationRegionOptions? options = null)
     {
         Fixture = fixture ?? new NavFixture();
-        Region = Fixture.Region();
+        Region = Fixture.Navigator.CreateRegion<object>(new object(), null, options);
         Host = new NavigationDialogHost { Region = Region };
         configure?.Invoke(Host);
-        Owner = ShowWindow(new Grid { Children = { Host } }, window => AddTemplates(window, typeof(DialogViewModel), typeof(PlainDialog)));
+        Owner = ShowWindow(new Grid { Children = { Host } },
+            window => AddTemplates(window, typeof(DialogViewModel), typeof(PlainDialog), typeof(DeparturePage)));
     }
 
     public NavFixture Fixture { get; }

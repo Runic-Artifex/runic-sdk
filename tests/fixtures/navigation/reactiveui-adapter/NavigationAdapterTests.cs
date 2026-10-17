@@ -204,6 +204,74 @@ internal sealed class NavigationAdapterTests
             "A disposed or failed initial state subscription continued observing.");
     }
 
+    // W315-020 (#350): IsBusy spans the retirement after the commit; the back command of a RejectWhileBusy region
+    // follows it, and that of a Supersede region does not.
+    [Test, NotInParallel(Order = 8)]
+    public async Task BusyStateAsync()
+    {
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var strict = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new NavigationPage("home")),
+            new NavigationRegionOptions { Admission = NavigationAdmission.RejectWhileBusy });
+        var lenient = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new NavigationPage("home")));
+        var busy = new Recorder<bool>();
+        using var busySubscription = strict.WhenIsBusyChanged().Subscribe(busy);
+        Require(busy.Values.SequenceEqual([false]), "WhenIsBusyChanged did not emit its initial value synchronously.");
+        var scheduler = ContextScheduler.For(context);
+        using var strictBack = strict.CreateBackCommand(scheduler);
+        using var lenientBack = lenient.CreateBackCommand(scheduler);
+        // Every disposal the test holds is released when it ends, so a failed assertion can't hang the navigator's disposal.
+        List<TaskCompletionSource> held = [];
+
+        async Task<(Task<NavigationResult<object>> Back, TaskCompletionSource Release)> RetireSlowlyAsync(NavigationRegion<object> region)
+        {
+            await region.PushAsync(NavigationTarget.Own<object>(new NavigationPage("middle")));
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            held.Add(release);
+            var slow = new SlowDisposePage(release.Task);
+            await region.PushAsync(NavigationTarget.Own<object>(slow));
+            var back = region.BackAsync().AsTask();
+            await slow.Disposing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            return (back, release);
+        }
+
+        try
+        {
+            var (back, release) = await RetireSlowlyAsync(strict);
+            await WaitUntilAsync(() => busy.Values[^1], "WhenIsBusyChanged did not emit true while the departed entry retired.");
+            Require(strict.CanGoBack && !strict.IsTransitioning && strict.IsBusy && !ReactiveCommandExecution.CanExecute(strictBack, UnitValue()),
+                "The back command of a RejectWhileBusy region was enabled while it was busy.");
+            release.SetResult();
+            Require(await back is NavigationResult<object>.Committed, "The slow Back did not commit.");
+            await WaitUntilAsync(() => !busy.Values[^1] && ReactiveCommandExecution.CanExecute(strictBack, UnitValue()),
+                "The back command stayed disabled after the region went idle.");
+            // One true and one false per request (the two pushes and the Back), distinct until changed.
+            Require(busy.Values.Length >= 3 && busy.Values.Zip(busy.Values.Skip(1)).All(pair => pair.First != pair.Second),
+                $"WhenIsBusyChanged emitted {string.Join(", ", busy.Values)}.");
+
+            (back, release) = await RetireSlowlyAsync(lenient);
+            Require(lenient.IsBusy && ReactiveCommandExecution.CanExecute(lenientBack, UnitValue()),
+                "The back command of a Supersede region was disabled because it was busy.");
+            release.SetResult();
+            await back;
+        }
+        finally
+        {
+            foreach (var release in held) release.TrySetResult();
+        }
+    }
+
+    private sealed class SlowDisposePage(Task release) : IAsyncDisposable
+    {
+        public TaskCompletionSource Disposing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask DisposeAsync()
+        {
+            Disposing.TrySetResult();
+            await release;
+        }
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, string message)
     {
         for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);

@@ -379,8 +379,9 @@ internal sealed class DialogTests
         PumpUntil(() => !IsOpen(window), "the question's window to close");
     }
 
-    // Last: Application.Shutdown with open dialogs closes everything, and the navigator retires every entry.
-    [Test, DisplayName("Application.Shutdown"), NotInParallel("WpfSuite", Order = 47)]
+    // Last: Application.Shutdown with open dialogs closes everything, and the navigator retires every entry. It shuts the
+    // suite's dispatcher down, so its order stays above every other case's.
+    [Test, DisplayName("Application.Shutdown"), NotInParallel("WpfSuite", Order = 1000)]
     public void ApplicationShutdown()
     {
         var scene = new DialogScene();

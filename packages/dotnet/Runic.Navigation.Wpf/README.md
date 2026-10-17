@@ -242,8 +242,11 @@ When none presents the content, the host logs event 1082 once per type.
   region again when it's loaded. With `GuardWindowClose`, the window still
   clears the region when it closes (see below).
 - `NavigationCommands.BrowseBack` (Alt+Left, the mouse back button) goes back
-  while `CanGoBack` and not `IsTransitioning`. Set `HandlesBrowseBack="False"`
-  to handle it yourself.
+  while `CanGoBack` and not `IsTransitioning`, and, in a region created with
+  `Admission = NavigationAdmission.RejectWhileBusy`, not `IsBusy`. Set
+  `HandlesBrowseBack="False"` to handle it yourself.
+- The host's read-only `IsTransitioning` and `IsBusy` properties follow the
+  region's, for bindings such as a progress indicator or disabled tabs.
 
 ### Closing the window
 
@@ -266,6 +269,10 @@ guard rejects, the window stays open with its entries. A guard can confirm with
 Set it on each host whose region needs a say. The window clears their regions
 one after another, in the order the hosts first loaded, and stops at the first
 clear that doesn't commit.
+
+The clears pass `Admission = NavigationAdmission.Supersede`, so a region that
+rejects requests while busy is still cleared during a request: the clear
+supersedes it, or waits for its commit and then asks the guards.
 
 A close while a clear is still asking joins it and asks nothing more. A close
 once that clear has ended (`IsTransitioning` is `false` again) starts a new
@@ -370,6 +377,10 @@ a migrated dialog keeps Enter to accept:
   close button. With a command, the button just runs it.
 - Esc dismisses the dialog while `CloseOnEscape` is on (the default). With
   `CloseOnEscape="False"`, Esc clicks the `IsCancel` button instead.
+- These dismissals, and the clear when the owner window closes, pass
+  `Admission = NavigationAdmission.Supersede`: in a dialog region created with
+  `RejectWhileBusy`, the user closing a dialog still wins over its own
+  request.
 
 > [!WARNING]
 > Don't set `Window.DialogResult`: it throws on a window shown with `Show()`.

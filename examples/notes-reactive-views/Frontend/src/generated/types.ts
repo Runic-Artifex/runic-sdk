@@ -40,8 +40,9 @@ export type NavigationOutcomeKind = "Committed" | "Rejected" | "Superseded" | "F
  * - `NoHistory`: A back request found no retained entry.
  * - `NotCurrent`: The expected current entry is not current.
  * - `EntryNotFound`: The back-to target is not in the region.
+ * - `Busy`: The region admits requests with `RejectWhileBusy` and was busy: an earlier request had not completed.
  */
-export type NavigationRejection = "Guard" | "Cancelled" | "Closed" | "Reentrant" | "NoHistory" | "NotCurrent" | "EntryNotFound";
+export type NavigationRejection = "Guard" | "Cancelled" | "Closed" | "Reentrant" | "NoHistory" | "NotCurrent" | "EntryNotFound" | "Busy";
 
 /** Why a note could not be saved. */
 export type SaveFailure =

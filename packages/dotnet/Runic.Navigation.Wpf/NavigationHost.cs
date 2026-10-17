@@ -17,7 +17,8 @@ namespace Runic.Navigation.Wpf;
 /// The view comes from <see cref="ViewLocator"/>, then from an <see cref="INavigationViewLocator"/> registered in the
 /// navigator's services, then from the implicit <see cref="DataTemplate"/> keyed by the content type or a base type.
 /// The host follows the region while it is loaded, and never changes entries when it is unloaded.
-/// <see cref="NavigationCommands.BrowseBack"/> goes back when the region can go back and isn't transitioning.
+/// <see cref="NavigationCommands.BrowseBack"/> goes back when the region can go back and isn't transitioning, nor busy
+/// when it admits requests with <see cref="NavigationAdmission.RejectWhileBusy"/>.
 /// </para>
 /// <para>
 /// The host sets its own <see cref="ContentControl.Content"/>: don't set <c>Content</c>, <c>ContentTemplate</c> or
@@ -48,6 +49,12 @@ public class NavigationHost : ContentControl
 
     /// <summary>Identifies the <see cref="IsTransitioning"/> dependency property.</summary>
     public static readonly DependencyProperty IsTransitioningProperty = IsTransitioningPropertyKey.DependencyProperty;
+
+    private static readonly DependencyPropertyKey IsBusyPropertyKey = DependencyProperty.RegisterReadOnly(nameof(IsBusy),
+        typeof(bool), typeof(NavigationHost), new PropertyMetadata(false));
+
+    /// <summary>Identifies the <see cref="IsBusy"/> dependency property.</summary>
+    public static readonly DependencyProperty IsBusyProperty = IsBusyPropertyKey.DependencyProperty;
 
     /// <summary>Identifies the <see cref="HandlesBrowseBack"/> dependency property.</summary>
     public static readonly DependencyProperty HandlesBrowseBackProperty = DependencyProperty.Register(nameof(HandlesBrowseBack), typeof(bool),
@@ -101,6 +108,9 @@ public class NavigationHost : ContentControl
 
     /// <summary>Gets whether the region has a transition in flight.</summary>
     public bool IsTransitioning => (bool)GetValue(IsTransitioningProperty);
+
+    /// <summary>Gets whether a request of the region has not completed (<see cref="INavigationRegion.IsBusy"/>).</summary>
+    public bool IsBusy => (bool)GetValue(IsBusyProperty);
 
     /// <summary>Gets or sets whether <see cref="NavigationCommands.BrowseBack"/> goes back in the region. The default is <see langword="true"/>.</summary>
     public bool HandlesBrowseBack
@@ -212,6 +222,7 @@ public class NavigationHost : ContentControl
         var region = _attached;
         var entry = region?.CurrentEntry;
         SetValue(IsTransitioningPropertyKey, region?.IsTransitioning ?? false);
+        SetValue(IsBusyPropertyKey, region?.IsBusy ?? false);
         CommandManager.InvalidateRequerySuggested();
         if (entry is null)
         {
@@ -242,7 +253,7 @@ public class NavigationHost : ContentControl
     private void OnCanBrowseBack(object sender, CanExecuteRoutedEventArgs e)
     {
         if (!HandlesBrowseBack || Region is not { } region) return;
-        e.CanExecute = region.CanGoBack && !region.IsTransitioning;
+        e.CanExecute = CanGoBack(region);
         e.Handled = true;
     }
 
@@ -250,6 +261,10 @@ public class NavigationHost : ContentControl
     {
         if (!HandlesBrowseBack || Region is not { } region) return;
         e.Handled = true;
-        if (region.CanGoBack && !region.IsTransitioning) _ = region.BackAsync().AsTask();
+        if (CanGoBack(region)) _ = region.BackAsync().AsTask();
     }
+
+    // A region that rejects requests while busy would reject this Back as Busy.
+    private static bool CanGoBack(INavigationRegion region) =>
+        region.CanGoBack && !region.IsTransitioning && !(region.Admission == NavigationAdmission.RejectWhileBusy && region.IsBusy);
 }

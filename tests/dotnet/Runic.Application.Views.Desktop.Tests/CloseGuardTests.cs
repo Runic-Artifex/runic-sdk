@@ -124,6 +124,34 @@ internal sealed class CloseGuardTests
         }
     }
 
+    // W315-020 (#350): a close clears with Admission = Supersede, so a region that rejects requests while busy still
+    // closes during a request: the clear supersedes it and asks the guard again.
+    [Test, NotInParallel(Order = 32)]
+    public async Task ACloseSupersedesARequestOfABusyRegion()
+    {
+        await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>(admission: NavigationAdmission.RejectWhileBusy);
+        var pushGuard = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var asked = 0;
+        fixture.Script.Decide = async cancellationToken =>
+        {
+            if (Interlocked.Increment(ref asked) > 1) return true;
+            pushGuard.TrySetResult(cancellationToken);
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return true;
+        };
+        var push = fixture.ViewModel.Main.PushAsync(NavigationTarget.Own(new GuardedPage(fixture.Script))).AsTask();
+        var token = await pushGuard.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(fixture.ViewModel.Main.IsBusy && fixture.ViewModel.Main.Admission == NavigationAdmission.RejectWhileBusy,
+            "The Main region was not busy with the push.");
+
+        var closed = fixture.Window.WaitForCloseAsync().AsTask();
+        Require(await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            "A close of a busy RejectWhileBusy region did not close the window.");
+        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(await push.WaitAsync(TimeSpan.FromSeconds(5)) is NavigationResult<GuardedPage>.Superseded && token.IsCancellationRequested
+            && fixture.Script.AskCount == 2, "The close did not supersede the busy region's request and ask the guard again.");
+    }
+
     // Without GuardClose a user close closes at once and asks nothing.
     [Test, NotInParallel(Order = 23)]
     public async Task AnUnguardedWindowClosesWithoutAsking()
@@ -351,9 +379,9 @@ sealed class GuardFixture : IAsyncDisposable
     public ConfirmingWindowHost Native { get; }
 
     public static async Task<GuardFixture> OpenAsync<TWindow>(Func<CancellationToken, ValueTask<bool>>? confirmClose = null,
-        bool confirmsClose = true) where TWindow : RunicWindow<GuardedShellModel>, new()
+        bool confirmsClose = true, NavigationAdmission admission = NavigationAdmission.Supersede) where TWindow : RunicWindow<GuardedShellModel>, new()
     {
-        var script = new CloseGuardScript();
+        var script = new CloseGuardScript { Admission = admission };
         var logs = new RecordingLoggerFactory();
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(logs);
@@ -420,6 +448,8 @@ sealed class ThrowingGuardWindow : RunicWindow<GuardedShellModel>
 sealed class CloseGuardScript
 {
     private int _askCount;
+    // The admission policy of the shell's Main region.
+    public NavigationAdmission Admission { get; init; }
     public Func<CancellationToken, ValueTask<bool>> Decide { get; set; } = static _ => ValueTask.FromResult(true);
     public TaskCompletionSource Asked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int AskCount => Volatile.Read(ref _askCount);
@@ -448,7 +478,8 @@ sealed class GuardedShellModel : INotifyPropertyChanged
     {
         _window = window;
         _context = context;
-        Main = navigator.CreateRegion(this, NavigationTarget.Own(new GuardedPage(script)));
+        Main = navigator.CreateRegion(this, NavigationTarget.Own(new GuardedPage(script)),
+            new NavigationRegionOptions { Admission = script.Admission });
     }
 
     public NavigationRegion<GuardedPage> Main { get; }
