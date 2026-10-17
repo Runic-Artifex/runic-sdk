@@ -24,6 +24,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     // Hosts by their WKWebView, for the drop override and the page's drop label.
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> WebViews = new();
     private static readonly nint WebViewClass = CreateWebViewClass();
+    private static readonly nint TitleObserverClass = CreateTitleObserverClass();
     private static readonly Lazy<nint> FileDropHandler = new(CreateFileDropHandler);
     private FileDropPairing? _drops;
     private IDesktopMenuCommandTarget? _menuCommands;
@@ -68,6 +69,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private nint _application;
     private nint _window;
     private nint _webView;
+    private nint _titleObserver;
     private nint _delegate;
     private Action? _closeRequested;
     private readonly CancellationTokenSource _nativeShutdown = new();
@@ -364,6 +366,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidNint(_webView, "setUnderPageBackgroundColor:", clear);
         }
         Api.SendVoidUlong(_webView, "setAutoresizingMask:", ViewWidthSizable | ViewHeightSizable);
+        // The window takes the page's <title>, as in Safari, on GTK and WebView2: VoiceOver and the Window menu name the
+        // window by it.
+        _titleObserver = TitleObserverClass != 0 ? Api.SendNint(Api.SendNint(TitleObserverClass, "alloc"), "init") : 0;
+        if (_titleObserver != 0)
+        {
+            Api.AddObserver(_webView, _titleObserver, "title");
+        }
         // A trackpad pinch magnifies the page, as in Safari; WebKit lets the page cancel the gesture first.
         Api.SendVoidBool(_webView, "setAllowsMagnification:", true);
         var contentView = Api.SendNint(_window, "contentView");
@@ -805,9 +814,18 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         var window = Interlocked.Exchange(ref _window, 0);
         var webView = Interlocked.Exchange(ref _webView, 0);
         var windowDelegate = Interlocked.Exchange(ref _delegate, 0);
+        var titleObserver = Interlocked.Exchange(ref _titleObserver, 0);
         if (window != 0)
         {
             Api.SendVoidNint(window, "setDelegate:", 0);
+        }
+        if (titleObserver != 0)
+        {
+            if (webView != 0)
+            {
+                Api.RemoveObserver(webView, titleObserver, "title");
+            }
+            Api.SendVoid(titleObserver, "release");
         }
         if (webView != 0)
         {
@@ -871,6 +889,47 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
         Api.RegisterClassPair(type);
         return type;
+    }
+
+    // Observes a WKWebView's title (key-value observing) and gives it to the view's window.
+    private static unsafe nint CreateTitleObserverClass()
+    {
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable)
+        {
+            return 0;
+        }
+        var existing = Api.GetClass("RunicDesktopTitleObserver");
+        if (existing != 0)
+        {
+            return existing;
+        }
+        var type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopTitleObserver");
+        if (type == 0)
+        {
+            return 0;
+        }
+        Api.AddMethod(type, "observeValueForKeyPath:ofObject:change:context:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, void>)&TitleChanged, "v@:@@@^v");
+        Api.RegisterClassPair(type);
+        return type;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void TitleChanged(nint self, nint selector, nint keyPath, nint webView, nint change, nint context)
+    {
+        try
+        {
+            var title = Api.SendNint(webView, "title");
+            var window = Api.SendNint(webView, "window");
+            if (title != 0 && window != 0 && Api.SendUlong(title, "length") > 0)
+            {
+                Api.SendVoidNint(window, "setTitle:", title);
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through AppKit.
+        }
     }
 
     // Receives the page's drop label from the isolated content world.
@@ -1332,6 +1391,22 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal nint SendNintNint(nint receiver, string selector, nint value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)_messageSend)(receiver, Selector(selector), value);
+
+        internal void AddObserver(nint receiver, nint observer, string keyPath)
+        {
+            var path = CreateString(keyPath);
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, ulong, nint, void>)_messageSend)(
+                receiver, Selector("addObserver:forKeyPath:options:context:"), observer, path, 0, 0);
+            SendVoid(path, "release");
+        }
+
+        internal void RemoveObserver(nint receiver, nint observer, string keyPath)
+        {
+            var path = CreateString(keyPath);
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(
+                receiver, Selector("removeObserver:forKeyPath:"), observer, path);
+            SendVoid(path, "release");
+        }
 
         internal void SendVoid(nint receiver, string selector) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, void>)_messageSend)(receiver, Selector(selector));

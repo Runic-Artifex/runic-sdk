@@ -11,6 +11,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private const uint WmAppDispatch = 0x8001;
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
+    private const uint WmGetObject = 0x003D;
     private const uint WmSize = 0x0005;
     private const uint WmDpiChanged = 0x02E0;
     private const uint WmGetMinMaxInfo = 0x0024;
@@ -56,6 +57,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private Thread? _thread;
     private GCHandle _selfHandle;
     private nint _window;
+    private nint _provider;
     private nint _icon;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
@@ -172,21 +174,24 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.ShowWindow(_window, SwMinimize), cancellationToken);
 
-    // A UI Automation notification event on the window's host provider, which Narrator and NVDA speak. Polite messages
-    // are queued (NotificationProcessing_All); assertive ones replace those not yet spoken (ImportantMostRecent).
+    // A UI Automation notification event from the window's provider (WindowsAnnouncementProvider), which Narrator and
+    // NVDA speak. Polite messages are queued (NotificationProcessing_All); assertive ones replace those not yet spoken
+    // (ImportantMostRecent).
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
-        => InvokeAsync(() => RaiseNotification(_window, message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken);
+        => InvokeAsync(() => RaiseNotification(_provider, message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken);
 
-    private static unsafe void RaiseNotification(nint window, string message, bool assertive)
+    private static void RaiseNotification(nint provider, string message, bool assertive)
     {
         const int NotificationKindOther = 4;
         const int NotificationProcessingImportantMostRecent = 1;
         const int NotificationProcessingAll = 2;
+        if (provider == 0)
+        {
+            throw new InvalidOperationException("The window is closed.");
+        }
         int result;
         try
         {
-            result = Native.UiaHostProviderFromHwnd(window, out var provider);
-            if (result < 0) Marshal.ThrowExceptionForHR(result);
             var text = Native.SysAllocString(message);
             var activity = Native.SysAllocString("Runic.Desktop.Announcement");
             try
@@ -198,8 +203,6 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 Native.SysFreeString(activity);
                 Native.SysFreeString(text);
-                // IUnknown::Release.
-                _ = ((delegate* unmanaged[Stdcall]<nint, uint>)(*(*(nint**)provider + 2)))(provider);
             }
         }
         catch (EntryPointNotFoundException error)
@@ -464,6 +467,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 host window could not be created.");
             }
+            _provider = WindowsAnnouncementProvider.Create(_window);
 
             width = ScaleForWindow(logicalWidth, _window);
             height = ScaleForWindow(logicalHeight, _window);
@@ -691,7 +695,14 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 }
                 Native.DestroyWindow(window);
                 return 0;
+            case WmGetObject when (int)lParam == WindowsAnnouncementProvider.RootObjectId && host is { _provider: not 0 }:
+                return WindowsAnnouncementProvider.Return(window, wParam, lParam, host._provider);
             case WmDestroy:
+                if (host is { _provider: not 0 and var provider })
+                {
+                    host._provider = 0;
+                    WindowsAnnouncementProvider.Destroy(window, provider);
+                }
                 host?.CloseController();
                 host?.HandleClosed();
                 Native.PostQuitMessage(0);
@@ -801,9 +812,6 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     private static partial class Native
     {
-        [LibraryImport("uiautomationcore.dll")]
-        internal static partial int UiaHostProviderFromHwnd(nint window, out nint provider);
-
         [LibraryImport("uiautomationcore.dll")]
         internal static partial int UiaRaiseNotificationEvent(nint provider, int kind, int processing, nint displayString, nint activityId);
 
