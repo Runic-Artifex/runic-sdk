@@ -124,7 +124,8 @@ public class NavigationHost : ContentControl
     /// While a guarded region has entries, the window's close is cancelled and the regions are cleared one after another,
     /// in the order their hosts first loaded; the window closes when every clear commits. A guard that rejects, a
     /// cancelled clear or a superseded clear keeps the window open with its entries and asks no further regions, so a
-    /// guard can confirm through a <see cref="NavigationDialogHost"/> in the same window. A close that another
+    /// guard can confirm through a <see cref="NavigationDialogHost"/> in the same window. A close while a clear is still
+    /// in flight joins it; a close after the clearing region stops transitioning starts a new check. A close that another
     /// <see cref="Window.Closing"/> handler already cancelled is left alone, and a window whose regions are empty closes
     /// at once.
     /// </para>
