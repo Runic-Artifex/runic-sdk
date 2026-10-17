@@ -39,8 +39,9 @@
   #   directory       relative to src; default: Frontend beside the project
   #   packageManager  npm, pnpm or bun: the dependencies are installed with it, and the build runs with it
   #   hash            the fixed-output hash of the dependencies; optional for npm, which can fetch each package
-  #                   from package-lock.json instead (that reads the lock file at evaluation, so src must be a
-  #                   local path such as the flake's own source)
+  #                   from package-lock.json instead. That reads the lock file at evaluation, from src when it is
+  #                   a path, from its unfiltered source when lib.fileset.toSource, lib.cleanSource or
+  #                   lib.cleanSourceWith filters it, and otherwise from src's store path, which then has to exist.
   #   nodeModules     a prepared node_modules derivation instead (null: the frontend has no dependencies)
   #   pnpmFetcherVersion  fetchPnpmDeps' fetcherVersion; default 4
   # Only the frontend directory's package.json, lock file, .npmrc and pnpm-workspace.yaml are fetched from, so a
@@ -147,6 +148,19 @@ let
     else
       map fetchNupkg (lib.importJSON nugetDeps);
 
+  # A file of src that is read at evaluation, by its path relative to src. The store path of a filtered source, or
+  # of a path's copy ("${./.}"), exists only once a writable evaluation has added it, so reading from it fails a
+  # read-only one (nix flake check --no-build) on an empty store. The path itself, or the filtered source's
+  # unfiltered one, is read instead.
+  sourceForEvaluation =
+    relative:
+    if src._isLibCleanSourceWith or false then
+      src.origSrc + "/${relative}"
+    else if builtins.isPath src then
+      src + "/${relative}"
+    else
+      "${src}/${relative}";
+
   # Each tool package is a fixed-output download from nuget.org, linked into the restore's packages folder
   # (postConfigureNuGet), where `dotnet tool restore` finds it without a source.
   dotnetTools' =
@@ -155,18 +169,7 @@ let
     else
       let
         manifest = dotnetTools.manifest or "${dirOf (lib.head (lib.toList projectFile))}/.config/dotnet-tools.json";
-        # The store path of a filtered source, or of a path's copy ("${./.}"), exists only once a writable
-        # evaluation has added it, so reading from it fails a read-only one (nix flake check --no-build) on an
-        # empty store. The path itself, or the filtered source's unfiltered one, is read instead.
-        manifestFile =
-          if builtins.isPath manifest then
-            manifest
-          else if src._isLibCleanSourceWith or false then
-            src.origSrc + "/${manifest}"
-          else if builtins.isPath src then
-            src + "/${manifest}"
-          else
-            "${src}/${manifest}";
+        manifestFile = if builtins.isPath manifest then manifest else sourceForEvaluation manifest;
         tools = (lib.importJSON manifestFile).tools or { };
         hashes = dotnetTools.hashes or { };
         fetch =
@@ -208,7 +211,12 @@ let
           else
             callPackage ./frontend-node-modules.nix { inherit nodejs pnpm bun; } {
               inherit pname version packageManager;
-              src = if packageManager == "npm" && frontend.hash or null == null then "${src}/${directory}" else lockSource;
+              # importNpmLock reads package.json and package-lock.json at evaluation.
+              src =
+                if packageManager == "npm" && frontend.hash or null == null then
+                  sourceForEvaluation directory
+                else
+                  lockSource;
               hash = frontend.hash or null;
               pnpmFetcherVersion = frontend.pnpmFetcherVersion or 4;
             };
