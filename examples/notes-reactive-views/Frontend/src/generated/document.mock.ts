@@ -38,7 +38,7 @@ export interface DocumentMock extends MockTypedView<DocumentMockState, DocumentC
 const spec: MockTypedViewSpec = {
   kind: "document",
   route: "document",
-  contract: "NotesReactiveViews.DocumentViewModel:2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F",
+  contract: "NotesReactiveViews.DocumentViewModel:40D769D3CFF1067D01A4F7BCD7BBBC0F2DF1906BFD84477727DBCB9C6886AD57",
   fields: {
     activePane: { encode: (value: unknown) => { const typed = value as DocumentPane; return typed; }, decode: (wire: unknown) => bridgeWire.enumName<DocumentPane>(wire, ["Editor", "Preview"]) },
     status: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -53,8 +53,8 @@ const spec: MockTypedViewSpec = {
   operations: {
     showEditor: { member: "ShowEditor" },
     showPreview: { member: "ShowPreview" },
-    saveAndClose: { member: "SaveAndClose", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })() }; }, encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
-    close: { member: "Close", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })() }; } },
+    saveAndClose: { member: "SaveAndClose", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["activation"]: typed["activation"] }; }, encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    close: { member: "Close", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["activation"]: typed["activation"] }; } },
   },
   interactions: {
     confirmLeave: { encodeInput: (value: unknown) => { const typed = value as DiscardNoteRequest; return { ["title"]: typed["title"], ["bodyLength"]: typed["bodyLength"] }; }, decodeOutput: (wire: unknown) => bridgeWire.boolean(wire) },

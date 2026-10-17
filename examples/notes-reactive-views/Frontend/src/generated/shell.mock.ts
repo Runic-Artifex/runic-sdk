@@ -38,7 +38,7 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "NotesReactiveViews.ShellViewModel:2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F",
+  contract: "NotesReactiveViews.ShellViewModel:40D769D3CFF1067D01A4F7BCD7BBBC0F2DF1906BFD84477727DBCB9C6886AD57",
   fields: {},
   defaults: { canOpenHome: true, isOpenHomeExecuting: false, canOpenDocument: true, isOpenDocumentExecuting: false, canSwapPinned: true, isSwapPinnedExecuting: false, canRemovePinned: true, isRemovePinnedExecuting: false, canRestorePinned: true, isRestorePinnedExecuting: false },
   commands: {
@@ -49,7 +49,7 @@ const spec: MockTypedViewSpec = {
     restorePinned: { route: "RestorePinned", available: "canRestorePinned" },
   },
   operations: {
-    openHome: { member: "OpenHome", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })() }; } },
+    openHome: { member: "OpenHome", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["activation"]: typed["activation"] }; } },
     openDocument: { member: "OpenDocument" },
     swapPinned: { member: "SwapPinned" },
     removePinned: { member: "RemovePinned" },

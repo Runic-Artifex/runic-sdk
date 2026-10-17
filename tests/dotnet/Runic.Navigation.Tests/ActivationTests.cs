@@ -43,7 +43,7 @@ internal sealed partial class NavigationTests
         finish.SetResult();
         var result = await Wait(replace);
         Require(result is NavigationResult<Page>.Committed { Activation: NavigationActivationState.Completed, ActivationError: null }
-            && journal.Text == "to:new,old,yield,activate:new", $"The activation gave {result}, journal {journal.Text}.");
+            && result.Outcome.Activation == NavigationActivationState.Completed && journal.Text == "to:new,old,yield,activate:new", $"The activation gave {result}, journal {journal.Text}.");
         await Wait(idle);
         await Wait(regionIdle);
     }
@@ -62,9 +62,11 @@ internal sealed partial class NavigationTests
         Require(logged.Level == LogLevel.Error && logged.Exception is InvalidOperationException && Equals(logged.State["EntryType"], nameof(ActivatedPage))
             && Equals(logged.State["Operation"], "Push"), $"Event 1076 was {logged.Message}.");
         Require(Throws<InvalidOperationException>(() => result.ThrowIfFailed()), "ThrowIfFailed did not rethrow the activation error.");
+        Require(result.Outcome == new NavigationOutcome(NavigationOutcomeKind.Committed) { Activation = NavigationActivationState.Failed },
+            $"The outcome of a failing activation was {result.Outcome}.");
         var plain = await Wait(region.PushAsync(NavigationTarget.Own(new Page("plain"))));
-        Require(plain is NavigationResult<Page>.Committed { Activation: NavigationActivationState.None } && ReferenceEquals(plain.ThrowIfFailed(), plain),
-            $"A commit without activation hooks gave {plain}.");
+        Require(plain is NavigationResult<Page>.Committed { Activation: NavigationActivationState.None } && ReferenceEquals(plain.ThrowIfFailed(), plain)
+            && plain.Outcome == new NavigationOutcome(NavigationOutcomeKind.Committed), $"A commit without activation hooks gave {plain}.");
     }
 
     // A later commit that retains (Push) or retires (Back) the entry cancels its hook: the first request returns
@@ -91,8 +93,9 @@ internal sealed partial class NavigationTests
         await Task.Delay(30);
         Require(!push.IsCompleted, "Cancelling the caller's token after the commit cancelled the activation.");
         var over = await Wait(region.PushAsync(NavigationTarget.Own(new Page("over"))));
-        Require(over is NavigationResult<Page>.Committed && await Wait(push) is NavigationResult<Page>.Committed { Activation: NavigationActivationState.Cancelled },
-            "A push that retained the activating entry did not cancel its hook.");
+        var retained = await Wait(push);
+        Require(over is NavigationResult<Page>.Committed && retained is NavigationResult<Page>.Committed { Activation: NavigationActivationState.Cancelled }
+            && retained.Outcome.Activation == NavigationActivationState.Cancelled, "A push that retained the activating entry did not cancel its hook.");
 
         // Back to it: the hook runs again (it is current again); a Back that retires it cancels it.
         started = gates.Signal();

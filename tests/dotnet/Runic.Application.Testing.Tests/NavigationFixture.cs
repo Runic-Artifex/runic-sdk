@@ -29,14 +29,20 @@ public sealed class NavShellViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed class NavHomeViewModel : INavPageViewModel, INavigationDepartureGuard
+public sealed class NavHomeViewModel : INavPageViewModel, INavigationDepartureGuard, INavigationActivated
 {
     public string Title => "home";
 
     internal Func<CancellationToken, ValueTask<bool>>? Guard { get; set; }
 
+    // Runs when the home page becomes current again, like a page that reloads its data.
+    internal Func<ValueTask>? Activate { get; set; }
+
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
         Guard?.Invoke(cancellationToken) ?? ValueTask.FromResult(true);
+
+    ValueTask INavigationActivated.OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken) =>
+        Activate?.Invoke() ?? ValueTask.CompletedTask;
 
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
