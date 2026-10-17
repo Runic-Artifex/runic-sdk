@@ -1,0 +1,30 @@
+# The flatpak-builder manifest that package.mjs fills in from the project file (the fields in double braces). It installs the NativeAOT
+# publish folder that package.mjs prepares in flatpak-source; the GNOME runtime provides GTK 4 and WebKitGTK 6, so
+# the project uses the desktop-gtk4 host.
+app-id: {{ApplicationId}}
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: {{Executable}}
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Runic serves the page to the WebView over loopback.
+  - --share=network
+modules:
+  - name: application
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/{{Executable}} /app/bin
+      - cp -R publish/. /app/lib/{{Executable}}/
+      - printf '#!/bin/sh\nexec /app/lib/{{Executable}}/{{Executable}} "$@"\n' > /app/bin/{{Executable}}
+      - chmod +x /app/bin/{{Executable}}
+      - install -Dm644 {{ApplicationId}}.desktop /app/share/applications/{{ApplicationId}}.desktop
+      - install -Dm644 {{ApplicationId}}.metainfo.xml /app/share/metainfo/{{ApplicationId}}.metainfo.xml
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/{{ApplicationId}}.png
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/{{ApplicationId}}.svg
+    sources:
+      - type: dir
+        path: flatpak-source

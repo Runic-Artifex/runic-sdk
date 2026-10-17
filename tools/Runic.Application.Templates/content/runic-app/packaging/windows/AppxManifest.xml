@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The MSIX manifest that package.mjs fills in from the project file (the fields in double braces). Publisher must equal the subject of the
+     certificate that signs the package. Windows passes an opened URL or file to the application as its argument. -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap rescap">
+  <Identity Name="{{ApplicationId}}" Publisher="{{Publisher}}" Version="{{PackageVersion}}" ProcessorArchitecture="{{Architecture}}" />
+  <Properties>
+    <DisplayName>{{ApplicationName}}</DisplayName>
+    <PublisherDisplayName>{{ApplicationName}}</PublisherDisplayName>
+    <Logo>Assets\icon.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="{{Executable}}.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="{{ApplicationName}}" Description="{{Description}}" BackgroundColor="transparent"
+                          Square150x150Logo="Assets\icon.png" Square44x44Logo="Assets\icon.png" />
+      <!-- Extensions for the URL schemes in RunicApplicationUrlSchemes. A file type opens with its path as the
+           argument, through an extension you add here:
+           <uap:Extension Category="windows.fileTypeAssociation">
+             <uap:FileTypeAssociation Name="notes">
+               <uap:SupportedFileTypes><uap:FileType>.notes</uap:FileType></uap:SupportedFileTypes>
+             </uap:FileTypeAssociation>
+           </uap:Extension> -->{{Extensions}}
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

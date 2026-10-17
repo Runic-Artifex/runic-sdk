@@ -32,7 +32,8 @@
       "copyOnly": [ "icons/*.png", "icons/*.ico" ],
       "modifiers": [
         { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] },
-        { "condition": "(!nix)", "exclude": [ "flake.nix" ] }
+        { "condition": "(!nix)", "exclude": [ "flake.nix" ] },
+        { "condition": "(!packaging)", "exclude": [ "packaging/**/*" ] }
       ]
     },
     {
@@ -148,6 +149,13 @@
       "defaultValue": "false",
       "displayName": "Nix flake",
       "description": "Adds a Nix flake that builds the application in the Nix sandbox with the Runic SDK's buildRunicApplication, from packages.lock.json and the frontend's lock file."
+    },
+    "packaging": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Packaging recipes",
+      "description": "Adds packaging/package.mjs and its manifests, which package the application as MSIX on Windows, a signed .app in a disk image on macOS and a Flatpak on Linux."
     },
     "applicationId": {
       "type": "parameter",

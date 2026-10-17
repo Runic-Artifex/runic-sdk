@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata, which software centers and Flathub show. Set the license, a longer description and the
+     project's homepage (PackageProjectUrl), and add screenshots, before you publish. -->
+<component type="desktop-application">
+  <id>{{ApplicationId}}</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>{{ApplicationName}}</name>
+  <developer id="{{DeveloperId}}">
+    <name>{{ApplicationName}}</name>
+  </developer>
+  <summary>{{Description}}</summary>
+  <description>
+    <p>{{Description}}</p>
+  </description>
+  <url type="homepage">{{Homepage}}</url>
+  <launchable type="desktop-id">{{ApplicationId}}.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="{{Version}}" date="{{ReleaseDate}}" />
+  </releases>
+</component>

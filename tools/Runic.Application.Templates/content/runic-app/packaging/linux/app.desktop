@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name={{ApplicationName}}
+Comment={{Description}}
+Exec={{Executable}} %U
+Icon={{ApplicationId}}
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+{{MimeTypes}}

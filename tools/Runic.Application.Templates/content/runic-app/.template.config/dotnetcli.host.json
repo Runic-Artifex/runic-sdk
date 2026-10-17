@@ -7,6 +7,7 @@
     "viewModels": { "longName": "view-models", "shortName": "" },
     "tests": { "longName": "tests", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
+    "packaging": { "longName": "packaging", "shortName": "" },
     "applicationId": { "longName": "application-id", "shortName": "" },
     "runicVersion": { "longName": "runic-version", "shortName": "", "isHidden": true },
     "runicNpmVersion": { "longName": "runic-npm-version", "shortName": "", "isHidden": true }
@@ -16,6 +17,7 @@
     "--frontend vue --host cswebui --view-models toolkit",
     "--tests",
     "--nix",
-    "--application-id org.example.Notes"
+    "--application-id org.example.Notes",
+    "--host desktop-gtk4 --packaging"
   ]
 }

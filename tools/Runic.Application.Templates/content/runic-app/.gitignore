@@ -6,6 +6,10 @@ Frontend/dist/
 Frontend/.angular/
 # Typed View clients; dotnet build and dotnet runic dev regenerate them.
 Frontend/src/generated/
+#if (packaging)
+# packaging/package.mjs output
+/artifacts/
+#endif
 #if (nix)
 # nix build output
 /result

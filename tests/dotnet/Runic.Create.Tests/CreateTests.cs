@@ -40,9 +40,10 @@ internal sealed class CreateTests
         True(model.Options[2].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
         Equal("CommunityToolkit.Mvvm", model.Options[3].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
-        Equal("tests,nix", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
+        Equal("tests,nix,packaging", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
         Equal("Nix flake", model.Toggles[1].DisplayName);
+        Equal("Packaging recipes", model.Toggles[2].DisplayName);
         True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
         Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }

@@ -1,0 +1,43 @@
+// Checks the receipt that tests/native/Runic.Packaging.Probe writes when its installed package opens its URL scheme
+// (see the packaging job in .github/workflows/ci.yml). Usage: bun eng/ci/packaging-probe-check.mjs <receipt> <platform>
+// [unpackaged], where platform is windows, macos or flatpak; "unpackaged" checks a copy run outside its package.
+import { existsSync, readFileSync } from "node:fs";
+
+const [path, platform, mode] = process.argv.slice(2);
+const receipt = JSON.parse(readFileSync(path, "utf8"));
+const failures = [];
+const expect = (condition, message) => { if (!condition) failures.push(message); };
+const id = "org.runic.tests.PackagingProbe";
+
+expect(receipt.applicationId === id, `applicationId is ${receipt.applicationId}`);
+expect(receipt.applicationName === "Runic Packaging Probe", `applicationName is ${receipt.applicationName}`);
+// The Windows shell normalizes the URL to runic-packaging-probe://receipt/?path=...
+expect(/^runic-packaging-probe:\/\/receipt\/?\?path=/i.test(receipt.url ?? ""), `the probe was opened with ${receipt.url}`);
+expect(receipt.contentRootHasIndex === true, `the content root ${receipt.contentRoot} has no index.html`);
+if (mode === "unpackaged") {
+  expect(receipt.packageIdentity === null, `an unpackaged copy has the package identity ${receipt.packageIdentity}`);
+  expect(receipt.loginStartup !== "Unavailable(BackendUnavailable)", `unpackaged login startup is ${receipt.loginStartup}`);
+} else if (platform === "windows") {
+  expect(new RegExp(`^${id.replace(/\./g, "\\.")}_[a-z0-9]{13}!App$`).test(receipt.packageIdentity ?? ""),
+    `the MSIX package's AppUserModelID is ${receipt.packageIdentity}`);
+  // Runic shows toasts under the package's AppUserModelID, which Windows registered at install.
+  expect(receipt.notifications === "Success", `notifications in the package report ${receipt.notifications}`);
+  expect(receipt.loginStartup === "Unavailable(BackendUnavailable)", `login startup in the package reports ${receipt.loginStartup}`);
+} else if (platform === "macos") {
+  expect(receipt.packageIdentity === id, `the bundle identifier is ${receipt.packageIdentity}`);
+  expect(/\.app\/Contents\/Resources\/www\/?$/.test(receipt.contentRoot ?? ""), `the bundle's content root is ${receipt.contentRoot}`);
+} else if (platform === "flatpak") {
+  expect(receipt.packageIdentity === id, `FLATPAK_ID is ${receipt.packageIdentity}`);
+  expect(receipt.contentRoot === "/app/lib/Runic.Packaging.Probe/www", `the Flatpak's content root is ${receipt.contentRoot}`);
+} else {
+  failures.push(`unknown platform ${platform}`);
+}
+if (receipt.diagnosticsLog && mode === "unpackaged" && platform !== "flatpak") {
+  expect(existsSync(receipt.diagnosticsLog) && readFileSync(receipt.diagnosticsLog, "utf8").includes("packaging-probe"),
+    `${receipt.diagnosticsLog} does not hold the probe's diagnostic`);
+}
+if (failures.length > 0) {
+  console.error(`The ${platform} ${mode ?? "package"} receipt failed:\n- ${failures.join("\n- ")}\n${JSON.stringify(receipt, null, 2)}`);
+  process.exit(1);
+}
+console.log(`PACKAGING_OK|${platform}|${mode ?? "package"}|${receipt.packageIdentity ?? "unpackaged"}`);

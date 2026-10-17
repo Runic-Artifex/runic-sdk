@@ -705,6 +705,26 @@ verify_package_names() {
   grep -Fq 'iconName = "org.example.Notes";' "$names_directory/id-explicit/flake.nix"
   echo 'PACKAGE_NAMES_OK'
   echo 'APPLICATION_IDS_OK'
+  # --packaging adds packaging/ unchanged (the packaging CI job runs these files) and the properties it reads.
+  local packaging_source="$repository_root/tools/Runic.Application.Templates/content/runic-app/packaging"
+  if [[ -e "$names_directory/id-explicit/packaging" ]]; then
+    echo "A project without --packaging has packaging/." >&2
+    exit 1
+  fi
+  (cd "$names_directory" && dotnet new runic-app --name Packaged --output packaged --host desktop-gtk4 --packaging) > /dev/null
+  if ! diff -r "$packaging_source" "$names_directory/packaged/packaging"; then
+    echo "--packaging did not copy packaging/ unchanged." >&2
+    exit 1
+  fi
+  for property in Description PackageProjectUrl RunicApplicationPublisher RunicApplicationUrlSchemes; do
+    grep -Fq "<$property>" "$names_directory/packaged/Packaged.csproj"
+  done
+  grep -Fxq '/artifacts/' "$names_directory/packaged/.gitignore"
+  if node "$names_directory/packaged/packaging/package.mjs" android > /dev/null 2>&1; then
+    echo "package.mjs accepted an unknown target." >&2
+    exit 1
+  fi
+  echo 'PACKAGING_RECIPES_OK'
 }
 
 # The project file declares the application ID once, and the icons are copied unchanged.

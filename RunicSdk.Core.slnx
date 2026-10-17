@@ -92,6 +92,7 @@
     <Project Path="tests/native/Runic.StatusIcon.Smoke/Runic.StatusIcon.Smoke.csproj" />
     <Project Path="tests/native/Runic.Privileged.Smoke/Runic.Privileged.Smoke.csproj" />
     <Project Path="tests/native/Runic.Elevation.Smoke/Runic.Elevation.Smoke.csproj" />
+    <Project Path="tests/native/Runic.Packaging.Probe/Runic.Packaging.Probe.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Runic.Administration.Verify/Runic.Administration.Verify.csproj" />
