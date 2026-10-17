@@ -7,7 +7,10 @@ The owner dispatches file dialogs on the window's STA and drains native callback
 before disposal. This package does not discover providers or depend on Desktop.
 
 File dialogs require an owner, use filesystem-only Common Item Dialogs and retain
-the shared runtime's atomic replacement policy. Clipboard reads distinguish absent
+the shared runtime's atomic replacement policy. Filters become the dialog's file type list, the first
+selected; `OpenFilesAsync` uses `FOS_ALLOWMULTISELECT`; and the initial folder
+uses `SetFolder`, which takes precedence over the folder Windows remembers for the
+application. Clipboard reads distinguish absent
 text (`null`) from empty text, reject over-limit payloads and return typed busy,
 permission and I/O failures. Text containing NUL is invalid. Cancellation before
 native execution prevents the operation; after execution starts, the actual write

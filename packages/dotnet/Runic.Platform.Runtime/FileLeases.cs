@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
@@ -41,6 +42,35 @@ internal sealed class ReadFileLease(string displayName, Stream stream, IAsyncDis
         List<Exception> failures = [];
         try { await stream.DisposeAsync().ConfigureAwait(false); } catch (Exception error) { failures.Add(error); }
         try { if (access is not null) await access.DisposeAsync().ConfigureAwait(false); } catch (Exception error) { failures.Add(error); }
+        FileLeaseCleanup.Complete(completion, failures);
+    }
+}
+
+// The leases of one multiple selection. Disposing the list releases each lease once.
+internal sealed class ReadFileLeaseList(ImmutableArray<IReadFileLease> leases) : IReadFileLeaseList
+{
+    private Task? _closed;
+    public IReadFileLease this[int index] => leases[index];
+    public int Count => leases.Length;
+    public IEnumerator<IReadFileLease> GetEnumerator() => ((IEnumerable<IReadFileLease>)leases).GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public ValueTask DisposeAsync()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _closed, completion.Task, null) is { } existing) return new(existing);
+        _ = ReleaseAsync(completion);
+        return new(completion.Task);
+    }
+
+    private async Task ReleaseAsync(TaskCompletionSource completion)
+    {
+        List<Exception> failures = [];
+        foreach (var lease in leases)
+        {
+            try { await lease.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception error) { failures.Add(error); }
+        }
         FileLeaseCleanup.Complete(completion, failures);
     }
 }

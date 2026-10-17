@@ -628,6 +628,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         Current.FileDialogs.OpenDirectoryAsync(options, cancellationToken);
     ValueTask<PickerResult<IReadFileLease>> IFileDialogs.OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken) =>
         Current.FileDialogs.OpenFileAsync(options, cancellationToken);
+    ValueTask<PickerResult<IReadFileLeaseList>> IFileDialogs.OpenFilesAsync(OpenFileOptions options, CancellationToken cancellationToken) =>
+        Current.FileDialogs.OpenFilesAsync(options, cancellationToken);
     ValueTask<PickerResult<ISaveFileLease>> IFileDialogs.SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken) =>
         Current.FileDialogs.SaveFileAsync(options, cancellationToken);
     ValueTask<PlatformResult<string?>> ITextClipboard.ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken) =>

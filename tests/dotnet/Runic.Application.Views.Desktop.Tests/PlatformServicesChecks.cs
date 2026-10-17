@@ -329,7 +329,7 @@ sealed class ReadmeNotesViewModel(IFileDialogs files)
 
     public async Task OpenAsync()
     {
-        if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Selected(var lease)) return;
+        if (await files.OpenFileAsync(new() { Filters = [new("Notes", ["txt", "md"])] }) is not PickerResult<IReadFileLease>.Selected(var lease)) return;
         await using (lease)
         await using (var stream = await lease.OpenReadAsync())
         using (var reader = new StreamReader(stream))
@@ -338,7 +338,7 @@ sealed class ReadmeNotesViewModel(IFileDialogs files)
 
     public async Task<bool> SaveAsync()
     {
-        if (await files.SaveFileAsync(new("notes.txt")) is not PickerResult<ISaveFileLease>.Selected(var lease)) return false;
+        if (await files.SaveFileAsync(new("notes.txt") { Filters = [new("Notes", ["txt"])] }) is not PickerResult<ISaveFileLease>.Selected(var lease)) return false;
         await using (lease)
         {
             if (await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace)

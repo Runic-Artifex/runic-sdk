@@ -1,3 +1,30 @@
 #nullable enable
+override Runic.Platform.FileDialogFilter.Equals(object? obj) -> bool
+override Runic.Platform.FileDialogFilter.GetHashCode() -> int
+override Runic.Platform.FileDialogFilter.ToString() -> string!
 Runic.Platform.DesktopInhibition
+Runic.Platform.FileDialogFilter
+Runic.Platform.FileDialogFilter.<Clone>$() -> Runic.Platform.FileDialogFilter!
+Runic.Platform.FileDialogFilter.Deconstruct(out string! Name, out System.Collections.Immutable.ImmutableArray<string!> Extensions) -> void
+Runic.Platform.FileDialogFilter.Equals(Runic.Platform.FileDialogFilter? other) -> bool
+Runic.Platform.FileDialogFilter.Extensions.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.FileDialogFilter.Extensions.init -> void
+Runic.Platform.FileDialogFilter.FileDialogFilter(string! Name, System.Collections.Immutable.ImmutableArray<string!> Extensions) -> void
+Runic.Platform.FileDialogFilter.MatchesAllFiles.get -> bool
+Runic.Platform.FileDialogFilter.Name.get -> string!
+Runic.Platform.FileDialogFilter.Name.init -> void
+Runic.Platform.IFileDialogs.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
+Runic.Platform.IReadFileLeaseList
+Runic.Platform.OpenDirectoryOptions.InitialDirectory.get -> string?
+Runic.Platform.OpenDirectoryOptions.InitialDirectory.init -> void
+Runic.Platform.OpenFileOptions.Filters.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.FileDialogFilter!>
+Runic.Platform.OpenFileOptions.Filters.init -> void
+Runic.Platform.OpenFileOptions.InitialDirectory.get -> string?
+Runic.Platform.OpenFileOptions.InitialDirectory.init -> void
+Runic.Platform.SaveFileOptions.Filters.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.FileDialogFilter!>
+Runic.Platform.SaveFileOptions.Filters.init -> void
+Runic.Platform.SaveFileOptions.InitialDirectory.get -> string?
+Runic.Platform.SaveFileOptions.InitialDirectory.init -> void
 static Runic.Platform.DesktopInhibition.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopInhibition!
+static Runic.Platform.FileDialogFilter.operator !=(Runic.Platform.FileDialogFilter? left, Runic.Platform.FileDialogFilter? right) -> bool
+static Runic.Platform.FileDialogFilter.operator ==(Runic.Platform.FileDialogFilter? left, Runic.Platform.FileDialogFilter? right) -> bool

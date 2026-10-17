@@ -58,6 +58,53 @@ if (await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Selected(va
 }
 ```
 
+## File dialog options
+
+`OpenFileOptions` and `SaveFileOptions` take `Filters` and `InitialDirectory`,
+`OpenDirectoryOptions` takes `InitialDirectory`, and `SaveFileOptions` keeps its
+`SuggestedName`. `OpenFilesAsync` selects several files at once:
+
+```csharp
+var images = new FileDialogFilter("Images", ["png", "jpg"]);
+var options = new OpenFileOptions
+{
+    Filters = [images, new FileDialogFilter("All files", ["*"])],
+    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+};
+if (await files.OpenFilesAsync(options) is PickerResult<IReadFileLeaseList>.Selected(var leases))
+{
+    await using (leases)
+        foreach (var lease in leases) { /* read each file */ }
+}
+```
+
+A `FileDialogFilter` names a file type and lists its extensions without the dot,
+such as `png` or `tar.gz`, or `*` for every file. The first filter is selected
+when the dialog opens; no filters offer every file. Extensions match without
+regard to case on every platform. Filters and the initial folder are hints to the
+dialog: a folder that does not exist is ignored, and the user can still choose or
+type a name that matches no filter on some platforms. Runic does not reject such
+a selection or add an extension to a saved name, so check the content you read.
+The options check their values when they are set and throw `ArgumentException`
+for an empty or wildcard extension, a relative folder or a `null` filter.
+
+`OpenFilesAsync` opens every selected file before it returns: if one cannot be
+opened, all are released and the result is `Failed`. Each lease holds its file
+open until it, the list or the presentation is disposed. A provider without
+multiple selection returns `Unavailable(BackendUnavailable)`, and the
+`platform.files.openMultiple` capability reports the same.
+
+| Option | Windows | macOS | Linux portal (GTK 3 and GTK 4) | Linux GTK 3 native chooser |
+| --- | --- | --- | --- | --- |
+| Filters | File type list (`SetFileTypes`) | The union of every filter restricts the panel (`allowedContentTypes`); no filter pop-up | FileChooser `filters` and `current_filter` | File type list |
+| Multiple selection | `FOS_ALLOWMULTISELECT` | `allowsMultipleSelection` | FileChooser `multiple` | `select-multiple` |
+| Initial folder | `SetFolder`, which overrides the folder Windows remembers | `directoryURL` | FileChooser `current_folder`; ignored when opening by portals before FileChooser version 4 | `current-folder` |
+| Suggested name | `SetFileName` | `nameFieldStringValue` | FileChooser `current_name` | `current-name` |
+
+On macOS a save panel with filters may add the first allowed extension to a
+name the user types without one. Applications that need the user to pick between
+filters on macOS can offer the choice in their own interface for now.
+
 ## Window services
 
 `IWindowPlatformServices` groups the file dialogs, text clipboard and file

@@ -202,7 +202,7 @@ internal sealed class WindowServiceChecks
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance)];
         Type[] notServices = [typeof(IPlatformCapabilities), typeof(IUiDispatcher), typeof(IDirectoryLease), typeof(IReadFileLease),
-            typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
+            typeof(IReadFileLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
             typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply)];
         var contracts = typeof(IFileDialogs).Assembly.GetExportedTypes().Where(static type => type.IsInterface).ToHashSet();
         var unclassified = contracts.Except(window).Except(application).Except(composed).Except(notServices).Select(static type => type.Name).ToArray();

@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Text;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
@@ -23,6 +25,58 @@ internal static class PortalErrors
 internal interface IPortalTransport
 {
     ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken);
+    // FileChooser requests also carry the dialog's filters, folder and multiplicity.
+    ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken) =>
+        RequestAsync(parent, method, argument, cancellationToken);
+}
+
+// FileChooser options other than the title and the suggested name. Each is a hint the portal backend may ignore.
+internal sealed record PortalChooserOptions(ImmutableArray<FileDialogFilter> Filters, string? CurrentFolder, bool Multiple)
+{
+    internal static PortalChooserOptions? From(ImmutableArray<FileDialogFilter> filters, string? currentFolder, bool multiple) =>
+        filters.IsDefaultOrEmpty && currentFolder is null && !multiple ? null : new(filters.IsDefault ? [] : filters, currentFolder, multiple);
+
+    // FileChooser filters are (name, [(0 = glob, pattern)]). Globs match case-sensitively in GTK backends.
+    internal static Struct<string, Array<Struct<uint, string>>> Filter(FileDialogFilter filter)
+    {
+        var patterns = new Array<Struct<uint, string>>();
+        foreach (var pattern in FileDialogPatterns.Globs(filter)) patterns.Add(new Struct<uint, string>(0, pattern));
+        return new Struct<string, Array<Struct<uint, string>>>(filter.Name, patterns);
+    }
+
+    internal void AddTo(Dictionary<string, VariantValue> options)
+    {
+        if (!Filters.IsEmpty)
+        {
+            var filters = new Array<Struct<string, Array<Struct<uint, string>>>>();
+            foreach (var filter in Filters) filters.Add(Filter(filter));
+            options["filters"] = filters;
+            options["current_filter"] = Filter(Filters[0]);
+        }
+        // A NUL-terminated byte string: the portal takes the path's bytes, not a URI.
+        if (CurrentFolder is not null) options["current_folder"] = VariantValue.Array((byte[])[.. Encoding.UTF8.GetBytes(CurrentFolder), 0]);
+        if (Multiple) options["multiple"] = VariantValue.Bool(true);
+    }
+}
+
+// Case-insensitive glob patterns for an extension filter, shared by the portal and GTK 3 choosers.
+internal static class FileDialogPatterns
+{
+    internal static IEnumerable<string> Globs(FileDialogFilter filter)
+    {
+        if (filter.MatchesAllFiles) return ["*"];
+        return filter.Extensions.Select(static extension =>
+        {
+            var pattern = new StringBuilder("*.");
+            foreach (char character in extension)
+            {
+                char lower = char.ToLowerInvariant(character), upper = char.ToUpperInvariant(character);
+                if (lower == upper) pattern.Append(character);
+                else pattern.Append('[').Append(lower).Append(upper).Append(']');
+            }
+            return pattern.ToString();
+        });
+    }
 }
 
 // Wire calls use proxies generated at build time from the pinned portal XML: no
@@ -35,7 +89,10 @@ internal sealed class PortalTransport(string? address = null, string destination
     private const string RequestInterface = "org.freedesktop.portal.Request";
     private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(5);
 
-    public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken)
+    public ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken) =>
+        RequestAsync(parent, method, argument, null, cancellationToken);
+
+    public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken)
     {
         using var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
         var connection = session.Connection;
@@ -89,7 +146,7 @@ internal sealed class PortalTransport(string? address = null, string destination
             // Subscribe before invoking: portals may signal before the method reply.
             // Let the bounded method reply finish even on cancellation so an older
             // portal's returned handle can also be closed.
-            handle = (await Call(connection, session.Destination, parent, method, argument, token)
+            handle = (await Call(connection, session.Destination, parent, method, argument, token, chooser)
                 .WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false)).ToString();
             if (!handle.StartsWith(prefix, StringComparison.Ordinal))
                 throw new IOException("The portal returned an invalid request handle.");
@@ -111,7 +168,8 @@ internal sealed class PortalTransport(string? address = null, string destination
         }
     }
 
-    private Task<ObjectPath> Call(DBusConnection connection, string peer, string parent, string method, string argument, string token)
+    private Task<ObjectPath> Call(DBusConnection connection, string peer, string parent, string method, string argument, string token,
+        PortalChooserOptions? chooser = null)
     {
         var options = new Dictionary<string, VariantValue> { ["handle_token"] = VariantValue.String(token) };
         if (file is not null)
@@ -124,15 +182,16 @@ internal sealed class PortalTransport(string? address = null, string destination
         }
         if (method == "OpenURI") return new Protocol.OpenURI(connection, peer, Root).OpenURIAsync(parent, argument, options);
         options["modal"] = VariantValue.Bool(true);
-        var chooser = new Protocol.FileChooser(connection, peer, Root);
+        chooser?.AddTo(options);
+        var fileChooser = new Protocol.FileChooser(connection, peer, Root);
         if (method == "SelectDirectory")
         {
             options["directory"] = VariantValue.Bool(true);
-            return chooser.OpenFileAsync(parent, "Open directory", options);
+            return fileChooser.OpenFileAsync(parent, "Open directory", options);
         }
-        if (method != "SaveFile") return chooser.OpenFileAsync(parent, "Open file", options);
+        if (method != "SaveFile") return fileChooser.OpenFileAsync(parent, chooser?.Multiple == true ? "Open files" : "Open file", options);
         options["current_name"] = VariantValue.String(argument);
-        return chooser.SaveFileAsync(parent, "Save file", options);
+        return fileChooser.SaveFileAsync(parent, "Save file", options);
     }
 
     // A malformed response fails only its own request; a reader exception would

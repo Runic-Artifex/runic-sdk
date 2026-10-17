@@ -30,6 +30,26 @@ internal sealed class PresentationReadLease(PresentationLifetime lifetime, IRead
     { RequireOpen(); return lease.OpenReadAsync(cancellationToken); }
 }
 
+// The list owns its leases' lifetime registration; each item is checked against the list and the presentation.
+internal sealed class PresentationReadLeaseList : PresentationLease, IReadFileLeaseList
+{
+    private readonly IReadFileLease[] _items;
+    public PresentationReadLeaseList(PresentationLifetime lifetime, IReadFileLeaseList leases) : base(lifetime, leases) =>
+        _items = leases.Select(lease => (IReadFileLease)new ListedLease(this, lease)).ToArray();
+    public IReadFileLease this[int index] => _items[index];
+    public int Count => _items.Length;
+    public IEnumerator<IReadFileLease> GetEnumerator() => ((IEnumerable<IReadFileLease>)_items).GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private sealed class ListedLease(PresentationReadLeaseList list, IReadFileLease lease) : IReadFileLease
+    {
+        public string DisplayName => lease.DisplayName;
+        public ValueTask<Stream> OpenReadAsync(CancellationToken cancellationToken = default)
+        { list.RequireOpen(); return lease.OpenReadAsync(cancellationToken); }
+        public ValueTask DisposeAsync() => lease.DisposeAsync();
+    }
+}
+
 internal sealed class PresentationDirectoryLease(PresentationLifetime lifetime, IDirectoryLease lease)
     : PresentationLease(lifetime, lease), IDirectoryLease
 {

@@ -173,7 +173,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
 
       public async Task OpenAsync()
       {
-          if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Selected(var lease)) return;
+          if (await files.OpenFileAsync(new() { Filters = [new("Notes", ["txt", "md"])] }) is not PickerResult<IReadFileLease>.Selected(var lease)) return;
           await using (lease)
           await using (var stream = await lease.OpenReadAsync())
           using (var reader = new StreamReader(stream))
@@ -183,7 +183,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
       // Replaces the file atomically, or leaves it unchanged.
       public async Task<bool> SaveAsync()
       {
-          if (await files.SaveFileAsync(new("notes.txt")) is not PickerResult<ISaveFileLease>.Selected(var lease)) return false;
+          if (await files.SaveFileAsync(new("notes.txt") { Filters = [new("Notes", ["txt"])] }) is not PickerResult<ISaveFileLease>.Selected(var lease)) return false;
           await using (lease)
           {
               if (await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace)
@@ -198,6 +198,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
       }
   }
   ```
+
+  Filters, the initial folder and `OpenFilesAsync` for several files work with
+  every provider; the
+  [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#file-dialog-options)
+  lists what each platform does with them.
 
   On Windows, Linux and for unsandboxed macOS selections, the save writes a staged
   sibling file and replaces the selection in one step. On Linux this also works

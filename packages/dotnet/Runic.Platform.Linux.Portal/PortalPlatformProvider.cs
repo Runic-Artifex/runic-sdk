@@ -77,9 +77,13 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     // staging name into a private host tempfile and renames it onto the document.
     // A read-only or revoked grant is reported per save, not as a capability.
     public bool SupportsAtomicReplace => true;
-    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
+    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) =>
+        SelectDirectoryAsync(null, cancellationToken);
+
+    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
     {
-        var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink).ConfigureAwait(false);
+        var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink,
+            PortalChooserOptions.From([], initialDirectory, multiple: false)).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
         if (result.Uris.Length != 1) throw new IOException("The portal did not return one local directory.");
@@ -130,18 +134,33 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
         catch (Exception error) when (error is DecoderFallbackException or EncoderFallbackException)
         { throw new IOException("The native path cannot be represented exactly in C#.", error); }
     }
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+    public bool SupportsMultipleSelection => true;
+
+    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
+        (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
+
+    public async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
-        var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", suggestedName ?? "Untitled", cancellationToken, diagnosticSink).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        bool save = request.Save, multiple = request.AllowMultiple && !save;
+        var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", request.SuggestedName ?? "Untitled", cancellationToken,
+            diagnosticSink, PortalChooserOptions.From(request.Filters, request.InitialDirectory, multiple)).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
-        if (result.Uris.Length != 1 || !Uri.TryCreate(result.Uris[0], UriKind.Absolute, out var uri)
-            || !uri.IsFile || !string.IsNullOrEmpty(uri.Host) && uri.Host != "localhost"
-            || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.LocalPath.Contains('\0'))
+        if (result.Uris.Length == 0 || !multiple && result.Uris.Length != 1)
             throw new IOException("The portal did not return one local file.");
-        if (!save) return new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true);
-        var location = await (documents ?? DocumentPortalPaths.Session).ClassifyAsync(uri.LocalPath, cancellationToken).ConfigureAwait(false);
-        return new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true) { Location = location };
+        var selections = new List<NativeFileSelection>(result.Uris.Length);
+        foreach (string value in result.Uris)
+        {
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+                || !uri.IsFile || !string.IsNullOrEmpty(uri.Host) && uri.Host != "localhost"
+                || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.LocalPath.Contains('\0'))
+                throw new IOException("The portal did not return a local file.");
+            if (!save) { selections.Add(new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true)); continue; }
+            var location = await (documents ?? DocumentPortalPaths.Session).ClassifyAsync(uri.LocalPath, cancellationToken).ConfigureAwait(false);
+            selections.Add(new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true) { Location = location });
+        }
+        return selections;
     }
 }
 
@@ -150,7 +169,8 @@ internal interface IExplicitUnparentedOwner : IPortalWindowOwner;
 internal static class PortalRequest
 {
     internal static async ValueTask<PortalResponse> RunAsync(IPortalWindowOwner owner, IPortalTransport transport,
-        string method, string argument, CancellationToken cancellationToken, Action<PortalDiagnostic>? diagnosticSink = null)
+        string method, string argument, CancellationToken cancellationToken, Action<PortalDiagnostic>? diagnosticSink = null,
+        PortalChooserOptions? chooser = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!owner.IsAvailable) throw new OwnerClosedException();
@@ -173,7 +193,7 @@ internal static class PortalRequest
             }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(50));
             try
             {
-                var response = await transport.RequestAsync(parent.Identifier, method, argument, stopped.Token).ConfigureAwait(false);
+                var response = await transport.RequestAsync(parent.Identifier, method, argument, chooser, stopped.Token).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!owner.IsAvailable || owner.Generation != generation || parent.OwnerClosed.IsCancellationRequested) throw new OwnerClosedException();
                 return response;

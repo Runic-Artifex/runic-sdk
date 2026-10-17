@@ -13,7 +13,8 @@ Plasma can show KDE's picker. A failed parent export never opens an unparented
 window, and a missing portal never triggers an implicit toolkit fallback.
 
 `CreateGtkNativeFileDialogs(owner)` explicitly selects the previous GTK-native
-chooser for an unsandboxed compatibility application. Flatpak and Snap must use
+chooser for an unsandboxed compatibility application. It applies filters as case-insensitive
+patterns, multiple selection and the initial folder to the GTK chooser. Flatpak and Snap must use
 the portal path. Both save atomically, including through a Flatpak document view;
 see [portal behavior](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md).
 A session bus, GTK3, a display and the appropriate portal backend must be installed.
