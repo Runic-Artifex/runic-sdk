@@ -59,6 +59,10 @@ internal static partial class DesktopLog
         Message = "A DesktopWindow.StateChanged handler failed with {ErrorType}.")]
     internal static partial void WindowStateHandlerFailed(ILogger logger, Exception exception, string errorType);
 
+    [LoggerMessage(EventId = 3012, EventName = "FileDropHandlerFailed", Level = LogLevel.Error,
+        Message = "A DesktopWindow.FilesDropped handler failed with {ErrorType}.")]
+    internal static partial void FileDropHandlerFailed(ILogger logger, Exception exception, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

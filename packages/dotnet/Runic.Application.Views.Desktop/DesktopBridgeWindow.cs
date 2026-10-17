@@ -31,6 +31,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _completion;
     private bool _finalized;
+    // Drops reach the root ViewModel one after another; closing cancels them.
+    private readonly CancellationTokenSource _dropStop = new();
+    private Task _drops = Task.CompletedTask;
 
     internal DesktopBridgeWindow(AsyncServiceScope scope, DesktopSurface surface, DesktopBridgeTransport transport,
         WindowContentSession content, IDisposable connectionBinding, TViewModel viewModel)
@@ -103,6 +106,19 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             // The scope's platform services, which its ViewModels may already hold, now follow this window.
             _platformServices = _scope.ServiceProvider.GetService<DesktopWindowPlatformServices>();
             _platformServices?.Bind(nativeOwner);
+            if (_content.AcceptsFileDrops) presentation.FilesDropped += OnFilesDropped;
+        }
+    }
+
+    private void OnFilesDropped(object? sender, DesktopFileDropEventArgs drop)
+    {
+        var files = drop.Paths.Select(RunicDroppedFile.FromPath).ToArray();
+        var delivery = new RunicFileDrop(files, drop.Target);
+        lock (_closeGate)
+        {
+            if (_close is not null) return;
+            _drops = _drops.ContinueWith(_ => _content.DeliverFileDropAsync(delivery, _dropStop.Token).AsTask(),
+                CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
         }
     }
 
@@ -156,6 +172,8 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     private async Task<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         var errors = new List<Exception>();
+        Capture(_dropStop.Cancel, errors);
+        if (_presentation is { } dropped) dropped.FilesDropped -= OnFilesDropped;
         Capture(_connectionBinding.Dispose, errors);
         if (_attachment is not null) Capture(_attachment.Dispose, errors);
 

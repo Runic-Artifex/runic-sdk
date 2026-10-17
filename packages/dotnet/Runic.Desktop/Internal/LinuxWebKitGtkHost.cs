@@ -24,13 +24,21 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private DesktopWindowState? _state;
     private DesktopWindowPlacement? _normal;
     private int _stateUpdateQueued;
+    private FileDropPairing? _drops;
+    // GTK thread only: the file URIs WebKit fetched while the drag moved over the view, per drag context.
+    private nint _dragContext;
+    private List<string>? _dragPaths;
+    private bool _dropRequested;
 
     public bool SupportsCloseConfirmation => true;
 
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        (Api.CanReportState ? DesktopWindowCapabilities.State : DesktopWindowCapabilities.None);
+        (Api.CanReportState ? DesktopWindowCapabilities.State : DesktopWindowCapabilities.None) |
+        (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
+
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
 
@@ -286,6 +294,15 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // Control and the wheel, which WebKit would otherwise scroll with.
         Api.Connect(_webView, "key-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnUnhandledKeyPress, this, after: true);
         Api.Connect(contentManager, "script-message-received::" + WebKitGtkKeyboard.ZoomMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnZoomMessage, this);
+        if (Api.CanReceiveFileDrops)
+        {
+            // Before WebKit's handlers: the drop's paths come from GTK, the page only reports the label of its target.
+            _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
+            Api.AddFileDropScript(contentManager);
+            Api.Connect(contentManager, "script-message-received::" + FileDropSupport.WebKitMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnFileDropMessage, this);
+            Api.Connect(_webView, "drag-data-received", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, nint, uint, uint, nint, void>)&OnDragDataReceived, this);
+            Api.Connect(_webView, "drag-drop", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnDragDrop, this);
+        }
         if (options.Frameless && options.Resizable)
         {
             Api.EnableResizeEvents(_webView);
@@ -400,6 +417,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // container's disposal enumerates children. Destroy children while the
         // WebView still exposes them, so GTK releases their native resources.
         Api.DestroyWebViewChildren(_webView);
+        _drops?.Dispose();
+        _dragContext = 0;
+        _dragPaths = null;
         _window = 0;
         _webView = 0;
         _nativeShutdown.Cancel();
@@ -491,6 +511,80 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             {
                 Api.SetZoomLevel(host._webView, WebKitGtkKeyboard.Apply(command, Api.GetZoomLevel(host._webView)));
             }
+        }
+    }
+
+    // WebKit asks for the drag's data while it moves over the view, so the URIs are usually known before the drop.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnDragDataReceived(nint widget, nint context, int x, int y, nint data, uint info, uint time, nint userData)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(userData).Target is not LinuxWebKitGtkHost { IsOpen: true } host || data == 0) return;
+            var uris = Api.GetSelectionUris(data);
+            if (uris is null) return;
+            host._dragContext = context;
+            host._dragPaths = FileDropSupport.ParseUriList(uris);
+            if (host._dropRequested)
+            {
+                host._dropRequested = false;
+                host.DeliverNativeDrop();
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnDragDrop(nint widget, nint context, int x, int y, uint time, nint userData)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(userData).Target is LinuxWebKitGtkHost { IsOpen: true } host)
+            {
+                if (host._dragContext == context && host._dragPaths is not null)
+                {
+                    host.DeliverNativeDrop();
+                }
+                else if (Api.DragOffersUriList(context))
+                {
+                    // WebKit did not fetch the URIs during the motion: ask for them; they arrive in drag-data-received.
+                    host._dropRequested = true;
+                    Api.RequestUriList(widget, context, time);
+                }
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+        // WebKit's own handler runs next and gives the page its drop event.
+        return 0;
+    }
+
+    private void DeliverNativeDrop()
+    {
+        var paths = _dragPaths;
+        _dragPaths = null;
+        _dragContext = 0;
+        if (paths is { Count: > 0 }) _drops?.NativeDrop(paths);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnFileDropMessage(nint manager, nint message, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host)
+            {
+                host._drops?.PageReport(FileDropSupport.DecodeLabel(Api.GetMessageString(message)));
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
         }
     }
 
@@ -781,6 +875,12 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GdkDisplayGetMonitorPointer = Optional(_gtk, "gdk_display_get_monitor");
                 GdkMonitorGetWorkareaPointer = Optional(_gtk, "gdk_monitor_get_workarea");
                 GdkWaylandDisplayGetTypePointer = Optional(_gtk, "gdk_wayland_display_get_type");
+                GtkSelectionDataGetUrisPointer = Optional(_gtk, "gtk_selection_data_get_uris");
+                GStrfreevPointer = Optional(_gtk, "g_strfreev");
+                GtkDragGetDataPointer = Optional(_gtk, "gtk_drag_get_data");
+                GdkAtomInternPointer = Optional(_gtk, "gdk_atom_intern");
+                GdkDragContextListTargetsPointer = Optional(_gtk, "gdk_drag_context_list_targets");
+                JscValueToStringPointer = Optional(_webkit, "jsc_value_to_string");
                 GtkWidgetSetVisualPointer = Optional(_gtk, "gtk_widget_set_visual");
                 GtkWidgetGetScreenPointer = Optional(_gtk, "gtk_widget_get_screen");
                 GdkScreenGetRgbaVisualPointer = Optional(_gtk, "gdk_screen_get_rgba_visual");
@@ -825,6 +925,93 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal bool CanReportState => IsAvailable && GtkWindowGetPositionPointer != 0 && GtkWindowGetSizePointer != 0 &&
             GtkWidgetGetWindowPointer != 0 && GdkWindowGetStatePointer != 0 && GdkDisplayGetNMonitorsPointer != 0 &&
             GdkDisplayGetMonitorPointer != 0 && GdkMonitorGetWorkareaPointer != 0;
+
+        internal bool CanReceiveFileDrops => IsAvailable && GtkSelectionDataGetUrisPointer != 0 && GStrfreevPointer != 0 &&
+            GtkDragGetDataPointer != 0 && GdkAtomInternPointer != 0 && GdkDragContextListTargetsPointer != 0 && JscValueToStringPointer != 0;
+
+        private nint GtkSelectionDataGetUrisPointer { get; }
+        private nint GStrfreevPointer { get; }
+        private nint GtkDragGetDataPointer { get; }
+        private nint GdkAtomInternPointer { get; }
+        private nint GdkDragContextListTargetsPointer { get; }
+        private nint JscValueToStringPointer { get; }
+
+        // The selection's URIs as one text/uri-list, or null when it holds none.
+        internal string? GetSelectionUris(nint data)
+        {
+            var uris = ((delegate* unmanaged[Cdecl]<nint, nint*>)GtkSelectionDataGetUrisPointer)(data);
+            if (uris == null) return null;
+            try
+            {
+                var builder = new System.Text.StringBuilder();
+                for (var entry = uris; *entry != 0; entry++)
+                {
+                    builder.Append(Marshal.PtrToStringUTF8(*entry)).Append('\n');
+                }
+                return builder.ToString();
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint*, void>)GStrfreevPointer)(uris);
+            }
+        }
+
+        private nint UriListAtom()
+        {
+            using var name = Utf8String.Create("text/uri-list");
+            return ((delegate* unmanaged[Cdecl]<byte*, int, nint>)GdkAtomInternPointer)(name.Pointer, 0);
+        }
+
+        // Whether the drag offers text/uri-list; the context's targets are a GList of atoms.
+        internal bool DragOffersUriList(nint context)
+        {
+            var atom = UriListAtom();
+            for (var item = ((delegate* unmanaged[Cdecl]<nint, nint>)GdkDragContextListTargetsPointer)(context); item != 0;
+                item = ((nint*)item)[1])
+            {
+                if (((nint*)item)[0] == atom) return true;
+            }
+            return false;
+        }
+
+        internal void RequestUriList(nint widget, nint context, uint time) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, uint, void>)GtkDragGetDataPointer)(widget, context, UriListAtom(), time);
+
+        internal string? GetMessageString(nint javascriptResult)
+        {
+            var value = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitJavascriptResultGetJsValuePointer)(javascriptResult);
+            if (value == 0) return null;
+            var text = ((delegate* unmanaged[Cdecl]<nint, nint>)JscValueToStringPointer)(value);
+            try { return Marshal.PtrToStringUTF8(text); }
+            finally { ((delegate* unmanaged[Cdecl]<nint, void>)GFreePointer)(text); }
+        }
+
+        // The drop script runs in the keyboard script's isolated world, where the page cannot reach its handler.
+        internal void AddFileDropScript(nint manager)
+        {
+            using var source = Utf8String.Create(FileDropSupport.WebKitScript);
+            using var handler = Utf8String.Create(FileDropSupport.WebKitMessageHandler);
+            using var world = Utf8String.Create(WebKitGtkKeyboard.ScriptWorld);
+            if (((delegate* unmanaged[Cdecl]<nint, byte*, byte*, int>)WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer)(
+                manager, handler.Pointer, world.Pointer) == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK could not register the file drop message handler.");
+            }
+            var script = ((delegate* unmanaged[Cdecl]<byte*, int, int, byte*, nint, nint, nint>)WebKitUserScriptNewForWorldPointer)(
+                source.Pointer, 1, 0, world.Pointer, 0, 0);
+            if (script == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK could not create the file drop script.");
+            }
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, void>)WebKitUserContentManagerAddScriptPointer)(manager, script);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)WebKitUserScriptUnrefPointer)(script);
+            }
+        }
 
         private nint GtkWindowGetPositionPointer { get; }
         private nint GtkWindowGetSizePointer { get; }

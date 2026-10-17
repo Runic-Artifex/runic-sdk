@@ -21,6 +21,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> Hosts = new();
     private static readonly ConcurrentQueue<NativeDispatchWork> MainQueue = new();
     private static readonly nint DelegateClass = CreateDelegateClass();
+    // Hosts by their WKWebView, for the drop override and the page's drop label.
+    private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> WebViews = new();
+    private static readonly nint WebViewClass = CreateWebViewClass();
+    private static readonly Lazy<nint> FileDropHandler = new(CreateFileDropHandler);
+    private FileDropPairing? _drops;
     private static readonly nint MenuTargetClass = CreateMenuTargetClass();
     private static nint s_menuTarget;
 
@@ -41,9 +46,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.State;
+        DesktopWindowCapabilities.State | (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public event EventHandler? StateChanged;
     public bool SupportsDocumentStartScript => true;
@@ -301,11 +308,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(minimumWidth, minimumHeight));
         }
 
-        _webView = Api.AllocInitWebView(frame, options.DocumentStartScript);
+        _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0);
         if (_webView == 0)
         {
             Api.SendVoid(_window, "close");
             throw new InvalidOperationException("WebKit could not create a WKWebView.");
+        }
+        if (WebViewClass != 0)
+        {
+            _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
+            WebViews[_webView] = this;
         }
         // underPageBackgroundColor requires macOS 12; ask the created view, not the unset field.
         if (options.Transparent && Api.RespondsToSelector(_webView, "setUnderPageBackgroundColor:"))
@@ -575,6 +587,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return;
         }
         Hosts.TryRemove(_window, out _);
+        WebViews.TryRemove(_webView, out _);
+        _drops?.Dispose();
         _nativeShutdown.Cancel();
         _closed.TrySetResult();
         ThreadPool.QueueUserWorkItem(static state =>
@@ -631,6 +645,93 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Api.RegisterClassPair(type);
         return type;
+    }
+
+    // A WKWebView that reads the paths of dropped files from the dragging pasteboard, then lets WebKit perform the
+    // drop, so the page still receives its drop event.
+    private static unsafe nint CreateWebViewClass()
+    {
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable)
+        {
+            return 0;
+        }
+        var existing = Api.GetClass("RunicDesktopWebView");
+        if (existing != 0)
+        {
+            return existing;
+        }
+        var type = Api.AllocateClassPair(Api.GetClass("WKWebView"), "RunicDesktopWebView");
+        if (type == 0)
+        {
+            return 0;
+        }
+        Api.AddMethod(type, "performDragOperation:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&PerformDragOperation,
+            RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
+        Api.RegisterClassPair(type);
+        return type;
+    }
+
+    // Receives the page's drop label from the isolated content world.
+    private static unsafe nint CreateFileDropHandler()
+    {
+        var type = Api.GetClass("RunicDesktopFileDropHandler");
+        if (type == 0)
+        {
+            type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopFileDropHandler");
+            if (type == 0)
+            {
+                return 0;
+            }
+            Api.AddMethod(type, "userContentController:didReceiveScriptMessage:",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&DidReceiveFileDropMessage, "v@:@@");
+            Api.RegisterClassPair(type);
+        }
+        return Api.SendNint(Api.SendNint(type, "alloc"), "init");
+    }
+
+    // Runic.Desktop.Tests reads a pasteboard through the same path as a drop, on the macOS runner.
+    internal static bool HasFileDropWebView => WebViewClass != 0;
+
+    internal static List<string> ReadDroppedFilePaths(nint draggingInfo) => Api.ReadDroppedFilePaths(draggingInfo);
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte PerformDragOperation(nint self, nint selector, nint sender)
+    {
+        try
+        {
+            if (WebViews.TryGetValue(self, out var host) && host.IsOpen && Api.ReadDroppedFilePaths(sender) is { Count: > 0 } paths)
+            {
+                host._drops?.NativeDrop(paths);
+            }
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+        try
+        {
+            return Api.SendSuperBoolNint(self, Api.GetClass("WKWebView"), "performDragOperation:", sender) ? (byte)1 : (byte)0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void DidReceiveFileDropMessage(nint self, nint selector, nint controller, nint message)
+    {
+        try
+        {
+            if (WebViews.TryGetValue(Api.SendNint(message, "webView"), out var host) && host.IsOpen)
+            {
+                host._drops?.PageReport(FileDropSupport.DecodeLabel(Api.Text(Api.SendNint(message, "body"))));
+            }
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
     }
 
     private static unsafe nint CreateMenuTargetClass()
@@ -736,6 +837,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         private readonly nint _messageSend;
         // Intel Macs return structures larger than 16 bytes, such as NSRect, through objc_msgSend_stret.
         private readonly nint _messageSendStructure;
+        private readonly nint _messageSendSuper;
         private readonly nint _webKit;
         private readonly nint _runLoopDefaultMode;
 
@@ -750,6 +852,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 && NativeLibrary.TryLoad("/usr/lib/libobjc.A.dylib", out var library)
                 && NativeLibrary.TryGetExport(library, "objc_msgSend", out _messageSend))
             {
+                NativeLibrary.TryGetExport(library, "objc_msgSendSuper", out _messageSendSuper);
                 _messageSendStructure = RuntimeInformation.ProcessArchitecture == Architecture.X64
                     && NativeLibrary.TryGetExport(library, "objc_msgSend_stret", out var structure)
                         ? structure
@@ -1024,7 +1127,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         // The script runs at document start in every frame (WKUserScriptInjectionTimeAtDocumentStart = 0).
-        internal nint AllocInitWebView(CGRect frame, string? documentStartScript)
+        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler)
         {
             var configuration = SendNint(SendNint(GetClass("WKWebViewConfiguration"), "alloc"), "init");
             if (configuration == 0)
@@ -1058,7 +1161,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     }
                 }
 
-                var instance = SendNint(GetClass("WKWebView"), "alloc");
+                if (fileDropHandler != 0)
+                {
+                    AddFileDropScript(SendNint(configuration, "userContentController"), fileDropHandler);
+                }
+
+                var instance = SendNint(webViewClass != 0 ? webViewClass : GetClass("WKWebView"), "alloc");
                 return ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, nint, nint>)_messageSend)(
                     instance, Selector("initWithFrame:configuration:"), frame, configuration);
             }
@@ -1066,6 +1174,109 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             {
                 SendVoid(configuration, "release");
             }
+        }
+
+        // In its own content world (macOS 11 and later), where the page cannot reach the handler; otherwise in the page's.
+        private void AddFileDropScript(nint controller, nint handler)
+        {
+            var source = CreateString(FileDropSupport.WebKitScript);
+            var name = CreateString(FileDropSupport.WebKitMessageHandler);
+            try
+            {
+                var worldClass = GetClass("WKContentWorld");
+                nint script;
+                if (worldClass != 0 && RespondsToSelector(controller, "addScriptMessageHandler:contentWorld:name:"))
+                {
+                    var worldName = CreateString("runic-desktop-file-drop");
+                    try
+                    {
+                        var world = SendNintNint(worldClass, "worldWithName:", worldName);
+                        ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)_messageSend)(
+                            controller, Selector("addScriptMessageHandler:contentWorld:name:"), handler, world, name);
+                        script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint, nint>)_messageSend)(
+                            SendNint(GetClass("WKUserScript"), "alloc"),
+                            Selector("initWithSource:injectionTime:forMainFrameOnly:inContentWorld:"), source, 0, 1, world);
+                    }
+                    finally
+                    {
+                        SendVoid(worldName, "release");
+                    }
+                }
+                else
+                {
+                    ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(
+                        controller, Selector("addScriptMessageHandler:name:"), handler, name);
+                    script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint>)_messageSend)(
+                        SendNint(GetClass("WKUserScript"), "alloc"),
+                        Selector("initWithSource:injectionTime:forMainFrameOnly:"), source, 0, 1);
+                }
+                if (script != 0)
+                {
+                    SendVoidNint(controller, "addUserScript:", script);
+                    SendVoid(script, "release");
+                }
+            }
+            finally
+            {
+                SendVoid(source, "release");
+                SendVoid(name, "release");
+            }
+        }
+
+        // The file URLs on a drag's pasteboard, as paths.
+        internal List<string> ReadDroppedFilePaths(nint draggingInfo)
+        {
+            List<string> paths = [];
+            var pasteboard = SendNint(draggingInfo, "draggingPasteboard");
+            if (pasteboard == 0)
+            {
+                return paths;
+            }
+            var classes = SendNintNint(GetClass("NSArray"), "arrayWithObject:", GetClass("NSURL"));
+            nint options = 0;
+            if (NativeLibrary.TryGetExport(_appKit, "NSPasteboardURLReadingFileURLsOnlyKey", out var key))
+            {
+                var yes = ((delegate* unmanaged[Cdecl]<nint, nint, byte, nint>)_messageSend)(
+                    GetClass("NSNumber"), Selector("numberWithBool:"), 1);
+                options = ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint>)_messageSend)(
+                    GetClass("NSDictionary"), Selector("dictionaryWithObject:forKey:"), yes, *(nint*)key);
+            }
+            var urls = ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint>)_messageSend)(
+                pasteboard, Selector("readObjectsForClasses:options:"), classes, options);
+            if (urls == 0)
+            {
+                return paths;
+            }
+            var count = (long)SendUlong(urls, "count");
+            for (long index = 0; index < count; index++)
+            {
+                var url = SendNintNint(urls, "objectAtIndex:", (nint)index);
+                if (url == 0 || !SendBool(url, "isFileURL"))
+                {
+                    continue;
+                }
+                // A file reference URL (file:///.file/id=...) names its file by identifier; standardize it to the path.
+                var resolved = RespondsToSelector(url, "filePathURL") ? SendNint(url, "filePathURL") : url;
+                var path = Text(SendNint(resolved != 0 ? resolved : url, "path"));
+                if (path.Length > 0 && Path.IsPathFullyQualified(path) && !paths.Contains(path, StringComparer.Ordinal))
+                {
+                    paths.Add(path);
+                }
+            }
+            return paths;
+        }
+
+        internal bool SendSuperBoolNint(nint receiver, nint superclass, string selector, nint value)
+        {
+            var super = new ObjCSuper(receiver, superclass);
+            return ((delegate* unmanaged[Cdecl]<ObjCSuper*, nint, nint, byte>)_messageSendSuper)(&super, Selector(selector), value) != 0;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private readonly struct ObjCSuper(nint receiver, nint superclass)
+        {
+            private readonly nint _receiver = receiver;
+            private readonly nint _superclass = superclass;
         }
 
         internal nint AllocInitWindow(CGRect frame, ulong style, ulong backing, bool defer)

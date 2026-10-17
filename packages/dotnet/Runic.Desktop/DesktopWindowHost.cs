@@ -304,7 +304,13 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         {
             stateHost.StateChanged += OnStateChanged;
         }
+        if (_host is IDesktopFileDropWindowHost dropHost)
+        {
+            dropHost.FilesDropped += OnFilesDropped;
+        }
     }
+
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public event EventHandler? Closed;
 
@@ -392,10 +398,16 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         {
             stateHost.StateChanged -= OnStateChanged;
         }
+        if (_host is IDesktopFileDropWindowHost dropHost)
+        {
+            dropHost.FilesDropped -= OnFilesDropped;
+        }
         await _host.DisposeAsync().ConfigureAwait(false);
     }
 
     private void OnClosed(object? sender, EventArgs eventArgs) => Closed?.Invoke(this, eventArgs);
 
     private void OnStateChanged(object? sender, EventArgs eventArgs) => StateChanged?.Invoke(this, eventArgs);
+
+    private void OnFilesDropped(object? sender, DesktopFileDropEventArgs eventArgs) => FilesDropped?.Invoke(this, eventArgs);
 }

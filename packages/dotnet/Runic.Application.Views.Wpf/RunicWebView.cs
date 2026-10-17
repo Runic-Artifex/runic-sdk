@@ -81,13 +81,13 @@ public sealed partial class RunicWebView : HwndHost
     private sealed class HostFactory(RunicWebView view) : IDesktopWindowHostFactory
     {
         public bool IsSupported => WindowsWebView2Host.IsSupported;
-        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus;
+        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop;
         public IDesktopWindowHost Create() => new PresentationHost(view);
         public IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) =>
             WpfPresentationOptions.Validate(options);
     }
 
-    private sealed class PresentationHost(RunicWebView view) : IDesktopWindowHost
+    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost
     {
         private WindowsWebView2Controller? _controller;
         private bool _closing;
@@ -95,8 +95,10 @@ public sealed partial class RunicWebView : HwndHost
         private Action? _closeRequested;
         public bool SupportsDocumentStartScript => true;
         public bool SupportsCloseConfirmation => true;
-        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus;
+        // Files dropped on the child WebView reach the host, not the WPF shell's Drop event, which the HWND covers.
+        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop;
         public event EventHandler? Closed;
+        public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
         public bool IsOpen => Volatile.Read(ref _open);
         public nint NativeHandle => 0;
 
@@ -127,6 +129,7 @@ public sealed partial class RunicWebView : HwndHost
                 initializing.RegisterEvents(static _ => { }, RequestClose, options.AllowedPermissions, url);
                 if (options.DocumentStartScript is { } script)
                     await initializing.AddDocumentStartScriptAsync(script);
+                await initializing.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
                 _controller = initializing;

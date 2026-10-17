@@ -282,6 +282,11 @@ public enum DesktopWindowCapabilities
     /// <see cref="DesktopWindow.StateChanged"/>), and applies <see cref="DesktopWindowOptions.Placement"/>.
     /// </summary>
     State = 1 << 8,
+
+    /// <summary>
+    /// The window reports files the user drops onto it, with their native paths (<see cref="DesktopWindow.FilesDropped"/>).
+    /// </summary>
+    FileDrop = 1 << 9,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

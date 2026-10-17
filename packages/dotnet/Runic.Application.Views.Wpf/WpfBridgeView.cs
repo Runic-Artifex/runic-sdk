@@ -23,6 +23,9 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     private Task<BridgeWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _opening;
+    // Drops reach the ViewModel one after another; closing cancels them.
+    private readonly CancellationTokenSource _dropStop = new();
+    private Task _drops = Task.CompletedTask;
 
     internal WpfBridgeView(DesktopSurface surface, DesktopBridgeTransport transport, WindowContentSession content,
         IDisposable connections, IDisposable attachment, TViewModel viewModel, ILogger? logger = null)
@@ -64,7 +67,11 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
         {
             _opening = false;
             closing = _close is not null;
-            if (!closing) _presentation = presentation;
+            if (!closing)
+            {
+                _presentation = presentation;
+                if (_content.AcceptsFileDrops) presentation.FilesDropped += OnFilesDropped;
+            }
         }
         if (closing)
         {
@@ -74,6 +81,18 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     }
 
     private void OnPresentationClosed(object? sender, EventArgs args) => _ = CloseWhenUnloadedAsync();
+
+    // Files dropped on the child WebView go to the borrowed ViewModel when it is an IRunicFileDropTarget.
+    private void OnFilesDropped(object? sender, DesktopFileDropEventArgs drop)
+    {
+        var delivery = new RunicFileDrop(drop.Paths.Select(RunicDroppedFile.FromPath).ToArray(), drop.Target);
+        lock (_gate)
+        {
+            if (_close is not null) return;
+            _drops = _drops.ContinueWith(_ => _content.DeliverFileDropAsync(delivery, _dropStop.Token).AsTask(),
+                CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+        }
+    }
 
     private async Task CloseWhenUnloadedAsync()
     {
@@ -99,6 +118,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
             _close = close.Task;
         }
         _closeStarted.TrySetResult();
+        _dropStop.Cancel();
         _ = RunCloseAsync(close, timeout);
         return new(close.Task.WaitAsync(cancellationToken));
     }

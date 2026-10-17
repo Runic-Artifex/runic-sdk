@@ -89,6 +89,7 @@ static async Task RunAsyncSmoke()
     }
     await GtkWidgetLifetime.AssertReleasedAsync();
     if (!SmokeSoak.Enabled) await RunWindowStateSmokeAsync(host);
+    if (!SmokeSoak.Enabled) await FileDropSmoke.RunAsync(host);
     SmokeSoak.Completed();
     }
 }

@@ -538,6 +538,8 @@ jobs:
         run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
       - name: Exercise native window close interception on Linux
         if: runner.os == 'Linux'
+        # Real pointer drags through XTEST: a stuck drag must not hold the runner.
+        timeout-minutes: 6
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       - name: Exercise the Desktop event-loop entry point on Linux
         if: runner.os == 'Linux'
@@ -557,6 +559,7 @@ jobs:
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
           # The GTK runner has one lifetime per process; the entry-point check runs separately.
@@ -603,6 +606,8 @@ jobs:
           artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
+        # The Windows file drop drives a real OLE drag with SendInput: a stuck drag must not hold the runner.
+        timeout-minutes: 6
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'

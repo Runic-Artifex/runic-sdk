@@ -616,6 +616,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
                 _currentBrowser = WebUiBrowser.WebView;
                 connection = BeginConnection();
@@ -629,6 +630,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
                     await host.DisposeAsync().ConfigureAwait(false);
@@ -685,6 +687,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
                 _currentBrowser = WebUiBrowser.WebView;
                 connection = BeginConnection();
@@ -699,6 +702,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
                     host.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -1287,6 +1291,17 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal Microsoft.Extensions.Logging.ILogger? Logger => _runtimeOptions?.Logger;
 
+    // Each drop of files onto the current embedded window, with the window that reported it.
+    internal event Action<object, DesktopFileDropEventArgs>? EmbeddedFilesDropped;
+
+    private void EmbeddedHostFilesDropped(object? sender, DesktopFileDropEventArgs eventArgs)
+    {
+        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
+        {
+            EmbeddedFilesDropped?.Invoke(host, eventArgs);
+        }
+    }
+
     private DesktopWindowState? _embeddedWindowState;
 
     private void EmbeddedHostStateChanged(object? sender, EventArgs eventArgs)
@@ -1676,6 +1691,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 closed.Closed -= EmbeddedHostClosed;
                 closed.StateChanged -= EmbeddedHostStateChanged;
+                closed.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
                 await closed.DisposeAsync().ConfigureAwait(false);
             }
@@ -1701,6 +1717,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 host.Closed -= EmbeddedHostClosed;
                 host.StateChanged -= EmbeddedHostStateChanged;
+                host.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
                 await host.DisposeAsync().ConfigureAwait(false);
             }
@@ -1839,6 +1856,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             embeddedHost.Closed -= EmbeddedHostClosed;
             embeddedHost.StateChanged -= EmbeddedHostStateChanged;
+            embeddedHost.FilesDropped -= EmbeddedHostFilesDropped;
             try
             {
                 await embeddedHost.CloseAsync().ConfigureAwait(false);

@@ -33,6 +33,13 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Gets the last reported bounds and state, kept after the window closes; null when the host reports none.</summary>
     DesktopWindowState? State => null;
 
+    /// <summary>Occurs once for each drop of files onto the window, on any thread; requires <see cref="DesktopWindowCapabilities.FileDrop"/>.</summary>
+    event EventHandler<DesktopFileDropEventArgs>? FilesDropped
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>Occurs after <see cref="State"/> has changed, possibly on the window's owning thread.</summary>
     event EventHandler? StateChanged
     {

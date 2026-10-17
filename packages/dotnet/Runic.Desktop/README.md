@@ -236,6 +236,45 @@ same place or size.
 Without a window manager, as under Xvfb, X11 has nobody to maximize a window
 or to keep it inside a work area; the GTK hosts still report what GDK reports.
 
+## File drops
+
+An embedded window whose `Capabilities` include `DesktopWindowCapabilities.FileDrop`
+raises `DesktopWindow.FilesDropped` once for each drop of files onto it, on the
+thread pool and in drop order, with the absolute local paths in
+`DesktopFileDropEventArgs.Paths`. A handler that throws is logged as event 3012,
+`FileDropHandlerFailed`. Runic Windows receive drops through
+`IRunicFileDropTarget` on their root ViewModel (see
+[Receiving dropped files](../Runic.Application.Views/README.md#receiving-dropped-files)).
+
+The paths always come from the native side, never from the page. The page
+still receives its own `dragenter`, `dragover` and `drop` events to highlight a
+drop target, and dropping a file never navigates the window to it: Runic's own
+script accepts every file drag at the window, before the page's handlers run.
+`DesktopFileDropEventArgs.Target` is the `data-runic-drop-target` attribute of
+the nearest element under the drop that has one. The page reports it, so treat
+it as an untrusted routing label, never as a path and never for an access
+decision.
+
+| Presentation | Paths from | Target label | Verified |
+| --- | --- | --- | --- |
+| Windows WebView2 | The `File` objects of the page's drop event, whose paths WebView2 hands only to the host (`postMessageWithAdditionalObjects`) | The same message | CI: an OLE drag of shell files with `SendInput` |
+| macOS WKWebView | The dragging pasteboard's file URLs, in `performDragOperation:` before WebKit performs the drop | A script message from an isolated content world | CI: the pasteboard path; the OS drag loop is not automated |
+| Linux GTK 3 | The drag's `text/uri-list`, which WebKit fetches while the drag moves | A script message from an isolated script world | CI: an XDND drag under Xvfb |
+| Linux GTK 4 | The drop's `GdkFileList`, read from WebKit's own drop target through GLib emission hooks, so WebKit keeps the drop | A script message from an isolated script world | CI: an XDND drag under Xvfb |
+| WPF child web View | As WebView2 | As WebView2 | Windows CI builds; drop delivery shares the WebView2 code |
+| Installed browser, CS-WebUI | None: the page only has HTML5 `File` objects without paths | | |
+
+On WebView2 the page's script runs in the same world as Runic's, so the actual
+guarantee is that page code can only hand over `File` objects the user gave it,
+by dropping or choosing them; it cannot name a path. On WebKit the label is
+attached only to a drop the native window reported. In a Flatpak sandbox GTK
+receives files through the document portal and reports `/run/user/<uid>/doc`
+paths, which the application can open; a macOS App Sandbox grants access to
+dropped files while the application runs. WebKitGTK reports a file drag as
+`text/uri-list` until the drop, so a dragged link is held on the page too
+instead of navigating it; its drop reports no paths and raises no event.
+Dragging files out of a window is not supported yet.
+
 ## Callback concurrency and ordering
 
 Each browser connection admits one callback or event at a time, but an

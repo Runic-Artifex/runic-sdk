@@ -395,13 +395,15 @@ internal static class Gtk4Runtime
 }
 
 [SupportedOSPlatform("linux")]
-internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost
+internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
-        DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State;
+        DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop;
     private DesktopWindowState? _state;
+    private FileDropPairing? _drops;
+    private bool _receivesFileDrops;
     private int _stateUpdateQueued;
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Gtk.ApplicationWindow? _window;
@@ -423,13 +425,16 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     public event EventHandler? StateChanged;
 
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
+
     public DesktopWindowState? State => Volatile.Read(ref _state);
 
     public bool SupportsCloseConfirmation => true;
 
     public bool SupportsDocumentStartScript => true;
 
-    public DesktopWindowCapabilities Capabilities => SupportedCapabilities |
+    // FileDrop only once WebKit's drop target was found; see Gtk4FileDrops.
+    public DesktopWindowCapabilities Capabilities => (_window is null || _receivesFileDrops ? SupportedCapabilities : SupportedCapabilities & ~DesktopWindowCapabilities.FileDrop) |
         (Gtk4Announcement.IsAvailable ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None);
 
     public bool SupportsNativeDispatch => true;
@@ -671,6 +676,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 throw new InvalidOperationException("WebKitGTK could not register the zoom message handler.");
             }
             UserContentManager.ScriptMessageReceivedSignal.Connect(contentManager, OnZoomMessage, false, WebKitGtkKeyboard.ZoomMessageHandler);
+            if (contentManager.RegisterScriptMessageHandler(FileDropSupport.WebKitMessageHandler, WebKitGtkKeyboard.ScriptWorld))
+            {
+                UserContentManager.ScriptMessageReceivedSignal.Connect(contentManager, OnFileDropMessage, false, FileDropSupport.WebKitMessageHandler);
+                using var dropScript = UserScript.NewForWorld(FileDropSupport.WebKitScript, UserContentInjectedFrames.TopFrame,
+                    UserScriptInjectionTime.Start, WebKitGtkKeyboard.ScriptWorld, null, null);
+                contentManager.AddScript(dropScript);
+            }
             using (var keyboardScript = UserScript.NewForWorld(
                 WebKitGtkKeyboard.Script,
                 UserContentInjectedFrames.TopFrame,
@@ -701,6 +713,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             window.OnDestroy += OnDestroyed;
             webView.OnPermissionRequest += OnPermissionRequest;
             WebProcessTerminatedSignal.Connect(this, webView);
+            _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
+            _receivesFileDrops = Gtk4FileDrops.Connect(this, webView);
             webView.LoadUri(url.AbsoluteUri);
             if (options.Placement is { Maximized: true } && !options.Kiosk)
             {
@@ -738,6 +752,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 webView.OnPermissionRequest -= OnPermissionRequest;
             }
             DetachZoomHandlers(keys, contentManager);
+            Gtk4FileDrops.Disconnect(this);
             if (window is not null)
             {
                 window.OnCloseRequest -= OnCloseRequest;
@@ -866,6 +881,16 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         }
     }
 
+    private void OnFileDropMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
+    {
+        if (IsOpen) _drops?.PageReport(FileDropSupport.DecodeLabel(args.Value.ToString()));
+    }
+
+    internal void NativeFileDrop(IReadOnlyList<string> paths)
+    {
+        if (IsOpen) _drops?.NativeDrop(paths);
+    }
+
     private void DetachZoomHandlers(Gtk.EventControllerKey? keys, UserContentManager? contentManager)
     {
         if (keys is not null)
@@ -875,6 +900,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         if (contentManager is not null)
         {
             UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnZoomMessage);
+            UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnFileDropMessage);
+            contentManager.UnregisterScriptMessageHandler(FileDropSupport.WebKitMessageHandler, WebKitGtkKeyboard.ScriptWorld);
             contentManager.UnregisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld);
         }
     }
@@ -1119,6 +1146,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             return;
         }
+        _drops?.Dispose();
+        Gtk4FileDrops.Disconnect(this);
 
         webView.OnPermissionRequest -= OnPermissionRequest;
         DetachZoomHandlers(_keys, _contentManager);

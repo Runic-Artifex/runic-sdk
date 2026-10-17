@@ -462,6 +462,7 @@ static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
     }
     await restartedWindow.CloseAsync();
     await ExerciseWindowStateAsync(host);
+    await FileDropGtk4Smoke.RunAsync(host);
 }
 
 // W315-001: GTK 4 reports the size and maximized state, keeps the restored size in the placement, and restores a

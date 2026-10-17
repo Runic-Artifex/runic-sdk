@@ -31,6 +31,14 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2PermissionRequestedEventArgs", "get_PermissionKind", WindowsWebView2Interop.PermissionKindSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "put_State", WindowsWebView2Interop.PermissionStateSlot),
             ("ICoreWebView2PermissionRequestedEventArgs2", "put_Handled", WindowsWebView2Interop.PermissionHandledSlot),
+            ("ICoreWebView2", "add_WebMessageReceived", WindowsWebView2Interop.WebMessageReceivedSlot),
+            ("ICoreWebView2", "remove_WebMessageReceived", WindowsWebView2Interop.WebMessageReceivedSlot + 1),
+            ("ICoreWebView2WebMessageReceivedEventArgs", "get_Source", WindowsWebView2Interop.WebMessageSourceSlot),
+            ("ICoreWebView2WebMessageReceivedEventArgs", "TryGetWebMessageAsString", WindowsWebView2Interop.WebMessageAsStringSlot),
+            ("ICoreWebView2WebMessageReceivedEventArgs2", "get_AdditionalObjects", WindowsWebView2Interop.WebMessageAdditionalObjectsSlot),
+            ("ICoreWebView2ObjectCollectionView", "get_Count", WindowsWebView2Interop.ObjectCollectionCountSlot),
+            ("ICoreWebView2ObjectCollectionView", "GetValueAtIndex", WindowsWebView2Interop.ObjectCollectionValueSlot),
+            ("ICoreWebView2File", "get_Path", WindowsWebView2Interop.FilePathSlot),
         })
         {
             var start = header.IndexOf($"typedef struct {type}Vtbl", StringComparison.Ordinal);
@@ -107,6 +115,16 @@ public sealed partial class WindowsWebView2InteropTests
         WindowsWebView2Interop.Release(expected);
         Assert.Equal(1, result.References);
         return (completion.Task, expected);
+    }
+
+    [Test]
+    public void FileDropInterfacesMatchThePinnedMicrosoftSdkHeader()
+    {
+        var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
+        Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
+        Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventHandler"), typeof(IWebViewWebMessageReceived).GUID);
+        Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventArgs2"), WindowsWebView2Interop.WebMessageReceivedEventArgs2);
+        Assert.Equal(Interface("ICoreWebView2File"), WindowsWebView2Interop.FileInterface);
     }
 
     [Test]

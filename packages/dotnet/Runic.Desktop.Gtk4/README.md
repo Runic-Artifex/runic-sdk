@@ -83,6 +83,13 @@ monitor the compositor will choose, so the restored size is fitted to the
 largest monitor, and a work area without panels is not available. See
 [Window state and restore](../Runic.Desktop/README.md#window-state-and-restore).
 
+The window reports `DesktopWindowCapabilities.FileDrop` once it finds WebKit's
+own drop target on the view. WebKit's target claims a drop, so a second target
+would leave the page without its drop event; Runic instead adds GLib emission
+hooks for WebKit's target, reads the drop's `GdkFileList` when the drag is
+accepted, and delivers the paths when the drop happens, while WebKit performs
+the drop as before. See [File drops](../Runic.Desktop/README.md#file-drops).
+
 The native smoke runs GTK4/WebKit6 under isolated X11: bridge JavaScript,
 close veto/retry, sequential DesktopHost windows, capability reporting, GTK
 window/WebView weak finalization, GTK clipboard round-trip, and X11 portal

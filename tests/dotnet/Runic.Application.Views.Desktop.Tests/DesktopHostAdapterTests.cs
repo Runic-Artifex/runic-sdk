@@ -513,8 +513,10 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 }
 
 // A headless embedded host whose "native thread" is a dedicated worker.
-sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost
+sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost
 {
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
+    public void Drop(DesktopFileDropEventArgs drop) => FilesDropped?.Invoke(this, drop);
     public DesktopWindowState? InitialState { get; init; }
     public DesktopWindowState? State { get; private set; }
     public DesktopWindowHostOptions? Options { get; private set; }

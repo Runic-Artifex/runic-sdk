@@ -26,6 +26,15 @@ internal static partial class WindowsWebView2Interop
     internal const int PermissionKindSlot = 4;
     internal const int PermissionStateSlot = 7;
     internal const int PermissionHandledSlot = 10;
+    internal const int WebMessageReceivedSlot = 34;
+    internal const int WebMessageSourceSlot = 3;
+    internal const int WebMessageAsStringSlot = 5;
+    internal const int WebMessageAdditionalObjectsSlot = 6;
+    internal const int ObjectCollectionCountSlot = 3;
+    internal const int ObjectCollectionValueSlot = 4;
+    internal const int FilePathSlot = 3;
+    internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
+    internal static readonly Guid FileInterface = new("f2c19559-6bc1-4583-a757-90021be9afec");
     private static readonly Lazy<nint> Loader = new(LoadLoader);
 
     static WindowsWebView2Interop()
@@ -93,6 +102,20 @@ internal static partial class WindowsWebView2Interop
     {
         int result;
         Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, int*, int>)Slot(instance, slot))(instance, &result));
+        return result;
+    }
+
+    internal static unsafe nint GetIndexedPointer(nint instance, int slot, uint index)
+    {
+        nint result;
+        Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, uint, nint*, int>)Slot(instance, slot))(instance, index, &result));
+        return result;
+    }
+
+    internal static unsafe uint GetUnsigned(nint instance, int slot)
+    {
+        uint result;
+        Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, uint*, int>)Slot(instance, slot))(instance, &result));
         return result;
     }
 
@@ -205,6 +228,60 @@ internal sealed class WindowsWebView2Controller : IDisposable
         finally { WindowsWebView2Interop.Release(controller2); }
     }
 
+    // Dropped files reach the host as the File objects of the page's drop event, which carry their paths only on this
+    // side: Runic's document-start script hands them over (FileDropSupport.WebView2Script). Only the top-level
+    // document of the presented origin is heard, with the script's token.
+    internal async Task EnableFileDropsAsync(Uri presentedUrl, Action<DesktopFileDropEventArgs> dropped)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+        {
+            if (ReadFileDrop(args, presentedUrl, token) is { } drop) dropped(drop);
+        }));
+        await AddDocumentStartScriptAsync(FileDropSupport.WebView2Script(token));
+    }
+
+    internal static DesktopFileDropEventArgs? ReadFileDrop(nint args, Uri presentedUrl, string token)
+    {
+        if (!PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.WebMessageSourceSlot))) return null;
+        string? message;
+        try { message = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
+        catch (ArgumentException) { return null; } // Not a string message: not ours.
+        if (FileDropMessage.Parse(message, token) is not { } envelope) return null;
+        var args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.WebMessageReceivedEventArgs2);
+        try
+        {
+            var objects = WindowsWebView2Interop.GetPointer(args2, WindowsWebView2Interop.WebMessageAdditionalObjectsSlot);
+            if (objects == 0) return null;
+            try
+            {
+                List<string> paths = [];
+                var count = WindowsWebView2Interop.GetUnsigned(objects, WindowsWebView2Interop.ObjectCollectionCountSlot);
+                for (uint index = 0; index < count; index++)
+                {
+                    var value = WindowsWebView2Interop.GetIndexedPointer(objects, WindowsWebView2Interop.ObjectCollectionValueSlot, index);
+                    try
+                    {
+                        nint file;
+                        try { file = WindowsWebView2Interop.Query(value, WindowsWebView2Interop.FileInterface); }
+                        catch (InvalidCastException) { continue; }
+                        try
+                        {
+                            if (GetString(file, WindowsWebView2Interop.FilePathSlot) is { Length: > 0 } path && Path.IsPathFullyQualified(path)
+                                && !paths.Contains(path, StringComparer.OrdinalIgnoreCase))
+                                paths.Add(path);
+                        }
+                        finally { WindowsWebView2Interop.Release(file); }
+                    }
+                    finally { WindowsWebView2Interop.Release(value); }
+                }
+                return paths.Count == 0 ? null : new DesktopFileDropEventArgs(paths, envelope.Target);
+            }
+            finally { WindowsWebView2Interop.Release(objects); }
+        }
+        finally { WindowsWebView2Interop.Release(args2); }
+    }
+
     internal void RegisterEvents(
         Action<string> titleChanged,
         Action closeRequested,
@@ -288,6 +365,8 @@ internal partial interface IWebViewControllerCompleted { [PreserveSig] int Invok
 internal partial interface IWebViewTitleChanged { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("5c19e9e0-092f-486b-affa-ca8231913039")]
 internal partial interface IWebViewCloseRequested { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("57213f19-00e6-49fa-8e07-898ea01ecbd2")]
+internal partial interface IWebViewWebMessageReceived { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("15e1c6a3-c72a-4df3-91d7-d097fbec6bfd")]
 internal partial interface IWebViewPermissionRequested { [PreserveSig] int Invoke(nint sender, nint args); }
 
@@ -329,7 +408,8 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 }
 
 [GeneratedComClass]
-internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested
+internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
+    IWebViewWebMessageReceived
 {
     public int Invoke(nint sender, nint args)
     {

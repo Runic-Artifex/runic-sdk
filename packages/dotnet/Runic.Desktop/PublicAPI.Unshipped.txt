@@ -54,3 +54,11 @@ static Runic.Desktop.DesktopWindowPlacement.operator !=(Runic.Desktop.DesktopWin
 static Runic.Desktop.DesktopWindowPlacement.operator ==(Runic.Desktop.DesktopWindowPlacement? left, Runic.Desktop.DesktopWindowPlacement? right) -> bool
 static Runic.Desktop.DesktopWindowState.operator !=(Runic.Desktop.DesktopWindowState? left, Runic.Desktop.DesktopWindowState? right) -> bool
 static Runic.Desktop.DesktopWindowState.operator ==(Runic.Desktop.DesktopWindowState? left, Runic.Desktop.DesktopWindowState? right) -> bool
+Runic.Desktop.DesktopFileDropEventArgs
+Runic.Desktop.DesktopFileDropEventArgs.DesktopFileDropEventArgs(System.Collections.Generic.IReadOnlyList<string!>! paths, string? target = null) -> void
+Runic.Desktop.DesktopFileDropEventArgs.Paths.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopFileDropEventArgs.Target.get -> string?
+Runic.Desktop.DesktopWindowCapabilities.FileDrop = 512 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindow.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
+Runic.Desktop.IDesktopFileDropWindowHost
+Runic.Desktop.IDesktopFileDropWindowHost.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
