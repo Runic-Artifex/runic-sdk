@@ -1056,7 +1056,9 @@ jobs:
         if: matrix.target == 'flatpak'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream desktop-file-utils
+          # flatpak-builder composes the AppStream data with appstream-compose, which reads the SVG icon through
+          # librsvg's image loader.
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream appstream-compose librsvg2-common desktop-file-utils
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

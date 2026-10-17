@@ -309,6 +309,12 @@ node packaging/package.mjs macos     # .app in a disk image, on macOS with Xcode
 node packaging/package.mjs flatpak   # Flatpak, on Linux with flatpak and flatpak-builder
 ```
 
+On Debian and Ubuntu, the Flatpak target needs `flatpak flatpak-builder
+appstream appstream-compose librsvg2-common desktop-file-utils` and the
+Flathub remote (`flatpak remote-add --user --if-not-exists flathub
+https://dl.flathub.org/repo/flathub.flatpakrepo`), from which flatpak-builder
+installs the GNOME runtime and SDK on the first build.
+
 | Platform | Package | Without credentials | To ship it |
 | --- | --- | --- | --- |
 | Windows | `<id>_<version>_x64.msix` from `packaging/windows/AppxManifest.xml` | Unsigned; Windows installs only signed packages. Sign it with a test certificate to try it. | A code-signing certificate whose subject is `RunicApplicationPublisher`: `--certificate app.pfx` (password in `RUNIC_SIGNING_PASSWORD`) or `--thumbprint <sha1>` from the certificate store, and `--timestamp-url` from your provider. A cloud signing service signs the unsigned package with its own `signtool` options. The Microsoft Store signs packages itself. |
