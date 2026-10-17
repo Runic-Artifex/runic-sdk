@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenIsBusyChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<bool>!

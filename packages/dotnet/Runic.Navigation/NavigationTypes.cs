@@ -4,9 +4,29 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Runic.Navigation;
 
-/// <summary>Configures what happens to a child region while the entry that owns it is retained.</summary>
+/// <summary>Configures a region: what happens to it while the entry that owns it is retained, and how it admits requests.</summary>
 /// <param name="WhileParentRetained">The policy applied when a push retains the owning entry.</param>
-public sealed record NavigationRegionOptions(NavigationChildRetention WhileParentRetained = NavigationChildRetention.Keep);
+public sealed record NavigationRegionOptions(NavigationChildRetention WhileParentRetained = NavigationChildRetention.Keep)
+{
+    /// <summary>
+    /// Gets how the region admits a request while an earlier one runs. The default, <see cref="NavigationAdmission.Supersede"/>,
+    /// lets a later request supersede earlier ones that have not committed.
+    /// </summary>
+    public NavigationAdmission Admission { get; init; }
+}
+
+/// <summary>How a region admits a request while an earlier request of the region runs.</summary>
+public enum NavigationAdmission
+{
+    /// <summary>A later request supersedes the earlier requests of the region that have not started committing.</summary>
+    Supersede,
+
+    /// <summary>
+    /// While the region is busy (<see cref="NavigationRegion{TContent}.IsBusy"/>), a request is rejected at admission
+    /// with <see cref="NavigationRejection.Busy"/>. A Back that can join a pending Back still joins it.
+    /// </summary>
+    RejectWhileBusy,
+}
 
 /// <summary>What a child region does while the entry that owns it is retained.</summary>
 public enum NavigationChildRetention
@@ -26,7 +46,15 @@ public enum NavigationChildRetention
 /// The entry that must be current when the request is admitted and when it commits;
 /// otherwise the request is rejected with <see cref="NavigationRejection.NotCurrent"/>.
 /// </param>
-public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent = null);
+public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent = null)
+{
+    /// <summary>
+    /// Gets the admission policy of this request, overriding the region's <see cref="NavigationRegionOptions.Admission"/>,
+    /// or <see langword="null"/> to use the region's. Pass <see cref="NavigationAdmission.Supersede"/> for a request that
+    /// must never be rejected as <see cref="NavigationRejection.Busy"/>, such as the clear of a window close.
+    /// </summary>
+    public NavigationAdmission? Admission { get; init; }
+}
 
 /// <summary>Identifies one navigation entry. Ids increase monotonically per navigator.</summary>
 /// <param name="Value">The id's sequence number.</param>
@@ -277,6 +305,12 @@ public enum NavigationRejection
 
     /// <summary>The back-to target is not in the region.</summary>
     EntryNotFound,
+
+    /// <summary>
+    /// The region admits requests with <see cref="NavigationAdmission.RejectWhileBusy"/> and was busy: an earlier request
+    /// had not completed.
+    /// </summary>
+    Busy,
 }
 
 /// <summary>The phase in which a transition failed.</summary>

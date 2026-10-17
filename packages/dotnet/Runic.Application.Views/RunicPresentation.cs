@@ -85,6 +85,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     private readonly object _closeGate = new();
     private Task<bool>? _closeRequest;
     private readonly CancellationTokenSource _closeWithoutAsking = new();
+    private static readonly NavigationRequestOptions CloseClearOptions = new() { Admission = NavigationAdmission.Supersede };
 
     /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
     protected RunicWindow() { }
@@ -185,8 +186,9 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         foreach (var region in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
         {
             if (region.CurrentEntry is null && !region.CanGoBack) continue;
-            // Stays in the model turn, like a command body.
-            var result = await region.ClearAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
+            // Stays in the model turn, like a command body. Supersede: a close is never refused because the region is
+            // busy, also when it rejects requests while busy.
+            var result = await region.ClearAsync(CloseClearOptions, cancellationToken).ConfigureAwait(true);
             // A closed navigator has nothing left to guard.
             if (result is NavigationResult<object>.Committed or NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed })
                 continue;

@@ -88,11 +88,28 @@ public static class ReactiveNavigation
     }
 
     /// <summary>
+    /// Observes whether the region is busy (<see cref="NavigationRegion{TContent}.IsBusy"/>): a request of the region,
+    /// including one started by another caller, has not completed. Each subscription receives the current value and then
+    /// each different value observed when the region raises a change. Unlike <see cref="WhenIsTransitioningChanged{TContent}"/>,
+    /// it stays <see langword="true"/> after the commit until the request's task completes.
+    /// </summary>
+    /// <remarks>The sequence never completes; dispose the subscription to stop observing.</remarks>
+    public static IObservable<bool> WhenIsBusyChanged<TContent>(this NavigationRegion<TContent> region)
+        where TContent : class
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        return new RegionObservable<TContent, bool>(region, static region => region.IsBusy,
+            nameof(NavigationRegion<TContent>.IsBusy), EqualityComparer<bool>.Default);
+    }
+
+    /// <summary>
     /// Creates a command that goes back in <paramref name="region"/> and outputs the
     /// <see cref="NavigationResult{TContent}.Outcome"/>, a <see cref="NavigationOutcome"/> that a Runic View can
     /// receive. It can execute while <see cref="NavigationRegion{TContent}.CanGoBack"/> is <see langword="true"/> and
-    /// <see cref="NavigationRegion{TContent}.IsTransitioning"/> is <see langword="false"/>. <c>CanExecute</c> reflects
-    /// this region only: a transition of an ancestor region does not disable it.
+    /// <see cref="NavigationRegion{TContent}.IsTransitioning"/> is <see langword="false"/>, and, for a region that admits
+    /// requests with <see cref="NavigationAdmission.RejectWhileBusy"/>, while <see cref="NavigationRegion{TContent}.IsBusy"/>
+    /// is <see langword="false"/>. <c>CanExecute</c> reflects this region only: a transition of an ancestor region does not
+    /// disable it.
     /// </summary>
     /// <remarks>
     /// A rejected, superseded or failed Back is an outcome, not an exception, so <c>ThrownExceptions</c>
@@ -120,7 +137,9 @@ public static class ReactiveNavigation
     {
         ArgumentNullException.ThrowIfNull(region);
         var canExecute = new RegionObservable<TContent, bool>(region,
-            static region => region.CanGoBack && !region.IsTransitioning, null, EqualityComparer<bool>.Default);
+            static region => region.CanGoBack && !region.IsTransitioning
+                && !(region.Admission == NavigationAdmission.RejectWhileBusy && region.IsBusy),
+            null, EqualityComparer<bool>.Default);
         return ReactiveCommand.CreateFromTask(
             // Resume where Back started, so the default scheduler is called from the same model context.
             async cancellationToken => (await region.BackAsync(cancellationToken: cancellationToken)).Outcome,

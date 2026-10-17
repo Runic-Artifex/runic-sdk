@@ -326,8 +326,9 @@ public class NavigationDialogHost : FrameworkElement
         Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
         {
             if (_ownerClosed || _attached is not { } region || region.CurrentEntry?.Id != id) return;
-            // A plain Back from a single entry is NoHistory, so the bottom dialog clears.
-            var options = new NavigationRequestOptions(id);
+            // A plain Back from a single entry is NoHistory, so the bottom dialog clears. A user closing the dialog wins over
+            // the dialog's own work, also in a region that rejects requests while busy.
+            var options = new NavigationRequestOptions(id) { Admission = NavigationAdmission.Supersede };
             if (region.CanGoBack) _ = region.BackAsync(options).AsTask();
             else _ = region.ClearAsync(options).AsTask();
         });
@@ -353,7 +354,7 @@ public class NavigationDialogHost : FrameworkElement
     private static void ClearOnce(INavigationRegion region)
     {
         if (region.CurrentEntry is not { } current) return;
-        try { _ = region.ClearAsync(new NavigationRequestOptions(current.Id)).AsTask(); }
+        try { _ = region.ClearAsync(new NavigationRequestOptions(current.Id) { Admission = NavigationAdmission.Supersede }).AsTask(); }
         catch (ObjectDisposedException) { }
     }
 

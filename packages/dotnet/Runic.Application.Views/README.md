@@ -389,7 +389,10 @@ ViewModels; only the guards and the commands below differ.
 The default `CanCloseAsync` clears each `NavigationRegion<T>` the Window's
 ViewModel exposes, in declaration order, so the departure guards of their
 entries decide, as WPF's `NavigationHost.GuardWindowClose` does (see
-[Navigation](#navigation)). Override it to add a check of your own,
+[Navigation](#navigation)). The clears pass
+`Admission = NavigationAdmission.Supersede`, so a region created with
+`RejectWhileBusy` is cleared during a request instead of refusing the close as
+`Busy`. Override it to add a check of your own,
 and call the base method to keep the navigation guards. It starts in a turn of
 the window's model context, one decision runs at a time, and it may wait as
 long as a prompt needs; the event loop is never blocked. An exception keeps the

@@ -38,6 +38,15 @@ public interface INavigationRegion : INotifyPropertyChanged
     /// <summary>Gets whether a transition of this region is in flight.</summary>
     bool IsTransitioning { get; }
 
+    /// <inheritdoc cref="NavigationRegion{TContent}.IsBusy" />
+    bool IsBusy { get; }
+
+    /// <inheritdoc cref="NavigationRegion{TContent}.Admission" />
+    NavigationAdmission Admission { get; }
+
+    /// <inheritdoc cref="NavigationRegion{TContent}.WhenIdleAsync" />
+    ValueTask WhenIdleAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Retires the current entry and resumes the top retained entry.</summary>
     /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
     ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
@@ -73,6 +82,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     private static readonly PropertyChangedEventArgs HistoryChanged = new(nameof(History));
     private static readonly PropertyChangedEventArgs CanGoBackChanged = new(nameof(CanGoBack));
     private static readonly PropertyChangedEventArgs IsTransitioningChanged = new(nameof(IsTransitioning));
+    private static readonly PropertyChangedEventArgs IsBusyChanged = new(nameof(IsBusy));
 
     internal NavigationRegion(NavigationRegionCore core)
     {
@@ -115,12 +125,38 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// <summary>Gets whether a retained entry exists to go back to.</summary>
     public bool CanGoBack => Core.CanGoBack;
 
-    /// <summary>Gets whether a transition of this region is in flight.</summary>
+    /// <summary>
+    /// Gets whether a transition of this region is in flight: from a request's admission until its commit decision. It is
+    /// <see langword="false"/> again in the commit turn, before the request's task completes.
+    /// </summary>
     public bool IsTransitioning => Core.IsTransitioning;
 
     /// <summary>
+    /// Gets whether a request of this region has not completed: from its admission until its task completes, so it spans
+    /// the guards, the preparation, the commit and the retirement of the departed entries. A request made after an awaited
+    /// request of the region resumed never finds the region busy because of that request.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PropertyChanged"/> reports a change in a model turn, like <see cref="IsTransitioning"/>; the change of
+    /// a request that completes is posted, so the notification can trail its task. The property's value is authoritative.
+    /// </remarks>
+    public bool IsBusy => Core.IsBusy;
+
+    /// <summary>Gets how the region admits a request while an earlier one runs (<see cref="NavigationRegionOptions.Admission"/>).</summary>
+    public NavigationAdmission Admission => Core.Admission;
+
+    /// <summary>
+    /// Completes when <see cref="IsBusy"/> is <see langword="false"/>: when no request of this region is running. Unlike
+    /// <see cref="RunicNavigator.WhenIdleAsync"/>, it doesn't wait for other regions or for retirements that no request of
+    /// this region awaits.
+    /// </summary>
+    /// <remarks>A hook of a transition of this region that awaits it deadlocks: the region is busy while the hook runs.</remarks>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    public ValueTask WhenIdleAsync(CancellationToken cancellationToken = default) => Core.Navigator.WhenRegionIdleAsync(Core, cancellationToken);
+
+    /// <summary>
     /// Raised inside a model turn after a commit, for <see cref="Current"/>, <see cref="CurrentEntry"/>,
-    /// <see cref="History"/>, <see cref="CanGoBack"/> and <see cref="IsTransitioning"/>. Each handler is
+    /// <see cref="History"/>, <see cref="CanGoBack"/>, <see cref="IsTransitioning"/> and <see cref="IsBusy"/>. Each handler is
     /// called separately; one that throws is logged and does not skip the others.
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -335,6 +371,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
         if ((changes & NavigationRegionChanges.History) != 0) Raise(HistoryChanged);
         if ((changes & NavigationRegionChanges.CanGoBack) != 0) Raise(CanGoBackChanged);
         if ((changes & NavigationRegionChanges.Transitioning) != 0) Raise(IsTransitioningChanged);
+        if ((changes & NavigationRegionChanges.Busy) != 0) Raise(IsBusyChanged);
     }
 
     // D-13: one throwing handler must not skip the others or undo the commit.
@@ -362,6 +399,7 @@ internal enum NavigationRegionChanges
     History = 2,
     CanGoBack = 4,
     Transitioning = 8,
+    Busy = 16,
 }
 
 // Immutable history cache entry: the stack a view was built from, and that view.
@@ -370,18 +408,20 @@ internal sealed record HistoryCache(NavigationEntryCore[] Source, object View);
 // The non-generic region state. Every field is guarded by the navigator's gate;
 // the stack is an immutable array replaced on change.
 internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, string contentTypeName, object owner,
-    NavigationChildRetention whileParentRetained)
+    NavigationChildRetention whileParentRetained, NavigationAdmission admission = NavigationAdmission.Supersede)
 {
     // One immutable (source, view) pair, so a reader can never pair a stack with
     // another reader's view. Published and read only through Volatile.
     private HistoryCache? _history;
     private bool _raisedTransitioning;
+    private bool _raisedBusy;
 
     public RunicNavigator Navigator { get; } = navigator;
     public int Id { get; } = id;
     public string ContentTypeName { get; } = contentTypeName;
     public object Owner { get; } = owner;
     public NavigationChildRetention WhileParentRetained { get; } = whileParentRetained;
+    public NavigationAdmission Admission { get; } = admission;
 
     // Bottom to top; the top entry is current.
     private volatile NavigationEntryCore[] _stack = [];
@@ -395,6 +435,8 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public bool Requested { get; set; }
     // Admitted transitions that have not released admission, in admission order.
     public List<NavigationTransition> InFlight { get; } = [];
+    // Admitted transitions whose task has not completed (the region's share of the navigator's running set).
+    public HashSet<NavigationTransition> Running { get; } = [];
 
     public Action<NavigationRegionChanges>? Raise { get; set; }
 
@@ -414,6 +456,14 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
         get { lock (Navigator.Gate) return InFlight.Count > 0; }
     }
 
+    public bool IsBusy
+    {
+        get { lock (Navigator.Gate) return IsBusyLocked; }
+    }
+
+    // Call under the navigator's gate.
+    public bool IsBusyLocked => Running.Count > 0;
+
     public IReadOnlyList<NavigationEntry<T>> History<T>() where T : class
     {
         var stack = Stack;
@@ -429,20 +479,32 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public Task<TransitionOutcome> Start(NavigationOperation operation, NavigationTargetCore? target,
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken,
         NavigationReturn? @return = null) =>
-        Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken, @return);
+        Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken, @return,
+            admission: options?.Admission);
 
-    // Runs inside a model turn. IsTransitioning is raised only when its value
-    // differs from the last value raised, so admission and release on
+    // Runs inside a model turn. IsTransitioning and IsBusy are raised only when their
+    // value differs from the last value raised, so admission and release on
     // different paths never report a stale or duplicate change.
     public void RaiseChanges(NavigationRegionChanges changes)
     {
-        var transitioning = IsTransitioning;
+        bool transitioning, busy;
+        lock (Navigator.Gate)
+        {
+            transitioning = InFlight.Count > 0;
+            busy = IsBusyLocked;
+        }
         if (transitioning != _raisedTransitioning)
         {
             _raisedTransitioning = transitioning;
             changes |= NavigationRegionChanges.Transitioning;
         }
         else changes &= ~NavigationRegionChanges.Transitioning;
+        if (busy != _raisedBusy)
+        {
+            _raisedBusy = busy;
+            changes |= NavigationRegionChanges.Busy;
+        }
+        else changes &= ~NavigationRegionChanges.Busy;
         if (changes != NavigationRegionChanges.None) Raise?.Invoke(changes);
     }
 }

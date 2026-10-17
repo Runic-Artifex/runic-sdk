@@ -17,7 +17,7 @@ export interface HomeMock extends MockTypedView<HomeMockState, HomeClient, "home
 const spec: MockTypedViewSpec = {
   kind: "home",
   route: "home",
-  contract: "NotesReactiveViews.HomeViewModel:905A986DAD0ADA0C639A903EE9562DD02E2230A88D54D4B8CA3AA50F806AB523",
+  contract: "NotesReactiveViews.HomeViewModel:2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F",
   fields: {
     greeting: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     lastResult: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
