@@ -1,0 +1,12 @@
+Runic.Platform.Linux.DBus is the D-Bus client and service API of the Runic SDK.
+
+Its source generator (analyzers/dotnet/cs/Runic.Platform.Linux.DBus.Generator.dll)
+adapts the input handling, diagnostics, naming and introspection XML minimization
+of Tmds.DBus.Generator from Tmds.DBus 0.95.1:
+https://github.com/tmds/Tmds.DBus
+
+Tmds.DBus is Copyright 2006 Alp Toker, 2010 Other Contributors and 2016 Tom Deseyn,
+distributed under the MIT License. The complete license is retained in this
+package under licenses/Tmds.DBus-LICENSE.txt.
+
+The package depends on the Tmds.DBus.Protocol package for the D-Bus wire protocol.

@@ -6,7 +6,8 @@ and exported objects. Many Linux desktop integrations are plain D-Bus services, 
 as UDisks2, UPower, NetworkManager and MPRIS media players; this package is how a
 Runic application talks to them, or offers its own.
 
-Targets .NET 10 and NativeAOT; it uses no reflection. The wire protocol comes from
+Targets .NET 10 and NativeAOT; it uses no reflection. A source generator turns
+introspection XML into typed proxies and services. The wire protocol comes from
 Tmds.DBus.Protocol, which stays an implementation detail: every public type belongs
 to this package.
 
@@ -126,6 +127,72 @@ the connection answers `org.freedesktop.DBus.Peer`. `EmitSignal` and
 `DBusException` to reply with an error name; any other exception replies
 `org.freedesktop.DBus.Error.Failed` without its message, which can contain
 internal details. Disposing the export stops answering at the path.
+
+## Generate proxies and services
+
+The package includes a source generator that turns D-Bus introspection XML into
+typed C#. Save the service's interface XML in the project, for example from
+`busctl --user introspect --xml-interface <service> <path>` or the service's
+published XML, and list it as an `AdditionalFiles` item:
+
+```xml
+<ItemGroup>
+  <AdditionalFiles Include="DBus/org.mpris.MediaPlayer2.Player.xml" RunicDBusMode="Proxy" Namespace="MyApp.DBus" />
+</ItemGroup>
+```
+
+| Metadata | Values |
+| --- | --- |
+| `RunicDBusMode` | `Proxy`, `Service`, or `Proxy,Service` for both (a comma, not a semicolon). Required. |
+| `Namespace` | The namespace of the generated types. Required. |
+| `RunicDBusVisibility` | `internal` (default) or `public`. |
+| `RunicDBusClassName` | The generated class's name, instead of one derived from the interface. |
+
+**Proxy** generates one class per interface, named after the interface's last
+segment (`Player` for `org.mpris.MediaPlayer2.Player`), deriving from
+`DBusProxy`:
+
+```csharp
+var player = new Player(bus, "org.mpris.MediaPlayer2.vlc", "/org/mpris/MediaPlayer2");
+await player.PlayPauseAsync();
+double volume = await player.GetVolumeAsync();
+await player.SetVolumeAsync(0.5);
+PlayerProperties all = await player.GetPropertiesAsync();
+await foreach (long position in player.WatchSeekedAsync(cancellationToken)) { /* … */ }
+```
+
+Each method becomes `<Method>Async`, with the call's options and a cancellation
+token after its arguments; a method with several results returns a named tuple.
+Each property becomes `Get<Property>Async` and, when writable,
+`Set<Property>Async`. `GetPropertiesAsync` and `WatchPropertiesAsync` return
+`<Name>Properties`, whose properties are `null` when the service did not send
+them. Each signal becomes `Watch<Signal>Async` and a static `Read<Signal>` for
+signals from `SubscribeSignalAsync`; a signal without arguments yields
+`PlatformUnit`.
+
+**Service** generates one abstract class for all interfaces of the file,
+named after the first interface (`PlayerService`), deriving from `DBusObject`.
+Derive from it and implement each method as `protected abstract
+<Method>Async(arguments, DBusMethodContext context)`. Each property becomes a
+C# property; setting it emits `PropertiesChanged` as the interface's
+`org.freedesktop.DBus.Property.EmitsChangedSignal` annotation says (`true`,
+`invalidates`, `const` or `false`), and a caller's write of a writable property
+calls `OnSet<Property>Async`, which sets it by default. Each signal becomes
+`Emit<Signal>(arguments)`. The class answers introspection with the file's
+interfaces and checks each call's signature.
+
+D-Bus types map to C# as follows: `y b n q i u x t d s` to `byte`, `bool`,
+`short`, `ushort`, `int`, `uint`, `long`, `ulong`, `double` and `string`; `o`
+and `g` to `DBusObjectPath` and `DBusSignature`; `h` to `SafeHandle`; `v` to
+`DBusValue`; arrays to `ImmutableArray<T>`, dictionaries to
+`ImmutableDictionary<TKey, TValue>` and structures to tuples. A reply or
+property of another type than the XML declares throws `DBusException` with
+`org.freedesktop.DBus.Error.InvalidArgs`. The generator reports problems in the
+XML as [`RUNICDBUS` diagnostics](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#d-bus-source-generator).
+Generated code uses only this package's public API and works with NativeAOT.
+
+The generator adapts parts of Tmds.DBus.Generator, under the MIT License; the
+package's `NOTICE` and `licenses/Tmds.DBus-LICENSE.txt` carry the notice.
 
 ## Threads and errors
 

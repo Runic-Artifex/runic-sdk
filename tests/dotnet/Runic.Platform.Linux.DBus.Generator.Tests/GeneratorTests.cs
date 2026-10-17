@@ -1,0 +1,127 @@
+using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.CodeAnalysis.Text;
+using Runic.Platform.Linux.DBus.Generator;
+using TUnit.Core;
+
+// The generator in a compilation: what it generates, that the output compiles, and every diagnostic.
+internal sealed class GeneratorTests
+{
+    private const string Interface = """
+        <node>
+          <interface name="org.example.Thing">
+            <method name="Do"><arg name="in" type="s" direction="in"/><arg name="out" type="a(ia{sv})" direction="out"/></method>
+            <method name="Nothing"/>
+            <property name="State" type="u" access="readwrite"/>
+            <property name="Data" type="a{oas}" access="read"/>
+            <signal name="Changed"><arg name="class" type="(sv)"/><arg type="h"/></signal>
+          </interface>
+        </node>
+        """;
+
+    [Test, DisplayName("proxies and a service compile, with keyword names, every container and public visibility")]
+    public void Compiles()
+    {
+        var (output, diagnostics, sources) = Run([("Thing.xml", Interface, new() { ["RunicDBusMode"] = "Proxy,Service", ["Namespace"] = "Example.Bus", ["RunicDBusVisibility"] = "public" })]);
+        Check(diagnostics.IsEmpty, $"generator diagnostics: {string.Join("; ", diagnostics)}");
+        var errors = output.GetDiagnostics().Where(static d => d.Severity >= DiagnosticSeverity.Warning).ToList();
+        Check(errors.Count == 0, $"the generated code does not compile cleanly: {string.Join("; ", errors.Take(5))}");
+        Check(sources.Length == 2, "one proxy file and one service file");
+        Check(output.GetTypeByMetadataName("Example.Bus.Thing") is { DeclaredAccessibility: Accessibility.Public, IsSealed: true }, "a public proxy");
+        Check(output.GetTypeByMetadataName("Example.Bus.ThingService") is { DeclaredAccessibility: Accessibility.Public, IsAbstract: true }, "a public service");
+        Check(output.GetTypeByMetadataName("Example.Bus.ThingProperties") is not null, "a properties class");
+        var proxy = sources.Single(static s => s.HintName.EndsWith(".Proxy.g.cs", StringComparison.Ordinal)).SourceText.ToString();
+        Check(proxy.Contains("DoAsync(string @in,", StringComparison.Ordinal) && proxy.Contains("WatchChangedAsync", StringComparison.Ordinal), "keyword argument names are escaped");
+    }
+
+    [Test, DisplayName("internal is the default, RunicDBusClassName names the class, and other XML is ignored")]
+    public void ClassNameVisibilityAndOtherFiles()
+    {
+        var (output, diagnostics, sources) = Run([
+            ("Thing.xml", Interface, new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "Example.Bus", ["RunicDBusClassName"] = "Device" }),
+            ("Other.xml", "<not-dbus/>", new() { ["DBusGeneratorMode"] = "Proxy", ["Namespace"] = "Elsewhere" }),
+        ]);
+        Check(diagnostics.IsEmpty && sources.Length == 1, "only the file with RunicDBusMode generates");
+        Check(output.GetTypeByMetadataName("Example.Bus.Device") is { DeclaredAccessibility: Accessibility.Internal }, "the named, internal service");
+    }
+
+    [Test, DisplayName("each invalid input reports its RUNICDBUS diagnostic")]
+    public void Diagnostics()
+    {
+        Expect("RUNICDBUS001", ("A.xml", Interface, new() { ["RunicDBusMode"] = "Handler", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS002", ("A.xml", Interface, new() { ["RunicDBusMode"] = "Proxy" }));
+        Expect("RUNICDBUS003", ("A.xml", Interface, new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N", ["RunicDBusVisibility"] = "protected" }));
+        Expect("RUNICDBUS004", ("A.xml", null!, new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS005", ("A.xml", "<node><interface", new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS006", ("A.xml", "<interface name=\"a.b\"/>", new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS007", ("A.xml", "<node><interface name=\"nodots\"/></node>", new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS008", ("A.xml", "<node/>", new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS009", ("A.xml", Interface, new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N", ["RunicDBusClassName"] = "Not Valid" }));
+        Expect("RUNICDBUS009", ("A.xml", "<node><interface name=\"a.One\"/><interface name=\"a.Two\"/></node>",
+            new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N", ["RunicDBusClassName"] = "Both" }));
+        Expect("RUNICDBUS010", ("A.xml", Interface, new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }),
+            ("B.xml", Interface, new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS011", ("A.xml", "<node><interface name=\"a.b\"><method name=\"Bad-Name\"/></interface></node>", new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS011", ("A.xml", "<node><interface name=\"a.b\"><property name=\"P\" type=\"a\" access=\"read\"/></interface></node>",
+            new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS011", ("A.xml", "<node><interface name=\"a.b\"><property name=\"P\" type=\"s\" access=\"sometimes\"/></interface></node>",
+            new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS011", ("A.xml", "<node><interface name=\"a.b\"><method name=\"Do\"/></interface><interface name=\"c.d\"><method name=\"Do\"/></interface></node>",
+            new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N" }));
+        var descriptor = Run([("A.xml", Interface, new() { ["RunicDBusMode"] = "Handler", ["Namespace"] = "N" })]).Diagnostics[0].Descriptor;
+        Check(descriptor.HelpLinkUri.EndsWith("docs/diagnostics.md#runicdbus001", StringComparison.Ordinal), $"help link: {descriptor.HelpLinkUri}");
+    }
+
+    private static void Expect(string id, params (string Name, string Text, Dictionary<string, string> Metadata)[] files)
+    {
+        var diagnostics = Run(files).Diagnostics;
+        Check(diagnostics.Any(d => d.Id == id && d.Severity == DiagnosticSeverity.Error), $"{id} expected, got: {string.Join("; ", diagnostics.Select(static d => d.Id + " " + d.GetMessage(System.Globalization.CultureInfo.InvariantCulture)))}");
+    }
+
+    private static (Compilation Output, ImmutableArray<Diagnostic> Diagnostics, ImmutableArray<GeneratedSourceResult> Sources) Run(
+        (string Name, string Text, Dictionary<string, string> Metadata)[] files)
+    {
+        var references = AppDomain.CurrentDomain.GetAssemblies().Where(static a => !a.IsDynamic && a.Location.Length > 0)
+            .Select(static a => MetadataReference.CreateFromFile(a.Location)).Cast<MetadataReference>()
+            .Append(MetadataReference.CreateFromFile(typeof(Runic.Platform.Linux.DBus.DBusValue).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(Runic.Platform.PlatformUnit).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(System.Collections.Immutable.ImmutableArray).Assembly.Location))
+            .DistinctBy(static r => r.Display).ToList();
+        var parse = new CSharpParseOptions(LanguageVersion.Latest);
+        var compilation = CSharpCompilation.Create("Generated", [CSharpSyntaxTree.ParseText("", parse)], references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+        var texts = files.Select(static f => (AdditionalText)new Text("/project/" + f.Name, f.Text)).ToImmutableArray();
+        var options = new Options(files.ToDictionary(static f => "/project/" + f.Name, static f => f.Metadata));
+        var driver = CSharpGeneratorDriver.Create([new DBusSourceGenerator().AsSourceGenerator()], texts, parse, options)
+            .RunGeneratorsAndUpdateCompilation(compilation, out var output, out _);
+        var result = driver.GetRunResult();
+        return (output, result.Diagnostics, result.Results.SelectMany(static r => r.GeneratedSources).ToImmutableArray());
+    }
+
+    private static void Check(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private sealed class Text(string path, string text) : AdditionalText
+    {
+        public override string Path => path;
+        public override SourceText? GetText(CancellationToken cancellationToken = default) => text is null ? null : SourceText.From(text);
+    }
+
+    private sealed class Options(Dictionary<string, Dictionary<string, string>> metadata) : AnalyzerConfigOptionsProvider
+    {
+        public override AnalyzerConfigOptions GlobalOptions { get; } = new Values([]);
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Values([]);
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) =>
+            new Values(metadata.TryGetValue(textFile.Path, out var values)
+                ? values.ToDictionary(static entry => "build_metadata.AdditionalFiles." + entry.Key, static entry => entry.Value) : []);
+    }
+
+    private sealed class Values(Dictionary<string, string> values) : AnalyzerConfigOptions
+    {
+        public override bool TryGetValue(string key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? value) => values.TryGetValue(key, out value);
+    }
+}

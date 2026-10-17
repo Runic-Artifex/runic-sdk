@@ -1,0 +1,8 @@
+<Project>
+  <!-- A source generator runs inside the consumer's compiler, so it builds against the Roslyn of the oldest
+       supported SDK, not the newest one the repository's tests use. -->
+  <Import Project="../../../Directory.Packages.props" />
+  <ItemGroup>
+    <PackageVersion Update="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+</Project>
