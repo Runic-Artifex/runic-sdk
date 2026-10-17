@@ -13,22 +13,35 @@ public static class WindowsPlatformProvider
     public static IDesktopSettings CreateSettings()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsDesktopSettings(); }
     /// <summary>Creates native toasts for an installed AppUserModelID. The application owns shell registration.</summary>
+    /// <remarks>
+    /// A process installed from an MSIX package uses its package's AppUserModelID (<c>PackageFamilyName!App</c>), which
+    /// Windows registers with the package, and ignores <paramref name="applicationId"/>.
+    /// </remarks>
     public static IDesktopNotifications CreateNotifications(string applicationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
         if (applicationId.Length > 128 || applicationId.Contains('\0')) throw new ArgumentException("Invalid AppUserModelID.", nameof(applicationId));
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
-        return new WindowsDesktopNotifications(applicationId);
+        return new WindowsDesktopNotifications(WindowsPackageIdentity.NotificationsApplicationId(applicationId, WindowsPackageIdentity.Current));
     }
     /// <summary>Creates login startup through the user's Run key, under <paramref name="applicationId"/>.</summary>
-    /// <remarks>An entry the user turned off in Task Manager stays off: enabling reports PermissionDenied until the application disables it.</remarks>
-    public static IDesktopLoginStartup CreateLoginStartup(string applicationId)
+    /// <remarks>
+    /// An entry the user turned off in Task Manager stays off: enabling reports PermissionDenied until the application
+    /// disables it. A process installed from an MSIX package gets
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>: Windows redirects its writes to the Run key into the
+    /// package, where they have no effect. Such a package declares a <c>desktop:StartupTask</c> in its manifest instead.
+    /// </remarks>
+    public static IDesktopLoginStartup CreateLoginStartup(string applicationId) => CreateLoginStartup(applicationId, WindowsPackageIdentity.Current);
+
+    internal static IDesktopLoginStartup CreateLoginStartup(string applicationId, string? packageApplicationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
         if (applicationId.Length > 128 || applicationId.Contains('\0') || applicationId.Contains('\\'))
             throw new ArgumentException("Use the application's ID, at most 128 characters.", nameof(applicationId));
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
-        return new WindowsLoginStartup(applicationId);
+        return packageApplicationId is null
+            ? new WindowsLoginStartup(applicationId)
+            : DesktopLoginStartup.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     }
     /// <summary>Creates secret storage in the user's Credential Manager, as generic credentials.</summary>
     /// <remarks>Each secret is a credential whose target is <c>service/account</c>, with <c>/</c> and <c>%</c> in the

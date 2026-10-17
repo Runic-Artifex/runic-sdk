@@ -31,6 +31,20 @@ application choice and reveal, are described in the
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.
 
+## MSIX packages
+
+A process installed from an MSIX package has the package's identity, and
+Windows registers its AppUserModelID (`PackageFamilyName!App`) with the
+package. `WindowsPlatformProvider.CreateNotifications` then shows toasts under
+that ID and ignores the one the application passes, which it cannot know
+before the package is signed. Login startup through the Run key reports
+`Unavailable(BackendUnavailable)` in a package: Windows redirects the
+package's writes to `HKCU` into the package, where Windows never reads them.
+Declare a `desktop:StartupTask` extension in the package manifest instead.
+An unpackaged application (a ZIP or an installer) registers its
+AppUserModelID itself, with a Start menu shortcut whose
+`System.AppUserModel.ID` property is the ID.
+
 ## Secret storage
 
 `WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic

@@ -85,7 +85,8 @@ public sealed record RunicWindowOptions
 
     /// <summary>
     /// The directory of the built frontend. <see langword="null"/>, the default, is the <c>www</c> directory next to
-    /// the application (<see cref="AppContext.BaseDirectory"/>), where the Runic build places it.
+    /// the application (<see cref="AppContext.BaseDirectory"/>), where the Runic build places it. On macOS, an
+    /// application in a bundle without that directory uses <c>Contents/Resources/www</c>, where a bundle keeps it.
     /// </summary>
     public string? ContentRoot { get; init; }
 
@@ -98,8 +99,26 @@ public sealed record RunicWindowOptions
     /// <summary>The initial height in pixels, or <see langword="null"/> for the host's default.</summary>
     public int? Height { get; init; }
 
-    /// <summary>Gets <see cref="ContentRoot"/>, or the <c>www</c> directory next to the application.</summary>
-    public string ResolveContentRoot() => ContentRoot ?? Path.Combine(AppContext.BaseDirectory, "www");
+    /// <summary>
+    /// Gets <see cref="ContentRoot"/>, or the <c>www</c> directory next to the application. On macOS, when the
+    /// application runs from a bundle's <c>Contents/MacOS</c> and that directory does not exist, gets the bundle's
+    /// <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
+    /// </summary>
+    public string ResolveContentRoot() =>
+        ContentRoot ?? DefaultContentRoot(AppContext.BaseDirectory, OperatingSystem.IsMacOS(), Directory.Exists);
+
+    internal static string DefaultContentRoot(string baseDirectory, bool macOS, Func<string, bool> directoryExists)
+    {
+        string beside = Path.Combine(baseDirectory, "www");
+        if (!macOS || directoryExists(beside)) return beside;
+        // AppContext.BaseDirectory ends with a separator: …/Name.app/Contents/MacOS/
+        var macOSDirectory = new DirectoryInfo(Path.TrimEndingDirectorySeparator(baseDirectory));
+        if (macOSDirectory.Name != "MacOS" || macOSDirectory.Parent is not { Name: "Contents" } contents
+            || contents.Parent is not { } bundle || !bundle.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            return beside;
+        string resources = Path.Combine(contents.FullName, "Resources", "www");
+        return directoryExists(resources) ? resources : beside;
+    }
 
     internal void ThrowIfInvalid()
     {

@@ -87,3 +87,4 @@ CredFree
 CREDENTIALW
 CRED_TYPE
 CRED_PERSIST
+GetCurrentApplicationUserModelId

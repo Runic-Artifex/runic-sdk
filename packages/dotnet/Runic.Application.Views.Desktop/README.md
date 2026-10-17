@@ -286,7 +286,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   ```
 
   The application ID is the one string you pass: on Windows the
-  AppUserModelID your installer registers with the shell, on Linux the
+  AppUserModelID your installer registers with the shell (an MSIX package's
+  process uses the package's AppUserModelID instead), on Linux the
   reverse-DNS ID of the installed desktop entry (`org.example.Notes` for
   `org.example.Notes.desktop`); macOS uses the bundle identifier. Runic does
   not derive it from the assembly or the GTK application ID. The overload
