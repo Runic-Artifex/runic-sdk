@@ -11,7 +11,8 @@ const id = "org.runic.tests.PackagingProbe";
 
 expect(receipt.applicationId === id, `applicationId is ${receipt.applicationId}`);
 expect(receipt.applicationName === "Runic Packaging Probe", `applicationName is ${receipt.applicationName}`);
-expect(/^runic-packaging-probe:\/\/receipt\?path=/i.test(receipt.url ?? ""), `the probe was opened with ${receipt.url}`);
+// The Windows shell normalizes the URL to runic-packaging-probe://receipt/?path=...
+expect(/^runic-packaging-probe:\/\/receipt\/?\?path=/i.test(receipt.url ?? ""), `the probe was opened with ${receipt.url}`);
 expect(receipt.contentRootHasIndex === true, `the content root ${receipt.contentRoot} has no index.html`);
 if (mode === "unpackaged") {
   expect(receipt.packageIdentity === null, `an unpackaged copy has the package identity ${receipt.packageIdentity}`);
