@@ -7,7 +7,7 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
-          "Runic.Application.Views": "[0.8.0-preview.3, )"
+          "Runic.Application.Views": "[0.8.0-preview.4, )"
         }
       },
       "runic.application.views": {
@@ -15,23 +15,23 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.8.0-preview.3, )"
+          "Runic.Navigation": "[0.8.0-preview.4, )"
         }
       },
       "runic.application.views.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Application.Views": "[0.8.0-preview.3, )",
-          "Runic.Desktop": "[0.8.0-preview.3, )",
-          "Runic.Platform.Runtime": "[0.8.0-preview.3, )",
-          "Runic.Platform.Windows": "[0.8.0-preview.3, )"
+          "Runic.Application.Views": "[0.8.0-preview.4, )",
+          "Runic.Desktop": "[0.8.0-preview.4, )",
+          "Runic.Platform.Runtime": "[0.8.0-preview.4, )",
+          "Runic.Platform.Windows": "[0.8.0-preview.4, )"
         }
       },
       "runic.application.views.wpf": {
         "type": "Project",
         "dependencies": {
-          "Runic.Application.Views.Desktop": "[0.8.0-preview.3, )"
+          "Runic.Application.Views.Desktop": "[0.8.0-preview.4, )"
         }
       },
       "runic.desktop": {
@@ -52,7 +52,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.8.0-preview.3, )"
+          "Runic.Navigation": "[0.8.0-preview.4, )"
         }
       },
       "runic.platform": {
@@ -61,13 +61,13 @@
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.8.0-preview.3, )"
+          "Runic.Platform": "[0.8.0-preview.4, )"
         }
       },
       "runic.platform.windows": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.8.0-preview.3, )"
+          "Runic.Platform.Runtime": "[0.8.0-preview.4, )"
         }
       },
       "CommunityToolkit.Mvvm": {
