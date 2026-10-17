@@ -148,7 +148,7 @@ either.
 | Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -209,6 +209,35 @@ while the store asks the user. Hosts without a provider register
 `DesktopSecretStore.Unavailable(reason)`. The
 [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md) has the
 per-platform behaviour and its verification.
+
+## Trash
+
+`IDesktopTrash` moves a file or directory the user deletes to the trash, from
+where the user can restore it: the freedesktop.org Trash on Linux, with the
+Trash portal inside Flatpak and Snap, the Recycle Bin on Windows and the Trash
+on macOS. .NET's `File.Delete` and `Directory.Delete` delete permanently.
+`AddRunicPlatformServices()` registers one for the application; it needs no
+window.
+
+```csharp
+switch (await trash.MoveToTrashAsync(document.Path))
+{
+    case PlatformResult<PlatformUnit>.Success: break;
+    case PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }: break; // Already gone.
+    case PlatformResult<PlatformUnit>.Unavailable: /* No trash here: ask before deleting permanently. */ break;
+    case PlatformResult<PlatformUnit>.Failed failed: /* Report failed.Code. */ break;
+}
+```
+
+The path is a fully qualified local path to a file, a directory with its
+contents, or a symbolic link, which is trashed itself. A location without a
+usable trash, such as a network share, is `Unavailable(BackendUnavailable)`, and
+the item is never deleted permanently instead: it stays where it was unless the
+result is `Success`. A missing item is `Failed(NotFound)`, a refused move
+`Failed(PermissionDenied)`. Hosts without a provider register
+`DesktopTrash.Unavailable(reason)`. The
+[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md)
+has the per-platform behaviour and its verification.
 
 ## Privileged actions
 

@@ -1,7 +1,7 @@
 # Portal protocol generation
 
-The Registry, Notification, Inhibit, Request, Settings, OpenURI and FileChooser
-XML files are unmodified upstream inputs, pinned to the
+The Registry, Notification, Inhibit, Request, Settings, OpenURI, FileChooser and
+Trash XML files are unmodified upstream inputs, pinned to the
 commit and SHA-256 hashes in `upstream.json`. Their original license headers are
 preserved; `COPYING` is upstream's license text. They are not relicensed under the
 SDK's license.
@@ -14,7 +14,7 @@ fetch XML or introspect the user's session. Generated C# stays under `obj`.
 The provider uses generated Registry.Register, Notification.Add/Remove and
 ActionInvoked decoding, Inhibit.Inhibit, Settings.ReadAll,
 OpenURI.OpenURI/OpenFile/OpenDirectory, FileChooser.OpenFile/SaveFile,
-Request.Close and version reads. Option and notification dictionaries, desktop
+Trash.TrashFile, Request.Close and version reads. Option and notification dictionaries, desktop
 identity, bus-name ownership, early-action tracking, the signal subscriptions made
 before a request (Request.Response across the sender's request-path namespace and
 the namespace-filtered Settings.SettingChanged), returned-handle validation,

@@ -212,3 +212,16 @@ the `secret-service-unavailable` diagnostic. Inside Flatpak, add
 `--talk-name=org.freedesktop.secrets` to the finish arguments; inside Snap,
 connect the `password-manager-service` interface. The Secret portal is not used
 yet. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+
+## Trash
+
+`CreateTrash()` on `PortalApplication` or `PortalPlatformProvider` follows the
+freedesktop.org Trash specification, as GIO and KIO do, so Files, Dolphin and
+`gio trash --list` show and restore the items. Outside a sandbox it moves an
+item into `$XDG_DATA_HOME/Trash`, or, on another file system, into the trash at
+the top of its mount (`$topdir/.Trash/$uid` or `$topdir/.Trash-$uid`), with an
+info file recording where it was. It renames and never copies, so a location
+without a usable trash reports `Unavailable(BackendUnavailable)` and the item
+stays. Inside Flatpak or Snap it asks the Trash portal, which trashes what the
+application can write; a symbolic link cannot be trashed there. See the
+[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).

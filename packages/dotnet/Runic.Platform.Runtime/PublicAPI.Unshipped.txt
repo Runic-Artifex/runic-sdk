@@ -32,3 +32,4 @@ static Runic.Platform.Runtime.SecretStoreValidation.DecodeSecret(System.ReadOnly
 static Runic.Platform.Runtime.SecretStoreValidation.EncodeSecret(string! secret) -> byte[]?
 static Runic.Platform.Runtime.SecretStoreValidation.Validate(string! service, string! account) -> void
 static Runic.Platform.Runtime.ApplicationInstance.CreateOpenRequests(Runic.Platform.IApplicationInstance? instance, Runic.Platform.ApplicationLaunch! launch, Runic.Platform.DesktopOpenOptions! options) -> Runic.Platform.IDesktopOpenRequests!
+static Runic.Platform.Runtime.DesktopServiceValidation.ItemPath(string! path) -> string!

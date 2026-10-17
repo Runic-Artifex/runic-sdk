@@ -35,7 +35,9 @@ public enum PlatformFailureCode
     /// <summary>The user dismissed a native interactive operation.</summary>
     UserDismissed,
     /// <summary>The store is locked and could not ask the user to unlock it.</summary>
-    Locked
+    Locked,
+    /// <summary>The file or directory does not exist.</summary>
+    NotFound
 }
 
 /// <summary>Ownership requirements for native dialogs. This preview supports owned dialogs only.</summary>

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs the RealPortalAppearance case of the portal tests against the real xdg-desktop-portal and its GNOME backend,
+# Runs the RealPortalAppearance and RealPortalTrash cases of the portal tests against the real xdg-desktop-portal and its GNOME backend,
 # inside the digest-pinned Fedora container that .github/workflows/ci.yml starts. Ubuntu 24.04's portal publishes only
 # color-scheme and contrast; Fedora's (1.22 with xdg-desktop-portal-gnome 50) also publishes accent-color and
 # reduced-motion. The container needs no .NET: the job passes the published test executables (self-contained JIT and
@@ -34,5 +34,9 @@ for tests in "$@"; do
   echo "::group::RealPortalAppearance with $tests"
   # The session bus activates xdg-desktop-portal and its backend on the first Settings call.
   dbus-run-session -- "$tests" --treenode-filter "/*/*/*/*[Category=RealPortalAppearance]" --output detailed
+  echo "::endgroup::"
+  echo "::group::RealPortalTrash with $tests"
+  # The portal's own Trash implementation moves the items into this temporary home's trash.
+  dbus-run-session -- "$tests" --treenode-filter "/*/*/*/*[Category=RealPortalTrash]" --output detailed
   echo "::endgroup::"
 done

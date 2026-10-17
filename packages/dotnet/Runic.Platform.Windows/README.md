@@ -54,6 +54,16 @@ file types per user under `HKCU\Software\Classes`, with the command
 `"C:\…\App.exe" "%1"` quoted so a URL cannot add arguments, or declares them in
 an MSIX manifest. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists the keys.
 
+## Trash
+
+`WindowsPlatformProvider.CreateTrash()` moves items to the Recycle Bin through
+the shell's `IFileOperation`, without a confirmation, error or progress dialog,
+so Explorer can restore them. The shell would delete an item it cannot recycle,
+such as one on a network share or larger than the Recycle Bin, permanently;
+the provider refuses that deletion, and the request reports
+`Unavailable(BackendUnavailable)` with the item in place. See the
+[trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
+
 ## Secret storage
 
 `WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic

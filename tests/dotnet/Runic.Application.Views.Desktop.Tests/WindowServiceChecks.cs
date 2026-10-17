@@ -165,6 +165,34 @@ internal sealed class WindowServiceChecks
             "The unavailable secret store accepted invalid names.");
     }
 
+    // The trash is an application singleton that needs no window. Resolving it touches nothing.
+    [Test, NotInParallel(Order = 34)]
+    public async Task PlatformServicesRegisterOneTrashForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var trash = provider.GetRequiredService<IDesktopTrash>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(trash, first.ServiceProvider.GetRequiredService<IDesktopTrash>()),
+                    "A Window scope got its own trash.");
+            string expected = OperatingSystem.IsLinux() ? "Runic.Platform.Linux.Portal.LinuxTrash"
+                : OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsTrash"
+                : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacTrash" : "";
+            Require(trash.GetType().FullName == expected || expected.Length == 0,
+                $"The operating system's trash was not created: {trash.GetType().FullName}");
+        }
+
+        var custom = DesktopTrash.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopTrash>(), custom), "AddRunicPlatformServices replaced the application's trash.");
+        string path = Path.Combine(Path.GetTempPath(), "runic-not-trashed");
+        Require(await custom.MoveToTrashAsync(path) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            "The unavailable trash did not report its reason.");
+        Require(await CatchAsync(() => custom.MoveToTrashAsync("relative").AsTask()) is ArgumentException,
+            "The unavailable trash accepted a relative path.");
+    }
+
     // The status icon is an application singleton like notifications. Creating it connects to nothing; only
     // ShowAsync registers with the desktop's status area.
     [Test, NotInParallel(Order = 30)]
@@ -230,7 +258,7 @@ internal sealed class WindowServiceChecks
     {
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
-            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore)];
+            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];

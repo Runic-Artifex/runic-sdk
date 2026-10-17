@@ -7,3 +7,4 @@ static Runic.Application.Views.Desktop.PlatformServices.CreateSecretStore() -> R
 Runic.Application.Views.Desktop.RunicDesktopHost.MenuCommands.get -> System.Collections.Generic.IReadOnlyDictionary<string!, System.Windows.Input.ICommand!>?
 Runic.Application.Views.Desktop.RunicDesktopHost.MenuCommands.init -> void
 static Runic.Application.Views.Desktop.PlatformServices.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
+static Runic.Application.Views.Desktop.PlatformServices.CreateTrash() -> Runic.Platform.IDesktopTrash!
