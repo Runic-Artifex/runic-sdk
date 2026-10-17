@@ -1633,6 +1633,12 @@ operator, whereas `BridgeDiagnostics` governs only what a Bridge reply shows
 to web content. Exception messages can contain application data, so treat log
 output accordingly. The message properties are listed per event.
 
+Runic does not log an exception that ends the process, such as one thrown by
+the application body that `RunicDesktopHost.Run` rethrows. The
+[crash reporting guide](https://docs.runic-artifex.eu/guides/desktop/crash-reporting/)
+shows how to log it from `AppDomain.UnhandledException`, capture a dump, keep
+NativeAOT symbols and what to attach to a bug report.
+
 | Event ID | Name | Level | Logged when | Properties |
 | --- | --- | --- | --- | --- |
 | 1000 | `BridgeCommandFailed` | Error | A command throws. | `Model`, `Member`, `Route`, `ErrorType` |
