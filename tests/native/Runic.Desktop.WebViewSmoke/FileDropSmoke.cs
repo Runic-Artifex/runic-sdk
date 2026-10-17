@@ -162,10 +162,26 @@ internal static partial class WindowsFileDropSmoke
             {
                 try { drag.TrySetResult(Drag(handle, [file, folder])); }
                 catch (Exception error) { drag.TrySetException(error); }
-            });
+            })
+            { IsBackground = true };
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
-            var effect = await drag.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            int effect;
+            try
+            {
+                effect = await drag.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch (TimeoutException)
+            {
+                // End a stuck drag loop, so the window and the process can close.
+                Escape();
+                throw new TimeoutException("The OLE drag did not end within 30 seconds.");
+            }
+            if (effect == NoDesktopInput)
+            {
+                Console.WriteLine("File drop: unverified on this runner: its desktop does not deliver SendInput to a window of this process.");
+                return;
+            }
             Console.WriteLine($"File drop: OLE drag ended with effect {effect}.");
             var drop = await dropped.Task.WaitAsync(TimeSpan.FromSeconds(15));
             if (!drop.Paths.SequenceEqual([file, folder], StringComparer.OrdinalIgnoreCase) || drop.Target != "folder-7")
@@ -184,10 +200,16 @@ internal static partial class WindowsFileDropSmoke
 
     // STA thread: the button goes down outside the window, DoDragDrop runs its modal loop, and another thread moves
     // the pointer over the WebView and releases it.
+    private const int NoDesktopInput = -1;
+
+    // STA thread: as in a real drag source, the button goes down on a window of this thread, so its input state
+    // holds the pressed button and DoDragDrop's modal loop can track it; another thread moves the pointer over the
+    // WebView and releases it.
     private static unsafe int Drag(nint window, string[] paths)
     {
         _ = SetThreadDpiAwarenessContext(-4);
         Marshal.ThrowExceptionForHR(OleInitialize(0));
+        nint helper = 0;
         try
         {
             var dataObject = CreateDataObject(paths);
@@ -198,8 +220,20 @@ internal static partial class WindowsFileDropSmoke
                 if (!GetWindowRect(window, out var bounds)) throw new InvalidOperationException("GetWindowRect failed.");
                 var start = (X: bounds.Left - 60, Y: bounds.Top + 40);
                 var target = (X: (bounds.Left + bounds.Right) / 2, Y: (bounds.Top + bounds.Bottom) / 2 + 20);
+                helper = CreateWindowEx(0x00000008 | 0x00000080, "STATIC", "Runic drag source", 0x80000000 | 0x10000000, // TOPMOST|TOOLWINDOW, POPUP|VISIBLE
+                    start.X - 20, start.Y - 20, 40, 40, 0, 0, 0, 0);
+                _ = SetForegroundWindow(helper);
+                Pump(TimeSpan.FromMilliseconds(300));
                 Mouse(start.X, start.Y, MouseMove);
+                Pump(TimeSpan.FromMilliseconds(200));
                 Mouse(start.X, start.Y, MouseLeftDown);
+                var pressed = System.Diagnostics.Stopwatch.StartNew();
+                while (GetKeyState(0x01) >= 0 && pressed.Elapsed < TimeSpan.FromSeconds(3)) Pump(TimeSpan.FromMilliseconds(20)); // VK_LBUTTON
+                if (GetKeyState(0x01) >= 0)
+                {
+                    Mouse(start.X, start.Y, MouseLeftUp);
+                    return NoDesktopInput;
+                }
                 var mover = Task.Run(() => MoveAndReleaseAsync(start, target));
                 var hr = DoDragDrop(dataObject, sourcePointer, 1, out var effect); // DROPEFFECT_COPY
                 mover.GetAwaiter().GetResult();
@@ -214,8 +248,36 @@ internal static partial class WindowsFileDropSmoke
         }
         finally
         {
+            if (helper != 0) _ = DestroyWindow(helper);
             OleUninitialize();
         }
+    }
+
+    private static unsafe void Pump(TimeSpan duration)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var message = stackalloc byte[64];
+        while (elapsed.Elapsed < duration)
+        {
+            while (PeekMessage(message, 0, 0, 0, 1) != 0) // PM_REMOVE
+            {
+                _ = TranslateMessage(message);
+                _ = DispatchMessage(message);
+            }
+            Thread.Sleep(5);
+        }
+    }
+
+    private static unsafe void Escape()
+    {
+        var inputs = stackalloc Input[2];
+        inputs[0] = new Input { Type = 1 };
+        inputs[1] = new Input { Type = 1 };
+        // A keyboard input shares the mouse field's offset: wVk = VK_ESCAPE, then KEYEVENTF_KEYUP.
+        ((ushort*)&inputs[0].Mouse)[0] = 0x1B;
+        ((ushort*)&inputs[1].Mouse)[0] = 0x1B;
+        ((uint*)&inputs[1].Mouse)[1] = 0x0002;
+        _ = SendInput(2, inputs, sizeof(Input));
     }
 
     private static async Task MoveAndReleaseAsync((int X, int Y) start, (int X, int Y) target)
@@ -349,4 +411,17 @@ internal static partial class WindowsFileDropSmoke
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetWindowRect(nint window, out Rect bounds);
     [LibraryImport("user32.dll")] private static partial nint SetThreadDpiAwarenessContext(nint context);
+    [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint CreateWindowEx(uint extendedStyle, string className, string name, uint style, int x, int y, int width, int height,
+        nint parent, nint menu, nint instance, nint parameter);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyWindow(nint window);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindow(nint window);
+    [LibraryImport("user32.dll")] private static partial short GetKeyState(int key);
+    [LibraryImport("user32.dll", EntryPoint = "PeekMessageW")] private static unsafe partial int PeekMessage(byte* message, nint window, uint minimum, uint maximum, uint remove);
+    [LibraryImport("user32.dll")] private static unsafe partial int TranslateMessage(byte* message);
+    [LibraryImport("user32.dll", EntryPoint = "DispatchMessageW")] private static unsafe partial nint DispatchMessage(byte* message);
 }
