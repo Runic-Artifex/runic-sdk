@@ -338,8 +338,8 @@ public abstract record NavigationResult<TContent> where TContent : class
     public bool IsCommitted => this is Committed;
 
     /// <summary>
-    /// Rethrows the error of a <see cref="Failed"/> outcome, with its original stack trace, and returns
-    /// every other outcome unchanged.
+    /// Rethrows the error of a <see cref="Failed"/> outcome, or the <see cref="Committed.ActivationError"/> of a committed
+    /// one whose activation hook failed, with its original stack trace, and returns every other outcome unchanged.
     /// </summary>
     /// <remarks>
     /// A rejected or superseded transition is an expected outcome and does not throw. Combine it with
@@ -350,13 +350,32 @@ public abstract record NavigationResult<TContent> where TContent : class
     public NavigationResult<TContent> ThrowIfFailed()
     {
         if (this is Failed failed) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed.Error);
+        if (this is Committed { ActivationError: { } activation }) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(activation);
         return this;
     }
 
     /// <summary>The transition committed.</summary>
     /// <param name="Current">The region's current entry after the commit, or <see langword="null"/> when it is empty.</param>
     /// <param name="Retired">The entries whose retirement this transition performed.</param>
-    public sealed record Committed(NavigationEntry<TContent>? Current, IReadOnlyList<NavigationEntryId> Retired) : NavigationResult<TContent>;
+    /// <remarks>
+    /// The request completes after the departed entries retired and after the activation hooks
+    /// (<see cref="INavigationActivated"/>) of the entries the commit made current ran.
+    /// </remarks>
+    public sealed record Committed(NavigationEntry<TContent>? Current, IReadOnlyList<NavigationEntryId> Retired) : NavigationResult<TContent>
+    {
+        /// <summary>
+        /// Gets how the activation hooks of the entries this commit made current ended, or
+        /// <see cref="NavigationActivationState.None"/> when none of them implements <see cref="INavigationActivated"/> or
+        /// <see cref="INavigationActivated{TInput}"/>. The commit stands whatever it is.
+        /// </summary>
+        public NavigationActivationState Activation { get; init; }
+
+        /// <summary>
+        /// Gets the exception of the first activation hook that failed when <see cref="Activation"/> is
+        /// <see cref="NavigationActivationState.Failed"/>; otherwise <see langword="null"/>.
+        /// </summary>
+        public Exception? ActivationError { get; init; }
+    }
 
     /// <summary>The transition was rejected; history is unchanged.</summary>
     /// <param name="Reason">Why it was rejected.</param>
@@ -465,13 +484,101 @@ public interface INavigationInputInitialize
 /// <see cref="NavigationTarget.Create{T, TInput}(Func{IServiceProvider, T}, TInput)"/>.
 /// </summary>
 /// <typeparam name="TInput">The input type.</typeparam>
-public interface INavigationInitialize<in TInput> : INavigationInputInitialize
+public interface INavigationInitialize<in TInput> : INavigationInputInitialize, INavigationInput<TInput>
 {
     /// <summary>Initializes the entry's content. Runs outside model turns and at most once per entry.</summary>
     /// <param name="entry">The entry being created.</param>
     /// <param name="input">The target's input.</param>
     /// <param name="cancellationToken">Cancelled when the transition is superseded, cancelled or closed.</param>
     ValueTask InitializeAsync(NavigationEntryContext entry, TInput input, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// The member-less base of the hooks that receive a target's typed input, <see cref="INavigationInitialize{TInput}"/> and
+/// <see cref="INavigationActivated{TInput}"/>, so the input targets accept content that implements either. Implement one of
+/// those instead.
+/// </summary>
+/// <typeparam name="TInput">The input type.</typeparam>
+[EditorBrowsable(EditorBrowsableState.Never)]
+[SuppressMessage("Design", "CA1040:Avoid empty interfaces", Justification = "The shared constraint of the input targets.")]
+public interface INavigationInput<in TInput>
+{
+}
+
+/// <summary>How the activation hooks of a committed transition ended (<see cref="NavigationResult{TContent}.Committed.Activation"/>).</summary>
+public enum NavigationActivationState
+{
+    /// <summary>No entry the commit made current has an activation hook.</summary>
+    None,
+
+    /// <summary>Every activation hook returned.</summary>
+    Completed,
+
+    /// <summary>An activation hook threw; the commit stands.</summary>
+    Failed,
+
+    /// <summary>
+    /// An activation hook was cancelled, because its entry stopped being current or retired, or the navigator closed,
+    /// or it was never started for that reason.
+    /// </summary>
+    Cancelled,
+}
+
+/// <summary>
+/// Runs after the entry became current and the change was presented, outside model turns: on every commit that makes
+/// the entry its region's current entry, after <see cref="INavigationAware.OnNavigatedTo"/>. The request that made the entry
+/// current awaits it before it returns <see cref="NavigationResult{TContent}.Committed"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Use it for work that needs the entry presented first, such as loading the page's data while it shows its loading
+/// state. It runs after the departed entries retired, and, with a model context that implements
+/// <see cref="IRunicModelPresentationYield"/> (the WPF dispatcher context), after the new view was laid out and rendered.
+/// It runs again each time a Back or BackTo resumes the entry, so it must be repeatable.
+/// </para>
+/// <para>
+/// A hook that throws is logged (event 1076) and gives <see cref="NavigationActivationState.Failed"/> with the exception in
+/// <see cref="NavigationResult{TContent}.Committed.ActivationError"/>; the entry stays current. Its token is cancelled when
+/// the entry stops being current (a later commit retains or retires it), when it retires, and when the navigator closes;
+/// not when the caller's token is cancelled. Retirement doesn't wait for the hook, so check the token after each await.
+/// </para>
+/// <para>
+/// The hook may navigate: a request from it is admitted, also into its own region (to redirect with Replace or give up
+/// with <see cref="NavigationEntryContext.BackAsync"/>) and into the regions its content owns, and a region that rejects
+/// requests while busy admits them. It must not await <see cref="RunicNavigator.WhenIdleAsync"/> or its region's
+/// <see cref="NavigationRegion{TContent}.WhenIdleAsync"/>, which wait for it.
+/// </para>
+/// <para>
+/// The content is already presented, so without a hook scheduler (for example <see cref="RunicModelContext"/>) the hook
+/// changes presented state through <see cref="NavigationEntryContext.ModelContext"/>. With
+/// <see cref="IRunicModelHookScheduler"/> it runs as its own operation on the model's thread and may set state directly.
+/// An initial target's hook starts after <see cref="RunicNavigator.CreateRegion{TContent}"/> or
+/// <see cref="NavigationRegion{TContent}.Start"/> returned; the region is busy until it ends.
+/// </para>
+/// </remarks>
+public interface INavigationActivated
+{
+    /// <summary>Runs after the entry became current and was presented.</summary>
+    /// <param name="entry">The entry that became current.</param>
+    /// <param name="arrival">The entry and the operation that made it current, as <see cref="INavigationAware.OnNavigatedTo"/> received it.</param>
+    /// <param name="cancellationToken">Cancelled when the entry stops being current, retires, or the navigator closes.</param>
+    ValueTask OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// The activation hook of an entry created with typed input (<see cref="NavigationTarget.Create{T, TInput}(TInput)"/> and the
+/// region methods that wrap it), called with that input instead of <see cref="INavigationActivated"/>. It follows the rules
+/// of <see cref="INavigationActivated"/>.
+/// </summary>
+/// <typeparam name="TInput">The input type.</typeparam>
+public interface INavigationActivated<in TInput> : INavigationInput<TInput>
+{
+    /// <summary>Runs after the entry became current and was presented.</summary>
+    /// <param name="entry">The entry that became current.</param>
+    /// <param name="arrival">The entry and the operation that made it current.</param>
+    /// <param name="input">The target's input.</param>
+    /// <param name="cancellationToken">Cancelled when the entry stops being current, retires, or the navigator closes.</param>
+    ValueTask OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, TInput input, CancellationToken cancellationToken);
 }
 
 /// <summary>Runs when a retained entry becomes current again.</summary>
@@ -590,22 +697,24 @@ public static class NavigationTarget
     }
 
     /// <summary>
-    /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, T})"/>, then calls only
-    /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> with <paramref name="input"/>.
+    /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, T})"/> and passes it <paramref name="input"/>:
+    /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> runs instead of <see cref="INavigationInitialize.InitializeAsync"/>,
+    /// and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/> instead of <see cref="INavigationActivated.OnActivatedAsync"/>,
+    /// for the hooks the content implements.
     /// </summary>
     public static INavigationTarget<T> Create<T, TInput>(Func<IServiceProvider, T> factory, TInput input)
-        where T : class, INavigationInitialize<TInput>
+        where T : class, INavigationInput<TInput>
     {
         ArgumentNullException.ThrowIfNull(factory);
         return new InputNavigationTarget<T, TInput>((services, _) => factory(services), input);
     }
 
     /// <summary>
-    /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, NavigationEntryContext, T})"/>, then
-    /// calls only <see cref="INavigationInitialize{TInput}.InitializeAsync"/> with <paramref name="input"/>.
+    /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, NavigationEntryContext, T})"/> and passes it
+    /// <paramref name="input"/>, like <see cref="Create{T, TInput}(Func{IServiceProvider, T}, TInput)"/>.
     /// </summary>
     public static INavigationTarget<T> Create<T, TInput>(Func<IServiceProvider, NavigationEntryContext, T> factory, TInput input)
-        where T : class, INavigationInitialize<TInput>
+        where T : class, INavigationInput<TInput>
     {
         ArgumentNullException.ThrowIfNull(factory);
         return new InputNavigationTarget<T, TInput>(factory, input);
@@ -625,14 +734,16 @@ public static class NavigationTarget
         new ActivatedNavigationTarget<T>();
 
     /// <summary>
-    /// Constructs owned content like <see cref="Create{T}()"/>, then calls only
-    /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> with <paramref name="input"/>.
+    /// Constructs owned content like <see cref="Create{T}()"/> and passes it <paramref name="input"/>, like
+    /// <see cref="Create{T, TInput}(Func{IServiceProvider, T}, TInput)"/>: through
+    /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>,
+    /// for the hooks the content implements.
     /// </summary>
     /// <typeparam name="T">The content type to construct.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to the content's initialize hook.</param>
+    /// <param name="input">The input passed to the content's typed initialize and activation hooks.</param>
     public static INavigationTarget<T> Create<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T, TInput>(TInput input)
-        where T : class, INavigationInitialize<TInput> =>
+        where T : class, INavigationInput<TInput> =>
         new ActivatedInputNavigationTarget<T, TInput>(input);
 }
 
@@ -654,8 +765,46 @@ internal abstract class NavigationTargetCore
     public virtual object Create(IServiceProvider services, NavigationEntryContext entry) =>
         Instance ?? throw new InvalidOperationException("The navigation target has no content.");
 
+    // Whether the content takes the input in its initialize hook (INavigationInitialize<TInput>).
+    public virtual bool InitializesWithInput(object content) => false;
+
     public virtual ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
+
+    // The content's typed activation hook (INavigationActivated<TInput>) bound to the input, or null.
+    public virtual NavigationActivation? ActivationWithInput(object content) => null;
+
+    // Throws when the content of an input target takes the input in no hook: it implements only the INavigationInput<TInput> marker.
+    public virtual void ValidateInput(object content)
+    {
+    }
+}
+
+// An entry's activation hook, bound to its content (and input).
+internal delegate ValueTask NavigationActivation(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken);
+
+// The input targets: the content's typed hooks receive the input.
+internal abstract class InputNavigationTargetCore<TInput>(TInput input) : NavigationTargetCore
+{
+    public override NavigationOwnership Ownership => NavigationOwnership.Owned;
+    public override object? Instance => null;
+    public override bool HasInput => true;
+
+    public override bool InitializesWithInput(object content) => content is INavigationInitialize<TInput>;
+
+    public override ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
+        ((INavigationInitialize<TInput>)content).InitializeAsync(entry, input, cancellationToken);
+
+    public override NavigationActivation? ActivationWithInput(object content) => content is INavigationActivated<TInput> activated
+        ? (entry, arrival, cancellationToken) => activated.OnActivatedAsync(entry, arrival, input, cancellationToken)
+        : null;
+
+    public override void ValidateInput(object content)
+    {
+        if (content is not (INavigationInitialize<TInput> or INavigationActivated<TInput>))
+            throw new ArgumentException(
+                $"{content.GetType().Name} takes the target's input in no hook: implement INavigationInitialize<{typeof(TInput).Name}> or INavigationActivated<{typeof(TInput).Name}>.");
+    }
 }
 
 internal sealed class InstanceNavigationTarget<T>(T content, NavigationOwnership ownership)
@@ -677,16 +826,11 @@ internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, Navigati
 }
 
 internal sealed class InputNavigationTarget<T, TInput>(Func<IServiceProvider, NavigationEntryContext, T> factory, TInput input)
-    : NavigationTargetCore, INavigationTarget<T> where T : class, INavigationInitialize<TInput>
+    : InputNavigationTargetCore<TInput>(input), INavigationTarget<T> where T : class, INavigationInput<TInput>
 {
-    public override NavigationOwnership Ownership => NavigationOwnership.Owned;
-    public override object? Instance => null;
-    public override bool HasInput => true;
     public override Type ContentType => typeof(T);
     public override object Create(IServiceProvider services, NavigationEntryContext entry) =>
         factory(services, entry) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
-    public override ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
-        ((T)content).InitializeAsync(entry, input, cancellationToken);
 }
 
 // Constructs T with ActivatorUtilities from the entry's provider (W240-001 §5, D5). The
@@ -702,14 +846,9 @@ internal sealed class ActivatedNavigationTarget<[DynamicallyAccessedMembers(Dyna
 }
 
 internal sealed class ActivatedInputNavigationTarget<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T, TInput>(TInput input)
-    : NavigationTargetCore, INavigationTarget<T> where T : class, INavigationInitialize<TInput>
+    : InputNavigationTargetCore<TInput>(input), INavigationTarget<T> where T : class, INavigationInput<TInput>
 {
-    public override NavigationOwnership Ownership => NavigationOwnership.Owned;
-    public override object? Instance => null;
-    public override bool HasInput => true;
     public override Type ContentType => typeof(T);
     public override object Create(IServiceProvider services, NavigationEntryContext entry) =>
         NavigationConstructionServices.Activate<T>(services, entry);
-    public override ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
-        ((T)content).InitializeAsync(entry, input, cancellationToken);
 }

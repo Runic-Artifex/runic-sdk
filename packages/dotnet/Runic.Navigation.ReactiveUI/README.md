@@ -227,6 +227,8 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   or failed Back is its output, not an exception, so `ThrownExceptions`
   carries only defects and cancellation. In a Runic Views app the generated
   Bridge logs them; elsewhere, subscribe to `ThrownExceptions`.
+  The Back's task, and so the command's `IsExecuting`, includes the resumed
+  entry's activation hook (`INavigationActivated`), such as a data load.
   Overlapping executions to the same destination share one Back and confirmation.
   Each caller cancels independently; the shared Back cancels only after every
   caller cancels before commit.

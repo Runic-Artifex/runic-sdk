@@ -272,8 +272,9 @@ connection. Two scopes exist:
 - A bridge command invocation reaches only the single presentation of the
   invoking client and connection. It reaches the invoking route, or, while a
   navigation hook that the command started runs (such as the leave guard of the
-  page that the shell's Back departs), another route of the same window mounted
-  by that client and connection.
+  page that the shell's Back departs, or the activation hook of the page that
+  its navigation made current), another route of the same window mounted by
+  that client and connection.
 - The window's close decision (`CanCloseAsync` for a user close or
   `RequestCloseAsync`) reaches the single presentation of the window with the
   handler mounted, from any connection. With none or several, it asks nothing.

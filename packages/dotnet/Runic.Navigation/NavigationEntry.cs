@@ -243,6 +243,13 @@ internal sealed class NavigationEntryCore
     // The transition that pushes this pending entry; set at admission.
     public NavigationTransition? Transition { get; set; }
 
+    // The content's activation hook (INavigationActivated, or INavigationActivated<TInput> bound to the target's input),
+    // or null. Set under the gate once the content exists, before the entry first commits.
+    public NavigationActivation? Activation { get; set; }
+
+    // The running activation's own source, cancelled when the entry stops being current. Guarded by the navigator's gate.
+    public CancellationTokenSource? Arrival { get; set; }
+
     // The entry's service scope (CreateEntryScopes), set under the gate together with the
     // created content and taken by retirement step 4.
     public IServiceScope? Scope { get; set; }

@@ -290,12 +290,12 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to <see cref="INavigationInitialize{TInput}.InitializeAsync"/>.</param>
+    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>.</param>
     /// <param name="options">The request's options.</param>
     /// <param name="cancellationToken">Cancels the request before it commits.</param>
     public ValueTask<NavigationResult<TContent>> PushAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
         TInput input, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
-        where TViewModel : class, TContent, INavigationInitialize<TInput> =>
+        where TViewModel : class, TContent, INavigationInput<TInput> =>
         Run(NavigationOperation.Push, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
 
     /// <summary>
@@ -327,12 +327,12 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to <see cref="INavigationInitialize{TInput}.InitializeAsync"/>.</param>
+    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>.</param>
     /// <param name="options">The request's options.</param>
     /// <param name="cancellationToken">Cancels the request before it commits.</param>
     public ValueTask<NavigationResult<TContent>> ReplaceAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
         TInput input, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
-        where TViewModel : class, TContent, INavigationInitialize<TInput> =>
+        where TViewModel : class, TContent, INavigationInput<TInput> =>
         Run(NavigationOperation.Replace, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
 
     /// <summary>
@@ -352,12 +352,12 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to <see cref="INavigationInitialize{TInput}.InitializeAsync"/>.</param>
+    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>.</param>
     /// <param name="options">The request's options.</param>
     /// <param name="cancellationToken">Cancels the request before it commits.</param>
     public ValueTask<NavigationResult<TContent>> ResetAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
         TInput input, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
-        where TViewModel : class, TContent, INavigationInitialize<TInput> =>
+        where TViewModel : class, TContent, INavigationInput<TInput> =>
         Run(NavigationOperation.Reset, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
 
     /// <summary>Retires every retained entry. The current entry stays.</summary>

@@ -441,7 +441,11 @@ the model and avoid resetting it merely because it was selected again.
 The core serializes a region's guards: if a cancelled hook ignores its token,
 the next choice waits for that hook to finish.
 Vetoes, failures and cancellation restore the committed selection; a late
-superseded response cannot restore an older choice. Programmatic navigation
+superseded response cannot restore an older choice. A selection's request
+completes only after the new tab's activation hook (`INavigationActivated`),
+such as a data load; reselecting the current tab meanwhile waits only until
+the pending request's commit is decided, not for that hook, and selecting
+another tab replaces the loading one, which cancels its hook. Programmatic navigation
 also updates selection. Selecting the current item cancels an outstanding
 choice, and deselection alone does not clear navigation. Clear the region
 explicitly to make it empty. The items collection should contain the current
@@ -500,9 +504,13 @@ a particular MVVM framework.
 
 - `InvokeAsync` on the UI thread runs the turn inline. From another thread it
   queues the turn on the dispatcher at the context's priority.
-- Guards, `InitializeAsync`, `ResumeAsync`, factories and owned disposal run
-  on the UI thread, each in its own dispatcher operation, so they can change
-  models and touch controls directly.
+- Guards, `InitializeAsync`, `ResumeAsync`, `OnActivatedAsync`, factories and
+  owned disposal run on the UI thread, each in its own dispatcher operation, so
+  they can change models and touch controls directly.
+- As an `IRunicModelPresentationYield`, the context waits for the dispatcher's
+  `Loaded` priority, which runs after `Render`, before the navigator runs an
+  activation hook (`INavigationActivated`): the new page's view is laid out
+  and rendered, with its loading state, before the hook starts loading.
 - A turn must not pump: no `ShowDialog`, `MessageBox` or `.Wait()` inside
   `InvokeAsync`, a commit's `PropertyChanged` handler or an `OnCommitted`
   action. A turn that starts inside another turn's nested loop is logged once
@@ -523,7 +531,8 @@ that wraps `DispatcherModelContext` must implement `IRunicModelHookScheduler`
 and `IRunicModelContextLifetime` and forward them. Otherwise hooks run on the
 thread pool instead of the UI thread, and the navigator learns about a shutdown
 only when a turn fails, so a request can wait behind a hook that ignores its
-cancellation:
+cancellation. Forward `IRunicModelPresentationYield` too, or activation hooks
+start before the new view is rendered:
 
 ```csharp
 public sealed class TracingContext(DispatcherModelContext inner)

@@ -26,8 +26,13 @@ namespace Runic.Navigation.Wpf;
 /// <see cref="SynchronizationContext"/> that moves their continuations to the thread pool once the dispatcher
 /// shuts down, so a hook that awaits past shutdown still finishes.
 /// </para>
+/// <para>
+/// As an <see cref="IRunicModelPresentationYield"/>, it lets the dispatcher lay out and render the view of an entry that
+/// became current before the entry's activation hook (<see cref="INavigationActivated"/>) runs.
+/// </para>
 /// </remarks>
-public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime, IDisposable
+public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime,
+    IRunicModelPresentationYield, IDisposable
 {
     private static readonly DispatcherOperationCallback RunItem = static state =>
     {
@@ -133,6 +138,19 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         var item = new HookItem<T>(this, hook, cancellationToken);
         if (!Dispatch(item)) item.Reject();
         return item.Completion;
+    }
+
+    /// <summary>
+    /// Completes after the dispatcher ran its work queued at <see cref="DispatcherPriority.Loaded"/>, which runs after
+    /// <see cref="DispatcherPriority.Render"/>: the changes of earlier turns are laid out and rendered by then.
+    /// </summary>
+    /// <param name="cancellationToken">Stops waiting.</param>
+    /// <exception cref="ObjectDisposedException">The context is closed.</exception>
+    public ValueTask YieldToPresentationAsync(CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _closed)) return ValueTask.FromException(new ObjectDisposedException(nameof(DispatcherModelContext)));
+        if (cancellationToken.IsCancellationRequested) return ValueTask.FromCanceled(cancellationToken);
+        return new(Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Loaded, cancellationToken).Task);
     }
 
     /// <summary>

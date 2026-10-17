@@ -1,3 +1,4 @@
 #nullable enable
 Runic.Navigation.Wpf.NavigationHost.IsBusy.get -> bool
 static readonly Runic.Navigation.Wpf.NavigationHost.IsBusyProperty -> System.Windows.DependencyProperty!
+Runic.Navigation.Wpf.DispatcherModelContext.YieldToPresentationAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
