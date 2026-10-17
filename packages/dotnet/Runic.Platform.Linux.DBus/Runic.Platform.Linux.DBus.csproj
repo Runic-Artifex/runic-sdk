@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/platform.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Platform.Linux.DBus</PackageId>
+    <Description>D-Bus client and service API for Runic applications on Linux: connections, typed values, proxies, exported objects, signals and properties.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Not yet published: package validation needs a baseline release. -->
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <RunicPackageFirstReleaseVersion>0.8.0-preview.5</RunicPackageFirstReleaseVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- The wire implementation. No Tmds.DBus type appears in this package's public API. -->
+    <PackageReference Include="Tmds.DBus.Protocol" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <InternalsVisibleTo Include="Runic.Platform.Linux.DBus.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>
