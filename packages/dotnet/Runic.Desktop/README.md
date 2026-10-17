@@ -547,6 +547,18 @@ child also avoids the crash, but frameworks that insert comment anchors make it
 fragile. A crashed web process is reported and the page reloaded; see
 [Web process crashes on Linux](#web-process-crashes-on-linux).
 
+## Right-to-left languages
+
+Runic Desktop sets neither `lang` nor `dir` on the page; the page sets both for
+its language, for example with Runic Translations' `localeDirection`. Its
+`navigator.language` is the process locale with WebKitGTK (`C` under the C
+locale), the Windows display language with WebView2 and the user's preferred
+languages with WKWebView. GTK mirrors its header bar for the process locale
+when GTK has a translation for it. On Windows the window frame is not mirrored
+([#389](https://github.com/Runic-Artifex/runic-sdk/issues/389)). The
+[right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)
+lists every native piece per platform.
+
 ## Web process crashes on Linux
 
 WebKitGTK renders the page in a separate web process. When it crashes or

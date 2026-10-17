@@ -39,6 +39,8 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
     return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe));
 }
 
+if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
+
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 
