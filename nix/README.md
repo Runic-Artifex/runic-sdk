@@ -75,7 +75,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `nugetLockFiles` | `[ ]` | `packages.lock.json` files whose packages restore the project: its own, and those of projects it references. `{ linux-x64 = [ ... ]; linux-arm64 = [ ... ]; }` for several runtimes; see [Several runtimes](#several-runtimes). |
 | `nugetDeps` | `null` | More NuGet packages: a `deps.json`, a package derivation or a list of them, as `buildDotnetModule` takes. |
 | `nugetLockedMode` | `true` with lock files | Restore with `RestoreLockedMode`, so a lock file that no longer matches the project fails the build. |
-| `dotnetTools` | `null` | Local .NET tools the build runs, restored offline from their manifest: `manifest` (relative to `src`; default `.config/dotnet-tools.json` beside the project) and `hashes`. See [Local .NET tools](#local-net-tools). |
+| `dotnetTools` | `null` | Local .NET tools the build runs, restored offline from their manifest: `manifest` (relative to `src`, or a path; default `.config/dotnet-tools.json` beside the project) and `hashes`. See [Local .NET tools](#local-net-tools). |
 | `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, `pnpmFetcherVersion` (default 4), or `nodeModules`. See below. |
 | `host` | `"desktop"` | `desktop` (GTK 3, WebKitGTK 4.1), `desktop-gtk4` (GTK 4, WebKitGTK 6.0), `cswebui`, or `null`: which libraries the host loads at run time. |
 | `withMedia` | `false` | GStreamer plugins for audio and video in WebKitGTK. |
@@ -189,9 +189,24 @@ dotnetTools = {
 };
 ```
 
-The manifest is read at evaluation, so `src` must be a local path, such as the
-flake's own source, and include it. Every tool in it needs a hash, and a new
-tool version a new one. The build runs `dotnet tool restore --tool-manifest`
+The manifest is read at evaluation, and `src` must include it. A relative
+`manifest` is read from `src` when it is a path (`src = ./.`), and from the
+unfiltered source when `src` is filtered by `lib.fileset.toSource`,
+`lib.cleanSource` or `lib.cleanSourceWith`, so a read-only evaluation such as
+`nix flake check --no-build --all-systems` works on an empty store. For any
+other `src`, such as one that `builtins.path { filter; }` filters or a
+derivation, set `manifest` to a path, which is read and restored from as it is:
+
+```nix
+dotnetTools = {
+  manifest = ./MyApp/.config/dotnet-tools.json;
+  hashes.dotnet-runic-translations = "sha256-/sG0ngRIx6fh0LLQzBNvpCk6N1kYB1NYhhKpI6NjDPY=";
+};
+```
+
+A relative `manifest` of such a `src` is read from its store path, which a
+read-only evaluation cannot do before a writable one has added it. Every tool
+in the manifest needs a hash, and a new tool version a new one. The build runs `dotnet tool restore --tool-manifest`
 before the restore of the projects; `dotnet tool run` then finds the manifest
 from the directory it runs in, as during development. A manifest at the root
 of `src` needs `dotnetTools` as well: nixpkgs restores its tools by itself, from
@@ -443,7 +458,12 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   `tests/fixtures/nix`: `builder-test-runner` runs a TUnit project with
   `testRunner = "Microsoft.Testing.Platform"`, and `builder-dotnet-tools`
   restores a local tool from a manifest below the source's root with
-  `dotnetTools`.
+  `dotnetTools`; `builder-dotnet-tools-filtered-source` does so from a
+  `lib.fileset.toSource` source, and `builder-dotnet-tools-manifest-path` with
+  `manifest` as a path and a source that `builtins.path` filters. The Nix
+  workflow runs `nix flake check --no-build --all-systems` first, a read-only
+  evaluation on an empty store, which fails when a builder reads a file from a
+  store path that only a writable evaluation adds.
 - The `builder-completions` flake check installs the bash, zsh and fish
   completions of a Runic.CommandLine program with `completions`.
 - `nix build .#packaging-nixos -L` runs a NixOS VM (KVM) that installs the
