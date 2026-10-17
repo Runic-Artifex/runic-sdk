@@ -47,6 +47,8 @@ internal static class WindowStateSmoke
         await window.ResizeAsync(ResizedWidth, ResizedHeight);
         var resized = await WaitForAsync(window, static state => Near(state.Width, ResizedWidth) && Near(state.Height, ResizedHeight),
             $"the size {ResizedWidth}x{ResizedHeight}");
+        // The event follows the state on the thread pool.
+        for (var waited = 0; Volatile.Read(ref changes) == 0 && waited < 5000; waited += 20) await Task.Delay(20);
         if (Volatile.Read(ref changes) == 0)
             throw new InvalidOperationException("Resizing the window raised no StateChanged event.");
         var moves = window.Capabilities.HasFlag(DesktopWindowCapabilities.Move) && resized.X is not null;
