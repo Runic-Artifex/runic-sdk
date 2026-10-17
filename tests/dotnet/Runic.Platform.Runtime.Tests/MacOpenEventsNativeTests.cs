@@ -6,8 +6,8 @@ using Runic.Platform.MacOS;
 using TUnit.Core;
 using static Runic.Platform.MacOS.MacDesktopNative;
 
-// The open-documents and get-URL Apple events, sent by the test process to itself and dispatched by AppKit while the
-// Desktop event loop runs (Program.cs runs the category inside it). CI runs it on the macOS runner under JIT and
+// The open-documents and get-URL Apple events, dispatched through NSAppleEventManager's handler table on the main
+// thread while the Desktop event loop runs (Program.cs runs the category inside it). CI runs it on the macOS runner under JIT and
 // NativeAOT. A launch through LaunchServices with a registered bundle is the CI bundle script's job (RunBundleProbe).
 internal sealed partial class MacOpenEventsNativeTests
 {
@@ -36,16 +36,17 @@ internal sealed partial class MacOpenEventsNativeTests
             await File.WriteAllTextAsync(file, "probe", cancellationToken);
             try
             {
-                // Sent from a worker thread: the main thread must be free to run the event loop that dispatches them.
-                await Task.Run(() =>
+                // Dispatched through NSAppleEventManager's handler table, as AppKit does for an event it receives; the
+                // bundle script checks the delivery by LaunchServices.
+                await MacOsMainQueue.InvokeAsync(() =>
                 {
                     using var pool = new Pool();
                     var list = Send(Class("NSAppleEventDescriptor"), Sel("listDescriptor"));
                     Args(list, Sel("insertDescriptor:atIndex:"), Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithFileURL:"), Url(file)), 0);
-                    SendSelf(CoreEventClass, OpenDocuments, list);
-                    SendSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("other-scheme://ignored")));
-                    SendSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("RUNIC-TEST://from-event?id=1")));
-                }, cancellationToken);
+                    DispatchToSelf(CoreEventClass, OpenDocuments, list);
+                    DispatchToSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("other-scheme://ignored")));
+                    DispatchToSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("RUNIC-TEST://from-event?id=1")));
+                });
                 var opened = new Uri(await NextAsync(requests, cancellationToken));
                 Check(opened.IsFile && opened.LocalPath == file, $"odoc opened the file: {opened}");
                 string url = await NextAsync(requests, cancellationToken);
@@ -95,22 +96,26 @@ internal sealed partial class MacOpenEventsNativeTests
         return exitCode;
     }
 
-    private static void SendSelf(uint eventClass, uint eventId, nint direct)
+    private static unsafe void DispatchToSelf(uint eventClass, uint eventId, nint direct)
     {
         var target = Send(Class("NSAppleEventDescriptor"), Sel("currentProcessDescriptor"));
         var appleEvent = Create(Class("NSAppleEventDescriptor"), Sel("appleEventWithEventClass:eventID:targetDescriptor:returnID:transactionID:"),
             eventClass, eventId, target, -1, 0);
         Args(appleEvent, Sel("setParamDescriptor:forKeyword:"), direct, (nint)DirectObject);
-        // kAENoReply: queued, then dispatched by the event loop.
-        SendEvent(appleEvent, Sel("sendEventWithOptions:timeout:error:"), 1, 10, out var error);
-        if (error != 0) throw new InvalidOperationException($"Sending the Apple event failed: {Text(Send(error, Sel("localizedDescription")))}");
+        var reply = new AppleEventDescriptor { Type = 0x6E756C6C /* 'null' */ };
+        var manager = Send(Class("NSAppleEventManager"), Sel("sharedAppleEventManager"));
+        short status = Dispatch(manager, Sel("dispatchRawAppleEvent:withRawReply:handlerRefCon:"), Send(appleEvent, Sel("aeDesc")), &reply, 0);
+        if (status != 0) throw new InvalidOperationException($"Dispatching the Apple event failed with OSErr {status}.");
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AppleEventDescriptor { public uint Type; public nint Data; }
 
     private static async Task<string> NextAsync(Channel<DesktopOpenRequest> requests, CancellationToken cancellationToken) =>
         (await requests.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(20), cancellationToken)).Items.Single().ToString();
 
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Create(nint target, nint selector, uint eventClass, uint eventId, nint targetDescriptor, short returnId, int transactionId);
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint SendEvent(nint target, nint selector, nint options, double timeout, out nint error);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static unsafe partial short Dispatch(nint target, nint selector, nint appleEvent, AppleEventDescriptor* reply, nint referenceConstant);
 
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 }
