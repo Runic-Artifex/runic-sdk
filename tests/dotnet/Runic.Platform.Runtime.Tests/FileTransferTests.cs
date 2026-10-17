@@ -343,7 +343,7 @@ internal sealed partial class FileTransferTests
         internal string Directory(string relative) => System.IO.Directory.CreateDirectory(Path.Combine(Root, relative)).FullName;
         internal string File(string relative, string content)
         {
-            string path = Path.Combine(Root, relative);
+            string path = Path.GetFullPath(Path.Combine(Root, relative)); // Windows reports paths with its own separators.
             System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             System.IO.File.WriteAllText(path, content);
             return path;
