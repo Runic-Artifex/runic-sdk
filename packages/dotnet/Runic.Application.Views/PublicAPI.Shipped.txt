@@ -607,3 +607,8 @@ static Runic.Application.Views.RunicWatchTarget.Directory(string! path, string! 
 static Runic.Application.Views.RunicWatchTarget.File(string! path) -> Runic.Application.Views.RunicWatchTarget!
 static Runic.Application.Views.RunicWatchTarget.GitHead(string! repository) -> Runic.Application.Views.RunicWatchTarget!
 static Runic.Application.Views.RunicWatchTarget.Link(string! path) -> Runic.Application.Views.RunicWatchTarget!
+static Runic.Application.Views.RunicWatchTarget.Files(string! path, string! pattern = "*") -> Runic.Application.Views.RunicWatchTarget!
+Runic.Application.Views.PropertyDescriptor<T>.AppendOnlyTextField.get -> string?
+Runic.Application.Views.PropertyDescriptor<T>.AppendOnlyTextField.init -> void
+Runic.Application.Views.RunicAppendOnlyTextAttribute
+Runic.Application.Views.RunicAppendOnlyTextAttribute.RunicAppendOnlyTextAttribute() -> void

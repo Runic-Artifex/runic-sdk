@@ -733,3 +733,27 @@ Runic.Platform.IForwardedLaunchReply
 Runic.Platform.IForwardedLaunchReply.CancelAsync() -> System.Threading.Tasks.ValueTask
 Runic.Platform.IForwardedLaunchReply.ReadMessagesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<string!>!
 Runic.Platform.IForwardedLaunchReply.WaitForExitAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<int>!>
+Runic.Platform.ApplicationInstanceClaim.NotRunning
+Runic.Platform.ApplicationInstanceClaim.NotRunning.Equals(Runic.Platform.ApplicationInstanceClaim.NotRunning? other) -> bool
+Runic.Platform.ApplicationInstanceClaim.NotRunning.NotRunning() -> void
+Runic.Platform.IApplicationLaunchReply.CancelRequested.get -> System.Threading.CancellationToken
+Runic.Platform.IApplicationLaunchReply.Disconnected.get -> System.Threading.CancellationToken
+override Runic.Platform.ApplicationInstanceClaim.NotRunning.<Clone>$() -> Runic.Platform.ApplicationInstanceClaim.NotRunning!
+override Runic.Platform.ApplicationInstanceClaim.NotRunning.Equals(object? obj) -> bool
+override Runic.Platform.ApplicationInstanceClaim.NotRunning.GetHashCode() -> int
+override Runic.Platform.ApplicationInstanceClaim.NotRunning.ToString() -> string!
+override sealed Runic.Platform.ApplicationInstanceClaim.NotRunning.Equals(Runic.Platform.ApplicationInstanceClaim? other) -> bool
+static Runic.Platform.ApplicationInstanceClaim.NotRunning.operator !=(Runic.Platform.ApplicationInstanceClaim.NotRunning? left, Runic.Platform.ApplicationInstanceClaim.NotRunning? right) -> bool
+static Runic.Platform.ApplicationInstanceClaim.NotRunning.operator ==(Runic.Platform.ApplicationInstanceClaim.NotRunning? left, Runic.Platform.ApplicationInstanceClaim.NotRunning? right) -> bool
+Runic.Platform.PrivilegedActionCommand
+Runic.Platform.PrivilegedActionCommand.ArgumentPatterns.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.PrivilegedActionCommand.Equals(Runic.Platform.PrivilegedActionCommand? other) -> bool
+Runic.Platform.PrivilegedActionCommand.MinimumArguments.get -> int
+Runic.Platform.PrivilegedActionCommand.MinimumArguments.init -> void
+Runic.Platform.PrivilegedActionCommand.Name.get -> string!
+Runic.Platform.PrivilegedActionCommand.PrivilegedActionCommand(string! name, params string![]! argumentPatterns) -> void
+Runic.Platform.PrivilegedActionDeclaration.Commands.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.PrivilegedActionCommand!>
+Runic.Platform.PrivilegedActionDeclaration.Commands.init -> void
+override Runic.Platform.PrivilegedActionCommand.Equals(object? obj) -> bool
+override Runic.Platform.PrivilegedActionCommand.GetHashCode() -> int
+override Runic.Platform.PrivilegedActionCommand.ToString() -> string!

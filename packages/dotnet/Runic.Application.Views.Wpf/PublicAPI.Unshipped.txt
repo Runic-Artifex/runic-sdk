@@ -1,3 +1,1 @@
 #nullable enable
-[RUNICWPF001]Runic.Application.Views.Wpf.WpfPlatformServices
-[RUNICWPF001]static Runic.Application.Views.Wpf.WpfPlatformServices.PresentAsync(System.Windows.Window! window, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
