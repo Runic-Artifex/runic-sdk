@@ -22,6 +22,49 @@ public sealed class DesktopHost : IAsyncDisposable
         _options = options;
         _core = CreateCore(options, options.Port);
         _logger = options.LoggerFactory?.CreateLogger(DesktopLog.Category);
+        _menuBar = [.. options.MenuBar];
+        if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
+    }
+
+    private IReadOnlyList<DesktopMenu> _menuBar;
+    private IDesktopMenuCommandTarget? _menuCommands;
+
+    /// <summary>Gets the menus of the menu bar: <see cref="DesktopHostOptions.MenuBar"/>, or those of the last <see cref="SetMenuBar"/>.</summary>
+    public IReadOnlyList<DesktopMenu> MenuBar => Volatile.Read(ref _menuBar);
+
+    /// <summary>Occurs after <see cref="SetMenuBar"/> has replaced the menus, so command sources can follow new command ids.</summary>
+    public event EventHandler? MenuBarChanged;
+
+    /// <summary>
+    /// Replaces the application's menus in the macOS menu bar, for example with titles in a new language after a
+    /// locale change. The standard menus stay.
+    /// </summary>
+    /// <param name="menus">The new menus; empty removes the application's menus.</param>
+    /// <exception cref="ArgumentException">A menu or item is incomplete; see <see cref="DesktopHostOptions.MenuBar"/>.</exception>
+    /// <remarks>On macOS the bar changes on the main thread, which <see cref="DesktopEventLoop"/> runs, as soon as it can.</remarks>
+    public void SetMenuBar(IReadOnlyList<DesktopMenu> menus)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(menus);
+        _ = DesktopMenuBar.Check(menus, OperatingSystem.IsMacOS());
+        IReadOnlyList<DesktopMenu> copy = [.. menus];
+        Volatile.Write(ref _menuBar, copy);
+        Internal.MacOsWkWebViewHost.RequestMenuBar(copy);
+        MenuBarChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Gets or sets the target of the menu commands that no key window runs, such as New or Settings…, also while no
+    /// window is open; <see langword="null"/>, the default, for none.
+    /// </summary>
+    public IDesktopMenuCommandTarget? MenuCommands
+    {
+        get => Volatile.Read(ref _menuCommands);
+        set
+        {
+            Volatile.Write(ref _menuCommands, value);
+            Internal.MacOsWkWebViewHost.SetApplicationMenuCommands(value);
+        }
     }
 
     /// <summary>Creates a host. Its listener binds when the first surface starts.</summary>
@@ -175,6 +218,8 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             diagnostics.Add(DesktopWindowOptionValidation.Invalid(error.Message));
         }
+        // The menu bar's shortcuts that the standard menus keep, and that Windows and Linux show no menu bar.
+        diagnostics.AddRange(DesktopMenuBar.Check(MenuBar, OperatingSystem.IsMacOS()));
 
         if (_logger is { } logger)
         {
@@ -439,6 +484,8 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "ConnectionTimeout must be positive.");
         }
+        ArgumentNullException.ThrowIfNull(options.MenuBar);
+        _ = DesktopMenuBar.Check(options.MenuBar, OperatingSystem.IsMacOS());
         if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
         {
             throw new ArgumentOutOfRangeException(

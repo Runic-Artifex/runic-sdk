@@ -519,6 +519,70 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
 
+### Menu bar commands
+
+A Window's root ViewModel runs the menu bar's commands while its Window is the
+key window by implementing `IRunicMenuCommandSource`. The host's menu bar
+(Runic Desktop's `DesktopHostOptions.MenuBar`) names each command by id:
+
+```csharp
+public sealed partial class EditorViewModel : ObservableObject, IRunicMenuCommandSource
+{
+    public ICommand? GetMenuCommand(string commandId) => commandId switch
+    {
+        "file.save" => SaveCommand,
+        "edit.find" => Find.OpenCommand, // a child ViewModel's command
+        _ => null,
+    };
+}
+```
+
+The host asks once for each id when the Window opens, and again after
+`DesktopHost.SetMenuBar`, in the ViewModel's model turn. An item is enabled
+while its command's `CanExecute(null)` is `true`, following `CanExecuteChanged`,
+and runs `Execute(null)` in the model turn; a failure is logged as event 2004,
+`DesktopMenuCommandFailed`. An id the ViewModel returns `null` for goes to the
+application's commands, `RunicDesktopHost.MenuCommands`, such as New or
+Settings…, which also run while no Window is open. Runic Desktop shows the menu
+bar on macOS; elsewhere, and on CS-WebUI, render menus in the page, bound to the
+same commands.
+
+### Keyboard shortcuts in the page
+
+In-window shortcuts belong to the page: handle `keydown` and run the generated
+command, as a button would. `matchesShortcut` and `formatShortcut` from
+`@runic-artifex/views` read the same shortcut text as `DesktopShortcut`, so one
+`Primary+S` is ⌘S on macOS and Ctrl+S on Windows and Linux:
+
+```ts
+import { formatShortcut, matchesShortcut } from "@runic-artifex/views";
+
+addEventListener("keydown", (event) => {
+  if (matchesShortcut(event, "Primary+S") && editor.state.canSave) {
+    event.preventDefault();
+    void editor.save();
+  }
+});
+saveButton.title = `Save (${formatShortcut("Primary+S")})`;
+saveButton.setAttribute("aria-keyshortcuts", "Control+S Meta+S");
+```
+
+- **Primary, not Ctrl.** `Primary` is `metaKey` on Apple platforms and
+  `ctrlKey` elsewhere; matching requires exactly the shortcut's modifiers, and
+  keys an input method is composing never match.
+- **Text editing comes first.** Leave Undo, Cut, Copy, Paste, Select All and
+  arrow-key movement to text fields; check `event.target` before taking a key
+  that editing uses.
+- **Keys the window keeps.** The operating system and web view reserve some
+  keys: ⌘Q, ⌘W, ⌘H and ⌘M on macOS, Alt+F4 on Windows, F12 and the zoom keys in
+  embedded windows. A key the page handles with `preventDefault()` does not
+  reach a menu item with the same shortcut, so declare a command's shortcut on
+  the macOS menu item or in the page, not both.
+- **Make shortcuts discoverable.** Show them beside the control or in the
+  page's menus with `formatShortcut`, and set `aria-keyshortcuts` so screen
+  readers announce them. Global shortcuts, which work while the application is
+  in the background, are not supported yet.
+
 ### Receiving dropped files
 
 A Window's root ViewModel receives the files the user drops onto its window,
@@ -1676,6 +1740,7 @@ output accordingly. The message properties are listed per event.
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
+| 2004 | `DesktopMenuCommandFailed` | Error | A menu bar command of a Window's root ViewModel (`IRunicMenuCommandSource`) or of `RunicDesktopHost.MenuCommands` threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
 | 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |
@@ -1706,7 +1771,7 @@ or `Trace` without one.
 Navigation (1060-1075) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
-section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`, and event 2100
+section. Events 2000, 2002 and 2004 use `Runic.Application.Views.Desktop`, and event 2100
 uses `Runic.Application.Views.CsWebUi` and the factory of the Window's scope. Events 3000-3012
 use `Runic.Desktop` and `DesktopHostOptions.LoggerFactory`, which `RunicDesktopHost.Run`
 and `RunicViewHost` fill from the application's services.

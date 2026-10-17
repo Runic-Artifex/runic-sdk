@@ -124,6 +124,14 @@ the window. A page may add a routing label for the element under the drop. The
 label is untrusted: it is attached only to a drop the native window reported,
 and must never be treated as a path or used for an access decision.
 
+An application menu bar is declared by the host, never by page content: its
+items name commands by id, which the key window's command target runs, or else
+the application's. An item is enabled only while a target can run its command,
+and the platform's standard menu shortcuts stay with the standard menus. A
+shortcut is written once with a platform-neutral primary modifier: Command on
+Apple platforms, Ctrl elsewhere. The shared shortcut cases are in
+[fixtures/shortcuts.json](fixtures/shortcuts.json).
+
 Closing a window closes only resources owned by that presentation. It does not
 implicitly terminate its surface when other windows, sessions, or a server-only
 owner keep the surface alive. The application or host adapter decides whether

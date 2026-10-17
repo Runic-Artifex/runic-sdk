@@ -64,3 +64,14 @@ export interface ViewReference<TClient = unknown> {
   readonly kind: string;
   connect(): Promise<TClient>;
 }
+export {
+  formatShortcut,
+  isApplePlatform,
+  matchesShortcut,
+  parseShortcut,
+  shortcutText,
+  type Shortcut,
+  type ShortcutEvent,
+  type ShortcutModifier,
+  type ShortcutOptions,
+} from "./shortcuts.js";
