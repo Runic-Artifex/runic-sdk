@@ -94,9 +94,9 @@ function hydrate(wire: WireState): EditorState {
     deactivationCount: bridgeWire.integer(wire.deactivationCount, -2147483648, 2147483647),
   };
 }
-const bridgeContract = "NotesReactiveViews.EditorViewModel:2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F";
+const bridgeContract = "NotesReactiveViews.EditorViewModel:40D769D3CFF1067D01A4F7BCD7BBBC0F2DF1906BFD84477727DBCB9C6886AD57";
 const interactionDefinitions = defineInteractions({
-  confirmDiscard: { contract: "2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmDiscard: { contract: "40D769D3CFF1067D01A4F7BCD7BBBC0F2DF1906BFD84477727DBCB9C6886AD57:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const checkedFieldNames = ["title", "body"];
 

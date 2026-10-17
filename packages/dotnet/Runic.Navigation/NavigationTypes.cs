@@ -413,7 +413,7 @@ public abstract record NavigationResult<TContent> where TContent : class
     /// <summary>Gets a summary of this result that a Runic View can receive.</summary>
     public NavigationOutcome Outcome => this switch
     {
-        Committed => new(NavigationOutcomeKind.Committed),
+        Committed committed => new(NavigationOutcomeKind.Committed) { Activation = committed.Activation },
         Rejected rejected => new(NavigationOutcomeKind.Rejected, rejected.Reason),
         Superseded => new(NavigationOutcomeKind.Superseded),
         _ => new(NavigationOutcomeKind.Failed),

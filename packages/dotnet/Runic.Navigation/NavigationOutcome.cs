@@ -22,4 +22,13 @@ public enum NavigationOutcomeKind
 /// </summary>
 /// <param name="Kind">How the request ended.</param>
 /// <param name="Rejection">Why the request was rejected, for <see cref="NavigationOutcomeKind.Rejected"/>; otherwise <see langword="null"/>.</param>
-public sealed record NavigationOutcome(NavigationOutcomeKind Kind, NavigationRejection? Rejection = null);
+public sealed record NavigationOutcome(NavigationOutcomeKind Kind, NavigationRejection? Rejection = null)
+{
+    /// <summary>
+    /// Gets how the activation hooks (<see cref="INavigationActivated"/>) of the entries a
+    /// <see cref="NavigationOutcomeKind.Committed"/> transition made current ended, so a page can show that their data
+    /// failed to load; <see cref="NavigationActivationState.None"/> for every other kind. Only the full navigation result
+    /// carries the exception of a <see cref="NavigationActivationState.Failed"/> hook.
+    /// </summary>
+    public NavigationActivationState Activation { get; init; }
+}
