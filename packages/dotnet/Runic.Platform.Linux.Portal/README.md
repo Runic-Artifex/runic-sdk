@@ -187,3 +187,21 @@ in a sandbox, where the portal knows the application.
 var startup = portals.CreateLoginStartup();
 await startup.EnableAsync(new LoginStartupRequest(["--background"]) { Reason = "Keep watching for updates." });
 ```
+
+## Secret storage
+
+`CreateSecretStore()` on `PortalApplication` or `PortalPlatformProvider` keeps
+secrets in the desktop's Secret Service (`org.freedesktop.secrets`): GNOME
+Keyring, KeePassXC or KWallet. Secrets travel over an encrypted
+`dh-ietf1024-sha256-aes128-cbc-pkcs7` session; a service without it gets a
+`plain` session and the `secret-service-plain-session` diagnostic. Items use
+libsecret's generic schema (`service` and `account` attributes), so
+`secret-tool lookup service <service> account <account>` reads them, and are
+labelled `<service> (<account>)`. A locked keyring is unlocked through the
+service's own prompt; without a prompter the result is `Failed(Locked)`.
+
+Without a Secret Service, requests report `Unavailable(BackendUnavailable)` and
+the `secret-service-unavailable` diagnostic. Inside Flatpak, add
+`--talk-name=org.freedesktop.secrets` to the finish arguments; inside Snap,
+connect the `password-manager-service` interface. The Secret portal is not used
+yet. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).

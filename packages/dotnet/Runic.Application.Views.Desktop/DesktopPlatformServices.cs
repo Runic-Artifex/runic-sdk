@@ -246,6 +246,41 @@ public static partial class PlatformServices
             .CreateUnparentedInhibition();
 #endif
 
+    /// <summary>Creates secret storage in the user's credential store from the provider for the operating system.</summary>
+    /// <returns>A secret store; it holds no native resources between requests and needs no disposal.</returns>
+    /// <remarks>
+    /// Linux uses the desktop's Secret Service, such as GNOME Keyring or KeePassXC, with either toolkit and without
+    /// loading GTK; Windows uses Credential Manager and macOS the user's login keychain. It needs no window and connects
+    /// to nothing until the first request. Elsewhere every request reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopSecretStore CreateSecretStore() => CreateSecretStore(null);
+
+    internal static IDesktopSecretStore CreateSecretStore(ILogger? logger)
+    {
+        IDesktopSecretStore? store = null;
+        if (OperatingSystem.IsWindows()) store = Optional(CreateWindowsSecretStore);
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsLinux()) store = CreatePortalSecretStore(logger);
+        else if (OperatingSystem.IsMacOS()) store = CreateMacOSSecretStore();
+#endif
+        return store ?? DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopSecretStore CreateWindowsSecretStore() => WindowsPlatformProvider.CreateSecretStore();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopSecretStore CreatePortalSecretStore(ILogger? logger) =>
+        new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateSecretStore();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopSecretStore CreateMacOSSecretStore() => MacOSPlatformProvider.CreateSecretStore();
+#endif
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreateWindowsStatusIcon() => WindowsPlatformProvider.CreateStatusIcon();
 
@@ -647,8 +682,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
     /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
-    /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/> and <see cref="IDesktopInhibition"/> for the
-    /// application, without an application ID.
+    /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/> and
+    /// <see cref="IDesktopSecretStore"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
@@ -660,8 +695,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// The application services need no window, so they work the same with or without a native owner: they are
     /// singletons created by <see cref="PlatformServices.CreateSettings"/>,
     /// <see cref="PlatformServices.CreateNotifications(string?)"/>, <see cref="PlatformServices.CreateStatusIcon(string?)"/>,
-    /// <see cref="PlatformServices.CreateLoginStartup(string?)"/> and <see cref="PlatformServices.CreateInhibition(string?)"/>
-    /// when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
+    /// <see cref="PlatformServices.CreateLoginStartup(string?)"/>, <see cref="PlatformServices.CreateInhibition(string?)"/>
+    /// and <see cref="PlatformServices.CreateSecretStore()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
     /// <see cref="AddRunicPlatformServices(IServiceCollection, string)"/> instead. Existing registrations of these
@@ -713,6 +748,8 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddSingleton(provider => PlatformServices.CreateStatusIcon(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(provider => PlatformServices.CreateInhibition(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(static provider => PlatformServices.CreateSecretStore(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());

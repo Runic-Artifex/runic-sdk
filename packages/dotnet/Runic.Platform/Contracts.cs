@@ -33,7 +33,9 @@ public enum PlatformFailureCode
     /// <summary>The destination changed since acquisition.</summary>
     Conflict,
     /// <summary>The user dismissed a native interactive operation.</summary>
-    UserDismissed
+    UserDismissed,
+    /// <summary>The store is locked and could not ask the user to unlock it.</summary>
+    Locked
 }
 
 /// <summary>Ownership requirements for native dialogs. This preview supports owned dialogs only.</summary>

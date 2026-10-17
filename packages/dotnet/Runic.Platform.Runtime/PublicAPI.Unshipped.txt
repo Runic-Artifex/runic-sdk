@@ -26,3 +26,8 @@ Runic.Platform.Runtime.NativePickerBackend.SupportsMultipleSelection.get -> bool
 Runic.Platform.Runtime.PresentationFiles.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
 static Runic.Platform.Runtime.NativeFileDialogRequest.operator !=(Runic.Platform.Runtime.NativeFileDialogRequest? left, Runic.Platform.Runtime.NativeFileDialogRequest? right) -> bool
 static Runic.Platform.Runtime.NativeFileDialogRequest.operator ==(Runic.Platform.Runtime.NativeFileDialogRequest? left, Runic.Platform.Runtime.NativeFileDialogRequest? right) -> bool
+Runic.Platform.Runtime.SecretStoreValidation
+const Runic.Platform.Runtime.SecretStoreValidation.MaximumSecretBytes = 2560 -> int
+static Runic.Platform.Runtime.SecretStoreValidation.DecodeSecret(System.ReadOnlySpan<byte> stored) -> string?
+static Runic.Platform.Runtime.SecretStoreValidation.EncodeSecret(string! secret) -> byte[]?
+static Runic.Platform.Runtime.SecretStoreValidation.Validate(string! service, string! account) -> void

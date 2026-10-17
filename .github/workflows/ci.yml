@@ -554,6 +554,16 @@ jobs:
           # The run without a filter keeps the portable cases covered under NativeAOT.
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
+      # A real Secret Service: GNOME Keyring with an unlocked login keyring on a private session bus, from the JIT build
+      # and the NativeAOT executable. The case requires the encrypted session and has secret-tool read what it stored.
+      - name: Verify secret storage against GNOME Keyring with JIT and NativeAOT
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        run: |
+          eng/ci/apt-install.sh gnome-keyring libsecret-tools
+          for tests in "dotnet tests/dotnet/Runic.Platform.Linux.Portal.Tests/bin/Release/net10.0/Runic.Platform.Linux.Portal.Tests.dll" artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests; do
+            RUNIC_TEST_SECRET_SERVICE=gnome-keyring dbus-run-session -- sh -c "printf runic | gnome-keyring-daemon --unlock --components=secrets >/dev/null && $tests --treenode-filter '/*/*/*/*[Category=SecretService]' --output detailed"
+          done
       - name: Verify privileged actions under NativeAOT
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
@@ -686,6 +696,14 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=Native]"
+      # Credential Manager and the runner's login keychain, under a service unique to each run.
+      - name: Verify secret storage with JIT and NativeAOT
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeSecrets]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeSecrets]" --output detailed
       # Privileged actions: the XPC protocol, both code-signing checks, posix_spawn and Authorization Services with the
       # daemon served in the test process; then the NativeAOT executable as a root launch daemon in the system domain,
       # with real rights and a temporary administrator (the runner's passwordless sudo). SMAppService registration

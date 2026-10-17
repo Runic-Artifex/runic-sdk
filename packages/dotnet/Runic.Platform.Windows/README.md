@@ -31,6 +31,17 @@ application choice and reveal, are described in the
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.
 
+## Secret storage
+
+`WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic
+credentials in the user's Credential Manager vault, persisted for this user on
+this computer. The target is `<service>/<account>`, with `/` and `%` in the
+service percent-encoded, and the user name is the account, so Control Panel's
+Credential Manager lists them under Windows Credentials. A process without a
+logon session's vault, such as a service, reports
+`Unavailable(BackendUnavailable)`. See the
+[secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+
 ## Status icon and window presentation
 
 `PlatformServices.CreateStatusIcon()` and `AddRunicPlatformServices()` in

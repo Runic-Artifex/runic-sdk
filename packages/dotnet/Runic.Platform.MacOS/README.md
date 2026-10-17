@@ -77,6 +77,17 @@ signature reports `InvalidData`, and other `SMAppService` errors keep their
 domain and code in the diagnostic. A call that succeeds without changing the
 login item's status reports that as an `IoError`.
 
+## Secret storage
+
+`MacOSPlatformProvider.CreateSecretStore()` keeps secrets as generic passwords
+in the user's default keychain, labelled with the service, as Keychain Access
+shows them. The Keychain may ask the user to unlock it or to allow the
+application; a request waits for the answer, which cancellation does not
+interrupt. A locked keychain that cannot show its dialog, as in an SSH session,
+reports `Failed(Locked)`, and a dismissed dialog `Failed(UserDismissed)`. The
+data-protection keychain, which needs a `keychain-access-groups` entitlement, is
+not used. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+
 ## Window presentation
 
 `PlatformServices.PresentAsync(owner)` orders a Desktop window front as the key

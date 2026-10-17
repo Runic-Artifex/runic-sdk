@@ -30,6 +30,11 @@ public static class WindowsPlatformProvider
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
         return new WindowsLoginStartup(applicationId);
     }
+    /// <summary>Creates secret storage in the user's Credential Manager, as generic credentials.</summary>
+    /// <remarks>Each secret is a credential whose target is <c>service/account</c>, with <c>/</c> and <c>%</c> in the
+    /// service percent-encoded, and whose user name is the account. It persists for this user on this computer.</remarks>
+    public static IDesktopSecretStore CreateSecretStore()
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsSecretStore(); }
     // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
     // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
     internal static IDesktopStatusIcon CreateStatusIcon()
