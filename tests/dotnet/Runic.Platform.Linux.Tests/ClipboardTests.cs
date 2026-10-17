@@ -127,6 +127,30 @@ internal sealed class ClipboardTests
             try { await selection.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directory cancellation ignored."); }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         }
+        // Filters, the initial folder and multiple selection reach the chooser. Without a portal, GTK shows its own
+        // dialog, which reports the options it was given.
+        string folder = Directory.CreateTempSubdirectory("runic-chooser-").FullName;
+        try
+        {
+            ChooserState? state = null;
+            shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            owner.AfterDispatch = () => shown.TrySetResult();
+            using var cancellation = new CancellationTokenSource();
+            var files = directories.OpenFilesAsync(new OpenFileOptions
+            {
+                Filters = [new("Images", ["png", "jpg"]), new("All files", ["*"])], InitialDirectory = folder,
+            }, cancellation.Token).AsTask();
+            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            // The dialog applies the folder once its main loop has run; read it from later dispatches.
+            for (var deadline = DateTime.UtcNow.AddSeconds(5); state?.Folder is null && DateTime.UtcNow < deadline; await Task.Delay(50))
+                await owner.InvokeAsync(_ => state = ChooserState.Read());
+            cancellation.Cancel();
+            try { await files.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Multiple selection cancellation ignored."); }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            Check(state is { Multiple: true, Current: "Images", Folder: var shownFolder } && state.Filters.SequenceEqual(["Images", "All files"]) && shownFolder == folder,
+                $"GTK chooser options: {state}");
+        }
+        finally { Directory.Delete(folder); }
         shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         owner.AfterDispatch = () => shown.TrySetResult();
         var pendingDirectory = directories.OpenDirectoryAsync(new()).AsTask();
@@ -223,8 +247,51 @@ internal sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
     public ValueTask DisposeAsync() { stopping = true; thread.Join(); return ValueTask.CompletedTask; }
 }
 
+// The options of the GTK file chooser dialog that is open, read on the GTK thread.
+internal sealed record ChooserState(bool Multiple, string[] Filters, string? Current, string? Folder)
+{
+    internal static ChooserState? Read()
+    {
+        nint toplevels = Native.ListToplevels();
+        try
+        {
+            for (nint node = toplevels; node != 0; node = Marshal.ReadIntPtr(node, IntPtr.Size))
+            {
+                nint window = Marshal.ReadIntPtr(node);
+                if (Native.IsA(window, Native.FileChooserType()) == 0) continue;
+                var filters = new List<string>();
+                nint list = Native.ListFilters(window);
+                for (nint item = list; item != 0; item = Marshal.ReadIntPtr(item, IntPtr.Size))
+                    filters.Add(Marshal.PtrToStringUTF8(Native.FilterName(Marshal.ReadIntPtr(item))) ?? "");
+                Native.FreeSList(list);
+                nint current = Native.CurrentFilter(window);
+                nint folder = Native.CurrentFolder(window);
+                try
+                {
+                    return new(Native.SelectMultiple(window) != 0, [.. filters],
+                        current == 0 ? null : Marshal.PtrToStringUTF8(Native.FilterName(current)), Marshal.PtrToStringUTF8(folder));
+                }
+                finally { Native.Free(folder); }
+            }
+            return null;
+        }
+        finally { Native.FreeList(toplevels); }
+    }
+    public override string ToString() => $"multiple {Multiple}, filters [{string.Join(", ", Filters)}], current {Current}, folder {Folder}";
+}
+
 internal static partial class Native
 {
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_window_list_toplevels")] internal static partial nint ListToplevels();
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_list_free")] internal static partial void FreeList(nint list);
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_slist_free")] internal static partial void FreeSList(nint list);
+    [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_type_check_instance_is_a")] internal static partial int IsA(nint instance, nint type);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_type")] internal static partial nint FileChooserType();
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_select_multiple")] internal static partial int SelectMultiple(nint chooser);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_list_filters")] internal static partial nint ListFilters(nint chooser);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_filter")] internal static partial nint CurrentFilter(nint chooser);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_current_folder")] internal static partial nint CurrentFolder(nint chooser);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_filter_get_name")] internal static partial nint FilterName(nint filter);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_window_new")] internal static partial nint NewWindow(int type);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_show")] internal static partial void Show(nint window);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_destroy")] internal static partial void Destroy(nint window);

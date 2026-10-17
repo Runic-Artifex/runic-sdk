@@ -16,10 +16,13 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable) : files;
         CapabilityStatus directories = files is CapabilityStatus.Available && backend?.SupportsDirectorySelection != true
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
+        CapabilityStatus multiple = files is CapabilityStatus.Available && backend?.SupportsMultipleSelection != true
+            ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
             .Add("platform.files.open", files).Add("platform.files.save", save)
             .Add("platform.directories.open", directories)
-            .Add("platform.dialogs.owned", files));
+            .Add("platform.dialogs.owned", files)
+            .Add("platform.files.openMultiple", multiple));
     }
 
     /// <inheritdoc />
@@ -59,6 +62,15 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
     {
         ArgumentNullException.ThrowIfNull(options);
         return PickAsync(options.OwnerPolicy, token => backend!.OpenFileAsync(options, token), value => new PresentationReadLease(lifetime, value), cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<IReadFileLeaseList>> OpenFilesAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return PickAsync(options.OwnerPolicy, token => backend!.SupportsMultipleSelection ? backend.OpenFilesAsync(options, token)
+                : ValueTask.FromResult<PickerResult<IReadFileLeaseList>>(new PickerResult<IReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable)),
+            value => new PresentationReadLeaseList(lifetime, value), cancellationToken);
     }
 
     /// <inheritdoc />

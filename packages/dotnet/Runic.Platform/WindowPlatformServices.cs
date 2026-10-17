@@ -28,7 +28,7 @@ public static class WindowPlatformServices
     public static ImmutableArray<string> CapabilityIds { get; } =
     [
         "platform.files.open", "platform.files.save", "platform.directories.open", "platform.dialogs.owned",
-        "platform.clipboard.readText", "platform.clipboard.writeText", "platform.files.launch",
+        "platform.clipboard.readText", "platform.clipboard.writeText", "platform.files.launch", "platform.files.openMultiple",
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
@@ -63,6 +63,12 @@ public static class WindowPlatformServices
         {
             ArgumentNullException.ThrowIfNull(options);
             return Pick<IReadFileLease>(cancellationToken);
+        }
+
+        public ValueTask<PickerResult<IReadFileLeaseList>> OpenFilesAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            return Pick<IReadFileLeaseList>(cancellationToken);
         }
 
         public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)

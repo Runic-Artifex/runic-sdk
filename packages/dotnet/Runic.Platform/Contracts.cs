@@ -163,16 +163,124 @@ public abstract record FileCommitResult
     public sealed record CommitUnknown(PlatformFailureCode Code) : FileCommitResult;
 }
 
-/// <summary>Options for selecting one existing file.</summary>
+/// <summary>A named file type a file dialog offers, such as "Images" for <c>png</c> and <c>jpg</c>.</summary>
+/// <remarks>
+/// A filter is a hint to the dialog: it limits which files the dialog shows, but the user can still choose or type a
+/// name that matches no filter on some platforms, and Runic does not reject such a selection. Validate the content
+/// you read. Extensions match case-insensitively on every platform. macOS shows no filter pop-up: its panel offers
+/// the files of every filter at once.
+/// </remarks>
+/// <param name="Name">The name the dialog shows, in the user's language.</param>
+/// <param name="Extensions">
+/// Extensions without the leading dot, such as <c>png</c> or <c>tar.gz</c>, or <c>*</c> for every file. At least one.
+/// </param>
+/// <exception cref="ArgumentException">The name is empty, or an extension is empty or contains a path separator, a
+/// wildcard other than a lone <c>*</c>, a leading dot or a character that cannot appear in a filename pattern.</exception>
+public sealed record FileDialogFilter(string Name, ImmutableArray<string> Extensions)
+{
+    private readonly string _name = ValidName(Name);
+    private readonly ImmutableArray<string> _extensions = ValidExtensions(Extensions);
+
+    /// <summary>The name the dialog shows, in the user's language.</summary>
+    public string Name { get => _name; init => _name = ValidName(value); }
+    /// <summary>Extensions without the leading dot, or <c>*</c> for every file.</summary>
+    public ImmutableArray<string> Extensions { get => _extensions; init => _extensions = ValidExtensions(value); }
+
+    /// <summary>Whether the filter matches every file.</summary>
+    public bool MatchesAllFiles => _extensions.Contains("*");
+
+    // Wildcards, separators and characters that a Windows filter specification or a glob would interpret.
+    private static readonly System.Buffers.SearchValues<char> PatternCharacters = System.Buffers.SearchValues.Create("*?[]{}/\\;,:\0");
+
+    private static string ValidName(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (name.Contains('\0')) throw new ArgumentException("A filter name cannot contain NUL.", nameof(name));
+        return name;
+    }
+
+    private static ImmutableArray<string> ValidExtensions(ImmutableArray<string> extensions)
+    {
+        if (extensions.IsDefaultOrEmpty) throw new ArgumentException("A filter needs at least one extension.", nameof(extensions));
+        foreach (var extension in extensions)
+        {
+            if (extension == "*") continue;
+            if (string.IsNullOrWhiteSpace(extension) || extension[0] == '.' || extension[^1] == '.'
+                || extension.AsSpan().IndexOfAny(PatternCharacters) >= 0 || extension.Any(char.IsControl) || extension.Any(char.IsWhiteSpace))
+                throw new ArgumentException($"Use an extension without its dot, such as \"png\", or \"*\" for every file: \"{extension}\".", nameof(extensions));
+        }
+        return extensions;
+    }
+}
+
+/// <summary>Options for selecting existing files.</summary>
 /// <param name="OwnerPolicy">The required dialog ownership.</param>
-public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner);
+public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
+{
+    private readonly ImmutableArray<FileDialogFilter> _filters = [];
+    private readonly string? _initialDirectory;
+
+    /// <summary>The file types the dialog offers, the first selected initially; empty offers every file.</summary>
+    /// <remarks>Filters are hints that Runic does not enforce on the selection; see <see cref="FileDialogFilter"/>.</remarks>
+    /// <exception cref="ArgumentException">The array contains <see langword="null"/>.</exception>
+    public ImmutableArray<FileDialogFilter> Filters { get => _filters; init => _filters = FileDialogOptions.ValidFilters(value); }
+
+    /// <summary>The fully qualified directory the dialog opens in, or <see langword="null"/> for the platform's choice.</summary>
+    /// <remarks>A directory that does not exist is ignored by the platform. The xdg-desktop-portal FileChooser before
+    /// version 4 ignores it when opening files.</remarks>
+    /// <exception cref="ArgumentException">The path is not fully qualified or contains NUL.</exception>
+    public string? InitialDirectory { get => _initialDirectory; init => _initialDirectory = FileDialogOptions.ValidDirectory(value); }
+}
+
 /// <summary>Options for selecting one existing local directory.</summary>
 /// <param name="OwnerPolicy">The required dialog ownership.</param>
-public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner);
+public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
+{
+    private readonly string? _initialDirectory;
+
+    /// <summary>The fully qualified directory the dialog opens in, or <see langword="null"/> for the platform's choice.</summary>
+    /// <remarks>A directory that does not exist is ignored by the platform. The xdg-desktop-portal FileChooser before
+    /// version 4 ignores it.</remarks>
+    /// <exception cref="ArgumentException">The path is not fully qualified or contains NUL.</exception>
+    public string? InitialDirectory { get => _initialDirectory; init => _initialDirectory = FileDialogOptions.ValidDirectory(value); }
+}
+
 /// <summary>Options for selecting one save destination.</summary>
 /// <param name="SuggestedName">A filename without path separators.</param>
 /// <param name="OwnerPolicy">The required dialog ownership.</param>
-public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner);
+public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
+{
+    private readonly ImmutableArray<FileDialogFilter> _filters = [];
+    private readonly string? _initialDirectory;
+
+    /// <summary>The file types the dialog offers, the first selected initially; empty offers every file.</summary>
+    /// <remarks>Filters are hints: Runic does not add an extension to the chosen name or reject a name that matches no
+    /// filter; see <see cref="FileDialogFilter"/>.</remarks>
+    /// <exception cref="ArgumentException">The array contains <see langword="null"/>.</exception>
+    public ImmutableArray<FileDialogFilter> Filters { get => _filters; init => _filters = FileDialogOptions.ValidFilters(value); }
+
+    /// <summary>The fully qualified directory the dialog opens in, or <see langword="null"/> for the platform's choice.</summary>
+    /// <remarks>A directory that does not exist is ignored by the platform.</remarks>
+    /// <exception cref="ArgumentException">The path is not fully qualified or contains NUL.</exception>
+    public string? InitialDirectory { get => _initialDirectory; init => _initialDirectory = FileDialogOptions.ValidDirectory(value); }
+}
+
+internal static class FileDialogOptions
+{
+    internal static ImmutableArray<FileDialogFilter> ValidFilters(ImmutableArray<FileDialogFilter> filters)
+    {
+        if (filters.IsDefaultOrEmpty) return [];
+        if (filters.Contains(null!)) throw new ArgumentException("A filter cannot be null.", nameof(filters));
+        return filters;
+    }
+
+    internal static string? ValidDirectory(string? directory)
+    {
+        if (directory is not null && (directory.Contains('\0') || !Path.IsPathFullyQualified(directory)))
+            throw new ArgumentException("Use a fully qualified directory path.", nameof(directory));
+        return directory;
+    }
+}
 
 /// <summary>Presentation-scoped selection of file access. Leases, streams and native access remain in C#.</summary>
 public interface IFileDialogs
@@ -193,6 +301,21 @@ public interface IFileDialogs
     }
     /// <summary>Selects and acquires a single-use read lease.</summary>
     ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default);
+    /// <summary>Selects one or more files and acquires a single-use read lease for each.</summary>
+    /// <remarks>
+    /// The selection is all or nothing: if any selected file cannot be opened, every acquired lease is released and
+    /// the result is <see cref="PickerResult{T}.Failed"/>. Each lease holds an open file until it or the list is
+    /// disposed. The default implementation returns <see cref="PickerResult{T}.Unavailable"/> with
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>; a provider that implements multiple selection
+    /// overrides it and reports the <c>platform.files.openMultiple</c> capability.
+    /// </remarks>
+    ValueTask<PickerResult<IReadFileLeaseList>> OpenFilesAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PickerResult<IReadFileLeaseList>>(new PickerResult<IReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
     /// <summary>Selects and acquires a save destination.</summary>
     ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default);
 }
@@ -219,6 +342,10 @@ public interface IReadFileLease : IAsyncDisposable
     /// <summary>Consumes the lease once and returns its acquired stream. The lease retains ownership of the stream.</summary>
     ValueTask<Stream> OpenReadAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>The read leases of one multiple selection, in the order the dialog returned them.</summary>
+/// <remarks>Disposing the list releases every lease in it; a lease disposed on its own stays released.</remarks>
+public interface IReadFileLeaseList : IReadOnlyList<IReadFileLease>, IAsyncDisposable;
 
 /// <summary>Owns an acquired save destination and its access grant.</summary>
 public interface ISaveFileLease : IAsyncDisposable

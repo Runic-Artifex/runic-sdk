@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -13,19 +14,37 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
     // A sandbox grants the selected URL only, never sibling staging.
     public bool SupportsAtomicReplace => !Sandboxed.Value;
 
-    public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
-        => SelectCoreAsync(save, false, suggestedName, cancellationToken);
+    public bool SupportsMultipleSelection => true;
 
-    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
+    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
+        (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
+
+    public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
-        var selection = await SelectCoreAsync(false, true, null, cancellationToken).ConfigureAwait(false);
-        return selection is null ? null : new(selection.Path, selection.Access);
+        ArgumentNullException.ThrowIfNull(request);
+        return SelectCoreAsync(request, false, cancellationToken);
     }
 
-    private async ValueTask<NativeFileSelection?> SelectCoreAsync(bool save, bool directory, string? suggestedName, CancellationToken cancellationToken)
+    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) => SelectDirectoryAsync(null, cancellationToken);
+
+    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
     {
+        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, true, cancellationToken)
+            .ConfigureAwait(false);
+        return selections is [var selection] ? new(selection.Path, selection.Access) : null;
+    }
+
+    // The extensions a panel allows: the union of every filter, or null for every file. AppKit has no filter pop-up.
+    internal static string[]? AllowedExtensions(ImmutableArray<FileDialogFilter> filters) =>
+        filters.IsDefaultOrEmpty || filters.Any(static filter => filter.MatchesAllFiles) ? null
+            : [.. filters.SelectMany(static filter => filter.Extensions).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    private async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectCoreAsync(NativeFileDialogRequest request, bool directory, CancellationToken cancellationToken)
+    {
+        bool save = request.Save, multiple = request.AllowMultiple && !save && !directory;
+        string? suggestedName = request.SuggestedName;
         nint panel = 0;
-        var result = new TaskCompletionSource<NativeFileSelection?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var result = new TaskCompletionSource<IReadOnlyList<NativeFileSelection>?>(TaskCreationOptions.RunContinuationsAsynchronously);
         CancellationTokenRegistration registration = default;
         Task cancellation = Task.CompletedTask;
         try
@@ -46,29 +65,48 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
                 {
                     SendArg(panel, Sel("setCanChooseDirectories:"), directory ? 1 : 0);
                     SendArg(panel, Sel("setCanChooseFiles:"), directory ? 0 : 1);
-                    SendArg(panel, Sel("setAllowsMultipleSelection:"), 0);
+                    SendArg(panel, Sel("setAllowsMultipleSelection:"), multiple ? 1 : 0);
+                }
+                if (!directory && AllowedExtensions(request.Filters) is { } extensions) SetAllowedContentTypes(panel, extensions);
+                // A folder that does not exist leaves AppKit's own choice: the request is a hint.
+                if (request.InitialDirectory is { } folder && Directory.Exists(folder))
+                {
+                    nint path = String(folder);
+                    try { SendArg(panel, Sel("setDirectoryURL:"), FileUrl(GetClass("NSURL"), Sel("fileURLWithPath:isDirectory:"), path, 1)); }
+                    finally { Send(path, Sel("release")); }
                 }
                 nint block = CompletionBlock.Create(response =>
                 {
                     using var pool = new AutoreleasePool();
+                    List<MacOsSecurityAccess> acquired = [];
                     try
                     {
                         if (response != 1) { result.TrySetResult(null); return; }
-                        nint url = Send(panel, Sel("URL"));
-                        if (url == 0) throw new IOException("AppKit returned no selected URL.");
-                        var access = MacOsSecurityAccess.Acquire(url);
-                        try
+                        nint[] urls;
+                        if (multiple)
                         {
-                            string path = ReadExactPath(Send(url, Sel("fileSystemRepresentation")));
-                            // A sandbox's user-selected grant authorizes the selected URL,
-                            // not arbitrary sibling staging files. Never invent that access.
-                            bool sandboxed = Sandboxed.Value;
-                            if (!result.TrySetResult(new(path, access, !sandboxed && !access.Started)))
-                                access.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                            nint array = Send(panel, Sel("URLs"));
+                            nuint count = array == 0 ? 0 : (nuint)Send(array, Sel("count"));
+                            urls = new nint[(int)count];
+                            for (int index = 0; index < urls.Length; index++) urls[index] = SendIndex(array, Sel("objectAtIndex:"), (nuint)index);
                         }
-                        catch { access.DisposeAsync().AsTask().GetAwaiter().GetResult(); throw; }
+                        else urls = [Send(panel, Sel("URL"))];
+                        if (urls.Length == 0 || urls.Contains(0)) throw new IOException("AppKit returned no selected URL.");
+                        // A sandbox's user-selected grant authorizes the selected URL,
+                        // not arbitrary sibling staging files. Never invent that access.
+                        bool sandboxed = Sandboxed.Value;
+                        var selections = new List<NativeFileSelection>(urls.Length);
+                        foreach (nint url in urls)
+                        {
+                            var access = MacOsSecurityAccess.Acquire(url);
+                            acquired.Add(access);
+                            string path = ReadExactPath(Send(url, Sel("fileSystemRepresentation")));
+                            selections.Add(new(path, access, !sandboxed && !access.Started));
+                        }
+                        if (result.TrySetResult(selections)) acquired.Clear();
                     }
                     catch (Exception error) { result.TrySetException(error); }
+                    finally { foreach (var access in acquired) access.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
                 });
                 try { BeginSheet(panel, Sel("beginSheetModalForWindow:completionHandler:"), window, block); }
                 finally { CompletionBlock.Release(block); }
@@ -209,6 +247,28 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
         }
         finally { Send(key, Sel("release")); CFRelease(task); }
     }
+    // allowedContentTypes from UTType (macOS 11 and later). An extension without a type is skipped; when none has a
+    // type, the panel stays unrestricted rather than allowing nothing.
+    private static void SetAllowedContentTypes(nint panel, string[] extensions)
+    {
+        if (UniformTypes.Value == 0) return;
+        nint typeClass = GetClass("UTType");
+        if (typeClass == 0) return;
+        nint types = Send(GetClass("NSMutableArray"), Sel("array"));
+        foreach (string extension in extensions)
+        {
+            nint name = String(extension);
+            try
+            {
+                nint type = SendArgResult(typeClass, Sel("typeWithFilenameExtension:"), name);
+                if (type != 0) SendArg(types, Sel("addObject:"), type);
+            }
+            finally { Send(name, Sel("release")); }
+        }
+        if (Send(types, Sel("count")) != 0) SendArg(panel, Sel("setAllowedContentTypes:"), types);
+    }
+    private static readonly Lazy<nint> UniformTypes = new(static () =>
+        NativeLibrary.TryLoad("/System/Library/Frameworks/UniformTypeIdentifiers.framework/UniformTypeIdentifiers", out nint library) ? library : 0);
     private static nint String(string value) => StringSend(Send(GetClass("NSString"), Sel("alloc")), Sel("initWithUTF8String:"), value);
     [LibraryImport("/System/Library/Frameworks/Security.framework/Security")] private static partial nint SecTaskCreateFromSelf(nint allocator);
     [LibraryImport("/System/Library/Frameworks/Security.framework/Security")] private static partial nint SecTaskCopyValueForEntitlement(nint task, nint entitlement, out nint error);
@@ -219,6 +279,9 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
     [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial nint Send(nint receiver, nint selector);
     [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial byte SendBool(nint receiver, nint selector);
     [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial void SendArg(nint receiver, nint selector, nint argument);
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial nint SendArgResult(nint receiver, nint selector, nint argument);
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial nint SendIndex(nint receiver, nint selector, nuint index);
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial nint FileUrl(nint receiver, nint selector, nint path, byte isDirectory);
     [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static partial void BeginSheet(nint receiver, nint selector, nint window, nint completion);
     [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)] private static partial nint StringSend(nint receiver, nint selector, string value);
 }

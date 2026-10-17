@@ -4,6 +4,20 @@ Shared scoped lifetime, file leases, atomic writes and native provider infrastru
 
 Preview API targeting .NET 10. Native providers are explicitly selected; this package has no Desktop or ASP.NET Core dependency.
 
+## Native file pickers
+
+`NativePickerBackend` turns an `INativeFilePicker` into `IFileDialogs`. It passes
+each dialog's filters, initial folder and multiplicity as a `NativeFileDialogRequest`
+to `INativeFilePicker.SelectAsync(request, cancellationToken)`, and the initial
+folder of a directory dialog to `INativeDirectoryPicker.SelectDirectoryAsync(initialDirectory, cancellationToken)`.
+Both have default implementations that call the original single-file methods and
+ignore the hints, so a picker written before them keeps working. A picker that
+returns more than one selection also returns `true` from
+`SupportsMultipleSelection`; otherwise `OpenFilesAsync` reports
+`Unavailable(BackendUnavailable)` without showing a dialog. The backend releases
+the access of every selection it does not hand to a lease, including after a
+failure or cancellation.
+
 ## Single instance and replies to later launches
 
 `ApplicationInstance.ClaimAsync` makes the first launch of an application the

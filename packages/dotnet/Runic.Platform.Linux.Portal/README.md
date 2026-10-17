@@ -84,6 +84,13 @@ re-checking that the name is still absent.
 opt-in for unsandboxed applications and saves the same way. There is no automatic
 fallback to toolkit dialogs, including when a portal fails.
 
+File dialog filters become FileChooser `filters` (case-insensitive glob patterns,
+such as `*.[pP][nN][gG]`) with the first as `current_filter`; the initial folder
+becomes `current_folder`, the folder's bytes with a trailing NUL; and
+`OpenFilesAsync` sets `multiple` and accepts every returned local file URI. A
+dialog without these options sends the same request as before. Portals before
+FileChooser version 4 ignore `current_folder` when opening files.
+
 Directory selection uses `OpenDirectoryAsync` through the same providers for
 GTK3 and GTK4. It sends FileChooser `OpenFile` with `directory=true`, requiring
 FileChooser version 3 or newer. The provider refuses older portals before showing

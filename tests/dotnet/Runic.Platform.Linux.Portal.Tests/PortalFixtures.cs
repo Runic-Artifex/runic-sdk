@@ -35,6 +35,14 @@ sealed class FakeTransport(PortalResponse? result) : IPortalTransport
 {
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public bool Cancelled;
+    public string? Method;
+    public PortalChooserOptions? Chooser;
+    public ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken)
+    {
+        Method = method;
+        Chooser = chooser;
+        return RequestAsync(parent, method, argument, cancellationToken);
+    }
     public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken)
     {
         Started.TrySetResult();
@@ -57,6 +65,9 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public string? Parent;
     public string? Argument;
     public string? CurrentName;
+    public string[] Uris = ResponseUris;
+    // Every option of the last FileChooser request except the handle token, as D-Bus values.
+    public Dictionary<string, VariantValue> Options = [];
     public string? Call, RequestPath, ClosedCall, ClosedPath;
     public volatile TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -88,16 +99,19 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
         Argument = reader.ReadString();
         string token = "";
         var keys = new List<string>();
+        var options = new Dictionary<string, VariantValue>();
         var dictionary = reader.ReadDictionaryStart();
         while (reader.HasNext(dictionary))
         {
             string key = reader.ReadString();
             keys.Add(key);
             var value = reader.ReadVariantValue();
+            if (key != "handle_token") options[key] = value;
             if (key == "handle_token") token = value.GetString();
             if (key == "current_name") CurrentName = value.GetString();
             if (key == "directory") DirectorySelection = value.GetBool();
         }
+        Options = options;
         Call = $"{context.Request.InterfaceAsString}.{context.Request.MemberAsString}({context.Request.SignatureAsString}) {string.Join(',', keys)}";
         string path = Path + "/request/" + context.Request.SenderAsString![1..].Replace('.', '_') + "/" + (OldHandle ? "legacy" : token);
         RequestPath = path;
@@ -107,7 +121,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
             signal.WriteSignalHeader(path: path, @interface: "org.freedesktop.portal.Request", member: "Response", signature: "ua{sv}");
             signal.WriteUInt32(0);
             var dict = signal.WriteDictionaryStart();
-            signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(MalformedUris ? VariantValue.String(ResponseUris[0]) : VariantValue.Array(ResponseUris));
+            signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(MalformedUris ? VariantValue.String(Uris[0]) : VariantValue.Array(Uris));
             signal.WriteDictionaryEnd(dict);
             connection.TrySendMessage(signal.CreateMessage());
         }
