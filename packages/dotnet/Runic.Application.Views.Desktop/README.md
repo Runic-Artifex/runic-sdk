@@ -314,8 +314,9 @@ to choose between this host and CS-WebUI.
 
 An application with a command line, such as `my-app ui` next to other commands,
 starts its Window from a
-[Runic.CommandLine](https://github.com/Runic-Artifex/runic-cli-sdk/blob/main/packages/dotnet/Runic.CommandLine/README.md)
-command with Runic Command Line 0.7.0-preview.2 or later. `RunicDesktopHost.Run`
+[Runic.CommandLine](https://www.nuget.org/packages/Runic.CommandLine) command
+with Runic Command Line 0.7.0-preview.2 or later (see its guide,
+[Start a UI host on the main thread](https://github.com/Runic-Artifex/runic-cli-sdk/blob/v0.7.0-preview.2/packages/dotnet/Runic.CommandLine/README.md#start-a-ui-host-on-the-main-thread)). `RunicDesktopHost.Run`
 and `DesktopEventLoop.Run` must be called on the process main thread before any
 `await`, and a command runs asynchronously, so the command does not start the
 host itself: it hands the host's start back to `Main` with
