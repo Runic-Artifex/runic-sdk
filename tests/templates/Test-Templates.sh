@@ -343,7 +343,7 @@ verify_template() {
   fi
   # Only the GTK 4 variant selects GTK 4 and references its desktop package.
   if [[ "$host" == desktop-gtk4 ]]; then
-    grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4();' "$output/Program.cs"
+    grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4(ApplicationIdentity.Id);' "$output/Program.cs"
     grep -Fq '"Runic.Desktop.Gtk4"' "$output/$project_name.csproj"
   elif grep -nE 'Gtk4|Linux\.Portal' "$output/Program.cs" "$output/$project_name.csproj"; then
     echo "The $host project references the GTK 4 profile." >&2
@@ -593,7 +593,43 @@ run_desktop_smoke() {
     tail -n 80 "$log" >&2
     exit 1
   fi
+  if [[ "$host" == desktop-gtk4 ]]; then
+    check_diagnostics_log "$output" "$project_name"
+  fi
   echo "DESKTOP_SMOKE_OK|$project_name"
+}
+
+# The generated DiagnosticsLog keeps the Desktop diagnostics that standard error loses outside a terminal. A copy of
+# the built application whose page never loads the Runic client reports presentation-connection-timeout; the log in
+# the user's data directory, named after the application ID, holds it once, and a second start replaces the log.
+check_diagnostics_log() {
+  local output="$1"
+  local project_name="$2"
+  local copy="$template_tmp/diagnostics-$project_name"
+  local data="$copy-data"
+  local application_id log run
+  application_id="$(sed -n 's|.*<RunicApplicationId>\(.*\)</RunicApplicationId>.*|\1|p' "$output/$project_name.csproj")"
+  log="$data/$application_id/diagnostics.log"
+  rm -rf "$copy" "$data"
+  cp -R "$output/bin/Release/net10.0" "$copy"
+  printf '<!doctype html><title>No Runic client</title>\n' > "$copy/www/index.html"
+  for run in 1 2; do
+    env -C "$copy" XDG_DATA_HOME="$data" GDK_BACKEND=x11 GSETTINGS_BACKEND=memory \
+      timeout -k 10 120 dbus-run-session -- xvfb-run -a \
+      dotnet "$copy/$project_name.dll" > "$copy/stderr-$run.log" 2>&1 < /dev/null || true
+    if ! grep -Fq 'presentation-connection-timeout' "$copy/stderr-$run.log"; then
+      echo "The $project_name copy without a Runic client reported no presentation-connection-timeout (run $run)." >&2
+      tail -n 40 "$copy/stderr-$run.log" >&2
+      exit 1
+    fi
+  done
+  if [[ "$(grep -c 'presentation-connection-timeout' "$log" 2> /dev/null)" != 1 ]]; then
+    echo "$log does not hold exactly the last start's diagnostic." >&2
+    cat "$log" >&2 || true
+    exit 1
+  fi
+  rm -rf "$copy" "$data"
+  echo "DIAGNOSTICS_LOG_OK|$project_name"
 }
 
 # The guided creator must produce exactly what its printed dotnet new command
@@ -651,7 +687,43 @@ verify_package_names() {
       exit 1
     fi
   done
+  # The application ID: com.example. and the name's ASCII letters and digits, starting with a letter, at most 50
+  # characters (an MSIX package name), or the --application-id given.
+  index=0
+  for case_entry in "Contoso.Notes App|com.example.ContosoNotesApp" "_My__API.|com.example.MyAPI" \
+    "Café Notes|com.example.CafNotes" "日本語|com.example.App" "2048 Game|com.example.App2048Game" \
+    "$long_name|com.example.${long_name:0:38}"; do
+    project_name="${case_entry%%|*}"
+    expected="${case_entry#*|}"
+    index=$((index + 1))
+    (cd "$names_directory" && dotnet new runic-app --name "$project_name" --output "id-$index" --frontend svelte) > /dev/null
+    check_application_id "$names_directory/id-$index" "$project_name" "$expected"
+  done
+  (cd "$names_directory" && dotnet new runic-app --name Notes --output id-explicit --application-id org.example.Notes --nix) > /dev/null
+  check_application_id "$names_directory/id-explicit" Notes org.example.Notes
+  grep -Fq 'name = "org.example.Notes";' "$names_directory/id-explicit/flake.nix"
+  grep -Fq 'iconName = "org.example.Notes";' "$names_directory/id-explicit/flake.nix"
   echo 'PACKAGE_NAMES_OK'
+  echo 'APPLICATION_IDS_OK'
+}
+
+# The project file declares the application ID once, and the icons are copied unchanged.
+check_application_id() {
+  local output="$1"
+  local project_name="$2"
+  local expected="$3"
+  local generated
+  generated="$(sed -n 's|.*<RunicApplicationId>\(.*\)</RunicApplicationId>.*|\1|p' "$output/$project_name.csproj")"
+  if [[ "$generated" != "$expected" ]]; then
+    echo "Project '$project_name' declared application ID '$generated', expected '$expected'." >&2
+    exit 1
+  fi
+  for icon in icon.svg icon.png icon.ico; do
+    if ! cmp -s "$repository_root/tools/Runic.Application.Templates/content/runic-app/icons/$icon" "$output/icons/$icon"; then
+      echo "Project '$project_name' did not get icons/$icon unchanged." >&2
+      exit 1
+    fi
+  done
 }
 
 frameworks=(react vue svelte angular)

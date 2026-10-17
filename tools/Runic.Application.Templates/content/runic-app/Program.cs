@@ -18,10 +18,12 @@ await using var provider = new ServiceCollection().AddWorkspace().BuildServicePr
 });
 
 #if (desktopHost)
-// Fallbacks and limitations, such as a missing WebKitGTK runtime, are written to standard error.
+// Fallbacks and limitations, such as a missing WebKitGTK runtime, are written to standard error and to
+// DiagnosticsLog.Path, since a Windows application has no console.
 #if (gtk4)
-// Linux embeds WebKitGTK 6 through GTK 4. Windows uses WebView2 and macOS WKWebView.
-var options = new DesktopHostOptions { DiagnosticSink = ReportDiagnostic }.WithGtk4();
+// Linux embeds WebKitGTK 6 through GTK 4, with the application ID that the desktop entry is named after. Windows uses
+// WebView2 and macOS WKWebView.
+var options = new DesktopHostOptions { DiagnosticSink = ReportDiagnostic }.WithGtk4(ApplicationIdentity.Id);
 #else
 // Linux embeds WebKitGTK 4.1 through GTK 3. Windows uses WebView2 and macOS WKWebView.
 var options = new DesktopHostOptions
@@ -52,5 +54,5 @@ static async Task<int> RunAsync(IRunicWindowHost host)
 #if (desktopHost)
 
 static void ReportDiagnostic(DesktopDiagnostic diagnostic) =>
-    Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message} {diagnostic.Remediation}".TrimEnd());
+    DiagnosticsLog.Write($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message} {diagnostic.Remediation}".TrimEnd());
 #endif
