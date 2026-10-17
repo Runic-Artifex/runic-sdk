@@ -643,6 +643,28 @@ public sealed class DesktopWindow : IAsyncDisposable
         }
     }
 
+    private IDesktopMenuCommandTarget? _menuCommands;
+
+    /// <summary>
+    /// Gets or sets the target of the menu bar's commands while this window is the key window; <see langword="null"/>,
+    /// the default, leaves them to <see cref="DesktopHost.MenuCommands"/>.
+    /// </summary>
+    /// <remarks>
+    /// On macOS an item of <see cref="DesktopHostOptions.MenuBar"/> asks the key window's target first: it is enabled
+    /// while <see cref="IDesktopMenuCommandTarget.CanExecute"/> returns <see langword="true"/> and runs
+    /// <see cref="IDesktopMenuCommandTarget.Execute"/> when chosen or when its shortcut is pressed. Runic Windows set it
+    /// for a root ViewModel that implements <c>IRunicMenuCommandSource</c>. Windows and Linux have no menu bar yet.
+    /// </remarks>
+    public IDesktopMenuCommandTarget? MenuCommands
+    {
+        get => Volatile.Read(ref _menuCommands);
+        set
+        {
+            Volatile.Write(ref _menuCommands, value);
+            if (AcceptsState) _engine.SetEmbeddedMenuCommands(value);
+        }
+    }
+
     /// <summary>Occurs when the user drops files onto the embedded window, with their native paths.</summary>
     /// <remarks>
     /// <para>

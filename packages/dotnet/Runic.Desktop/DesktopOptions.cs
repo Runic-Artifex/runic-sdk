@@ -130,6 +130,20 @@ public sealed record DesktopHostOptions
     /// </remarks>
     public bool HandlesShutdownWithoutWindow { get; init; }
 
+    /// <summary>
+    /// Gets the application's menus for the macOS menu bar, beside the standard application, File, Edit, View and
+    /// Window menus; empty by default. Windows and Linux show no native menu bar in this release.
+    /// </summary>
+    /// <remarks>
+    /// Each <see cref="DesktopMenuItem"/> names a command that the key window's <see cref="DesktopWindow.MenuCommands"/>
+    /// runs, or else <see cref="DesktopHost.MenuCommands"/>; an item is disabled while neither can run it. Titles are
+    /// user-visible text, so take them from the application's translations, and call
+    /// <see cref="DesktopHost.SetMenuBar"/> to show the bar again after the language changes. Building the host throws
+    /// <see cref="ArgumentException"/> for a menu without a title, an item without a title or command, or a second
+    /// Application, File or Help menu. See <see cref="DesktopHost.Validate"/> for the shortcuts it does not apply.
+    /// </remarks>
+    public IReadOnlyList<DesktopMenu> MenuBar { get; init; } = [];
+
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 

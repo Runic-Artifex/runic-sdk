@@ -34,6 +34,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     // Drops reach the root ViewModel one after another; closing cancels them.
     private readonly CancellationTokenSource _dropStop = new();
     private Task _drops = Task.CompletedTask;
+    private MenuCommandBinding? _menu;
 
     internal DesktopBridgeWindow(AsyncServiceScope scope, DesktopSurface surface, DesktopBridgeTransport transport,
         WindowContentSession content, IDisposable connectionBinding, TViewModel viewModel)
@@ -110,6 +111,21 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         }
     }
 
+    // The root ViewModel runs the menu bar's commands while this window is key.
+    internal void SetMenuCommands(MenuCommandBinding menu)
+    {
+        lock (_closeGate)
+        {
+            if (_close is not null || _presentation is not { } presentation)
+            {
+                menu.Dispose();
+                return;
+            }
+            _menu = menu;
+            presentation.MenuCommands = menu;
+        }
+    }
+
     private void OnFilesDropped(object? sender, DesktopFileDropEventArgs drop)
     {
         var files = drop.Paths.Select(RunicDroppedFile.FromPath).ToArray();
@@ -173,6 +189,11 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     {
         var errors = new List<Exception>();
         Capture(_dropStop.Cancel, errors);
+        if (_menu is { } menu)
+        {
+            if (_presentation is { } menuWindow) menuWindow.MenuCommands = null;
+            Capture(menu.Dispose, errors);
+        }
         if (_presentation is { } dropped) dropped.FilesDropped -= OnFilesDropped;
         Capture(_connectionBinding.Dispose, errors);
         if (_attachment is not null) Capture(_attachment.Dispose, errors);

@@ -323,6 +323,8 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
             await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), WindowStateSmoke.RestoreOptions(saved!),
                 (_, window) => WindowStateSmoke.ExerciseRestoredAsync(window, saved!));
             Console.WriteLine("Window state passed: off-screen placement fitted to a monitor, change events, restore bounds, saved after close, restored maximized.");
+            await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+                (_, window) => MacOsMenuSmoke.ExerciseAsync(host, window));
         }
         SmokeSoak.Completed();
         }

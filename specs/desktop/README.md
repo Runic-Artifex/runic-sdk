@@ -26,6 +26,9 @@ intentionally divergent, or not applicable.
   browser framing profile.
 - [Conformance](conformance/README.md) selects portable scenario and codec
   vector formats.
+- [Shortcut cases](fixtures/shortcuts.json) are the keyboard shortcut text,
+  display and key-event matching that `DesktopShortcut` and the page's
+  `matchesShortcut` both check.
 
 The schemas and committed examples under `conformance/` are normative test
 inputs. Test reports, platform receipts, performance measurements, WebUI

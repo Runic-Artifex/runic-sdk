@@ -33,3 +33,5 @@ static Runic.Application.Views.RunicDroppedFile.operator !=(Runic.Application.Vi
 static Runic.Application.Views.RunicDroppedFile.operator ==(Runic.Application.Views.RunicDroppedFile? left, Runic.Application.Views.RunicDroppedFile? right) -> bool
 static Runic.Application.Views.RunicFileDrop.operator !=(Runic.Application.Views.RunicFileDrop? left, Runic.Application.Views.RunicFileDrop? right) -> bool
 static Runic.Application.Views.RunicFileDrop.operator ==(Runic.Application.Views.RunicFileDrop? left, Runic.Application.Views.RunicFileDrop? right) -> bool
+Runic.Application.Views.IRunicMenuCommandSource
+Runic.Application.Views.IRunicMenuCommandSource.GetMenuCommand(string! commandId) -> System.Windows.Input.ICommand?

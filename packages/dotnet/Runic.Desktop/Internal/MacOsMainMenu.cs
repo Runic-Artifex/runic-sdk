@@ -40,6 +40,14 @@ internal static class MacOsMainMenu
         new("Select All", "selectAll:", "a"),
     ];
 
+    // The Cocoa template's File menu. Close sends performClose:, which asks the window's delegate as its close button does.
+    internal static readonly Item[] File =
+    [
+        new("Close", "performClose:", "w"),
+    ];
+
+    internal static readonly string[] FileActions = ["performClose:"];
+
     internal static readonly Item[] Window =
     [
         new("Minimize", "performMiniaturize:", "m"),
