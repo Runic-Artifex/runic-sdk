@@ -36,7 +36,8 @@ internal sealed partial class MacOpenEventsNativeTests
             await File.WriteAllTextAsync(file, "probe", cancellationToken);
             try
             {
-                await MacOsMainQueue.InvokeAsync(() =>
+                // Sent from a worker thread: the main thread must be free to run the event loop that dispatches them.
+                await Task.Run(() =>
                 {
                     using var pool = new Pool();
                     var list = Send(Class("NSAppleEventDescriptor"), Sel("listDescriptor"));
@@ -44,7 +45,7 @@ internal sealed partial class MacOpenEventsNativeTests
                     SendSelf(CoreEventClass, OpenDocuments, list);
                     SendSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("other-scheme://ignored")));
                     SendSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("RUNIC-TEST://from-event?id=1")));
-                });
+                }, cancellationToken);
                 var opened = new Uri(await NextAsync(requests, cancellationToken));
                 Check(opened.IsFile && opened.LocalPath == file, $"odoc opened the file: {opened}");
                 string url = await NextAsync(requests, cancellationToken);

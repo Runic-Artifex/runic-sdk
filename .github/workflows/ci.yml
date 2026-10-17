@@ -811,9 +811,12 @@ jobs:
         timeout-minutes: 8
         shell: bash
         run: |
-          dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
-          ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
-          eng/ci/macos-open-probe.sh artifacts/platform-runtime-aot
+          # macOS has no timeout(1); an alarm ends a run that hangs instead of the step's whole budget.
+          deadline() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          dotnet build tests/dotnet/Runic.Platform.Runtime.Tests -c Release
+          deadline 120 tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
+          deadline 120 ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
+          deadline 240 eng/ci/macos-open-probe.sh artifacts/platform-runtime-aot
       # Files and URLs opened through the desktop's own registration reach the running instance, with a scheme unique
       # to the run: a desktop entry opened with gio in an isolated session without a display (Linux), and a per-user
       # URL protocol opened by the shell (Windows). CI runners only.
