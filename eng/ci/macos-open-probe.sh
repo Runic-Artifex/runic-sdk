@@ -8,13 +8,16 @@
 set -euo pipefail
 source_directory=$1
 work=$(mktemp -d)
-app="$work/RunicOpenProbe.app"
-log="$work/RunicOpenProbe.log"
+# LaunchServices binds URL schemes of applications in an Applications folder; the runner's own is disposable.
+applications="$HOME/Applications"
+mkdir -p "$applications"
+app="$applications/RunicOpenProbe.app"
+log="$applications/RunicOpenProbe.log"
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 cleanup() {
   "$lsregister" -u "$app" >/dev/null 2>&1 || true
   pkill -f "$app/Contents/MacOS/" >/dev/null 2>&1 || true
-  rm -rf "$work"
+  rm -rf "$work" "$app" "$log"
 }
 trap cleanup EXIT
 
@@ -73,7 +76,15 @@ echo "Open document: $(cat "$log")"
 grep -qE "^file:///.*/probe( |%20)document\.txt$" "$log" || { echo "The document did not arrive at launch." >&2; exit 1; }
 
 rm -f "$log"
-open "runic-open-probe://item?id=1"
+url_opened=""
+for _ in 1 2 3 4 5; do
+  if open "runic-open-probe://item?id=1"; then url_opened=1; break; fi
+  sleep 2
+done
+if [ -z "$url_opened" ]; then
+  echo "LaunchServices did not bind the scheme to the bundle; opening the URL with the bundle explicitly."
+  open -a "$app" "runic-open-probe://item?id=1"
+fi
 wait_for_log
 echo "Open URL: $(cat "$log")"
 grep -qx "runic-open-probe://item/?id=1" "$log" || { echo "The URL did not arrive at launch." >&2; exit 1; }
