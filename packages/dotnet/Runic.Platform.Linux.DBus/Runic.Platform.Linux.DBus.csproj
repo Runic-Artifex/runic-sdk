@@ -18,6 +18,14 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <InternalsVisibleTo Include="Runic.Platform.Linux.DBus.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="NOTICE" Pack="true" PackagePath="" />
+    <None Include="licenses/Tmds.DBus-LICENSE.txt" Pack="true" PackagePath="licenses/" />
+    <None Include="buildTransitive/Runic.Platform.Linux.DBus.props" Pack="true" PackagePath="buildTransitive/" />
+    <!-- The source generator ships inside this package. -->
+    <!-- A publish's RuntimeIdentifier and PublishAot apply to the application, not to the netstandard2.0 generator. -->
+    <ProjectReference Include="../Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" ReferenceOutputAssembly="false" PrivateAssets="all"
+        UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
+    <None Include="../Runic.Platform.Linux.DBus.Generator/bin/$(Configuration)/netstandard2.0/Runic.Platform.Linux.DBus.Generator.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>
