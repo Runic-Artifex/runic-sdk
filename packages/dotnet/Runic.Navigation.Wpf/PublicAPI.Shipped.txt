@@ -82,3 +82,6 @@ static readonly Runic.Navigation.Wpf.ViewHost.ServicesProperty -> System.Windows
 Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.get -> bool
 Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.set -> void
 static readonly Runic.Navigation.Wpf.NavigationHost.GuardWindowCloseProperty -> System.Windows.DependencyProperty!
+Runic.Navigation.Wpf.NavigationHost.IsBusy.get -> bool
+static readonly Runic.Navigation.Wpf.NavigationHost.IsBusyProperty -> System.Windows.DependencyProperty!
+Runic.Navigation.Wpf.DispatcherModelContext.YieldToPresentationAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask

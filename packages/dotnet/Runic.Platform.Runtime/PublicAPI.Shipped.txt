@@ -125,3 +125,39 @@ static Runic.Platform.Runtime.ApplicationInstanceOptions.operator !=(Runic.Platf
 static Runic.Platform.Runtime.ApplicationInstanceOptions.operator ==(Runic.Platform.Runtime.ApplicationInstanceOptions? left, Runic.Platform.Runtime.ApplicationInstanceOptions? right) -> bool
 Runic.Platform.Runtime.ApplicationInstanceOptions.ForwardOnly.get -> bool
 Runic.Platform.Runtime.ApplicationInstanceOptions.ForwardOnly.init -> void
+override Runic.Platform.Runtime.NativeFileDialogRequest.Equals(object? obj) -> bool
+override Runic.Platform.Runtime.NativeFileDialogRequest.GetHashCode() -> int
+override Runic.Platform.Runtime.NativeFileDialogRequest.ToString() -> string!
+Runic.Platform.Runtime.INativeDirectoryPicker.SelectDirectoryAsync(string? initialDirectory, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.NativeDirectorySelection?>
+Runic.Platform.Runtime.INativeFilePicker.SelectAsync(Runic.Platform.Runtime.NativeFileDialogRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Runic.Platform.Runtime.NativeFileSelection!>?>
+Runic.Platform.Runtime.INativeFilePicker.SupportsMultipleSelection.get -> bool
+Runic.Platform.Runtime.IPickerBackend.SupportsMultipleSelection.get -> bool
+Runic.Platform.Runtime.NativeFileDialogRequest
+Runic.Platform.Runtime.NativeFileDialogRequest.AllowMultiple.get -> bool
+Runic.Platform.Runtime.NativeFileDialogRequest.AllowMultiple.init -> void
+Runic.Platform.Runtime.NativeFileDialogRequest.<Clone>$() -> Runic.Platform.Runtime.NativeFileDialogRequest!
+Runic.Platform.Runtime.NativeFileDialogRequest.Deconstruct(out bool Save, out string? SuggestedName) -> void
+Runic.Platform.Runtime.NativeFileDialogRequest.Equals(Runic.Platform.Runtime.NativeFileDialogRequest? other) -> bool
+Runic.Platform.Runtime.NativeFileDialogRequest.Filters.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.FileDialogFilter!>
+Runic.Platform.Runtime.NativeFileDialogRequest.Filters.init -> void
+Runic.Platform.Runtime.NativeFileDialogRequest.InitialDirectory.get -> string?
+Runic.Platform.Runtime.NativeFileDialogRequest.InitialDirectory.init -> void
+Runic.Platform.Runtime.NativeFileDialogRequest.NativeFileDialogRequest(bool Save, string? SuggestedName) -> void
+Runic.Platform.Runtime.NativeFileDialogRequest.Save.get -> bool
+Runic.Platform.Runtime.NativeFileDialogRequest.Save.init -> void
+Runic.Platform.Runtime.NativeFileDialogRequest.SuggestedName.get -> string?
+Runic.Platform.Runtime.NativeFileDialogRequest.SuggestedName.init -> void
+Runic.Platform.Runtime.NativePickerBackend.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
+Runic.Platform.Runtime.NativePickerBackend.SupportsMultipleSelection.get -> bool
+Runic.Platform.Runtime.PresentationFiles.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
+static Runic.Platform.Runtime.NativeFileDialogRequest.operator !=(Runic.Platform.Runtime.NativeFileDialogRequest? left, Runic.Platform.Runtime.NativeFileDialogRequest? right) -> bool
+static Runic.Platform.Runtime.NativeFileDialogRequest.operator ==(Runic.Platform.Runtime.NativeFileDialogRequest? left, Runic.Platform.Runtime.NativeFileDialogRequest? right) -> bool
+Runic.Platform.Runtime.SecretStoreValidation
+const Runic.Platform.Runtime.SecretStoreValidation.MaximumSecretBytes = 2560 -> int
+static Runic.Platform.Runtime.SecretStoreValidation.DecodeSecret(System.ReadOnlySpan<byte> stored) -> string?
+static Runic.Platform.Runtime.SecretStoreValidation.EncodeSecret(string! secret) -> byte[]?
+static Runic.Platform.Runtime.SecretStoreValidation.Validate(string! service, string! account) -> void
+static Runic.Platform.Runtime.ApplicationInstance.CreateOpenRequests(Runic.Platform.IApplicationInstance? instance, Runic.Platform.ApplicationLaunch! launch, Runic.Platform.DesktopOpenOptions! options) -> Runic.Platform.IDesktopOpenRequests!
+static Runic.Platform.Runtime.DesktopServiceValidation.ItemPath(string! path) -> string!
+Runic.Platform.Runtime.LocalFileTransfers
+static Runic.Platform.Runtime.LocalFileTransfers.Create() -> Runic.Platform.IDesktopFileTransfers!

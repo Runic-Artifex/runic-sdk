@@ -36,3 +36,8 @@ Runic.Platform.Linux.Portal.PortalApplication.CreateLoginStartup() -> Runic.Plat
 Runic.Platform.Linux.Portal.PortalApplication.CreateStatusIcon() -> Runic.Platform.IDesktopStatusIcon!
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateLoginStartup(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopLoginStartup!
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateStatusIcon(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopStatusIcon!
+Runic.Platform.Linux.Portal.PortalApplication.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
+Runic.Platform.Linux.Portal.PortalApplication.CreateUnparentedInhibition() -> Runic.Platform.IDesktopInhibition!
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateSecretStore(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopSecretStore!
+Runic.Platform.Linux.Portal.PortalApplication.CreateTrash() -> Runic.Platform.IDesktopTrash!
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateTrash(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopTrash!

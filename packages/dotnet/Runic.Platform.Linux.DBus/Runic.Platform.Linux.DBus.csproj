@@ -7,9 +7,6 @@
     <PackageId>Runic.Platform.Linux.DBus</PackageId>
     <Description>D-Bus client and service API for Runic applications on Linux: connections, typed values, proxies, exported objects, signals and properties.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Not yet published: package validation needs a baseline release. -->
-    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.8.0-preview.5</RunicPackageFirstReleaseVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />

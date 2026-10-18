@@ -52,3 +52,6 @@ static Runic.Platform.MacOS.MacPrivilegedActions.UnregisterDaemon(Runic.Platform
 static Runic.Platform.MacOS.MacPrivilegedDaemon.Run(System.Collections.Generic.IEnumerable<Runic.Platform.PrivilegedActionDeclaration!>! actions, Runic.Platform.MacOS.MacPrivilegedDaemonDefinition! daemon) -> int
 static Runic.Platform.MacOS.MacPrivilegedRight.operator !=(Runic.Platform.MacOS.MacPrivilegedRight? left, Runic.Platform.MacOS.MacPrivilegedRight? right) -> bool
 static Runic.Platform.MacOS.MacPrivilegedRight.operator ==(Runic.Platform.MacOS.MacPrivilegedRight? left, Runic.Platform.MacOS.MacPrivilegedRight? right) -> bool
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTrash() -> Runic.Platform.IDesktopTrash!
