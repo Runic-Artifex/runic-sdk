@@ -84,7 +84,7 @@
       "runic.platform.windows.elevation": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.8.0-preview.5, )"
+          "Runic.Platform": "[0.8.0-preview.6, )"
         }
       }
     }
