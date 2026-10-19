@@ -147,9 +147,8 @@ internal sealed class WindowServiceChecks
                 Require(volumes.GetType().FullName == "Runic.Platform.Linux.Portal.UDisksVolumes", $"Linux did not create UDisks2 volumes: {volumes.GetType().FullName}");
             else if (OperatingSystem.IsWindows())
                 Require(volumes.GetType().FullName == "Runic.Platform.Windows.WindowsVolumes", $"Windows did not create its volumes: {volumes.GetType().FullName}");
-            else
-                Require(await volumes.ListAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopVolume>>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
-                    "Volumes without a provider were not reported unconfigured.");
+            else if (OperatingSystem.IsMacOS())
+                Require(volumes.GetType().FullName == "Runic.Platform.MacOS.MacVolumes", $"macOS did not create Disk Arbitration volumes: {volumes.GetType().FullName}");
         }
 
         await using var custom = DesktopVolumes.Unavailable(PlatformUnavailableReason.BackendUnavailable);

@@ -1,2 +1,3 @@
 #nullable enable
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateThumbnails() -> Runic.Platform.IDesktopThumbnails!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!

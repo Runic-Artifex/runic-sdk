@@ -106,6 +106,20 @@ than its icon. ImageIO encodes it as PNG. It needs no window and no AppKit
 event loop. See the
 [thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
 
+## Volumes
+
+`MacOSPlatformProvider.CreateVolumes()` lists, mounts, unmounts and ejects
+volumes through Disk Arbitration, as Finder and Disk Utility do, without AppKit
+or a window. `Id` is the volume's BSD name (`disk4s1`) and `DriveId` the BSD
+name of the drive's physical whole disk, also for an APFS volume on its
+synthesized container. An application with a file open on the volume, or one
+that refuses through Disk Arbitration, makes an unmount or eject
+`Failed(ResourceBusy)`; Disk Arbitration's refusals for permission are
+`Failed(PermissionDenied)`. The startup disk's volumes (`/`, `/System/Volumes/…`,
+Recovery) and EFI system partitions are `IsSystem` and are never mounted,
+unmounted or ejected by the provider. See the
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+
 ## Secret storage
 
 `MacOSPlatformProvider.CreateSecretStore()` keeps secrets as generic passwords
