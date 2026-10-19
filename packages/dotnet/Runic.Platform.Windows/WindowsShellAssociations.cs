@@ -121,6 +121,22 @@ internal static unsafe class WindowsShellAssociations
     // which lives in this apartment: the apartment must outlive the launch, as Explorer's do.
     internal static int InvokeAndWait(IAssocHandler* handler, IReadOnlyList<string> items)
     {
+        int result = InvokeAndWaitOnce(handler, items);
+        if (result != SelectionUnsupported) return result;
+        // The handler cannot take the items together: each one is invoked on its own, as the shell's Open With does.
+        foreach (string item in items)
+        {
+            result = InvokeAndWaitOnce(handler, [item]);
+            if (result < 0) return result;
+        }
+        return S_OK;
+    }
+
+    // IAssocHandlerInvoker::SupportsSelection said no; nothing started.
+    private const int SelectionUnsupported = 1;
+
+    private static int InvokeAndWaitOnce(IAssocHandler* handler, IReadOnlyList<string> items)
+    {
         // The count outlives a launch that does not finish in time, so it is freed only once it reaches zero.
         int* count = (int*)NativeMemory.AllocZeroed(sizeof(int));
         IUnknown* threadReference = null;
@@ -139,7 +155,7 @@ internal static unsafe class WindowsShellAssociations
         uint itemReferences = OtherReferences(dataObject);
         try
         {
-            while (hr >= 0 && ((tracked && Volatile.Read(ref *count) > 0) || OtherReferences(dataObject) > 0) && Environment.TickCount64 < deadline)
+            while (hr == S_OK && ((tracked && Volatile.Read(ref *count) > 0) || OtherReferences(dataObject) > 0) && Environment.TickCount64 < deadline)
             {
                 PInvoke.MsgWaitForMultipleObjectsEx(0, null, 50, QUEUE_STATUS_FLAGS.QS_ALLINPUT, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS.MWMO_INPUTAVAILABLE);
                 MSG message;
@@ -168,7 +184,8 @@ internal static unsafe class WindowsShellAssociations
     }
 
     // Hands the items to the handler as the shell's own Open With does: a data object over their parsed shell items,
-    // which the caller releases.
+    // which the caller releases. One item goes to IAssocHandler::Invoke; a selection to the invoker CreateInvoker
+    // returns, if it supports the selection (the documented way for several items), else SelectionUnsupported.
     private static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items, out IUnknown* dataObject)
     {
         dataObject = null;
@@ -196,7 +213,12 @@ internal static unsafe class WindowsShellAssociations
             int result = array->BindToHandler(null, &handlerId, &iid, &bound).Value;
             if (result < 0 || bound is null) return result < 0 ? result : unchecked((int)0x80004005);
             dataObject = (IUnknown*)bound;
-            return handler->Invoke((IDataObject*)bound).Value;
+            if (items.Count == 1) return handler->Invoke((IDataObject*)bound).Value;
+            IAssocHandlerInvoker* invoker = null;
+            result = handler->CreateInvoker((IDataObject*)bound, &invoker).Value;
+            if (result < 0 || invoker is null) return result < 0 ? result : unchecked((int)0x80004005);
+            try { return invoker->SupportsSelection().Value == S_OK ? invoker->Invoke().Value : SelectionUnsupported; }
+            finally { invoker->Release(); }
         }
         finally
         {
