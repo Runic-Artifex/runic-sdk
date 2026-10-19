@@ -192,11 +192,21 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
     {
         if (Locate(driveId) is not { } node) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.NotFound);
         if (EjectionTarget(node) is not { } target) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        return RequestEject(target);
+    }
+
+    private static PlatformResult<PlatformUnit> RequestEject(uint node)
+    {
         // With a veto buffer Windows reports the veto instead of showing its own notification.
         Span<char> vetoName = stackalloc char[MaxPath];
-        var result = PInvoke.CM_Request_Device_Eject(target, out PNP_VETO_TYPE veto, vetoName, 0);
+        var result = PInvoke.CM_Request_Device_Eject(node, out PNP_VETO_TYPE veto, vetoName, 0);
         return EjectResult((uint)result, (int)veto);
     }
+
+    // The request on the drive's own device node, removable or not: the native tests' virtual disk has no removable
+    // device above it, and the Configuration Manager call is exercised on it this way.
+    internal static PlatformResult<PlatformUnit> RequestEjectForTest(string driveId) =>
+        Locate(driveId) is { } node ? RequestEject(node) : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.NotFound);
 
     // CONFIGRET and PNP_VETO_TYPE to the contract's results. The veto names a device or process; it is not reported.
     internal static PlatformResult<PlatformUnit> EjectResult(uint result, int veto) => (result, veto) switch

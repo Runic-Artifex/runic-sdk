@@ -225,11 +225,22 @@ internal sealed class VolumeTests
                 var refused = await volumes.EjectAsync(added.Id, timeout.Token);
                 Console.WriteLine($"The virtual disk has no removable device node; eject: {refused}");
                 Check(refused is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"eject without a removable device: {refused}");
+                // The Configuration Manager request itself, on the virtual disk's own device node: a file open on
+                // the volume must keep the disk, whatever Windows says about removing it.
+                PlatformResult<PlatformUnit> vetoed;
+                using (var open = new FileStream(Path.Combine(added.MountPaths[0], "open.txt"), FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+                    vetoed = WindowsVolumeSource.RequestEjectForTest(added.DriveId!);
+                Console.WriteLine($"CM_Request_Device_EjectW on the virtual disk with an open file: {vetoed}");
+                Check(vetoed is not PlatformResult<PlatformUnit>.Success, $"an open file vetoes the request: {vetoed}");
+                var direct = WindowsVolumeSource.RequestEjectForTest(added.DriveId!);
+                Console.WriteLine($"CM_Request_Device_EjectW on the virtual disk: {direct}");
+                bool removed = direct is PlatformResult<PlatformUnit>.Success;
+                if (removed) await WaitForRemovalAsync(changes.Reader, added.Id, timeout.Token);
                 Diskpart($"""
                     select vdisk file="{image}"
-                    detach vdisk
-                    """);
-                await WaitForRemovalAsync(changes.Reader, added.Id, timeout.Token);
+                    detach vdisk noerr
+                    """, check: removed is false);
+                if (!removed) await WaitForRemovalAsync(changes.Reader, added.Id, timeout.Token);
             }
 
             // Attached read-only, the same volume is read-only.
