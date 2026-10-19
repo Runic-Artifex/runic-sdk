@@ -148,8 +148,9 @@ repository's `global.json` does not opt in to the MTP mode of `dotnet test`.
   `--filter` is not supported. The exit code is 0 when all selected cases pass, 2 when one
   fails and 8 when none ran.
 - **Reports.** `bun run test` and the managed CI job pass `--report-trx --coverage` and
-  write `<suite>.trx` and `<suite>.cobertura.xml` to `artifacts/test-results/<suite>`, which
-  CI uploads as `managed-test-results-<group>-<run>` without the TRX attachment copies.
+  write `<suite>.trx` and `<suite>.cobertura.xml` to `artifacts/test-results/<suite>`
+  (`artifacts/test-results/<group>/<suite>` in CI), which CI uploads as
+  `managed-test-results-<group>-<run>` without the TRX attachment copies.
   The native job writes `Runic.Desktop.Tests`'s TRX report and MTP diagnostics to
   `artifacts/native-tests`.
 - **Parallelism.** TUnit runs cases in parallel unless told otherwise. Allow it only when no

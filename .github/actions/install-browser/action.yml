@@ -9,7 +9,7 @@ runs:
       run: bun -e 'console.log("version=" + require("playwright-core/package.json").version)' >> "$GITHUB_OUTPUT"
     # Playwright's default browser directory differs per OS. The key also names
     # the OS and architecture, so a cache never crosses platforms.
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: ./.github/actions/dependency-cache
       with:
         path: ${{ runner.os == 'Windows' && '~/AppData/Local/ms-playwright' || runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
         key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
