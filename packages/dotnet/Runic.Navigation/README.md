@@ -361,6 +361,9 @@ A failed step is logged as event 1064.
   join too: cancelling one caller before commit returns `Rejected(Cancelled)`
   for that caller immediately. The shared Back is cancelled only when every
   caller has cancelled; a caller without a cancellable token keeps it alive.
+  Once every caller has cancelled, the region is no longer busy because of
+  that Back, even while its guard still runs, and the Back never commits (see
+  [Rejecting requests while busy](#rejecting-requests-while-busy)).
   Cancellation after commit does not change the outcome. A return from a
   result entry (`CompleteAsync`, `DismissAsync`) is never joined.
 - `IsTransitioning` is `true` from admission, synchronously. A command that
@@ -423,6 +426,15 @@ var result = await Main.PushAsync<DetailViewModel>(); // Rejected(Busy)
 - The region's task is removed from the busy set before its result is set, so
   a request made after `await region.PushAsync(...)` resumed is never `Busy`
   because of that push.
+- This holds for a cancelled Back too. A token-bearing `BackAsync` returns
+  `Rejected(Cancelled)` as soon as its token is cancelled, before its guard
+  has returned. When that was the last caller of the Back, the Back leaves the
+  busy set before that result is set, so the user's next Back after
+  dismissing a leave confirmation is admitted. The abandoned Back never
+  commits. The next request waits until its guard has returned, as it waits
+  for any earlier request; a guard that ignores its token delays it, but
+  doesn't refuse it. While another caller of the joined Back is still
+  waiting, the region stays busy for that caller.
 - `NavigationRequestOptions.Admission` overrides the region's policy for one
   request. Pass `NavigationAdmission.Supersede` for a request that must win,
   such as the clear of a window close: the WPF window close guard and dialog
@@ -436,7 +448,8 @@ var result = await Main.PushAsync<DetailViewModel>(); // Rejected(Busy)
   property itself is always current. Back-to-back requests can keep it `true`
   without a `false` in between.
 - `region.WhenIdleAsync()` completes when the region is not busy. Unlike
-  `RunicNavigator.WhenIdleAsync()`, it doesn't wait for other regions.
+  `RunicNavigator.WhenIdleAsync()`, it doesn't wait for other regions, nor for
+  the guard of a Back whose callers have all cancelled; the navigator's does.
 
 ### Ownership
 

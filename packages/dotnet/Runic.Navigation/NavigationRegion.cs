@@ -141,8 +141,16 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// request of the region resumed never finds the region busy because of that request.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A Back whose callers have all cancelled stops counting when the last of them gets
+    /// <see cref="NavigationRejection.Cancelled"/>, even while its departure guard is still running because it hasn't
+    /// observed the token yet. That Back never commits. A request admitted meanwhile waits for its guard to end before
+    /// its own guards run, as it waits for any earlier request of the region.
+    /// </para>
+    /// <para>
     /// <see cref="PropertyChanged"/> reports a change in a model turn, like <see cref="IsTransitioning"/>; the change of
     /// a request that completes is posted, so the notification can trail its task. The property's value is authoritative.
+    /// </para>
     /// </remarks>
     public bool IsBusy => Core.IsBusy;
 
@@ -152,7 +160,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// <summary>
     /// Completes when <see cref="IsBusy"/> is <see langword="false"/>: when no request of this region is running. Unlike
     /// <see cref="RunicNavigator.WhenIdleAsync"/>, it doesn't wait for other regions or for retirements that no request of
-    /// this region awaits.
+    /// this region awaits, nor for the guard of a Back whose callers have all cancelled.
     /// </summary>
     /// <remarks>A hook of a transition of this region that awaits it deadlocks: the region is busy while the hook runs.</remarks>
     /// <param name="cancellationToken">Stops waiting.</param>
@@ -471,7 +479,8 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public bool Requested { get; set; }
     // Admitted transitions that have not released admission, in admission order.
     public List<NavigationTransition> InFlight { get; } = [];
-    // Admitted transitions whose task has not completed (the region's share of the navigator's running set).
+    // Admitted transitions whose task has not completed (the region's share of the navigator's running set), except a
+    // Back whose callers all cancelled: it leaves this set, not the navigator's, when the last caller is settled (#415).
     public HashSet<NavigationTransition> Running { get; } = [];
     // The region's guards (AddDepartureGuard), in registration order.
     public List<NavigationRegionGuardRegistration> Guards { get; } = [];
