@@ -525,6 +525,41 @@ internal sealed partial class CodegenDiagnosticsTests
                 """).ConfigureAwait(false);
             Require(windowModelExit == 0 && !windowModelOutput.Contains("RUNICBRIDGE013", StringComparison.Ordinal),
                 $"A Window's ViewModel was reported as a ViewModel without a View.\n{windowModelOutput}");
+            // A ViewModel without a View of its own whose base class or interface has
+            // one is presented by that View: the generated switch's type pattern for
+            // the base matches it (#407). A ViewModel that no case matches still warns.
+            const string BaseViewSource = """
+                public abstract class ComponentLogViewModel : FixtureModel { public string Text => ""; }
+                public sealed class ControllerLogViewModel : ComponentLogViewModel { }
+                public sealed class InstallerLogViewModel : ComponentLogViewModel { }
+                public sealed partial class ComponentLogView : RunicView<ComponentLogViewModel>;
+                public interface ILogPage : INotifyPropertyChanged { }
+                public class SummaryPageViewModel : FixtureModel, ILogPage { public string Title => ""; }
+                public sealed class DetailedSummaryPageViewModel : SummaryPageViewModel { }
+                public sealed class StrayPageViewModel : FixtureModel, ILogPage { public string Title => "stray"; }
+                public sealed partial class SummaryPageView : RunicView<SummaryPageViewModel>;
+                public sealed class LogViewModel : FixtureModel
+                {
+                    public ComponentLogViewModel? CurrentChild { get; }
+                    public IReadOnlyList<ComponentLogViewModel> Children { get; } = [];
+                    public NavigationRegion<ILogPage> Pages { get; } = null!;
+                }
+                public sealed partial class LogWindow : RunicWindow<LogViewModel>;
+                """;
+            var (baseViewExit, baseViewOutput, baseViewDirectory) = await RunGeneratorAsync(generator, temporaryRoot, "MissingViewBaseView",
+                Preamble + BaseViewSource).ConfigureAwait(false);
+            var baseViewWarnings = baseViewOutput.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE013:", StringComparison.Ordinal)).ToArray();
+            Require(baseViewExit == 0 && baseViewWarnings.Length == 1
+                    && baseViewWarnings[0].Contains("LogViewModel.Pages: Fixture.StrayPageViewModel is assignable to ILogPage but has no Runic View", StringComparison.Ordinal)
+                    && !baseViewOutput.Contains("ControllerLogViewModel", StringComparison.Ordinal)
+                    && !baseViewOutput.Contains("InstallerLogViewModel", StringComparison.Ordinal)
+                    && !baseViewOutput.Contains("DetailedSummaryPageViewModel", StringComparison.Ordinal),
+                $"RUNICBRIDGE013 reported a ViewModel that a View of its base type presents, or missed one that no View presents.\n{baseViewOutput}");
+            var logBridge = File.ReadAllText(Path.Combine(baseViewDirectory, "cs", "Fixture.LogViewModel.Bridge.g.cs"));
+            Require(logBridge.Contains("case global::Fixture.ComponentLogViewModel page:", StringComparison.Ordinal)
+                    && logBridge.Contains("case global::Fixture.SummaryPageViewModel page:", StringComparison.Ordinal)
+                    && !logBridge.Contains("ControllerLogViewModel", StringComparison.Ordinal),
+                $"The generated Bridge does not present the subclasses through their base type's case.\n{logBridge}");
 
             // Bridge generation that the build turned on by default is
             // optional: an assembly with no Window or View (a navigator-only

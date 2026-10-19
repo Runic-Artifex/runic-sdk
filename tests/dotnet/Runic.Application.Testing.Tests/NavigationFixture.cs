@@ -66,12 +66,29 @@ public sealed class NavEditorViewModel(string title) : INavPageViewModel, IDispo
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
+// A View of an abstract base ViewModel presents its subclasses, which have no
+// View of their own; the generator does not warn about them (#407).
+public sealed partial class NavLogPageView : RunicView<NavLogPageViewModel>;
+
+public abstract class NavLogPageViewModel : INavPageViewModel
+{
+    public abstract string Title { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed class NavControllerLogViewModel : NavLogPageViewModel
+{
+    public override string Title => "controller log";
+}
+
 internal sealed class NavViewLocator : IRunicViewLocator
 {
     public TView Locate<TView, TViewModel>() where TView : class, IRunicView where TViewModel : class =>
         typeof(TView) == typeof(NavHomeView) ? (TView)(object)new NavHomeView()
         : typeof(TView) == typeof(NavEditorView) ? (TView)(object)new NavEditorView()
         : typeof(TView) == typeof(ReactiveNavEditorView) ? (TView)(object)new ReactiveNavEditorView()
+        : typeof(TView) == typeof(NavLogPageView) ? (TView)(object)new NavLogPageView()
         : throw new InvalidOperationException($"Unexpected View {typeof(TView).Name}.");
 }
 

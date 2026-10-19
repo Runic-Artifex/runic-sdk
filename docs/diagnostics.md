@@ -160,8 +160,9 @@ a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is
 
 A warning. A public, concrete ViewModel in the application assembly fits a
 ViewModel content property, ViewModel collection or `NavigationRegion<TContent>`
-slot but has no View, so pushing or presenting it there throws
-`NotSupportedException`. Broad slot types are not checked. The warning repeats
+slot but has no View, and no View of a base class that the slot admits presents
+it, so pushing or presenting it there throws `NotSupportedException`. Broad slot
+types are not checked. The warning repeats
 on builds that reuse the cached generation.
 
 **Fix:** add a View, such as
