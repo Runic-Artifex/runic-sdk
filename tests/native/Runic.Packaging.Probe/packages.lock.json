@@ -7,7 +7,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.8.0-preview.5, )"
+          "Runic.Navigation": "[0.8.0-preview.6, )"
         }
       },
       "runic.navigation": {
@@ -23,13 +23,13 @@
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.8.0-preview.5, )"
+          "Runic.Platform": "[0.8.0-preview.6, )"
         }
       },
       "runic.platform.windows": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.8.0-preview.5, )"
+          "Runic.Platform.Runtime": "[0.8.0-preview.6, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {

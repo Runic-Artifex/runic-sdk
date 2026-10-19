@@ -164,7 +164,7 @@
         "type": "Project",
         "dependencies": {
           "ReactiveUI": "[26.0.1, )",
-          "Runic.Navigation": "[0.8.0-preview.5, )"
+          "Runic.Navigation": "[0.8.0-preview.6, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
