@@ -398,7 +398,9 @@ requirement, not a consumer one.
   `RUNICWPF001` (WPF child web presentation), is planned to graduate before 1.0.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each stable release on a
-  prerelease version and may change in any release.
+  prerelease version and may change in any release. `RunicCsWebUiPackageVersion`
+  in `eng/Versions.props` sets that version (the release train's until they
+  differ); the `runic-app` template's `--host cswebui` references it.
 
 ### Deprecation
 

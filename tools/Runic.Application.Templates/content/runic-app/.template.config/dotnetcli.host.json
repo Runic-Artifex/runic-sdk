@@ -10,6 +10,7 @@
     "packaging": { "longName": "packaging", "shortName": "" },
     "applicationId": { "longName": "application-id", "shortName": "" },
     "runicVersion": { "longName": "runic-version", "shortName": "", "isHidden": true },
+    "runicCsWebUiVersion": { "longName": "runic-cswebui-version", "shortName": "", "isHidden": true },
     "runicNpmVersion": { "longName": "runic-npm-version", "shortName": "", "isHidden": true }
   },
   "usageExamples": [

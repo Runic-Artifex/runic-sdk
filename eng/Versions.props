@@ -3,6 +3,10 @@
     <RunicSdkVersion>0.8.0-preview.6</RunicSdkVersion>
     <!-- Last published release; package validation compares shipping libraries with it. -->
     <RunicPackageValidationBaselineVersion>0.8.0-preview.6</RunicPackageValidationBaselineVersion>
+    <!-- Runic.Application.Views.CsWebUi is the preview package. It depends on the prerelease CsWebUi, so from 1.0
+         it ships on a prerelease version of its own; the package, central package management and the runic-app
+         template's cswebui host read it here. -->
+    <RunicCsWebUiPackageVersion Condition="'$(RunicCsWebUiPackageVersion)' == ''">$(RunicSdkVersion)</RunicCsWebUiPackageVersion>
     <Version Condition="'$(Version)' == ''">$(RunicSdkVersion)</Version>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
   </PropertyGroup>

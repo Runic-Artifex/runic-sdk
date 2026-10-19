@@ -218,6 +218,13 @@
       "replaces": "__RUNIC_NUGET_VERSION__",
       "description": "Version of the Runic NuGet packages and the dotnet-runic tool."
     },
+    "runicCsWebUiVersion": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "__RUNIC_CSWEBUI_NUGET_VERSION_DEFAULT__",
+      "replaces": "__RUNIC_CSWEBUI_NUGET_VERSION__",
+      "description": "Version of the preview Runic.Application.Views.CsWebUi package, which ships on a prerelease version with each release."
+    },
     "runicNpmVersion": {
       "type": "parameter",
       "datatype": "text",

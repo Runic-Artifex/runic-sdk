@@ -43,7 +43,9 @@ AssetArchiveSource assets = AssetArchive.ReadEmbedded(
 
 The default entry point is `index.html`. Set `RunicAssetsEntryPoint` for a
 different entry file; set `RunicAssetsDistExclude` to omit files such as build
-statistics. To use an existing canonical archive, set
+statistics (by default `runic-assets.zip`; the value replaces that default, and
+an empty `<RunicAssetsDistExclude></RunicAssetsDistExclude>` in the project file
+packs every file). To use an existing canonical archive, set
 `RunicAssetsEmbeddedArchive` instead of `RunicAssetsDist`. Set
 `RunicAssetsEmbeddedResourceName` if you need a resource name other than
 `Runic.Assets.StaticFiles`, and supply that name to `ReadEmbedded`.

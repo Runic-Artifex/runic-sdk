@@ -96,3 +96,42 @@ test("the packaging probe declares what the template's packaging reads", () => {
   }
   assert.match(probe, /<Compile Include="\.\.\/\.\.\/\.\.\/tools\/Runic\.Application\.Templates\/content\/runic-app\/ApplicationIdentity\.cs"/);
 });
+
+// tmpl-01: Runic.Application.Views.CsWebUi is the preview package and ships on a prerelease version of its own, so
+// --host cswebui must not reference the release train's version. tests/templates/Test-Templates.sh restores the
+// cswebui variants from the candidate feed with the stamped default.
+test("the cswebui host references the preview package's separately stamped version", () => {
+  const content = resolve(root, "tools/Runic.Application.Templates/content/runic-app");
+  const project = readFileSync(resolve(content, "RunicWindowApp.csproj"), "utf8");
+  const references = [...project.matchAll(/<PackageReference Include="([^"]+)" Version="(__[A-Z_]+__)" \/>/g)]
+    .map(([, id, version]) => [id, version]);
+  assert.deepEqual(references, [
+    ["Runic.Application.Views.ReactiveUI", "__RUNIC_NUGET_VERSION__"],
+    ["Runic.Application.Views.Desktop", "__RUNIC_NUGET_VERSION__"],
+    ["Runic.Desktop.Gtk4", "__RUNIC_NUGET_VERSION__"],
+    ["Runic.Application.Views.CsWebUi", "__RUNIC_CSWEBUI_NUGET_VERSION__"],
+  ]);
+  const symbols = JSON.parse(readFileSync(resolve(content, ".template.config/template.json"), "utf8")).symbols;
+  assert.equal(symbols.runicCsWebUiVersion.replaces, "__RUNIC_CSWEBUI_NUGET_VERSION__");
+  assert.equal(symbols.runicCsWebUiVersion.defaultValue, "__RUNIC_CSWEBUI_NUGET_VERSION_DEFAULT__");
+  const host = JSON.parse(readFileSync(resolve(content, ".template.config/dotnetcli.host.json"), "utf8")).symbolInfo;
+  assert.deepEqual(host.runicCsWebUiVersion, { longName: "runic-cswebui-version", shortName: "", isHidden: true });
+
+  // The template pack stamps the default from the version the package itself ships with.
+  const templates = resolve(root, "tools/Runic.Application.Templates/Runic.Application.Templates.csproj");
+  assert.match(readFileSync(templates, "utf8"), /\.Replace\('__RUNIC_CSWEBUI_NUGET_VERSION_DEFAULT__', '\$\(RunicCsWebUiNuGetTemplateVersion\)'\)/);
+  const evaluate = (path, properties, extra = []) => {
+    const result = spawnSync("dotnet", ["msbuild", path, "-nologo", `-getProperty:${properties.join(",")}`, ...extra],
+      { cwd: root, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return properties.length === 1 ? { [properties[0]]: result.stdout.trim() } : JSON.parse(result.stdout).Properties;
+  };
+  const cswebui = resolve(root, "packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj");
+  const preview = ["-p:RunicSdkVersion=1.0.0", "-p:RunicCsWebUiPackageVersion=1.0.0-preview.1"];
+  assert.deepEqual(evaluate(templates, ["RunicNuGetTemplateVersion", "RunicCsWebUiNuGetTemplateVersion"], preview),
+    { RunicNuGetTemplateVersion: "1.0.0", RunicCsWebUiNuGetTemplateVersion: "1.0.0-preview.1" });
+  assert.deepEqual(evaluate(cswebui, ["PackageVersion"], preview), { PackageVersion: "1.0.0-preview.1" });
+  // Until the versions diverge, the preview package follows the release train.
+  const train = evaluate(templates, ["RunicSdkVersion", "RunicCsWebUiNuGetTemplateVersion"]);
+  assert.equal(train.RunicCsWebUiNuGetTemplateVersion, train.RunicSdkVersion);
+});

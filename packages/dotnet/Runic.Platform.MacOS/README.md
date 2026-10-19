@@ -196,7 +196,7 @@ it these targets do nothing.
 | Property | Meaning |
 | --- | --- |
 | `RunicMacPrivilegedDaemonLabel` | The launchd label, the XPC Mach service name and the property list's name. |
-| `RunicMacBundleIdentifier` | The application's bundle identifier and code-signing identifier. Default: `$(ApplicationId)`. |
+| `RunicMacBundleIdentifier` | The application's bundle identifier and code-signing identifier. Default: `$(ApplicationId)`, then `$(RunicApplicationId)`, which a `runic-app` project declares. |
 | `RunicMacTeamIdentifier` | The Team ID that signs the application, the daemon and bundled programs. |
 | `RunicMacPrivilegedDaemonProgram` | The daemon executable's path in the bundle. |
 | `RunicMacPrivilegedDaemonIdentifier` | The daemon's code-signing identifier. Default: the label. |

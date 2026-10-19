@@ -1,0 +1,7 @@
+<Project>
+  <!-- Defaults a project may replace, set before the project file so that an empty value stays empty:
+       <RunicAssetsDistExclude></RunicAssetsDistExclude> packs every file of RunicAssetsDist. -->
+  <PropertyGroup>
+    <RunicAssetsDistExclude Condition="'$(RunicAssetsDistExclude)' == ''">runic-assets.zip</RunicAssetsDistExclude>
+  </PropertyGroup>
+</Project>

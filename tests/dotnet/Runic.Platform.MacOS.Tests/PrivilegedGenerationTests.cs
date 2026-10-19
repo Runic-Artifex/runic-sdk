@@ -63,6 +63,33 @@ internal sealed class PrivilegedGenerationTests
         Check(exit == 0 && File.GetLastWriteTimeUtc(project.Plist) == written, "an unchanged property list is not rewritten");
     }
 
+    [Test, DisplayName("generation: the bundle identifier defaults to ApplicationId, then to the template's RunicApplicationId")]
+    public async Task BundleIdentifierDefaultsAsync()
+    {
+        string daemon = Properties.Replace("<RunicMacBundleIdentifier>org.example.app</RunicMacBundleIdentifier>", "", StringComparison.Ordinal);
+        foreach (var (identity, expected) in new[]
+        {
+            // A runic-app project declares only RunicApplicationId (msbuild-03).
+            ("<RunicApplicationId>org.example.Template</RunicApplicationId>", "org.example.Template"),
+            ("<ApplicationId>org.example.Sdk</ApplicationId><RunicApplicationId>org.example.Template</RunicApplicationId>", "org.example.Sdk"),
+            ("<RunicMacBundleIdentifier>org.example.Explicit</RunicMacBundleIdentifier><ApplicationId>org.example.Sdk</ApplicationId><RunicApplicationId>org.example.Template</RunicApplicationId>", "org.example.Explicit"),
+        })
+        {
+            using var project = new FixtureProject(Items, daemon + identity);
+            var (exit, output) = await project.BuildAsync();
+            Check(exit == 0, identity + ": " + output);
+            var source = File.ReadAllText(project.MacSource);
+            Check(source.Contains($"\"org.example.app.privileged\", \"ABCDE12345\", \"{expected}\", \"org.example.app.privileged\"", StringComparison.Ordinal), identity + ": " + source);
+        }
+
+        using (var project = new FixtureProject(Items, daemon))
+        {
+            var (exit, output) = await project.BuildAsync();
+            Check(exit != 0 && output.Contains("RUNICPA101", StringComparison.Ordinal) && output.Contains("RunicApplicationId", StringComparison.Ordinal),
+                "no identity at all: " + output);
+        }
+    }
+
     [Test, DisplayName("generation: nothing for macOS without RunicMacPrivilegedDaemonLabel")]
     public async Task InertWithoutLabelAsync()
     {

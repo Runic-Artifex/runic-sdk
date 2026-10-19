@@ -5,6 +5,8 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.CsWebUi</PackageId>
+    <!-- The preview package's own version (eng/Versions.props). -->
+    <PackageVersion>$(RunicCsWebUiPackageVersion)</PackageVersion>
     <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

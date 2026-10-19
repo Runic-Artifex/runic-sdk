@@ -16,6 +16,9 @@
     <TemplatePackContentRoot>$(MSBuildProjectDirectory)/obj/template-pack-content/</TemplatePackContentRoot>
     <RunicTemplateNpmDirectory Condition="'$(RunicTemplateNpmDirectory)' == ''">$(MSBuildProjectDirectory)/../../artifacts/packages/npm</RunicTemplateNpmDirectory>
     <RunicNuGetTemplateVersion Condition="'$(RunicNuGetTemplateVersion)' == ''">$(RunicSdkVersion)</RunicNuGetTemplateVersion>
+    <!-- Runic.Application.Views.CsWebUi is the preview package: it ships with each release on a prerelease version
+         (eng/release/README.md, "Package tiers"), so the cswebui host references its own version. -->
+    <RunicCsWebUiNuGetTemplateVersion Condition="'$(RunicCsWebUiNuGetTemplateVersion)' == ''">$(RunicCsWebUiPackageVersion)</RunicCsWebUiNuGetTemplateVersion>
     <RunicNpmTemplateVersion Condition="'$(RunicNpmTemplateVersion)' == ''">$(RunicSdkVersion)</RunicNpmTemplateVersion>
     <BunTemplateVersion Condition="'$(BunTemplateVersion)' == ''">1.4.2</BunTemplateVersion>
     <NpmTemplateVersion Condition="'$(NpmTemplateVersion)' == ''">12.2.0</NpmTemplateVersion>
@@ -36,7 +39,7 @@
 
     <PropertyGroup>
       <_TemplateJson>$([System.IO.File]::ReadAllText('$(TemplatePackContentRoot)runic-app/.template.config/template.json'))</_TemplateJson>
-      <_StampedTemplateJson>$([System.String]::Copy('$(_TemplateJson)').Replace('__RUNIC_NUGET_VERSION_DEFAULT__', '$(RunicNuGetTemplateVersion)').Replace('__RUNIC_NPM_VERSION_DEFAULT__', '$(RunicNpmTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_StampedTemplateJson>
+      <_StampedTemplateJson>$([System.String]::Copy('$(_TemplateJson)').Replace('__RUNIC_NUGET_VERSION_DEFAULT__', '$(RunicNuGetTemplateVersion)').Replace('__RUNIC_CSWEBUI_NUGET_VERSION_DEFAULT__', '$(RunicCsWebUiNuGetTemplateVersion)').Replace('__RUNIC_NPM_VERSION_DEFAULT__', '$(RunicNpmTemplateVersion)').Replace('__BUN_PACKAGE_MANAGER_VERSION__', '$(BunTemplateVersion)').Replace('__NPM_PACKAGE_MANAGER_VERSION__', '$(NpmTemplateVersion)').Replace('__PNPM_PACKAGE_MANAGER_VERSION__', '$(PnpmTemplateVersion)'))</_StampedTemplateJson>
     </PropertyGroup>
     <WriteLinesToFile File="$(TemplatePackContentRoot)runic-app/.template.config/template.json"
                       Lines="$(_StampedTemplateJson)"
