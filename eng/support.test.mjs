@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { root, workspace } from "./run.mjs";
 import { readSupport, renderReadme, renderSupportMarkdown, supportRids, validateSupport } from "./support.mjs";
+import { nativeLegs } from "./ci/platforms.mjs";
 
 const support = readSupport(root);
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8"));
@@ -13,7 +14,9 @@ test("ci-verified support entries match the Native CI jobs", () => {
   // Every Native entry builds and runs Runic Desktop's native window layer (the WebView
   // smoke); entries with `cswebui: true` also run the CS-WebUI window probes. The musl
   // entries run Runic Desktop's checks in Alpine through eng/ci/native-musl.sh.
-  const matrix = workflow.jobs.native.strategy.matrix.include;
+  // The plan selects the Native legs from eng/ci/platforms.mjs; nightly and manual runs run them all.
+  assert.equal(workflow.jobs.native.strategy.matrix, "${{ fromJSON(needs.plan.outputs.native) }}");
+  const matrix = nativeLegs;
   const musl = workflow.jobs["native-musl"].strategy.matrix.include;
   const expected = {
     desktop: [...matrix, ...musl].map(entry => entry.rid).sort(),

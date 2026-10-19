@@ -11,6 +11,11 @@ repeat full verification without identifying a concrete failure they prevent.
 Passing the relevant checks completes verification unless new evidence justifies
 more work. Track nonblocking limitations as issues.
 
+Pull request CI runs Windows and macOS jobs only for the platforms a change's
+paths need (eng/ci/README.md, "Windows and macOS legs"). When a change's effect on
+Windows or macOS is unclear, for example shared managed code that a native host
+calls, add the `ci:all-platforms` label to the pull request and rerun all jobs.
+
 Use manual checks for affected native/UI behavior that automation cannot cover.
 Soaks and matched benchmarks are tools for lifecycle/performance changes and
 investigating regressions, not routine publication prerequisites.

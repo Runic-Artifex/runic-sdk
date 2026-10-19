@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +11,17 @@ export function incomplete(needs, skip = []) {
     .map(([job, { result }]) => `${job}=${result}`);
 }
 
+// Which Windows and macOS legs the plan ran, and why (eng/ci/platforms.mjs).
+export function platformSummary(platforms, why) {
+  return `Windows and macOS legs: ${platforms.join(", ") || "none"} (${why || "the plan gave no reason"})`;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // A failed plan has no outputs.
+  const output = (name, fallback) => { try { return JSON.parse(process.env[name]); } catch { return fallback; } };
+  const summary = platformSummary(output("PLATFORMS", []), output("WHY", ""));
+  console.log(summary);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   const skip = JSON.parse(process.env.SKIP || "[]");
   const failed = incomplete(JSON.parse(process.env.NEEDS), skip);
   if (failed.length) {
