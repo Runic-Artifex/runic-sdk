@@ -1,1 +1,4 @@
 #nullable enable
+*REMOVED*Runic.Assets.DevelopmentDocumentAssets
+*REMOVED*static Runic.Assets.DevelopmentDocumentAssets.WithDevelopmentDocument(this Runic.Assets.IAssetSnapshotSource! source) -> Runic.Assets.IAssetSnapshotSource!
+*REMOVED*static Runic.Assets.DevelopmentDocumentAssets.WithDevelopmentDocument(this Runic.Assets.IAssetSnapshotSource! source, string! path) -> Runic.Assets.IAssetSnapshotSource!

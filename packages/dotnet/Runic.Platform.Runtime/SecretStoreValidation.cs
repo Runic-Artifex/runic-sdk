@@ -17,26 +17,6 @@ public static class SecretStoreValidation
         Check(account, nameof(account));
     }
 
-    /// <summary>Encodes a secret as UTF-8.</summary>
-    /// <returns>The encoded secret, which the caller clears after use, or <see langword="null"/> when it exceeds <see cref="MaximumSecretBytes"/>.</returns>
-    /// <exception cref="ArgumentException"><paramref name="secret"/> is not valid Unicode text.</exception>
-    public static byte[]? EncodeSecret(string secret)
-    {
-        ArgumentNullException.ThrowIfNull(secret);
-        // Three bytes per UTF-16 unit bound the encoded length; a longer string cannot fit.
-        if (secret.Length > MaximumSecretBytes) return null;
-        var buffer = new byte[secret.Length * 3];
-        if (Utf8.FromUtf16(secret, buffer, out _, out int written, replaceInvalidSequences: false) != OperationStatus.Done)
-        {
-            Array.Clear(buffer);
-            throw new ArgumentException("The secret is not valid Unicode text.", nameof(secret));
-        }
-        if (written > MaximumSecretBytes) { Array.Clear(buffer); return null; }
-        var encoded = buffer.AsSpan(0, written).ToArray();
-        Array.Clear(buffer);
-        return encoded;
-    }
-
     /// <summary>Decodes a stored secret.</summary>
     /// <returns>The secret, or <see langword="null"/> when the stored bytes are not UTF-8 text.</returns>
     public static string? DecodeSecret(ReadOnlySpan<byte> stored)

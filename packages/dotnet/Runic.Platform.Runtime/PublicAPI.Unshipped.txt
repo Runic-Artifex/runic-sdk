@@ -1,1 +1,2 @@
 #nullable enable
+*REMOVED*static Runic.Platform.Runtime.SecretStoreValidation.EncodeSecret(string! secret) -> byte[]?

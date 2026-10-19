@@ -40,7 +40,7 @@ internal sealed class InteractionFixture
             alreadyCancelled.Cancel();
             Task<bool> cancelledBeforeAdmission;
             using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a",
-                alreadyCancelled.Token))
+                cancellationToken: alreadyCancelled.Token))
                 cancelledBeforeAdmission = model.ConfirmDelete.Handle("cancelled-before-admission");
             Require(await ThrowsAsync<OperationCanceledException>(async () => _ = await cancelledBeforeAdmission),
                 "An already-cancelled command was delivered to an interaction handler.");
@@ -150,7 +150,7 @@ internal sealed class InteractionFixture
             ConnectionKey: "connection-a")).AsTask();
         using var commandCancellation = new CancellationTokenSource();
         Task<bool> cancelledByCommand;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandCancellation.Token))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", cancellationToken: commandCancellation.Token))
             cancelledByCommand = session.Interactions.TryRequest(route, "confirmDelete", "testing.confirmDelete.v1",
                 "cancel-through-control", static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())!;
         _ = await cancellationWait;
