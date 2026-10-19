@@ -16,7 +16,7 @@ application's own types is [opening files and URLs](open-activation.md).
 | Linux | Implemented in Runic.Platform.Linux.Portal, without GIO: the freedesktop.org [Desktop Entry 1.5](https://specifications.freedesktop.org/desktop-entry/latest/), [Shared MIME-info 0.21](https://specifications.freedesktop.org/shared-mime-info/latest/), [MIME Apps 1.0.1](https://specifications.freedesktop.org/mime-apps/latest/) and [Icon Theme 0.13](https://specifications.freedesktop.org/icon-theme/latest/) specifications. | Fixture trees in temporary directories, in the formats `update-mime-database` and `update-desktop-database` write, never the user's directories, MIME database, defaults, icon themes or session bus: entries, name and content detection, associations at every level, the byte-preserving `mimeapps.list` write, launches checked by a probe executable that records its argument vector, and icon lookup. D-Bus activation against a fake `org.freedesktop.Application` on a private bus. JIT and NativeAOT, locally on x64 and in CI. Against a real desktop: unverified. |
 | Sandboxed Linux | The host's applications and defaults are out of reach: application methods report `Unavailable(BackendUnavailable)`; content types and icons come from the sandbox's own data. | Portable tests. Inside a real Flatpak or Snap: unverified. |
 | Windows | Implemented in Runic.Platform.Windows: the registry's extension keys and MIME database, `AssocQueryString`, `SHAssocEnumHandlers` and `IAssocHandler::Invoke`, `shell:AppsFolder`, and shell icons. Defaults are the user's to choose: `SetDefaultApplicationAsync` reports `PermissionDenied`. | Portable tests of the type rules, launch grouping and PNG encoding on every OS. In CI on Windows x64 and ARM64, JIT and NativeAOT: the runner's associations read-only, then an extension, MIME type and URL protocol unique to the run, registered under `HKEY_CURRENT_USER\Software\Classes` with the test executable as handler, which records its argument vector; the keys are removed afterwards. |
-| macOS | Implemented in Runic.Platform.MacOS: `UTType`, `NSWorkspace` (Launch Services) and the Applications folders. | Portable tests of the type forms, supertype order and bundle scan. In CI on macOS arm64, JIT and NativeAOT: the runner's Launch Services database read-only, then two app bundles unique to the run that declare a type and a URL scheme, registered with Launch Services, launched (their executable records each start), made the test type's default, and unregistered afterwards. Delivery of the opened items to the application (Apple events): unverified. |
+| macOS | Implemented in Runic.Platform.MacOS: `UTType`, `NSWorkspace` (Launch Services) and the Applications folders. | Portable tests of the type forms, supertype order and bundle scan. In CI on macOS arm64, JIT and NativeAOT: the runner's Launch Services database read-only, then two app bundles unique to the run that declare a type and a URL scheme, registered with Launch Services, launched (their executable records each start), and unregistered afterwards. Unverified: delivery of the opened items to the application (Apple events), and `SetDefaultApplicationAsync`'s outcome, because macOS asks the user to confirm even the test type's default and the runner cannot answer. |
 | CS-WebUI | `Unavailable(ProviderNotConfigured)`; register `PortalPlatformProvider.CreateApplications()` before `AddRunicPlatformServices()` to use it. | — |
 
 ## Contract
@@ -371,10 +371,10 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
   packaged application's tile through `IShellItemImageFactory`
   (`SIIGBF_ICONONLY`) on its `shell:AppsFolder` item.
 - `ForIconName` is a successful `null`: Windows has no icon themes.
-- The pixels (`GetDIBits`, 32-bit; the AND mask for icons without alpha;
-  premultiplied factory images divided out) are encoded as PNG by a managed
-  encoder. The size is `Size × Scale`, at most 256 pixels, the largest icon
-  Windows stores.
+- WIC encodes the icon as PNG, with the thumbnails' encoder: an `HICON`
+  through `CreateBitmapFromHICON`, which takes its alpha channel or its mask,
+  and the image factory's premultiplied bitmap converted to straight alpha. The
+  size is `Size × Scale`, at most 256 pixels, the largest icon Windows stores.
 
 ## macOS
 

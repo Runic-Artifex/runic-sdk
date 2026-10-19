@@ -72,36 +72,6 @@ internal sealed partial class ApplicationsTests
             "per-file and empty icons");
     }
 
-    // The encoder's output is a valid PNG: signature, chunk CRCs, header, and the pixels in RGBA order after inflating.
-    [Test]
-    public void PngEncodesStraightRgba()
-    {
-        byte[] bgra = [1, 2, 3, 255, 10, 20, 30, 128, 0, 0, 0, 0, 255, 255, 255, 64];
-        byte[] png = WindowsIconImage.EncodePng(bgra, 2, 2);
-        Check(png.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }), "signature");
-        var (width, height, pixels) = DecodePng(png);
-        Check(width == 2 && height == 2, "size");
-        Check(pixels.SequenceEqual(new byte[] { 3, 2, 1, 255, 30, 20, 10, 128, 0, 0, 0, 0, 255, 255, 255, 64 }), $"pixels: {Convert.ToHexString(pixels)}");
-    }
-
-    [Test]
-    public void PixelsAreStraightened()
-    {
-        // Premultiplied: no colour exceeds its alpha, so the colours are divided by alpha.
-        byte[] premultiplied = [64, 32, 0, 128, 0, 0, 0, 0, 10, 20, 30, 255];
-        WindowsIconImage.Straighten(premultiplied);
-        Check(premultiplied.SequenceEqual(new byte[] { 128, 64, 0, 128, 0, 0, 0, 0, 10, 20, 30, 255 }), $"premultiplied: {Convert.ToHexString(premultiplied)}");
-        // Straight: a colour above its alpha proves it; nothing changes.
-        byte[] straight = [200, 32, 0, 128, 64, 32, 0, 128];
-        WindowsIconImage.Straighten(straight);
-        Check(straight.SequenceEqual(new byte[] { 200, 32, 0, 128, 64, 32, 0, 128 }), "straight pixels stay");
-        // An icon without alpha takes its transparency from the AND mask.
-        byte[] colour = [9, 9, 9, 0, 8, 8, 8, 0];
-        Check(!WindowsIconImage.HasAlpha(colour), "no alpha");
-        WindowsIconImage.ApplyMask(colour, [0, 0, 0, 0, 255, 255, 255, 0]);
-        Check(colour[3] == 255 && colour[7] == 0, "masked");
-    }
-
     // Launch items group by what opens them; every group must name the application before anything starts.
     [Test]
     public void LaunchItemsGroupByAssociation()
@@ -333,23 +303,22 @@ internal sealed partial class ApplicationsTests
         Check(visible > width * height / 10, "the icon is not blank");
     }
 
-    // Checks every chunk's CRC and inflates the image data of an 8-bit RGBA PNG without filtering.
+    // Inflates and unfilters the image data of an 8-bit RGBA PNG, as WIC writes it.
     internal static (int Width, int Height, byte[] Pixels) DecodePng(byte[] png)
     {
+        Check(png.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }), "PNG signature");
         int offset = 8, width = 0, height = 0;
         using var data = new MemoryStream();
-        while (offset < png.Length)
+        while (offset + 8 <= png.Length)
         {
             int length = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(offset));
             var type = png.AsSpan(offset + 4, 4);
             var body = png.AsSpan(offset + 8, length);
-            uint crc = BinaryPrimitives.ReadUInt32BigEndian(png.AsSpan(offset + 8 + length));
-            Check((WindowsIconImage.Crc(WindowsIconImage.Crc(0xFFFFFFFFu, type), body) ^ 0xFFFFFFFFu) == crc, "chunk CRC");
             if (type.SequenceEqual("IHDR"u8))
             {
                 width = BinaryPrimitives.ReadInt32BigEndian(body);
                 height = BinaryPrimitives.ReadInt32BigEndian(body[4..]);
-                Check(body[8] == 8 && body[9] == 6, "8-bit RGBA");
+                Check(body[8] == 8 && body[9] == 6 && body[12] == 0, $"8-bit RGBA without interlacing: depth {body[8]}, colour type {body[9]}");
             }
             else if (type.SequenceEqual("IDAT"u8)) data.Write(body);
             offset += 12 + length;
@@ -358,13 +327,35 @@ internal sealed partial class ApplicationsTests
         using var inflated = new MemoryStream();
         using (var zlib = new ZLibStream(data, CompressionMode.Decompress)) zlib.CopyTo(inflated);
         byte[] raw = inflated.ToArray();
-        var pixels = new List<byte>();
+        int stride = width * 4;
+        var pixels = new byte[height * stride];
         for (int y = 0; y < height; y++)
         {
-            int row = y * (width * 4 + 1);
-            if (raw[row] == 0) pixels.AddRange(raw.AsSpan(row + 1, width * 4).ToArray());
+            byte filter = raw[y * (stride + 1)];
+            var line = raw.AsSpan(y * (stride + 1) + 1, stride);
+            for (int x = 0; x < stride; x++)
+            {
+                int left = x >= 4 ? pixels[y * stride + x - 4] : 0, up = y > 0 ? pixels[(y - 1) * stride + x] : 0,
+                    corner = x >= 4 && y > 0 ? pixels[(y - 1) * stride + x - 4] : 0;
+                int predicted = filter switch
+                {
+                    0 => 0,
+                    1 => left,
+                    2 => up,
+                    3 => (left + up) / 2,
+                    4 => Paeth(left, up, corner),
+                    _ => throw new InvalidOperationException($"PNG filter {filter}"),
+                };
+                pixels[y * stride + x] = (byte)(line[x] + predicted);
+            }
         }
-        return (width, height, [.. pixels]);
+        return (width, height, pixels);
+
+        static int Paeth(int a, int b, int c)
+        {
+            int p = a + b - c, pa = Math.Abs(p - a), pb = Math.Abs(p - b), pc = Math.Abs(p - c);
+            return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+        }
     }
 
     private static T Success<T>(PlatformResult<T> result) =>

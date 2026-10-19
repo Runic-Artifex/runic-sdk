@@ -162,11 +162,6 @@ IEnumShellItems
 IShellItem2
 PKEY_Link_TargetParsingPath
 SHDefExtractIcon
-GetIconInfo
-GetDIBits
-CreateCompatibleDC
-DeleteDC
-BITMAPINFO
 FindMimeFromData
 SHSimpleIDListFromPath
 SHCreateItemFromIDList

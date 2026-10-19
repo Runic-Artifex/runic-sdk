@@ -230,7 +230,7 @@ internal static unsafe class WindowsShellAssociations
         {
             if (PInvoke.SHDefExtractIcon(path, index, 0, &icon, null, (uint)pixels).Value != S_OK || icon.IsNull) return null;
         }
-        try { return IconPng(icon); }
+        try { return WindowsPng.Encode(default, icon, out var png, out _, out _, out _) >= 0 ? png : null; }
         finally { PInvoke.DestroyIcon(icon); }
     }
 
@@ -270,73 +270,13 @@ internal static unsafe class WindowsShellAssociations
         try
         {
             if (factory->GetImage(new SIZE(pixels, pixels), SIIGBF.SIIGBF_ICONONLY, &bitmap).Value < 0 || bitmap.IsNull) return null;
-            using var dc = new MemoryDc();
-            var pixelsRead = Pixels(dc.Handle, bitmap, out int width, out int height);
-            if (pixelsRead is null) return null;
-            if (!WindowsIconImage.HasAlpha(pixelsRead)) for (int i = 3; i < pixelsRead.Length; i += 4) pixelsRead[i] = 255;
-            else WindowsIconImage.Straighten(pixelsRead);
-            return WindowsIconImage.EncodePng(pixelsRead, width, height);
+            return WindowsPng.Encode(bitmap, default, out var png, out _, out _, out _) >= 0 ? png : null;
         }
         finally
         {
             if (!bitmap.IsNull) PInvoke.DeleteObject(bitmap);
             factory->Release();
         }
-    }
-
-    private static byte[]? IconPng(HICON icon)
-    {
-        ICONINFO info;
-        if (!PInvoke.GetIconInfo(icon, &info)) return null;
-        try
-        {
-            // A monochrome icon has no colour bitmap; its mask holds both halves.
-            if (info.hbmColor.IsNull) return null;
-            using var dc = new MemoryDc();
-            var color = Pixels(dc.Handle, info.hbmColor, out int width, out int height);
-            if (color is null) return null;
-            if (!WindowsIconImage.HasAlpha(color))
-            {
-                int maskWidth = 0, maskHeight = 0;
-                var mask = info.hbmMask.IsNull ? null : Pixels(dc.Handle, info.hbmMask, out maskWidth, out maskHeight);
-                if (mask is null || maskWidth != width || maskHeight != height) for (int i = 3; i < color.Length; i += 4) color[i] = 255;
-                else WindowsIconImage.ApplyMask(color, mask);
-            }
-            return WindowsIconImage.EncodePng(color, width, height);
-        }
-        finally
-        {
-            if (!info.hbmColor.IsNull) PInvoke.DeleteObject(info.hbmColor);
-            if (!info.hbmMask.IsNull) PInvoke.DeleteObject(info.hbmMask);
-        }
-    }
-
-    // A bitmap's pixels as 32-bit BGRA, top-down. GetDIBits converts other formats, including the 1-bit icon mask.
-    private static byte[]? Pixels(HDC dc, HBITMAP bitmap, out int width, out int height)
-    {
-        width = height = 0;
-        // Room for the header and the largest colour table GetDIBits may write when it reports the format.
-        byte* buffer = stackalloc byte[sizeof(BITMAPINFOHEADER) + 256 * 4];
-        new Span<byte>(buffer, sizeof(BITMAPINFOHEADER) + 256 * 4).Clear();
-        var header = (BITMAPINFOHEADER*)buffer;
-        header->biSize = (uint)sizeof(BITMAPINFOHEADER);
-        if (PInvoke.GetDIBits(dc, bitmap, 0, 0, null, (BITMAPINFO*)buffer, DIB_USAGE.DIB_RGB_COLORS) == 0) return null;
-        width = header->biWidth;
-        height = Math.Abs(header->biHeight);
-        if (width is <= 0 or > 4096 || height is <= 0 or > 4096) return null;
-        new Span<byte>(buffer, sizeof(BITMAPINFOHEADER) + 256 * 4).Clear();
-        header->biSize = (uint)sizeof(BITMAPINFOHEADER);
-        header->biWidth = width;
-        header->biHeight = -height; // Top-down.
-        header->biPlanes = 1;
-        header->biBitCount = 32;
-        header->biCompression = 0; // BI_RGB
-        var pixels = new byte[width * height * 4];
-        fixed (byte* bits = pixels)
-        {
-            if (PInvoke.GetDIBits(dc, bitmap, 0, (uint)height, bits, (BITMAPINFO*)buffer, DIB_USAGE.DIB_RGB_COLORS) != height) return null;
-        }
-        return pixels;
     }
 
     // urlmon's content sniffing, as Internet Explorer and the shell's attachment manager detect a type: images, HTML,
@@ -365,12 +305,5 @@ internal static unsafe class WindowsShellAssociations
         if (value.Value is null) return null;
         try { return new string(value.Value); }
         finally { Marshal.FreeCoTaskMem((nint)value.Value); }
-    }
-
-    private readonly struct MemoryDc : IDisposable
-    {
-        internal readonly HDC Handle;
-        public MemoryDc() => Handle = PInvoke.CreateCompatibleDC(default);
-        public void Dispose() { if (!Handle.IsNull) PInvoke.DeleteDC(Handle); }
     }
 }

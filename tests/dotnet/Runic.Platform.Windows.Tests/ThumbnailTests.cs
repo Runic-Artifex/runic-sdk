@@ -15,7 +15,7 @@ internal sealed class ThumbnailTests
         // WTS_E_FAILEDEXTRACTION and E_FAIL: no thumbnail provider could make one.
         Check(WindowsThumbnails.FromHResult(unchecked((int)0x8004B200)) is PlatformResult<DesktopThumbnail?>.Success(null), "extraction failed");
         Check(WindowsThumbnails.FromHResult(unchecked((int)0x80004005)) is PlatformResult<DesktopThumbnail?>.Success(null), "E_FAIL");
-        Check(!WindowsThumbnails.HasAlpha([1, 2, 3, 0, 4, 5, 6, 0]) && WindowsThumbnails.HasAlpha([1, 2, 3, 0, 4, 5, 6, 9]), "alpha");
+        Check(!WindowsPng.HasAlpha([1, 2, 3, 0, 4, 5, 6, 0]) && WindowsPng.HasAlpha([1, 2, 3, 0, 4, 5, 6, 9]), "alpha");
     }
 
     // The runner's thumbnail providers, on a BMP this case writes, and a file of a type without one.
