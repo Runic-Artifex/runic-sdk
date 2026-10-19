@@ -22,7 +22,8 @@ test('pushes and unknown diffs plan every job', () => {
   assert.equal(everything.full, true);
   assert.deepEqual(everything.skip, []);
   assert.deepEqual(everything.managed, managedGroups);
-  assert.deepEqual(everything.web.include, webTests());
+  assert.deepEqual(everything.web, webTests().map(item => item.package));
+  assert.equal(everything.frameworks, true);
   assert.deepEqual(everything.components.sort(), Object.keys(workspace.components).sort());
 });
 
@@ -34,7 +35,8 @@ test('documentation-only pull requests skip every skippable job', () => {
     assert.deepEqual(result.components, [], files.join());
     assert.deepEqual(result.skip, skippableJobs, files.join());
     assert.deepEqual(result.managed, []);
-    assert.deepEqual(result.web, { include: [] });
+    assert.deepEqual(result.web, []);
+    assert.equal(result.frameworks, false);
   }
 });
 
@@ -54,7 +56,7 @@ test('shared or unowned inputs run everything', () => {
     const result = plan([file, 'docs/README.md']);
     assert.deepEqual(result.skip, [], file);
     assert.deepEqual(result.managed, managedGroups, file);
-    assert.deepEqual(result.web.include, webTests(), file);
+    assert.deepEqual(result.web, webTests().map(item => item.package), file);
   }
 });
 
@@ -66,11 +68,12 @@ test('package READMEs and fixtures are build inputs, not documentation', () => {
 
 test('a Views runtime change runs its consumers, packages, templates and native apps', () => {
   const result = plan(['packages/web/views/src/index.ts']);
-  for (const job of ['web', 'framework-consumers', 'views', 'packages', 'package-consumers', 'templates', 'native'])
+  for (const job of ['web', 'views', 'package-consumers', 'templates', 'native'])
     assert.ok(runs(result, job), job);
+  assert.ok(result.frameworks);
   assert.ok(result.managed.includes('application'));
   assert.ok(!result.managed.includes('assets'));
-  assert.ok(result.web.include.some(item => item.package === 'views'));
+  assert.ok(result.web.includes('views'));
 });
 
 test('a desktop change runs native checks and every dependent component', () => {
@@ -82,13 +85,15 @@ test('a desktop change runs native checks and every dependent component', () => 
 
 test('template and Svelte changes run their lanes without unrelated suites', () => {
   const templates = plan(['tests/templates/Test-Templates.sh']);
-  for (const job of ['packages', 'package-consumers', 'templates']) assert.ok(runs(templates, job), job);
-  for (const job of ['web', 'framework-consumers', 'views', 'native']) assert.ok(!runs(templates, job), job);
+  for (const job of ['package-consumers', 'templates']) assert.ok(runs(templates, job), job);
+  for (const job of ['web', 'views', 'native']) assert.ok(!runs(templates, job), job);
+  assert.equal(templates.frameworks, false);
   assert.deepEqual(templates.managed, ['platform'], 'only the group holding Runic.Create.Tests');
 
   const svelte = plan(['packages/web/svelte/src/index.ts']);
-  for (const job of ['web', 'framework-consumers', 'views', 'templates', 'native']) assert.ok(runs(svelte, job), job);
-  assert.deepEqual(svelte.web.include.map(item => item.package).sort(), ['svelte', 'sveltekit']);
+  for (const job of ['web', 'views', 'templates', 'native']) assert.ok(runs(svelte, job), job);
+  assert.ok(svelte.frameworks);
+  assert.deepEqual(svelte.web.sort(), ['svelte', 'sveltekit']);
   assert.deepEqual(svelte.managed, ['platform'], 'templates holds Runic.Create.Tests');
 });
 
@@ -110,7 +115,7 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
 test('Windows administration changes run native checks', () => {
   const result = plan(['packages/dotnet/Runic.Platform.Administration.Windows/Inspection.cs']);
   assert.ok(runs(result, 'native'));
-  assert.ok(runs(result, 'packages'));
+  assert.ok(runs(result, 'package-consumers'));
   assert.ok(!runs(result, 'views'));
 });
 
@@ -145,7 +150,7 @@ test('the base checkout decides what is affected and this checkout enumerates su
 
 test('plan outputs are single-line GitHub outputs', () => {
   const lines = outputs(plan(['docs/README.md'])).split('\n');
-  assert.deepEqual(lines.map(line => line.split('=')[0]), ['full', 'components', 'managed', 'web', 'skip']);
+  assert.deepEqual(lines.map(line => line.split('=')[0]), ['full', 'components', 'managed', 'web', 'frameworks', 'skip']);
   for (const line of lines) JSON.parse(line.slice(line.indexOf('=') + 1));
 });
 
@@ -291,7 +296,7 @@ test('navigation changes run the Windows WPF lane', () => {
   ]) {
     const result = plan([file]);
     assert.ok(runs(result, 'wpf'), file);
-    assert.ok(runs(result, 'packages'), file);
+    assert.ok(runs(result, 'package-consumers'), file);
     assert.ok(result.managed.includes('navigation'), file);
   }
   assert.ok(!runs(plan(['tests/templates/Test-Templates.sh']), 'wpf'));

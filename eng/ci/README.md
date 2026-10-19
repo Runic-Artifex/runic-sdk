@@ -18,9 +18,10 @@ systemctl --user start podman.socket
 nix develop
 bun run ci --list
 bun run ci                          # Entire Linux workflow, including native checks
-bun run ci --job managed --matrix suite:platform
-bun run ci --job web --matrix package:svelte
+bun run ci --job managed
+bun run ci --job web
 bun run ci --job views
+bun run ci --job templates --matrix first:react
 bun run ci --job templates           # Includes build and package prerequisites
 bun run ci --dryrun
 ```
@@ -139,8 +140,11 @@ with newer `main` commits is caught there.
   `eng/build/application.{props,targets}`, other `eng/` tooling or
   `.github/actions/`, runs everything.
 - Managed groups and web packages run when a component owning one of their suites
-  is affected. `views` follows `examples`; `framework-consumers` follows `svelte`;
-  package candidates, package consumers and templates run for any affected component.
+  is affected. The `managed` job runs each planned group, and the `web` job each planned
+  web package, as its own named step; a step also runs after another one failed, so one
+  run reports every failure. The `web` job's Svelte checks and npm framework consumers
+  follow `svelte`; `views` follows `examples`; package consumers and templates run for
+  any affected component.
   Native jobs follow `desktop`, `platform`, `application`, `examples` and
   `administration-windows`.
 
@@ -164,6 +168,11 @@ pins their direct versions. The `core` NuGet cache key hashes the lock files and
 props; native jobs use a separate `native` key, and `native-musl` a `native-musl-<rid>` key. Each falls back to the latest cache for
 the same OS and architecture. Web and Svelte consumer jobs skip NuGet entirely.
 
+Every dependency cache (Bun, NuGet, Playwright, Flatpak) goes through
+`.github/actions/dependency-cache`: runs on `main` restore and save, while pull requests and
+other branches only restore. Pull request entries would otherwise fill the repository's
+cache quota and evict `main`'s caches, which every run restores from.
+
 ## Source snapshots and artifacts
 
 Each real invocation freezes the current tracked and nonignored untracked files,
@@ -182,8 +191,10 @@ path. Linux jobs reuse this build; Windows and macOS rebuild native inputs.
 Dependency caches are separate from build artifacts and never authorize reusing
 an old build for changed source.
 
-Packages are materialized after the build independently of test completion.
-Separate package-consumer and template jobs validate these candidates.
+The build job packs the package candidates after archiving its outputs, independently
+of test completion, and uploads them as `runic-sdk-<run>`. The package-consumer,
+template and WPF jobs validate these candidates. The two template lanes each run two
+frameworks as named steps.
 Only the final `verify` gate succeeding means all required jobs have passed.
 
 Desktop conformance (`Runic.Desktop.Tests`, a TUnit suite) runs in the native job

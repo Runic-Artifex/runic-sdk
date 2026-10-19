@@ -9,8 +9,8 @@ test('publication reuses the package artifact of the successful CI push run with
   expect(runs(release.jobs.preflight)).toContain('node eng/release/ci-run.mjs');
   expect(release.jobs.preflight.if).toContain("github.ref == 'refs/heads/main'");
   expect(release.jobs.preflight.permissions).toEqual({contents: 'read', actions: 'read'});
-  const uploaded = ci.jobs.packages.steps.find(s => s.uses?.startsWith('actions/upload-artifact@')).with.name;
-  expect(uploaded).toBe('runic-sdk-${{ github.run_id }}');
+  const uploaded = ci.jobs.build.steps.filter(s => s.uses?.startsWith('actions/upload-artifact@')).map(s => s.with.name);
+  expect(uploaded).toContain('runic-sdk-${{ github.run_id }}');
   for (const name of ['candidate', 'publish']) {
     const job = release.jobs[name];
     expect(job.needs).toContain('preflight');

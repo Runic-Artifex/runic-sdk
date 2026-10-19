@@ -82,7 +82,23 @@ test('archive paths include managed and web outputs and reject escaping paths', 
 }));
 
 test('all managed executable suites are assigned exactly once to workflow groups', () => {
-  assert.equal(workflow.jobs.managed.strategy.matrix.suite, '${{ fromJSON(needs.plan.outputs.managed) }}');
+  // One job runs each planned group in its own step, also after another group failed, and uploads its reports.
+  const { steps } = workflow.jobs.managed;
+  assert.equal(workflow.jobs.managed.strategy, undefined);
+  const restore = steps.find(step => step.uses === './.github/actions/restore-build');
+  assert.equal(restore?.id, 'restore');
+  const groups = steps.filter(step => step.run?.startsWith('bun eng/ci/test-managed.mjs '));
+  assert.deepEqual(groups.map(step => step.id), managedGroups);
+  for (const step of groups) {
+    assert.equal(step.run, `bun eng/ci/test-managed.mjs ${step.id}`);
+    assert.equal(step.if, `\${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), '${step.id}') }}`);
+    const upload = steps[steps.indexOf(step) + 1];
+    assert.ok(upload.uses?.startsWith('actions/upload-artifact@'), step.id);
+    assert.equal(upload.if, `\${{ always() && steps.${step.id}.outcome != 'skipped' }}`);
+    assert.equal(upload.with.name, `managed-test-results-${step.id}-\${{ github.run_id }}`);
+    assert.equal(upload.with.path, `artifacts/test-results/${step.id}\n!artifacts/test-results/${step.id}/*/_*\n`);
+  }
+  assert.ok(readFileSync(resolve(root, 'eng/ci/test-managed.mjs'), 'utf8').includes('`artifacts/test-results/${group}`'));
   assert.deepEqual(plan(null).managed, managedGroups);
   const suites = managedTests(root, 'win32');
   assert.equal(new Set(suites.map(item => item.path)).size, suites.length);
@@ -141,14 +157,31 @@ test('every executable application fixture runs in CI', () => {
   assert.equal(workflow.jobs.managed['runs-on'], 'ubuntu-24.04');
 });
 
-test('every web package with a test script is included in the dynamic matrix', () => {
+test('every web package with a test script has a planned step in the web job', () => {
   const expected = workspace.npm.filter(item => JSON.parse(readFileSync(resolve(root, item.path, 'package.json'))).scripts?.test).map(item => item.path.split('/').at(-1));
   assert.deepEqual(webTests().map(item => item.package), expected);
-  assert.equal(workflow.jobs.web.strategy.matrix, '${{ fromJSON(needs.plan.outputs.web) }}');
-  assert.deepEqual(plan(null).web.include, webTests());
+  const { steps } = workflow.jobs.web;
+  assert.equal(workflow.jobs.web.strategy, undefined);
+  assert.equal(steps.find(step => step.uses === './.github/actions/restore-build')?.id, 'restore');
+  const tests = steps.filter(step => step.run === 'bun run --bun test');
+  assert.deepEqual(tests.map(step => step['working-directory']), expected.map(name => `packages/web/${name}`));
+  for (const step of tests) {
+    const name = step['working-directory'].split('/').at(-1);
+    assert.equal(step.name, `Test ${name}`);
+    assert.equal(step.if, `\${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), '${name}') }}`);
+  }
+  assert.deepEqual(plan(null).web, expected);
+  // vite-plugin-runic runs under real Node with Chromium; the browser installs only when it is planned.
   assert.equal(webTests().filter(item => item.node).length, 1);
-  const browser = workflow.jobs.web.steps.find(step => step.uses === './.github/actions/install-browser');
-  assert.equal(browser?.if, "matrix.package == 'vite-plugin-runic'");
+  const setup = steps.find(step => step.uses === './.github/actions/setup-sdk');
+  assert.equal(setup.with.node, 'true');
+  const browser = steps.find(step => step.uses === './.github/actions/install-browser');
+  assert.equal(browser?.if, "${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}");
+  // The Svelte checks and npm framework consumers follow the plan's frameworks output.
+  const frameworks = steps.filter(step => step.if?.includes('needs.plan.outputs.frameworks'));
+  assert.deepEqual(frameworks.map(step => step.run), ['bun run --bun check', 'bun run --bun check', 'bun tests/web/svelte-package-consumers/package-consumers.mjs']);
+  for (const step of frameworks)
+    assert.equal(step.if, "${{ !cancelled() && steps.restore.outcome == 'success' && fromJSON(needs.plan.outputs.frameworks) }}");
   const inline = workflow.jobs.web.steps.find(step => step.name === 'Verify Svelte inline SSR and hydration');
   assert.equal(inline, undefined);
 });
@@ -156,8 +189,15 @@ test('every web package with a test script is included in the dynamic matrix', (
 test('verification gate includes all jobs and candidates are independent of test failures', () => {
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
-  assert.deepEqual(workflow.jobs.packages.needs, ['plan', 'build']);
-  for (const id of ['templates', 'package-consumers', 'wpf']) assert.deepEqual(workflow.jobs[id].needs, ['plan', 'packages']);
+  // The build job packs the candidates after archiving its outputs, before and independently of any test job.
+  assert.equal(workflow.jobs.packages, undefined);
+  const build = workflow.jobs.build.steps;
+  const archive = build.findIndex(step => step.with?.name === 'sdk-build-${{ github.run_id }}');
+  const pack = build.findIndex(step => step.run === 'bun eng/run.mjs pack-built');
+  const upload = build.findIndex(step => step.with?.name === 'runic-sdk-${{ github.run_id }}');
+  assert.ok(archive >= 0 && pack > archive && upload > pack, build.map(step => step.name ?? step.uses).join('\n'));
+  assert.ok(build.slice(pack, upload).some(step => step.run === 'bun eng/release/verify-template-locks.mjs'));
+  for (const id of ['templates', 'package-consumers', 'wpf']) assert.deepEqual(workflow.jobs[id].needs, ['plan', 'build']);
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });
@@ -232,13 +272,19 @@ test('the Windows native job scales the example smoke timeouts (#70)', () => {
 
 test('template lanes cover every framework once and run the creator check in one lane', () => {
   const { strategy, steps } = workflow.jobs.templates;
-  assert.deepEqual(strategy.matrix.framework, ['react', 'vue', 'svelte', 'angular']);
-  assert.deepEqual(strategy.matrix.include, [{ framework: 'react', creator: '1' }, { framework: 'vue', 'desktop-smoke': '1' }]);
-  const step = steps.find(item => item.run === 'bun run verify:templates');
-  assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.framework }}');
+  assert.deepEqual(strategy.matrix.include, [{ first: 'react', second: 'svelte', creator: '1' }, { first: 'vue', second: 'angular', 'desktop-smoke': '1' }]);
+  assert.deepEqual(strategy.matrix.include.flatMap(lane => [lane.first, lane.second]).sort(), ['angular', 'react', 'svelte', 'vue']);
+  const [step, second] = steps.filter(item => item.run === 'bun run verify:templates');
+  assert.equal(step?.name, 'Verify generated ${{ matrix.first }} template applications');
+  assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.first }}');
   assert.equal(step?.env.RUNIC_TEMPLATE_CREATOR, "${{ matrix.creator || '0' }}");
-  // The vue lane owns the desktop-gtk4 variant; its GTK 4 smoke needs the runtime installed first.
+  // The vue step owns the desktop-gtk4 variant; its GTK 4 smoke needs the runtime installed first.
   assert.equal(step?.env.RUNIC_TEMPLATE_DESKTOP_SMOKE, "${{ matrix.desktop-smoke || '0' }}");
+  // The second framework also runs after the first failed, without the creator and desktop smoke.
+  assert.equal(second?.name, 'Verify generated ${{ matrix.second }} template applications');
+  assert.deepEqual(second?.env, { RUNIC_TEMPLATE_FRAMEWORKS: '${{ matrix.second }}', RUNIC_TEMPLATE_CREATOR: '0', RUNIC_TEMPLATE_DESKTOP_SMOKE: '0' });
+  assert.equal(steps.find(item => item.uses?.startsWith('actions/download-artifact@'))?.id, 'candidates');
+  assert.equal(second.if, "${{ !cancelled() && steps.candidates.outcome == 'success' }}");
   const install = steps.findIndex(item => item.run?.includes('libwebkitgtk-6.0-4'));
   assert.ok(install >= 0 && install < steps.indexOf(step));
   assert.equal(steps[install].if, "matrix.desktop-smoke == '1'");
@@ -247,7 +293,7 @@ test('template lanes cover every framework once and run the creator check in one
   assert.equal(steps[sandbox].if, "matrix.desktop-smoke == '1'");
   // Each lane verifies only the variants of its framework, so the desktop-gtk4 variants must belong to the
   // smoke lane's framework, or their smoke would be skipped silently.
-  const smokeFrameworks = strategy.matrix.include.filter(item => item['desktop-smoke'] === '1').map(item => item.framework);
+  const smokeFrameworks = strategy.matrix.include.filter(item => item['desktop-smoke'] === '1').map(item => item.first);
   const variants = [...readFileSync(resolve(root, 'tests/templates/Test-Templates.sh'), 'utf8')
     .matchAll(/^\s*"(\w+) (\w+) desktop-gtk4 (\w+)( tests)?"$/gm)];
   assert.ok(variants.length > 0, 'Test-Templates.sh has no desktop-gtk4 variant.');
@@ -260,6 +306,21 @@ test('native and template jobs share the WebKit sandbox permission script', () =
     .map(([id]) => id);
   assert.deepEqual(users.sort(), ['native', 'templates']);
   assert.ok(!readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8').includes('apparmor_parser'));
+});
+
+// The repository's cache quota is shared: pull request entries evicted main's caches. Only main saves.
+test('dependency caches restore everywhere and save only on main', () => {
+  const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0').filter(path => /\.ya?ml$/.test(path));
+  const users = files.filter(path => /uses:\s*actions\/cache(\/\w+)?@/.test(readFileSync(resolve(root, path), 'utf8')));
+  assert.deepEqual(users, ['.github/actions/dependency-cache/action.yml']);
+  const [save, restore] = yaml('.github/actions/dependency-cache/action.yml').runs.steps;
+  assert.match(save.uses, /^actions\/cache@/);
+  assert.equal(save.if, "github.ref == 'refs/heads/main'");
+  assert.match(restore.uses, /^actions\/cache\/restore@/);
+  assert.equal(restore.if, "github.ref != 'refs/heads/main'");
+  assert.equal(save.uses.split('@')[1], restore.uses.split('@')[1]);
+  for (const step of [save, restore])
+    assert.deepEqual(step.with, { path: '${{ inputs.path }}', key: '${{ inputs.key }}', 'restore-keys': '${{ inputs.restore-keys }}' });
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {

@@ -29,14 +29,15 @@ export function managedTests(base = root, platform = process.platform) {
 // TUnit suites run on Microsoft.Testing.Platform (CONTRIBUTING.md). They reference TUnit.Engine, or
 // the TUnit metapackage (the examples), which brings the same report extensions; other executables
 // take no test-platform arguments. A TUnit suite writes a TRX report and Cobertura coverage to
-// artifacts/test-results/<suite>, which the managed CI job uploads. MTP rejects report options
+// <directory>/<suite> (artifacts/test-results/<suite>; the managed CI job passes
+// artifacts/test-results/<group> and uploads each group). MTP rejects report options
 // next to --list-tests, --help and --info, so those runs write no reports.
-export function testReportArguments(path, extra = [], base = root) {
+export function testReportArguments(path, extra = [], base = root, directory = "artifacts/test-results") {
   const project = resolve(base, path);
   if (!/<PackageReference Include="TUnit(\.Engine)?"/.test(readFileSync(project, "utf8"))
     || extra.some(arg => ["--list-tests", "--help", "-h", "-?", "--info"].includes(arg))) return [];
   const name = basename(project, ".csproj");
-  const results = resolve(base, "artifacts/test-results", name);
+  const results = resolve(base, directory, name);
   rmSync(results, { recursive: true, force: true });
   return ["--results-directory", results, "--report-trx", "--report-trx-filename", `${name}.trx`,
     "--coverage", "--coverage-output-format", "cobertura", "--coverage-output", `${name}.cobertura.xml`];
@@ -71,10 +72,10 @@ export function webTests() {
     .map(item => ({ package: item.path.split("/").at(-1), node: item.name === "@runic-artifex/vite-plugin-runic" }));
 }
 
-// Jobs that always run: `plan`, `build` (which also checks generated files) and
-// `engineering` (workflow lint, contracts, Markdown links). `verify` accepts a
-// skipped job only when it is listed here and the plan skipped it.
-export const skippableJobs = ["managed", "web", "framework-consumers", "views", "packages", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging"];
+// Jobs that always run: `plan`, `build` (which also checks generated files and packs the
+// package candidates) and `engineering` (workflow lint, contracts, Markdown links). `verify`
+// accepts a skipped job only when it is listed here and the plan skipped it.
+export const skippableJobs = ["managed", "web", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -94,15 +95,16 @@ export function planFor({ full, components }) {
   const has = (...names) => names.some(name => components.includes(name));
   const managed = managedGroups.filter(group =>
     managedTests(root, "linux").some(test => test.group === group && (full || has(owner(test.path)))));
-  const web = webTests().filter(test => full || has(owner(`packages/web/${test.package}`)));
-  // Package candidates, their consumers and templates cover every shipped component.
+  const web = webTests().filter(test => full || has(owner(`packages/web/${test.package}`))).map(test => test.package);
+  // The Svelte and SvelteKit type checks and the isolated npm framework consumers.
+  const frameworks = full || has("svelte");
+  // Package consumers and templates cover every shipped component.
   const packages = full || components.length > 0;
   const run = {
     managed: managed.length > 0,
-    web: web.length > 0,
-    "framework-consumers": full || has("svelte"),
+    // One job runs each planned web package's tests and the framework consumers in named steps.
+    web: web.length > 0 || frameworks,
     views: full || has("examples"),
-    packages,
     "package-consumers": packages,
     // The WPF hosts and their packed consumer run on Windows only.
     wpf: full || has("navigation", "application-wpf"),
@@ -119,7 +121,8 @@ export function planFor({ full, components }) {
     full,
     components: full ? Object.keys(workspace.components) : components,
     managed,
-    web: { include: web },
+    web,
+    frameworks,
     skip: skippableJobs.filter(job => !run[job]),
   };
 }
@@ -144,6 +147,7 @@ export function outputs(result) {
     `components=${JSON.stringify(result.components)}`,
     `managed=${JSON.stringify(result.managed)}`,
     `web=${JSON.stringify(result.web)}`,
+    `frameworks=${result.frameworks}`,
     `skip=${JSON.stringify(result.skip)}`,
   ].join("\n");
 }

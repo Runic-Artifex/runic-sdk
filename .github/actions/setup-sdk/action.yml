@@ -36,7 +36,7 @@ runs:
       if: inputs.node == 'true'
       shell: bash
       run: npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: ./.github/actions/dependency-cache
       if: inputs.install == 'true'
       with:
         path: ~/.bun/install/cache
@@ -45,7 +45,7 @@ runs:
     # NuGet lock files pin the core restore. Jobs whose restores differ, such as
     # RID-specific and NativeAOT publishes, use a separate cache name so a smaller
     # package set is never saved under the core key. A partial match seeds a changed restore.
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: ./.github/actions/dependency-cache
       if: inputs.dotnet == 'true' && inputs.nuget != 'none'
       with:
         path: .cache/nuget

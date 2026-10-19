@@ -25,6 +25,7 @@ jobs:
     outputs:
       managed: ${{ steps.plan.outputs.managed }}
       web: ${{ steps.plan.outputs.web }}
+      frameworks: ${{ steps.plan.outputs.frameworks }}
       skip: ${{ steps.plan.outputs.skip }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,67 +79,167 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 30
+      # Package candidates come from the same build, after its outputs are archived, independently
+      # of test results. Package consumers, templates and the WPF lane download them.
+      - name: Pack the verified build inputs
+        run: bun eng/run.mjs pack-built
+      - name: Verify shipped template lock integrity
+        run: bun eng/release/verify-template-locks.mjs
+      - name: Check generated files and lockfile after packing
+        run: bun eng/ci/source-state.mjs check
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runic-sdk-${{ github.run_id }}
+          path: artifacts/packages
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+  # One job runs the planned managed groups (managedGroups in eng/ci/plan.mjs) as named steps. A
+  # group also runs after another one failed, so one run reports every failing group.
   managed:
-    name: Managed / ${{ matrix.suite }}
+    name: Managed tests
     needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'managed') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: ${{ fromJSON(needs.plan.outputs.managed) }}
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: ./.github/actions/restore-build
-      - name: Run managed conformance suite
-        run: bun eng/ci/test-managed.mjs "$SUITE"
-        env:
-          SUITE: ${{ matrix.suite }}
-      # TRX reports and Cobertura coverage of the TUnit suites (CONTRIBUTING.md). The TRX extension
-      # also copies the HTML and Cobertura reports into a _<machine>_<time> attachments folder.
-      - name: Retain managed test results
-        if: always()
+        id: restore
+      # TRX reports and Cobertura coverage of the TUnit suites (CONTRIBUTING.md), per group. The TRX
+      # extension also copies the HTML and Cobertura reports into a _<machine>_<time> attachments folder.
+      - name: Run the platform managed suites
+        id: platform
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'platform') }}
+        timeout-minutes: 25
+        run: bun eng/ci/test-managed.mjs platform
+      - name: Retain platform test results
+        if: ${{ always() && steps.platform.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: managed-test-results-${{ matrix.suite }}-${{ github.run_id }}
+          name: managed-test-results-platform-${{ github.run_id }}
           path: |
-            artifacts/test-results
-            !artifacts/test-results/*/_*
+            artifacts/test-results/platform
+            !artifacts/test-results/platform/*/_*
+          if-no-files-found: ignore
+          overwrite: true
+      - name: Run the assets managed suites
+        id: assets
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'assets') }}
+        timeout-minutes: 25
+        run: bun eng/ci/test-managed.mjs assets
+      - name: Retain assets test results
+        if: ${{ always() && steps.assets.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: managed-test-results-assets-${{ github.run_id }}
+          path: |
+            artifacts/test-results/assets
+            !artifacts/test-results/assets/*/_*
+          if-no-files-found: ignore
+          overwrite: true
+      - name: Run the navigation managed suites
+        id: navigation
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'navigation') }}
+        timeout-minutes: 25
+        run: bun eng/ci/test-managed.mjs navigation
+      - name: Retain navigation test results
+        if: ${{ always() && steps.navigation.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: managed-test-results-navigation-${{ github.run_id }}
+          path: |
+            artifacts/test-results/navigation
+            !artifacts/test-results/navigation/*/_*
+          if-no-files-found: ignore
+          overwrite: true
+      - name: Run the application managed suites
+        id: application
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'application') }}
+        timeout-minutes: 25
+        run: bun eng/ci/test-managed.mjs application
+      - name: Retain application test results
+        if: ${{ always() && steps.application.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: managed-test-results-application-${{ github.run_id }}
+          path: |
+            artifacts/test-results/application
+            !artifacts/test-results/application/*/_*
           if-no-files-found: ignore
           overwrite: true
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+  # One job runs the planned web packages' tests (webTests in eng/ci/plan.mjs) and the framework
+  # consumers as named steps. A step also runs after another one failed, so one run reports every failure.
   web:
-    name: Web / ${{ matrix.package }}
+    name: Web packages and framework consumers
     needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'web') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      max-parallel: 3
-      matrix: ${{ fromJSON(needs.plan.outputs.web) }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Web package tests do not run managed code.
+      # Web package tests, Svelte checks and npm consumers do not run managed code. vite-plugin-runic
+      # and the npm consumers need real Node and npm/pnpm.
       - uses: ./.github/actions/setup-sdk
         with:
           nuget: none
-          node: ${{ matrix.node && 'true' || 'false' }}
+          node: "true"
       - uses: ./.github/actions/restore-build
+        id: restore
         with:
           nuget: "false"
       - uses: ./.github/actions/install-browser
-        if: matrix.package == 'vite-plugin-runic'
-      - name: Run package tests
-        working-directory: packages/web/${{ matrix.package }}
+        if: ${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}
+      - name: Test angular
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'angular') }}
+        working-directory: packages/web/angular
         run: bun run --bun test
+      - name: Test vite-plugin-runic
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}
+        working-directory: packages/web/vite-plugin-runic
+        run: bun run --bun test
+      - name: Test svelte
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'svelte') }}
+        working-directory: packages/web/svelte
+        run: bun run --bun test
+      - name: Test sveltekit
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'sveltekit') }}
+        working-directory: packages/web/sveltekit
+        run: bun run --bun test
+      - name: Test views
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'views') }}
+        working-directory: packages/web/views
+        run: bun run --bun test
+      - name: Test views-effect
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'views-effect') }}
+        working-directory: packages/web/views-effect
+        run: bun run --bun test
+      - name: Test react
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'react') }}
+        working-directory: packages/web/react
+        run: bun run --bun test
+      - name: Test vue
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'vue') }}
+        working-directory: packages/web/vue
+        run: bun run --bun test
+      - name: Check Svelte integration types
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && fromJSON(needs.plan.outputs.frameworks) }}
+        working-directory: packages/web/svelte
+        run: bun run --bun check
+      - name: Check SvelteKit integration types
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && fromJSON(needs.plan.outputs.frameworks) }}
+        working-directory: packages/web/sveltekit
+        run: bun run --bun check
+      - name: Exercise isolated npm framework consumers
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && fromJSON(needs.plan.outputs.frameworks) }}
+        run: bun tests/web/svelte-package-consumers/package-consumers.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   engineering:
@@ -170,33 +271,6 @@ jobs:
           echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
           tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
-  framework-consumers:
-    needs: [plan, build]
-    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'framework-consumers') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # Svelte checks and npm consumers do not run managed code.
-      - uses: ./.github/actions/setup-sdk
-        with:
-          nuget: none
-          node: "true"
-      - uses: ./.github/actions/restore-build
-        with:
-          nuget: "false"
-      - name: Check Svelte integration types
-        working-directory: packages/web/svelte
-        run: bun run --bun check
-      - name: Check SvelteKit integration types
-        working-directory: packages/web/sveltekit
-        run: bun run --bun check
-      - name: Exercise isolated npm framework consumers
-        run: bun tests/web/svelte-package-consumers/package-consumers.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   views:
@@ -269,33 +343,8 @@ jobs:
           RUNIC_HOT_RELOAD_SCENARIO=getter node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-  packages:
-    name: Materialize package candidates
-    needs: [plan, build]
-    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'packages') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-sdk
-      - uses: ./.github/actions/restore-build
-      - name: Pack the verified build inputs
-        run: bun eng/run.mjs pack-built
-      - name: Verify shipped template lock integrity
-        run: bun eng/release/verify-template-locks.mjs
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: runic-sdk-${{ github.run_id }}
-          path: artifacts/packages
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
   package-consumers:
-    needs: [plan, packages]
+    needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'package-consumers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -336,7 +385,7 @@ jobs:
         run: bun eng/ci/source-state.mjs check
   wpf:
     name: WPF navigation / ${{ matrix.rid }}
-    needs: [plan, packages]
+    needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'wpf') }}
     # Both run the WPF hosts. Bridge generation and the packed consumers do not
     # depend on the architecture, so only win-x64 runs them.
@@ -403,23 +452,25 @@ jobs:
         run: dotnet run --project examples/wpf-navigation/Tests.ReactiveUI -c Release
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+  # Two lanes of two frameworks, with one named step per framework.
   templates:
-    name: Templates / ${{ matrix.framework }}
-    needs: [plan, packages]
+    name: Templates / ${{ matrix.first }}+${{ matrix.second }}
+    needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'templates') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        framework: [react, vue, svelte, angular]
-        # The guided creator check is framework-independent; run it once.
-        # The vue lane owns the desktop-gtk4 variant and opens it and the default
+        # The guided creator check is framework-independent; the react step runs it once.
+        # The vue step owns the desktop-gtk4 variant and opens it and the default
         # Runic Desktop project under Xvfb.
         include:
-          - framework: react
+          - first: react
+            second: svelte
             creator: "1"
-          - framework: vue
+          - first: vue
+            second: angular
             desktop-smoke: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -429,6 +480,7 @@ jobs:
         with:
           node: "true"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        id: candidates
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -438,12 +490,20 @@ jobs:
       - name: Permit the WebKit sandbox on Ubuntu
         if: matrix.desktop-smoke == '1'
         run: eng/ci/permit-webkit-sandbox.sh
-      - name: Verify generated template applications
+      - name: Verify generated ${{ matrix.first }} template applications
         run: bun run verify:templates
         env:
-          RUNIC_TEMPLATE_FRAMEWORKS: ${{ matrix.framework }}
+          RUNIC_TEMPLATE_FRAMEWORKS: ${{ matrix.first }}
           RUNIC_TEMPLATE_CREATOR: ${{ matrix.creator || '0' }}
           RUNIC_TEMPLATE_DESKTOP_SMOKE: ${{ matrix.desktop-smoke || '0' }}
+      # Also runs after the first framework failed, so one run reports both.
+      - name: Verify generated ${{ matrix.second }} template applications
+        if: ${{ !cancelled() && steps.candidates.outcome == 'success' }}
+        run: bun run verify:templates
+        env:
+          RUNIC_TEMPLATE_FRAMEWORKS: ${{ matrix.second }}
+          RUNIC_TEMPLATE_CREATOR: "0"
+          RUNIC_TEMPLATE_DESKTOP_SMOKE: "0"
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   native:
@@ -1027,7 +1087,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: ./.github/actions/dependency-cache
         with:
           path: .cache/nuget
           key: nuget-native-musl-${{ matrix.rid }}-${{ hashFiles('**/packages.lock.json', '**/packages.*.lock.json', '**/Directory.Packages.props', 'global.json', 'NuGet.config') }}
@@ -1149,7 +1209,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream appstream-compose librsvg2-common desktop-file-utils
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: ./.github/actions/dependency-cache
         if: matrix.target == 'flatpak'
         with:
           path: |
@@ -1176,7 +1236,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [plan, build, managed, web, engineering, framework-consumers, views, packages, package-consumers, wpf, templates, native, native-musl, packaging]
+    needs: [plan, build, managed, web, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
