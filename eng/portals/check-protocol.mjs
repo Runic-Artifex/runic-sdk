@@ -1,4 +1,4 @@
-// Offline integrity check. Updating the pin and hashes is an explicit source change.
+// Offline integrity check (W319-008 diagnostic: Linux-only plan). Updating the pin and hashes is an explicit source change.
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const root = new URL('../../packages/dotnet/Runic.Platform.Linux.Portal/Protocol/', import.meta.url);
