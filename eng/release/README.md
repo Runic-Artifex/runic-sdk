@@ -8,11 +8,14 @@ releases and their evidence remain historical records.
 
 1. Commit the intended preview version and user-facing changes. Package versions
    must agree with `eng/workspace.json`; published versions cannot be overwritten.
-2. Wait for the `ci.yml` push run of that commit on `main` to succeed.
+2. Wait for a `ci.yml` run of that commit on `main` to succeed with every Windows and
+   macOS job. A push runs only the Windows and macOS legs its changes need, so if it
+   skipped one, run **SDK CI** on `main` manually (`gh workflow run ci.yml --ref main`)
+   or wait for the nightly run, while that commit is still the head of `main`.
 3. Optionally run **Publish preview** (`publish-preview.yml`) on `main` with
    **dry-run** checked. It performs every check below and writes nothing.
 4. Run **Publish preview** on `main`, entering that version.
-5. The workflow finds the successful CI push run of the dispatched commit, downloads
+5. The workflow finds the successful CI run of the dispatched commit, downloads
    its `runic-sdk-<run id>` package artifact, verifies the inventory against the
    requested version and commit, attests their build provenance and SBOM, publishes
    those exact packages, creates the GitHub prerelease with generated change notes, a
@@ -38,8 +41,16 @@ releases and their evidence remain historical records.
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. The
 release workflow does not run it again; it fails before publishing if the commit has
-no successful CI push run, if that run is still in progress, or if its package
-artifact has expired. There is no separate acceptance workflow,
+no successful CI run on `main`, if that run is still in progress, if it did not pass
+every Windows and macOS leg, or if its package artifact has expired.
+
+The Windows and macOS legs are `Native / win-x64`, `win-arm64` and `osx-arm64`,
+`WPF navigation / win-x64` and `win-arm64`, and `Packaging / windows` and `macos`
+(`releaseJobs` in `eng/ci/platforms.mjs`). This keeps the guarantee releases had when
+every push to `main` ran all of them; it adds no check. Pushes now plan those legs from
+their changes (eng/ci/README.md), so `ci-run.mjs` accepts a push, scheduled or manual
+run of the exact commit and takes the newest successful one that ran them all; its
+error names the legs a run skipped and asks for a manual run on `main`. There is no separate acceptance workflow,
 receipt upload, candidate approval dossier, mandatory soak, or independent pilot
 prerequisite. Manual checks are appropriate when a change affects native/UI
 behavior that automation cannot cover. Soaks and matched benchmarks remain useful

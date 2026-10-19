@@ -3,11 +3,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Nightly, every job on every platform; eng/release/ci-run.mjs accepts such a run for a release.
+  schedule:
+    - cron: "41 2 * * *"
   workflow_dispatch:
 permissions:
   contents: read
+# A newer push to a pull request cancels its running CI. Pushes to main queue; a scheduled or
+# manual run has its own group, so a later push cannot replace it while it waits.
 concurrency:
-  group: sdk-ci-${{ github.workflow }}-${{ github.ref }}
+  group: sdk-ci-${{ github.workflow }}-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -15,43 +20,78 @@ env:
   CONFIGURATION: Release
   NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
 jobs:
-  # Pull requests run the jobs whose inputs changed (eng/ci/plan.mjs); pushes and
-  # manual runs plan everything. Planned skips still report, and `verify` accepts a
-  # skipped job only when this plan skipped it.
+  # Pull requests run the jobs whose inputs changed and the Windows and macOS legs those
+  # changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main run every Linux job
+  # and the legs their before..after diff needs; scheduled and manual runs, and pull requests
+  # labelled ci:all-platforms, run everything. Planned skips still report, and `verify`
+  # accepts a skipped job only when this plan skipped it.
   plan:
     name: Plan affected jobs
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # The labels are read when the plan runs, so rerunning all jobs sees a label added since.
+      pull-requests: read
     outputs:
       managed: ${{ steps.plan.outputs.managed }}
       web: ${{ steps.plan.outputs.web }}
       frameworks: ${{ steps.plan.outputs.frameworks }}
+      native: ${{ steps.plan.outputs.native }}
+      wpf: ${{ steps.plan.outputs.wpf }}
+      packaging: ${{ steps.plan.outputs.packaging }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      why: ${{ steps.plan.outputs.why }}
       skip: ${{ steps.plan.outputs.skip }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The pull request merge commit and its base parent.
+          # The pull request merge commit and its base parent, or the pushed commit and its parent.
           fetch-depth: 2
       - uses: ./.github/actions/setup-sdk
         with:
           dotnet: "false"
           install: "false"
-      # A pull_request checkout is GitHub's merge commit; its first parent is the
-      # base branch, so the diff is exactly what the pull request changes. The base
-      # branch's planner and component map decide what is affected, so a pull request
-      # cannot narrow its own plan; this checkout then enumerates the suites.
+      # A pull_request checkout is GitHub's merge commit; its first parent is the base
+      # branch, so the diff is exactly what the pull request changes. A push compares the
+      # commit main was at before it. The base checkout's planner, component map and
+      # platform rules decide what is affected, so a change cannot narrow its own plan;
+      # this checkout then enumerates the suites and legs. Without a usable diff, or when
+      # the labels cannot be read, everything runs.
       - name: Plan jobs from the changed files
         id: plan
         # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          LABEL: ci:all-platforms
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]] && git rev-parse --verify --quiet HEAD^2 > /dev/null \
-            && git worktree add --detach "$RUNNER_TEMP/base" HEAD^1 \
-            && affected=$(git diff --name-only --no-renames -z HEAD^1 HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
-            bun eng/ci/plan.mjs --plan "$affected" >> "$GITHUB_OUTPUT"
+          base=
+          options=()
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            if git rev-parse --verify --quiet HEAD^2 > /dev/null; then base=HEAD^1; fi
+            if ! labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/labels" --jq '.[].name'); then
+              options=(--all-platforms "the pull request's labels could not be read")
+            elif grep -qxF "$LABEL" <<< "$labels"; then
+              options=(--all-platforms "label $LABEL")
+            fi
+          elif [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            options=(--all-linux)
+            if [[ "$BEFORE" =~ ^[0-9a-f]{40}$ && ! "$BEFORE" =~ ^0+$ ]] \
+              && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$BEFORE" ]] || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"; }; then
+              base=$BEFORE
+            fi
+          fi
+          if [[ -n "$base" ]] && git worktree add --detach "$RUNNER_TEMP/base" "$base" \
+            && affected=$(git diff --name-only --no-renames -z "$base" HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
+            bun eng/ci/plan.mjs --plan "$affected" "${options[@]}" >> "$GITHUB_OUTPUT"
           else
-            bun eng/ci/plan.mjs >> "$GITHUB_OUTPUT"
+            reason="$GITHUB_EVENT_NAME run"
+            if [[ "$GITHUB_EVENT_NAME" == push || "$GITHUB_EVENT_NAME" == pull_request ]]; then reason+=" without a usable diff"; fi
+            bun eng/ci/plan.mjs --all "$reason" >> "$GITHUB_OUTPUT"
           fi
   build:
     name: Build shared SDK inputs
@@ -387,16 +427,11 @@ jobs:
     name: WPF navigation / ${{ matrix.rid }}
     needs: [plan, build]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'wpf') }}
-    # Both run the WPF hosts. Bridge generation and the packed consumers do not
-    # depend on the architecture, so only win-x64 runs them.
+    # Both legs (wpfLegs in eng/ci/platforms.mjs) run the WPF hosts. Bridge generation and the
+    # packed consumers do not depend on the architecture, so only win-x64 runs them.
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-2025
-            rid: win-x64
-          - os: windows-11-arm
-            rid: win-arm64
+      matrix: ${{ fromJSON(needs.plan.outputs.wpf) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -510,40 +545,11 @@ jobs:
     name: Native / ${{ matrix.rid }}
     needs: plan
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native') }}
+    # The planned legs of nativeLegs in eng/ci/platforms.mjs: both Linux legs, and the Windows
+    # and macOS legs the change needs.
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # cswebui: whether CS-WebUI ships a native library for the RID, so the job runs its
-          # window probes (eng/support.json).
-          - os: ubuntu-24.04
-            rid: linux-x64
-            provider: Linux
-            extension: ""
-            cswebui: true
-          - os: ubuntu-24.04-arm
-            rid: linux-arm64
-            provider: Linux
-            extension: ""
-            cswebui: true
-          - os: windows-latest
-            rid: win-x64
-            provider: Windows
-            extension: .exe
-            cswebui: true
-            # Cold Chromium and Node timers stall on Windows runners (#70).
-            smoke-timeout-scale: "2"
-          - os: windows-11-arm
-            rid: win-arm64
-            provider: Windows
-            extension: .exe
-            cswebui: false
-            smoke-timeout-scale: "2"
-          - os: macos-26
-            rid: osx-arm64
-            provider: MacOS
-            extension: ""
-            cswebui: true
+      matrix: ${{ fromJSON(needs.plan.outputs.native) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     env:
@@ -1115,16 +1121,10 @@ jobs:
     name: Packaging / ${{ matrix.target }}
     needs: plan
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'packaging') }}
+    # The planned legs of packagingLegs in eng/ci/platforms.mjs.
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: windows
-          - os: macos-26
-            target: macos
-          - os: ubuntu-24.04
-            target: flatpak
+      matrix: ${{ fromJSON(needs.plan.outputs.packaging) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
@@ -1252,4 +1252,6 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
           SKIP: ${{ needs.plan.outputs.skip }}
+          PLATFORMS: ${{ needs.plan.outputs.platforms }}
+          WHY: ${{ needs.plan.outputs.why }}
         run: bun eng/ci/gate.mjs

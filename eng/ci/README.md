@@ -63,8 +63,9 @@ is not evidence that the other operating systems passed. Intel macOS is excluded
 
 ## Native jobs per runtime identifier
 
-The `native` matrix runs on `linux-x64`, `linux-arm64` (`ubuntu-24.04-arm`),
-`win-x64`, `win-arm64` (`windows-11-arm`) and `osx-arm64`; `native-musl` runs
+The `native` matrix (`nativeLegs` in `eng/ci/platforms.mjs`) runs on `linux-x64`,
+`linux-arm64` (`ubuntu-24.04-arm`), `win-x64`, `win-arm64` (`windows-11-arm`) and
+`osx-arm64`, the last three when planned; `native-musl` runs
 `linux-musl-x64` and `linux-musl-arm64`. These are the CI-verified RIDs of
 [`eng/support.json`](../support.json), and `eng/support.test.mjs` keeps them equal.
 Matrix entries with `cswebui: false` (`win-arm64`) skip the CS-WebUI window probes,
@@ -124,12 +125,52 @@ commit against its base parent and maps each changed path to its component in
 `eng/workspace.json`, adding every component that depends on it. The base branch's
 planner and component map make that decision (`--affected`), so a pull request cannot
 narrow its own plan; changes to the planner or `eng/workspace.json` are unowned and run
-everything. The pull request's checkout then enumerates the suites (`--plan`). Pushes,
-manual runs, local `act` runs and an unavailable diff or base result plan every job.
+everything. The pull request's checkout then enumerates the suites (`--plan`). Scheduled
+and manual runs, local `act` runs and an unavailable diff or base result plan every job.
 
 A pull request is planned against the base it was opened or last updated on. Every
-push to `main` runs the full workflow, so a change that only breaks in combination
+push to `main` runs every Linux job, so a change that only breaks in combination
 with newer `main` commits is caught there.
+
+### Windows and macOS legs
+
+The Linux legs of `native`, `native-musl` and `packaging` run whenever their job runs.
+The Windows and macOS legs (`win-x64`, `win-arm64`, `osx-arm64` of `native`, `wpf` and
+`packaging`; `eng/ci/platforms.mjs`) run only for the platforms the changed files
+need. The base checkout's rules decide that too, so a pull request cannot drop its
+own legs; a base planner without platform rules plans every leg. The first matching
+rule applies to each file:
+
+| Changed files | Legs |
+| --- | --- |
+| `Runic.Desktop.Gtk4`, its smoke, `Runic.Platform.Linux*` and their tests, `eng/portals` | Linux only |
+| `Runic.Desktop`, its tests and fixtures, `Runic.Platform`, `Runic.Platform.Runtime` and its tests, the WebView smoke, the accessibility probe, `eng/build/desktop.props`, `eng/branding/desktop`, the template's packaging recipes, `ApplicationIdentity.cs` and icons, the packaging probe | all three |
+| `Runic.Application.Views`, `.Desktop` and `.CsWebUi`, `examples/first-window`, the CS-WebUI window probes, `Runic.Application.Testing.Tests` | win-x64, osx-arm64 |
+| `Runic.Platform.Windows*` and their tests, the elevation smoke, `windows-notifications` | win-x64, win-arm64 |
+| WPF hosts and their tests, `Runic.Navigation` and its WPF consumer, `examples/wpf-*`, the WPF Bridge consumer, `Runic.Application.Views.Codegen*`, `Runic.Application.Views.Dev`, `examples/notes-reactive-views`, Windows administration | win-x64 |
+| `Runic.Platform.MacOS*` and their tests, `platform-sandbox` | osx-arm64 |
+| Nix, `flake.*`, `eng/release`, `eng/verify-packages.mjs`, the solutions, the shipping-project generator (unowned, neutral) | Linux only |
+| any other unowned file: `ci.yml`, `eng/ci`, `.github/actions`, `global.json`, `Directory.*`, `eng/Versions.props`, `eng/build`, `bun.lock`, `eng/workspace.json`, `eng/support.json` | all three |
+| everything else: web packages, templates, assets, ReactiveUI adapters, examples, documentation | Linux only |
+
+A job whose legs are all skipped, such as `wpf` for a Linux-only change, is on the
+plan's skip list. The `verify` summary names the planned legs and, for each, the first
+file that needed it.
+
+Other runs choose legs this way:
+
+- **`ci:all-platforms` label.** A pull request with this label runs every leg. Add it
+  when the platform effect of a change is unclear, for example a change to shared
+  managed code that a Windows or macOS host calls. The plan reads the labels when it
+  runs and the label does not start a run, so after adding it push again or use
+  **Re-run all jobs**. If the labels cannot be read, every leg runs.
+- **Pushes to `main`** run every Linux job and the legs that the diff between the
+  previous and the new head needs. Without that diff (a new branch, a force push whose
+  old head cannot be fetched), every leg runs. Pushes queue rather than cancel each other.
+- **Nightly and manual runs** (`schedule`, `workflow_dispatch`) run everything. They have
+  their own concurrency group, so a push cannot replace one that is waiting.
+- **Releases** need one successful run on `main` of the released commit that ran every
+  Windows and macOS leg ([eng/release/README.md](../release/README.md)).
 
 - `plan`, `build` and `engineering` always run. `build` checks generated files;
   `engineering` lints workflows and runs the contract and Markdown link tests.
@@ -146,16 +187,19 @@ with newer `main` commits is caught there.
   follow `svelte`; `views` follows `examples`; package consumers and templates run for
   any affected component.
   Native jobs follow `desktop`, `platform`, `application`, `examples` and
-  `administration-windows`.
+  `administration-windows`, with the legs above.
 
 Skipped jobs report `skipped`, so no check stays pending. The required `verify` job
 (`eng/ci/gate.mjs`) accepts `skipped` only for jobs in the plan's skip list; a
 failed plan fails it. The engineering tests check that the component `dependsOn` graph
 covers every ProjectReference, workspace npm dependency, MSBuild import and
 cross-directory item include (with an allow-list for generated output, restored
-packages and external checkouts), so a new reference cannot silently escape the plan. Preview the plan for a branch with
+packages and external checkouts), so a new reference cannot silently escape the plan. The planner tests check
+each platform rule against a file it names, and that every rule still matches tracked
+files. Preview the plan for a branch with
 `bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`. To run every
-job for a pull request, start the workflow manually on its branch.
+job for a pull request, start the workflow manually on its branch; to run every leg of
+its planned jobs, add the `ci:all-platforms` label.
 
 ## NuGet lock files
 
