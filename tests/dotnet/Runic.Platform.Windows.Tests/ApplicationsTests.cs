@@ -232,22 +232,34 @@ internal sealed partial class ApplicationsTests
                 "an item without a type");
             string stray = Path.Combine(root, "stray.log");
             Environment.SetEnvironmentVariable(StrayLaunchVariable, stray);
-            // A type only the probe opens, then the test type, which Notepad also opens (PerceivedType text).
-            string single = Path.Combine(root, "single" + plainExtension);
+            // Without keeping the apartment for the shell: a type only the probe opens, one document and then two of the
+            // test type, which Notepad also opens (PerceivedType text), and a URI.
+            WindowsShellAssociations.WaitForShell = false;
+            string single = Path.Combine(root, "single" + plainExtension), alone = Path.Combine(root, "alone" + extension);
             File.WriteAllText(single, "single");
-            var alone = await applications.LaunchAsync(probeId, [single]);
-            Console.WriteLine($"Launch of a type with one handler: {alone}; {WindowsShellAssociations.LastLaunchTrace}; {Choosers()}");
-            var launched = await applications.LaunchAsync(probeId, [first, second]);
-            Console.WriteLine($"Launch: {launched}; {WindowsShellAssociations.LastLaunchTrace}; {Choosers()}");
-            Check(launched is PlatformResult<PlatformUnit>.Success, "the probe started");
-            string uri = scheme + ":open/a%20b?c=d";
-            var opened = await applications.LaunchAsync(probeId, [uri]);
-            Console.WriteLine($"Launch URI: {opened}; {WindowsShellAssociations.LastLaunchTrace}");
-            Check(opened is PlatformResult<PlatformUnit>.Success, "the probe opened the URI");
-            var lines = await RecordedAsync(log, 4);
+            File.WriteAllText(alone, "alone");
+            async Task<PlatformResult<PlatformUnit>> LaunchLogged(string label, ImmutableArray<string> items)
+            {
+                var started = DateTime.UtcNow;
+                var result = await applications.LaunchAsync(probeId, items);
+                Console.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {label}: {result} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms; {WindowsShellAssociations.LastLaunchTrace}");
+                await Task.Delay(3000);
+                Console.WriteLine($"  then {Choosers()}; recorded so far: {(File.Exists(log) ? File.ReadAllLines(log).Length : 0)}");
+                return result;
+            }
+            var results = new[]
+            {
+                await LaunchLogged("one document of a type with one handler", [single]),
+                await LaunchLogged("one document of a type with two handlers", [alone]),
+                await LaunchLogged("two documents of a type with two handlers", [first, second]),
+                await LaunchLogged("a URI", [scheme + ":open/a%20b?c=d"]),
+            };
+            WindowsShellAssociations.WaitForShell = true;
+            var lines = await RecordedAsync(log, 5);
             Console.WriteLine("Recorded:\n" + string.Join('\n', lines));
             if (File.Exists(stray)) Console.WriteLine("Other launches:\n" + File.ReadAllText(stray));
-            Check(lines.Contains(single), "the document of a type with one handler reached it");
+            Check(results.All(result => result is PlatformResult<PlatformUnit>.Success), "every launch succeeded");
+            Check(lines.Contains(single) && lines.Contains(alone), "single documents reached the handler");
             Check(lines.Contains(first) && lines.Contains(second), "each document reached the handler as one argument");
             Check(lines.Any(line => line.StartsWith(scheme + ":", StringComparison.Ordinal)), "the URI reached the protocol handler");
             Console.WriteLine("PASS Windows desktop applications: content types, handlers, defaults, launches, icons and the Start menu list.");

@@ -115,6 +115,8 @@ internal static unsafe class WindowsShellAssociations
 
     // What the last launch saw, for the native tests' log: the HRESULT, and how long the apartment stayed for the shell.
     internal static volatile string? LastLaunchTrace;
+    // Whether a launch keeps its apartment while the shell holds its thread reference; the native tests compare both.
+    internal static volatile bool WaitForShell = true;
 
     // Invoke, holding a thread reference (SHSetThreadRef) that the shell's asynchronous execution takes while it starts
     // the handler, and pumping messages while the shell still holds the thread reference or the items' data object,
@@ -155,7 +157,7 @@ internal static unsafe class WindowsShellAssociations
         uint itemReferences = OtherReferences(dataObject);
         try
         {
-            while (hr == S_OK && ((tracked && Volatile.Read(ref *count) > 0) || OtherReferences(dataObject) > 0) && Environment.TickCount64 < deadline)
+            while (WaitForShell && hr == S_OK && ((tracked && Volatile.Read(ref *count) > 0) || OtherReferences(dataObject) > 0) && Environment.TickCount64 < deadline)
             {
                 PInvoke.MsgWaitForMultipleObjectsEx(0, null, 50, QUEUE_STATUS_FLAGS.QS_ALLINPUT, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS.MWMO_INPUTAVAILABLE);
                 MSG message;
