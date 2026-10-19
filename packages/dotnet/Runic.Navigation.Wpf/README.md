@@ -416,7 +416,9 @@ on the navigator for every region (see
 [Guards for a whole region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#guards-for-a-whole-region)).
 `GuardWindowClose` clears the region, so it asks these guards too. A navigator
 guard is asked once per guarded region that has entries; register a
-window-wide question on the main region instead.
+window-wide question on the main region instead. A precondition registered
+with `Order = NavigationRegionGuardOrder.BeforeEntries`, such as "no
+navigation while an operation runs", refuses the close before any page asks.
 
 ## Selecting tabs and other existing models
 

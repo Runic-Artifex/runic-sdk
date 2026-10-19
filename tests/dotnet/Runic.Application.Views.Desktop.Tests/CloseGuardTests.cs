@@ -47,6 +47,38 @@ internal sealed class CloseGuardTests
         Require(!fixture.Native.IsOpen, "The native window stayed open after the guard allowed the close.");
     }
 
+    // A navigator guard asked before the entries (#412), such as "no navigation while an operation runs", vetoes a user close
+    // before the page asks its question: the window stays open with its entry. Once it allows, the page is asked after it.
+    [Test, NotInParallel(Order = 36)]
+    public async Task ABeforeEntriesNavigatorGuardVetoesTheCloseBeforeThePageIsAsked()
+    {
+        await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>();
+        var asked = new ConcurrentQueue<string>();
+        var operation = new OperationGuard(asked);
+        fixture.Script.Decide = _ =>
+        {
+            asked.Enqueue("page");
+            return ValueTask.FromResult(true);
+        };
+        using var registration = fixture.ViewModel.Main.Navigator.AddDepartureGuard(operation,
+            new NavigationRegionGuardOptions { Order = NavigationRegionGuardOrder.BeforeEntries, AskOnRetain = true });
+
+        fixture.Native.UserClose();
+        await operation.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            "A close request completed as allowed although the operation guard vetoed it.");
+        Require(fixture.Presentation.IsOpen && fixture.Native.IsOpen && fixture.ViewModel.Main.Current is GuardedPage,
+            "A vetoing operation guard did not keep the window open with its entry.");
+        Require(fixture.Script.AskCount == 0 && string.Join(",", asked) == "operation",
+            $"The page was asked although the operation guard vetoed first: {string.Join(",", asked)}.");
+
+        operation.Running = false;
+        var closed = fixture.Window.WaitForCloseAsync().AsTask();
+        fixture.Native.UserClose();
+        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(string.Join(",", asked) == "operation,operation,page", $"The close asked {string.Join(",", asked)}.");
+    }
+
     // A failing guard is logged and keeps the window open; so does an overriding CanCloseAsync that throws.
     [Test, NotInParallel(Order = 21)]
     public async Task AFailingGuardIsLoggedAndKeepsTheWindowOpen()
@@ -441,6 +473,21 @@ sealed class ThrowingGuardWindow : RunicWindow<GuardedShellModel>
     {
         await Task.Yield();
         throw new TimeoutException("The autosave check timed out.");
+    }
+}
+
+// A navigator guard that vetoes every departure while an operation runs.
+sealed class OperationGuard(ConcurrentQueue<string> asked) : INavigationRegionGuard
+{
+    private volatile bool _running = true;
+    public bool Running { get => _running; set => _running = value; }
+    public TaskCompletionSource Asked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken)
+    {
+        asked.Enqueue("operation");
+        Asked.TrySetResult();
+        return ValueTask.FromResult(!Running);
     }
 }
 

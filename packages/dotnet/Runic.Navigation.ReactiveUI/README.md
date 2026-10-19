@@ -442,7 +442,9 @@ anywhere in a window, is an `INavigationRegionGuard` registered with
 [Guards for a whole region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#guards-for-a-whole-region)).
 It can ask through an `Interaction` the same way: its
 `NavigationRegionDeparture` has the `ModelContext` and `OnCommitted` of a
-`NavigationDeparture`.
+`NavigationDeparture`. It is asked after the pages' guards, or before them
+with `Order = NavigationRegionGuardOrder.BeforeEntries` for a precondition
+that should refuse before any page asks.
 
 ## Native command composition
 
