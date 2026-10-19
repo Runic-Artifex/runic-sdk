@@ -1,3 +1,4 @@
 #nullable enable
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateThumbnails() -> Runic.Platform.IDesktopThumbnails!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateApplications() -> Runic.Platform.IDesktopApplications!

@@ -91,6 +91,24 @@ lists again every two seconds for drive letters, labels and media changes that
 have no notification. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
 
+## Desktop applications
+
+`WindowsPlatformProvider.CreateApplications()` is the shell's association
+database behind `IDesktopApplications`: a file's content type from the registry
+(`Content Type` and `PerceivedType` of its extension, or urlmon's content
+sniffing when the name does not decide), the applications that open a type from
+`SHAssocEnumHandlers` with the default from `AssocQueryString` first, launches
+through the handler's own `IAssocHandler::Invoke`, the Start menu's applications
+(`shell:AppsFolder`) and icons as PNG. A content type is its MIME type when the
+registry's MIME database maps it back to the same extension, else the extension
+(`.txt`); `x-scheme-handler/<scheme>` names a URL protocol. An application is
+the path of its executable or, for a packaged application, its AppUserModelID.
+Only a registered handler of every item's type starts, never a path or a
+command line. Windows lets only the user choose defaults, so
+`SetDefaultApplicationAsync` reports `PermissionDenied` with a diagnostic that
+points to `ms-settings:defaultapps`. See the
+[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
+
 ## Secret storage
 
 `WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic

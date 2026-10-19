@@ -15,8 +15,8 @@ application's own types is [opening files and URLs](open-activation.md).
 | --- | --- | --- |
 | Linux | Implemented in Runic.Platform.Linux.Portal, without GIO: the freedesktop.org [Desktop Entry 1.5](https://specifications.freedesktop.org/desktop-entry/latest/), [Shared MIME-info 0.21](https://specifications.freedesktop.org/shared-mime-info/latest/), [MIME Apps 1.0.1](https://specifications.freedesktop.org/mime-apps/latest/) and [Icon Theme 0.13](https://specifications.freedesktop.org/icon-theme/latest/) specifications. | Fixture trees in temporary directories, in the formats `update-mime-database` and `update-desktop-database` write, never the user's directories, MIME database, defaults, icon themes or session bus: entries, name and content detection, associations at every level, the byte-preserving `mimeapps.list` write, launches checked by a probe executable that records its argument vector, and icon lookup. D-Bus activation against a fake `org.freedesktop.Application` on a private bus. JIT and NativeAOT, locally on x64 and in CI. Against a real desktop: unverified. |
 | Sandboxed Linux | The host's applications and defaults are out of reach: application methods report `Unavailable(BackendUnavailable)`; content types and icons come from the sandbox's own data. | Portable tests. Inside a real Flatpak or Snap: unverified. |
-| Windows | Not provided yet: every method reports `Unavailable(ProviderNotConfigured)`. Planned: file associations, `AssocQueryString`, `SHAssocEnumHandlers` and shell icons. | The registration test checks the unavailable result. |
-| macOS | Not provided yet: every method reports `Unavailable(ProviderNotConfigured)`. Planned: `UTType`, `NSWorkspace` and Launch Services. | The registration test checks the unavailable result. |
+| Windows | Implemented in Runic.Platform.Windows: the registry's extension keys and MIME database, `AssocQueryString`, `SHAssocEnumHandlers` and `IAssocHandler::Invoke`, `shell:AppsFolder`, and shell icons. Defaults are the user's to choose: `SetDefaultApplicationAsync` reports `PermissionDenied`. | Portable tests of the type rules, launch grouping and PNG encoding on every OS. In CI on Windows x64 and ARM64, JIT and NativeAOT: the runner's associations read-only, then an extension, MIME type and URL protocol unique to the run, registered under `HKEY_CURRENT_USER\Software\Classes` with the test executable as handler, which records its argument vector; the keys are removed afterwards. |
+| macOS | Implemented in Runic.Platform.MacOS: `UTType`, `NSWorkspace` (Launch Services) and the Applications folders. | Portable tests of the type forms, supertype order and bundle scan. In CI on macOS arm64, JIT and NativeAOT: the runner's Launch Services database read-only, then two app bundles unique to the run that declare a type and a URL scheme, registered with Launch Services, launched (their executable records each start), made the test type's default, and unregistered afterwards. Delivery of the opened items to the application (Apple events): unverified. |
 | CS-WebUI | `Unavailable(ProviderNotConfigured)`; register `PortalPlatformProvider.CreateApplications()` before `AddRunicPlatformServices()` to use it. | — |
 
 ## Contract
@@ -74,10 +74,10 @@ public static IDesktopApplications PlatformServices.CreateApplications();
   provider.
 - Identifiers are the platform's own and are passed back unchanged:
 
-  | | Linux | Windows (planned) | macOS (planned) |
+  | | Linux | Windows | macOS |
   | --- | --- | --- | --- |
-  | Application | Desktop file ID, such as `org.gnome.TextEditor.desktop` | Path of the handler's executable | Bundle identifier, such as `com.apple.TextEdit` |
-  | Content type | MIME type, such as `text/plain`, `inode/directory` or `x-scheme-handler/https` | MIME type, or the extension, such as `.txt` | Uniform type identifier, such as `public.plain-text` |
+  | Application | Desktop file ID, such as `org.gnome.TextEditor.desktop` | Path of the executable, such as `C:\Windows\System32\notepad.exe`; a packaged application's AppUserModelID, such as `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App` | Bundle identifier, such as `com.apple.TextEdit` |
+  | Content type | MIME type, such as `text/plain`, `inode/directory` or `x-scheme-handler/https` | MIME type when the registry maps it back to the same extension, else the extension, such as `.txt`; `inode/directory`; `x-scheme-handler/https` | Uniform type identifier, such as `public.plain-text`; requests also take a MIME type, `.txt` or `x-scheme-handler/https` |
 
 - Arguments are checked the same way on every platform, before any native call:
   an empty identifier, NUL, an identifier over 4096 characters (a content type
@@ -102,6 +102,8 @@ public static IDesktopApplications PlatformServices.CreateApplications();
 | A malformed content type, an application that is not installed or not associated with the type, or an item the application cannot take | `Failed(InvalidData)`, nothing changes |
 | An icon file over 4 MiB | `Failed(TooLarge)` |
 | A terminal application (Linux), or the host's applications from a sandbox | `Unavailable(BackendUnavailable)` |
+| `SetDefaultApplicationAsync` on Windows, for an application that opens the type | `Failed(PermissionDenied)`; the diagnostic points to `ms-settings:defaultapps` |
+| The user declines a default change macOS asks about | `Failed(UserDismissed)` |
 | A failed start or D-Bus activation | `Failed(IoError)` or `Failed(PermissionDenied)` with the `errno` or the D-Bus error name |
 
 Diagnostics carry an error code and remediation, never file contents.
@@ -278,6 +280,165 @@ diagnostic. Open files and URIs there with `IDesktopFileLauncher` or
 `OpenUriAsync`, which ask the OpenURI portal and its application chooser.
 Content types and icons come from the sandbox's runtime.
 
+## Windows
+
+`WindowsPlatformProvider.CreateApplications()` reads the shell's association
+database. Each request runs on a single-threaded apartment of its own, as the
+Recycle Bin does, and releases every COM object before it returns; the COM
+interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
+(`docs/interop-inventory.md` in the package).
+
+### Content types
+
+- **Names.** The extension's key under `HKEY_CLASSES_ROOT`, which merges the
+  user's classes over the machine's. An extension the registry knows is
+  identified by its `Content Type` when `MIME\Database\Content Type\<type>`
+  maps that type back to the same extension, so an ID always stands for one
+  extension's associations (`.htm` is `text/html`, while `.html`, which the
+  database does not name, stays `.html` with `MimeType` `text/html`); else by
+  the extension, lowercased. `PerceivedType` `text`, or a `text/` MIME type,
+  gives the parent `text/plain`. `Extensions` is the extension; `Description`
+  is the shell's friendly type name (`ASSOCSTR_FRIENDLYDOCNAME`). Windows has
+  no themed icon names, so `IconName` is `null`.
+- **`NameOnly`** never touches the file: an extension the registry does not
+  know, or no extension, is `application/octet-stream`.
+- **`NameAndContent`** reads the file's attributes: a directory is
+  `inode/directory`; a known extension decides; otherwise the first 256 bytes
+  go to urlmon's `FindMimeFromData` (with `FMFD_RETURNUPDATEDIMGMIMES`), the
+  sniffing Windows itself uses, which recognizes images, HTML, XML, PDF,
+  archives, text and binary data.
+- **Requests** take an extension (`.txt`), a MIME type (the database's
+  `Extension` for it; one without an extension has no applications),
+  `x-scheme-handler/<scheme>` for a URL protocol and `inode/directory` for the
+  `Directory` class.
+
+### Applications and defaults
+
+- **`GetApplicationsForAsync`**: the recommended handlers
+  `SHAssocEnumHandlers` (`ASSOC_FILTER_RECOMMENDED`) lists for the extension, or
+  `SHAssocEnumHandlersForProtocolByApplication` for a protocol, as the shell's
+  Open With lists them. Each handler's `IAssocHandler::GetName` (its
+  executable's path) is the ID and `GetUIName` the name. The default comes
+  first.
+- **`GetDefaultApplicationAsync`**: `AssocQueryString` with
+  `ASSOCSTR_EXECUTABLE`, else `ASSOCSTR_APPID` for a packaged application, and
+  `ASSOCSTR_FRIENDLYAPPNAME`. It honours the user's choice
+  (`UserChoice`) and, for a protocol, `ASSOCF_IS_PROTOCOL`.
+  `ASSOCF_INIT_IGNOREUNKNOWN` makes an unknown type `null` rather than the
+  Open With dialog.
+- **`SetDefaultApplicationAsync`**: Windows 8 and later protect the user's
+  choice with a hash that programs cannot write, and Settings resets defaults
+  written another way. The provider checks that the application opens the type
+  (else `InvalidData`) and reports `Failed(PermissionDenied)`; the diagnostic
+  (`HRESULT 0x80070005`) points to `ms-settings:defaultapps`, which an
+  application can open with `OpenUriAsync` for the user to choose.
+- **`GetApplicationsAsync`**: the Start menu's applications, the children of
+  `shell:AppsFolder`. A desktop application's ID is the executable its
+  shortcut targets (`System.Link.TargetParsingPath`), as the handlers' IDs
+  are; a packaged application's is its AppUserModelID. Shortcuts to documents
+  and web pages are left out. `Description` and `ContentTypes` are empty.
+
+### Launch
+
+- **Items** group by what opens them: a path by its extension, a directory by
+  the `Directory` class, a `file:` URI as its path, any other URI by its
+  scheme. Every group must list the application among its handlers
+  (`ASSOC_FILTER_NONE`) before anything starts, so an executable that does not
+  open a type, such as `cmd.exe` for a document, is `Failed(InvalidData)`, as
+  is a file without an extension.
+- Each group goes to the handler's `IAssocHandler::Invoke` with a data object
+  over the parsed items (`SHParseDisplayName`,
+  `SHCreateShellItemArrayFromIDLists`, `BHID_DataObject`), as Explorer's Open
+  With does. The shell expands the registered command, quoting each item as one
+  argument; no command line passes through the provider or a command shell.
+- **Without items** the application must be in `shell:AppsFolder`; it starts
+  as the Start menu starts it (`ShellExecute` of
+  `shell:AppsFolder\<AppUserModelID>`). Other IDs are `Failed(InvalidData)`.
+- A failure is `Failed(IoError)`, or `PermissionDenied` for
+  `E_ACCESSDENIED`, with the HRESULT.
+
+### Icons
+
+- `ForContentType`: the type's `DefaultIcon` (`ASSOCSTR_DEFAULTICON`), with
+  environment variables expanded, through `SHDefExtractIcon` at the requested
+  size; a `%1` icon, which differs per file, has none.
+- `ForApplication`: an executable's first icon through `SHDefExtractIcon`; a
+  packaged application's tile through `IShellItemImageFactory`
+  (`SIIGBF_ICONONLY`) on its `shell:AppsFolder` item.
+- `ForIconName` is a successful `null`: Windows has no icon themes.
+- The pixels (`GetDIBits`, 32-bit; the AND mask for icons without alpha;
+  premultiplied factory images divided out) are encoded as PNG by a managed
+  encoder. The size is `Size × Scale`, at most 256 pixels, the largest icon
+  Windows stores.
+
+## macOS
+
+`MacOSPlatformProvider.CreateApplications()` uses Launch Services through
+`NSWorkspace` and uniform type identifiers through `UTType`
+(UniformTypeIdentifiers), with `objc_msgSend` and the block helper the other
+macOS services use, so it is NativeAOT-safe. Both are thread-safe: requests run
+on the thread pool and need no window or AppKit event loop. Every API used is in
+macOS 12 or earlier; Runic supports macOS 15 and later.
+
+### Content types
+
+- A type's ID is its uniform type identifier. `Description` is
+  `localizedDescription`, `MimeType` `preferredMIMEType`, `Extensions`
+  `preferredFilenameExtension` and then the type's other filename-extension
+  tags, and `Parents` its `supertypes`, nearest first (a supertype that
+  conforms to more of the others is nearer). `IconName` is `null`.
+- **`NameOnly`**: `typeWithFilenameExtension:`. **`NameAndContent`**: the
+  file's `NSURLContentTypeKey` after resolving symbolic links, which also
+  knows folders (`public.folder`), packages and bundles. macOS does not sniff
+  content. A type the system declares nowhere (a dynamic `dyn.` type) is
+  `public.data`.
+- **Requests** take a UTI, a MIME type (`typeWithMIMEType:`), an extension
+  (`.txt`, `typeWithFilenameExtension:`) or `x-scheme-handler/<scheme>`. A
+  well-formed identifier the system does not declare has no applications.
+
+### Applications and defaults
+
+- **`GetApplicationsForAsync`**: `URLsForApplicationsToOpenContentType:`, or
+  `URLsForApplicationsToOpenURL:` with `<scheme>:` for a scheme, with
+  `URLForApplicationToOpenContentType:` (or `URLForApplicationToOpenURL:`)
+  first. Each application is its bundle: the ID is `bundleIdentifier`, the name
+  the localized `CFBundleDisplayName`, else `CFBundleName`, and
+  `ContentTypes` its `CFBundleDocumentTypes` `LSItemContentTypes` and its
+  `CFBundleURLTypes` schemes as `x-scheme-handler/<scheme>`. A bundle without
+  an identifier is left out; copies of one application are listed once.
+- **`GetApplicationsAsync`**: the `.app` bundles in `/Applications`,
+  `/System/Applications` and `~/Applications` and their subfolders (two levels,
+  such as `Utilities`), not inside other bundles, as Launchpad shows them; the
+  first copy of a bundle identifier wins.
+- **`SetDefaultApplicationAsync`** checks that the application opens the type
+  (else `InvalidData`), then calls
+  `setDefaultApplicationAtURL:toOpenContentType:completionHandler:`, or
+  `toOpenURLsWithScheme:` for a scheme. macOS may ask the user to confirm, as it
+  does for a web browser; the request waits for the answer, and a refusal
+  (`NSUserCancelledError`, `userCanceledErr`) is `Failed(UserDismissed)`.
+
+### Launch
+
+- The ID must name an application Launch Services knows
+  (`URLForApplicationWithBundleIdentifier:`), never a path; else
+  `Failed(InvalidData)`. A URI other than `file:` must have a scheme the
+  application opens (`URLsForApplicationsToOpenURL:`); paths go to any
+  application, as Finder's Open With allows.
+- `openURLs:withApplicationAtURL:configuration:completionHandler:` with the
+  items as `NSURL`s, or `openApplicationAtURL:configuration:completionHandler:`
+  without items; Launch Services starts the application and sends it the items
+  as an open-documents or get-URL Apple event. Success is the completion
+  without an error; an error is `Failed(IoError)`, or `PermissionDenied` for a
+  permission error, with the `NSError` domain and code.
+
+### Icons
+
+- `ForApplication`: `iconForFile:` of the application's bundle.
+  `ForContentType`: `iconForContentType:`; a URL scheme has none.
+  `ForIconName` is a successful `null`: macOS has no icon themes.
+- The image is drawn at `Size × Scale` pixels, at most 1024, into an sRGB
+  bitmap and encoded with `NSBitmapImageRep` as PNG.
+
 ## Out of scope for 1.0
 
 - Starting `Terminal=true` applications, which needs the desktop's terminal.
@@ -287,3 +448,9 @@ Content types and icons come from the sandbox's runtime.
 - Host applications from Flatpak beyond the OpenURI portal.
 - Rasterizing SVG icons.
 - Watching the databases for changes.
+- Windows: changing defaults (Windows reserves it for the user); applications
+  outside the Start menu in `GetApplicationsAsync`; starting an application
+  without items unless the Start menu lists it; declared types
+  (`ContentTypes`) of Windows applications.
+- macOS: applications outside the three Applications folders in
+  `GetApplicationsAsync` (they still appear as handlers); content sniffing.

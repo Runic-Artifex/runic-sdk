@@ -6,8 +6,9 @@ namespace Runic.Platform;
 /// <remarks>
 /// On Linux <see cref="Id"/> is the canonical MIME type from the shared MIME-info database, such as
 /// <c>text/plain</c>, <c>inode/directory</c> or <c>x-scheme-handler/https</c>, and equals <see cref="MimeType"/>.
-/// Windows identifies a type by its MIME type or, without one, by its extension, such as <c>.txt</c>; macOS by its
-/// uniform type identifier, such as <c>public.plain-text</c>.
+/// Windows identifies a type by its MIME type when the registry maps that type back to the same extension, else by its
+/// extension, such as <c>.txt</c>; macOS by its uniform type identifier, such as <c>public.plain-text</c>.
+/// <c>x-scheme-handler/&lt;scheme&gt;</c> names a URL scheme on every platform.
 /// </remarks>
 /// <param name="Id">The platform's identifier of the type.</param>
 /// <exception cref="ArgumentException">An identifier is empty or contains NUL.</exception>
@@ -35,8 +36,8 @@ public sealed record DesktopContentType(string Id)
 /// <summary>An installed application that can open content.</summary>
 /// <remarks>
 /// <see cref="Id"/> identifies the application to <see cref="IDesktopApplications"/>. On Linux it is the desktop file
-/// ID, such as <c>org.gnome.TextEditor.desktop</c>; on Windows the path of the handler's executable; on macOS its
-/// bundle identifier, such as <c>com.apple.TextEdit</c>.
+/// ID, such as <c>org.gnome.TextEditor.desktop</c>; on Windows the path of its executable or, for a packaged
+/// application, its AppUserModelID; on macOS its bundle identifier, such as <c>com.apple.TextEdit</c>.
 /// </remarks>
 /// <param name="Id">The platform's identifier of the application.</param>
 /// <param name="Name">The application's name in the user's language.</param>
@@ -145,9 +146,9 @@ public enum DesktopContentDetection
 /// Identifiers are the platform's own. On Linux an application is a desktop file ID, such as
 /// <c>org.gnome.TextEditor.desktop</c>, and a content type a MIME type, such as <c>text/plain</c> or
 /// <c>x-scheme-handler/mailto</c>, following the freedesktop.org Desktop Entry, Shared MIME-info, MIME Apps and Icon
-/// Theme specifications. On Windows an application is the path of its handler's executable and a content type a
-/// MIME type or an extension, such as <c>.txt</c>; on macOS an application is a bundle identifier and a content type
-/// a uniform type identifier, such as <c>public.plain-text</c>.
+/// Theme specifications. On Windows an application is the path of its executable (a packaged application's
+/// AppUserModelID) and a content type a MIME type or an extension, such as <c>.txt</c>; on macOS an application is a
+/// bundle identifier and a content type a uniform type identifier, such as <c>public.plain-text</c>.
 /// </para>
 /// <para>
 /// Inside Flatpak or Snap the host's applications and defaults are out of reach: the application methods report
@@ -183,7 +184,10 @@ public interface IDesktopApplications
 
     /// <summary>Makes <paramref name="applicationId"/> the user's default application for <paramref name="contentType"/>.</summary>
     /// <remarks>An application that is not installed or does not open the type is
-    /// <see cref="PlatformFailureCode.InvalidData"/>, and nothing changes.</remarks>
+    /// <see cref="PlatformFailureCode.InvalidData"/>, and nothing changes. macOS may ask the user to confirm the change,
+    /// and the request waits for the answer; a refusal is <see cref="PlatformFailureCode.UserDismissed"/>. Windows lets
+    /// only the user choose defaults: the request is <see cref="PlatformFailureCode.PermissionDenied"/>, with a
+    /// diagnostic that points to Settings (<c>ms-settings:defaultapps</c>).</remarks>
     /// <exception cref="ArgumentException">An argument is empty or contains NUL.</exception>
     ValueTask<PlatformResult<PlatformUnit>> SetDefaultApplicationAsync(string contentType, string applicationId, CancellationToken cancellationToken = default);
 

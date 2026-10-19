@@ -307,8 +307,10 @@ public static partial class PlatformServices
     /// <returns>An application database; it holds no native resources between requests and needs no disposal.</returns>
     /// <remarks>
     /// Linux reads the freedesktop.org desktop entries, shared MIME-info database, mimeapps.list and icon themes
-    /// directly, with either toolkit and without loading GTK or GIO. Windows and macOS have no provider yet: every
-    /// request reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>, as it does elsewhere.
+    /// directly, with either toolkit and without loading GTK or GIO. Windows uses the shell's file and protocol
+    /// associations, where only the user can change a default; macOS uses Launch Services through
+    /// <c>NSWorkspace</c> and uniform type identifiers. It needs no window or event loop. Elsewhere every request
+    /// reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -317,16 +319,24 @@ public static partial class PlatformServices
     internal static IDesktopApplications CreateApplications(ILogger? logger)
     {
         IDesktopApplications? applications = null;
+        if (OperatingSystem.IsWindows()) applications = Optional(CreateWindowsApplications);
 #if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsLinux()) applications = CreatePortalApplications(logger);
+        else if (OperatingSystem.IsLinux()) applications = CreatePortalApplications(logger);
+        else if (OperatingSystem.IsMacOS()) applications = CreateMacOSApplications();
 #endif
         return applications ?? DesktopApplications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopApplications CreateWindowsApplications() => WindowsPlatformProvider.CreateApplications();
 
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopApplications CreatePortalApplications(ILogger? logger) =>
         new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateApplications();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopApplications CreateMacOSApplications() => MacOSPlatformProvider.CreateApplications();
 #endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]

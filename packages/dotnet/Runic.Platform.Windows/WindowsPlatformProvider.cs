@@ -73,6 +73,19 @@ public static class WindowsPlatformProvider
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
         return new WindowsVolumes(new WindowsVolumeSource(), WindowsVolumes.DefaultPoll, WindowsVolumes.DefaultSettle);
     }
+
+    /// <summary>Creates the desktop's application database from the shell's file and protocol associations.</summary>
+    /// <remarks>
+    /// <para>A content type is its MIME type when the registry's MIME database maps that type back to the same
+    /// extension, else the extension, such as <c>.txt</c>; <c>x-scheme-handler/&lt;scheme&gt;</c> names a URL protocol
+    /// and <c>inode/directory</c> folders. An application is the path of its executable or, for a packaged application,
+    /// its AppUserModelID.</para>
+    /// <para>Windows lets only the user choose default applications: <see cref="IDesktopApplications.SetDefaultApplicationAsync"/>
+    /// reports <see cref="PlatformFailureCode.PermissionDenied"/> with a diagnostic that points to Settings
+    /// (<c>ms-settings:defaultapps</c>). It needs no window.</para>
+    /// </remarks>
+    public static IDesktopApplications CreateApplications()
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsDesktopApplications(new RegistryClasses()); }
     // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
     // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
     internal static IDesktopStatusIcon CreateStatusIcon()
