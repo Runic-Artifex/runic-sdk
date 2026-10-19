@@ -915,17 +915,30 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         caller.Result.TrySetResult(await this.AfterUserCode(transition.Result.Task));
     }
 
+    // When the last caller cancels, the shared Back is abandoned: no caller awaits it any more, and its guard may still
+    // run until it observes the token, or until it returns if it ignores the token. The transition then leaves the
+    // region's busy set before the caller's result is set, so a request made once that caller resumed is never Busy
+    // because of it (#415). Its cancel reason is recorded in the same gate section, so it can't commit any more: the
+    // commit checks it under the gate. It stays in flight (InFlight) and in the navigator's running set, so a later
+    // request of the region still waits for it to end before its own guards, and RunicNavigator.WhenIdleAsync and
+    // DisposeAsync still wait for it.
     private void CancelBackCaller(NavigationTransition transition, NavigationBackCaller caller)
     {
         var cancel = false;
+        var idle = false;
         lock (Gate)
         {
             // A commit or terminal outcome already won. Cancellation during retirement cannot change it.
             if (transition.Released) return;
-            caller.Result.TrySetResult(TransitionOutcome.Reject(NavigationRejection.Cancelled));
             if (transition.CancellationRequested)
+            {
+                // A reason already recorded (superseded, closed) also keeps it from committing.
                 cancel = transition.TrySetCancelReason(NavigationCancelReason.Cancelled);
+                idle = transition.Region.Running.Remove(transition) && !transition.Region.IsBusyLocked;
+            }
+            caller.Result.TrySetResult(TransitionOutcome.Reject(NavigationRejection.Cancelled));
         }
+        if (idle) Notify(transition.Region, NavigationRegionChanges.Busy);
         if (cancel) Cancel([transition]);
     }
 

@@ -363,6 +363,122 @@ internal sealed partial class NavigationTests
         await Wait(navigatorIdle);
     }
 
+    // #415: a token-bearing Back returns Rejected(Cancelled) as soon as its token is cancelled, before its guard returns.
+    // A request made once that caller resumed is not Busy because of the Back, whether the guard observes the token or
+    // ignores it; the abandoned Back never commits, and the next request waits for its guard to end before asking again.
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [TUnit.Core.DisplayName("CancelledBackLeavesTheRegionIdleAsync(guardObservesToken: $guardObservesToken)")]
+    public async Task CancelledBackLeavesTheRegionIdleAsync(bool guardObservesToken)
+    {
+        await using var fixture = new Fixture();
+        // Released first on every exit, so a failed assertion can't leave a hook waiting forever.
+        using var gates = new Gates();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")), RejectWhileBusy);
+        await Wait(region.PushAsync(NavigationTarget.Own(new Page("a"))));
+        var document = new Page("document");
+        await Wait(region.PushAsync(NavigationTarget.Own(document)));
+        var raised = new List<bool>();
+        region.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(region.IsBusy)) lock (raised) raised.Add(region.IsBusy);
+        };
+        var asked = 0;
+        var guarding = gates.Signal();
+        var release = gates.Signal();
+        document.Guard = async (_, token) =>
+        {
+            if (Interlocked.Increment(ref asked) > 1) return true;
+            guarding.TrySetResult();
+            if (guardObservesToken) await release.Task.WaitAsync(token);
+            else await release.Task;
+            return true;
+        };
+        using var cancellation = new CancellationTokenSource();
+        var first = region.BackAsync(cancellationToken: cancellation.Token).AsTask();
+        await Wait(guarding.Task);
+        Require(region.IsBusy, "The region was not busy while the Back's guard ran.");
+        cancellation.Cancel();
+        Require(await Wait(first) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled },
+            "The cancelled Back did not return Rejected(Cancelled).");
+        Require(!region.IsBusy && region.WhenIdleAsync().AsTask().IsCompleted,
+            "The region was still busy because of a Back whose only caller had cancelled and resumed.");
+        // The change to idle is posted; let it run.
+        await Wait(fixture.Context.InvokeAsync(() => { }));
+        lock (raised)
+            Require(raised.Count > 0 && !raised[^1], $"The region raised IsBusy {string.Join(", ", raised)} for the cancelled Back.");
+
+        var second = region.BackAsync().AsTask();
+        if (!guardObservesToken)
+        {
+            // The abandoned guard still runs: the next Back is admitted and waits for it, without asking meanwhile.
+            await Wait(Task.Delay(50));
+            Require(!second.IsCompleted && asked == 1 && region.IsBusy && Names(region) == "home,a,document",
+                $"The Back after the cancelled one did not wait for the abandoned guard ({second.Status}, {asked} asks).");
+            Require(!fixture.Navigator.WhenIdleAsync().AsTask().IsCompleted,
+                "The navigator's WhenIdleAsync did not wait for the abandoned guard.");
+            release.SetResult();
+        }
+        // The abandoned Back never commits, even though its guard allowed it: the next Back asks again and pops once.
+        Require(await Wait(second) is NavigationResult<Page>.Committed && asked == 2 && Names(region) == "home,a",
+            $"The Back after the cancelled one gave {second.Result}, {asked} asks, {Names(region)}.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(document.Disposed == 1 && !region.IsBusy, $"The document was disposed {document.Disposed} times.");
+    }
+
+    // While another caller still awaits a joined Back, cancelling one caller leaves the region busy for that caller. Once
+    // the last caller cancelled, the region is idle, even though the guard ignores its token.
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [TUnit.Core.DisplayName("JoinedBackStaysBusyForItsRemainingCallerAsync(secondWithToken: $secondWithToken)")]
+    public async Task JoinedBackStaysBusyForItsRemainingCallerAsync(bool secondWithToken)
+    {
+        await using var fixture = new Fixture();
+        // Released first on every exit, so a failed assertion can't leave a hook waiting forever.
+        using var gates = new Gates();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")), RejectWhileBusy);
+        var document = new Page("document");
+        await Wait(region.PushAsync(NavigationTarget.Own(document)));
+        var asked = 0;
+        var guarding = gates.Signal();
+        var allow = gates.Answer();
+        document.Guard = async (_, _) =>
+        {
+            if (Interlocked.Increment(ref asked) > 1) return true;
+            guarding.TrySetResult();
+            // Ignores its token.
+            return await allow.Task;
+        };
+        using var firstCancellation = new CancellationTokenSource();
+        using var secondCancellation = new CancellationTokenSource();
+        var first = region.BackAsync(cancellationToken: firstCancellation.Token).AsTask();
+        await Wait(guarding.Task);
+        var second = region.BackAsync(cancellationToken: secondWithToken ? secondCancellation.Token : default).AsTask();
+        Require(fixture.Logs.Count(1074) == 1, "The second Back did not join the first.");
+        firstCancellation.Cancel();
+        Require(await Wait(first) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled } && !second.IsCompleted,
+            "Cancelling the first caller did not settle it alone.");
+        Require(region.IsBusy && await Wait(region.PushAsync(NavigationTarget.Own(new Page("refused")))) is
+            NavigationResult<Page>.Rejected { Reason: NavigationRejection.Busy },
+            "The region was not busy while the second caller still awaited the joined Back.");
+        if (!secondWithToken)
+        {
+            allow.SetResult(true);
+            Require(await Wait(second) is NavigationResult<Page>.Committed && Names(region) == "home" && !region.IsBusy && asked == 1,
+                "The remaining caller did not commit the joined Back.");
+            return;
+        }
+        secondCancellation.Cancel();
+        Require(await Wait(second) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled } && !region.IsBusy,
+            "The region was still busy after every caller of the joined Back had cancelled.");
+        var push = region.PushAsync(NavigationTarget.Own(new Page("other"))).AsTask();
+        allow.SetResult(true);
+        Require(await Wait(push) is NavigationResult<Page>.Committed && Names(region) == "home,document,other" && asked == 2,
+            $"A push after the cancelled Back gave {push.Result}, {Names(region)}, {asked} asks.");
+    }
+
     private static async Task<bool> Throws<T>(Task task) where T : Exception
     {
         try
