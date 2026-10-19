@@ -22,6 +22,7 @@
     <!-- The optional WPF presentation reuses our native WebView2 controller. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf" />
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Windows.Tests" />
     <None Include="pack/README.md" Pack="true" PackagePath="" />
     <None Include="NOTICE" Pack="true" PackagePath="" />
     <None Include="licenses/WebUI-LICENSE.txt" Pack="true" PackagePath="licenses/WebUI/" />

@@ -71,6 +71,14 @@ public sealed partial class RunicWebView : HwndHost
         return true;
     }
 
+    // WebView2 asks to give focus back when Tab or Shift+Tab leaves the document's last or first tab stop: WPF
+    // continues its own traversal from this control. When WPF has nowhere to go, WebView2 cycles inside the document.
+    private bool TabOut(int reason) => MoveFocus(new TraversalRequest(
+        reason == 2 ? FocusNavigationDirection.Previous : FocusNavigationDirection.Next));
+
+    // The open presentation's controller, for native checks.
+    internal WindowsWebView2Controller? Controller => _presentation?.Controller;
+
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
@@ -101,6 +109,7 @@ public sealed partial class RunicWebView : HwndHost
         public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
         public bool IsOpen => Volatile.Read(ref _open);
         public nint NativeHandle => 0;
+        internal WindowsWebView2Controller? Controller => _controller;
 
         public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default) =>
             new(view.Dispatcher.InvokeAsync(() => OpenOnDispatcherAsync(url, options, cancellationToken)).Task.Unwrap());
@@ -127,6 +136,7 @@ public sealed partial class RunicWebView : HwndHost
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
                 initializing.RegisterEvents(static _ => { }, RequestClose, options.AllowedPermissions, url);
+                initializing.RegisterMoveFocusRequested(view.TabOut);
                 if (options.DocumentStartScript is { } script)
                     await initializing.AddDocumentStartScriptAsync(script);
                 await initializing.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));

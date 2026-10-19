@@ -148,9 +148,10 @@ receives them, with their paths, when it implements `IRunicFileDropTarget`. Brow
 `WpfBridgeView.OpenAsync`. Standard HWND airspace constraints apply; WPF overlays
 cannot draw over the child WebView. Tab enters the document's first or last tab
 stop. WebView2 moves that focus asynchronously: the document's focused element
-changes shortly after `TabInto` returns, not during the call. Returning from the document's tab boundary to the surrounding WPF controls
-is not yet integrated; mouse focus and explicit shell focus actions remain
-available. Native authentication, reload, focus and unload checks run on Windows;
+changes shortly after `TabInto` returns, not during the call. Tab on the
+document's last tab stop and Shift+Tab on its first return focus to the next or
+previous WPF control, through WPF's own traversal (`MoveFocus`); when WPF has no
+control to move to, focus cycles inside the document. Native authentication, reload, focus, tab-in/tab-out and unload checks run on Windows;
 Linux can compile the Windows target and run the linked portable session checks.
 
 ## Bring the window forward for a second launch

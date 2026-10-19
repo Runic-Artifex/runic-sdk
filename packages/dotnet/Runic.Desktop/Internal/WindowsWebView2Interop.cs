@@ -18,6 +18,7 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerVisibleSlot = 4;
     internal const int ControllerBoundsSlot = 6;
     internal const int ControllerFocusSlot = 12;
+    internal const int ControllerMoveFocusRequestedSlot = 13;
     internal const int ControllerCloseSlot = 24;
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
@@ -27,6 +28,9 @@ internal static partial class WindowsWebView2Interop
     internal const int PermissionStateSlot = 7;
     internal const int PermissionHandledSlot = 10;
     internal const int WebMessageReceivedSlot = 34;
+    internal const int CallDevToolsProtocolMethodSlot = 36;
+    internal const int MoveFocusReasonSlot = 3;
+    internal const int MoveFocusHandledSlot = 5;
     internal const int WebMessageSourceSlot = 3;
     internal const int WebMessageAsStringSlot = 5;
     internal const int WebMessageAdditionalObjectsSlot = 6;
@@ -135,6 +139,14 @@ internal static partial class WindowsWebView2Interop
                 webView, value, callback));
     }
 
+    internal static unsafe void CallDevToolsProtocolMethod(nint webView, string method, string parameters, nint callback)
+    {
+        fixed (char* name = method)
+        fixed (char* json = parameters)
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, char*, nint, int>)Slot(webView, CallDevToolsProtocolMethodSlot))(
+                webView, name, json, callback));
+    }
+
     internal static unsafe void SetBounds(nint controller, Rectangle bounds)
     {
         var rect = new NativeRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
@@ -169,7 +181,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
     private nint _controller;
     private nint _environment;
     private nint _webView;
-    private readonly List<(int Slot, long Token, IDisposable Handler)> _events = [];
+    private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
 
     private WindowsWebView2Controller(nint environment, nint controller)
     {
@@ -210,6 +222,26 @@ internal sealed class WindowsWebView2Controller : IDisposable
     internal bool IsVisible { set => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerVisibleSlot, value ? 1 : 0); }
     internal void MoveFocus(int reason = 0) => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerFocusSlot, reason);
     internal void Navigate(string url) => WindowsWebView2Interop.Navigate(_webView, url);
+
+    // Tab or Shift+Tab past the document's last or first tab stop raises MoveFocusRequested with reason Next (1) or
+    // Previous (2). An embedding host that moves focus to its own controls returns true; WebView2 otherwise cycles
+    // focus inside the document.
+    internal void RegisterMoveFocusRequested(Func<int, bool> moveFocus) =>
+        AddEvent<IWebViewMoveFocusRequested>(_controller, WindowsWebView2Interop.ControllerMoveFocusRequestedSlot, new WebViewEvent(args =>
+        {
+            var reason = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.MoveFocusReasonSlot);
+            if (reason is 1 or 2 && moveFocus(reason))
+                WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.MoveFocusHandledSlot, 1);
+        }));
+
+    // Native checks drive trusted input (for example a Tab key) through the DevTools protocol.
+    internal async Task<string> CallDevToolsProtocolMethodAsync(string method, string parameters)
+    {
+        var completion = new WebViewDevToolsCompletion();
+        using var handler = new WebViewComReference<IWebViewDevToolsCompleted>(completion);
+        WindowsWebView2Interop.CallDevToolsProtocolMethod(_webView, method, parameters, handler.Pointer);
+        return await completion.Task;
+    }
 
     // WebView2 injects the script only once this asynchronous registration completes,
     // so the first navigation must wait for it.
@@ -315,10 +347,12 @@ internal sealed class WindowsWebView2Controller : IDisposable
         finally { Marshal.FreeCoTaskMem(value); }
     }
 
-    private void AddEvent<T>(int slot, T handler) where T : class
+    private void AddEvent<T>(int slot, T handler) where T : class => AddEvent(_webView, slot, handler);
+
+    private void AddEvent<T>(nint source, int slot, T handler) where T : class
     {
         var reference = new WebViewComReference<T>(handler);
-        try { _events.Add((slot, WindowsWebView2Interop.AddEvent(_webView, slot, reference.Pointer), reference)); }
+        try { _events.Add((source, slot, WindowsWebView2Interop.AddEvent(source, slot, reference.Pointer), reference)); }
         catch { reference.Dispose(); throw; }
     }
 
@@ -328,7 +362,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
         // Dispose on the owning STA, before its message loop stops.
         try
         {
-            foreach (var entry in _events) WindowsWebView2Interop.RemoveEvent(_webView, entry.Slot + 1, entry.Token);
+            foreach (var entry in _events) WindowsWebView2Interop.RemoveEvent(entry.Source, entry.Slot + 1, entry.Token);
         }
         finally
         {
@@ -369,6 +403,26 @@ internal partial interface IWebViewCloseRequested { [PreserveSig] int Invoke(nin
 internal partial interface IWebViewWebMessageReceived { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("15e1c6a3-c72a-4df3-91d7-d097fbec6bfd")]
 internal partial interface IWebViewPermissionRequested { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("69035451-6dc7-4cb8-9bce-b2bd70ad289f")]
+internal partial interface IWebViewMoveFocusRequested { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("5c4889f0-5ef6-4c5a-952c-d8f1b92d0574")]
+internal partial interface IWebViewDevToolsCompleted { [PreserveSig] int Invoke(int errorCode, nint result); }
+
+[GeneratedComClass]
+internal sealed partial class WebViewDevToolsCompletion : IWebViewDevToolsCompleted
+{
+    private readonly TaskCompletionSource<string> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task<string> Task => _completion.Task;
+    // The result is a borrowed JSON string.
+    public int Invoke(int errorCode, nint result)
+    {
+        if (errorCode < 0)
+            _completion.TrySetException(new InvalidOperationException("The DevTools protocol call failed.", Marshal.GetExceptionForHR(errorCode)));
+        else
+            _completion.TrySetResult(Marshal.PtrToStringUni(result) ?? string.Empty);
+        return 0;
+    }
+}
 
 [GeneratedComClass]
 internal sealed partial class WebViewCompletion : IWebViewEnvironmentCompleted, IWebViewControllerCompleted
@@ -409,7 +463,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 
 [GeneratedComClass]
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
-    IWebViewWebMessageReceived
+    IWebViewWebMessageReceived, IWebViewMoveFocusRequested
 {
     public int Invoke(nint sender, nint args)
     {
