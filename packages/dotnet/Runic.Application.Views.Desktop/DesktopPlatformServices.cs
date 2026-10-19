@@ -855,6 +855,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         Current.Clipboard.WriteTextAsync(text, cancellationToken);
     ValueTask<PlatformResult<PlatformUnit>> IDesktopFileLauncher.LaunchAsync(string path, DesktopFileOperation operation, CancellationToken cancellationToken) =>
         Current.FileLauncher.LaunchAsync(path, operation, cancellationToken);
+    ValueTask<PlatformResult<PlatformUnit>> IDesktopFileLauncher.LaunchUriAsync(Uri uri, CancellationToken cancellationToken) =>
+        Current.FileLauncher.LaunchUriAsync(uri, cancellationToken);
 }
 
 /// <summary>Registers Desktop platform services for dependency injection.</summary>

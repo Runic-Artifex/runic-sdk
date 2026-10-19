@@ -89,7 +89,7 @@ public enum DesktopFileOperation
     /// <summary>Show the containing directory, selecting the file where supported.</summary>
     Reveal
 }
-/// <summary>Native file handoff. Paths are supplied by trusted C# application code, never directly by a web client.</summary>
+/// <summary>Native file and URI handoff. Paths and URIs are supplied by trusted C# application code, never directly by a web client.</summary>
 public interface IDesktopFileLauncher
 {
     /// <summary>The caller must retain any sandbox/security-scoped access until the operation completes.</summary>
@@ -100,6 +100,21 @@ public interface IDesktopFileLauncher
     /// desktop portal's policy. Windows rejects UNC, device and alternate-stream paths.</remarks>
     ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Opens an absolute <c>http</c>, <c>https</c> or <c>mailto</c> URI in the user's default handler, such as
+    /// the default browser or mail client.</summary>
+    /// <param name="uri">The URI. Relative URIs, paths (an absolute path is a <c>file:</c> URI) and every other scheme are
+    /// rejected before anything native runs, so a launch never executes a program; open local files with
+    /// <see cref="LaunchAsync"/>.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the desktop.</param>
+    /// <remarks>Success acknowledges that the desktop accepted the URI, not that an application showed it. Linux asks the
+    /// desktop portal (OpenURI), which may let the user choose an application and reports
+    /// <see cref="PlatformFailureCode.UserDismissed"/> when they cancel; Windows uses the shell's URL association; macOS
+    /// uses <c>NSWorkspace</c>. Without a registered handler, for example no mail client for <c>mailto</c>, the result is
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> or a failure, depending on the platform.</remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>
+    ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default);
 }
 
 /// <summary>An acquired file that can be handed to a native application without exposing its path.</summary>

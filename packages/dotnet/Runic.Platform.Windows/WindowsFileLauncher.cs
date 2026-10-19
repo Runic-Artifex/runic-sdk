@@ -11,6 +11,11 @@ namespace Runic.Platform.Windows;
 
 internal sealed class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
 {
+    private readonly WindowsUriLauncher _uris = new(owner);
+
+    public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default) =>
+        _uris.LaunchAsync(uri, cancellationToken);
+
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);

@@ -17,7 +17,7 @@ public interface IWindowPlatformServices : IPlatformCapabilities
     IFileDialogs FileDialogs { get; }
     /// <summary>The Unicode text clipboard, used through the window's native thread.</summary>
     ITextClipboard Clipboard { get; }
-    /// <summary>Hands local files to native applications on behalf of the window.</summary>
+    /// <summary>Hands local files and web or mail URIs to native applications on behalf of the window.</summary>
     IDesktopFileLauncher FileLauncher { get; }
 }
 
@@ -29,6 +29,7 @@ public static class WindowPlatformServices
     [
         "platform.files.open", "platform.files.save", "platform.directories.open", "platform.dialogs.owned",
         "platform.clipboard.readText", "platform.clipboard.writeText", "platform.files.launch", "platform.files.openMultiple",
+        "platform.uris.launch",
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
@@ -94,6 +95,12 @@ public static class WindowPlatformServices
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             if (!Enum.IsDefined(operation)) throw new ArgumentOutOfRangeException(nameof(operation));
+            return Result<PlatformUnit>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default)
+        {
+            DesktopUriPolicy.Require(uri);
             return Result<PlatformUnit>(cancellationToken);
         }
 

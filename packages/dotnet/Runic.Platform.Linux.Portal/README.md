@@ -105,8 +105,11 @@ a chooser and accepts one exact local directory URI. Its directory lease retains
 presentation ownership; persistent portal document permissions remain owned by
 the user's permission store.
 
-`OpenUriAsync(owner, uri)` uses OpenURI for HTTP, HTTPS and mailto links. Local-file
-opening uses the separate `CreateFileLauncher(owner)` service and passes a retained file descriptor.
+`OpenUriAsync(owner, uri)` uses OpenURI for HTTP, HTTPS and mailto links; the file
+launcher's `LaunchUriAsync(uri)` sends the same request. Relative URIs, paths and other
+schemes throw `ArgumentException` before any D-Bus call, and cancelling the portal's
+application chooser is `Failed(UserDismissed)`. Local-file opening uses the file
+launcher's `LaunchAsync` and passes a retained file descriptor.
 Ordinary text clipboard access remains with the selected GTK provider; the Clipboard
 portal is tied to Remote Desktop/Input Capture sessions. Background, Inhibit, Print
 and ScreenCast permissions are not requested by a generic window or file service.

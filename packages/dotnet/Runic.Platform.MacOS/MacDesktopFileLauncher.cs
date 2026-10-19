@@ -5,6 +5,11 @@ namespace Runic.Platform.MacOS;
 
 internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
 {
+    private readonly MacUriLauncher _uris = new(owner);
+
+    public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default) =>
+        _uris.LaunchAsync(uri, cancellationToken);
+
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);

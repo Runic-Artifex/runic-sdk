@@ -99,7 +99,7 @@ public static class WindowsPlatformProvider
         return WindowsWindowPresentation.PresentAsync(owner, cancellationToken);
     }
 
-    /// <summary>Creates owned shell handoff operations.</summary>
+    /// <summary>Creates owned shell handoff operations: files, and http, https and mailto URIs through the shell's URL association.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }
 

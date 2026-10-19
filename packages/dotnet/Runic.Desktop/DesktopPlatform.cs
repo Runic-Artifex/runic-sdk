@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop;
@@ -85,13 +84,6 @@ public static class DesktopPlatform
             backend == LinuxEmbeddedBackend.Gtk3WebKit41
                 ? $"Install {gtk} and {webkit} (for example {Gtk3NativeLibraries.ExamplePackages}) in the native loader search path."
                 : $"Install GTK 4.12 or newer and WebKitGTK 6.0 ({gtk} and {webkit}, for example libgtk-4-1 and libwebkitgtk-6.0-4), and reference the Runic.Desktop.Gtk4 provider."));
-    }
-
-    /// <summary>Opens a URL through the operating system's default URL handler.</summary>
-    public static void OpenUrl(string url)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(url);
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     // Every missing embedded prerequisite, in the order a user can act on them. Linux reports each one

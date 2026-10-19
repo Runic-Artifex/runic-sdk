@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using Runic.Desktop.Internal;
@@ -116,13 +115,6 @@ internal static class WebUiApplication
             }
             _embeddedHostFactory = factory ?? WebUiEmbeddedHostFactory.Instance;
         }
-    }
-
-    /// <summary>Opens a URL through the operating system's default URL handler.</summary>
-    public static void OpenUrl(string url)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(url);
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     /// <summary>Deletes generated browser profiles that are not owned by a running window.</summary>

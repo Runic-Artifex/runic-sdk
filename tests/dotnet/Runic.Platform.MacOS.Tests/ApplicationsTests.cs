@@ -185,7 +185,7 @@ internal sealed partial class ApplicationsTests
     }
 
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    private static string CreateBundle(string root, string name, string id, string uti, string extension, string mime, string scheme, string marker, bool exports)
+    internal static string CreateBundle(string root, string name, string id, string uti, string extension, string mime, string scheme, string marker, bool exports)
     {
         string bundle = Path.Combine(root, name + ".app");
         Directory.CreateDirectory(Path.Combine(bundle, "Contents", "MacOS"));
@@ -230,13 +230,13 @@ internal sealed partial class ApplicationsTests
         return bundle;
     }
 
-    private static int Register(string bundle)
+    internal static int Register(string bundle)
     {
         using var pool = new Pool();
         return LSRegisterURL(Url(bundle), 1);
     }
 
-    private static int RunRegister(string option, string bundle)
+    internal static int RunRegister(string option, string bundle)
     {
         try
         {
@@ -248,7 +248,7 @@ internal sealed partial class ApplicationsTests
         catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception) { Console.WriteLine($"lsregister {option} {bundle}: {error.Message}"); return -3; }
     }
 
-    private static async Task<bool> StartsAsync(string marker, int count)
+    internal static async Task<bool> StartsAsync(string marker, int count)
     {
         var deadline = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < deadline)

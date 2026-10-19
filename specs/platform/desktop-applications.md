@@ -276,8 +276,9 @@ lowercased, come before `mimeapps.list`.
 Inside Flatpak (`/.flatpak-info`) or Snap (`$SNAP`) the host's desktop entries
 and `mimeapps.list` are out of reach, so the application methods report
 `Unavailable(BackendUnavailable)` with the `desktop-applications-sandboxed`
-diagnostic. Open files and URIs there with `IDesktopFileLauncher` or
-`OpenUriAsync`, which ask the OpenURI portal and its application chooser.
+diagnostic. Open files and web or mail URIs there with `IDesktopFileLauncher`
+(`LaunchAsync`, `LaunchUriAsync`), which asks the OpenURI portal and its
+application chooser.
 Content types and icons come from the sandbox's runtime.
 
 ## Windows
@@ -331,8 +332,10 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
   choice with a hash that programs cannot write, and Settings resets defaults
   written another way. The provider checks that the application opens the type
   (else `InvalidData`) and reports `Failed(PermissionDenied)`; the diagnostic
-  (`HRESULT 0x80070005`) points to `ms-settings:defaultapps`, which an
-  application can open with `OpenUriAsync` for the user to choose.
+  (`HRESULT 0x80070005`) points to `ms-settings:defaultapps`, where the user
+  chooses. `IDesktopFileLauncher.LaunchUriAsync` opens only `http`, `https` and
+  `mailto` URIs, so an application tells the user where to go rather than
+  opening the Settings page itself.
 - **`GetApplicationsAsync`**: the Start menu's applications, the children of
   `shell:AppsFolder`. A desktop application's ID is the executable its
   shortcut targets (`System.Link.TargetParsingPath`), as the handlers' IDs

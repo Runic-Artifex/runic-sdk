@@ -4,8 +4,13 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Linux.Portal;
 
-internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner, PortalApplication? application = null) : IDesktopFileLauncher
+internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner, PortalApplication? application = null,
+    IPortalTransport? uriTransport = null) : IDesktopFileLauncher
 {
+    // The OpenURI portal request, which applies the policy before any D-Bus call.
+    public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default) =>
+        PortalPlatformProvider.OpenUriCoreAsync(owner, uri, uriTransport ?? new PortalTransport(application: application), cancellationToken);
+
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);

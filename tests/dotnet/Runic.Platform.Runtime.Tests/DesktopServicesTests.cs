@@ -132,5 +132,7 @@ internal sealed class DesktopServicesTests
         internal string? Path;
         public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
         { Path = path; Entered.TrySetResult(); await Release.Task; return new PlatformResult<PlatformUnit>.Success(new()); }
+        public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }
