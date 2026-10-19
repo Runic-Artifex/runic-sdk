@@ -235,9 +235,9 @@ When none presents the content, the host logs event 1082 once per type.
 - The host sets its own `Content`. Don't set `Content`, `ContentTemplate` or
   `ContentTemplateSelector` on it; present entries with implicit
   `DataTemplate`s or a locator.
-- Retention keeps the ViewModel, not the View. On Back the host builds a new
-  View for the retained ViewModel, so state that must survive belongs in the
-  ViewModel.
+- By default, retention keeps the ViewModel, not the View. On Back the host
+  builds a new View for the retained ViewModel, so state that must survive
+  belongs in the ViewModel, unless the host keeps views (see below).
 - An unloaded host unsubscribes and never touches entries. It reads the
   region again when it's loaded. With `GuardWindowClose`, the window still
   clears the region when it closes (see below).
@@ -247,6 +247,41 @@ When none presents the content, the host logs event 1082 once per type.
   `HandlesBrowseBack="False"` to handle it yourself.
 - The host's read-only `IsTransitioning` and `IsBusy` properties follow the
   region's, for bindings such as a progress indicator or disabled tabs.
+
+### Keeping the views of retained entries
+
+An application whose pages keep state only in their Views, such as the scroll
+position of a long list, expanded tree nodes, a `DataGrid`'s sort order and
+column widths, or a text box's caret and selection, can let the host keep the
+View of each retained entry and show it again on Back or BackTo:
+
+```xml
+<rn:NavigationHost Region="{Binding Main}" RetainViews="True" />
+```
+
+- The host keeps the entry's `ContentPresenter` with its View and
+  `DataContext`, and doesn't ask the locator again. A View still belongs to one
+  entry: an instance pushed twice gets two entries and two Views.
+- `RetainViews` is inherited. Set as `rn:NavigationHost.RetainViews="True"` on
+  a window or container, it applies to every host below it, including the
+  hosts inside a kept View; an inner host can set it to `False`. A host that
+  is unloaded and loads again with the same region and current entry shows the
+  same View, so a page with child regions keeps their Views too.
+- A kept View is dropped when the host sees that its entry has retired, when
+  the region empties, when the host's `Region` changes, and when the host
+  presents an entry while `RetainViews` is `False`. The host doesn't dispose
+  Views. An unloaded host doesn't follow its region: Views of entries that
+  retire meanwhile stay until it loads again or is collected.
+- A kept View leaves and re-enters the visual tree, so its `Unloaded` and
+  `Loaded` events are raised again. Each retained entry keeps its visual tree,
+  and a locator-built View the entry-scoped services it was given, alive until
+  the host drops it.
+- When the View had keyboard focus as it left, the host focuses the same
+  element again once it has loaded, unless focus moved to something outside
+  the host meanwhile. In an inactive window it only sets the window's focused
+  element, which WPF restores on activation; it never activates a window.
+- Kept Views get their `DataTemplate` set on their presenter, so re-entering
+  the tree never builds a new View from the template.
 
 ### Closing the window
 
