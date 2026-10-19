@@ -12,8 +12,8 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/> per window scope, and one <see cref="IDesktopSettings"/>,
     /// <see cref="IDesktopNotifications"/>, <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>,
-    /// <see cref="IDesktopInhibition"/>, <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/> and
-    /// <see cref="IDesktopFileTransfers"/> for the application. CS-WebUI windows have no native owner, so every window
+    /// <see cref="IDesktopInhibition"/>, <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>,
+    /// <see cref="IDesktopFileTransfers"/> and <see cref="IDesktopVolumes"/> for the application. CS-WebUI windows have no native owner, so every window
     /// operation and the capability snapshot report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. This
     /// package selects no native provider, so every application service reports
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
@@ -40,6 +40,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
         services.TryAddSingleton(static _ => DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopTrash.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopFileTransfers.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
+        services.TryAddSingleton(static _ => DesktopVolumes.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddScoped(static _ => WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard);

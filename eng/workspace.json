@@ -379,6 +379,7 @@
         "tests/dotnet/Runic.Platform.Linux.DBus.Tests",
         "tests/dotnet/Runic.Platform.Linux.DBus.Generator.Tests",
         "tests/native/Runic.Privileged.Smoke",
+        "tests/native/Runic.Volumes.Smoke",
         "packages/dotnet/Runic.Platform.Windows.Elevation",
         "tests/dotnet/Runic.Platform.Windows.Elevation.Tests",
         "tests/native/Runic.Elevation.Smoke",

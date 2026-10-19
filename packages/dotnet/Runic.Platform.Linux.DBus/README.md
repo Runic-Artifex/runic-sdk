@@ -148,6 +148,10 @@ published XML, and list it as an `AdditionalFiles` item:
 | `RunicDBusVisibility` | `internal` (default) or `public`. |
 | `RunicDBusClassName` | The generated class's name, instead of one derived from the interface. |
 
+A project that also references Tmds.DBus.Generator, which reads every `.xml`
+`AdditionalFiles` item, sets `GenerateDBusTypes="false"` on the items this
+generator owns, so the two do not generate the same interfaces twice.
+
 **Proxy** generates one class per interface, named after the interface's last
 segment (`Player` for `org.mpris.MediaPlayer2.Player`), deriving from
 `DBusProxy`:

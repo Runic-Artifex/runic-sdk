@@ -140,6 +140,14 @@
       "runic.platform": {
         "type": "Project"
       },
+      "runic.platform.linux.dbus": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Runic.Platform": "[0.8.0-preview.5, )",
+          "Tmds.DBus.Protocol": "[0.95.1, )"
+        }
+      },
       "runic.platform.linux.gtk4": {
         "type": "Project",
         "dependencies": {
@@ -149,6 +157,7 @@
       "runic.platform.linux.portal": {
         "type": "Project",
         "dependencies": {
+          "Runic.Platform.Linux.DBus": "[0.8.0-preview.5, )",
           "Runic.Platform.Runtime": "[0.8.0-preview.5, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
@@ -179,6 +188,12 @@
           "GirCore.JavaScriptCore-6.0": "0.8.1",
           "GirCore.Soup-3.0": "0.8.1"
         }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "9/qymSh7hVDMGTGwrLz8MRp5zRyXy9adGDOs4HwRdnLil3oZGYuWeZjbmHgCQ9BL1qBroVfgUK3U/nb61617Cw=="
       },
       "Microsoft.Web.WebView2": {
         "type": "CentralTransitive",

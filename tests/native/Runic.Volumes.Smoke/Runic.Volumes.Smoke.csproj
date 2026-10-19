@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <!-- nixos/volumes runs the NativeAOT publish of this program against a real UDisks2 and Polkit in a VM. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>Runic.Volumes.Smoke</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
+  </ItemGroup>
+</Project>

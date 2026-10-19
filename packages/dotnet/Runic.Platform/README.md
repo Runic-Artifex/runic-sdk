@@ -148,7 +148,7 @@ either.
 | Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -406,6 +406,51 @@ FSEvents on macOS, and polls network file systems. Hidden temporary files that
 a transfer writes start with `.`, so a pattern such as `*.txt`, or skipping
 names that start with `.`, shows only complete entries. See
 [Watching files](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views#watching-files).
+
+## Volumes
+
+`IDesktopVolumes` lists the desktop's storage volumes, such as USB sticks, SD
+cards and other disks, mounts, unmounts and ejects them, and reports them as
+they appear, change and disappear. `AddRunicPlatformServices()` registers one
+for the application; it needs no window and is disposed with the service
+provider.
+
+```csharp
+await foreach (var change in volumes.WatchAsync(cancellationToken))
+{
+    switch (change)
+    {
+        case PlatformResult<DesktopVolumeChange>.Success(DesktopVolumeChange.Snapshot(var all)): Show(all); break;
+        case PlatformResult<DesktopVolumeChange>.Success(DesktopVolumeChange.Added(var volume)): Add(volume); break;
+        case PlatformResult<DesktopVolumeChange>.Success(DesktopVolumeChange.Changed(var volume)): Update(volume); break;
+        case PlatformResult<DesktopVolumeChange>.Success(DesktopVolumeChange.Removed(var id)): Remove(id); break;
+        case PlatformResult<DesktopVolumeChange>.Unavailable: ShowNone(); break; // A Snapshot follows if the service returns.
+    }
+}
+
+if (await volumes.MountAsync(stick.Id) is PlatformResult<DesktopVolume>.Success(var mounted))
+    OpenFolder(mounted.MountPaths[0]);
+```
+
+The watch starts with a `Snapshot` of every volume. `DesktopVolume.Id` is
+opaque; `MountPaths` is empty while the volume is not mounted, and `CanMount`,
+`CanUnmount` and `CanEject` say what applies now. Mounting may show an
+authorization prompt: a refusal is `Failed(PermissionDenied)`, a dismissed
+prompt `Failed(UserDismissed)`, a volume in use `Failed(ResourceBusy)`, a
+locked encrypted volume `Failed(Locked)`, and a volume that is gone
+`Failed(NotFound)`. Unmounting a volume that is not mounted succeeds; ejecting
+unmounts every volume of the drive first. An operation the volume or platform
+does not offer is `Unavailable(BackendUnavailable)`.
+
+| Platform | Provider |
+| --- | --- |
+| Linux | UDisks2 on the system bus, which asks Polkit; inside Flatpak add `--system-talk-name=org.freedesktop.UDisks2` |
+| Windows | Not yet: `Unavailable(ProviderNotConfigured)` |
+| macOS | Not yet: `Unavailable(ProviderNotConfigured)` |
+
+Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)
+has the per-platform behaviour and its verification.
 
 ## Privileged actions
 

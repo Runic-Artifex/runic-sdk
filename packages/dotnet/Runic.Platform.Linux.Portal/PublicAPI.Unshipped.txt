@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!

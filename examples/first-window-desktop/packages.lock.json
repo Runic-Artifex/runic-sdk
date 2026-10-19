@@ -139,6 +139,14 @@
           "Runic.Platform.Runtime": "[0.8.0-preview.5, )"
         }
       },
+      "runic.platform.linux.dbus": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Runic.Platform": "[0.8.0-preview.5, )",
+          "Tmds.DBus.Protocol": "[0.95.1, )"
+        }
+      },
       "runic.platform.linux.gtk4": {
         "type": "Project",
         "dependencies": {
@@ -148,6 +156,7 @@
       "runic.platform.linux.portal": {
         "type": "Project",
         "dependencies": {
+          "Runic.Platform.Linux.DBus": "[0.8.0-preview.5, )",
           "Runic.Platform.Runtime": "[0.8.0-preview.5, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }

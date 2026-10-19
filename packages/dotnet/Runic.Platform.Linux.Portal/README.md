@@ -225,3 +225,17 @@ without a usable trash reports `Unavailable(BackendUnavailable)` and the item
 stays. Inside Flatpak or Snap it asks the Trash portal, which trashes what the
 application can write; a symbolic link cannot be trashed there. See the
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
+
+## Volumes
+
+`PortalPlatformProvider.CreateVolumes()` lists, mounts, unmounts and ejects
+volumes through UDisks2 (`org.freedesktop.UDisks2`) on the system bus, as GNOME
+Files and Dolphin do; it needs no portal, no window and no GTK. UDisks2 asks
+Polkit, whose authentication agent may prompt; without an agent, a request
+that needs one is `Failed(PermissionDenied)`. UDisks2 chooses the mount point,
+such as `/run/media/<user>/<label>`. Creating the volumes connects to nothing;
+the first request opens the system bus, and disposal closes it. Without
+UDisks2 every request is `Unavailable(BackendUnavailable)`. Inside Flatpak, add
+`--system-talk-name=org.freedesktop.UDisks2` to the finish arguments; inside
+Snap, connect the `udisks2` interface. See the
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
