@@ -18,6 +18,7 @@ internal static class Program
     {
         if (args is ["--native-hold", ..] or ["--native-write", ..]) return NativeTests.Run(args);
         if (args is ["--record-launch", ..]) return ApplicationsTests.RecordLaunch(args);
+        if (ApplicationsTests.RecordStrayLaunch(args)) return 0;
         if (args is ["--notification-activation", ..]) return await NotificationTests.RunAsync(args).ConfigureAwait(false);
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddSelfRegisteredExtensions(args);

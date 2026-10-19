@@ -343,8 +343,9 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
 
 - **Items** group by what opens them: a path by its extension, a directory by
   the `Directory` class, a `file:` URI as its path, any other URI by its
-  scheme. Every group must list the application among its handlers
-  (`ASSOC_FILTER_NONE`) before anything starts, so an executable that does not
+  scheme. Every group must list the application among its handlers before
+  anything starts (the recommended handlers first, which are the type's own
+  registrations, then `ASSOC_FILTER_NONE`, which adds Open With entries), so an executable that does not
   open a type, such as `cmd.exe` for a document, is `Failed(InvalidData)`, as
   is a file without an extension.
 - Each group goes to the handler's `IAssocHandler::Invoke` with a data object

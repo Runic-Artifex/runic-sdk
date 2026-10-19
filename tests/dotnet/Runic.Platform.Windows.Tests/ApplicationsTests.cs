@@ -230,6 +230,8 @@ internal sealed partial class ApplicationsTests
             Check(bare is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData }, "without items, only a Start menu application starts");
             Check(await applications.LaunchAsync(probeId, [first, Path.Combine(root, "README")]) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData },
                 "an item without a type");
+            string stray = Path.Combine(root, "stray.log");
+            Environment.SetEnvironmentVariable(StrayLaunchVariable, stray);
             var launched = await applications.LaunchAsync(probeId, [first, second]);
             Console.WriteLine($"Launch: {launched}");
             Check(launched is PlatformResult<PlatformUnit>.Success, "the probe started");
@@ -239,12 +241,14 @@ internal sealed partial class ApplicationsTests
             Check(opened is PlatformResult<PlatformUnit>.Success, "the probe opened the URI");
             var lines = await RecordedAsync(log, 3);
             Console.WriteLine("Recorded:\n" + string.Join('\n', lines));
+            if (File.Exists(stray)) Console.WriteLine("Other launches:\n" + File.ReadAllText(stray));
             Check(lines.Contains(first) && lines.Contains(second), "each document reached the handler as one argument");
             Check(lines.Any(line => line.StartsWith(scheme + ":", StringComparison.Ordinal)), "the URI reached the protocol handler");
             Console.WriteLine("PASS Windows desktop applications: content types, handlers, defaults, launches, icons and the Start menu list.");
         }
         finally
         {
+            Environment.SetEnvironmentVariable(StrayLaunchVariable, null);
             using (var classes = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true))
             {
                 if (classes is not null)
@@ -273,6 +277,17 @@ internal sealed partial class ApplicationsTests
             }
             catch (IOException) when (attempt < 50) { Thread.Sleep(100); }
         }
+    }
+
+    // A launch with another command line than the registered one, such as an Open With entry's "exe" "%1", while the
+    // case runs: recorded, rather than starting a test run.
+    internal const string StrayLaunchVariable = "RUNIC_TEST_STRAY_LAUNCH_LOG";
+
+    internal static bool RecordStrayLaunch(string[] args)
+    {
+        if (Environment.GetEnvironmentVariable(StrayLaunchVariable) is not { Length: > 0 } log || args is not [var first, ..] || first.StartsWith('-')) return false;
+        File.AppendAllText(log, "stray: " + string.Join(" | ", args) + Environment.NewLine);
+        return true;
     }
 
     private static async Task<List<string>> RecordedAsync(string log, int count)

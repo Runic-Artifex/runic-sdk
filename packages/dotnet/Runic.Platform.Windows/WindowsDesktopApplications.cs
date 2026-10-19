@@ -168,7 +168,10 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
         {
             foreach (var (association, members) in groups)
             {
-                WindowsShellAssociations.Handlers(association, recommended: false, match: applicationId, out IAssocHandler* handler);
+                // The type's own registration of the application first: an Open With entry for the same executable runs
+                // its generic command rather than the verb the application registered for the type.
+                WindowsShellAssociations.Handlers(association, recommended: true, match: applicationId, out IAssocHandler* handler);
+                if (handler is null) WindowsShellAssociations.Handlers(association, recommended: false, match: applicationId, out handler);
                 if (handler is null) return InvalidData<PlatformUnit>();
                 handlers.Add(((nint)handler, members));
             }
