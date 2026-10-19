@@ -89,8 +89,13 @@ try {
 
   // The page learns that the host ended when its WebSocket drops, without making a call (#406).
   const states = () => evaluate("JSON.stringify(globalThis.connectionStates ?? null)");
-  await evaluate("globalThis.connectionStates = []; window.__runicBridge.onConnectionChange(connected => connectionStates.push(connected)); true");
-  await retry(async () => await states() === "[true]", "the connection listener");
+  // A reload may still be replacing the document; register in the document that has the Bridge.
+  const listen = () => evaluate(`(() => {
+    if (globalThis.connectionStates || !window.__runicBridge) return;
+    globalThis.connectionStates = [];
+    window.__runicBridge.onConnectionChange(connected => connectionStates.push(connected));
+  })()`);
+  await retry(async () => { await listen(); return await states() === "[true]"; }, "the connection listener");
   const killed = Date.now();
   host.kill("SIGKILL");
   await retry(async () => await states() === "[true,false]", "the page seeing the killed host");
