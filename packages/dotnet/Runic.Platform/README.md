@@ -477,7 +477,7 @@ does not offer is `Unavailable(BackendUnavailable)`.
 | --- | --- |
 | Linux | UDisks2 on the system bus, which asks Polkit; inside Flatpak add `--system-talk-name=org.freedesktop.UDisks2` |
 | Windows | The volume management API: drive letters and mounted folders. Windows mounts volumes itself, so `MountAsync` and `UnmountAsync` only succeed for a volume already in that state and otherwise report `Unavailable(BackendUnavailable)`; `EjectAsync` is "Safely Remove Hardware" |
-| macOS | Not yet: `Unavailable(ProviderNotConfigured)` |
+| macOS | Disk Arbitration, as Finder does; an application with a file open on the volume makes an unmount or eject `Failed(ResourceBusy)`. The startup disk's volumes are never unmounted or ejected |
 
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)

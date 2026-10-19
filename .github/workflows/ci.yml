@@ -820,17 +820,18 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeThumbnails]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeThumbnails]" --output detailed
-      # W310-004: a VHD that the case creates and attaches with diskpart, with a label unique to the run, then
-      # removes; the runner's own disks are only listed. Hosted runners run as an administrator, as diskpart needs.
-      - name: Verify volumes on a virtual disk with JIT and NativeAOT
-        if: runner.os == 'Windows'
+      # W310-004: disk images that the case creates, attaches and removes, with names unique to the run: a VHD through
+      # diskpart on Windows (hosted runners run as an administrator, as diskpart needs) and DMGs through hdiutil on
+      # macOS. The runner's own disks are only listed.
+      - name: Verify volumes on disk images with JIT and NativeAOT
+        if: runner.os != 'Linux'
         timeout-minutes: 10
         shell: bash
         env:
           RUNIC_TEST_VOLUMES_IMAGES: "1"
         run: |
-          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeVolumes]" --output detailed
-          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeVolumes]" --output detailed
+          dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeVolumes]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeVolumes]" --output detailed
       # Credential Manager and the runner's login keychain, under a service unique to each run.
       - name: Verify secret storage with JIT and NativeAOT
         if: runner.os != 'Linux'

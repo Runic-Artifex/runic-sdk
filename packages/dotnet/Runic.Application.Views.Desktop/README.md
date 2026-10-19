@@ -337,8 +337,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   created by `PlatformServices.CreateVolumes()`, which lists, mounts, unmounts
   and ejects storage volumes and watches them. Linux uses UDisks2 on the system
   bus with either toolkit; Windows uses the volume management API and ejects as
-  "Safely Remove Hardware" does; macOS reports
-  `Unavailable(ProviderNotConfigured)` in this release. See
+  "Safely Remove Hardware" does; macOS uses Disk Arbitration. See
   [Volumes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#volumes).
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativePickerOwner`, which the services above bind to. The

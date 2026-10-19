@@ -427,8 +427,7 @@ public static partial class PlatformServices
     /// without loading GTK; UDisks2 asks Polkit for authorization and may show a prompt. It needs no window and
     /// connects to nothing until the first request. Windows lists volumes through the volume management API and ejects
     /// a drive as "Safely Remove Hardware" does; it mounts volumes itself, so mounting and unmounting report
-    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. macOS reports
-    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/> in this release.
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. macOS uses Disk Arbitration, as Finder does.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -438,6 +437,7 @@ public static partial class PlatformServices
         if (OperatingSystem.IsWindows()) volumes = Optional(CreateWindowsVolumes);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsLinux()) volumes = CreatePortalVolumes();
+        else if (OperatingSystem.IsMacOS()) volumes = CreateMacOSVolumes();
 #endif
         return volumes ?? DesktopVolumes.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -448,6 +448,9 @@ public static partial class PlatformServices
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopVolumes CreatePortalVolumes() => PortalPlatformProvider.CreateVolumes();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopVolumes CreateMacOSVolumes() => MacOSPlatformProvider.CreateVolumes();
 #endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
