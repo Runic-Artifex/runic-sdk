@@ -701,11 +701,16 @@ public static class ApplicationInstance
 
             internal async Task StartAsync()
             {
+                // The first receive is posted here, before the launching process can see the reply and leave. On
+                // Windows, a receive posted while the other end closes may never complete, and then the running
+                // instance would not see the launch leave (#400).
+                _ = ReadAsync();
                 try
                 {
                     await stream.WriteAsync(Frame(Delivered, [])).ConfigureAwait(false);
                     if (!owner.Track(this)) { Close(cancel: true); return; }
-                    _ = Task.Run(ReadAsync);
+                    // Closed meanwhile: Close had nothing to untrack yet.
+                    if (Volatile.Read(ref _closed) != 0) owner.Untrack(this);
                 }
                 catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException) { Close(cancel: true); }
                 finally { _writing.Release(); }
