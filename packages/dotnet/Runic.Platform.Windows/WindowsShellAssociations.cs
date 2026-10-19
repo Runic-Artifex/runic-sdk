@@ -236,7 +236,29 @@ internal static unsafe class WindowsShellAssociations
         {
             if (PInvoke.SHCreateItemFromParsingName(name, null, &factoryId, &created).Value < 0 || created is null) return null;
         }
-        var factory = (IShellItemImageFactory*)created;
+        return FactoryIcon((IShellItemImageFactory*)created, pixels);
+    }
+
+    // The icon Explorer shows for a file with the extension, from a simple ID list of a name that need not exist. It
+    // covers types whose DefaultIcon is not an icon resource, such as those a packaged application opens.
+    internal static byte[]? ExtensionIcon(string extension, int pixels)
+    {
+        ITEMIDLIST* list;
+        fixed (char* path = Path.Combine(Path.GetTempPath(), "runic-icon" + extension)) list = PInvoke.SHSimpleIDListFromPath(path);
+        if (list is null) return null;
+        try
+        {
+            Guid factoryId = typeof(IShellItemImageFactory).GUID;
+            void* created = null;
+            if (PInvoke.SHCreateItemFromIDList(list, &factoryId, &created).Value < 0 || created is null) return null;
+            return FactoryIcon((IShellItemImageFactory*)created, pixels);
+        }
+        finally { Marshal.FreeCoTaskMem((nint)list); }
+    }
+
+    // Releases the factory.
+    private static byte[]? FactoryIcon(IShellItemImageFactory* factory, int pixels)
+    {
         HBITMAP bitmap = default;
         try
         {

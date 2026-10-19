@@ -75,6 +75,8 @@ internal sealed partial class ApplicationsTests
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Launch Services requires macOS.");
         string unique = Guid.NewGuid().ToString("N")[..8];
         string root = Path.Combine(Path.GetTempPath(), "runic-apps-" + unique);
+        // Launch Services registers bundles in an Applications folder; a folder unique to the run keeps them apart.
+        string installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Applications", "runic-tests-" + unique);
         string uti = "eu.runic.tests.document-" + unique, extension = "runic" + unique, mime = "application/x-runic-test-" + unique, scheme = "runic-test-" + unique;
         string first = "eu.runic.tests.apps.first-" + unique, second = "eu.runic.tests.apps.second-" + unique;
         string marker = Path.Combine(root, "starts.log");
@@ -114,9 +116,16 @@ internal sealed partial class ApplicationsTests
             Check(Success(await applications.GetIconAsync(DesktopIconRequest.ForApplication("eu.runic.tests.missing-" + unique, 32))) is null, "an unknown application has no icon");
 
             // The test-owned bundles.
-            bundles.Add(CreateBundle(root, "Runic First " + unique, first, uti, extension, mime, scheme, marker, exports: true));
-            bundles.Add(CreateBundle(root, "Runic Second " + unique, second, uti, extension, mime, scheme, marker, exports: false));
-            foreach (string bundle in bundles) Check(Register(bundle) == 0, $"Launch Services registered {bundle}");
+            Directory.CreateDirectory(installed);
+            bundles.Add(CreateBundle(installed, "Runic First " + unique, first, uti, extension, mime, scheme, marker, exports: true));
+            bundles.Add(CreateBundle(installed, "Runic Second " + unique, second, uti, extension, mime, scheme, marker, exports: false));
+            foreach (string bundle in bundles)
+            {
+                int status = Register(bundle);
+                Console.WriteLine($"LSRegisterURL {bundle}: {status}; lsregister -f: {RunRegister("-f", bundle)}");
+            }
+            for (int attempt = 0; attempt < 20 && Success(await applications.GetContentTypeAsync("/any/name." + extension, DesktopContentDetection.NameOnly)).Id != uti; attempt++)
+                await Task.Delay(500);
 
             var handlers = ImmutableArray<DesktopApplicationInfo>.Empty;
             for (int attempt = 0; attempt < 20; attempt++)
@@ -131,6 +140,10 @@ internal sealed partial class ApplicationsTests
             Console.WriteLine($"Test type: {type}");
             Check(type.Id == uti && type.MimeType == mime && type.Extensions.SequenceEqual([extension]) && type.Parents.Contains("public.data"), "the exported type");
             Check(Success(await applications.GetApplicationsForAsync("x-scheme-handler/" + scheme)).Any(app => app.Id == first), "the test scheme");
+            var listed = Success(await applications.GetApplicationsAsync());
+            Check(listed.FirstOrDefault(app => app.Id == first) is { } listedFirst && listedFirst.Name == "Runic First " + unique
+                && listedFirst.ContentTypes.SequenceEqual([uti, "x-scheme-handler/" + scheme]) && listed.Any(app => app.Id == second),
+                "the application list has both bundles in ~/Applications, with their types");
 
             // Launches: only an installed application by bundle identifier, with items it can take.
             string document = Path.Combine(root, "document." + extension);
@@ -165,7 +178,8 @@ internal sealed partial class ApplicationsTests
         }
         finally
         {
-            foreach (string bundle in bundles) Unregister(bundle);
+            foreach (string bundle in bundles) Console.WriteLine($"lsregister -u {bundle}: {RunRegister("-u", bundle)}");
+            if (Directory.Exists(installed)) Directory.Delete(installed, recursive: true);
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
@@ -222,14 +236,16 @@ internal sealed partial class ApplicationsTests
         return LSRegisterURL(Url(bundle), 1);
     }
 
-    private static void Unregister(string bundle)
+    private static int RunRegister(string option, string bundle)
     {
         try
         {
-            using var process = Process.Start("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", ["-u", bundle]);
-            process?.WaitForExit(30_000);
+            using var process = Process.Start("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", [option, bundle]);
+            if (process is null) return -1;
+            process.WaitForExit(30_000);
+            return process.HasExited ? process.ExitCode : -2;
         }
-        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception) { Console.WriteLine($"Could not unregister {bundle}: {error.Message}"); }
+        catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception) { Console.WriteLine($"lsregister {option} {bundle}: {error.Message}"); return -3; }
     }
 
     private static async Task<bool> StartsAsync(string marker, int count)

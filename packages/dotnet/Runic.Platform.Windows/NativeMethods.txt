@@ -168,3 +168,5 @@ CreateCompatibleDC
 DeleteDC
 BITMAPINFO
 FindMimeFromData
+SHSimpleIDListFromPath
+SHCreateItemFromIDList

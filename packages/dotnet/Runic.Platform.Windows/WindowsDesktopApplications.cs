@@ -242,6 +242,8 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
             if (association is not null
                 && WindowsContentTypes.ParseIconLocation(WindowsShellAssociations.Query(association.Value, ASSOCSTR.ASSOCSTR_DEFAULTICON)) is var (file, index))
                 png = WindowsShellAssociations.ExtractIcon(file, index, pixels);
+            if (png is null && association is { Kind: AssociationKind.Extension } extension)
+                png = WindowsShellAssociations.ExtensionIcon(extension.Name, pixels);
         }
         return Success(png is null ? null : new DesktopIconData("image/png", ImmutableArray.Create(png), request.Size));
     }

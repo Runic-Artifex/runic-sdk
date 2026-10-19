@@ -361,7 +361,11 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
 
 - `ForContentType`: the type's `DefaultIcon` (`ASSOCSTR_DEFAULTICON`), with
   environment variables expanded, through `SHDefExtractIcon` at the requested
-  size; a `%1` icon, which differs per file, has none.
+  size. A type whose `DefaultIcon` is not an icon resource, such as one a
+  packaged application opens, or `%1` (an icon per file), gets the icon
+  Explorer shows for a file of its extension, through
+  `IShellItemImageFactory` on a simple ID list (`SHSimpleIDListFromPath`) of a
+  name that need not exist.
 - `ForApplication`: an executable's first icon through `SHDefExtractIcon`; a
   packaged application's tile through `IShellItemImageFactory`
   (`SIIGBF_ICONONLY`) on its `shell:AppsFolder` item.

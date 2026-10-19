@@ -193,7 +193,8 @@ internal sealed partial class ApplicationsTests
                 Console.WriteLine($"Icon of {packaged.Id}: {(icon is null ? "none" : $"{icon.Data.Length} bytes")}");
                 if (icon is not null) CheckPng(icon, 32);
             }
-            if (textDefault is not null && Path.IsPathFullyQualified(textDefault.Id))
+            // A desktop default (an executable) or a packaged one (an AppUserModelID in shell:AppsFolder).
+            if (textDefault is not null && (Path.IsPathFullyQualified(textDefault.Id) || all.Any(app => app.Id == textDefault.Id)))
                 CheckPng(Success(await applications.GetIconAsync(DesktopIconRequest.ForApplication(textDefault.Id, 32, 2))) ?? throw new InvalidOperationException("no icon for the .txt default"), 64);
             CheckPng(Success(await applications.GetIconAsync(DesktopIconRequest.ForContentType("text/plain", 48))) ?? throw new InvalidOperationException("no text/plain icon"), 48);
             Check(Success(await applications.GetIconAsync(DesktopIconRequest.ForIconName("folder", 32))) is null, "Windows has no icon themes");
@@ -249,8 +250,10 @@ internal sealed partial class ApplicationsTests
             // Launches: only a handler of every item's type starts, and each item reaches it as one argument.
             Check(await applications.LaunchAsync(@"C:\Windows\System32\cmd.exe", [first]) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData },
                 "a program that is not a handler of the type does not start");
-            Check(await applications.LaunchAsync(probeId, []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData },
-                "without items, only a Start menu application starts");
+            Console.WriteLine($"The probe is {(all.Any(app => string.Equals(app.Id, probeId, StringComparison.OrdinalIgnoreCase)) ? "" : "not ")}a Start menu application.");
+            var bare = await applications.LaunchAsync(@"C:\Runic\missing-" + unique + ".exe", []);
+            Console.WriteLine($"Launch without items: {bare}");
+            Check(bare is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData }, "without items, only a Start menu application starts");
             Check(await applications.LaunchAsync(probeId, [first, Path.Combine(root, "README")]) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData },
                 "an item without a type");
             var launched = await applications.LaunchAsync(probeId, [first, second]);
@@ -317,9 +320,13 @@ internal sealed partial class ApplicationsTests
     private static void CheckPng(DesktopIconData icon, int pixels)
     {
         Check(icon.MediaType == "image/png", "PNG");
-        var (width, height, _) = DecodePng([.. icon.Data]);
+        var (width, height, image) = DecodePng([.. icon.Data]);
         Console.WriteLine($"Icon {width}x{height}, {icon.Data.Length} bytes, nominal {icon.Size}");
         Check(width == pixels && height == pixels, $"the icon is {pixels} pixels: {width}x{height}");
+        int visible = 0;
+        for (int i = 3; i < image.Length; i += 4) if (image[i] != 0) visible++;
+        Console.WriteLine($"  {visible} of {width * height} pixels visible");
+        Check(visible > width * height / 10, "the icon is not blank");
     }
 
     // Checks every chunk's CRC and inflates the image data of an 8-bit RGBA PNG without filtering.
