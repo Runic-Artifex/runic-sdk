@@ -706,7 +706,10 @@ internal sealed partial class CodegenDiagnosticsTests
         return (process.ExitCode, text);
     }
 
-    private static readonly TimeSpan GeneratorTimeout = TimeSpan.FromSeconds(30);
+    // A generator call normally takes well under a second. The one dump of a stall (#348) showed a cold run on a
+    // loaded Windows runner still listing installed shared frameworks after 30 seconds, making steady progress;
+    // the generator now looks up single files instead. The margin is for such a runner, and a hang still fails.
+    private static readonly TimeSpan GeneratorTimeout = TimeSpan.FromSeconds(60);
 
     // A full-memory minidump of a stalled generator (dbghelp's MiniDumpWriteDump; dotnet-dump and Visual Studio read it
     // with managed stacks), written beside the test results, which the WPF job uploads when it fails. The stall was seen
