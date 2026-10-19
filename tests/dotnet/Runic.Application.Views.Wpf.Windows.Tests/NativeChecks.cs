@@ -150,6 +150,26 @@ internal sealed class NativeChecks
             await view.OpenAsync();
             var controller = child.Controller ?? throw new InvalidOperationException("The child presentation has no WebView2 controller.");
 
+            // The script's result returns after the element has focus, so the key that follows cannot overtake it: the
+            // bridge socket and the DevTools protocol are not ordered with each other.
+            async Task FocusInPageAsync(string id)
+            {
+                var focused = await view.Surface.ExecuteJavaScriptAsync(
+                    $"document.getElementById('{id}').focus(); return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                Program.Check(focused == id, $"The document could not focus {id}: {focused}.");
+            }
+
+            async Task LeftToAsync(Button target)
+            {
+                try { await UntilAsync(() => FocusManager.GetFocusedElement(window) == target); }
+                catch (TimeoutException)
+                {
+                    var page = await view.Surface.ExecuteJavaScriptAsync("return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                    throw new InvalidOperationException(
+                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}.");
+                }
+            }
+
             // In, forward: WPF's traversal from the preceding button enters the document's first tab stop.
             before.Focus();
             Program.Check(before.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)),
@@ -158,9 +178,9 @@ internal sealed class NativeChecks
             Program.Check(focus.StartsWith("first ", StringComparison.Ordinal), $"Tab did not enter the document's first stop: {focus}.");
 
             // Out, forward: Tab on the last stop moves WPF focus to the following button.
-            await view.Surface.RunJavaScriptAsync("document.getElementById('last').focus();");
+            await FocusInPageAsync("last");
             await TabAsync(controller, shift: false);
-            await UntilAsync(() => FocusManager.GetFocusedElement(window) == after);
+            await LeftToAsync(after);
 
             // In, backward: Shift+Tab from the following button enters the document's last tab stop.
             Program.Check(after.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous)),
@@ -169,19 +189,25 @@ internal sealed class NativeChecks
             Program.Check(focus.StartsWith("last ", StringComparison.Ordinal), $"Shift+Tab did not enter the document's last stop: {focus}.");
 
             // Out, backward: Shift+Tab on the first stop moves WPF focus to the preceding button.
-            await view.Surface.RunJavaScriptAsync("document.getElementById('first').focus();");
+            await FocusInPageAsync("first");
             await TabAsync(controller, shift: true);
-            await UntilAsync(() => FocusManager.GetFocusedElement(window) == before);
+            await LeftToAsync(before);
             Console.WriteLine("Runic.Application.Views.Wpf tab-in/tab-out checks passed.");
         }
         finally { window.Close(); }
 
         static async Task TabAsync(Runic.Desktop.Internal.WindowsWebView2Controller controller, bool shift)
         {
-            var modifiers = shift ? 8 : 0; // DevTools: Shift = 8.
-            foreach (var type in new[] { "rawKeyDown", "keyUp" })
-                await controller.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
-                    $$"""{"type":"{{type}}","modifiers":{{modifiers}},"key":"Tab","code":"Tab","windowsVirtualKeyCode":9,"nativeVirtualKeyCode":9}""");
+            // As a keyboard sends them: Shift down, Tab with the Shift modifier (8), Shift up.
+            var held = shift ? 8 : 0;
+            if (shift) await KeyAsync("rawKeyDown", "Shift", "ShiftLeft", 16);
+            await KeyAsync("rawKeyDown", "Tab", "Tab", 9);
+            await KeyAsync("keyUp", "Tab", "Tab", 9);
+            if (shift) await KeyAsync("keyUp", "Shift", "ShiftLeft", 16, modifiers: 0);
+
+            Task<string> KeyAsync(string type, string key, string code, int virtualKey, int? modifiers = null) =>
+                controller.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                    $$"""{"type":"{{type}}","modifiers":{{modifiers ?? held}},"key":"{{key}}","code":"{{code}}","windowsVirtualKeyCode":{{virtualKey}},"nativeVirtualKeyCode":{{virtualKey}}}""");
         }
     }
 
