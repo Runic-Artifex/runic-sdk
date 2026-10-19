@@ -498,8 +498,11 @@ Window on another host. `ValidateWindow` makes the same
 decision: in serve-only mode it skips the presentation checks, such as
 `webkitgtk-runtime-missing`, `graphical-session-missing` and
 `presentation-unavailable`, which describe what this machine lacks to present a
-window, so an application that validates at startup also starts headless. It
-still reports configuration errors, such as `window-option-invalid`,
+window, so an application that validates at startup also starts headless. With
+a browser fallback, as in the default `EmbeddedThenBrowser` options, a missing
+browser stands in for an installed one, so the embedded WebView's findings,
+such as `linux-embedded-backend-not-selected`, are skipped too and no browser
+is needed. It still reports configuration errors, such as `window-option-invalid`,
 `browser-unsupported` or `gtk4-provider-missing`, which fail every launch that
 presents a window.
 
@@ -558,4 +561,6 @@ var title = await surface.ExecuteJavaScriptAsync(
 
 `ExecuteJavaScriptAsync` needs a connected page; with
 `DesktopHostOptions.WaitForConnection` the window has connected when
-`OpenWindowAsync` returns.
+`OpenWindowAsync` returns. A result larger than `responseBufferSize` (4096
+UTF-8 bytes by default) throws a `DesktopException` with the category
+`LimitExceeded` and the code `script-result-too-large`; it is never cut.

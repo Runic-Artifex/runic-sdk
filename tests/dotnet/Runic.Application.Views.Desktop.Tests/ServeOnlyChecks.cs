@@ -207,6 +207,43 @@ internal sealed class ServeOnlyChecks
                 Check(page.IsSuccessStatusCode, $"With {name}, the serve-only surface did not serve its page: {page.StatusCode}.");
             }
 
+            // The default options fall back to an installed browser. Without one, presenting fails on the embedded
+            // WebView's prerequisites, such as linux-embedded-backend-not-selected; serve-only needs neither (L2).
+            string noBrowsers = Directory.CreateTempSubdirectory("runic-no-browsers-").FullName;
+            try
+            {
+                await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+                {
+                    BrowserFolder = noBrowsers,
+                    WindowHostFactory = OperatingSystem.IsLinux() ? null : new UnavailableFactory(),
+                    WaitForConnection = false,
+                });
+                var host = new RunicDesktopHost(provider, desktop)
+                {
+                    SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+                };
+                Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
+                var presented = host.ValidateWindow<ProbeWindow>();
+                Check(!presented.IsValid && presented.Errors.Any(error => error.Code == "presentation-unavailable"),
+                    "Without a browser and no serve-only mode, ValidateWindow did not report presentation-unavailable: " +
+                    $"{string.Join(", ", presented.Diagnostics.Select(diagnostic => diagnostic.Code))}.");
+                if (OperatingSystem.IsLinux())
+                    Check(presented.Errors.Any(error => error.Code == "linux-embedded-backend-not-selected"),
+                        "Without a browser or a Linux backend, ValidateWindow did not report linux-embedded-backend-not-selected: " +
+                        $"{string.Join(", ", presented.Diagnostics.Select(diagnostic => diagnostic.Code))}.");
+
+                Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
+                var served = host.ValidateWindow<ProbeWindow>();
+                Check(served.Diagnostics.Count == 0,
+                    "Without a browser in serve-only mode, ValidateWindow reported presentation checks: " +
+                    $"{string.Join(", ", served.Diagnostics.Select(diagnostic => $"{diagnostic.Severity} {diagnostic.Code}"))}.");
+                await using var window = await host.OpenWindowAsync<ProbeWindow>();
+                using var client = new HttpClient();
+                using var page = await client.GetAsync(((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Surface.Url);
+                Check(page.IsSuccessStatusCode, $"Without a browser, the serve-only surface did not serve its page: {page.StatusCode}.");
+            }
+            finally { Directory.Delete(noBrowsers, recursive: true); }
+
             // The configuration is still checked in serve-only mode: it fails on every launch that presents a window.
             List<(string Name, DesktopHostOptions Options, DesktopWindowOptions Window, string Code)> configurations =
             [
@@ -216,6 +253,10 @@ internal sealed class ServeOnlyChecks
                     new DesktopWindowOptions { Browser = BrowserKind.Safari, PresentationPolicy = DesktopPresentationPolicy.RequestedOnly },
                     "browser-unsupported"),
             ];
+            if (OperatingSystem.IsLinux())
+                configurations.Add(("the embedded WebView without a Linux backend or a browser fallback", new DesktopHostOptions { WaitForConnection = false },
+                    new DesktopWindowOptions { Browser = BrowserKind.Embedded, PresentationPolicy = DesktopPresentationPolicy.RequestedOnly },
+                    "linux-embedded-backend-not-selected"));
             if (OperatingSystem.IsLinux())
                 configurations.Add(("GTK 4 without its provider", new DesktopHostOptions
                 {

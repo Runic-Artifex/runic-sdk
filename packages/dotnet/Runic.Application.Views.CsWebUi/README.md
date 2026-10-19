@@ -133,6 +133,15 @@ error and returns 1 instead of ending the process with an unhandled exception.
 WebUI starts browsers detached and discards their output; run the browser with
 the window's URL to see why it fails.
 
+`ValidateWindow` reports, with the code `browser-not-found`, a
+`CSWEBUI_BROWSER_PATH` that names no file, because WebUI uses that browser
+without fallback and every open fails. It cannot check more without showing a
+window: WebUI's recommended presentation falls back from an installed browser
+to the system default browser and then to the WebView, and the WebView runtime
+(for `UseWebView` too) is loaded only when a window shows. Those failures are
+reported by `OpenWindowAsync` as above. `ShowWindow` and serve-only mode skip
+the check.
+
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to
 standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
@@ -142,8 +151,8 @@ on Windows too; the
 [serve-only protocol](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 is the same as on Runic Desktop, and `RunicServeOnlyApplication` in
 [Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#the-whole-application-in-a-browser)
-implements it for browser tests. `ValidateWindow` has no presentation checks on
-CS-WebUI. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
+implements it for browser tests. In serve-only mode `ValidateWindow` checks no
+browser. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
 GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.

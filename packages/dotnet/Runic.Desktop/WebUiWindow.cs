@@ -1067,8 +1067,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         var session = GetExecutionSession();
         var response = await session.ExecuteJavaScriptAsync(script, timeout, cancellationToken).ConfigureAwait(false);
-        return Encoding.UTF8.GetString(response.AsSpan(0, Math.Min(response.Length, responseBufferSize)));
+        // A result is returned whole or not at all; cutting it would also split a UTF-8 sequence.
+        if (response.Length > responseBufferSize)
+        {
+            throw new DesktopException(
+                DesktopErrorCategory.LimitExceeded,
+                ScriptResultTooLargeCode,
+                $"The script result has {response.Length} UTF-8 bytes, more than the response buffer size of {responseBufferSize}.");
+        }
+        return Encoding.UTF8.GetString(response);
     }
+
+    internal const string ScriptResultTooLargeCode = "script-result-too-large";
 
     /// <summary>Navigates every authenticated browser to a URL.</summary>
     public void Navigate(string url) => NavigateAsync(url).GetAwaiter().GetResult();

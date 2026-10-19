@@ -32,6 +32,10 @@ namespace Runic.Application.Views.CsWebUi;
 /// window starts its local server, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and keeps
 /// serving until a line is read from standard input or the process ends. Test harnesses and remote browsers use
 /// this without changing application code.
+/// <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/> reports a <c>CSWEBUI_BROWSER_PATH</c> that names
+/// no file (<c>browser-not-found</c>). Whether WebUI finds another browser, the system default browser or the WebView
+/// runtime shows only when a window opens, so <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/> reports
+/// those failures.
 /// </remarks>
 public sealed class RunicCsWebUiHost : IRunicWindowHost
 {
@@ -131,7 +135,30 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     // The exit code of Run when a window could not be shown and the application did not handle it.
     internal const int ShowFailedExitCode = 1;
 
-    IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options) => [];
+    // Checks what can be known before a window shows. Serve-only mode, ShowWindow and UseWebView launch no browser. A
+    // browser selected with CSWEBUI_BROWSER_PATH is used without fallback, so one that names no file fails every open,
+    // as dotnet runic doctor reports. WebUI's recommended presentation falls back from an installed browser to the
+    // system default browser and then to the WebView, and the WebView runtime is loaded only when a window shows, so
+    // neither can be checked without showing one: such an open still fails with a Window diagnostic.
+    IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1" || ShowWindow is not null || UseWebView) return [];
+        var configured = Environment.GetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(configured)) return [];
+        string path;
+        try { path = Path.GetFullPath(configured); }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { path = configured; }
+        // On macOS the variable names the .app bundle, a directory.
+        return File.Exists(path) || Directory.Exists(path)
+            ? []
+            : [new RunicWindowDiagnostic(BrowserNotFoundCode,
+                $"{WebUiApplication.BrowserPathEnvironmentVariable} names the browser '{configured}', which does not exist.",
+                $"Set {WebUiApplication.BrowserPathEnvironmentVariable} to an installed browser that WebUI can launch, or unset it.")];
+    }
+
+    private const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
+    private const string BrowserNotFoundCode = "browser-not-found";
 
     async ValueTask<IBridgeWindow> IRunicWindowHost.OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening,
         CancellationToken cancellationToken)

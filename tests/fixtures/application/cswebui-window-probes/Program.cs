@@ -249,6 +249,18 @@ static void RequireShowFailure(string browserPath, Func<RunicWindowDiagnostic, W
     var result = RunicCsWebUiHost.Run(provider, async host =>
     {
         WebUiApplication.SetConnectionTimeout(2);
+        // Validation reports a selected browser that does not exist, which every open fails on, and accepts one that
+        // exists: whether it starts and connects shows only when a window opens.
+        var validation = host.ValidateWindow<ProbeWindow>();
+        var exists = File.Exists(browserPath);
+        if (exists ? !validation.IsValid : validation.Errors is not [{ Code: "browser-not-found" } missing] ||
+            !missing.Message.Contains(WebUiApplication.BrowserPathEnvironmentVariable, StringComparison.Ordinal))
+            throw new InvalidOperationException($"ValidateWindow with the browser {browserPath} reported: " +
+                string.Join(", ", validation.Diagnostics.Select(static diagnostic => $"{diagnostic.Code}: {diagnostic.Message}")));
+        Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
+        if (!host.ValidateWindow<ProbeWindow>().IsValid)
+            throw new InvalidOperationException($"ValidateWindow in serve-only mode checked the browser {browserPath}.");
+        Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
         try
         {
             await using var window = await host.OpenWindowAsync<ProbeWindow>();
