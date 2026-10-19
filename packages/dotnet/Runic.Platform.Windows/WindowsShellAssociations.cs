@@ -110,8 +110,42 @@ internal static unsafe class WindowsShellAssociations
 
     internal static bool SameId(string first, string second) => string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
 
+    // The longest a launch keeps its apartment alive for the shell's asynchronous execution.
+    private const int LaunchCompletionMilliseconds = 30_000;
+
+    // Invoke, holding a thread reference (SHSetThreadRef) that the shell's asynchronous execution takes while it starts
+    // the handler, and pumping messages until it lets go: the apartment must outlive the launch, as Explorer's do.
+    internal static int InvokeAndWait(IAssocHandler* handler, IReadOnlyList<string> items)
+    {
+        // The count outlives a launch that does not finish in time, so it is freed only once it reaches zero.
+        int* count = (int*)NativeMemory.AllocZeroed(sizeof(int));
+        IUnknown* threadReference = null;
+        bool tracked = PInvoke.SHCreateThreadRef(count, &threadReference).Value >= 0 && threadReference is not null
+            && PInvoke.SHSetThreadRef(threadReference).Value >= 0;
+        int hr;
+        try { hr = Invoke(handler, items); }
+        finally
+        {
+            if (tracked) PInvoke.SHSetThreadRef(null);
+            if (threadReference is not null) threadReference->Release();
+        }
+        long deadline = Environment.TickCount64 + LaunchCompletionMilliseconds;
+        while (tracked && Volatile.Read(ref *count) > 0 && Environment.TickCount64 < deadline)
+        {
+            PInvoke.MsgWaitForMultipleObjectsEx(0, null, 50, QUEUE_STATUS_FLAGS.QS_ALLINPUT, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS.MWMO_INPUTAVAILABLE);
+            MSG message;
+            while (PInvoke.PeekMessage(&message, default, 0, 0, PEEK_MESSAGE_REMOVE_TYPE.PM_REMOVE))
+            {
+                PInvoke.TranslateMessage(&message);
+                PInvoke.DispatchMessage(&message);
+            }
+        }
+        if (Volatile.Read(ref *count) <= 0) NativeMemory.Free(count);
+        return hr;
+    }
+
     // Hands the items to the handler as the shell's own Open With does: a data object over their parsed shell items.
-    internal static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items)
+    private static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items)
     {
         var parsed = new ITEMIDLIST*[items.Count];
         IShellItemArray* array = null;

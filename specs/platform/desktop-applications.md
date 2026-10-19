@@ -352,6 +352,9 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
   `SHCreateShellItemArrayFromIDLists`, `BHID_DataObject`), as Explorer's Open
   With does. The shell expands the registered command, quoting each item as one
   argument; no command line passes through the provider or a command shell.
+  The shell starts documents asynchronously, so the request's apartment holds a
+  thread reference (`SHCreateThreadRef`, `SHSetThreadRef`) and pumps messages
+  until the shell releases it, for at most 30 seconds.
 - **Without items** the application must be in `shell:AppsFolder`; it starts
   as the Start menu starts it (`ShellExecute` of
   `shell:AppsFolder\<AppUserModelID>`). Other IDs are `Failed(InvalidData)`.

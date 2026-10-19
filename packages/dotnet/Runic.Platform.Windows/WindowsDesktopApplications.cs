@@ -174,7 +174,7 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
             }
             foreach (var (handler, members) in handlers)
             {
-                int hr = WindowsShellAssociations.Invoke((IAssocHandler*)handler, members);
+                int hr = WindowsShellAssociations.InvokeAndWait((IAssocHandler*)handler, members);
                 if (hr < 0) return FromHResult(hr);
             }
             return Success(default(PlatformUnit));
