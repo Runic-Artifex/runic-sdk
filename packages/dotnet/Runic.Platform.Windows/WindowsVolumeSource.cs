@@ -8,6 +8,7 @@ using Windows.Win32;
 using Windows.Win32.Devices.DeviceAndDriverInstallation;
 using Windows.Win32.Foundation;
 using Windows.Win32.Storage.FileSystem;
+using Windows.Win32.System.Diagnostics.Debug;
 using Windows.Win32.System.Ioctl;
 
 namespace Runic.Platform.Windows;
@@ -20,7 +21,7 @@ namespace Runic.Platform.Windows;
 [SupportedOSPlatform("windows8.0")]
 internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
 {
-    private const int VolumeNameLength = 50; // \\?\Volume{GUID}\ and its terminator
+    private const int VolumeNameLength = 64; // \\?\Volume{GUID}\ (49 characters) and its terminator
     private const int MaxPath = 261;
     private const uint FILE_DEVICE_DISK = 7;
     private const uint DRIVE_REMOVABLE = 2, DRIVE_CDROM = 5;
@@ -33,6 +34,15 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
     private sealed record Drive(string InstanceId, string? Name, bool Ejectable);
 
     public PlatformResult<ImmutableArray<DesktopVolume>> List()
+    {
+        // A drive without media must fail the query, not show the "There is no disk in the drive" dialog.
+        THREAD_ERROR_MODE previous;
+        if (!PInvoke.SetThreadErrorMode(THREAD_ERROR_MODE.SEM_FAILCRITICALERRORS | THREAD_ERROR_MODE.SEM_NOOPENFILEERRORBOX, &previous)) previous = 0;
+        try { return ListVolumes(); }
+        finally { PInvoke.SetThreadErrorMode(previous, null); }
+    }
+
+    private static PlatformResult<ImmutableArray<DesktopVolume>> ListVolumes()
     {
         var drives = Drives();
         var volumes = new List<DesktopVolume>();
