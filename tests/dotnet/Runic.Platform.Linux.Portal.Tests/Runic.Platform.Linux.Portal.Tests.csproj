@@ -9,6 +9,8 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- The launch cases start this executable as the probe application (see Program.cs), so the entry point is hand-written. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TUnit.Core" />

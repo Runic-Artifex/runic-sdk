@@ -89,7 +89,9 @@ MimeType=x-scheme-handler/org.example.notes;text/markdown;application/x-example-
 - Nix: `buildRunicApplication`'s `desktopItems` with `makeDesktopItem`'s
   `mimeTypes`, and the MIME XML installed into `$out/share/mime/packages`.
 - Default handler: the user's choice in `mimeapps.list`; an application does
-  not set itself as default without asking (`xdg-mime default`).
+  not set itself as default without asking (`xdg-mime default`, or
+  `IDesktopApplications.SetDefaultApplicationAsync`, see
+  [desktop applications](desktop-applications.md)).
 - Not used: D-Bus activation (`DBusActivatable=true` and
   `org.freedesktop.Application.Open`).
 

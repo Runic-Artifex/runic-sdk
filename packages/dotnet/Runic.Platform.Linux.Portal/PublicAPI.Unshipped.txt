@@ -1,2 +1,4 @@
 #nullable enable
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
+Runic.Platform.Linux.Portal.PortalApplication.CreateApplications() -> Runic.Platform.IDesktopApplications!
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateApplications(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopApplications!

@@ -302,6 +302,33 @@ public static partial class PlatformServices
         return store ?? DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    /// <summary>Creates the desktop's application database: content types, installed applications, default applications
+    /// and icons.</summary>
+    /// <returns>An application database; it holds no native resources between requests and needs no disposal.</returns>
+    /// <remarks>
+    /// Linux reads the freedesktop.org desktop entries, shared MIME-info database, mimeapps.list and icon themes
+    /// directly, with either toolkit and without loading GTK or GIO. Windows and macOS have no provider yet: every
+    /// request reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>, as it does elsewhere.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopApplications CreateApplications() => CreateApplications(null);
+
+    internal static IDesktopApplications CreateApplications(ILogger? logger)
+    {
+        IDesktopApplications? applications = null;
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) applications = CreatePortalApplications(logger);
+#endif
+        return applications ?? DesktopApplications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopApplications CreatePortalApplications(ILogger? logger) =>
+        new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateApplications();
+#endif
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSecretStore CreateWindowsSecretStore() => WindowsPlatformProvider.CreateSecretStore();
 
@@ -784,7 +811,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/> and
-    /// <see cref="IDesktopVolumes"/> for the application, without an application ID.
+    /// <see cref="IDesktopVolumes"/> and <see cref="IDesktopApplications"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
@@ -798,7 +825,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="PlatformServices.CreateNotifications(string?)"/>, <see cref="PlatformServices.CreateStatusIcon(string?)"/>,
     /// <see cref="PlatformServices.CreateLoginStartup(string?)"/>, <see cref="PlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="PlatformServices.CreateSecretStore()"/>, <see cref="PlatformServices.CreateTrash()"/>,
-    /// <see cref="PlatformServices.CreateFileTransfers()"/> and <see cref="PlatformServices.CreateVolumes"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
+    /// <see cref="PlatformServices.CreateFileTransfers()"/>, <see cref="PlatformServices.CreateVolumes"/> and <see cref="PlatformServices.CreateApplications()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
     /// <see cref="AddRunicPlatformServices(IServiceCollection, string)"/> instead. Existing registrations of these
@@ -858,6 +885,8 @@ public static class DesktopPlatformServiceCollectionExtensions
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => PlatformServices.CreateFileTransfers());
         services.TryAddSingleton(static _ => PlatformServices.CreateVolumes());
+        services.TryAddSingleton(static provider => PlatformServices.CreateApplications(
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);

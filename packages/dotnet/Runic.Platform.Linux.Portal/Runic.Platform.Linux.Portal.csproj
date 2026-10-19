@@ -11,10 +11,13 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <!-- The IDesktopApplications argument checks, shared with DesktopApplications.Unavailable without a public type. -->
+    <Compile Include="../Runic.Platform/DesktopApplicationNames.cs" Link="Shared/DesktopApplicationNames.cs" />
     <PackageReference Include="Tmds.DBus.Protocol" />
     <PackageReference Include="Tmds.DBus.Generator" PrivateAssets="all" />
     <AdditionalFiles Include="Protocol/*.xml" Namespace="Runic.Platform.Linux.Portal.Protocol" DBusGeneratorMode="Proxy" />
-    <!-- UDisks2 proxies from the public D-Bus API's generator; Tmds.DBus.Generator leaves this file alone. -->
+    <!-- UDisks2 proxies from the public D-Bus API's generator; Tmds.DBus.Generator leaves this file alone. The public
+         D-Bus client also activates desktop applications (org.freedesktop.Application). -->
     <ProjectReference Include="../Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <ProjectReference Include="../Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
         UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />

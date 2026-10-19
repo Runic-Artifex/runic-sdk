@@ -234,6 +234,70 @@ internal sealed class WindowServiceChecks
         Require(ReferenceEquals(kept.GetRequiredService<IDesktopFileTransfers>(), custom), "AddRunicPlatformServices replaced the application's file transfers.");
     }
 
+    // The application database is an application singleton that needs no window. Resolving it reads nothing.
+    [Test, NotInParallel(Order = 36)]
+    public async Task PlatformServicesRegisterOneApplicationDatabaseForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var applications = provider.GetRequiredService<IDesktopApplications>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(applications, first.ServiceProvider.GetRequiredService<IDesktopApplications>()),
+                    "A Window scope got its own application database.");
+            if (OperatingSystem.IsLinux())
+                Require(applications.GetType().FullName == "Runic.Platform.Linux.Portal.LinuxDesktopApplications",
+                    $"Linux did not create the freedesktop.org application database: {applications.GetType().FullName}");
+            else
+                // Windows and macOS have no provider yet.
+                Require(await applications.GetApplicationsAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopApplicationInfo>>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+                    "A platform without an application database provider did not report it unconfigured.");
+        }
+
+        var custom = DesktopApplications.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopApplications>(), custom),
+            "AddRunicPlatformServices replaced the application's application database.");
+    }
+
+    [Test]
+    public async Task UnavailableApplicationDatabaseReportsTheReason()
+    {
+        var applications = DesktopApplications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        const PlatformUnavailableReason reason = PlatformUnavailableReason.ProviderNotConfigured;
+        Require(await applications.GetContentTypeAsync("/tmp/notes.txt") is PlatformResult<DesktopContentType>.Unavailable(reason)
+            && await applications.GetApplicationsAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopApplicationInfo>>.Unavailable(reason)
+            && await applications.GetApplicationsForAsync("text/plain") is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopApplicationInfo>>.Unavailable(reason)
+            && await applications.GetDefaultApplicationAsync("text/plain") is PlatformResult<DesktopApplicationInfo?>.Unavailable(reason)
+            && await applications.SetDefaultApplicationAsync("text/plain", "org.example.Editor.desktop") is PlatformResult<PlatformUnit>.Unavailable(reason)
+            && await applications.LaunchAsync("org.example.Editor.desktop", ["/tmp/notes.txt", "https://example.org/"]) is PlatformResult<PlatformUnit>.Unavailable(reason)
+            && await applications.GetIconAsync(DesktopIconRequest.ForIconName("folder", 48)) is PlatformResult<DesktopIconData?>.Unavailable(reason),
+            "The unavailable application database did not report its reason for every request.");
+        // Arguments are checked as a provider checks them.
+        Require(await CatchAsync(() => applications.GetContentTypeAsync("").AsTask()) is ArgumentException
+            && await CatchAsync(() => applications.GetContentTypeAsync("a\0b").AsTask()) is ArgumentException
+            && await CatchAsync(() => applications.GetContentTypeAsync("a", (DesktopContentDetection)7).AsTask()) is ArgumentOutOfRangeException
+            && await CatchAsync(() => applications.GetApplicationsForAsync(" ").AsTask()) is ArgumentException
+            && await CatchAsync(() => applications.SetDefaultApplicationAsync("text/plain", "").AsTask()) is ArgumentException
+            && await CatchAsync(() => applications.LaunchAsync("org.example.Editor.desktop", default).AsTask()) is ArgumentException
+            && await CatchAsync(() => applications.LaunchAsync("org.example.Editor.desktop", ["relative/notes.txt"]).AsTask()) is ArgumentException
+            && await CatchAsync(() => applications.GetIconAsync(null!).AsTask()) is ArgumentNullException,
+            "The unavailable application database accepted a request a provider refuses.");
+        Require(Catch(() => DesktopIconRequest.ForIconName("icons/folder", 48)) is ArgumentException
+            && Catch(() => DesktopIconRequest.ForContentType("text/plain", 0)) is ArgumentOutOfRangeException
+            && Catch(() => DesktopIconRequest.ForApplication("org.example.Editor.desktop", 48, scale: 17)) is ArgumentOutOfRangeException
+            && DesktopIconRequest.ForApplication("org.example.Editor.desktop", 48) is { ApplicationId: "org.example.Editor.desktop", IconName: null, ContentType: null, Scale: 1 },
+            "Icon requests did not check their values.");
+        using (var cancelled = new CancellationTokenSource())
+        {
+            await cancelled.CancelAsync();
+            Require(await CatchAsync(() => applications.GetApplicationsAsync(cancelled.Token).AsTask()) is OperationCanceledException,
+                "A cancelled request did not throw.");
+        }
+        Require(Catch(() => DesktopApplications.Unavailable((PlatformUnavailableReason)99)) is ArgumentOutOfRangeException,
+            "An undefined reason was accepted.");
+    }
+
     // The status icon is an application singleton like notifications. Creating it connects to nothing; only
     // ShowAsync registers with the desktop's status area.
     [Test, NotInParallel(Order = 30)]
@@ -300,7 +364,7 @@ internal sealed class WindowServiceChecks
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
-            typeof(IDesktopVolumes)];
+            typeof(IDesktopVolumes), typeof(IDesktopApplications)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];

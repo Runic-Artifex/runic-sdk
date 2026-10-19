@@ -108,3 +108,96 @@ static Runic.Platform.DesktopVolumes.Unavailable(Runic.Platform.PlatformUnavaila
 virtual Runic.Platform.DesktopVolumeChange.EqualityContract.get -> System.Type!
 virtual Runic.Platform.DesktopVolumeChange.Equals(Runic.Platform.DesktopVolumeChange? other) -> bool
 virtual Runic.Platform.DesktopVolumeChange.PrintMembers(System.Text.StringBuilder! builder) -> bool
+Runic.Platform.DesktopApplicationInfo
+Runic.Platform.DesktopApplicationInfo.<Clone>$() -> Runic.Platform.DesktopApplicationInfo!
+Runic.Platform.DesktopApplicationInfo.ContentTypes.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopApplicationInfo.ContentTypes.init -> void
+Runic.Platform.DesktopApplicationInfo.Deconstruct(out string! Id, out string! Name) -> void
+Runic.Platform.DesktopApplicationInfo.Description.get -> string?
+Runic.Platform.DesktopApplicationInfo.Description.init -> void
+Runic.Platform.DesktopApplicationInfo.DesktopApplicationInfo(string! Id, string! Name) -> void
+Runic.Platform.DesktopApplicationInfo.Equals(Runic.Platform.DesktopApplicationInfo? other) -> bool
+Runic.Platform.DesktopApplicationInfo.Hidden.get -> bool
+Runic.Platform.DesktopApplicationInfo.Hidden.init -> void
+Runic.Platform.DesktopApplicationInfo.IconName.get -> string?
+Runic.Platform.DesktopApplicationInfo.IconName.init -> void
+Runic.Platform.DesktopApplicationInfo.Id.get -> string!
+Runic.Platform.DesktopApplicationInfo.Id.init -> void
+Runic.Platform.DesktopApplicationInfo.Name.get -> string!
+Runic.Platform.DesktopApplicationInfo.Name.init -> void
+Runic.Platform.DesktopApplications
+Runic.Platform.DesktopContentDetection
+Runic.Platform.DesktopContentDetection.NameAndContent = 1 -> Runic.Platform.DesktopContentDetection
+Runic.Platform.DesktopContentDetection.NameOnly = 0 -> Runic.Platform.DesktopContentDetection
+Runic.Platform.DesktopContentType
+Runic.Platform.DesktopContentType.<Clone>$() -> Runic.Platform.DesktopContentType!
+Runic.Platform.DesktopContentType.Deconstruct(out string! Id) -> void
+Runic.Platform.DesktopContentType.Description.get -> string?
+Runic.Platform.DesktopContentType.Description.init -> void
+Runic.Platform.DesktopContentType.DesktopContentType(string! Id) -> void
+Runic.Platform.DesktopContentType.Equals(Runic.Platform.DesktopContentType? other) -> bool
+Runic.Platform.DesktopContentType.Extensions.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopContentType.Extensions.init -> void
+Runic.Platform.DesktopContentType.IconName.get -> string?
+Runic.Platform.DesktopContentType.IconName.init -> void
+Runic.Platform.DesktopContentType.Id.get -> string!
+Runic.Platform.DesktopContentType.Id.init -> void
+Runic.Platform.DesktopContentType.MimeType.get -> string?
+Runic.Platform.DesktopContentType.MimeType.init -> void
+Runic.Platform.DesktopContentType.Parents.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopContentType.Parents.init -> void
+Runic.Platform.DesktopIconData
+Runic.Platform.DesktopIconData.<Clone>$() -> Runic.Platform.DesktopIconData!
+Runic.Platform.DesktopIconData.Data.get -> System.Collections.Immutable.ImmutableArray<byte>
+Runic.Platform.DesktopIconData.Data.init -> void
+Runic.Platform.DesktopIconData.Deconstruct(out string! MediaType, out System.Collections.Immutable.ImmutableArray<byte> Data, out int Size) -> void
+Runic.Platform.DesktopIconData.DesktopIconData(string! MediaType, System.Collections.Immutable.ImmutableArray<byte> Data, int Size) -> void
+Runic.Platform.DesktopIconData.Equals(Runic.Platform.DesktopIconData? other) -> bool
+Runic.Platform.DesktopIconData.MediaType.get -> string!
+Runic.Platform.DesktopIconData.MediaType.init -> void
+Runic.Platform.DesktopIconRequest.ApplicationId.get -> string?
+Runic.Platform.DesktopIconRequest.ContentType.get -> string?
+Runic.Platform.DesktopIconRequest.Scale.get -> int
+Runic.Platform.DesktopIconRequest.Scale.init -> void
+Runic.Platform.DesktopIconRequest.Size.get -> int
+Runic.Platform.DesktopIconRequest.Size.init -> void
+Runic.Platform.IDesktopApplications
+Runic.Platform.IDesktopApplications.GetApplicationsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopApplicationInfo!>>!>
+Runic.Platform.IDesktopApplications.GetApplicationsForAsync(string! contentType, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopApplicationInfo!>>!>
+Runic.Platform.IDesktopApplications.GetContentTypeAsync(string! path, Runic.Platform.DesktopContentDetection detection = Runic.Platform.DesktopContentDetection.NameAndContent, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopContentType!>!>
+Runic.Platform.IDesktopApplications.GetDefaultApplicationAsync(string! contentType, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopApplicationInfo?>!>
+Runic.Platform.IDesktopApplications.GetIconAsync(Runic.Platform.DesktopIconRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopIconData?>!>
+Runic.Platform.IDesktopApplications.LaunchAsync(string! applicationId, System.Collections.Immutable.ImmutableArray<string!> pathsOrUris, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopApplications.SetDefaultApplicationAsync(string! contentType, string! applicationId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+override Runic.Platform.DesktopApplicationInfo.Equals(object? obj) -> bool
+override Runic.Platform.DesktopApplicationInfo.GetHashCode() -> int
+override Runic.Platform.DesktopApplicationInfo.ToString() -> string!
+override Runic.Platform.DesktopContentType.Equals(object? obj) -> bool
+override Runic.Platform.DesktopContentType.GetHashCode() -> int
+override Runic.Platform.DesktopContentType.ToString() -> string!
+override Runic.Platform.DesktopIconData.Equals(object? obj) -> bool
+override Runic.Platform.DesktopIconData.GetHashCode() -> int
+override Runic.Platform.DesktopIconData.ToString() -> string!
+static Runic.Platform.DesktopApplicationInfo.operator !=(Runic.Platform.DesktopApplicationInfo? left, Runic.Platform.DesktopApplicationInfo? right) -> bool
+static Runic.Platform.DesktopApplicationInfo.operator ==(Runic.Platform.DesktopApplicationInfo? left, Runic.Platform.DesktopApplicationInfo? right) -> bool
+static Runic.Platform.DesktopApplications.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopApplications!
+static Runic.Platform.DesktopContentType.operator !=(Runic.Platform.DesktopContentType? left, Runic.Platform.DesktopContentType? right) -> bool
+static Runic.Platform.DesktopContentType.operator ==(Runic.Platform.DesktopContentType? left, Runic.Platform.DesktopContentType? right) -> bool
+static Runic.Platform.DesktopIconData.operator !=(Runic.Platform.DesktopIconData? left, Runic.Platform.DesktopIconData? right) -> bool
+static Runic.Platform.DesktopIconData.operator ==(Runic.Platform.DesktopIconData? left, Runic.Platform.DesktopIconData? right) -> bool
+static Runic.Platform.DesktopIconRequest.ForApplication(string! applicationId, int size, int scale = 1) -> Runic.Platform.DesktopIconRequest!
+static Runic.Platform.DesktopIconRequest.ForContentType(string! contentType, int size, int scale = 1) -> Runic.Platform.DesktopIconRequest!
+static Runic.Platform.DesktopIconRequest.ForIconName(string! iconName, int size, int scale = 1) -> Runic.Platform.DesktopIconRequest!
+Runic.Platform.DesktopIconData.Size.get -> int
+Runic.Platform.DesktopIconData.Size.init -> void
+Runic.Platform.DesktopIconRequest
+Runic.Platform.DesktopIconRequest.<Clone>$() -> Runic.Platform.DesktopIconRequest!
+Runic.Platform.DesktopIconRequest.Equals(Runic.Platform.DesktopIconRequest? other) -> bool
+Runic.Platform.DesktopIconRequest.IconName.get -> string?
+const Runic.Platform.DesktopIconRequest.MaximumScale = 16 -> int
+const Runic.Platform.DesktopIconRequest.MaximumSize = 4096 -> int
+override Runic.Platform.DesktopIconRequest.Equals(object? obj) -> bool
+override Runic.Platform.DesktopIconRequest.GetHashCode() -> int
+override Runic.Platform.DesktopIconRequest.ToString() -> string!
+static Runic.Platform.DesktopIconRequest.operator !=(Runic.Platform.DesktopIconRequest? left, Runic.Platform.DesktopIconRequest? right) -> bool
+static Runic.Platform.DesktopIconRequest.operator ==(Runic.Platform.DesktopIconRequest? left, Runic.Platform.DesktopIconRequest? right) -> bool
