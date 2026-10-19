@@ -4,10 +4,11 @@ import { connectView, viewReferences } from "@runic-artifex/views/generated";
 import { pageReactiveNavEditor, type ReactiveNavEditorPageReference } from "./reactiveNavEditor.js";
 import { pageNavEditor, type NavEditorPageReference } from "./navEditor.js";
 import { pageNavHome, type NavHomePageReference } from "./navHome.js";
+import { pageNavLogPage, type NavLogPagePageReference } from "./navLogPage.js";
 
 export interface NavShellState {
   /** The main content; the navigator changes it. */
-  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | null;
+  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;
 }
 
 /** A connected NavShell ViewModel. Dispose it when its presentation ends. */
@@ -23,13 +24,13 @@ export function pageNavShell(id: string): NavShellPageReference { return pageNav
 
 type WireState = Omit<NavShellState, "main"> & {
   readonly revision: number;
-  readonly main: { readonly kind: "reactiveNavEditor"; readonly id: string } | { readonly kind: "navEditor"; readonly id: string } | { readonly kind: "navHome"; readonly id: string } | null;
+  readonly main: { readonly kind: "reactiveNavEditor"; readonly id: string } | { readonly kind: "navEditor"; readonly id: string } | { readonly kind: "navHome"; readonly id: string } | { readonly kind: "navLogPage"; readonly id: string } | null;
 };
 function hydrate(wire: WireState): NavShellState {
   const { revision: _revision, ...state } = wire;
   return {
     ...state,
-    main: wire.main === null ? null : wire.main.kind === "reactiveNavEditor" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === "navEditor" ? pageNavEditor(wire.main.id) : wire.main.kind === "navHome" ? pageNavHome(wire.main.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(),
+    main: wire.main === null ? null : wire.main.kind === "reactiveNavEditor" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === "navEditor" ? pageNavEditor(wire.main.id) : wire.main.kind === "navHome" ? pageNavHome(wire.main.id) : wire.main.kind === "navLogPage" ? pageNavLogPage(wire.main.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(),
   };
 }
 const bridgeContract = "Runic.Application.Testing.Tests.NavShellViewModel:<fingerprint>";

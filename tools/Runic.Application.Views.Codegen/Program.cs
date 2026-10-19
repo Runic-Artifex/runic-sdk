@@ -314,7 +314,8 @@ static string UnregisteredContentMessage(Type model, PropertyInfo property, bool
 // A slot only presents ViewModels with a View, so a pushed ViewModel without
 // one compiles and then fails when presented. Warn about the public, top-level
 // concrete ViewModels in the application assembly that a slot admits but no
-// View presents. Types in other assemblies are not checked: their Views, if
+// View presents: none of the slot's switch cases, which include a ViewModel's
+// base classes and interfaces with a View, matches them. Types in other assemblies are not checked: their Views, if
 // any, are not visible here either.
 //
 // A warning must name a ViewModel that is meant for the slot, so a broad slot
@@ -344,7 +345,12 @@ static void WarnContentWithoutView(Type model, IReadOnlyDictionary<PropertyInfo,
                 && (ns == "System" || BridgeMvvmConventions.IsFrameworkNamespace(ns))
             || windowModels.Any(slotType.IsAssignableFrom))
             continue;
-        var missing = candidates.Where(type => type != model && slotType.IsAssignableFrom(type)).ToArray();
+        // The generated switch has a type-pattern case for each ViewModel with a
+        // View that the slot admits, so a candidate that derives from or
+        // implements one of them is presented by that case's View.
+        var cases = contentProperties.TryGetValue(property, out var propertyCases) ? propertyCases : contentCollections[property];
+        var missing = candidates.Where(type => type != model && slotType.IsAssignableFrom(type)
+            && !cases.Any(entry => entry.Model.IsAssignableFrom(type))).ToArray();
         if (missing.Length > MissingViewCandidateLimit) continue;
         var contract = ContractFor(property);
         var slot = regionSlots.Contains(property) ? "pushing it to this navigation region" : "presenting it in this slot";

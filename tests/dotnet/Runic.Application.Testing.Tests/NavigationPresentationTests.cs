@@ -35,6 +35,19 @@ internal sealed class NavigationPresentationTests
         }
     }
 
+    // A ViewModel without a View of its own is presented by its base class's View (#407).
+    [Test]
+    public async Task BaseViewPresentsDerivedContentAsync()
+    {
+        await using var window = new Window();
+        await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavControllerLogViewModel())));
+        var host = window.Host;
+        await Until(() => host.Root.Snapshot().Reference(vm => vm.Main)?.Kind == "navLogPage",
+            $"The derived ViewModel was not presented by its base class's View: {host.Root.Snapshot().Reference(vm => vm.Main)}.");
+        var title = host.Root.View<NavLogPageViewModel>(vm => vm.Main).Snapshot().Read(vm => vm.Title);
+        Require(title == "controller log", $"The base View presented '{title}'.");
+    }
+
     [Test]
     public async Task WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync()
     {
@@ -392,8 +405,8 @@ internal sealed class NavigationPresentationTests
         var generated = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.ts")).ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
-            "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | null;",
-            "  readonly main: { readonly kind: \"reactiveNavEditor\"; readonly id: string } | { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | null;",
+            "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;",
+            "  readonly main: { readonly kind: \"reactiveNavEditor\"; readonly id: string } | { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | { readonly kind: \"navLogPage\"; readonly id: string } | null;",
             "    main: wire.main === null ? null : wire.main.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === \"navEditor\" ? pageNavEditor(wire.main.id)",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navShell.ts is missing:\n{expected}\n---\n{generated}");
