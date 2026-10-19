@@ -398,6 +398,49 @@ internal sealed class ApplicationInstanceTests
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
 
+    // #400: on Windows, a receive posted while the other end closes may never complete. The running instance missed
+    // one in 50 to 200 launches that left right after their first message (under JIT and NativeAOT, on x64 and
+    // arm64), and its later writes still succeeded.
+    [Test, DisplayName("INSTANCE: the running instance sees a launch leave, however soon it leaves")]
+    public async Task SeesEarlyLeavesAsync()
+    {
+        const int Launches = 500;
+        string directory = Directory();
+        try
+        {
+            await using var instance = await ClaimPrimaryAsync(directory, Replies);
+            var seen = Channel.CreateUnbounded<Task<bool>>();
+            instance.Launched += (_, launch) =>
+            {
+                var reply = launch.Reply!;
+                seen.Writer.TryWrite(Task.Run(async () =>
+                {
+                    if (launch.Arguments.Single() == "after a message") await reply.WriteAsync("started");
+                    // Disposing the instance ends a reply it never saw leave, so this wait ends with the test.
+                    try { await Task.Delay(Timeout.Infinite, reply.Cancelled); }
+                    catch (OperationCanceledException) { }
+                    return reply.Disconnected.IsCancellationRequested;
+                }));
+            };
+            foreach (var when in new[] { "after a message", "at once" })
+                for (int i = 0; i < Launches; i++)
+                {
+                    await using (var reply = await ForwardAsync(directory, when))
+                    {
+                        if (when == "after a message")
+                        {
+                            await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
+                            Check(await Within(messages.MoveNextAsync().AsTask(), $"the first message ({i})") && messages.Current == "started", "the launch starts");
+                        }
+                    }
+                    var handled = await Within(seen.Reader.ReadAsync().AsTask(), $"the launch ({i})");
+                    Check(await Within(handled, $"the running instance sees the launch leave {when} (launch {i} of {Launches})"),
+                        $"leaving {when} is Disconnected (launch {i})");
+                }
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
     // #308: a command line that only talks to a running daemon never becomes the instance itself.
     [Test, DisplayName("INSTANCE: a forward-only launch reaches a running instance and never becomes one")]
     public async Task ForwardOnlyAsync()
