@@ -22,8 +22,37 @@ Each entry starts with what the ID means. **Fix** says what to change.
 model assembly compiles. It reports every ViewModel's first problem in one
 build. An error names the type and member, points at its source line when the
 assembly has a portable PDB (the default), and ends with the link to its entry.
-The [generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
-of the Runic.Application.Views guide has the same table.
+The `Runic.Application.Views` build targets report the codes that concern the
+frontend and the build itself. Warnings don't fail the build unless the project
+treats warnings as errors; the generator's warnings repeat on builds that reuse
+the cached generation. Every other code fails the build. The
+[generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
+of the Runic.Application.Views guide links here.
+
+| ID | Severity | Reported by | Problem |
+| --- | --- | --- | --- |
+| [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator fails without reporting an error | Invalid generator invocation or build configuration, or an internal generator error |
+| [`RUNICBRIDGE002`](#runicbridge002) | Error | Generator | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish |
+| [`RUNICBRIDGE003`](#runicbridge003) | Error | Generator | A value type that is not a supported bridge value |
+| [`RUNICBRIDGE004`](#runicbridge004) | Error | Generator | Two generated names collide, or a command's client member is reserved in TypeScript |
+| [`RUNICBRIDGE005`](#runicbridge005) | Error | Generator | An assembly, a Runic View or a bridged member's type could not be loaded |
+| [`RUNICBRIDGE006`](#runicbridge006) | Error | Generator | No Window or View class, or an invalid class or View contract |
+| [`RUNICBRIDGE007`](#runicbridge007) | Error | Generator | A ViewModel class has an unsupported shape |
+| [`RUNICBRIDGE008`](#runicbridge008) | Error | Generator | A state property, ViewModel content member or append-only text has an unsupported shape |
+| [`RUNICBRIDGE009`](#runicbridge009) | Error | Generator | A command has an unsupported name or shape |
+| [`RUNICBRIDGE010`](#runicbridge010) | Error | Generator | A `[RunicCollection]` member is not a keyed collection of DTO rows |
+| [`RUNICBRIDGE011`](#runicbridge011) | Error | Generator | A ReactiveUI interaction is not a get-only property |
+| [`RUNICBRIDGE012`](#runicbridge012) | Error | Generator | A `[RunicFailure]` declaration is misplaced, repeated or names an unsupported type |
+| [`RUNICBRIDGE013`](#runicbridge013) | Warning | Generator | A ViewModel that a content slot admits has no View |
+| [`RUNICBRIDGE014`](#runicbridge014) | Error | Build targets | The frontend directory or its `package.json` is missing |
+| [`RUNICBRIDGE015`](#runicbridge015) | Warning | Build targets | A project declares Views, but generation is off |
+| [`RUNICBRIDGE016`](#runicbridge016) | Error | Build targets | The frontend install or build command failed without a located error |
+| [`RUNICBRIDGE017`](#runicbridge017) | Warning | Build targets | A build property or item uses its 0.7.0-preview.6 name |
+| [`RUNICBRIDGE018`](#runicbridge018) | Error | Build targets | A referenced assembly already declares the generated composition type |
+| [`RUNICBRIDGE019`](#runicbridge019) | Warning | Build targets | The build cannot tell which host's Views client to copy |
+| [`RUNICBRIDGE020`](#runicbridge020) | Warning | Generator | Types were skipped because an assembly they need could not be loaded |
+| [`RUNICBRIDGE021`](#runicbridge021) | Error | Build targets | The external `node_modules` could not be linked |
+| [`RUNICBRIDGE022`](#runicbridge022) | Error | Build targets | `NoBuild=true` finds no generated Bridge code to reuse |
 
 ### RUNICBRIDGE001
 
@@ -61,6 +90,10 @@ type named like a generated bridge (`CounterBridge` beside `CounterViewModel`)
 collides with it, and so would a generated TypeScript module that declares one
 name twice.
 
+A command whose client member is reserved in a TypeScript object collides with
+the object itself: `new` (a construct signature), `then` (a thenable client),
+`constructor`, `__proto__`, `toJSON`, `toString` or `valueOf`.
+
 A command without an argument publishes its availability as `canX` state, so a
 state property of that wire name collides with it, unless the command declares
 the property as its availability with CommunityToolkit's
@@ -73,6 +106,8 @@ from your types: when a ViewModel is named `WireViewModel` or `ViewViewModel`,
 the module uses `_WireState` or imports `ViewClient as _ViewClient` instead.
 
 **Fix:** rename one member or type, or set a wire name with `[RunicAlias]`.
+Rename a reserved command; the message suggests a name, such as `CreateCommand`
+for `NewCommand`.
 
 ### RUNICBRIDGE005
 
@@ -115,12 +150,13 @@ property has no public getter or an empty wire name, ViewModel content or a
 `NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's
 item type has no registered View, or a region slot is a
 `NavigationRegion<object>` or has no ViewModel with a registered View that is a
-`TContent`, or a `[RunicAppendOnlyText]` member is not a read-only `string`
-state property.
+`TContent`, or a `[RunicAppendOnlyText]` member is not a read-only `string` or
+`string?` state property.
 
 **Fix:** add a getter, make content read-only to the web view, register a View
 for the item or content type, give the region a specific content interface
-or base class, or make an append-only text a read-only `string`.
+or base class, or make an append-only text a read-only `string` or `string?`,
+or remove the attribute.
 
 ### RUNICBRIDGE009
 
@@ -161,9 +197,12 @@ a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is
 A warning. A public, concrete ViewModel in the application assembly fits a
 ViewModel content property, ViewModel collection or `NavigationRegion<TContent>`
 slot but has no View, and no View of a base class that the slot admits presents
-it, so pushing or presenting it there throws `NotSupportedException`. Broad slot
-types are not checked. The warning repeats
-on builds that reuse the cached generation.
+it, so pushing or presenting it there throws `NotSupportedException` naming the
+slot and the type. Broad slot types are not checked: framework types (System,
+ReactiveUI, CommunityToolkit), a type the slot's owner or a Window's ViewModel
+also derives from or implements, and a type that more than eight ViewModels
+without a View could fill. The warning repeats on builds that reuse the cached
+generation.
 
 **Fix:** add a View, such as
 `public sealed partial class SettingsView : RunicView<SettingsViewModel>;`, with
@@ -268,7 +307,8 @@ None of the skipped types is a Runic View, but the assembly may also be missing
 when the application runs. The generator loads the assemblies of the shared
 frameworks that the build references, such as Microsoft.AspNetCore.App. With
 optional generation and no Views, it reports `RUNICBRIDGE005` instead and keeps
-the generated output.
+the generated output. The warning repeats on builds that reuse the cached
+generation.
 
 **Fix:** reference the shared framework or package that contains the assembly,
 or make the assembly available in the build output.

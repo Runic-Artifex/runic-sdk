@@ -549,7 +549,23 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
     }
 
-    /// <summary>Completes when no transition is in flight and no retirement is running.</summary>
+    /// <summary>
+    /// Completes when no transition of any region of this navigator is in flight and no retirement is running. A
+    /// transition counts until its task completes: its guards, preparation, commit, the retirement of the departed entries
+    /// and the activation hook of the arrived entry (<see cref="INavigationActivated"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="NavigationRegion{TContent}.WhenIdleAsync"/>, it waits for every region, for retirements that no
+    /// request awaits, and for the guard of a Back whose callers have all cancelled, until that guard returns.
+    /// </para>
+    /// <para>
+    /// A hook of a transition of this navigator (a factory, guard, initialize, resume or activation hook) that awaits it
+    /// deadlocks: the navigator is not idle while the hook runs. The same holds for the
+    /// <see cref="NavigationRegion{TContent}.WhenIdleAsync"/> of the hook's region.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Stops waiting.</param>
     public async ValueTask WhenIdleAsync(CancellationToken cancellationToken = default)
     {
         while (true)

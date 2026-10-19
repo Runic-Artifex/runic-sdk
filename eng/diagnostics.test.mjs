@@ -99,3 +99,28 @@ test('the catalog sits where the help links point', () => {
   expect(targets).toContain('<RunicDiagnosticsHelpLinkBase>$(RunicReleaseSourceUrl)$(RunicDiagnosticsCatalog)#</RunicDiagnosticsHelpLinkBase>');
   expect(existsSync(join(root, 'docs/diagnostics.md'))).toBe(true);
 });
+
+// ViewsCodegen-09: one RUNICBRIDGE catalog. Its overview table lists every entry once with the severity that the
+// generator (Diagnostics.Warn) or the build targets (<Warning Code=...>) report, and the guide states the same warnings.
+test('the Bridge overview table matches the entries and the reported severities', () => {
+  const generator = ['tools/Runic.Application.Views.Codegen/Program.cs', 'tools/Runic.Application.Views.Codegen/BridgeLoading.cs']
+    .map(file => readFileSync(join(root, file), 'utf8')).join('\n');
+  const constants = new Map([...generator.matchAll(/internal const string (\w+) = "(RUNICBRIDGE\d+)"/g)].map(match => [match[1], match[2]]));
+  const targets = readFileSync(join(root, 'packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets'), 'utf8');
+  const warnings = new Set([
+    ...[...generator.matchAll(/Diagnostics\.Warn\(BridgeDiagnosticCodes\.(\w+)/g)].map(match => constants.get(match[1])),
+    ...[...targets.matchAll(/<Warning\b[^>]*\bCode="(RUNICBRIDGE\d+)"/g)].map(match => match[1]),
+  ]);
+  expect(warnings.size).toBeGreaterThan(0);
+  const rows = [...catalog.matchAll(/^\| \[`(RUNICBRIDGE\d+)`\]\(#(runicbridge\d+)\) \| (Error|Warning) \|/gm)];
+  const entries = [...catalog.matchAll(/^### (RUNICBRIDGE\d+)$/gm)].map(match => match[1]);
+  expect(rows.map(row => row[1])).toEqual(entries);
+  for (const [, id, anchor] of rows) expect(anchor).toBe(id.toLowerCase());
+  expect(rows.filter(row => row[3] === 'Warning').map(row => row[1]).sort()).toEqual([...warnings].sort());
+  const guide = readFileSync(join(root, 'packages/dotnet/Runic.Application.Views/README.md'), 'utf8');
+  const stated = guide.match(/^`(RUNICBRIDGE\d+)`((?:, `\d+`)*) and `(\d+)` are warnings;/m);
+  expect(stated).not.toBeNull();
+  const listed = [stated[1], ...[...stated[2].matchAll(/`(\d+)`/g)].map(match => `RUNICBRIDGE${match[1]}`), `RUNICBRIDGE${stated[3]}`];
+  expect(listed.sort()).toEqual([...warnings].sort());
+  expect(guide).not.toMatch(/^\| `RUNICBRIDGE\d+`/m);
+});

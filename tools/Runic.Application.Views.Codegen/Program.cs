@@ -1591,9 +1591,9 @@ static class BridgeDiagnosticCodes
     internal const string MissingView = "RUNICBRIDGE013";
     /// <summary>Warning: types were skipped because an assembly other than a Windows Desktop one could not be loaded.</summary>
     internal const string SkippedTypes = "RUNICBRIDGE020";
-    // RUNICBRIDGE014 (missing frontend), RUNICBRIDGE015 (generation off with a
-    // declared View) and RUNICBRIDGE016 (failed frontend command) are reported
-    // by Runic.Application.Views.targets.
+    // RUNICBRIDGE014 to 019, 021 and 022 are reported by Runic.Application.Views.targets,
+    // as is RUNICBRIDGE001 for a generator run that failed without reporting an error
+    // (docs/diagnostics.md lists each code with its severity and reporter).
 }
 
 /// <summary>A generator diagnostic with its ID and the declaration it concerns.</summary>
