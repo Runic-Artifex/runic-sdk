@@ -1,0 +1,30 @@
+<!-- The Thumbnailer1 members Runic uses, written from the freedesktop.org Thumbnail Management D-Bus Specification
+     (https://wiki.gnome.org/DraftSpecs/ThumbnailerSpec). Not a copy of a thumbnailer's introspection data. -->
+<node>
+  <interface name="org.freedesktop.thumbnails.Thumbnailer1">
+    <method name="Queue">
+      <arg name="uris" type="as" direction="in"/>
+      <arg name="mime_types" type="as" direction="in"/>
+      <arg name="flavor" type="s" direction="in"/>
+      <arg name="scheduler" type="s" direction="in"/>
+      <arg name="handle_to_unqueue" type="u" direction="in"/>
+      <arg name="handle" type="u" direction="out"/>
+    </method>
+    <method name="Dequeue">
+      <arg name="handle" type="u" direction="in"/>
+    </method>
+    <signal name="Ready">
+      <arg name="handle" type="u"/>
+      <arg name="uris" type="as"/>
+    </signal>
+    <signal name="Error">
+      <arg name="handle" type="u"/>
+      <arg name="failed_uris" type="as"/>
+      <arg name="error_code" type="i"/>
+      <arg name="message" type="s"/>
+    </signal>
+    <signal name="Finished">
+      <arg name="handle" type="u"/>
+    </signal>
+  </interface>
+</node>

@@ -24,6 +24,8 @@
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
+    <!-- The thumbnail cases share the Windows suite's test images and PNG check. -->
+    <Compile Include="../Runic.Platform.Windows.Tests/ThumbnailImages.cs" Link="ThumbnailImages.cs" />
     <!-- The generation tests also build small projects against the shipped targets. -->
     <None Include="../../../packages/dotnet/Runic.Platform/buildTransitive/*;../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/*" Link="privileged-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <RunicPrivilegedAction Include="eu.runic.tests.activate" Program="/usr/libexec/runic-tests/helper" Verb="activate"

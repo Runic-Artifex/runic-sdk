@@ -1,3 +1,4 @@
 #nullable enable
 static Runic.Application.Views.Desktop.PlatformServices.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
 static Runic.Application.Views.Desktop.PlatformServices.CreateApplications() -> Runic.Platform.IDesktopApplications!
+static Runic.Application.Views.Desktop.PlatformServices.CreateThumbnails() -> Runic.Platform.IDesktopThumbnails!

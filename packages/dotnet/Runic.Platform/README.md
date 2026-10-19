@@ -148,7 +148,7 @@ either.
 | Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -481,6 +481,38 @@ does not offer is `Unavailable(BackendUnavailable)`.
 
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)
+has the per-platform behaviour and its verification.
+
+## Thumbnails
+
+`IDesktopThumbnails` returns the thumbnail the desktop's file manager shows for
+a file, as a PNG image, so a file browser can show pictures, videos and
+documents without decoding them itself. `AddRunicPlatformServices()` registers
+one for the application; it needs no window.
+
+```csharp
+if (await thumbnails.GetThumbnailAsync(path, 128) is PlatformResult<DesktopThumbnail?>.Success({ } thumbnail))
+    ShowImage("data:image/png;base64," + Convert.ToBase64String(thumbnail.Png.AsSpan()), thumbnail.Width, thumbnail.Height);
+else
+    ShowIcon(path); // No thumbnail: show the type's icon, from IDesktopApplications.GetIconAsync.
+```
+
+`size` is the largest edge to display, up to 1024 pixels. The image keeps the
+file's aspect ratio and can differ in size from the request, so scale it to
+display: Linux returns the cached size at least as large (128, 256, 512 or 1024
+pixels), Windows and macOS at most `size`. A file without a thumbnail, such as
+a type no thumbnailer handles or one whose thumbnailing failed, is
+`Success(null)`; an icon is never returned instead. A missing file is
+`Failed(NotFound)`.
+
+| Platform | Provider |
+| --- | --- |
+| Linux | The freedesktop.org thumbnail cache (`~/.cache/thumbnails`) that file managers fill; on a miss the session's `org.freedesktop.thumbnails.Thumbnailer1` service, such as Tumbler on Xfce. GNOME and KDE run no such service, so there only thumbnails their file managers already made are returned. Inside Flatpak add `--filesystem=xdg-cache/thumbnails:ro` and `--talk-name=org.freedesktop.thumbnails.Thumbnailer1`. |
+| Windows | The shell's thumbnail providers and cache, as Explorer shows them |
+| macOS | Quick Look, as Finder shows them |
+
+Hosts without a provider register `DesktopThumbnails.Unavailable(reason)`. The
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md)
 has the per-platform behaviour and its verification.
 
 ## Privileged actions

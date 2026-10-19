@@ -260,6 +260,35 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's application database.");
     }
 
+    // Thumbnails are an application singleton that needs no window. Resolving them reads nothing and connects to nothing.
+    [Test, NotInParallel(Order = 37)]
+    public async Task PlatformServicesRegisterOneThumbnailProviderForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var thumbnails = provider.GetRequiredService<IDesktopThumbnails>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(thumbnails, first.ServiceProvider.GetRequiredService<IDesktopThumbnails>()),
+                    "A Window scope got its own thumbnails.");
+            string expected = OperatingSystem.IsLinux() ? "Runic.Platform.Linux.Portal.LinuxThumbnails"
+                : OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsThumbnails"
+                : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacThumbnails" : "";
+            Require(thumbnails.GetType().FullName == expected || expected.Length == 0,
+                $"The operating system's thumbnails were not created: {thumbnails.GetType().FullName}");
+        }
+
+        var custom = DesktopThumbnails.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopThumbnails>(), custom), "AddRunicPlatformServices replaced the application's thumbnails.");
+        string path = Path.Combine(Path.GetTempPath(), "runic-no-thumbnail.png");
+        Require(await custom.GetThumbnailAsync(path, 128) is PlatformResult<DesktopThumbnail?>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            "The unavailable thumbnails did not report their reason.");
+        Require(await CatchAsync(() => custom.GetThumbnailAsync("relative.png", 128).AsTask()) is ArgumentException
+            && await CatchAsync(() => custom.GetThumbnailAsync(path, DesktopThumbnails.MaximumSize + 1).AsTask()) is ArgumentOutOfRangeException,
+            "The unavailable thumbnails accepted a request a provider refuses.");
+    }
+
     [Test]
     public async Task UnavailableApplicationDatabaseReportsTheReason()
     {
@@ -364,7 +393,7 @@ internal sealed class WindowServiceChecks
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
-            typeof(IDesktopVolumes), typeof(IDesktopApplications)];
+            typeof(IDesktopVolumes), typeof(IDesktopApplications), typeof(IDesktopThumbnails)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];

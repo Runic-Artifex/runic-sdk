@@ -256,3 +256,20 @@ of `$XDG_CONFIG_HOME/mimeapps.list` and keeps every other byte. The icon theme
 comes from the Settings portal, then KDE's `kdeglobals`, then `hicolor`. Inside
 Flatpak or Snap only content types and icons work. See the
 [desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
+
+## Thumbnails
+
+`CreateThumbnails()` on `PortalApplication` or `PortalPlatformProvider` reads
+the freedesktop.org thumbnail cache, `$XDG_CACHE_HOME/thumbnails`, which GNOME
+Files, Dolphin and Thunar fill. An entry counts only when its `Thumb::URI` and
+`Thumb::MTime` (and `Thumb::Size`, if present) match the file; a matching entry
+in `fail/` means no thumbnail. On a miss it asks the session's
+`org.freedesktop.thumbnails.Thumbnailer1` service, such as Tumbler, to make one
+and reads the cache again. GNOME and KDE run no such service, so there only
+thumbnails their file managers already made are returned; running a desktop's
+`.thumbnailer` programs itself is not supported. Inside Flatpak, add
+`--filesystem=xdg-cache/thumbnails:ro` and
+`--talk-name=org.freedesktop.thumbnails.Thumbnailer1` to the finish arguments;
+without them requests return no thumbnail and the diagnostic sink reports
+`thumbnail-cache-unavailable` or `thumbnailer-access-denied`. See the
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
