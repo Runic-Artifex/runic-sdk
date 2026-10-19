@@ -53,6 +53,11 @@ public static class WindowsPlatformProvider
     /// deleted permanently: the request reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</remarks>
     public static IDesktopTrash CreateTrash()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsTrash(); }
+    /// <summary>Creates thumbnails from the shell's thumbnail providers and cache, as Explorer shows them.</summary>
+    /// <remarks>It needs no window. A file without a thumbnail provider gets no thumbnail, never its icon. Each request
+    /// extracts on a single-threaded apartment thread of its own, a few at a time.</remarks>
+    public static IDesktopThumbnails CreateThumbnails()
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsThumbnails(); }
     // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
     // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
     internal static IDesktopStatusIcon CreateStatusIcon()

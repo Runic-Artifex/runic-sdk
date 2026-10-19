@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateThumbnails() -> Runic.Platform.IDesktopThumbnails!

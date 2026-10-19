@@ -201,3 +201,24 @@ override Runic.Platform.DesktopIconRequest.GetHashCode() -> int
 override Runic.Platform.DesktopIconRequest.ToString() -> string!
 static Runic.Platform.DesktopIconRequest.operator !=(Runic.Platform.DesktopIconRequest? left, Runic.Platform.DesktopIconRequest? right) -> bool
 static Runic.Platform.DesktopIconRequest.operator ==(Runic.Platform.DesktopIconRequest? left, Runic.Platform.DesktopIconRequest? right) -> bool
+Runic.Platform.DesktopThumbnail
+Runic.Platform.DesktopThumbnail.<Clone>$() -> Runic.Platform.DesktopThumbnail!
+Runic.Platform.DesktopThumbnail.Deconstruct(out System.Collections.Immutable.ImmutableArray<byte> Png, out int Width, out int Height) -> void
+Runic.Platform.DesktopThumbnail.DesktopThumbnail(System.Collections.Immutable.ImmutableArray<byte> Png, int Width, int Height) -> void
+Runic.Platform.DesktopThumbnail.Equals(Runic.Platform.DesktopThumbnail? other) -> bool
+Runic.Platform.DesktopThumbnail.Height.get -> int
+Runic.Platform.DesktopThumbnail.Height.init -> void
+Runic.Platform.DesktopThumbnail.Png.get -> System.Collections.Immutable.ImmutableArray<byte>
+Runic.Platform.DesktopThumbnail.Png.init -> void
+Runic.Platform.DesktopThumbnail.Width.get -> int
+Runic.Platform.DesktopThumbnail.Width.init -> void
+Runic.Platform.DesktopThumbnails
+Runic.Platform.IDesktopThumbnails
+Runic.Platform.IDesktopThumbnails.GetThumbnailAsync(string! path, int size, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopThumbnail?>!>
+const Runic.Platform.DesktopThumbnails.MaximumSize = 1024 -> int
+override Runic.Platform.DesktopThumbnail.Equals(object? obj) -> bool
+override Runic.Platform.DesktopThumbnail.GetHashCode() -> int
+override Runic.Platform.DesktopThumbnail.ToString() -> string!
+static Runic.Platform.DesktopThumbnail.operator !=(Runic.Platform.DesktopThumbnail? left, Runic.Platform.DesktopThumbnail? right) -> bool
+static Runic.Platform.DesktopThumbnail.operator ==(Runic.Platform.DesktopThumbnail? left, Runic.Platform.DesktopThumbnail? right) -> bool
+static Runic.Platform.DesktopThumbnails.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopThumbnails!

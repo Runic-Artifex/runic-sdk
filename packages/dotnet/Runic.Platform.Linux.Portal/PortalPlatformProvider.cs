@@ -42,6 +42,10 @@ public static class PortalPlatformProvider
     /// <remarks>Diagnostic callbacks never receive file contents.</remarks>
     public static IDesktopApplications CreateApplications(Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(null, diagnosticSink).CreateApplications();
+    /// <summary>Creates thumbnails from the freedesktop.org thumbnail cache, and from the session's thumbnailer on a miss.</summary>
+    /// <remarks>Diagnostic callbacks never receive paths.</remarks>
+    public static IDesktopThumbnails CreateThumbnails(Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(null, diagnosticSink).CreateThumbnails();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

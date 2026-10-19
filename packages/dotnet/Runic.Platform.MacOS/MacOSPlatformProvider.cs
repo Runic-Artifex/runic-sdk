@@ -48,6 +48,11 @@ public static class MacOSPlatformProvider
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> and the item stays where it was.</remarks>
     public static IDesktopTrash CreateTrash()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacTrash(); }
+    /// <summary>Creates thumbnails from Quick Look, as Finder shows them.</summary>
+    /// <remarks>It needs no window and no AppKit event loop. A file Quick Look cannot thumbnail gets no thumbnail, never
+    /// its icon.</remarks>
+    public static IDesktopThumbnails CreateThumbnails()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacThumbnails(); }
     /// <summary>Creates owned file handoff operations. Caller retains security-scoped access through completion.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }

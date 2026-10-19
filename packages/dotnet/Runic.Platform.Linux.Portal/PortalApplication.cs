@@ -57,6 +57,12 @@ public sealed class PortalApplication
     /// the icon theme lookup and D-Bus-activatable launches use the session bus. Inside Flatpak or Snap the host's
     /// applications are out of reach; content types and icons come from the sandbox's own data.</remarks>
     public IDesktopApplications CreateApplications() => new LinuxDesktopApplications(DesktopApplicationsOptions.FromProcess(), this);
+    /// <summary>Creates thumbnails from the freedesktop.org thumbnail cache, and from the session's thumbnailer on a miss.</summary>
+    /// <remarks>It needs no window and reads the XDG directories from the environment of this process when created. On a
+    /// cache miss it asks <c>org.freedesktop.thumbnails.Thumbnailer1</c>, such as Tumbler, on the session bus; GNOME and KDE
+    /// run none, so there only thumbnails their file managers cached are returned. Inside Flatpak the sandbox must allow
+    /// reading the host's cache (<c>--filesystem=xdg-cache/thumbnails:ro</c>) and talking to the thumbnailer.</remarks>
+    public IDesktopThumbnails CreateThumbnails() => new LinuxThumbnails(LinuxThumbnailOptions.FromProcess(), this);
     /// <summary>Creates file handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }

@@ -64,6 +64,15 @@ the provider refuses that deletion, and the request reports
 `Unavailable(BackendUnavailable)` with the item in place. See the
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
 
+## Thumbnails
+
+`WindowsPlatformProvider.CreateThumbnails()` returns the thumbnail Explorer
+shows, from the shell's thumbnail providers and cache, through
+`IShellItemImageFactory` with `SIIGBF_THUMBNAILONLY`: a file of a type without a
+thumbnail provider gets no thumbnail rather than its icon. WIC encodes it as
+PNG. See the
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
+
 ## Secret storage
 
 `WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic

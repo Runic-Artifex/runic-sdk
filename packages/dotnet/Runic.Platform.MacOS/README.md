@@ -97,6 +97,15 @@ needs no window and no AppKit event loop. A volume without a trash, such as a
 network volume, reports `Unavailable(BackendUnavailable)` and the item stays.
 See the [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
 
+## Thumbnails
+
+`MacOSPlatformProvider.CreateThumbnails()` returns the thumbnail Finder shows,
+from Quick Look's `QLThumbnailGenerator` with only the thumbnail
+representation: a file Quick Look cannot thumbnail gets no thumbnail rather
+than its icon. ImageIO encodes it as PNG. It needs no window and no AppKit
+event loop. See the
+[thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
+
 ## Secret storage
 
 `MacOSPlatformProvider.CreateSecretStore()` keeps secrets as generic passwords

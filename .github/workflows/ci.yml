@@ -812,6 +812,14 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeTrash]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeTrash]" --output detailed
+      # The shell's thumbnail providers and Quick Look, on an image each case writes to a temporary directory.
+      - name: Verify thumbnails with JIT and NativeAOT
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeThumbnails]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeThumbnails]" --output detailed
       # Credential Manager and the runner's login keychain, under a service unique to each run.
       - name: Verify secret storage with JIT and NativeAOT
         if: runner.os != 'Linux'

@@ -25,6 +25,11 @@ source revision with receipts for both JIT and AOT executions.
 appearance through the provider and checks the color scheme against
 `AppsUseLightTheme` when high contrast is off. CI runs it with JIT and NativeAOT.
 
+`--treenode-filter "/*/*/*/*[Category=NativeThumbnails]"` thumbnails a BMP it writes
+to a temporary directory through the shell's providers, checks the PNG's size and
+colour, and checks that a file of a type without a provider gets no thumbnail. CI
+runs it with JIT and NativeAOT.
+
 `--treenode-filter "/*/*/*/*[Category=NativeInhibition]"` acquires and releases
 system and display sleep inhibition. Add `--test-parameter system-only=true` to
 leave display sleep untested (CI does this), and

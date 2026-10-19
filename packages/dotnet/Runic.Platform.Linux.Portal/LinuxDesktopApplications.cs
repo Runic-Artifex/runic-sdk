@@ -443,7 +443,7 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         new PlatformResult<T>.Failed(errno is 1 or 13 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, PlatformDiagnostic.FromErrno(errno));
 
     // .NET reports most Unix errors with the errno in the HResult's low bits.
-    private static PlatformDiagnostic? Errno(IOException error) =>
+    internal static PlatformDiagnostic? Errno(IOException error) =>
         (error.HResult & 0xFFFF) is > 0 and < 4096 and var errno ? PlatformDiagnostic.FromErrno(errno) : null;
 
     private static ValueTask<PlatformResult<T>> Result<T>(PlatformResult<T> result) => ValueTask.FromResult(result);

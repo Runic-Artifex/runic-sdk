@@ -372,6 +372,42 @@ public static partial class PlatformServices
     /// </remarks>
     public static IDesktopFileTransfers CreateFileTransfers() => LocalFileTransfers.Create();
 
+    /// <summary>Creates thumbnails of files from the provider for the operating system.</summary>
+    /// <returns>Thumbnails; they need no disposal.</returns>
+    /// <remarks>
+    /// Linux reads the freedesktop.org thumbnail cache and, on a miss, asks the session's
+    /// <c>org.freedesktop.thumbnails.Thumbnailer1</c> service, such as Tumbler, with either toolkit and without loading
+    /// GTK; GNOME and KDE run no such service, so there only thumbnails their file managers cached are returned. Windows
+    /// uses the shell's thumbnail providers and macOS Quick Look. It needs no window. Elsewhere every request reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopThumbnails CreateThumbnails() => CreateThumbnails(null);
+
+    internal static IDesktopThumbnails CreateThumbnails(ILogger? logger)
+    {
+        IDesktopThumbnails? thumbnails = null;
+        if (OperatingSystem.IsWindows()) thumbnails = Optional(CreateWindowsThumbnails);
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsLinux()) thumbnails = CreatePortalThumbnails(logger);
+        else if (OperatingSystem.IsMacOS()) thumbnails = CreateMacOSThumbnails();
+#endif
+        return thumbnails ?? DesktopThumbnails.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopThumbnails CreateWindowsThumbnails() => WindowsPlatformProvider.CreateThumbnails();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopThumbnails CreatePortalThumbnails(ILogger? logger) =>
+        new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateThumbnails();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopThumbnails CreateMacOSThumbnails() => MacOSPlatformProvider.CreateThumbnails();
+#endif
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopTrash CreateWindowsTrash() => WindowsPlatformProvider.CreateTrash();
 
@@ -810,8 +846,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
-    /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/> and
-    /// <see cref="IDesktopVolumes"/> and <see cref="IDesktopApplications"/> for the application, without an application ID.
+    /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
+    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
@@ -825,7 +861,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="PlatformServices.CreateNotifications(string?)"/>, <see cref="PlatformServices.CreateStatusIcon(string?)"/>,
     /// <see cref="PlatformServices.CreateLoginStartup(string?)"/>, <see cref="PlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="PlatformServices.CreateSecretStore()"/>, <see cref="PlatformServices.CreateTrash()"/>,
-    /// <see cref="PlatformServices.CreateFileTransfers()"/>, <see cref="PlatformServices.CreateVolumes"/> and <see cref="PlatformServices.CreateApplications()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
+    /// <see cref="PlatformServices.CreateFileTransfers()"/>, <see cref="PlatformServices.CreateVolumes"/>, <see cref="PlatformServices.CreateApplications()"/>
+    /// and <see cref="PlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
     /// <see cref="AddRunicPlatformServices(IServiceCollection, string)"/> instead. Existing registrations of these
@@ -886,6 +923,8 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddSingleton(static _ => PlatformServices.CreateFileTransfers());
         services.TryAddSingleton(static _ => PlatformServices.CreateVolumes());
         services.TryAddSingleton(static provider => PlatformServices.CreateApplications(
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(static provider => PlatformServices.CreateThumbnails(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
