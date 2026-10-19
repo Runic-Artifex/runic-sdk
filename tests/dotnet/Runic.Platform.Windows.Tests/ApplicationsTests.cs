@@ -232,16 +232,22 @@ internal sealed partial class ApplicationsTests
                 "an item without a type");
             string stray = Path.Combine(root, "stray.log");
             Environment.SetEnvironmentVariable(StrayLaunchVariable, stray);
+            // A type only the probe opens, then the test type, which Notepad also opens (PerceivedType text).
+            string single = Path.Combine(root, "single" + plainExtension);
+            File.WriteAllText(single, "single");
+            var alone = await applications.LaunchAsync(probeId, [single]);
+            Console.WriteLine($"Launch of a type with one handler: {alone}; {WindowsShellAssociations.LastLaunchTrace}; {Choosers()}");
             var launched = await applications.LaunchAsync(probeId, [first, second]);
-            Console.WriteLine($"Launch: {launched}; {WindowsShellAssociations.LastLaunchTrace}");
+            Console.WriteLine($"Launch: {launched}; {WindowsShellAssociations.LastLaunchTrace}; {Choosers()}");
             Check(launched is PlatformResult<PlatformUnit>.Success, "the probe started");
             string uri = scheme + ":open/a%20b?c=d";
             var opened = await applications.LaunchAsync(probeId, [uri]);
             Console.WriteLine($"Launch URI: {opened}; {WindowsShellAssociations.LastLaunchTrace}");
             Check(opened is PlatformResult<PlatformUnit>.Success, "the probe opened the URI");
-            var lines = await RecordedAsync(log, 3);
+            var lines = await RecordedAsync(log, 4);
             Console.WriteLine("Recorded:\n" + string.Join('\n', lines));
             if (File.Exists(stray)) Console.WriteLine("Other launches:\n" + File.ReadAllText(stray));
+            Check(lines.Contains(single), "the document of a type with one handler reached it");
             Check(lines.Contains(first) && lines.Contains(second), "each document reached the handler as one argument");
             Check(lines.Any(line => line.StartsWith(scheme + ":", StringComparison.Ordinal)), "the URI reached the protocol handler");
             Console.WriteLine("PASS Windows desktop applications: content types, handlers, defaults, launches, icons and the Start menu list.");
@@ -288,6 +294,14 @@ internal sealed partial class ApplicationsTests
         if (Environment.GetEnvironmentVariable(StrayLaunchVariable) is not { Length: > 0 } log || args is not [var first, ..] || first.StartsWith('-')) return false;
         File.AppendAllText(log, "stray: " + string.Join(" | ", args) + Environment.NewLine);
         return true;
+    }
+
+    // Open With choosers the shell started, which the case closes.
+    private static string Choosers()
+    {
+        var choosers = System.Diagnostics.Process.GetProcessesByName("OpenWith");
+        foreach (var chooser in choosers) { try { chooser.Kill(); } catch (InvalidOperationException) { } catch (System.ComponentModel.Win32Exception) { } chooser.Dispose(); }
+        return $"{choosers.Length} Open With choosers";
     }
 
     private static async Task<List<string>> RecordedAsync(string log, int count)
