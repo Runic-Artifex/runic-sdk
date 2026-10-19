@@ -69,14 +69,16 @@ internal sealed class CloseGuardTests
             "A close request completed as allowed although the operation guard vetoed it.");
         Require(fixture.Presentation.IsOpen && fixture.Native.IsOpen && fixture.ViewModel.Main.Current is GuardedPage,
             "A vetoing operation guard did not keep the window open with its entry.");
-        Require(fixture.Script.AskCount == 0 && string.Join(",", asked) == "operation",
+        // The request joins the user close's decision, or asks again when that decision has already ended.
+        Require(fixture.Script.AskCount == 0 && !asked.IsEmpty && asked.All(static name => name == "operation"),
             $"The page was asked although the operation guard vetoed first: {string.Join(",", asked)}.");
 
         operation.Running = false;
+        asked.Clear();
         var closed = fixture.Window.WaitForCloseAsync().AsTask();
         fixture.Native.UserClose();
         await closed.WaitAsync(TimeSpan.FromSeconds(5));
-        Require(string.Join(",", asked) == "operation,operation,page", $"The close asked {string.Join(",", asked)}.");
+        Require(string.Join(",", asked) == "operation,page", $"The close asked {string.Join(",", asked)}.");
     }
 
     // A failing guard is logged and keeps the window open; so does an overriding CanCloseAsync that throws.
