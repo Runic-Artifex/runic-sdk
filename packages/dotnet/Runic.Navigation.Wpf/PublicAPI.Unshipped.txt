@@ -1,6 +1,1 @@
 #nullable enable
-Runic.Navigation.Wpf.NavigationHost.RetainViews.get -> bool
-Runic.Navigation.Wpf.NavigationHost.RetainViews.set -> void
-static Runic.Navigation.Wpf.NavigationHost.GetRetainViews(System.Windows.DependencyObject! element) -> bool
-static Runic.Navigation.Wpf.NavigationHost.SetRetainViews(System.Windows.DependencyObject! element, bool value) -> void
-static readonly Runic.Navigation.Wpf.NavigationHost.RetainViewsProperty -> System.Windows.DependencyProperty!

@@ -55,3 +55,6 @@ static Runic.Platform.MacOS.MacPrivilegedRight.operator ==(Runic.Platform.MacOS.
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTrash() -> Runic.Platform.IDesktopTrash!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateThumbnails() -> Runic.Platform.IDesktopThumbnails!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateApplications() -> Runic.Platform.IDesktopApplications!
