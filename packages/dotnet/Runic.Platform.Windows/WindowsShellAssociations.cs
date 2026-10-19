@@ -197,6 +197,13 @@ internal static unsafe class WindowsShellAssociations
         }
     }
 
+    // The entry with the identifier, or null. (List.Find would return an empty entry for a struct.)
+    internal static AppsFolderEntry? FindEntry(List<AppsFolderEntry>? entries, string id)
+    {
+        int index = entries?.FindIndex(entry => SameId(entry.Id, id)) ?? -1;
+        return index < 0 ? null : entries![index];
+    }
+
     // An entry's identifier: the executable a desktop shortcut targets, else the AppUserModelID; null for a shortcut to
     // anything other than a program.
     internal static string? Identify(string? target, string parsingName)

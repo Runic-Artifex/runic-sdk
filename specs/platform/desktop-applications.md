@@ -317,9 +317,10 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
 - **`GetApplicationsForAsync`**: the recommended handlers
   `SHAssocEnumHandlers` (`ASSOC_FILTER_RECOMMENDED`) lists for the extension, or
   `SHAssocEnumHandlersForProtocolByApplication` for a protocol, as the shell's
-  Open With lists them. Each handler's `IAssocHandler::GetName` (its
-  executable's path) is the ID and `GetUIName` the name. The default comes
-  first.
+  Open With lists them. Each handler's `IAssocHandler::GetName` is the ID: the
+  path of a desktop application's executable, or a packaged application's
+  AppUserModelID (`Microsoft.WindowsNotepad_8wekyb3d8bbwe!App` on Windows 11),
+  passed back unchanged; `GetUIName` is the name. The default comes first.
 - **`GetDefaultApplicationAsync`**: `AssocQueryString` with
   `ASSOCSTR_EXECUTABLE`, else `ASSOCSTR_APPID` for a packaged application, and
   `ASSOCSTR_FRIENDLYAPPNAME`. It honours the user's choice

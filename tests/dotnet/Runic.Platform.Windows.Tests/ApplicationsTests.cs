@@ -128,6 +128,10 @@ internal sealed partial class ApplicationsTests
         Check(WindowsShellAssociations.Identify(null, "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App") == "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", "a packaged application is its AppUserModelID");
         Check(WindowsShellAssociations.Identify(folder + "readme.txt", "readme") is null && WindowsShellAssociations.Identify("https://example.com", "site") is null,
             "shortcuts to documents and web pages are not applications");
+        var entries = new List<WindowsShellAssociations.AppsFolderEntry> { new(folder + "app.exe", "App", "{6D809377}\\App\\app.exe") };
+        Check(WindowsShellAssociations.FindEntry(entries, (folder + "APP.exe").ToUpperInvariant()) is { Name: "App" }, "IDs match without case");
+        Check(WindowsShellAssociations.FindEntry(entries, folder + "other.exe") is null && WindowsShellAssociations.FindEntry(null, "x") is null,
+            "an unknown ID has no entry, not an empty one");
         Check(WindowsDesktopApplications.FromHResult(unchecked((int)0x80070005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "access denied");
         Check(WindowsDesktopApplications.FromHResult(unchecked((int)0x80004005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "HRESULT" }, "other errors");
         Check(WindowsDesktopApplications.DefaultsPolicy.Message!.Contains("ms-settings:defaultapps", StringComparison.Ordinal), "the policy names Settings");

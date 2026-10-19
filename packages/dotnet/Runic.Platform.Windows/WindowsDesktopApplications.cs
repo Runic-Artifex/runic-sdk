@@ -155,8 +155,7 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
         if (items.IsEmpty)
         {
             // Without items the application starts as the Start menu starts it.
-            var entry = WindowsShellAssociations.AppsFolder()?.Find(entry => WindowsShellAssociations.SameId(entry.Id, applicationId));
-            if (entry is not { } found) return InvalidData<PlatformUnit>();
+            if (WindowsShellAssociations.FindEntry(WindowsShellAssociations.AppsFolder(), applicationId) is not { } found) return InvalidData<PlatformUnit>();
             return WindowsShellAssociations.StartAppsFolderEntry(found.ParsingName, out int status) ? Success(default(PlatformUnit))
                 : new PlatformResult<PlatformUnit>.Failed(status is 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
                     new PlatformDiagnostic("ShellExecute", status));
@@ -233,7 +232,7 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
         if (request.ApplicationId is { } id)
         {
             if (Path.IsPathFullyQualified(id)) png = File.Exists(id) ? WindowsShellAssociations.ExtractIcon(id, 0, pixels) : null;
-            else if (WindowsShellAssociations.AppsFolder()?.Find(entry => WindowsShellAssociations.SameId(entry.Id, id)) is { } entry)
+            else if (WindowsShellAssociations.FindEntry(WindowsShellAssociations.AppsFolder(), id) is { } entry)
                 png = WindowsShellAssociations.ShellItemIcon(@"shell:AppsFolder\" + entry.ParsingName, pixels);
         }
         else if (request.ContentType is { } contentType)
