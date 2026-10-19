@@ -53,6 +53,15 @@ checks that a repeated `NIN_KEYSELECT` raises one primary action, that an outsid
 starts a new window. Disposal must finish within ten seconds and remove the icon. Without a taskbar (`Shell_TrayWnd`) it accepts an unavailable
 `ShowAsync` and skips the `TaskbarCreated` step. CI runs it with JIT and NativeAOT.
 
+`--treenode-filter "/*/*/*/*[Category=NativeVolumes]"` lists the volumes and checks
+the system volume, then creates a 64 MB VHD in the temporary directory with
+`diskpart`, attaches it, formats it as NTFS with a label unique to the run and
+watches it arrive with a drive letter. It checks the mount model, ejects the
+drive when Windows offers a removable device for it (an open file must veto the
+removal first) or detaches it otherwise, attaches it read-only, and watches each
+removal. It needs an administrator and `RUNIC_TEST_VOLUMES_IMAGES=1`, and runs
+only on CI runners. CI runs it with JIT and NativeAOT.
+
 `--treenode-filter "/*/*/*/*[Category=NativePresentation]"` minimizes a real window and
 presents it: the window must be restored, and either take the foreground or flash
 its taskbar button with a `PermissionDenied` result. A hidden window must be shown.

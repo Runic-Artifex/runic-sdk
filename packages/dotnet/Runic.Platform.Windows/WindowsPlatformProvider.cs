@@ -58,6 +58,21 @@ public static class WindowsPlatformProvider
     /// extracts on a single-threaded apartment thread of its own, a few at a time.</remarks>
     public static IDesktopThumbnails CreateThumbnails()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsThumbnails(); }
+    /// <summary>Creates the computer's storage volumes, through the volume management API and the Configuration Manager.</summary>
+    /// <remarks>
+    /// Windows mounts every volume it recognizes itself, at its drive letters and mounted folders:
+    /// <see cref="IDesktopVolumes.MountAsync"/> returns a mounted volume as it is and
+    /// <see cref="IDesktopVolumes.UnmountAsync"/> succeeds for a volume without a mount path; otherwise both report
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. <see cref="IDesktopVolumes.EjectAsync"/> safely
+    /// removes the drive, as "Safely Remove Hardware" does; a program that keeps a file open on it is
+    /// <see cref="PlatformFailureCode.ResourceBusy"/>. The volumes need no window and hold no native resources
+    /// except during a watch.
+    /// </remarks>
+    public static IDesktopVolumes CreateVolumes()
+    {
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+        return new WindowsVolumes(new WindowsVolumeSource(), WindowsVolumes.DefaultPoll, WindowsVolumes.DefaultSettle);
+    }
     // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
     // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
     internal static IDesktopStatusIcon CreateStatusIcon()

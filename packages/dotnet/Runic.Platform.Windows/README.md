@@ -73,6 +73,24 @@ thumbnail provider gets no thumbnail rather than its icon. WIC encodes it as
 PNG. See the
 [thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md).
 
+## Volumes
+
+`WindowsPlatformProvider.CreateVolumes()` lists the volumes with a filesystem
+Windows recognizes (`FindFirstVolumeW`, `GetVolumeInformationW`), with their
+drive letters and mounted folders as mount paths. `Id` is the volume's
+`\\?\Volume{GUID}\` path and `DriveId` its disk's device instance ID. Windows
+mounts every volume itself: `MountAsync` returns a mounted volume as it is,
+`UnmountAsync` succeeds for a volume without a mount path, and both otherwise
+report `Unavailable(BackendUnavailable)`. `EjectAsync` stops the drive's
+removable device as "Safely Remove Hardware" does (`CM_Request_Device_EjectW`),
+which dismounts its volumes first; a program with a file open on it vetoes the
+removal, which is `Failed(ResourceBusy)`. A drive without a removable device,
+and the disk the system runs from, report `Unavailable(BackendUnavailable)`.
+A watch hears volume arrivals and removals (`CM_Register_Notification`) and
+lists again every two seconds for drive letters, labels and media changes that
+have no notification. See the
+[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+
 ## Secret storage
 
 `WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic

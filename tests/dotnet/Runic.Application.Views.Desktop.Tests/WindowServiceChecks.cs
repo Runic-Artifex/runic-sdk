@@ -145,6 +145,8 @@ internal sealed class WindowServiceChecks
                 Require(ReferenceEquals(volumes, first.ServiceProvider.GetRequiredService<IDesktopVolumes>()), "A Window scope got its own volumes.");
             if (OperatingSystem.IsLinux())
                 Require(volumes.GetType().FullName == "Runic.Platform.Linux.Portal.UDisksVolumes", $"Linux did not create UDisks2 volumes: {volumes.GetType().FullName}");
+            else if (OperatingSystem.IsWindows())
+                Require(volumes.GetType().FullName == "Runic.Platform.Windows.WindowsVolumes", $"Windows did not create its volumes: {volumes.GetType().FullName}");
             else
                 Require(await volumes.ListAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopVolume>>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
                     "Volumes without a provider were not reported unconfigured.");
