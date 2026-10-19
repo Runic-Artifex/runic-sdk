@@ -6,7 +6,7 @@ namespace Runic.Platform.Linux.DBus;
 /// <summary>Calls one remote object: its methods, properties and signals.</summary>
 /// <remarks>
 /// Use a proxy directly with interface and member names, or derive a typed proxy for one interface whose methods call
-/// the protected helpers. A proxy holds no state on the bus and costs nothing to create; it fails only when used.
+/// the public call, property and signal methods of this class. A proxy holds no state on the bus and costs nothing to create; it fails only when used.
 /// </remarks>
 public class DBusProxy
 {

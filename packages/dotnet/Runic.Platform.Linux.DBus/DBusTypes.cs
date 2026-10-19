@@ -36,6 +36,12 @@ public readonly record struct DBusObjectPath
     /// <exception cref="ArgumentException"><paramref name="value"/> is not a valid object path.</exception>
     public static implicit operator DBusObjectPath(string value) => new(value);
 
+    /// <summary>Compares two paths by <see cref="Value"/>, so the default value equals <see cref="Root"/>.</summary>
+    public bool Equals(DBusObjectPath other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Value);
+
     /// <inheritdoc />
     public override string ToString() => Value;
 }
@@ -65,6 +71,12 @@ public readonly record struct DBusSignature
     /// <summary>Converts a string to a signature.</summary>
     /// <exception cref="ArgumentException"><paramref name="value"/> is not a valid signature.</exception>
     public static implicit operator DBusSignature(string value) => new(value);
+
+    /// <summary>Compares two signatures by <see cref="Value"/>, so the default value equals the empty signature.</summary>
+    public bool Equals(DBusSignature other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Value);
 
     /// <inheritdoc />
     public override string ToString() => Value;
@@ -153,6 +165,7 @@ public enum DBusCallOptions
 }
 
 /// <summary>A method call: its destination, object, interface, member and arguments.</summary>
+/// <remarks>Calls compare by content: their names, options and arguments, which compare as <see cref="DBusValue"/> does.</remarks>
 /// <param name="Destination">The bus name of the service, such as <c>org.freedesktop.UDisks2</c>, or <see langword="null"/> on a peer-to-peer connection.</param>
 /// <param name="Path">The object.</param>
 /// <param name="Interface">The interface, such as <c>org.freedesktop.UDisks2.Filesystem</c>.</param>
@@ -163,15 +176,34 @@ public sealed record DBusMethodCall(string? Destination, DBusObjectPath Path, st
     public ImmutableArray<DBusValue> Arguments { get; init; } = [];
     /// <summary>The call's options.</summary>
     public DBusCallOptions Options { get; init; }
+
+    /// <summary>Compares two calls by content.</summary>
+    public bool Equals(DBusMethodCall? other) =>
+        ReferenceEquals(this, other) || other is not null && Destination == other.Destination && Path == other.Path && Interface == other.Interface
+            && Member == other.Member && Options == other.Options && DBusContent.SequenceEqual(Arguments, other.Arguments);
+
+    /// <inheritdoc />
+    public override int GetHashCode() =>
+        HashCode.Combine(Destination, Path, Interface, Member, Options, DBusContent.SequenceHash(Arguments));
 }
 
 /// <summary>A received signal.</summary>
+/// <remarks>Signals compare by content: their origin, names and arguments, which compare as <see cref="DBusValue"/> does.</remarks>
 /// <param name="Sender">The unique bus name of the connection that emitted it.</param>
 /// <param name="Path">The object that emitted it.</param>
 /// <param name="Interface">The signal's interface.</param>
 /// <param name="Member">The signal's name.</param>
 /// <param name="Arguments">The signal's arguments.</param>
-public sealed record DBusSignal(string? Sender, DBusObjectPath Path, string Interface, string Member, ImmutableArray<DBusValue> Arguments);
+public sealed record DBusSignal(string? Sender, DBusObjectPath Path, string Interface, string Member, ImmutableArray<DBusValue> Arguments)
+{
+    /// <summary>Compares two signals by content.</summary>
+    public bool Equals(DBusSignal? other) =>
+        ReferenceEquals(this, other) || other is not null && Sender == other.Sender && Path == other.Path && Interface == other.Interface
+            && Member == other.Member && DBusContent.SequenceEqual(Arguments, other.Arguments);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Sender, Path, Interface, Member, DBusContent.SequenceHash(Arguments));
+}
 
 /// <summary>Which signals a subscription receives. Every set field must match.</summary>
 public sealed record DBusSignalFilter
@@ -191,7 +223,50 @@ public sealed record DBusSignalFilter
 }
 
 /// <summary>Properties of one interface that changed, from <c>org.freedesktop.DBus.Properties.PropertiesChanged</c>.</summary>
+/// <remarks>Changes compare by content: the same interface, the same changed names with equal values, and the same
+/// invalidated names in the same order.</remarks>
 /// <param name="Interface">The interface whose properties changed.</param>
 /// <param name="Changed">The new values, unwrapped from their variants.</param>
 /// <param name="Invalidated">Properties that changed without their new value; read them again if needed.</param>
-public sealed record DBusPropertyChanges(string Interface, ImmutableDictionary<string, DBusValue> Changed, ImmutableArray<string> Invalidated);
+public sealed record DBusPropertyChanges(string Interface, ImmutableDictionary<string, DBusValue> Changed, ImmutableArray<string> Invalidated)
+{
+    /// <summary>Compares two sets of changes by content.</summary>
+    public bool Equals(DBusPropertyChanges? other) =>
+        ReferenceEquals(this, other) || other is not null && Interface == other.Interface && DBusContent.DictionaryEqual(Changed, other.Changed)
+            && DBusContent.SequenceEqual(Invalidated, other.Invalidated);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Interface, DBusContent.DictionaryHash(Changed), DBusContent.SequenceHash(Invalidated));
+}
+
+// Content equality for the collections the message records carry; default arrays equal empty ones.
+internal static class DBusContent
+{
+    internal static bool SequenceEqual<T>(ImmutableArray<T> left, ImmutableArray<T> right) where T : IEquatable<T> =>
+        left.IsDefaultOrEmpty ? right.IsDefaultOrEmpty : !right.IsDefault && left.AsSpan().SequenceEqual(right.AsSpan());
+
+    internal static int SequenceHash<T>(ImmutableArray<T> items)
+    {
+        var hash = new HashCode();
+        if (!items.IsDefault) foreach (var item in items) hash.Add(item);
+        return hash.ToHashCode();
+    }
+
+    internal static bool DictionaryEqual(ImmutableDictionary<string, DBusValue>? left, ImmutableDictionary<string, DBusValue>? right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left is null || right is null || left.Count != right.Count) return false;
+        foreach (var (key, value) in left)
+            if (!right.TryGetValue(key, out var other) || value != other) return false;
+        return true;
+    }
+
+    internal static int DictionaryHash(ImmutableDictionary<string, DBusValue>? entries)
+    {
+        if (entries is null) return 0;
+        int hash = entries.Count;
+        // Order-independent, since dictionaries with the same entries are equal in any order.
+        foreach (var (key, value) in entries) hash ^= HashCode.Combine(key, value);
+        return hash;
+    }
+}

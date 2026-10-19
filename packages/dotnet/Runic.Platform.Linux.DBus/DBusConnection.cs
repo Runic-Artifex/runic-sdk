@@ -157,7 +157,8 @@ public sealed class DBusConnection : IAsyncDisposable
             var writer = signals.Writer;
             var match = await _wire.AddMatchAsync(rule, static (message, _) => ReadSignal(message), (Notification<DBusSignal> notification) =>
                 {
-                    if (notification.HasValue) writer.TryWrite(notification.Value);
+                    // A signal that arrives after the subscription closed is never read; close its descriptors.
+                    if (notification.HasValue) { if (!writer.TryWrite(notification.Value)) DBusSignalSubscription.CloseHandles(notification.Value); }
                     else if (notification.IsCompletion) writer.TryComplete(Translate(notification.Exception) ?? notification.Exception);
                 }, emitOnCapturedContext: false, ObserverFlags.EmitOnConnectionClosed | ObserverFlags.EmitOnReaderFailed)
                 .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -300,12 +301,17 @@ public sealed class DBusConnection : IAsyncDisposable
 
 /// <summary>Signals that match one filter, in the order the connection received them.</summary>
 /// <remarks>Enumerate it once. Enumeration ends when the subscription is disposed, and throws <see cref="DBusException"/>
-/// with <see cref="DBusException.Disconnected"/> when the connection closes.</remarks>
+/// with <see cref="DBusException.Disconnected"/> when the connection closes. File descriptors in signals that are never
+/// read, because the subscription was disposed or its enumeration stopped first, are closed when the subscription is
+/// disposed; a descriptor in a signal that enumeration returned belongs to the reader.</remarks>
 public sealed class DBusSignalSubscription : IAsyncEnumerable<DBusSignal>, IAsyncDisposable
 {
     private readonly IDisposable _match;
     private readonly Channel<DBusSignal> _signals;
+    private readonly object _drainGate = new();
     private int _enumerated;
+    private int _reading;
+    private int _disposed;
 
     internal DBusSignalSubscription(IDisposable match, Channel<DBusSignal> signals)
     {
@@ -318,23 +324,48 @@ public sealed class DBusSignalSubscription : IAsyncEnumerable<DBusSignal>, IAsyn
     public async IAsyncEnumerator<DBusSignal> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         if (Interlocked.Exchange(ref _enumerated, 1) != 0) throw new InvalidOperationException("A signal subscription can be enumerated once.");
-        var reader = _signals.Reader;
-        while (true)
+        Volatile.Write(ref _reading, 1);
+        try
         {
-            try
+            var reader = _signals.Reader;
+            while (true)
             {
-                if (!await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false)) yield break;
+                try
+                {
+                    if (!await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false)) yield break;
+                }
+                catch (ChannelClosedException closed) when (closed.InnerException is { } inner) { throw inner; }
+                while (reader.TryRead(out var signal)) yield return signal;
             }
-            catch (ChannelClosedException closed) when (closed.InnerException is { } inner) { throw inner; }
-            while (reader.TryRead(out var signal)) yield return signal;
+        }
+        finally
+        {
+            // The subscription drains what is left once nobody reads; whichever of this and DisposeAsync comes last does it.
+            Interlocked.Exchange(ref _reading, 0);
+            if (Volatile.Read(ref _disposed) != 0) DrainUnread();
         }
     }
 
     /// <summary>Stops receiving signals; an enumeration in progress ends after the signals already received.</summary>
+    /// <remarks>Signals that were received but not read are dropped, and their file descriptors closed, once no enumeration
+    /// is in progress.</remarks>
     public ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
         _match.Dispose();
         _signals.Writer.TryComplete();
+        if (Volatile.Read(ref _reading) == 0) DrainUnread();
         return ValueTask.CompletedTask;
+    }
+
+    private void DrainUnread()
+    {
+        lock (_drainGate)
+            while (_signals.Reader.TryRead(out var signal)) CloseHandles(signal);
+    }
+
+    internal static void CloseHandles(DBusSignal signal)
+    {
+        foreach (var argument in signal.Arguments) DBusWire.CloseHandles(argument);
     }
 }

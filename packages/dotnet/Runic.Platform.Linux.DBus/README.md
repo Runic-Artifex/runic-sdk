@@ -53,7 +53,7 @@ build containers. Read a value with the getter for its type, such as `GetInt32()
 | --- | --- | --- |
 | `y` `b` `n` `q` `i` `u` `x` `t` `d` | `From(byte)` … `From(double)` | `GetByte()` … `GetDouble()` |
 | `s` `o` `g` | `From(string)`, `From(DBusObjectPath)`, `From(DBusSignature)` | `GetString()`, `GetObjectPath()`, `GetTypeSignature()` |
-| `h` | `UnixFd(SafeHandle)`; the caller keeps its handle | `GetUnixFd()`; a received descriptor belongs to the receiver |
+| `h` | `UnixFd(SafeHandle)`; the caller keeps its handle | `GetUnixFd()`; a received descriptor is a `SafeFileHandle` that belongs to the receiver |
 | `v` | `Variant(value)` | `GetVariant()` |
 | `aT` | `Array(elementSignature, items)`, `StringArray`, `ObjectPathArray`, `ByteArray` | `GetItems()`, `GetStringArray()`, `GetObjectPathArray()`, `GetByteArray()` |
 | `a{KV}` | `Dictionary(key, value, entries)`, `VariantDictionary` for `a{sv}` | `GetEntries()`, `GetVariantDictionary()` |
@@ -80,6 +80,10 @@ await foreach (var signal in changes.WithCancellation(cancellationToken))
     if (DBusProxy.ReadPropertyChanges(signal) is { } change && change.Changed.TryGetValue("PlaybackStatus", out var value))
         status = value.GetString();
 ```
+
+Disposing a subscription closes the file descriptors of signals it received but
+nobody read. `DBusSignal`, `DBusPropertyChanges` and `DBusMethodCall` compare by
+content, like the values they carry.
 
 `WatchPropertiesAsync` and `WatchSignalAsync` are shorter forms that subscribe when
 enumeration starts. `DBusConnection.WatchNameOwnerAsync(name)` reports a bus name's

@@ -10,8 +10,8 @@ namespace Runic.Platform.Linux.DBus;
 /// Create values with the static factories, such as <see cref="From(string)"/> or
 /// <see cref="Array(DBusSignature, IEnumerable{DBusValue})"/>, and read them with the matching getter, such as
 /// <see cref="GetString"/>. A getter for another type throws <see cref="InvalidOperationException"/>. Values compare by
-/// signature and content. A <c>h</c> value carries a file descriptor: one received in a message belongs to the
-/// receiver, which disposes it. The default value has an empty signature and holds nothing.
+/// signature and content. A <c>h</c> value carries a file descriptor: one received in a message is a
+/// <see cref="Microsoft.Win32.SafeHandles.SafeFileHandle"/> that belongs to the receiver, which disposes it. The default value has an empty signature and holds nothing.
 /// </remarks>
 public readonly struct DBusValue : IEquatable<DBusValue>
 {
@@ -191,6 +191,9 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     /// <summary>Gets a <c>g</c> value.</summary>
     public DBusSignature GetTypeSignature() => Get<DBusSignature>("g");
     /// <summary>Gets the file descriptor of an <c>h</c> value. A received descriptor belongs to the caller, which disposes it.</summary>
+    /// <remarks>A descriptor received in a message is a <see cref="Microsoft.Win32.SafeHandles.SafeFileHandle"/>, so it can be
+    /// cast and wrapped in a <see cref="FileStream"/>; a value created with <see cref="UnixFd(SafeHandle)"/> returns the
+    /// handle it was created with.</remarks>
     public SafeHandle GetUnixFd() => Get<SafeHandle>("h");
     /// <summary>Gets the value inside a <c>v</c> value.</summary>
     public DBusValue GetVariant() => Get<VariantBox>("v").Value;
