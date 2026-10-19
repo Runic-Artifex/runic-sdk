@@ -4,7 +4,8 @@ using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
-// W315-020 point 3 (#350): GuardWindowClose clears the region, which asks its region guards and the navigator's guards.
+// W315-020 point 3 (#350): GuardWindowClose clears the region, which asks its region guards and the navigator's guards;
+// #412: those asked BeforeEntries come before the page's guard.
 [TestExecutor<WpfDispatcherExecutor>]
 internal sealed class RegionGuardTests
 {
@@ -50,6 +51,48 @@ internal sealed class RegionGuardTests
         {
             host.GuardWindowClose = false;
             while (answers.TryDequeue(out var answer)) answer.TrySetResult(true);
+            if (IsOpen(window)) window.Close();
+        }
+    }
+
+    // #412: a navigator guard asked BeforeEntries vetoes the close before the page's guard asks; once it allows, the page
+    // is asked after it.
+    [Test, DisplayName("GuardWindowClose asks BeforeEntries guards first"), NotInParallel("WpfSuite", Order = 55)]
+    public void WindowCloseAsksBeforeEntriesGuardsFirst()
+    {
+        using var fixture = new NavFixture();
+        var asked = new List<string>();
+        var running = true;
+        var region = fixture.Region(NavigationTarget.Own<object>(new GuardedPage("editor", () =>
+        {
+            asked.Add("page");
+            return ValueTask.FromResult(true);
+        })));
+        using var operationGuard = fixture.Navigator.AddDepartureGuard(new ScriptedGuard(departure =>
+        {
+            asked.Add($"operation {departure.Kind} {departure.Operation}");
+            return ValueTask.FromResult(!running);
+        }), new NavigationRegionGuardOptions { Order = NavigationRegionGuardOrder.BeforeEntries, AskOnRetain = true });
+        var host = new NavigationHost { Region = region, GuardWindowClose = true };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(GuardedPage)));
+        try
+        {
+            window.Close();
+            PumpUntil(() => asked.Count == 1, "the operation guard");
+            PumpUntil(() => !region.IsTransitioning, "the vetoed clear");
+            Drain();
+            Require(IsOpen(window) && region.CurrentEntry is not null && string.Join(",", asked) == "operation Retire Clear",
+                $"A vetoing BeforeEntries guard did not keep the window open before the page was asked: {string.Join(",", asked)}.");
+
+            running = false;
+            window.Close();
+            PumpUntil(() => !IsOpen(window), "the window to close");
+            Require(region.CurrentEntry is null && string.Join(",", asked) == "operation Retire Clear,operation Retire Clear,page",
+                $"The close asked {string.Join(",", asked)}.");
+        }
+        finally
+        {
+            host.GuardWindowClose = false;
             if (IsOpen(window)) window.Close();
         }
     }

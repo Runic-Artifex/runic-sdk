@@ -161,13 +161,16 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// <summary>
     /// Registers a guard that is asked before a transition departs from this region: a request to the region, or to a
     /// region whose plan resets or closes it or leaves it, as a tab switch leaves the tab's page regions. It is asked once
-    /// per transition, after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), and only when
-    /// an entry of the region departs: a push into an empty region asks it not.
+    /// per transition, after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), or before them
+    /// with <see cref="NavigationRegionGuardOptions.Order"/>, and only when an entry of the region departs: a push into an
+    /// empty region asks it not.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The region guards of a transition run region by region, deepest first, each region's guards in registration order,
-    /// then the navigator's (<see cref="RunicNavigator.AddDepartureGuard"/>). A guard is skipped when the transition only
+    /// then the navigator's (<see cref="RunicNavigator.AddDepartureGuard"/>): first those asked
+    /// <see cref="NavigationRegionGuardOrder.BeforeEntries"/>, then the entries' guards, then those asked
+    /// <see cref="NavigationRegionGuardOrder.AfterEntries"/>. A guard is skipped when the transition only
     /// retains the region's entries, unless <see cref="NavigationRegionGuardOptions.AskOnRetain"/>, and for a
     /// <see cref="NavigationOperation.ClearHistory"/> request, unless <see cref="NavigationRegionGuardOptions.AskOnClearHistory"/>.
     /// </para>
@@ -180,7 +183,9 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </para>
     /// </remarks>
     /// <param name="guard">The guard.</param>
-    /// <param name="options">When the guard is asked; by default it is skipped for retained entries and for ClearHistory.</param>
+    /// <param name="options">
+    /// When the guard is asked; by default after the entries' guards, and skipped for retained entries and for ClearHistory.
+    /// </param>
     /// <returns>An <see cref="IDisposable"/> that removes the guard.</returns>
     public IDisposable AddDepartureGuard(INavigationRegionGuard guard, NavigationRegionGuardOptions? options = null) =>
         Core.Navigator.AddGuard(Core.Guards, guard, options);

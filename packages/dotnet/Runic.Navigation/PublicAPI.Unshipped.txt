@@ -1,1 +1,6 @@
 #nullable enable
+Runic.Navigation.NavigationRegionGuardOptions.Order.get -> Runic.Navigation.NavigationRegionGuardOrder
+Runic.Navigation.NavigationRegionGuardOptions.Order.init -> void
+Runic.Navigation.NavigationRegionGuardOrder
+Runic.Navigation.NavigationRegionGuardOrder.AfterEntries = 0 -> Runic.Navigation.NavigationRegionGuardOrder
+Runic.Navigation.NavigationRegionGuardOrder.BeforeEntries = 1 -> Runic.Navigation.NavigationRegionGuardOrder

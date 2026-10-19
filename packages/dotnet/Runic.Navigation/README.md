@@ -345,7 +345,7 @@ A failed step is logged as event 1064.
 | Phase | Where | What happens |
 | --- | --- | --- |
 | Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; `Cancelled`, for a token that is already cancelled; or `Busy`, in a region that rejects requests while busy. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
-| Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`), followed by the region and navigator guards (see [Guards for a whole region](#guards-for-a-whole-region)). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
+| Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`), followed by the region and navigator guards; those registered with `Order = BeforeEntries` run before the departure guards instead (see [Guards for a whole region](#guards-for-a-whole-region)). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies, runs the departure's `OnCommitted` actions, raises the entries' `StateChanged` and `INavigationAware` notifications (event 1075 for a handler that throws), and raises `PropertyChanged`. A `PropertyChanged` handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released in the commit turn (`IsTransitioning` turns `false`), departing entries retire, and the activation hooks of the entries the commit made current run. The returned `ValueTask` completes after them; the region stays `IsBusy` until then. |
@@ -693,7 +693,8 @@ _registration = Main.AddDepartureGuard(new UnsavedWorkGuard(workspace));
   does. A push into an empty region or a `BackTo` the current entry asks none.
 - Region guards run after the entries' guards, region by region, deepest
   first, each region's guards in registration order, then the navigator's
-  guards once. `NavigationRegionDeparture` names the `Region`, the departing
+  guards once. `NavigationRegionGuardOptions.Order` moves a guard before the
+  entries' guards (see [Preconditions and last questions](#preconditions-and-last-questions)). `NavigationRegionDeparture` names the `Region`, the departing
   `Entries` (current first), the `Operation`, and the `Kind`: `Retire` when one
   of them retires, otherwise `Retain`. A navigator guard gets the region the
   request was made to, and the entries and kind of the whole transition.
@@ -704,8 +705,8 @@ _registration = Main.AddDepartureGuard(new UnsavedWorkGuard(workspace));
   either way.
 - `false` gives `Rejected(Guard)` with `By` = `null`. A guard that throws fails
   the request as `Failed(Guarding)` (event 1060, with the guard's type as
-  `EntryType`). `OnCommitted` actions run after those of the entries' guards,
-  in asking order.
+  `EntryType`). `OnCommitted` actions run in asking order, so after those of
+  the entries' guards unless the guard is asked `BeforeEntries`.
 - They run like entry guards: outside turns, on the model's thread with a hook
   scheduler, never two of one region at once, with the hook's token, and a
   request from one into its region, an ancestor or a descendant is
@@ -716,7 +717,44 @@ _registration = Main.AddDepartureGuard(new UnsavedWorkGuard(workspace));
 - A window close that clears its regions one after another, such as WPF's
   `GuardWindowClose` or a Runic View's `CanCloseAsync`, asks a navigator guard
   once per region with entries. Register an "unsaved anywhere" guard on the
-  window's main region instead, or let it remember its answer.
+  window's main region instead, or let it remember its answer. A
+  `BeforeEntries` guard that vetoes is asked for the first region with
+  entries, before any page, so the window stays open with every region as it
+  was.
+
+#### Preconditions and last questions
+
+A region or navigator guard is asked after the entries' guards by default
+(`NavigationRegionGuardOrder.AfterEntries`): the page answers for itself
+first, and a window-wide question comes last. A guard that checks a
+precondition, such as "no navigation while an operation runs", should refuse
+before any page asks the user a question whose answer would not matter.
+Register it with `Order = NavigationRegionGuardOrder.BeforeEntries`:
+
+```csharp
+public sealed class OperationGuard(Operations operations) : INavigationRegionGuard
+{
+    public ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken token) =>
+        departure.ModelContext.InvokeAsync(() => !operations.IsRunning, token);
+}
+
+// A precondition: refuses before the pages are asked, also when a push only retains the current page.
+_operation = navigator.AddDepartureGuard(new OperationGuard(operations),
+    new NavigationRegionGuardOptions { Order = NavigationRegionGuardOrder.BeforeEntries, AskOnRetain = true });
+// A last question: asked after the pages' own "discard the changes?" (AfterEntries is the default).
+_unsaved = Main.AddDepartureGuard(new UnsavedWorkGuard(workspace));
+```
+
+A transition asks, in this order: the `BeforeEntries` region guards (region
+by region, deepest first, each region's in registration order), the
+`BeforeEntries` navigator guards, the entries' departure guards (deepest
+first), the `AfterEntries` region guards and the `AfterEntries` navigator
+guards. The first veto ends the transition as `Rejected(Guard)` with no `By`
+entry and asks no further guard. `Order` doesn't change whether a guard is
+asked: `AskOnRetain` and `AskOnClearHistory` apply either way, and a
+transition without a departure asks none. A guard runs inside the request's
+transition, so, like any guard veto, a request it refuses has already
+superseded an earlier pending request of the region.
 
 `LeaveConfirmation` keeps the caller's context, so its confirm delegate stays
 on the UI thread. Without a hook scheduler the guard can run in the frame of

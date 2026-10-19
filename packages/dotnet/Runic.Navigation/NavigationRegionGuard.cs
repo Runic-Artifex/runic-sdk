@@ -6,8 +6,8 @@ namespace Runic.Navigation;
 /// <see cref="NavigationRegion{TContent}.AddDepartureGuard"/> or <see cref="RunicNavigator.AddDepartureGuard"/>.
 /// </summary>
 /// <remarks>
-/// Region guards run after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), outside model
-/// turns, like them: one at a time, on the model's thread when the model context schedules hooks, and again when a
+/// Region guards run after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), or before them
+/// with <see cref="NavigationRegionGuardOptions.Order"/>, outside model turns, like them: one at a time, on the model's thread when the model context schedules hooks, and again when a
 /// transition reruns. A request from a region guard into its region, an ancestor or a descendant is
 /// <see cref="NavigationRejection.Reentrant"/>.
 /// </remarks>
@@ -34,6 +34,33 @@ public sealed record NavigationRegionGuardOptions
     /// departure guards are asked either way.
     /// </summary>
     public bool AskOnClearHistory { get; init; }
+
+    /// <summary>
+    /// Gets whether the guard is asked after the departure guards of the entries, the default, or before them. A guard that
+    /// checks a precondition, such as "no navigation while an operation runs", is asked
+    /// <see cref="NavigationRegionGuardOrder.BeforeEntries"/>, so that a page never asks the user a question whose answer
+    /// does not matter. <see cref="AskOnRetain"/> and <see cref="AskOnClearHistory"/> decide whether it is asked either way.
+    /// </summary>
+    public NavigationRegionGuardOrder Order { get; init; }
+}
+
+/// <summary>When a region or navigator guard is asked relative to the departure guards of the entries.</summary>
+/// <remarks>
+/// A transition asks, in this order: the <see cref="BeforeEntries"/> region guards, region by region, deepest first, each
+/// region's guards in registration order; the <see cref="BeforeEntries"/> navigator guards; the entries' departure guards
+/// (<see cref="INavigationDepartureGuard"/>), deepest first; the <see cref="AfterEntries"/> region guards; and the
+/// <see cref="AfterEntries"/> navigator guards. The first veto ends the transition and asks no further guard.
+/// </remarks>
+public enum NavigationRegionGuardOrder
+{
+    /// <summary>Asked after the departure guards of the entries, as the last question of a transition. The default.</summary>
+    AfterEntries,
+
+    /// <summary>
+    /// Asked before the departure guards of the entries; when it vetoes, they are not asked. For preconditions of any
+    /// departure.
+    /// </summary>
+    BeforeEntries,
 }
 
 /// <summary>
@@ -86,7 +113,8 @@ public sealed class NavigationRegionDeparture
 
     /// <summary>
     /// Runs <paramref name="action"/> if, and only if, this transition commits, like <see cref="NavigationDeparture.OnCommitted"/>:
-    /// in its commit turn, after the actions of the entries' guards, in the order the guards were asked.
+    /// in its commit turn, with the actions of the other guards in the order the guards were asked, so after those of the
+    /// entries' guards unless the guard is asked <see cref="NavigationRegionGuardOrder.BeforeEntries"/>.
     /// </summary>
     /// <param name="action">The action to run in the commit turn.</param>
     /// <exception cref="InvalidOperationException">The guard's task has already completed.</exception>
