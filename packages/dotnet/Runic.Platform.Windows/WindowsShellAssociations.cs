@@ -113,8 +113,12 @@ internal static unsafe class WindowsShellAssociations
     // The longest a launch keeps its apartment alive for the shell's asynchronous execution.
     private const int LaunchCompletionMilliseconds = 30_000;
 
+    // What the last launch saw, for the native tests' log: the HRESULT, and how long the apartment stayed for the shell.
+    internal static volatile string? LastLaunchTrace;
+
     // Invoke, holding a thread reference (SHSetThreadRef) that the shell's asynchronous execution takes while it starts
-    // the handler, and pumping messages until it lets go: the apartment must outlive the launch, as Explorer's do.
+    // the handler, and pumping messages while the shell still holds the thread reference or the items' data object,
+    // which lives in this apartment: the apartment must outlive the launch, as Explorer's do.
     internal static int InvokeAndWait(IAssocHandler* handler, IReadOnlyList<string> items)
     {
         // The count outlives a launch that does not finish in time, so it is freed only once it reaches zero.
@@ -122,34 +126,54 @@ internal static unsafe class WindowsShellAssociations
         IUnknown* threadReference = null;
         bool tracked = PInvoke.SHCreateThreadRef(count, &threadReference).Value >= 0 && threadReference is not null
             && PInvoke.SHSetThreadRef(threadReference).Value >= 0;
+        IUnknown* dataObject = null;
         int hr;
-        try { hr = Invoke(handler, items); }
+        try { hr = Invoke(handler, items, out dataObject); }
         finally
         {
             if (tracked) PInvoke.SHSetThreadRef(null);
             if (threadReference is not null) threadReference->Release();
         }
-        long deadline = Environment.TickCount64 + LaunchCompletionMilliseconds;
-        while (tracked && Volatile.Read(ref *count) > 0 && Environment.TickCount64 < deadline)
+        long started = Environment.TickCount64, deadline = started + LaunchCompletionMilliseconds;
+        int threadReferences = tracked ? Volatile.Read(ref *count) : 0;
+        uint itemReferences = OtherReferences(dataObject);
+        try
         {
-            PInvoke.MsgWaitForMultipleObjectsEx(0, null, 50, QUEUE_STATUS_FLAGS.QS_ALLINPUT, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS.MWMO_INPUTAVAILABLE);
-            MSG message;
-            while (PInvoke.PeekMessage(&message, default, 0, 0, PEEK_MESSAGE_REMOVE_TYPE.PM_REMOVE))
+            while (hr >= 0 && ((tracked && Volatile.Read(ref *count) > 0) || OtherReferences(dataObject) > 0) && Environment.TickCount64 < deadline)
             {
-                PInvoke.TranslateMessage(&message);
-                PInvoke.DispatchMessage(&message);
+                PInvoke.MsgWaitForMultipleObjectsEx(0, null, 50, QUEUE_STATUS_FLAGS.QS_ALLINPUT, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS.MWMO_INPUTAVAILABLE);
+                MSG message;
+                while (PInvoke.PeekMessage(&message, default, 0, 0, PEEK_MESSAGE_REMOVE_TYPE.PM_REMOVE))
+                {
+                    PInvoke.TranslateMessage(&message);
+                    PInvoke.DispatchMessage(&message);
+                }
             }
         }
+        finally { if (dataObject is not null) dataObject->Release(); }
+        LastLaunchTrace = $"Invoke 0x{hr:X8}; thread reference {(tracked ? $"held {threadReferences} after the call" : "unavailable")}; " +
+            $"the data object had {itemReferences} other references; the apartment stayed {Environment.TickCount64 - started} ms";
         if (Volatile.Read(ref *count) <= 0) NativeMemory.Free(count);
         return hr;
     }
 
-    // Hands the items to the handler as the shell's own Open With does: a data object over their parsed shell items.
-    private static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items)
+    // The references to an object besides the caller's own. Release returns the new count, which in-process objects
+    // report exactly.
+    private static uint OtherReferences(IUnknown* value)
     {
+        if (value is null) return 0;
+        value->AddRef();
+        uint count = value->Release();
+        return count > 0 ? count - 1 : 0;
+    }
+
+    // Hands the items to the handler as the shell's own Open With does: a data object over their parsed shell items,
+    // which the caller releases.
+    private static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items, out IUnknown* dataObject)
+    {
+        dataObject = null;
         var parsed = new ITEMIDLIST*[items.Count];
         IShellItemArray* array = null;
-        void* dataObject = null;
         try
         {
             for (int i = 0; i < items.Count; i++)
@@ -168,13 +192,14 @@ internal static unsafe class WindowsShellAssociations
                 if (hr < 0) return hr;
             }
             Guid handlerId = PInvoke.BHID_DataObject, iid = typeof(IDataObject).GUID;
-            int bound = array->BindToHandler(null, &handlerId, &iid, &dataObject).Value;
-            if (bound < 0) return bound;
-            return handler->Invoke((IDataObject*)dataObject).Value;
+            void* bound = null;
+            int result = array->BindToHandler(null, &handlerId, &iid, &bound).Value;
+            if (result < 0 || bound is null) return result < 0 ? result : unchecked((int)0x80004005);
+            dataObject = (IUnknown*)bound;
+            return handler->Invoke((IDataObject*)bound).Value;
         }
         finally
         {
-            if (dataObject is not null) ((IUnknown*)dataObject)->Release();
             if (array is not null) array->Release();
             foreach (var item in parsed) if (item is not null) Marshal.FreeCoTaskMem((nint)item);
         }

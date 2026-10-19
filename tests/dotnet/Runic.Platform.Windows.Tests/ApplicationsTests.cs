@@ -233,11 +233,11 @@ internal sealed partial class ApplicationsTests
             string stray = Path.Combine(root, "stray.log");
             Environment.SetEnvironmentVariable(StrayLaunchVariable, stray);
             var launched = await applications.LaunchAsync(probeId, [first, second]);
-            Console.WriteLine($"Launch: {launched}");
+            Console.WriteLine($"Launch: {launched}; {WindowsShellAssociations.LastLaunchTrace}");
             Check(launched is PlatformResult<PlatformUnit>.Success, "the probe started");
             string uri = scheme + ":open/a%20b?c=d";
             var opened = await applications.LaunchAsync(probeId, [uri]);
-            Console.WriteLine($"Launch URI: {opened}");
+            Console.WriteLine($"Launch URI: {opened}; {WindowsShellAssociations.LastLaunchTrace}");
             Check(opened is PlatformResult<PlatformUnit>.Success, "the probe opened the URI");
             var lines = await RecordedAsync(log, 3);
             Console.WriteLine("Recorded:\n" + string.Join('\n', lines));
