@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -55,23 +56,30 @@ static class BridgeLoading
     private static string SharedRoot =>
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", ".."));
 
-    // The names of the assemblies of every installed shared framework, of any
-    // version. None of them can declare a Runic View base class.
-    private static readonly Lazy<HashSet<string>> SharedFrameworkAssemblies = new(() =>
+    // The version directories of every installed shared framework.
+    private static readonly Lazy<string[]> SharedFrameworkVersions = new(() =>
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            foreach (var framework in Directory.EnumerateDirectories(SharedRoot))
-                foreach (var version in Directory.EnumerateDirectories(framework))
-                    foreach (var file in Directory.EnumerateFiles(version, "*.dll"))
-                        names.Add(Path.GetFileNameWithoutExtension(file));
+            return [.. Directory.EnumerateDirectories(SharedRoot).SelectMany(Directory.EnumerateDirectories)];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+            return [];
         }
-        return names;
     });
+
+    private static readonly ConcurrentDictionary<string, bool> SharedFrameworkAssemblies = new(StringComparer.OrdinalIgnoreCase);
+
+    // Whether an assembly of this name is in an installed shared framework, of
+    // any version. None of them can declare a Runic View base class. Each name
+    // is looked up where it would be, not in a listing of every framework's
+    // files: that listing reads thousands of directory entries, which took
+    // more than 30 seconds on a cold Windows runner (#348).
+    internal static bool IsSharedFrameworkAssembly(string? name) =>
+        name is { Length: > 0 } && name.IndexOfAny(['/', '\\', ':']) < 0
+        && SharedFrameworkAssemblies.GetOrAdd(name, simpleName =>
+            SharedFrameworkVersions.Value.Any(version => File.Exists(Path.Combine(version, simpleName + ".dll"))));
 
     /// <summary>
     /// The assemblies, other than Windows Desktop ones, whose absence made the
@@ -218,7 +226,7 @@ static class BridgeLoading
         }
         catch (Exception error) when (error is FileNotFoundException or FileLoadException or BadImageFormatException or TypeLoadException)
         {
-            return IsWindowsDesktopAssembly(assemblyName.Name) || SharedFrameworkAssemblies.Value.Contains(assemblyName.Name ?? "")
+            return IsWindowsDesktopAssembly(assemblyName.Name) || IsSharedFrameworkAssembly(assemblyName.Name)
                 ? false : null;
         }
     }
