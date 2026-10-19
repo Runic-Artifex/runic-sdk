@@ -203,11 +203,13 @@ messages.
   disk's vendor and model. The name is the volume name, then the drive's name
   with the size, then the BSD name. `IsReadOnly` is the media not writable,
   `IsRemovable` the drive removable, ejectable or external.
-- **System volumes.** The volume at `/`, those under `/System/Volumes/`, the
-  unmounted volumes of the startup disk (such as the system volume under its
-  sealed snapshot and Recovery) and EFI system partitions are `IsSystem`. The
-  provider never mounts, unmounts or ejects them, and never ejects the startup
-  disk.
+- **System volumes.** The volume at `/`, those mounted under `/System/` (the
+  startup disk's Data, Preboot and VM volumes, and Cryptex images), those
+  mounted hidden from Finder (`MNT_DONTBROWSE`, as for simulator runtimes), the
+  unmounted volumes of their drives (such as the system volume under its sealed
+  snapshot and Recovery) and EFI system partitions are `IsSystem`. The provider
+  never mounts or unmounts them and never ejects a drive with such a mounted
+  volume.
 - **Mount, unmount, eject.** `DADiskMount` at the default location under
   `/Volumes`, `DADiskUnmount` and `DADiskEject` of the drive's whole disk, after
   each mounted volume of the drive is unmounted. Disk Arbitration asks its

@@ -116,8 +116,9 @@ synthesized container. An application with a file open on the volume, or one
 that refuses through Disk Arbitration, makes an unmount or eject
 `Failed(ResourceBusy)`; Disk Arbitration's refusals for permission are
 `Failed(PermissionDenied)`. The startup disk's volumes (`/`, `/System/Volumes/…`,
-Recovery) and EFI system partitions are `IsSystem` and are never mounted,
-unmounted or ejected by the provider. See the
+Recovery), images the system mounts under `/System` or hidden from Finder (such
+as Cryptex and simulator runtimes) and EFI system partitions are `IsSystem` and
+are never mounted, unmounted or ejected by the provider. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
 
 ## Secret storage

@@ -23,6 +23,11 @@ internal sealed partial class VolumeTests
         new("disk4s1") { VolumeKind = "msdos", Mountable = true, VolumeName = "EFI", Content = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B", Ejectable = true, PhysicalDisk = "disk4" },
         new("disk4s2") { VolumeKind = "exfat", Mountable = true, VolumeName = "STICK", VolumePath = "/Volumes/STICK", Size = 63_000_000_000, Ejectable = true, PhysicalDisk = "disk4" },
         new("disk4s3") { VolumeKind = "exfat", Mountable = true, Size = 1_000_000_000, Ejectable = true, PhysicalDisk = "disk4" },
+        // A Cryptex image the system mounts under /System, and a simulator runtime it mounts hidden (nobrowse).
+        new("disk6") { Whole = true, Ejectable = true, Removable = true, Vendor = "Apple", Model = "Disk Image" },
+        new("disk6s1") { VolumeKind = "apfs", Mountable = true, VolumeName = "Cryptex", VolumePath = "/System/Library/AssetsV2/x/.AssetData", Writable = false, PhysicalDisk = "disk6" },
+        new("disk8") { Whole = true, Ejectable = true, Removable = true, Vendor = "Apple", Model = "Disk Image" },
+        new("disk8s1") { VolumeKind = "apfs", Mountable = true, VolumeName = "iOS Simulator", VolumePath = "/Library/Developer/CoreSimulator/Volumes/iOS", Hidden = true, PhysicalDisk = "disk8" },
     ];
 
     [Test, DisplayName("volumes: Disk Arbitration's disks become volumes with their drive and flags")]
@@ -40,6 +45,8 @@ internal sealed partial class VolumeTests
         Check(volumes["disk4s1"] is { IsSystem: true, CanMount: false, CanEject: true }, "an EFI system partition belongs to the system");
         Check(volumes["disk4s3"] is { CanMount: true, CanUnmount: false, MountPaths.IsEmpty: true } && volumes["disk4s3"].DisplayName == "SanDisk Ultra (1 GB)",
             "an unmounted volume without a name is named after its drive and size");
+        Check(volumes["disk6s1"] is { IsSystem: true, CanUnmount: false, CanEject: false } && volumes["disk8s1"] is { IsSystem: true, CanUnmount: false, CanEject: false },
+            "images the system mounts under /System or hides from Finder are left alone");
         Check(MacVolumes.Volumes(Layout).Select(static v => v.Id).SequenceEqual(volumes.Keys.Order(StringComparer.Ordinal)), "the volumes are ordered by ID");
     }
 
@@ -117,12 +124,12 @@ internal sealed partial class VolumeTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using (var watch = volumes.WatchAsync(timeout.Token).GetAsyncEnumerator(timeout.Token))
         {
-            Check(await Next(watch) is DesktopVolumeChange.Snapshot { Volumes.Length: 7 }, "a snapshot comes first");
-            source.Disks = [.. Layout.Where(static d => !d.BsdName.StartsWith("disk4", StringComparison.Ordinal)), new MacDisk("disk5") { Whole = true, VolumeKind = "hfs", Mountable = true, VolumeName = "Image" }];
+            Check(await Next(watch) is DesktopVolumeChange.Snapshot { Volumes.Length: 9 }, "a snapshot comes first");
+            source.Disks = [.. Layout.Where(static d => !d.BsdName.StartsWith("disk4", StringComparison.Ordinal)), new MacDisk("disk9") { Whole = true, VolumeKind = "hfs", Mountable = true, VolumeName = "Image" }];
             source.Notify();
             Check(await Next(watch) is DesktopVolumeChange.Removed("disk4s1") && await Next(watch) is DesktopVolumeChange.Removed("disk4s2")
                 && await Next(watch) is DesktopVolumeChange.Removed("disk4s3"), "the stick's volumes are removed");
-            Check(await Next(watch) is DesktopVolumeChange.Added { Volume: { Id: "disk5", DisplayName: "Image", DriveId: "disk5" } }, "a disk image with a filesystem on its whole disk");
+            Check(await Next(watch) is DesktopVolumeChange.Added { Volume: { Id: "disk9", DisplayName: "Image", DriveId: "disk9" } }, "a disk image with a filesystem on its whole disk");
             source.Disks = source.Disks.Replace(source.Disks[^1], source.Disks[^1] with { VolumePath = "/Volumes/Image" });
             source.Notify();
             Check(await Next(watch) is DesktopVolumeChange.Changed { Volume.MountPaths: ["/Volumes/Image"] }, "a mount is a change");
@@ -174,6 +181,9 @@ internal sealed partial class VolumeTests
             Check(startup is { IsSystem: true, CanUnmount: false, CanEject: false, FileSystem: "apfs", DriveId: not null }, $"the startup volume: {Describe(startup)}");
             Check(await volumes.UnmountAsync(startup.Id, timeout.Token) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
                 "the startup volume is not unmounted");
+            // The runner's Cryptex and simulator images are mounted under /System or hidden from Finder.
+            Check(listed.Where(static v => v.MountPaths.Any(static p => p.StartsWith("/System/", StringComparison.Ordinal) || p.StartsWith("/Library/Developer/CoreSimulator/", StringComparison.Ordinal)))
+                .All(static v => v is { IsSystem: true, CanUnmount: false, CanEject: false }), "the system's own disk images are left alone");
             Check(await volumes.MountAsync("disk999s9", timeout.Token) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.NotFound }, "an unknown volume");
 
             // HFS+ on a partitioned image: unmount, a busy unmount, mount and eject.

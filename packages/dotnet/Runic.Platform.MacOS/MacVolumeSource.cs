@@ -192,12 +192,14 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
         try
         {
             nint Value(string key) => CFDictionaryGetValue(description, Key(key));
+            string? path = Url(Value("kDADiskDescriptionVolumePathKey"));
             return new MacDisk(name)
             {
                 VolumeKind = Text(Value("kDADiskDescriptionVolumeKindKey")),
                 Mountable = Boolean(Value("kDADiskDescriptionVolumeMountableKey")) ?? false,
                 VolumeName = Text(Value("kDADiskDescriptionVolumeNameKey")),
-                VolumePath = Url(Value("kDADiskDescriptionVolumePathKey")),
+                VolumePath = path,
+                Hidden = path is not null && Hidden(path),
                 Content = Text(Value("kDADiskDescriptionMediaContentKey")),
                 Size = Number(Value("kDADiskDescriptionMediaSizeKey")) is > 0 and var size ? size : null,
                 Whole = Boolean(Value("kDADiskDescriptionMediaWholeKey")) ?? false,
@@ -253,6 +255,20 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
         if (name == 0) return 0;
         try { return IORegistryEntryCreateCFProperty(entry, name, 0, 0); }
         finally { CFRelease(name); }
+    }
+
+    // statfs(2)'s f_flags has MNT_DONTBROWSE for a nobrowse mount. struct statfs (64-bit inodes): f_flags is at
+    // offset 64 of 2168 bytes; Intel Macs export the 64-bit-inode variant as statfs$INODE64.
+    private const uint MNT_DONTBROWSE = 0x00100000;
+    private static readonly Lazy<nint> s_statfs = new(() => NativeLibrary.GetExport(NativeLibrary.Load(System),
+        RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "statfs$INODE64" : "statfs"));
+
+    private static bool Hidden(string path)
+    {
+        byte* buffer = stackalloc byte[2168];
+        byte[] name = global::System.Text.Encoding.UTF8.GetBytes(path + "\0");
+        fixed (byte* file = name)
+            return ((delegate* unmanaged[Cdecl]<byte*, byte*, int>)s_statfs.Value)(file, buffer) == 0 && (*(uint*)(buffer + 64) & MNT_DONTBROWSE) != 0;
     }
 
     private static nint Key(string name) => *(nint*)NativeLibrary.GetExport(s_library.Value, name);

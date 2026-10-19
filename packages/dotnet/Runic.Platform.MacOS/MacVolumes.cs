@@ -15,6 +15,8 @@ internal sealed record MacDisk(string BsdName)
     internal bool Mountable { get; init; }
     internal string? VolumeName { get; init; }
     internal string? VolumePath { get; init; }
+    // Mounted with MNT_DONTBROWSE (nobrowse), which Finder does not show, such as Cryptex and simulator images.
+    internal bool Hidden { get; init; }
     internal long? Size { get; init; }
     internal bool Whole { get; init; }
     internal bool Removable { get; init; }
@@ -143,13 +145,13 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
     }
 
     // The volumes among the disks: a disk with a filesystem Disk Arbitration can mount. A volume belongs to the drive
-    // of its physical whole disk. The startup disk's volumes mounted at / or under /System/Volumes, and the ones it
-    // keeps unmounted, such as Recovery, belong to the system, as do EFI system partitions; a drive with the startup
+    // of its physical whole disk. Volumes mounted at /, under /System or hidden from Finder, the unmounted volumes of
+    // their drives, such as Recovery, and EFI system partitions belong to the system; a drive with such a mounted
     // volume is never ejected.
     internal static ImmutableArray<DesktopVolume> Volumes(ImmutableArray<MacDisk> disks)
     {
         var byName = disks.ToDictionary(static d => d.BsdName, StringComparer.Ordinal);
-        var systemDrives = disks.Where(static d => d.VolumePath == "/").Select(d => Drive(d)).ToHashSet(StringComparer.Ordinal);
+        var systemDrives = disks.Where(Protected).Select(Drive).ToHashSet(StringComparer.Ordinal);
         var volumes = new List<DesktopVolume>();
         foreach (var disk in disks)
         {
@@ -158,8 +160,7 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
             var physical = byName.GetValueOrDefault(drive) ?? disk;
             string driveName = string.Join(' ', new[] { physical.Vendor, physical.Model }.Where(static s => !string.IsNullOrWhiteSpace(s))).Trim();
             bool mounted = disk.VolumePath is not null;
-            bool system = disk.VolumePath is "/" || disk.VolumePath?.StartsWith("/System/Volumes/", StringComparison.Ordinal) == true
-                || (!mounted && systemDrives.Contains(drive))
+            bool system = Protected(disk) || (!mounted && systemDrives.Contains(drive))
                 || string.Equals(disk.Content, EfiSystemPartition, StringComparison.OrdinalIgnoreCase) || disk.Content == "EFI";
             string name = !string.IsNullOrWhiteSpace(disk.VolumeName) ? disk.VolumeName!
                 : driveName.Length > 0 ? disk.Size is { } size ? $"{driveName} ({VolumeTracking.Bytes(size)})" : driveName
@@ -183,6 +184,10 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
     }
 
     private const string EfiSystemPartition = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B";
+
+    // Mounted by the system for itself: the startup volume, the volumes under /System, and the ones Finder hides.
+    private static bool Protected(MacDisk disk) =>
+        disk.VolumePath is "/" || disk.VolumePath?.StartsWith("/System/", StringComparison.Ordinal) == true || (disk.VolumePath is not null && disk.Hidden);
 
     private static string Drive(MacDisk disk) => disk.PhysicalDisk ?? disk.BsdName;
 
