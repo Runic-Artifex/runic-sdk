@@ -11,6 +11,7 @@ export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticListene
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
+export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
 export {
   collectionViewport,
   createCollectionViewportController,

@@ -9,6 +9,11 @@ export interface RunicBridgeClient {
   call(name: string, ...args: unknown[]): Promise<string>;
   /** Calls `listener` after the connection is re-established without a page reload. */
   onReconnect?(listener: () => void): () => void;
+  /**
+   * Calls `listener` with whether the host connection is authenticated, at once and then after
+   * each change, including a dropped transport, until the returned function is called.
+   */
+  onConnectionChange?(listener: (connected: boolean) => void): () => void;
 }
 
 export interface WaitForBridgeOptions {
@@ -64,15 +69,26 @@ export function hostCallbacks(): Record<string | symbol, unknown> {
 
 // A host answers a late call of a route it released, such as a route of a View
 // that .NET released during the call, with a `disconnected` envelope. Runic
-// Desktop and CS-WebUI send the same one. An empty reply (a Runic Desktop handler
-// that threw, or a capability that was never admitted) stays an invalid response.
+// Desktop and CS-WebUI send the same one. The host answered, so the Bridge is
+// connected and only the View was released. An empty reply (a Runic Desktop
+// handler that threw, or a capability that was never admitted) stays an invalid response.
 export function releasedRouteError(route: string): BridgeError {
-  return new BridgeError("disconnected", "This View was released: its route is no longer bound.", { route });
+  return new BridgeError("released", "This View was released: its route is no longer bound.", { route });
+}
+
+// A View the page or .NET released, as `released` while the Bridge is connected
+// and as `disconnected` when it is not.
+export function notConnectedError(bridge: RunicBridgeClient, message: string, route?: string): BridgeError {
+  return bridge.isConnected()
+    ? new BridgeError("released", message, route === undefined ? {} : { route })
+    : new BridgeError("disconnected", "The Bridge is disconnected.", route === undefined ? {} : { route });
 }
 
 // A throwing subscriber or an undecodable push must not stop delivery to
 // other subscribers or unwind into the .NET callback that pushed state.
+// A released View is expected after navigation and is not reported.
 export function reportBridgeError(error: unknown, route?: string): void {
+  if (error instanceof BridgeError && error.kind === "released") return;
   emitErrorDiagnostic(error, route);
   const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;
   if (typeof report === "function") report(error); else console.error(error);

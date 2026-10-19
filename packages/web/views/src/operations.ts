@@ -313,7 +313,7 @@ export interface OperationScope {
   /** `{contract}:{route}` of the connection. */
   readonly contract: string;
   readonly route: string;
-  /** Throws a disconnected BridgeError when the connection can no longer call .NET. */
+  /** Throws a `disconnected` BridgeError when the Bridge is disconnected, or `released` when the View was released. */
   readonly assertConnected: () => void;
   /** Resolves when .NET acknowledged the connection's interaction handlers. */
   readonly ready: () => Promise<void>;
@@ -353,7 +353,7 @@ export const bridgeOperations: BridgeOperations = {
     try { admission = JSON.parse(reply) as typeof admission; }
     catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
     // A released View answers `{kind: "disconnected"}`, or the host's disconnected envelope once its route is unbound.
-    if (admission.kind === "disconnected") throw new BridgeError("disconnected", admission.reason ?? "This View was released.", { route: startRoute });
+    if (admission.kind === "disconnected") throw new BridgeError("released", admission.reason ?? "This View was released.", { route: startRoute });
     if (admission.error?.kind === "disconnected") throw releasedRouteError(startRoute);
     if (admission.kind === "accepted" || admission.kind === "duplicate") {
       const terminal = admission.terminal === null || admission.terminal === undefined

@@ -10,6 +10,7 @@ export {
   ViewOperationTimedOut,
   ViewOperationUncertain,
   ViewRejected,
+  ViewReleased,
   ViewUnavailable,
   type ViewDomainFailureOf,
   type ViewError,

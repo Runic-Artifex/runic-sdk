@@ -195,7 +195,8 @@ try {
   await data.setAmount("1");
   throw new Error("A disposed client accepted a call.");
 } catch (error) {
-  expect(error instanceof BridgeError && error.kind === "disconnected",
+  // The Bridge is still connected: only this View was released.
+  expect(error instanceof BridgeError && error.kind === "released",
     "A disposed client did not reject with the shared BridgeError.");
 }
 typed.dispose();

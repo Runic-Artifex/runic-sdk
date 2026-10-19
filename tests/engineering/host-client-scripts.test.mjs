@@ -318,6 +318,44 @@ test("runic-cswebui.js does not resume a listener registered after an unobserved
   expect(resumes).toBe(1);
 });
 
+// A page learns that the host ended when the WebSocket drops, not on its next
+// call (#406). Each host script reports WebUI's own connection state at once and
+// after each change, reads it without the Bridge's navigation side effect, and
+// stops polling once nothing listens.
+for (const script of scripts) {
+  test(`${script} reports connection changes as they happen`, async () => {
+    let online = true;
+    let allowed = 0;
+    const intervals = new Set();
+    const context = {
+      history: { pushState() {}, replaceState() {} }, setTimeout, clearTimeout, console,
+      setInterval: (callback, milliseconds) => { const id = setInterval(callback, milliseconds); intervals.add(id); return id; },
+      clearInterval: id => { intervals.delete(id); clearInterval(id); },
+    };
+    context.window = context;
+    context.globalThis = context;
+    runInNewContext(readFileSync(resolve(root, script), "utf8"), context);
+    context.webui = { isConnected: () => online, allowNavigation: () => { allowed++; }, call: async () => "" };
+    const bridge = context.__runicBridge;
+
+    const states = [];
+    const stop = bridge.onConnectionChange(connected => states.push(connected));
+    expect(states).toEqual([true]);
+    online = false;
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(states).toEqual([true, false]);
+    online = true;
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(states).toEqual([true, false, true]);
+    expect(allowed).toBe(0);
+    stop();
+    expect(intervals.size).toBe(0);
+    online = false;
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(states).toEqual([true, false, true]);
+  });
+}
+
 // Examples serve their own copy; each must match the package's script.
 test("example copies of runic-cswebui.js match the package script", () => {
   const expected = readFileSync(resolve(root, scripts[0]), "utf8");

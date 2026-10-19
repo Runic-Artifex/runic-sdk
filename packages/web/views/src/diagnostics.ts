@@ -4,8 +4,10 @@ import { BridgeError, BridgeOperationUncertainError, type BridgeFailureDetail } 
 export interface BridgeDiagnostic {
   readonly kind: "error" | "operation";
   /**
-   * A `BridgeErrorKind`, `uncertain`, `timedOut`, `protocol` for a .NET host that speaks
-   * another Views protocol version, or `reported` for an application error the runtime caught.
+   * A `BridgeErrorKind` other than `released`, `uncertain`, `timedOut`, `protocol` for a .NET
+   * host that speaks another Views protocol version, or `reported` for an application error
+   * the runtime caught. A call of a released View is expected after navigation: it rejects
+   * with a `released` BridgeError but is not reported here.
    */
   readonly code: string;
   readonly message: string;
@@ -65,9 +67,10 @@ export function emitBridgeDiagnostic(diagnostic: BridgeDiagnostic): void {
   }
 }
 
-/** Emits a diagnostic for an error that leaves the runtime. */
+/** Emits a diagnostic for an error that leaves the runtime. A `released` BridgeError is not reported. */
 export function emitErrorDiagnostic(error: unknown, route?: string): void {
   if (error instanceof BridgeError) {
+    if (error.kind === "released") return;
     const errorRoute = error.route ?? route;
     emitBridgeDiagnostic({
       kind: "error", code: error.kind, message: error.message, error,

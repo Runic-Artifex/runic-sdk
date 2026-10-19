@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Fiber, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  catchCase, command, connect, followViewport, operation, states, ViewCommandFailed, ViewDisconnected, ViewDomainFailure,
+  catchCase, command, connect, followViewport, operation, states, ViewCommandFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
   type ViewError, type ViewOperationError, type ViewportRange,
 } from "../dist/index.js";
 
@@ -83,8 +83,9 @@ describe("connect", () => {
       return client;
     })));
     expect(names()).toContain("counterUnmount");
+    // The Bridge is still connected: only this View was released.
     const exit = await Effect.runPromiseExit(command(() => client.increment()));
-    expect(exit).toStrictEqual(Exit.fail(expect.any(ViewDisconnected)));
+    expect(exit).toStrictEqual(Exit.fail(expect.any(ViewReleased)));
   });
 
   test("accepts a page reference and maps a failed connection", async () => {

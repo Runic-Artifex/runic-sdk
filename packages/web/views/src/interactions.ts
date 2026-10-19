@@ -1,5 +1,5 @@
 import { BridgeError } from "./errors.js";
-import { reportBridgeError, type RunicBridgeClient } from "./transport.js";
+import { notConnectedError, reportBridgeError, type RunicBridgeClient } from "./transport.js";
 
 export interface BridgeInteractionContext {
   /** Aborts when .NET cancels the request, the handler is replaced, or the View is disposed. */
@@ -98,7 +98,7 @@ class InteractionRuntime implements InteractionSession {
       throw new BridgeError(this.scope.bridge.isConnected() ? "failed" : "disconnected", "The interaction handler could not be registered.",
         { cause, route: "__runicInteractionControl" });
     }
-    if (this.unavailable) throw new BridgeError("disconnected", "The interaction presentation is no longer available.");
+    if (this.unavailable) throw notConnectedError(this.scope.bridge, "The interaction presentation is no longer available.");
   }
 
   resume(presentationId?: string): void {
@@ -133,7 +133,7 @@ class InteractionRuntime implements InteractionSession {
 
   private register(name: string, handle: InteractionHandler["handle"]): () => void {
     if (this.disposed || this.unavailable || !this.scope.live() || !this.scope.bridge.isConnected())
-      throw new BridgeError("disconnected", "The interaction view is disconnected.");
+      throw notConnectedError(this.scope.bridge, "The interaction View was released.");
     const key = identity(name, this.contract(name));
     this.handlers.get(key)?.controller.abort();
     const registered: InteractionHandler = { name, contract: this.contract(name), generation: ++this.generation, controller: new AbortController(), handle };
@@ -219,7 +219,7 @@ class InteractionRuntime implements InteractionSession {
       if (reply?.kind !== "ok" && this.presentationId === presentationId) {
         this.unavailable = true;
         this.abortActive();
-        throw new BridgeError("disconnected", "The interaction presentation is no longer available.");
+        throw notConnectedError(this.scope.bridge, "The interaction presentation is no longer available.");
       }
     });
     void this.capabilitySync.catch(() => undefined);
