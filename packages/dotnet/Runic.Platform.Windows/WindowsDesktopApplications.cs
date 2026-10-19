@@ -7,7 +7,8 @@ using Windows.Win32.UI.Shell;
 namespace Runic.Platform.Windows;
 
 // The shell's association database: content types from the registry's extension keys and MIME database, handlers
-// from SHAssocEnumHandlers, defaults from AssocQueryString, launches through IAssocHandler::Invoke, the Start menu's
+// from SHAssocEnumHandlers, defaults from AssocQueryString, launches through the application's own registration for
+// the type (ShellExecuteEx with its class) or the handler (IAssocHandler), the Start menu's
 // applications from shell:AppsFolder, and icons from the shell. Each request runs on a single-threaded apartment of
 // its own, as the Recycle Bin does. Windows lets only the user choose default applications, so
 // SetDefaultApplicationAsync reports PermissionDenied and points to Settings.
@@ -163,7 +164,7 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
         var groups = Group(items, Directory.Exists);
         if (groups is null) return InvalidData<PlatformUnit>();
         // Every group needs the application among its handlers before anything starts.
-        var handlers = new List<(nint Handler, List<string> Items)>();
+        var handlers = new List<(nint Handler, Association Association, List<string> Items)>();
         try
         {
             foreach (var (association, members) in groups)
@@ -173,18 +174,26 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
                 WindowsShellAssociations.Handlers(association, recommended: true, match: applicationId, out IAssocHandler* handler);
                 if (handler is null) WindowsShellAssociations.Handlers(association, recommended: false, match: applicationId, out handler);
                 if (handler is null) return InvalidData<PlatformUnit>();
-                handlers.Add(((nint)handler, members));
+                handlers.Add(((nint)handler, association, members));
             }
-            foreach (var (handler, members) in handlers)
+            foreach (var (handler, association, members) in handlers)
             {
-                int hr = WindowsShellAssociations.InvokeAndWait((IAssocHandler*)handler, members);
+                // A file goes to the class of the application's registration for its extension, run directly: the
+                // handler's own Invoke takes the extension's default path, which opens the Open With chooser when the
+                // user has not chosen a default and several applications open the type. URIs, folders and registrations
+                // the class lookup cannot find go to the handler.
+                string? registration = association.Kind == AssociationKind.Extension
+                    ? WindowsShellAssociations.RegistrationFor(association.Name, applicationId, classes) : null;
+                int hr = 0;
+                if (registration is null) hr = WindowsShellAssociations.InvokeAll((IAssocHandler*)handler, members);
+                else foreach (string item in members) if ((hr = WindowsShellAssociations.ExecuteRegistration(registration, item)) < 0) break;
                 if (hr < 0) return FromHResult(hr);
             }
             return Success(default(PlatformUnit));
         }
         finally
         {
-            foreach (var (handler, _) in handlers) ((IAssocHandler*)handler)->Release();
+            foreach (var (handler, _, _) in handlers) ((IAssocHandler*)handler)->Release();
         }
     }
 
@@ -255,6 +264,8 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
         E_ACCESSDENIED => PlatformFailureCode.PermissionDenied,
         // The shell reports a cancelled consent or elevation prompt this way.
         unchecked((int)0x800704C7) => PlatformFailureCode.UserDismissed,
+        // ERROR_NO_ASSOCIATION: the registration has no command for the file.
+        unchecked((int)0x80070483) => PlatformFailureCode.InvalidData,
         _ => PlatformFailureCode.IoError,
     }, PlatformDiagnostic.FromHResult(hr));
 

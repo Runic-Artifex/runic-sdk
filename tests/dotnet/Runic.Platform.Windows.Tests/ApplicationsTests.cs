@@ -10,11 +10,18 @@ namespace Runic.Platform.Windows.Tests;
 #pragma warning disable CA1416 // The portable cases call pure helpers; the native case checks for Windows first.
 internal sealed partial class ApplicationsTests
 {
-    private sealed class FakeClasses(Dictionary<string, Dictionary<string, string>> keys) : IWindowsClasses
+    private sealed class FakeClasses(Dictionary<string, Dictionary<string, string>> keys, Dictionary<string, List<(string, string?)>>? explorer = null) : IWindowsClasses
     {
         public bool Exists(string key) => keys.ContainsKey(key.ToLowerInvariant());
         public string? Value(string key, string? name) =>
             keys.TryGetValue(key.ToLowerInvariant(), out var values) && values.TryGetValue(name ?? "", out var value) ? value : null;
+        public IReadOnlyList<string> ValueNames(string key) =>
+            keys.TryGetValue(key.ToLowerInvariant(), out var values) ? [.. values.Keys.Where(name => name.Length != 0)] : [];
+        public IReadOnlyList<string> SubKeyNames(string key) =>
+            [.. keys.Keys.Where(name => name.StartsWith(key.ToLowerInvariant() + "\\", StringComparison.Ordinal) && name.IndexOf('\\', key.Length + 1) < 0)
+                .Select(name => name[(key.Length + 1)..])];
+        public IReadOnlyList<(string Name, string? Value)> ExplorerList(string extension, string list) =>
+            explorer is not null && explorer.TryGetValue(extension + "\\" + list, out var values) ? values : [];
     }
 
     private static FakeClasses Classes() => new(new()
@@ -59,6 +66,29 @@ internal sealed partial class ApplicationsTests
             Check(!WindowsContentTypes.TryResolve(malformed, classes, out _), $"malformed: {malformed}");
 
         Association? Resolve(string id) => WindowsContentTypes.TryResolve(id, classes, out var association) ? association : throw new InvalidOperationException(id);
+    }
+
+    // The classes that may hold an application's registration for an extension, each once, as Open With gathers them.
+    [Test]
+    public void RegistrationsAreGatheredLikeOpenWith()
+    {
+        var classes = new FakeClasses(new()
+        {
+            [".log"] = new() { [""] = "txtfile", ["PerceivedType"] = "text" },
+            [@".log\openwithprogids"] = new() { ["txtfile"] = "", ["Editor.Log"] = "" },
+            [@".log\openwithlist\editor.exe"] = new(),
+            [@"systemfileassociations\.log\openwithlist\viewer.exe"] = new(),
+            [@"systemfileassociations\text\openwithlist\notepad.exe"] = new(),
+        }, new()
+        {
+            [@".log\OpenWithProgids"] = [("AppX123", null)],
+            [@".log\OpenWithList"] = [("a", "user.exe"), ("MRUList", "a"), ("b", @"bad\path.exe")],
+        });
+        var found = WindowsContentTypes.Registrations(".log", classes);
+        Check(found.Select(entry => entry.Class).SequenceEqual(["txtfile", "Editor.Log", "AppX123", @"Applications\editor.exe", @"Applications\user.exe",
+            @"Applications\viewer.exe", @"Applications\notepad.exe"]), string.Join(", ", found));
+        Check(found.Single(entry => entry.Class == @"Applications\editor.exe").Query == "editor.exe", "an application is queried by its executable's name");
+        Check(WindowsContentTypes.Registrations(".none", classes).Count == 0, "an unknown extension has no registrations");
     }
 
     [Test]
@@ -232,19 +262,20 @@ internal sealed partial class ApplicationsTests
                 "an item without a type");
             string stray = Path.Combine(root, "stray.log");
             Environment.SetEnvironmentVariable(StrayLaunchVariable, stray);
-            // Without keeping the apartment for the shell: a type only the probe opens, one document and then two of the
-            // test type, which Notepad also opens (PerceivedType text), and a URI.
-            WindowsShellAssociations.WaitForShell = false;
+            // A type only the probe opens, one document and then two of the test type, which Notepad also opens
+            // (PerceivedType text), and a URI.
             string single = Path.Combine(root, "single" + plainExtension), alone = Path.Combine(root, "alone" + extension);
             File.WriteAllText(single, "single");
             File.WriteAllText(alone, "alone");
+            int choosers = 0;
             async Task<PlatformResult<PlatformUnit>> LaunchLogged(string label, ImmutableArray<string> items)
             {
                 var started = DateTime.UtcNow;
                 var result = await applications.LaunchAsync(probeId, items);
-                Console.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {label}: {result} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms; {WindowsShellAssociations.LastLaunchTrace}");
-                await Task.Delay(3000);
-                Console.WriteLine($"  then {Choosers()}; recorded so far: {(File.Exists(log) ? File.ReadAllLines(log).Length : 0)}");
+                await Task.Delay(1000);
+                int shown = Choosers();
+                choosers += shown;
+                Console.WriteLine($"{label}: {result} in {(DateTime.UtcNow - started).TotalMilliseconds:F0} ms; {shown} Open With choosers");
                 return result;
             }
             var results = new[]
@@ -254,11 +285,11 @@ internal sealed partial class ApplicationsTests
                 await LaunchLogged("two documents of a type with two handlers", [first, second]),
                 await LaunchLogged("a URI", [scheme + ":open/a%20b?c=d"]),
             };
-            WindowsShellAssociations.WaitForShell = true;
             var lines = await RecordedAsync(log, 5);
             Console.WriteLine("Recorded:\n" + string.Join('\n', lines));
             if (File.Exists(stray)) Console.WriteLine("Other launches:\n" + File.ReadAllText(stray));
             Check(results.All(result => result is PlatformResult<PlatformUnit>.Success), "every launch succeeded");
+            Check(choosers == 0, "no launch asked the user to choose an application");
             Check(lines.Contains(single) && lines.Contains(alone), "single documents reached the handler");
             Check(lines.Contains(first) && lines.Contains(second), "each document reached the handler as one argument");
             Check(lines.Any(line => line.StartsWith(scheme + ":", StringComparison.Ordinal)), "the URI reached the protocol handler");
@@ -309,11 +340,11 @@ internal sealed partial class ApplicationsTests
     }
 
     // Open With choosers the shell started, which the case closes.
-    private static string Choosers()
+    private static int Choosers()
     {
         var choosers = System.Diagnostics.Process.GetProcessesByName("OpenWith");
         foreach (var chooser in choosers) { try { chooser.Kill(); } catch (InvalidOperationException) { } catch (System.ComponentModel.Win32Exception) { } chooser.Dispose(); }
-        return $"{choosers.Length} Open With choosers";
+        return choosers.Length;
     }
 
     private static async Task<List<string>> RecordedAsync(string log, int count)

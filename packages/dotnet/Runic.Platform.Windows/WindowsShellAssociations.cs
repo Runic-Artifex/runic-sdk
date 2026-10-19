@@ -110,25 +110,14 @@ internal static unsafe class WindowsShellAssociations
 
     internal static bool SameId(string first, string second) => string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
 
-    // The longest a launch keeps its apartment alive for the shell's asynchronous execution.
-    private const int LaunchCompletionMilliseconds = 30_000;
-
-    // What the last launch saw, for the native tests' log: the HRESULT, and how long the apartment stayed for the shell.
-    internal static volatile string? LastLaunchTrace;
-    // Whether a launch keeps its apartment while the shell holds its thread reference; the native tests compare both.
-    internal static volatile bool WaitForShell = true;
-
-    // Invoke, holding a thread reference (SHSetThreadRef) that the shell's asynchronous execution takes while it starts
-    // the handler, and pumping messages while the shell still holds the thread reference or the items' data object,
-    // which lives in this apartment: the apartment must outlive the launch, as Explorer's do.
-    internal static int InvokeAndWait(IAssocHandler* handler, IReadOnlyList<string> items)
+    // Hands the items to the handler; when it cannot take them together, each one on its own, as Open With does.
+    internal static int InvokeAll(IAssocHandler* handler, IReadOnlyList<string> items)
     {
-        int result = InvokeAndWaitOnce(handler, items);
+        int result = Invoke(handler, items);
         if (result != SelectionUnsupported) return result;
-        // The handler cannot take the items together: each one is invoked on its own, as the shell's Open With does.
         foreach (string item in items)
         {
-            result = InvokeAndWaitOnce(handler, [item]);
+            result = Invoke(handler, [item]);
             if (result < 0) return result;
         }
         return S_OK;
@@ -137,60 +126,46 @@ internal static unsafe class WindowsShellAssociations
     // IAssocHandlerInvoker::SupportsSelection said no; nothing started.
     private const int SelectionUnsupported = 1;
 
-    private static int InvokeAndWaitOnce(IAssocHandler* handler, IReadOnlyList<string> items)
+    // The registry class of the application's own registration for the extension: the one whose command runs the
+    // application's executable, or a packaged application's AppUserModelID.
+    internal static string? RegistrationFor(string extension, string applicationId, IWindowsClasses classes)
     {
-        // The count outlives a launch that does not finish in time, so it is freed only once it reaches zero.
-        int* count = (int*)NativeMemory.AllocZeroed(sizeof(int));
-        IUnknown* threadReference = null;
-        bool tracked = PInvoke.SHCreateThreadRef(count, &threadReference).Value >= 0 && threadReference is not null
-            && PInvoke.SHSetThreadRef(threadReference).Value >= 0;
-        IUnknown* dataObject = null;
-        int hr;
-        try { hr = Invoke(handler, items, out dataObject); }
-        finally
+        foreach (var (registration, query) in WindowsContentTypes.Registrations(extension, classes))
         {
-            if (tracked) PInvoke.SHSetThreadRef(null);
-            if (threadReference is not null) threadReference->Release();
+            var key = new Association(AssociationKind.Class, query);
+            if (Query(key, ASSOCSTR.ASSOCSTR_EXECUTABLE) is { } executable && SameId(executable, applicationId)) return registration;
+            if (Query(key, ASSOCSTR.ASSOCSTR_APPID) is { } appId && SameId(appId, applicationId)) return registration;
         }
-        long started = Environment.TickCount64, deadline = started + LaunchCompletionMilliseconds;
-        int threadReferences = tracked ? Volatile.Read(ref *count) : 0;
-        uint itemReferences = OtherReferences(dataObject);
-        try
+        return null;
+    }
+
+    // Runs the registration's default verb for the file, as the class names it, whatever the user's default for the
+    // extension is, without UI, and waits until it has started (SEE_MASK_NOASYNC).
+    internal static int ExecuteRegistration(string registration, string file)
+    {
+        fixed (char* className = registration)
+        fixed (char* path = file)
         {
-            while (WaitForShell && hr == S_OK && ((tracked && Volatile.Read(ref *count) > 0) || OtherReferences(dataObject) > 0) && Environment.TickCount64 < deadline)
+            var info = new WindowsShellInterop.SHELLEXECUTEINFOW
             {
-                PInvoke.MsgWaitForMultipleObjectsEx(0, null, 50, QUEUE_STATUS_FLAGS.QS_ALLINPUT, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS.MWMO_INPUTAVAILABLE);
-                MSG message;
-                while (PInvoke.PeekMessage(&message, default, 0, 0, PEEK_MESSAGE_REMOVE_TYPE.PM_REMOVE))
-                {
-                    PInvoke.TranslateMessage(&message);
-                    PInvoke.DispatchMessage(&message);
-                }
-            }
+                cbSize = (uint)sizeof(WindowsShellInterop.SHELLEXECUTEINFOW),
+                fMask = WindowsShellInterop.SEE_MASK_CLASSNAME | WindowsShellInterop.SEE_MASK_NOASYNC | WindowsShellInterop.SEE_MASK_FLAG_NO_UI,
+                lpFile = path,
+                lpClass = className,
+                nShow = (int)SHOW_WINDOW_CMD.SW_SHOWNORMAL,
+            };
+            if (WindowsShellInterop.ShellExecuteEx(&info) != 0) return S_OK;
+            int error = Marshal.GetLastPInvokeError();
+            return error == 0 ? unchecked((int)0x80004005) : unchecked((int)(0x80070000u | (uint)(error & 0xFFFF)));
         }
-        finally { if (dataObject is not null) dataObject->Release(); }
-        LastLaunchTrace = $"Invoke 0x{hr:X8}; thread reference {(tracked ? $"held {threadReferences} after the call" : "unavailable")}; " +
-            $"the data object had {itemReferences} other references; the apartment stayed {Environment.TickCount64 - started} ms";
-        if (Volatile.Read(ref *count) <= 0) NativeMemory.Free(count);
-        return hr;
     }
 
-    // The references to an object besides the caller's own. Release returns the new count, which in-process objects
-    // report exactly.
-    private static uint OtherReferences(IUnknown* value)
-    {
-        if (value is null) return 0;
-        value->AddRef();
-        uint count = value->Release();
-        return count > 0 ? count - 1 : 0;
-    }
-
-    // Hands the items to the handler as the shell's own Open With does: a data object over their parsed shell items,
-    // which the caller releases. One item goes to IAssocHandler::Invoke; a selection to the invoker CreateInvoker
+    // Hands the items to the handler as the shell's own Open With does: a data object over their parsed shell items.
+    // One item goes to IAssocHandler::Invoke; a selection to the invoker CreateInvoker
     // returns, if it supports the selection (the documented way for several items), else SelectionUnsupported.
-    private static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items, out IUnknown* dataObject)
+    private static int Invoke(IAssocHandler* handler, IReadOnlyList<string> items)
     {
-        dataObject = null;
+        IUnknown* dataObject = null;
         var parsed = new ITEMIDLIST*[items.Count];
         IShellItemArray* array = null;
         try
@@ -224,6 +199,7 @@ internal static unsafe class WindowsShellAssociations
         }
         finally
         {
+            if (dataObject is not null) dataObject->Release();
             if (array is not null) array->Release();
             foreach (var item in parsed) if (item is not null) Marshal.FreeCoTaskMem((nint)item);
         }

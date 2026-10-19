@@ -165,7 +165,3 @@ SHDefExtractIcon
 FindMimeFromData
 SHSimpleIDListFromPath
 SHCreateItemFromIDList
-SHCreateThreadRef
-SHSetThreadRef
-PeekMessage
-MsgWaitForMultipleObjectsEx

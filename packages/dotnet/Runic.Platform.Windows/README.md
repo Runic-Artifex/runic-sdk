@@ -98,7 +98,8 @@ database behind `IDesktopApplications`: a file's content type from the registry
 (`Content Type` and `PerceivedType` of its extension, or urlmon's content
 sniffing when the name does not decide), the applications that open a type from
 `SHAssocEnumHandlers` with the default from `AssocQueryString` first, launches
-through the handler's own `IAssocHandler::Invoke`, the Start menu's applications
+through the application's own registration for the type (`ShellExecuteEx` with
+its class, or `IAssocHandler` for URIs), the Start menu's applications
 (`shell:AppsFolder`) and icons as PNG. A content type is its MIME type when the
 registry's MIME database maps it back to the same extension, else the extension
 (`.txt`); `x-scheme-handler/<scheme>` names a URL protocol. An application is

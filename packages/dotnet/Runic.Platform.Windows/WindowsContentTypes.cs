@@ -9,6 +9,11 @@ internal interface IWindowsClasses
 {
     bool Exists(string key);
     string? Value(string key, string? name);
+    IReadOnlyList<string> ValueNames(string key);
+    IReadOnlyList<string> SubKeyNames(string key);
+    // The user's Explorer lists for an extension (HKEY_CURRENT_USER\...\Explorer\FileExts\<extension>\<list>): value
+    // names and string values.
+    IReadOnlyList<(string Name, string? Value)> ExplorerList(string extension, string list);
 }
 
 [SupportedOSPlatform("windows")]
@@ -28,6 +33,24 @@ internal sealed class RegistryClasses : IWindowsClasses
             return opened?.GetValue(name) is string value && value.Length != 0 ? value : null;
         }
         catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return null; }
+    }
+
+    public IReadOnlyList<string> ValueNames(string key) => Read(Registry.ClassesRoot, key, opened => opened.GetValueNames());
+
+    public IReadOnlyList<string> SubKeyNames(string key) => Read(Registry.ClassesRoot, key, opened => opened.GetSubKeyNames());
+
+    public IReadOnlyList<(string Name, string? Value)> ExplorerList(string extension, string list) =>
+        Read<(string Name, string? Value)>(Registry.CurrentUser, $@"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{extension}\{list}",
+            opened => [.. opened.GetValueNames().Select(name => (name, opened.GetValue(name) as string))]);
+
+    private static IReadOnlyList<T> Read<T>(RegistryKey root, string key, Func<RegistryKey, IReadOnlyList<T>> read)
+    {
+        try
+        {
+            using var opened = root.OpenSubKey(key);
+            return opened is null ? [] : read(opened);
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return []; }
     }
 }
 
@@ -108,6 +131,35 @@ internal static class WindowsContentTypes
     }
 
     internal static DesktopContentType Folder() => new(Directory);
+
+    // The registry classes that may hold an application's registration for an extension, as the shell's Open With
+    // gathers them: the extension's ProgID and OpenWithProgids, the user's OpenWithProgids, and the Open With lists of
+    // the extension, the user and the perceived type, whose entries are Applications\<executable>. Each comes with
+    // the name AssocQueryString takes for it.
+    internal static List<(string Class, string Query)> Registrations(string extension, IWindowsClasses classes)
+    {
+        var found = new List<(string Class, string Query)>();
+        void ProgId(string? name)
+        {
+            if (!string.IsNullOrWhiteSpace(name) && !name.Contains('\0') && !found.Exists(entry => string.Equals(entry.Class, name, StringComparison.OrdinalIgnoreCase)))
+                found.Add((name, name));
+        }
+        void Application(string? executable)
+        {
+            if (string.IsNullOrWhiteSpace(executable) || executable.Contains('\0') || executable.IndexOfAny(['\\', '/']) >= 0) return;
+            string name = @"Applications\" + executable;
+            if (!found.Exists(entry => string.Equals(entry.Class, name, StringComparison.OrdinalIgnoreCase))) found.Add((name, executable));
+        }
+        ProgId(classes.Value(extension, null));
+        foreach (string name in classes.ValueNames(extension + @"\OpenWithProgids")) ProgId(name);
+        foreach (var (name, _) in classes.ExplorerList(extension, "OpenWithProgids")) ProgId(name);
+        foreach (string name in classes.SubKeyNames(extension + @"\OpenWithList")) Application(name);
+        foreach (var (name, value) in classes.ExplorerList(extension, "OpenWithList")) if (!string.Equals(name, "MRUList", StringComparison.OrdinalIgnoreCase)) Application(value);
+        foreach (string name in classes.SubKeyNames(@"SystemFileAssociations\" + extension + @"\OpenWithList")) Application(name);
+        if (classes.Value(extension, "PerceivedType") is { } perceived && perceived.IndexOfAny(['\\', '/']) < 0)
+            foreach (string name in classes.SubKeyNames(@"SystemFileAssociations\" + perceived + @"\OpenWithList")) Application(name);
+        return found;
+    }
 
     private static string? MimeExtension(string mime, IWindowsClasses classes)
     {

@@ -348,14 +348,26 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
   registrations, then `ASSOC_FILTER_NONE`, which adds Open With entries), so an executable that does not
   open a type, such as `cmd.exe` for a document, is `Failed(InvalidData)`, as
   is a file without an extension.
-- Each group goes to the handler's `IAssocHandler::Invoke` with a data object
-  over the parsed items (`SHParseDisplayName`,
-  `SHCreateShellItemArrayFromIDLists`, `BHID_DataObject`), as Explorer's Open
-  With does. The shell expands the registered command, quoting each item as one
-  argument; no command line passes through the provider or a command shell.
-  The shell starts documents asynchronously, so the request's apartment holds a
-  thread reference (`SHCreateThreadRef`, `SHSetThreadRef`) and pumps messages
-  until the shell releases it, for at most 30 seconds.
+- A file runs the application's own registration for its extension: the
+  class, among those Open With gathers (the extension's ProgID and
+  `OpenWithProgids`, the user's `OpenWithProgids`, and the `Applications\<exe>`
+  entries of the extension's, the user's and the perceived type's Open With
+  lists), whose command runs the application's executable
+  (`ASSOCSTR_EXECUTABLE`) or AppUserModelID (`ASSOCSTR_APPID`). Each file goes
+  to `ShellExecuteEx` with that class (`SEE_MASK_CLASSNAME`, `SEE_MASK_NOASYNC`,
+  `SEE_MASK_FLAG_NO_UI`), which runs the class's default verb whatever the
+  user's default for the extension is; the shell expands the registered command
+  and quotes the file as one argument, and no command shell runs. The handler's
+  own `IAssocHandler::Invoke` is not used for files: it takes the extension's
+  default path, which opens the "How do you want to open this?" chooser when
+  the user has not chosen a default and several applications open the type
+  (seen on Windows Server 2025).
+- URIs, folders, and files whose registration the lookup cannot find go to the
+  handler, as Explorer's Open With does: one item to `IAssocHandler::Invoke`,
+  several to `IAssocHandler::CreateInvoker` when `SupportsSelection` accepts
+  them, else one `Invoke` each, with a data object over the parsed items
+  (`SHParseDisplayName`, `SHCreateShellItemArrayFromIDLists`,
+  `BHID_DataObject`).
 - **Without items** the application must be in `shell:AppsFolder`; it starts
   as the Start menu starts it (`ShellExecute` of
   `shell:AppsFolder\<AppUserModelID>`). Other IDs are `Failed(InvalidData)`.
