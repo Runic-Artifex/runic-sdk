@@ -43,6 +43,13 @@ Returns shallow refs `{ state, client, error, pending }` and `retry()`:
 - `pending` is true while a reference connects. `error` holds a failed
   connection; `retry()` connects again.
 
+All four composables release their controller when the current effect scope is
+disposed. Call them in a component's `setup()` (or `<script setup>`) or inside
+`effectScope().run()`, and stop that scope to release them. Called outside an
+effect scope, for example from a plain module or an event handler, nothing ever
+releases them: `useView` keeps its client connected. Development builds warn
+in the console when that happens.
+
 ### Read-only state and `v-model`
 
 As in any MVVM View, the ViewModel's C# setters decide what the page may set.
@@ -149,7 +156,9 @@ Disposing the effect scope settles run promises without cancelling accepted work
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
 `viewport` is a shallow ref with the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
-range; `attach` is a function ref for the container. Pass a getter for the
+range; `attach` is a function ref for the container. Bind it to a native element
+such as a `<div>`: a component instance (`:ref="attach"` on a component) or a
+non-HTML element detaches the viewport, and development builds warn. Pass a getter for the
 options and watch the range to send it to the ViewModel:
 
 ```vue

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
-import { describe, expect, test, expectTypeOf } from "vitest";
+import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
 import { useCollectionViewport, useCommand, useOperation, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
@@ -172,6 +172,61 @@ describe("useCollectionViewport", () => {
     expect(list.viewport.value).toEqual({ start: 0, size: 5, offset: 0, totalSize: 100 });
     list.attach(null);
     scope.stop();
+  });
+
+  test("detaches and warns once when attach receives a component instance instead of a native element", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const scope = effectScope();
+    const list = scope.run(() => useCollectionViewport(() => ({ totalCount: 100, rowHeight: 20, overscan: 0 })))!;
+    const element = document.createElement("div");
+    Object.defineProperty(element, "clientHeight", { configurable: true, value: 200 });
+    list.attach(element);
+    expect(list.viewport.value.size).toBe(10);
+    const Child = defineComponent({ render: () => h("div") });
+    const host = document.createElement("div");
+    const app = createApp(Child);
+    const instance = app.mount(host);
+    list.attach(instance);
+    list.attach(instance);
+    expect(list.viewport.value.size).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("native scroll container");
+    list.attach(null);
+    expect(warn).toHaveBeenCalledTimes(1);
+    app.unmount();
+    scope.stop();
+    warn.mockRestore();
+  });
+});
+
+describe("effect scope", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  test("each composable warns in development when no effect scope can release it", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    useView({ connect: () => new Promise<FakeClient>(() => {}) });
+    useCommand(() => 1);
+    useOperation(() => undefined);
+    useCollectionViewport({ totalCount: 0, rowHeight: 20 });
+    expect(warn.mock.calls.map(call => String(call[0]).split(" ")[0])).toEqual(["useView", "useCommand", "useOperation", "useCollectionViewport"]);
+    expect(String(warn.mock.calls[0]![0])).toContain("outside an active effect scope");
+  });
+
+  test("composables inside an effect scope or a component do not warn", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const scope = effectScope();
+    scope.run(() => {
+      useView({ connect: () => new Promise<FakeClient>(() => {}) });
+      useCommand(() => 1);
+      useOperation(() => undefined);
+      useCollectionViewport({ totalCount: 0, rowHeight: 20 });
+    });
+    scope.stop();
+    const app = createApp(defineComponent({ setup() { useCommand(() => 1); return () => h("div"); } }));
+    app.mount(document.createElement("div"));
+    await nextTick();
+    app.unmount();
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 

@@ -18,12 +18,13 @@ export interface CollectionViewportHandle {
 export function useCollectionViewport(options: () => CollectionViewportOptions): CollectionViewportHandle {
   const controller = createCollectionViewportController(untrack(options));
   let viewport = $state.raw(controller.current);
-  controller.subscribe(() => { viewport = controller.current; });
+  const unsubscribe = controller.subscribe(() => { viewport = controller.current; });
+  // Registered before the first flush, so a destroyed owner never leaks the controller (see useOperation).
+  $effect.pre(() => () => { unsubscribe(); controller.dispose(); });
   $effect.pre(() => {
     const { totalCount, rowHeight, overscan } = options();
     controller.update({ totalCount, rowHeight, ...(overscan === undefined ? {} : { overscan }) });
   });
-  $effect(() => () => controller.dispose());
   return {
     get viewport() { return viewport; },
     attach(element) {
