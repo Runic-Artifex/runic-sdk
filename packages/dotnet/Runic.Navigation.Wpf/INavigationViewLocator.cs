@@ -13,7 +13,8 @@ public interface INavigationViewLocator
     /// <summary>
     /// Returns a new view for this presentation of <paramref name="entry"/>, or <see langword="null"/> to fall back.
     /// The host never asks twice for the same presentation, and sets the view's <see cref="FrameworkElement.DataContext"/>
-    /// to the content unless the view set one itself.
+    /// to the content unless the view set one itself. A view that <see cref="NavigationHost.RetainViews"/> keeps for a
+    /// retained entry stays that entry's presentation, so the host doesn't ask again when the entry becomes current again.
     /// </summary>
     /// <param name="entry">The entry to present.</param>
     /// <returns>A new view, or <see langword="null"/>.</returns>
