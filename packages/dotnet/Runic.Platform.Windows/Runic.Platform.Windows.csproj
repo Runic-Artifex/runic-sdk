@@ -13,6 +13,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <!-- The argument checks of IDesktopApplications, shared with Runic.Platform so every platform rejects the same calls. -->
+    <Compile Include="../Runic.Platform/DesktopApplicationNames.cs" Link="Shared/DesktopApplicationNames.cs" />
     <InternalsVisibleTo Include="Runic.Platform.Windows.Tests" />
     <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <!-- PlatformServices selects the status icon and window presentation without widening this package's API. -->

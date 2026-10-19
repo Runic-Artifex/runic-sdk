@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Platform.Windows;
 
-// Shell_NotifyIconW and NOTIFYICONDATAW are handwritten: the Win32 metadata declares NOTIFYICONDATAW per CPU
+// Shell_NotifyIconW and NOTIFYICONDATAW, and ShellExecuteExW and SHELLEXECUTEINFOW, are handwritten: the Win32 metadata declares NOTIFYICONDATAW per CPU
 // architecture (32-bit packing differs), and CsWin32 refuses to generate it for an AnyCPU assembly. This layout is
 // the natural one used on x64 and ARM64, the architectures .NET 10 supports on Windows besides x86. See
 // docs/interop-inventory.md.
@@ -40,4 +40,32 @@ internal static unsafe partial class WindowsShellInterop
 
     [LibraryImport("shell32.dll", EntryPoint = "Shell_NotifyIconW")]
     internal static partial int Shell_NotifyIcon(uint message, NOTIFYICONDATAW* data);
+
+    // ShellExecuteExW and SHELLEXECUTEINFOW, handwritten for the same reason: the metadata packs the structure to one
+    // byte on x86 only, so CsWin32 refuses it for AnyCPU (PInvoke005). The natural x64/ARM64 layout is 112 bytes.
+    internal const uint SEE_MASK_CLASSNAME = 0x1, SEE_MASK_NOASYNC = 0x100, SEE_MASK_FLAG_NO_UI = 0x400;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SHELLEXECUTEINFOW
+    {
+        internal uint cbSize;
+        internal uint fMask;
+        internal nint hwnd;
+        internal char* lpVerb;
+        internal char* lpFile;
+        internal char* lpParameters;
+        internal char* lpDirectory;
+        internal int nShow;
+        internal nint hInstApp;
+        internal void* lpIDList;
+        internal char* lpClass;
+        internal nint hkeyClass;
+        internal uint dwHotKey;
+        // A union with hMonitor.
+        internal nint hIcon;
+        internal nint hProcess;
+    }
+
+    [LibraryImport("shell32.dll", EntryPoint = "ShellExecuteExW", SetLastError = true)]
+    internal static partial int ShellExecuteEx(SHELLEXECUTEINFOW* info);
 }

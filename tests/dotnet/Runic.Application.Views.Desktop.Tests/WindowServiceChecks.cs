@@ -246,11 +246,12 @@ internal sealed class WindowServiceChecks
             await using (var first = provider.CreateAsyncScope())
                 Require(ReferenceEquals(applications, first.ServiceProvider.GetRequiredService<IDesktopApplications>()),
                     "A Window scope got its own application database.");
-            if (OperatingSystem.IsLinux())
-                Require(applications.GetType().FullName == "Runic.Platform.Linux.Portal.LinuxDesktopApplications",
-                    $"Linux did not create the freedesktop.org application database: {applications.GetType().FullName}");
+            string expected = OperatingSystem.IsLinux() ? "Runic.Platform.Linux.Portal.LinuxDesktopApplications"
+                : OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsDesktopApplications"
+                : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacDesktopApplications" : "";
+            if (expected.Length != 0)
+                Require(applications.GetType().FullName == expected, $"The operating system's application database was not created: {applications.GetType().FullName}");
             else
-                // Windows and macOS have no provider yet.
                 Require(await applications.GetApplicationsAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopApplicationInfo>>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
                     "A platform without an application database provider did not report it unconfigured.");
         }

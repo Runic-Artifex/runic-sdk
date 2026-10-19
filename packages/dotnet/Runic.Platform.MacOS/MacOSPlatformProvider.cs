@@ -63,6 +63,17 @@ public static class MacOSPlatformProvider
     /// </remarks>
     public static IDesktopVolumes CreateVolumes()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacVolumes(new MacVolumeSource(), MacVolumes.DefaultSettle); }
+
+    /// <summary>Creates the desktop's application database from Launch Services and uniform type identifiers.</summary>
+    /// <remarks>
+    /// <para>A content type is a uniform type identifier, such as <c>public.plain-text</c>; requests also take a MIME type,
+    /// an extension such as <c>.txt</c>, or <c>x-scheme-handler/&lt;scheme&gt;</c> for a URL scheme. An application is
+    /// its bundle identifier, such as <c>com.apple.TextEdit</c>.</para>
+    /// <para>It needs no window and no AppKit event loop. macOS may ask the user to confirm
+    /// <see cref="IDesktopApplications.SetDefaultApplicationAsync"/>, which waits for the answer.</para>
+    /// </remarks>
+    public static IDesktopApplications CreateApplications()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopApplications(); }
     /// <summary>Creates owned file handoff operations. Caller retains security-scoped access through completion.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }

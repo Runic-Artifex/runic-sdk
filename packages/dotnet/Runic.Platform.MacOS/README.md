@@ -121,6 +121,20 @@ as Cryptex and simulator runtimes) and EFI system partitions are `IsSystem` and
 are never mounted, unmounted or ejected by the provider. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
 
+## Desktop applications
+
+`MacOSPlatformProvider.CreateApplications()` is Launch Services behind
+`IDesktopApplications`: content types as uniform type identifiers (`UTType`),
+the applications for a type or URL scheme from `NSWorkspace` with the default
+first, launches of an application by bundle identifier with
+`openURLs:withApplicationAtURL:configuration:completionHandler:`, the user's
+default with `setDefaultApplicationAtURL:toOpenContentType:completionHandler:`
+(macOS may ask the user to confirm), icons rendered to PNG, and the
+applications in `/Applications`, `/System/Applications` and `~/Applications`.
+Requests also take a MIME type, an extension such as `.txt` or
+`x-scheme-handler/<scheme>`. It needs no window and no AppKit event loop. See
+the [desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
+
 ## Secret storage
 
 `MacOSPlatformProvider.CreateSecretStore()` keeps secrets as generic passwords

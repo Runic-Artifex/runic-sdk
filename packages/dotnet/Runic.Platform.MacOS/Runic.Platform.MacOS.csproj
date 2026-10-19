@@ -14,6 +14,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <!-- The argument checks of IDesktopApplications, shared with Runic.Platform so every platform rejects the same calls. -->
+    <Compile Include="../Runic.Platform/DesktopApplicationNames.cs" Link="Shared/DesktopApplicationNames.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Platform.MacOS.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>

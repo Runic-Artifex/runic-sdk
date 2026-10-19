@@ -40,9 +40,6 @@ internal sealed class WindowsThumbnails : IDesktopThumbnails
     }
 
     private static readonly Guid ImageFactoryId = new("BCC18B79-BA16-442F-80C4-8A59C30C463B");
-    private static readonly Guid ImagingFactoryClass = new("CACAF262-9370-4615-A13B-9F5539DA4C0A"); // CLSID_WICImagingFactory
-    private static readonly Guid ContainerFormatPng = new("1B7CFAF4-713F-473C-BBCD-6137425FAEAF");
-    private static readonly Guid PixelFormatBgra = new("6FDDC324-4E03-4BFE-B185-3D77768DC90F"); // GUID_WICPixelFormat32bppBGRA
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
     private static unsafe PlatformResult<DesktopThumbnail?> Extract(string path, int size)
@@ -89,79 +86,11 @@ internal sealed class WindowsThumbnails : IDesktopThumbnails
         new PlatformResult<DesktopThumbnail?>.Failed(code, PlatformDiagnostic.FromHResult(hr));
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
-    private static unsafe PlatformResult<DesktopThumbnail?> Encode(HBITMAP bitmap)
+    private static PlatformResult<DesktopThumbnail?> Encode(HBITMAP bitmap)
     {
-        IWICImagingFactory* imaging = null;
-        IWICBitmap* source = null;
-        IWICFormatConverter* converter = null;
-        IStream* stream = null;
-        IWICBitmapEncoder* encoder = null;
-        IWICBitmapFrameEncode* frame = null;
-        try
-        {
-            Guid clsid = ImagingFactoryClass, factoryId = typeof(IWICImagingFactory).GUID;
-            void* instance = null;
-            int hr = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &factoryId, &instance).Value;
-            if (hr < 0) return new PlatformResult<DesktopThumbnail?>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-            imaging = (IWICImagingFactory*)instance;
-            hr = imaging->CreateBitmapFromHBITMAP(bitmap, default, AlphaOption(bitmap), &source).Value;
-            uint width = 0, height = 0;
-            if (hr >= 0) hr = source->GetSize(&width, &height).Value;
-            if (hr >= 0) hr = imaging->CreateFormatConverter(&converter).Value;
-            // The shell's bitmaps carry premultiplied alpha; PNG stores straight alpha.
-            Guid format = PixelFormatBgra;
-            if (hr >= 0) hr = converter->Initialize((IWICBitmapSource*)source, &format, WICBitmapDitherType.WICBitmapDitherTypeNone, null, 0,
-                WICBitmapPaletteType.WICBitmapPaletteTypeCustom).Value;
-            if (hr >= 0) stream = PInvoke.SHCreateMemStream(null, 0);
-            if (hr >= 0 && stream is null) hr = unchecked((int)0x8007000E);
-            Guid container = ContainerFormatPng;
-            if (hr >= 0) hr = imaging->CreateEncoder(&container, null, &encoder).Value;
-            if (hr >= 0) hr = encoder->Initialize(stream, WICBitmapEncoderCacheOption.WICBitmapEncoderNoCache).Value;
-            if (hr >= 0) hr = encoder->CreateNewFrame(&frame, null).Value;
-            if (hr >= 0) hr = frame->Initialize(null).Value;
-            if (hr >= 0) hr = frame->SetSize(width, height).Value;
-            if (hr >= 0) hr = frame->SetPixelFormat(&format).Value;
-            if (hr >= 0) hr = frame->WriteSource((IWICBitmapSource*)converter, null).Value;
-            if (hr >= 0) hr = frame->Commit().Value;
-            if (hr >= 0) hr = encoder->Commit().Value;
-            ulong length = 0;
-            if (hr >= 0) hr = stream->Seek(0, SeekOrigin.End, &length).Value;
-            if (hr >= 0) hr = stream->Seek(0, SeekOrigin.Begin, null).Value;
-            if (hr < 0) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(hr));
-            var png = new byte[checked((int)length)];
-            uint read = 0;
-            fixed (byte* buffer = png) hr = stream->Read(buffer, (uint)png.Length, &read).Value;
-            if (hr < 0 || read != png.Length || width == 0 || height == 0)
-                return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(hr < 0 ? hr : unchecked((int)0x80004005)));
-            return new PlatformResult<DesktopThumbnail?>.Success(new DesktopThumbnail(ImmutableCollectionsMarshal.AsImmutableArray(png), (int)width, (int)height));
-        }
-        finally
-        {
-            if (frame is not null) frame->Release();
-            if (encoder is not null) encoder->Release();
-            if (stream is not null) stream->Release();
-            if (converter is not null) converter->Release();
-            if (source is not null) source->Release();
-            if (imaging is not null) imaging->Release();
-        }
-    }
-
-    // A 32-bit thumbnail without any alpha is opaque: providers that draw without alpha leave it zero, which would make
-    // the PNG transparent.
-    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
-    private static unsafe WICBitmapAlphaChannelOption AlphaOption(HBITMAP bitmap)
-    {
-        BITMAP info;
-        if (PInvoke.GetObject((HGDIOBJ)bitmap.Value, sizeof(BITMAP), &info) == 0 || info.bmBitsPixel != 32 || info.bmBits is null)
-            return WICBitmapAlphaChannelOption.WICBitmapIgnoreAlpha;
-        return HasAlpha(new ReadOnlySpan<byte>(info.bmBits, checked(info.bmWidthBytes * Math.Abs(info.bmHeight))))
-            ? WICBitmapAlphaChannelOption.WICBitmapUsePremultipliedAlpha : WICBitmapAlphaChannelOption.WICBitmapIgnoreAlpha;
-    }
-
-    internal static bool HasAlpha(ReadOnlySpan<byte> bgra)
-    {
-        for (int i = 3; i < bgra.Length; i += 4)
-            if (bgra[i] != 0) return true;
-        return false;
+        int hr = WindowsPng.Encode(bitmap, default, out var png, out uint width, out uint height, out bool unavailable);
+        if (unavailable) return new PlatformResult<DesktopThumbnail?>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        if (hr < 0 || png is null) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(hr < 0 ? hr : unchecked((int)0x80004005)));
+        return new PlatformResult<DesktopThumbnail?>.Success(new DesktopThumbnail(ImmutableCollectionsMarshal.AsImmutableArray(png), (int)width, (int)height));
     }
 }

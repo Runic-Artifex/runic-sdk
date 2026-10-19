@@ -247,7 +247,8 @@ icons. A file manager uses it for "Open With", and opens a file with the
 application the user picks. `AddRunicPlatformServices()` registers one for the
 application; it needs no window. Linux reads the freedesktop.org desktop
 entries, shared MIME-info database, `mimeapps.list` and icon themes directly;
-Windows and macOS report `Unavailable(ProviderNotConfigured)` for now.
+Windows uses the shell's file and protocol associations, and macOS Launch
+Services with uniform type identifiers.
 
 ```csharp
 if (await applications.GetContentTypeAsync(path) is PlatformResult<DesktopContentType>.Success(var type)
@@ -259,10 +260,17 @@ if (await applications.GetContentTypeAsync(path) is PlatformResult<DesktopConten
 ```
 
 Identifiers are the platform's own: on Linux a desktop file ID such as
-`org.gnome.TextEditor.desktop` and a MIME type such as `text/plain`. `LaunchAsync`
-starts only an installed application the desktop knows, and passes each path or
-URI as one argument, never through a shell. `SetDefaultApplicationAsync` changes
-one key of the user's `mimeapps.list` on Linux. Icons are PNG or SVG bytes.
+`org.gnome.TextEditor.desktop` and a MIME type such as `text/plain`; on Windows
+an executable's path (an AppUserModelID for a packaged application) and a MIME
+type or an extension such as `.txt`; on macOS a bundle identifier such as
+`com.apple.TextEdit` and a uniform type identifier such as `public.plain-text`.
+`x-scheme-handler/<scheme>` names a URL scheme everywhere. `LaunchAsync` starts
+only an installed application the desktop knows, and passes each path or URI as
+one argument, never through a shell. `SetDefaultApplicationAsync` changes one
+key of the user's `mimeapps.list` on Linux, asks Launch Services on macOS, which
+may confirm with the user, and reports `PermissionDenied` on Windows, where only
+the user chooses defaults (in `ms-settings:defaultapps`). Icons are PNG or SVG
+bytes.
 Inside Flatpak and Snap the host's applications are out of reach and the
 application methods report `Unavailable(BackendUnavailable)`; use
 `IDesktopFileLauncher` there. Hosts without a provider register

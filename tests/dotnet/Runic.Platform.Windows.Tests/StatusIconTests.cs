@@ -94,6 +94,7 @@ internal sealed partial class StatusIconTests
     {
 #pragma warning disable CA1416 // Layout only; nothing is called.
         if (IntPtr.Size == 8) Check(sizeof(WindowsShellInterop.NOTIFYICONDATAW) == 976, "NOTIFYICONDATAW is 976 bytes on x64 and ARM64");
+        if (IntPtr.Size == 8) Check(sizeof(WindowsShellInterop.SHELLEXECUTEINFOW) == 112, "SHELLEXECUTEINFOW is 112 bytes on x64 and ARM64");
 #pragma warning restore CA1416
     }
 

@@ -840,6 +840,16 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeSecrets]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeSecrets]" --output detailed
+      # The runner's associations read-only, then a type, extension and URL scheme unique to the run whose handlers the
+      # case owns (a per-user registration of the test executable on Windows; two app bundles registered with Launch
+      # Services on macOS), launched and removed afterwards.
+      - name: Verify desktop applications with JIT and NativeAOT
+        if: runner.os != 'Linux'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeApplications]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeApplications]" --output detailed
       # Privileged actions: the XPC protocol, both code-signing checks, posix_spawn and Authorization Services with the
       # daemon served in the test process; then the NativeAOT executable as a root launch daemon in the system domain,
       # with real rights and a temporary administrator (the runner's passwordless sudo). SMAppService registration
