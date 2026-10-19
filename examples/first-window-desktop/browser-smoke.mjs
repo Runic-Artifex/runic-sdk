@@ -27,11 +27,25 @@ try {
   await retry(async () => (await count()) === "1", "ReactiveUI command");
   await evaluate("location.reload()");
   await retry(async () => (await count()) === "1", "reconnected snapshot");
+  // The page learns that the host ended when its WebSocket drops, without making a call (#406).
+  const states = () => evaluate("JSON.stringify(globalThis.connectionStates ?? null)");
+  // A reload may still be replacing the document; register in the document that has the Bridge.
+  const listen = () => evaluate(`(() => {
+    if (globalThis.connectionStates || !window.__runicBridge) return;
+    globalThis.connectionStates = [];
+    window.__runicBridge.onConnectionChange(connected => connectionStates.push(connected));
+  })()`);
+  await retry(async () => { await listen(); return await states() === "[true]"; }, "the connection listener");
   // A line on standard input ends serving: WaitForCloseAsync returns and the application exits by itself.
+  const ended = Date.now();
   host.stdin.end("\n");
   await retry(() => host.exitCode !== null, "host exit after a standard input line");
   if (host.exitCode !== 0) throw new Error(`Host exited with ${host.exitCode}: ${errors}`);
-  console.log("DESKTOP_VIEWS_BROWSER_OK|snapshot|reactive-command|reload|serve-only-exit");
+  await retry(async () => await states() === "[true,false]", "the page seeing the ended host");
+  const latency = Date.now() - ended;
+  if (latency > 5_000) throw new Error(`The page saw the ended host only after ${latency} ms.`);
+  console.log(`The page saw the ended host after ${latency} ms.`);
+  console.log("DESKTOP_VIEWS_BROWSER_OK|snapshot|reactive-command|reload|serve-only-exit|host-ended");
 } finally {
   try { await browser?.close(); }
   finally {

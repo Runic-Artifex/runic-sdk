@@ -6,13 +6,25 @@
   // routes and re-acknowledge mounted Views. Observe the transition by polling
   // so an application's own webui.setEventCallback stays in place. The poll
   // also runs while a call is unsettled, so a lost connection settles it.
+  // Connection listeners learn of a dropped WebSocket within one poll, without
+  // waiting for the page's next call.
   const reconnectListeners = new Set();
+  const connectionListeners = new Set();
   let reconnectTimer;
   let wasConnected = false;
   let lost = false;
+  let reported;
+  function reportConnection(now) {
+    if (now === reported || connectionListeners.size === 0) return;
+    reported = now;
+    for (const listener of [...connectionListeners]) {
+      try { listener(now); } catch (error) { console.error("Runic connection listener failed", error); }
+    }
+  }
   function connectionLost() {
     lost = true;
     wasConnected = false;
+    reportConnection(false);
     forgetAdmissions();
     const previous = connection;
     connection = nextConnection();
@@ -23,6 +35,7 @@
   function watchConnection() {
     const now = connected();
     if (!now && wasConnected) connectionLost();
+    reportConnection(now);
     wasConnected = now;
     if (now && lost) {
       lost = false;
@@ -32,7 +45,8 @@
     }
     if (idle()) stopWatching();
   }
-  const idle = () => reconnectListeners.size === 0 && current === undefined && late.length === 0 && unsettled === 0;
+  const idle = () => reconnectListeners.size === 0 && connectionListeners.size === 0 && current === undefined && late.length === 0
+    && unsettled === 0;
   function startWatching() {
     if (reconnectTimer !== undefined) return;
     wasConnected = connected();
@@ -230,6 +244,17 @@
       startWatching();
       return () => {
         reconnectListeners.delete(listener);
+        if (idle()) stopWatching();
+      };
+    },
+    // Reads WebUI's state directly: the Bridge's isConnected() also allows navigation.
+    onConnectionChange: (listener) => {
+      if (connectionListeners.size === 0) reported = connected();
+      connectionListeners.add(listener);
+      startWatching();
+      try { listener(reported); } catch (error) { console.error("Runic connection listener failed", error); }
+      return () => {
+        connectionListeners.delete(listener);
         if (idle()) stopWatching();
       };
     }

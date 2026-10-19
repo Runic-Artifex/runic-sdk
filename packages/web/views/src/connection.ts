@@ -2,7 +2,7 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
-import { hostCallbacks, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
+import { hostCallbacks, notConnectedError, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import * as bridgeWire from "./wire.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
@@ -23,7 +23,7 @@ export interface ViewClient<TState = unknown> {
    * returns a no-op.
    */
   subscribe(listener: (state: TState) => void): () => void;
-  /** Releases this connection. Further calls reject with a disconnected BridgeError. */
+  /** Releases this connection. Further calls reject with a `released` BridgeError, or `disconnected` while the Bridge is disconnected. */
   dispose(): void;
 }
 
@@ -100,13 +100,16 @@ export const bridgeProtocol = 2;
 const callFailed = (bridge: RunicBridgeClient, message: string, route: string, cause: unknown) =>
   new BridgeError(bridge.isConnected() ? "failed" : "disconnected", message, { cause, route });
 
-const errorKinds: readonly string[] = ["rejected", "cancelled", "failed", "disconnected", "timeout", "unavailable"] satisfies readonly BridgeErrorKind[];
+const errorKinds: readonly string[] = ["rejected", "cancelled", "failed", "disconnected", "released", "timeout", "unavailable"] satisfies readonly BridgeErrorKind[];
 
 // A kind this client does not know, including `domain-failed` on a route that
 // declares no failure type, is `failed`: a newer host cannot surprise it.
+// .NET answers a call of a released or closed View `disconnected`; the reply
+// arrived, so the Bridge is connected and the View was released.
 function replyError(error: EnvelopeError | null, route: string, fallback: string): BridgeError {
   const detail = decodeFailureDetail(error?.detail);
-  const kind = typeof error?.kind === "string" && errorKinds.includes(error.kind) ? error.kind as BridgeErrorKind : "failed";
+  const known = typeof error?.kind === "string" && errorKinds.includes(error.kind) ? error.kind as BridgeErrorKind : "failed";
+  const kind = known === "disconnected" ? "released" : known;
   return new BridgeError(kind, error?.message ?? fallback, { route, ...(detail === undefined ? {} : { detail }) });
 }
 
@@ -148,7 +151,7 @@ function unpack(json: string, entry: SharedEntry, route: string): unknown {
 // accepted. Any other successful reply without state is invalid.
 function releasedState(reply: Envelope, entry: SharedEntry, route: string): unknown {
   if (reply.released !== true) throw new BridgeError("failed", "The Bridge returned no state.", { route });
-  if (entry.current === undefined) throw new BridgeError("disconnected", "This View was released before its state was read.", { route });
+  if (entry.current === undefined) throw new BridgeError("released", "This View was released before its state was read.", { route });
   return entry.current;
 }
 
@@ -206,7 +209,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
       } catch (error) {
         if (!live()) return false;
         // A reconnect re-reads every route itself; a disconnected Bridge cannot answer a retry.
-        const disconnected = !bridge.isConnected() || error instanceof BridgeError && error.kind === "disconnected";
+        const disconnected = !bridge.isConnected() || error instanceof BridgeError && (error.kind === "disconnected" || error.kind === "released");
         if (disconnected || attempt === recoveryAttempts) { reportBridgeError(error, snapshotRoute); return false; }
         emitErrorDiagnostic(error, snapshotRoute);
         await wait(recoveryDelay * 2 ** (attempt - 1));
@@ -362,14 +365,15 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     return shared.active && routeEntry.active && runtime.bridge === bridge && routeEntry.generation === runtime.generation;
   }
   function assertConnected(): void {
-    if (lease.disposed || !isLive() || !bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
+    if (!bridge.isConnected()) throw new BridgeError("disconnected", "The Bridge is disconnected.");
+    if (lease.disposed || !isLive()) throw new BridgeError("released", "This View was released. Connect its current reference for the current state.");
   }
   async function call(name: string, args: readonly unknown[]): Promise<string> {
     assertConnected();
     let reply: string;
     try { reply = await bridge.call(name, ...args); }
     catch (cause) { throw callFailed(bridge, "The Bridge call could not complete.", name, cause); }
-    if (lease.disposed || !isLive()) throw new BridgeError("disconnected", "This view was disposed. Reconnect for the current state.", { route: name });
+    if (lease.disposed || !isLive()) throw new BridgeError("released", "This View was released during the call. Connect its current reference for the current state.", { route: name });
     return reply;
   }
   async function invoke(name: string, ...args: unknown[]): Promise<TState> {
@@ -400,20 +404,20 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
 
   try { await shared.initializing; }
   catch (error) { dispose(); throw error; }
-  if (!isLive()) { dispose(); throw new BridgeError("disconnected", "The Bridge session changed during connection."); }
+  if (!isLive()) { dispose(); throw notConnectedError(bridge, "The View was released during connection."); }
   lease.current = shared.current;
   if (mountToken) {
     try {
       lease.mounted = true;
       // A reconnect while the snapshot loaded started a new browser session.
       const acknowledged = await bridge.call(`${route}Mount`, renewMountToken(runtime.mountSession));
-      if (acknowledged !== "ok") throw new BridgeError("disconnected", "The View mount was not accepted.", { route: `${route}Mount` });
+      if (acknowledged !== "ok") throw notConnectedError(bridge, "The View mount was not accepted: .NET released the View.", `${route}Mount`);
     } catch (cause) {
       dispose();
       throw cause instanceof BridgeError ? cause : new BridgeError("disconnected", "The View mount could not complete.", { cause, route: `${route}Mount` });
     }
   }
-  if (!isLive()) { dispose(); throw new BridgeError("disconnected", "The Bridge session changed during connection."); }
+  if (!isLive()) { dispose(); throw notConnectedError(bridge, "The View was released during connection."); }
   if (options.interactions)
     interactions = options.interactions({ bridge, route, presentationId: lease.mountToken, live: () => !lease.disposed && isLive() });
   if (interactions?.resume) lease.resumeInteractions = () => interactions?.resume?.(lease.mountToken);
@@ -481,7 +485,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       } catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid checked write receipt: ${errorMessage(cause)}`, { cause, route: name }); }
     }),
     fieldBaseline(field) {
-      if (lease.disposed || !isLive() || lease.current === undefined) throw new BridgeError("disconnected", "ViewModel is not connected.");
+      if (lease.disposed || !isLive() || lease.current === undefined) throw notConnectedError(bridge, "This View was released.");
       if (!options.checkedFields?.includes(field)) throw new BridgeError("failed", "The requested checked field is unavailable.");
       const fields = (shared.wire as { readonly __runicFields?: Record<string, { readonly version?: unknown } | undefined> } | undefined)?.__runicFields;
       const version = fields && Object.hasOwn(fields, field) ? fields[field]?.version : undefined;

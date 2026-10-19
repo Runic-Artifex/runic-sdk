@@ -115,7 +115,7 @@ test("a disposed client keeps its last snapshot and ignores late subscribers", a
   counter.update({ count: 6 });
   assert.deepEqual(late, [{ count: 5, label: "five" }]);
   await assert.rejects(client.invoke("counterSetCount", 1), (error: unknown) =>
-    error instanceof BridgeError && error.kind === "disconnected");
+    error instanceof BridgeError && error.kind === "released");
   assert.equal(host["__counterChanged"], undefined);
 });
 

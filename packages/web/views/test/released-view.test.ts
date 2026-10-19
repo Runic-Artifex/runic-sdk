@@ -1,6 +1,8 @@
 // Issue #246: a page's own command can replace or leave the page, so .NET releases
 // the page's View during the call. Replies for such a View resolve when the call
-// ran, or reject as `disconnected`; none is reported as `failed`.
+// ran, or reject as `released`; none is reported as `failed`. Issue #406: `released`
+// is not `disconnected`, which means the Bridge itself is not connected, and a
+// released View is expected after navigation, so it is not reported as a diagnostic.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BridgeError, bridgeSuccess, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
@@ -71,35 +73,34 @@ test("a successful reply without state that does not say the View was released i
   client.dispose();
 });
 
-test("a released route is disconnected on every route", async () => {
+test("a released route is released on every route and reports nothing", async () => {
   const bridge = fresh();
   bridge.view("page", { state: { title: "detail" } });
   const client = await connect();
   for (const route of routes) bridge.route(route, () => unbound);
   const { diagnostics, stop } = captureDiagnostics();
   try {
-    await assert.rejects(client.command("pageBack"), isKind("disconnected", "pageBack"));
-    await assert.rejects(client.invoke("pageSetTitle", "x"), isKind("disconnected", "pageSetTitle"));
-    await assert.rejects(client.query("pageCanBack"), isKind("disconnected", "pageCanBack"));
+    await assert.rejects(client.command("pageBack"), isKind("released", "pageBack"));
+    await assert.rejects(client.invoke("pageSetTitle", "x"), isKind("released", "pageSetTitle"));
+    await assert.rejects(client.query("pageCanBack"), isKind("released", "pageCanBack"));
     await assert.rejects(client.startOperation("Save", "request-1", () => "{}", value => value),
-      isKind("disconnected", "pageStartSave"));
+      isKind("released", "pageStartSave"));
     // A checked write's reply is an envelope with a receipt.
-    await assert.rejects(client.writeField("pageWriteTitle", "{}", value => value), isKind("disconnected", "pageWriteTitle"));
-    assert.deepEqual(diagnostics.map(item => [item.route, item.code]), ["pageBack", "pageSetTitle", "pageCanBack", "pageStartSave", "pageWriteTitle"]
-      .map(route => [route, "disconnected"]));
+    await assert.rejects(client.writeField("pageWriteTitle", "{}", value => value), isKind("released", "pageWriteTitle"));
+    assert.deepEqual(diagnostics, []);
   } finally {
     stop();
     client.dispose();
   }
 });
 
-test("a View connecting to a released route is disconnected", async () => {
+test("a View connecting to a released route is released", async () => {
   const bridge = fresh();
   bridge.route("pageSnapshot", () => unbound);
   const { diagnostics, stop } = captureDiagnostics();
   try {
-    await assert.rejects(connect(), isKind("disconnected", "pageSnapshot"));
-    assert.deepEqual(diagnostics.map(item => item.code), ["disconnected"]);
+    await assert.rejects(connect(), isKind("released", "pageSnapshot"));
+    assert.deepEqual(diagnostics, []);
   } finally {
     stop();
   }
@@ -123,11 +124,48 @@ test("an empty reply is an invalid response on every route", async () => {
   await assert.rejects(connect(), invalid("pageSnapshot"));
 });
 
-test("an operation start on a released View is disconnected", async () => {
+test("an operation start on a released View is released", async () => {
   const bridge = fresh();
   bridge.view("page", { state: { title: "detail" } });
   bridge.route("pageStartSave", () => JSON.stringify({ kind: "disconnected", reason: "The Bridge is closed." }));
   const client = await connect();
-  await assert.rejects(client.startOperation("Save", "request-1", () => "{}", value => value), isKind("disconnected", "pageStartSave"));
+  await assert.rejects(client.startOperation("Save", "request-1", () => "{}", value => value), isKind("released", "pageStartSave"));
   client.dispose();
+});
+
+// The page navigated: its framework disposed the client while a call was in flight.
+test("a reply for a View the page released during the call is released and reports nothing", async () => {
+  const bridge = installMockBridge(createMockBridge({ scheduling: "manual" }));
+  delete (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("runic.views.generated-client-runtime")];
+  bridge.view("page", { state: { title: "detail" } });
+  const client = await bridge.flushUntil(connect());
+  const { diagnostics, stop } = captureDiagnostics();
+  try {
+    const pending = client.invoke("pageSetTitle", "x");
+    void pending.catch(() => undefined);
+    client.dispose();
+    await bridge.flush();
+    await assert.rejects(pending, isKind("released", "pageSetTitle"));
+    await assert.rejects(client.command("pageBack"), (error: unknown) => error instanceof BridgeError && error.kind === "released");
+    assert.deepEqual(diagnostics, []);
+  } finally {
+    stop();
+  }
+});
+
+// A host that ended rejects calls; that is `disconnected` and stays a reported error.
+test("a call while the Bridge is disconnected is disconnected and reported", async () => {
+  const bridge = fresh();
+  bridge.view("page", { state: { title: "detail" } });
+  const client = await connect();
+  const { diagnostics, stop } = captureDiagnostics();
+  try {
+    bridge.disconnect();
+    await assert.rejects(client.command("pageBack"), (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
+    client.dispose();
+    await assert.rejects(client.command("pageBack"), (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
+    assert.deepEqual(diagnostics.map(item => [item.kind, item.code]), [["error", "disconnected"], ["error", "disconnected"]]);
+  } finally {
+    stop();
+  }
 });

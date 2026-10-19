@@ -14,8 +14,13 @@ export interface ViewFailureFields {
 
 /** No host installed `window.__runicBridge`, for example a page opened from a plain Vite server (`unavailable`). */
 export class ViewUnavailable extends Data.TaggedError("ViewUnavailable")<ViewFailureFields> {}
-/** The client was disposed, the Bridge session changed, or the transport is closed (`disconnected`). */
+/** The Bridge is not connected to .NET: the transport closed or the host ended (`disconnected`). */
 export class ViewDisconnected extends Data.TaggedError("ViewDisconnected")<ViewFailureFields> {}
+/**
+ * The Bridge is connected, but this View was released: the client was disposed, or .NET
+ * released the View, for example because navigation replaced it (`released`).
+ */
+export class ViewReleased extends Data.TaggedError("ViewReleased")<ViewFailureFields> {}
 /** A Bridge exists but did not connect in time (`timeout`). */
 export class ViewBridgeTimeout extends Data.TaggedError("ViewBridgeTimeout")<ViewFailureFields> {}
 /** .NET refused the call, for example a command whose `CanExecute` is false (`rejected`). */
@@ -31,7 +36,8 @@ export class ViewCommandFailed extends Data.TaggedError("ViewCommandFailed")<Vie
 }> {}
 
 /** The failures of a command, setter, query or connection. */
-export type ViewError = ViewUnavailable | ViewDisconnected | ViewBridgeTimeout | ViewRejected | ViewCancelled | ViewCommandFailed;
+export type ViewError =
+  | ViewUnavailable | ViewDisconnected | ViewReleased | ViewBridgeTimeout | ViewRejected | ViewCancelled | ViewCommandFailed;
 
 /**
  * The client could not observe whether .NET admitted or completed an operation,
@@ -98,6 +104,7 @@ export function fromBridgeError(error: BridgeError): ViewError {
   switch (error.kind) {
     case "unavailable": return new ViewUnavailable(fields);
     case "disconnected": return new ViewDisconnected(fields);
+    case "released": return new ViewReleased(fields);
     case "timeout": return new ViewBridgeTimeout(fields);
     case "rejected": return new ViewRejected(fields);
     case "cancelled": return new ViewCancelled(fields);

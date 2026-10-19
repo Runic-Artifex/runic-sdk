@@ -5,13 +5,24 @@
   // The Desktop bridge reconnects its WebSocket without reloading the page.
   // Generated clients then re-read their routes and re-acknowledge mounted
   // Views. Observe the transition by polling so an application's own
-  // webui.setEventCallback stays in place.
+  // webui.setEventCallback stays in place. Connection listeners learn of a
+  // dropped WebSocket within one poll, without waiting for the page's next call.
   const reconnectListeners = new Set();
+  const connectionListeners = new Set();
   let reconnectTimer;
   let wasConnected = false;
   let lost = false;
+  let reported;
+  function reportConnection(now) {
+    if (now === reported) return;
+    reported = now;
+    for (const listener of [...connectionListeners]) {
+      try { listener(now); } catch (error) { console.error("Runic connection listener failed", error); }
+    }
+  }
   function watchConnection() {
     const now = connected();
+    reportConnection(now);
     if (!now && wasConnected) lost = true;
     wasConnected = now;
     if (!now || !lost) return;
@@ -19,6 +30,16 @@
     for (const listener of [...reconnectListeners]) {
       try { listener(); } catch (error) { console.error("Runic reconnect listener failed", error); }
     }
+  }
+  function startWatching() {
+    if (reconnectTimer !== undefined) return;
+    wasConnected = connected();
+    reconnectTimer = setInterval(watchConnection, 250);
+  }
+  function stopWatchingWhenIdle() {
+    if (reconnectListeners.size !== 0 || connectionListeners.size !== 0 || reconnectTimer === undefined) return;
+    clearInterval(reconnectTimer);
+    reconnectTimer = undefined;
   }
 
   // Views frontends own their navigation. Once the bridge connects it cancels
@@ -42,15 +63,20 @@
     },
     onReconnect: (listener) => {
       reconnectListeners.add(listener);
-      if (reconnectTimer === undefined) {
-        wasConnected = connected();
-        reconnectTimer = setInterval(watchConnection, 250);
-      }
+      startWatching();
       return () => {
         reconnectListeners.delete(listener);
-        if (reconnectListeners.size !== 0 || reconnectTimer === undefined) return;
-        clearInterval(reconnectTimer);
-        reconnectTimer = undefined;
+        stopWatchingWhenIdle();
+      };
+    },
+    onConnectionChange: (listener) => {
+      if (connectionListeners.size === 0) reported = connected();
+      connectionListeners.add(listener);
+      startWatching();
+      try { listener(reported); } catch (error) { console.error("Runic connection listener failed", error); }
+      return () => {
+        connectionListeners.delete(listener);
+        stopWatchingWhenIdle();
       };
     }
   };

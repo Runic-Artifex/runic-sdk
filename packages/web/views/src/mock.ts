@@ -31,7 +31,8 @@ export interface MockErrorFailure {
   /**
    * The BridgeError kind of the reply. `transport` makes the call itself reject,
    * like a dropped host connection; the client reports it as `failed`, or as
-   * `disconnected` after `disconnect()`.
+   * `disconnected` after `disconnect()`. A `disconnected` reply is how .NET answers
+   * a released View, so the client reports it as `released`.
    */
   readonly kind: BridgeErrorKind | "transport";
   readonly message?: string;
@@ -221,11 +222,12 @@ export interface MockBridge extends Required<RunicBridgeClient> {
   /** Answers the next `times` calls of a whole route name with `failure`. */
   failNext(name: string, failure: MockFailure, times?: number): void;
   /**
-   * Rejects further calls until `reconnect()`. Like .NET when a connection closes, it ends the mounted
-   * presentations, and a later `Mount` in their browser session answers `disconnected`.
+   * Rejects further calls until `reconnect()` and reports the loss to `onConnectionChange` listeners. Like
+   * .NET when a connection closes, it ends the mounted presentations, and a later `Mount` in their browser
+   * session answers `disconnected`, which the client reports as `released`.
    */
   disconnect(): void;
-  /** Restores calls and notifies reconnect listeners, as a host transport does after a reconnect. */
+  /** Restores calls and notifies connection and reconnect listeners, as a host transport does after a reconnect. */
   reconnect(): void;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
@@ -349,6 +351,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const routes = new Map<string, (...args: unknown[]) => string | Promise<string>>();
   const failures = new Map<string, MockFailure[]>();
   const reconnectListeners = new Set<() => void>();
+  const connectionListeners = new Set<(connected: boolean) => void>();
   const calls: MockCall[] = [];
   const tasks: { readonly due: number; readonly sequence: number; readonly run: () => void }[] = [];
   let connected = true;
@@ -891,6 +894,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       reconnectListeners.add(listener);
       return () => { reconnectListeners.delete(listener); };
     },
+    onConnectionChange(listener) {
+      connectionListeners.add(listener);
+      listener(connected);
+      return () => { connectionListeners.delete(listener); };
+    },
     view(route, definition) {
       const view: MockRegisteredView = {
         route, routes: definition.routes ?? {}, definition, fieldVersions: new Map(), operations: [], presentations: new Map(),
@@ -937,6 +945,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       failures.set(name, [...(failures.get(name) ?? []), ...Array.from({ length: times }, () => failure)]);
     },
     disconnect() {
+      if (connected) for (const listener of [...connectionListeners]) listener(false);
       connected = false;
       for (const view of views.values())
         for (const presentation of [...view.presentations.values()]) {
@@ -945,7 +954,9 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         }
     },
     reconnect() {
+      const changed = !connected;
       connected = true;
+      if (changed) for (const listener of [...connectionListeners]) listener(true);
       for (const listener of [...reconnectListeners]) listener();
     },
     sleep(milliseconds) {

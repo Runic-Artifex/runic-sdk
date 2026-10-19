@@ -1,8 +1,11 @@
 /**
  * Why a Bridge call did not complete. `unavailable` means no host installed
  * `window.__runicBridge`; `timeout` means a Bridge exists but did not connect in time.
+ * `disconnected` means the Bridge itself is not connected to .NET; `released` means
+ * the Bridge is connected but .NET or the page released this View, for example
+ * because navigation replaced it.
  */
-export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnected" | "timeout" | "unavailable";
+export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnected" | "released" | "timeout" | "unavailable";
 
 /**
  * Local failure detail that .NET adds to an error reply only in development

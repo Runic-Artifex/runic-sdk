@@ -301,7 +301,7 @@ Recovery calls the route's `{route}Snapshot` and accepts the returned state.
   page's error handler (`reportError`, or `console.error`). The client stops
   retrying, and reports the failure, as soon as the Bridge is disconnected (a
   reconnect re-reads every route), and stops silently once the route is
-  disposed. After a recovery that failed, the client keeps its last state and
+  disposed or .NET answers that its View was released. After a recovery that failed, the client keeps its last state and
   discards the frames it kept; the next frame that needs recovery starts a new
   one ([fixture](fixtures/collection-deltas/recovery.json), "a failed snapshot
   read is retried").

@@ -458,8 +458,8 @@ stopConfirm();
 const operation = await client.startOperation('Save', 'save-1', () => 'save-1', value => bridgeWire.integer(value, 0, 9));
 assert.equal((await operation.completion).result, 3);
 client.dispose();
-await assert.rejects(client.invoke('consumerSetValue', 2), error => error instanceof BridgeError && error.kind === 'disconnected');
-assert.equal((await Effect.runPromise(Effect.flip(command(() => client.invoke('consumerSetValue', 2)))))._tag, 'ViewDisconnected');
+await assert.rejects(client.invoke('consumerSetValue', 2), error => error instanceof BridgeError && error.kind === 'released');
+assert.equal((await Effect.runPromise(Effect.flip(command(() => client.invoke('consumerSetValue', 2)))))._tag, 'ViewReleased');
 for (const hook of [useReactView, useVueView]) assert.equal(typeof hook, 'function');
 console.log('Packed npm consumers passed.');
 `,

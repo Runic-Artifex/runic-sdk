@@ -41,7 +41,7 @@ const program = Effect.gen(function* () {
   });
 }).pipe(
   Effect.scoped,
-  Effect.catchTag("ViewDisconnected", () => Effect.log("The window closed.")),
+  Effect.catchTag("ViewReleased", () => Effect.log("The editor was closed or replaced.")),
 );
 ```
 
@@ -72,7 +72,8 @@ select them. Each keeps the original `BridgeError` as `cause` and its `route`.
 | Tag | `BridgeError` kind | Meaning |
 | --- | --- | --- |
 | `ViewUnavailable` | `unavailable` | No host installed `window.__runicBridge`, for example a page served by plain Vite. |
-| `ViewDisconnected` | `disconnected` | The client was disposed, the Bridge session changed, or the transport is closed. |
+| `ViewDisconnected` | `disconnected` | The Bridge is not connected to .NET: the transport closed or the host ended. |
+| `ViewReleased` | `released` | The Bridge is connected, but this View was released: the client was disposed, or .NET released the View, for example because navigation replaced it. |
 | `ViewBridgeTimeout` | `timeout` | A Bridge exists but did not connect in time. |
 | `ViewRejected` | `rejected` | .NET refused the call. |
 | `ViewCancelled` | `cancelled` | .NET cancelled the call. |
@@ -126,7 +127,8 @@ A declared failure is a terminal outcome, so `operation`'s `retry` never retries
 - `retry` is accepted only together with `requestId`. Every attempt starts the
   operation with that ID, and .NET answers a repeated start with the operation
   it already runs, so the command runs at most once. Only `ViewDisconnected`,
-  `ViewBridgeTimeout` and `ViewOperationUncertain` are retried, and `while`
+  `ViewBridgeTimeout` and `ViewOperationUncertain` are retried (a `ViewReleased`
+  View cannot answer a retry), and `while`
   can narrow that further; a failed or cancelled operation is not retried. The
   operation keeps running between attempts, so the next attempt observes it.
 - Interrupting a `command` abandons its reply only; .NET keeps running a

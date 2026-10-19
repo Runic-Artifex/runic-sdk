@@ -34,6 +34,8 @@ const host = spawn("dotnet", [dll],
 let output = "", errors = "", browser;
 host.stdout.on("data", chunk => { output += chunk; });
 host.stderr.on("data", chunk => { errors += chunk; });
+// The host is killed below; closing its stdin afterwards must not fail the smoke.
+host.stdin.on("error", () => undefined);
 const detail = async () => `${browser ? await browser.diagnostics() : "browser: not started"}\n` +
   `host stdout:\n${tail(output)}\nhost stderr:\n${tail(errors)}`;
 const retry = (condition, label) => waitFor(condition, { timeout: 20_000, label, detail });
@@ -84,7 +86,23 @@ try {
   await navigate("location.reload()");
   await retry(async () => { const state = await page(); return state.connected && state.loads === "4"; },
     "a reload after a Bridge call");
-  console.log("FIRST_WINDOW_NAVIGATION_OK|reload|same-origin-link|fragment|cross-origin-cancelled|reload-after-call");
+
+  // The page learns that the host ended when its WebSocket drops, without making a call (#406).
+  const states = () => evaluate("JSON.stringify(globalThis.connectionStates ?? null)");
+  // A reload may still be replacing the document; register in the document that has the Bridge.
+  const listen = () => evaluate(`(() => {
+    if (globalThis.connectionStates || !window.__runicBridge) return;
+    globalThis.connectionStates = [];
+    window.__runicBridge.onConnectionChange(connected => connectionStates.push(connected));
+  })()`);
+  await retry(async () => { await listen(); return await states() === "[true]"; }, "the connection listener");
+  const killed = Date.now();
+  host.kill("SIGKILL");
+  await retry(async () => await states() === "[true,false]", "the page seeing the killed host");
+  const latency = Date.now() - killed;
+  if (latency > 5_000) throw new Error(`The page saw the killed host only after ${latency} ms.`);
+  console.log(`The page saw the killed host after ${latency} ms.`);
+  console.log("FIRST_WINDOW_NAVIGATION_OK|reload|same-origin-link|fragment|cross-origin-cancelled|reload-after-call|host-killed");
 } finally {
   try { await browser?.close(); }
   finally {

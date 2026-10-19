@@ -31,6 +31,7 @@ try {
   await counter.increment();
 } catch (error) {
   if (error instanceof BridgeError && error.kind === "disconnected") showOffline();
+  // `released`: navigation replaced this View; the new one arrives with the next state.
 }
 stop();
 counter.dispose();
@@ -40,7 +41,7 @@ counter.dispose();
 keeps its last `snapshot`, and `subscribe` delivers that state once and returns
 a no-op, so framework stores can read a client during teardown. Calls reject
 with a `BridgeError` whose `kind` is `rejected`, `cancelled`, `failed`,
-`disconnected`, `timeout` or `unavailable`; see
+`disconnected`, `released`, `timeout` or `unavailable`; see
 [Errors and diagnostics](#errors-and-diagnostics).
 
 All generated modules on a page share one runtime instance, even when several
@@ -427,7 +428,8 @@ The mock follows the .NET protocol where a client can observe it:
 - `disconnect()` ends the mounted presentations, and a later `Mount` in their
   browser session answers `disconnected`, as .NET does when a CS-WebUI reconnect
   keeps the connection key. After `reconnect()` the client mounts its Views again
-  in a new browser session.
+  in a new browser session. Both are reported to `onConnectionChange` listeners,
+  so `onBridgeConnection` sees `reconnecting` and `connected`.
 
 It does not model the .NET delivery queue (its 64-frame and 1 MiB bounds and the
 recovery they trigger) or the producer's key checks: an edit that would leave an
@@ -494,16 +496,20 @@ take the method's typed failure.
 
 A `BridgeError` names what failed and why:
 
-- `kind` is `rejected`, `cancelled`, `failed`, `disconnected`, `timeout`
+- `kind` is `rejected`, `cancelled`, `failed`, `disconnected` (the Bridge is
+  not connected to .NET: the host ended or its connection dropped), `released`
+  (the Bridge is connected, but this View was released, by the page's
+  `dispose()` or by .NET, for example because navigation replaced it), `timeout`
   (a Bridge is installed but did not connect in time) or `unavailable` (no
   host installed `window.__runicBridge`, for example a frontend opened from a
   plain Vite server; the message says how to fix it). A reply kind the client
   does not know, including a declared failure of a command whose client does not
-  declare it, is `failed`.
+  declare it, is `failed`. .NET answers a call of a released View with
+  `disconnected` on the wire; the reply arrived, so the client reports `released`.
 - A command that replaces or leaves its own page in a navigation region ran,
   so its call resolves, with the last state the client accepted, although .NET
   released the page's View before the reply. A later call of the released View,
-  including its snapshot read, rejects with `disconnected`.
+  including its snapshot read and its `Mount`, rejects with `released`.
 - `route` is the Bridge route that failed, such as `counterIncrement`.
 - `cause` is the underlying error, such as the transport rejection or the
   decoder error of an invalid state.
@@ -549,4 +555,39 @@ missing or unconnected Bridge, operation timeouts, and errors the runtime caught
 from listeners, invalid pushes and reconnect work (those are also passed to
 `reportError`), and a .NET host that speaks another Views protocol version
 (`code: "protocol"`, once per Bridge). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
-forwards them to its DevTools dock during development.
+forwards them to its DevTools dock during development. A call of a released
+View is expected around every navigation, so its `released` rejection reaches
+the caller but is not reported as a diagnostic; `onBridgeConnection` reports a
+lost host.
+
+## Connection state
+
+`onBridgeConnection(listener, options?)` reports the page's connection to its
+.NET host as it changes, so a page can show "the connection to the application
+was lost" without waiting for its next call. It calls `listener` with the
+current state at once, then after each change, and returns a function that
+stops observing:
+
+```ts
+import { onBridgeConnection } from "@runic-artifex/views";
+
+const stop = onBridgeConnection(state => {
+  banner.hidden = state !== "lost";
+}, { lostAfter: 5_000 });
+```
+
+| State | Meaning |
+| --- | --- |
+| `connecting` | The Bridge has not connected yet. |
+| `connected` | The Bridge is connected. Generated clients re-read their state after a reconnect. |
+| `reconnecting` | The connection dropped; the host transport is restoring it. |
+| `lost` | No connection for `lostAfter` milliseconds (default 5000; `0` makes a drop `lost` at once), or none since the page loaded. Not terminal: it becomes `connected` when the host comes back. |
+
+Runic Desktop and CS-WebUI report a dropped WebSocket within about 250 ms, for
+example when the host process ends or is killed. Neither sends a heartbeat, so a
+connection that silently stops passing data (a remote CS-WebUI browser behind a
+broken network path) is seen only when the transport notices it. While the page
+unloads (`pagehide`), the state is not reported, so a reload or a navigation to
+another page does not show `reconnecting`. A host script without
+`onConnectionChange`, from a release before it, reports the first connection
+and each reconnect but not a loss.

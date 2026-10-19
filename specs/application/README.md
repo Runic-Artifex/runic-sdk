@@ -51,12 +51,15 @@ The browser host script defines `__runicBridge`:
 | `isConnected(): boolean` | The host connection is authenticated. |
 | `call(name, ...args): Promise<string>` | Invokes a route. Rejects if the transport fails. |
 | `onReconnect?(listener): () => void` | Optional. Calls `listener` after the connection is re-established without a page reload; returns an unsubscribe function. |
+| `onConnectionChange?(listener): () => void` | Optional. Calls `listener(connected)` with the authenticated connection state at once and after each change, including a dropped transport, without waiting for a call; returns an unsubscribe function. It must not have the side effects of `isConnected()` (CS-WebUI's allows navigation). Runic Desktop and CS-WebUI poll WebUI's connection every 250 ms while a listener exists. |
 
 A route unbound by `RebindableBridgeTransport` answers the envelope
 `{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`. Runic Desktop
 answers a late call of a capability it released shortly before (it remembers the
 last 256) with the same envelope. A client reports it on every route, including
-`Can`, `Mount` and `Start` routes, as `disconnected`. Runic Desktop answers
+`Can`, `Mount` and `Start` routes, as `released`: the host answered, so the
+Bridge is connected and only the View was released. A client reports a call that
+fails while `isConnected()` is false as `disconnected`. Runic Desktop answers
 other calls it cannot serve with an empty reply: a capability that was never
 admitted, an undecodable call and a handler that threw. No Views route replies
 with an empty string, so a client reports an empty reply as an invalid response
@@ -317,7 +320,11 @@ equality treats byte-identical writer output as equal without validating it.
 - `member` is optional on operation recovery routes; generated clients send it.
 - A page runtime created by an earlier generated client gains new runtime
   fields when a newer module loads.
-- Clients that predate `protocol` or `onReconnect` ignore them.
+- Clients that predate `protocol`, `onReconnect` or `onConnectionChange` ignore them.
+  A client with a host script that has no `onConnectionChange` reports the first
+  connection and each reconnect, but not a loss.
+- The wire keeps `disconnected` for a released View, so a client that predates
+  `released` reports it as before; a newer client reports it as `released`.
 - Clients treat a reply error `kind` they do not know as `failed`. A generated
   client also treats `domain-failed` as `failed` for a command or operation
   that declares no failure, so a newer host cannot surprise an older client.
