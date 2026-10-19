@@ -86,9 +86,7 @@ internal static partial class CreateApplication
 
         bool json = context.OutputMode == CommandOutputMode.Json;
         ProcessResult install = await RunDotNetAsync(plan.InstallArguments, capture: true, json, cancellationToken).ConfigureAwait(false);
-        bool alreadyInstalled = install.ExitCode == 106 &&
-            install.Output.Contains("is already installed", StringComparison.Ordinal);
-        if (install.ExitCode != 0 && !alreadyInstalled)
+        if (install.ExitCode != 0 && !IsAlreadyInstalled(install.ExitCode, install.Output))
         {
             await context.Console.WriteErrorAsync(install.Output.AsMemory(), cancellationToken).ConfigureAwait(false);
             return Failure(CommandExitCategory.CommandFailure, "RCREATE004",
@@ -228,13 +226,15 @@ internal static partial class CreateApplication
 
     private sealed record ProcessResult(int ExitCode, string Output);
 
-    // dotnet new writes to the terminal directly. Captured runs and JSON
-    // invocations keep the child's output off stdout, which JSON reserves.
-    private static async Task<ProcessResult> RunDotNetAsync(
-        IReadOnlyList<string> arguments,
-        bool capture,
-        bool json,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether <c>dotnet new install</c> failed only because this version is installed already. Its exit code 106
+    /// covers other install failures too, so the message decides; the captured install runs with English SDK
+    /// messages (see <see cref="CreateDotNetStartInfo"/>), so a localized SDK does not turn the no-op into RCREATE004.
+    /// </summary>
+    internal static bool IsAlreadyInstalled(int exitCode, string output) =>
+        exitCode == 106 && output.Contains("is already installed", StringComparison.Ordinal);
+
+    internal static ProcessStartInfo CreateDotNetStartInfo(IReadOnlyList<string> arguments, bool capture, bool json)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -243,6 +243,21 @@ internal static partial class CreateApplication
             RedirectStandardError = capture,
         };
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
+        // Captured output is parsed, so it must not depend on the user's SDK language. dotnet new itself writes
+        // to the terminal in the user's language.
+        if (capture) start.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
+        return start;
+    }
+
+    // dotnet new writes to the terminal directly. Captured runs and JSON
+    // invocations keep the child's output off stdout, which JSON reserves.
+    private static async Task<ProcessResult> RunDotNetAsync(
+        IReadOnlyList<string> arguments,
+        bool capture,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        ProcessStartInfo start = CreateDotNetStartInfo(arguments, capture, json);
         using Process process = Process.Start(start)
             ?? throw new InvalidOperationException("The dotnet command could not be started.");
         var output = new StringBuilder();

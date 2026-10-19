@@ -265,13 +265,25 @@ dotnet runic size --project path/to/App.csproj --runtime linux-x64 --report meas
 
 As in `doctor`, the runtime identifier is `--runtime`, `--rid` or `-r`. `size`
 publishes with Native AOT unless you pass `--no-aot`; `--aot` states the default.
+It always publishes a self-contained, size-optimized build: it passes
+`Configuration` (`--configuration`, `Release` by default), `RuntimeIdentifier`,
+`PublishAot`, `SelfContained=true` and `OptimizationPreference=Size` to MSBuild,
+which override the project's values; the report lists the effective settings.
+
+`--report` names a file that must not exist yet, so `size` never replaces earlier
+evidence. Without it, each run writes a new
+`runic-size-<runtime>-<UTC time>.json` (for example
+`runic-size-linux-x64-20261020T091500Z.json`) in the current directory. Next to
+the report, the run keeps `<report name>-<id>/` with `publish/`, `publish.log`,
+`distribution.zip` and `verification.log`; the report refers to them, so delete
+that directory together with the report.
 
 `--verify` names any executable to run after a successful publish: a path or a
 command on `PATH`, such as `node` or `bun`. It is not looked up in the publish
 directory. It runs in the project directory and receives the `--verify-argument`
 values, then the publish directory and the published application's path. Its
-output goes to `verification.log` in the run directory next to the report, and a
-nonzero exit code fails the command:
+output goes to `verification.log` in the run directory, and a nonzero exit code
+fails the command:
 
 ```bash
 dotnet runic size --runtime linux-x64 --report measurements/linux.json \

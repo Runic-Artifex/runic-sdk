@@ -12,7 +12,11 @@ JavaScript package manager (npm, pnpm or Bun), Window host (Runic Desktop, which
 opens a native window, or CS-WebUI, which opens a browser window), ViewModel
 library (ReactiveUI or CommunityToolkit.Mvvm), and whether to add a test
 project. Each choice is described in one line. It then installs the matching
-`Runic.Application.Templates` version and runs `dotnet new runic-app`.
+`Runic.Application.Templates` version and runs `dotnet new runic-app`. The
+install goes to your `dotnet new` template store, as `dotnet new install` does,
+and replaces another installed version; an installed matching version is kept,
+whatever language the SDK uses. `dotnet new uninstall Runic.Application.Templates`
+removes it.
 Accepting every default creates a Runic Desktop and ReactiveUI project.
 
 Pass an option to skip its question, or `--yes` to accept the defaults for

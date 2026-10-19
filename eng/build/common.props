@@ -36,6 +36,10 @@
     <!-- Libraries leave dependency resolution to their consuming applications. -->
     <NuGetAudit Condition="'$(RunicVerificationBuild)' == 'true'">true</NuGetAudit>
     <NuGetAudit Condition="'$(NuGetAudit)' == ''">false</NuGetAudit>
+    <!-- NU1900 says the vulnerability data could not be read, as in a locked offline restore; it reports no
+         vulnerability, so it stays a warning. Known vulnerabilities (NU1901-NU1904) still fail a verification
+         build, and the dependency-audit workflow audits with network access. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900</WarningsNotAsErrors>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
   </PropertyGroup>
 

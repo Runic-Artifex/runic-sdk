@@ -43,7 +43,11 @@ internal static class SizeApplication
             throw new DevUsageException("RTKSIZE1001", "--verify-argument requires --verify.");
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string workingDirectory = Path.GetDirectoryName(project)!;
-        string reportPath = Path.GetFullPath(options.Report);
+        // An explicit --report never replaces earlier evidence. Without one, each run gets its own report name, so a
+        // second run in the same directory measures again instead of failing.
+        string reportPath = string.IsNullOrWhiteSpace(options.Report)
+            ? DefaultReportPath(Environment.CurrentDirectory, options.Runtime, DateTimeOffset.UtcNow)
+            : Path.GetFullPath(options.Report);
         if (File.Exists(reportPath))
             throw new DevUsageException("RTKSIZE1001", "The report already exists. Select a new --report path to preserve prior evidence.");
         string dotnet = DevApplication.ResolveDotNetHost();
@@ -57,7 +61,7 @@ internal static class SizeApplication
             CommandResult result = await Run(dotnet, ["msbuild", project, "-nologo", .. settings,
                 $"-getProperty:{string.Join(',', Properties)}"]);
             if (result.ExitCode != 0)
-                throw new DevUsageException("RTKSIZE1002", "Could not evaluate publish settings: " + result.CombinedOutput);
+                throw new DevDevelopmentException("RTKSIZE1002", "Could not evaluate publish settings: " + result.CombinedOutput);
             using var json = JsonDocument.Parse(result.StandardOutput);
             return json.RootElement.GetProperty("Properties").EnumerateObject()
                 .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "", StringComparer.Ordinal);
@@ -126,6 +130,19 @@ internal static class SizeApplication
         Console.WriteLine($"{files.Sum(file => file.Bytes):N0} bytes on disk; {new FileInfo(archive).Length:N0} ZIP bytes; verification {verification.Status}.");
         Console.WriteLine($"Report: {reportPath}");
         return publish.ExitCode == 0 && verification.Status != "failed" ? Program.Success : Program.DevelopmentFailure;
+    }
+
+    /// <summary>
+    /// The report a run without <c>--report</c> writes: <c>runic-size-&lt;runtime&gt;-&lt;UTC time&gt;.json</c> in
+    /// <paramref name="directory"/>, with a counter when that name is taken.
+    /// </summary>
+    internal static string DefaultReportPath(string directory, string runtime, DateTimeOffset now)
+    {
+        string stem = $"runic-size-{runtime}-{now.UtcDateTime:yyyyMMdd'T'HHmmss'Z'}";
+        string path = Path.Combine(directory, stem + ".json");
+        for (int counter = 2; File.Exists(path); counter++)
+            path = Path.Combine(directory, $"{stem}-{counter}.json");
+        return Path.GetFullPath(path);
     }
 
     internal static IReadOnlyList<SizeFile> Inventory(string directory, string main, string runtime) =>

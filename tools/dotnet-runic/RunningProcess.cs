@@ -136,7 +136,8 @@ internal sealed class RunningProcess : IAsyncDisposable
             if (!Completion.IsCompleted)
             {
                 IReadOnlyList<int> targets = await ProcessTreeSignal
-                    .RequestStopAsync(_process.Id, timeout.Token).ConfigureAwait(false);
+                    .RequestStopAsync(_process.Id, timeout.Token, message => Console.Error.WriteLine($"[{_label}] {message}"))
+                    .ConfigureAwait(false);
                 while (!Completion.IsCompleted && !targets.All(ProcessTreeSignal.HasExited))
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token).ConfigureAwait(false);
