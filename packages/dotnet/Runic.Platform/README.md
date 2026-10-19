@@ -476,7 +476,7 @@ does not offer is `Unavailable(BackendUnavailable)`.
 | Platform | Provider |
 | --- | --- |
 | Linux | UDisks2 on the system bus, which asks Polkit; inside Flatpak add `--system-talk-name=org.freedesktop.UDisks2` |
-| Windows | Not yet: `Unavailable(ProviderNotConfigured)` |
+| Windows | The volume management API: drive letters and mounted folders. Windows mounts volumes itself, so `MountAsync` and `UnmountAsync` only succeed for a volume already in that state and otherwise report `Unavailable(BackendUnavailable)`; `EjectAsync` is "Safely Remove Hardware" |
 | macOS | Not yet: `Unavailable(ProviderNotConfigured)` |
 
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The

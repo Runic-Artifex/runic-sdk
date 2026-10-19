@@ -425,7 +425,9 @@ public static partial class PlatformServices
     /// <remarks>
     /// Linux lists, mounts, unmounts and ejects volumes through UDisks2 on the system bus, with either toolkit and
     /// without loading GTK; UDisks2 asks Polkit for authorization and may show a prompt. It needs no window and
-    /// connects to nothing until the first request. Windows and macOS report
+    /// connects to nothing until the first request. Windows lists volumes through the volume management API and ejects
+    /// a drive as "Safely Remove Hardware" does; it mounts volumes itself, so mounting and unmounting report
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. macOS reports
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/> in this release.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
@@ -433,11 +435,15 @@ public static partial class PlatformServices
     public static IDesktopVolumes CreateVolumes()
     {
         IDesktopVolumes? volumes = null;
+        if (OperatingSystem.IsWindows()) volumes = Optional(CreateWindowsVolumes);
 #if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsLinux()) volumes = CreatePortalVolumes();
+        else if (OperatingSystem.IsLinux()) volumes = CreatePortalVolumes();
 #endif
         return volumes ?? DesktopVolumes.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopVolumes CreateWindowsVolumes() => WindowsPlatformProvider.CreateVolumes();
 
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
