@@ -73,14 +73,17 @@ public sealed class LeaveConfirmation
     /// <param name="dialog">Creates the dialog's target, once per question.</param>
     /// <param name="hasUnsavedChanges">Returns whether leaving would lose changes. It is called inside a model turn.</param>
     /// <param name="discard">Discards the changes in the commit turn of a confirmed departure.</param>
+    /// <param name="askOnRetain">
+    /// Whether to ask when the entry is only retained, as for <see cref="LeaveConfirmation(Func{bool}, Func{NavigationDeparture, CancellationToken, ValueTask{bool}}, Action?, bool)"/>.
+    /// </param>
     public static LeaveConfirmation InDialog<TDialog>(NavigationRegion<TDialog> dialogs, Func<INavigationTarget<TDialog>> dialog,
-        Func<bool> hasUnsavedChanges, Action? discard = null) where TDialog : class
+        Func<bool> hasUnsavedChanges, Action? discard = null, bool askOnRetain = false) where TDialog : class
     {
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(dialog);
         return new LeaveConfirmation(hasUnsavedChanges, async (_, cancellationToken) =>
             await dialogs.PushForResult<bool>(dialog(), cancellationToken: cancellationToken).Completion
-                is NavigationCompletion<bool>.Completed { Value: true }, discard);
+                is NavigationCompletion<bool>.Completed { Value: true }, discard, askOnRetain);
     }
 
     /// <summary>

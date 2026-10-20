@@ -17,21 +17,21 @@ namespace Runic.Navigation.Wpf;
 public static class NavigationSelector
 {
     /// <summary>Identifies the attached region property.</summary>
-    public static readonly DependencyProperty RegionProperty = DependencyProperty.RegisterAttached("Region", typeof(INavigationRegion),
+    public static readonly DependencyProperty RegionProperty = DependencyProperty.RegisterAttached("Region", typeof(NavigationRegion),
         typeof(NavigationSelector), new PropertyMetadata(null, RegionChanged));
 
     private static readonly DependencyProperty AdapterProperty = DependencyProperty.RegisterAttached("Adapter", typeof(Adapter),
         typeof(NavigationSelector), new PropertyMetadata(null));
 
     /// <summary>Gets the region selected by the control.</summary>
-    public static INavigationRegion? GetRegion(Selector selector)
+    public static NavigationRegion? GetRegion(Selector selector)
     {
         ArgumentNullException.ThrowIfNull(selector);
-        return (INavigationRegion?)selector.GetValue(RegionProperty);
+        return (NavigationRegion?)selector.GetValue(RegionProperty);
     }
 
     /// <summary>Sets the region selected by the control.</summary>
-    public static void SetRegion(Selector selector, INavigationRegion? region)
+    public static void SetRegion(Selector selector, NavigationRegion? region)
     {
         ArgumentNullException.ThrowIfNull(selector);
         selector.SetValue(RegionProperty, region);
@@ -42,7 +42,7 @@ public static class NavigationSelector
         if (target is not Selector selector || target is MultiSelector || target is ListBox { SelectionMode: not SelectionMode.Single })
             throw new ArgumentException("NavigationSelector.Region requires a single-selection Selector.", nameof(target));
         ((Adapter?)selector.GetValue(AdapterProperty))?.Dispose();
-        selector.SetValue(AdapterProperty, args.NewValue is INavigationRegion region ? new Adapter(selector, region) : null);
+        selector.SetValue(AdapterProperty, args.NewValue is NavigationRegion region ? new Adapter(selector, region) : null);
     }
 
     // Test seam: the latest selection request started by the control's adapter.
@@ -65,7 +65,7 @@ public static class NavigationSelector
     private sealed class Adapter : IDisposable
     {
         private readonly Selector _selector;
-        private readonly INavigationRegion _region;
+        private readonly NavigationRegion _region;
         private readonly DataTemplate? _tabTemplate;
         private CancellationTokenSource? _pending;
         private Task? _selection;
@@ -77,7 +77,7 @@ public static class NavigationSelector
 
         internal Task Selection => _selection ?? Task.CompletedTask;
 
-        public Adapter(Selector selector, INavigationRegion region)
+        public Adapter(Selector selector, NavigationRegion region)
         {
             _selector = selector;
             _region = region;
@@ -117,9 +117,9 @@ public static class NavigationSelector
 
         private void Changed(object? sender, PropertyChangedEventArgs args)
         {
-            if ((args.PropertyName is null or "" or nameof(INavigationRegion.IsTransitioning)) && !_region.IsTransitioning)
+            if ((args.PropertyName is null or "" or nameof(NavigationRegion.IsTransitioning)) && !_region.IsTransitioning)
                 Interlocked.Exchange(ref _decided, null)?.TrySetResult();
-            if (args.PropertyName is not (null or "" or nameof(INavigationRegion.Current))) return;
+            if (args.PropertyName is not (null or "" or nameof(NavigationRegion.Current))) return;
             if (_selector.Dispatcher.CheckAccess()) Reconcile();
             else if (!_selector.Dispatcher.HasShutdownStarted) _selector.Dispatcher.BeginInvoke(Reconcile);
         }
@@ -163,7 +163,7 @@ public static class NavigationSelector
         {
             // Cancellation cannot undo a commit that already started. If it wins that race,
             // restore the latest selection through another ordinary guarded core request. Wait only until the previous
-            // request's commit is decided, not for its task: that includes the previous tab's activation hook, which the
+            // request's commit is decided, not for its task: that includes the previous tab's arrival hook, which the
             // restoring Replace cancels (W315-020 §1.3). The race needs a navigator on another model context than the
             // dispatcher: this handler and a commit turn on the dispatcher never interleave, so there the cancellation
             // always wins and the previous task ends without an activation.

@@ -21,7 +21,7 @@ public sealed class RunicNavigatorOptions
     /// <summary>
     /// Creates one <see cref="IServiceScope"/> from <see cref="Services"/> for each entry built by a
     /// <see cref="NavigationTarget"/> <c>Create</c> target, including an initial target. The entry's content is
-    /// constructed from the scope, <see cref="INavigationEntry.Services"/> returns it, and the scope is disposed
+    /// constructed from the scope, <see cref="NavigationEntry.Services"/> returns it, and the scope is disposed
     /// after the content when the entry retires. <c>Borrow</c> and <c>Own</c> entries never get one. Requires
     /// <see cref="Services"/>.
     /// </summary>
@@ -77,7 +77,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Gets the token of the navigation hook whose code runs on the calling asynchronous flow, such as a departure
-    /// guard, an initialize, resume or activation hook, or <see cref="CancellationToken.None"/> outside hooks. It is the
+    /// guard, an initialize, resume or arrival hook, or <see cref="CancellationToken.None"/> outside hooks. It is the
     /// token the hook received: cancelled when the transition is superseded, cancelled or closed, or, for an activation
     /// hook, when its entry stops being current.
     /// </summary>
@@ -129,7 +129,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private TaskCompletionSource? _disposal;
     // Completed when disposal starts, so scheduled owned disposal that is still queued becomes bounded.
     private readonly TaskCompletionSource _disposalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    // Cancelled when the navigator starts closing (BeginClosing): ends activation hooks and the presentation yield.
+    // Cancelled when the navigator starts closing (BeginClosing): ends arrival hooks and the presentation yield.
     private readonly CancellationTokenSource _closingSource = new();
     // The attached presentations: the sinks that forget owned content when it retires.
     private readonly List<PresentationAttachment> _presentations = [];
@@ -382,7 +382,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         entry.Phase = NavigationEntryPhase.Active;
         entry.Lease = content.Lease;
         entry.Scope = content.Scope;
-        entry.Activation = Activation(null, entry.Content);
+        entry.ArrivalHook = ArrivalHook(null, entry.Content);
         _tracked.Add(entry);
         if (content.Owned) AddHolderLocked(content.Content!, entry);
         if (region.Closed)
@@ -552,17 +552,17 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// <summary>
     /// Completes when no transition of any region of this navigator is in flight and no retirement is running. A
     /// transition counts until its task completes: its guards, preparation, commit, the retirement of the departed entries
-    /// and the activation hook of the arrived entry (<see cref="INavigationActivated"/>).
+    /// and the arrival hook of the arrived entry (<see cref="INavigationArrived"/>).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Unlike <see cref="NavigationRegion{TContent}.WhenIdleAsync"/>, it waits for every region, for retirements that no
+    /// Unlike <see cref="NavigationRegion.WhenIdleAsync"/>, it waits for every region, for retirements that no
     /// request awaits, and for the guard of a Back whose callers have all cancelled, until that guard returns.
     /// </para>
     /// <para>
-    /// A hook of a transition of this navigator (a factory, guard, initialize, resume or activation hook) that awaits it
+    /// A hook of a transition of this navigator (a factory, guard, initialize, resume or arrival hook) that awaits it
     /// deadlocks: the navigator is not idle while the hook runs. The same holds for the
-    /// <see cref="NavigationRegion{TContent}.WhenIdleAsync"/> of the hook's region.
+    /// <see cref="NavigationRegion.WhenIdleAsync"/> of the hook's region.
     /// </para>
     /// </remarks>
     /// <param name="cancellationToken">Stops waiting.</param>
@@ -580,13 +580,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Registers a guard that is asked before a transition of any region of this navigator departs, after the guards of the
-    /// entries and of the regions (<see cref="NavigationRegion{TContent}.AddDepartureGuard"/>), once per transition. Its
+    /// entries and of the regions (<see cref="NavigationRegion.AddDepartureGuard"/>), once per transition. Its
     /// <see cref="NavigationRegionDeparture.Region"/> is the region the request was made to, and its
     /// <see cref="NavigationRegionDeparture.Entries"/> and <see cref="NavigationRegionDeparture.Kind"/> cover every region of
     /// the transition.
     /// </summary>
     /// <remarks>
-    /// The rules of <see cref="NavigationRegion{TContent}.AddDepartureGuard"/> apply. A window close that clears its regions
+    /// The rules of <see cref="NavigationRegion.AddDepartureGuard"/> apply. A window close that clears its regions
     /// one after another, such as WPF's <c>GuardWindowClose</c> or a Runic View's <c>CanCloseAsync</c>, asks the guard once
     /// per region that has entries; to ask once per close, register it on the window's main region instead, or remember the
     /// answer. A guard asked <see cref="NavigationRegionGuardOrder.BeforeEntries"/> that vetoes is asked for the first such
@@ -724,7 +724,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
         foreach (var request in requests) FinishResult(request, NavigationResultDismissal.Closed);
         Cancel(cancel);
-        // Activation hooks and the presentation yield run after their transition released admission.
+        // Arrival hooks and the presentation yield run after their transition released admission.
         CancelSource(_closingSource);
     }
 
@@ -1011,9 +1011,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                             entry.ContentTypeName, "Retire", NavigationTelemetry.ErrorType(error));
                     }
                 }
-                // Then the activation hooks of the entries the commit made current (W315-020 §1.2).
+                // Then the arrival hooks of the entries the commit made current (W315-020 §1.2).
                 var (activation, activationError) = commit.Activated.Count == 0
-                    ? (NavigationActivationState.None, null)
+                    ? (NavigationArrivalState.None, null)
                     : await this.AfterUserCode(ActivateAsync(transition, commit.Activated, transition.Operation));
                 outcome = TransitionOutcome.Commit(commit.Current, retired, activation, activationError);
             }
@@ -1048,14 +1048,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         transition.Result.TrySetResult(outcome);
     }
 
-    // ---- Activation ------------------------------------------------------
+    // ---- Arrival ------------------------------------------------------
 
-    // The activation hook of content: the typed one bound to the target's input, if the target has input and the content
-    // implements it; otherwise INavigationActivated, if implemented (W315-020 §1.4).
-    private static NavigationActivation? Activation(NavigationTargetCore? target, object content) =>
-        target?.ActivationWithInput(content) ?? (content is INavigationActivated activated ? activated.OnActivatedAsync : null);
+    // The arrival hook of content: the typed one bound to the target's input, if the target has input and the content
+    // implements it; otherwise INavigationArrived, if implemented (W315-020 §1.4).
+    private static NavigationArrivalHook? ArrivalHook(NavigationTargetCore? target, object content) =>
+        target?.ArrivalHookWithInput(content) ?? (content is INavigationArrived activated ? activated.OnArrivedAsync : null);
 
-    // Whether the calling code is the activation hook of a transition of this region, which a RejectWhileBusy region
+    // Whether the calling code is the arrival hook of a transition of this region, which a RejectWhileBusy region
     // admits, so a page can redirect or give up while it loads. Call under the gate.
     private static bool IsActivationOfLocked(NavigationRegionCore region) =>
         NavigationHookMarker.Active is { Activating: true } hook && ReferenceEquals(hook.Region, region) && region.Running.Contains(hook);
@@ -1064,7 +1064,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // and WhenIdleAsync waits until its hook ends. Call under the gate.
     private NavigationTransition? TrackInitialActivationLocked(NavigationRegionCore region, NavigationEntryCore entry)
     {
-        if (entry.Activation is null) return null;
+        if (entry.ArrivalHook is null) return null;
         var transition = new NavigationTransition(region, NavigationOperation.Reset, null, null, null, null, [],
             new NavigationSettlementSource(new NavigationTransitionId(++_nextTransitionId)), false, CancellationToken.None)
         {
@@ -1091,16 +1091,16 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         catch (Exception error)
         {
             // ActivateAsync returns outcomes; this only guards against a defect.
-            NavigationLog.NavigationActivationFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
+            NavigationLog.NavigationArrivalFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
                 OperationName(NavigationOperation.Reset), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
         }
         finally { Finish(transition, TransitionOutcome.Superseded); }
     }
 
-    // Runs the activation hooks of the entries a commit made current, one after another, after the presentation yielded.
+    // Runs the arrival hooks of the entries a commit made current, one after another, after the presentation yielded.
     // Each hook's token is cancelled when its entry stops being current (the commit that moves it cancels the entry's
     // Arrival), when it retires, and when the navigator closes. The first failure is reported; otherwise a cancellation.
-    private async Task<(NavigationActivationState State, Exception? Error)> ActivateAsync(NavigationTransition transition,
+    private async Task<(NavigationArrivalState State, Exception? Error)> ActivateAsync(NavigationTransition transition,
         List<NavigationEntryCore> entries, NavigationOperation operation)
     {
         var closing = _closingSource.Token;
@@ -1108,8 +1108,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         if (ModelContext is IRunicModelPresentationYield presentation)
         {
             try { await this.AfterUserCode(presentation.YieldToPresentationAsync(closing)); }
-            catch (Exception) when (closing.IsCancellationRequested || IsClosed) { return (NavigationActivationState.Cancelled, null); }
-            catch (ObjectDisposedException) { return (NavigationActivationState.Cancelled, null); }
+            catch (Exception) when (closing.IsCancellationRequested || IsClosed) { return (NavigationArrivalState.Cancelled, null); }
+            catch (ObjectDisposedException) { return (NavigationArrivalState.Cancelled, null); }
             // A presentation that can't yield doesn't keep the entry from activating.
             catch (Exception) { }
         }
@@ -1124,7 +1124,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (!_closing && entry.Phase == NavigationEntryPhase.Active && entry.Retiring is null)
                 {
                     arrival = CancellationTokenSource.CreateLinkedTokenSource(entry.Retirement.Token, closing);
-                    entry.Arrival = arrival;
+                    entry.ArrivalSource = arrival;
                 }
             }
             if (arrival is null)
@@ -1133,8 +1133,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 continue;
             }
             var token = arrival.Token;
-            var hook = entry.Activation!;
-            var resume = new NavigationResume(entry.Id, operation);
+            var hook = entry.ArrivalHook!;
+            var resume = new NavigationArrival(entry.Id, operation);
             try
             {
                 await this.AfterUserCode(StartHook(transition, () => hook(entry.Context, resume, token), token, hookToken: token));
@@ -1150,7 +1150,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     cancelled = true;
                     continue;
                 }
-                NavigationLog.NavigationActivationFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
+                NavigationLog.NavigationArrivalFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
                     OperationName(operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
                 failure ??= error;
             }
@@ -1158,13 +1158,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             {
                 lock (Gate)
                 {
-                    if (ReferenceEquals(entry.Arrival, arrival)) entry.Arrival = null;
+                    if (ReferenceEquals(entry.ArrivalSource, arrival)) entry.ArrivalSource = null;
                 }
                 arrival.Dispose();
             }
         }
-        if (failure is not null) return (NavigationActivationState.Failed, failure);
-        return (cancelled ? NavigationActivationState.Cancelled : NavigationActivationState.Completed, null);
+        if (failure is not null) return (NavigationArrivalState.Failed, failure);
+        return (cancelled ? NavigationArrivalState.Cancelled : NavigationArrivalState.Completed, null);
     }
 
     // Cancels a source outside model turns: its callbacks can run user continuations. A disposed source is ignored.
@@ -1406,8 +1406,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 var content_ = entry.Content!;
                 // Content of an input target must take the input in a hook (W315-020 §1.4).
                 if (target.HasInput) target.ValidateInput(content_);
-                var activation = Activation(target, content_);
-                lock (Gate) entry.Activation = activation;
+                var activation = ArrivalHook(target, content_);
+                lock (Gate) entry.ArrivalHook = activation;
                 BeforeInitializeClaim?.Invoke();
                 TaskCompletionSource? initializing = null;
                 // An input entry calls only the typed initialize hook if it has one; any other entry INavigationInitialize.
@@ -1461,7 +1461,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 bool retiringResume;
                 lock (Gate) retiringResume = resumed.Retiring is not null;
                 if (retiringResume) return TransitionOutcome.Reject(NavigationRejection.Closed);
-                var request = new NavigationResume(resumed.Id, transition.Operation);
+                var request = new NavigationArrival(resumed.Id, transition.Operation);
                 await this.AfterUserCode(StartHook(transition, () => resume.ResumeAsync(request, token), token));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1545,8 +1545,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // the running activations of the entries that stopped being current are cancelled after this turn.
                 foreach (var change in entryChanges)
                 {
-                    if (change.State == NavigationEntryState.Active && change.Entry.Activation is not null) commit.Activated.Add(change.Entry);
-                    else if (change.Previous == NavigationEntryState.Active && change.Entry.Arrival is { } arrival) commit.EndArrivals.Add(arrival);
+                    if (change.State == NavigationEntryState.Active && change.Entry.ArrivalHook is not null) commit.Activated.Add(change.Entry);
+                    else if (change.Previous == NavigationEntryState.Active && change.Entry.ArrivalSource is { } arrival) commit.EndArrivals.Add(arrival);
                 }
             }
             // Admission is released in the commit turn, so IsTransitioning
@@ -1697,7 +1697,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         bool allowed;
         try
         {
-            allowed = await this.AfterUserCode(StartHook(transition, () => guard.CanLeaveAsync(departure, token), token));
+            allowed = await this.AfterUserCode(StartHook(transition, () => guard.CanDepartAsync(departure, token), token));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -2463,7 +2463,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         if (entry.Content is not INavigationAware aware) return;
         if (change.State == NavigationEntryState.Active)
         {
-            try { aware.OnNavigatedTo(new NavigationResume(entry.Id, operation)); }
+            try { aware.OnNavigatedTo(new NavigationArrival(entry.Id, operation)); }
             catch (Exception error) { LogEntryNotification(entry, operation, "OnNavigatedTo", error); }
         }
         else if (change.Previous == NavigationEntryState.Active)
@@ -2620,7 +2620,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // so reentrancy checks see it on that thread. An ObjectDisposedException before the operation
     // started means that the context closed: the navigator starts closing, so the caller's
     // failure path settles the transition as Rejected(Closed) without logging a failure.
-    // hookToken is the hook's own token when it isn't the transition's (an activation hook), for HookCancellationToken.
+    // hookToken is the hook's own token when it isn't the transition's (an arrival hook), for HookCancellationToken.
     private ValueTask<T> StartHook<T>(NavigationTransition transition, Func<ValueTask<T>> hook, CancellationToken token,
         CancellationToken? hookToken = null)
     {
@@ -2854,7 +2854,7 @@ internal sealed class NavigationTransition : IDisposable
     public NavigationPhase Phase { get; set; }
     public bool CommitStarted { get; set; }
     public bool Released { get; set; }
-    // The transition runs the activation hooks of its commit (or of an initial target). Guarded by the navigator's gate.
+    // The transition runs the arrival hooks of its commit (or of an initial target). Guarded by the navigator's gate.
     public bool Activating { get; set; }
 
     // Set for a return from a result entry (CompleteAsync, or a cancelled PushForResult caller).
@@ -2994,7 +2994,7 @@ internal sealed class NavigationCommit
     public NavigationEntryCore? Current { get; set; }
     public List<NavigationEntryCore> Retire { get; } = [];
     public List<NavigationTransition> Cancel { get; } = [];
-    // The entries the commit made current that have an activation hook, in OnNavigatedTo order.
+    // The entries the commit made current that have an arrival hook, in OnNavigatedTo order.
     public List<NavigationEntryCore> Activated { get; } = [];
     // The running activations of the entries that stopped being current.
     public List<CancellationTokenSource> EndArrivals { get; } = [];
@@ -3021,11 +3021,11 @@ internal sealed class TransitionOutcome
     public NavigationEntryId? By { get; private init; }
     public Exception? Error { get; private init; }
     public NavigationPhase Phase { get; private init; }
-    public NavigationActivationState Activation { get; private init; }
+    public NavigationArrivalState Arrival { get; private init; }
 
     public static TransitionOutcome Commit(NavigationEntryCore? current, IReadOnlyList<NavigationEntryId> retired,
-        NavigationActivationState activation = NavigationActivationState.None, Exception? activationError = null) =>
-        new() { Kind = TransitionOutcomeKind.Committed, Current = current, Retired = retired, Activation = activation, Error = activationError };
+        NavigationArrivalState activation = NavigationArrivalState.None, Exception? activationError = null) =>
+        new() { Kind = TransitionOutcomeKind.Committed, Current = current, Retired = retired, Arrival = activation, Error = activationError };
 
     public static TransitionOutcome Reject(NavigationRejection reason, NavigationEntryId? by = null) =>
         new() { Kind = TransitionOutcomeKind.Rejected, Reason = reason, By = by };
@@ -3052,8 +3052,8 @@ internal static class NavigationResults
     {
         TransitionOutcomeKind.Committed => new NavigationResult<T>.Committed(outcome.Current?.View<T>(), outcome.Retired)
         {
-            Activation = outcome.Activation,
-            ActivationError = outcome.Error,
+            Arrival = outcome.Arrival,
+            ArrivalError = outcome.Error,
         },
         TransitionOutcomeKind.Rejected => new NavigationResult<T>.Rejected(outcome.Reason, outcome.By),
         TransitionOutcomeKind.Failed => new NavigationResult<T>.Failed(outcome.Error!, outcome.Phase),

@@ -8,7 +8,6 @@
     <Description>System.Reactive-flavor observables, commands and interaction leave confirmation for Runic.Navigation regions and entries.</Description>
     <PackageTags>runic-artifex;navigation;reactiveui;system-reactive;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- First published in 0.7.0-preview.4; remove after that release (eng/release/README.md). -->
     <!-- Selects the System.Reactive namespaces in the source shared with
          Runic.Navigation.ReactiveUI. Only the scheduler adapter differs. -->
     <DefineConstants>$(DefineConstants);SYSTEM_REACTIVE</DefineConstants>
@@ -20,8 +19,8 @@
     <PackageReference Include="ReactiveUI.Primitives.Reactive" />
     <PackageReference Include="System.Reactive" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
-    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigation.cs" Link="Shared/ReactiveNavigation.cs" />
-    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationEntry.cs" Link="Shared/ReactiveNavigationEntry.cs" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationRegionExtensions.cs" Link="Shared/ReactiveNavigationRegionExtensions.cs" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationEntryExtensions.cs" Link="Shared/ReactiveNavigationEntryExtensions.cs" />
     <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveLeaveConfirmation.cs" Link="Shared/ReactiveLeaveConfirmation.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>

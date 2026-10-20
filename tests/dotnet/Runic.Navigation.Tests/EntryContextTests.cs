@@ -394,7 +394,7 @@ internal sealed partial class NavigationTests
         // The entry's state in the last notification.
         public NavigationEntryState StateInNotification { get; private set; }
 
-        public void OnNavigatedTo(NavigationResume arrival)
+        public void OnNavigatedTo(NavigationArrival arrival)
         {
             Interlocked.Increment(ref Arrivals);
             if (arrival.Entry != Entry.Id) Interlocked.Increment(ref _steps.Mismatches);

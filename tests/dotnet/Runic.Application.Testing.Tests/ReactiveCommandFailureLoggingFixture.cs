@@ -13,7 +13,7 @@ public sealed class CommandLoggingViewModel : ReactiveObject
 
     public CommandLoggingViewModel(IRunicModelContext modelContext)
     {
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+        var scheduler = ReactiveSchedulers.For(modelContext);
         FailCommand = ReactiveCommand.CreateFromTask<RxVoid, RxVoid>(async _ =>
         {
             await Task.Yield();

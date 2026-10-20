@@ -852,7 +852,7 @@ internal sealed partial class NavigationTests
             return true;
         }
 
-        public ValueTask ResumeAsync(NavigationResume resume, CancellationToken cancellationToken)
+        public ValueTask ResumeAsync(NavigationArrival resume, CancellationToken cancellationToken)
         {
             Probe.Record($"resume:{Name}");
             return ValueTask.CompletedTask;
@@ -1106,7 +1106,7 @@ internal sealed partial class NavigationTests
 
         public bool IsExecuting => inner.IsExecuting;
 
-        public event Action<Exception>? UnhandledTurnException
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException
         {
             add => inner.UnhandledTurnException += value;
             remove => inner.UnhandledTurnException -= value;
@@ -1130,7 +1130,7 @@ internal sealed partial class NavigationTests
     {
         public bool IsExecuting => inner.IsExecuting;
 
-        public event Action<Exception>? UnhandledTurnException
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException
         {
             add => inner.UnhandledTurnException += value;
             remove => inner.UnhandledTurnException -= value;
@@ -1168,7 +1168,7 @@ internal sealed partial class NavigationTests
             _thread.Start();
         }
 
-        public event Action<Exception>? UnhandledTurnException;
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException;
 
         public bool Closed => _closed;
         public bool IsOnThread => Thread.CurrentThread == _thread;
@@ -1213,7 +1213,7 @@ internal sealed partial class NavigationTests
                     if (_freshContexts) SynchronizationContext.SetSynchronizationContext(new ThreadContext(this));
                     CurrentOperationId = Interlocked.Increment(ref _nextOperation);
                     try { action(); }
-                    catch (Exception error) { UnhandledTurnException?.Invoke(error); }
+                    catch (Exception error) { UnhandledTurnException?.Invoke(this, new RunicModelTurnExceptionEventArgs(error, dropped: false)); }
                     finally { CurrentOperationId = 0; }
                 });
             }
@@ -1238,7 +1238,7 @@ internal sealed partial class NavigationTests
             if (_closed) return false;
             Post(() =>
             {
-                if (_closed) UnhandledTurnException?.Invoke(new ObjectDisposedException(nameof(SyncContextModelContext)));
+                if (_closed) UnhandledTurnException?.Invoke(this, new RunicModelTurnExceptionEventArgs(new ObjectDisposedException(nameof(SyncContextModelContext)), dropped: true));
                 else RunTurn(() => { turn(); return true; });
             });
             return true;

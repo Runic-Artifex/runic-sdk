@@ -193,7 +193,7 @@ public static class ReactiveCommandExecution
     /// Logs the unexpected exceptions that <paramref name="command"/> reports on <c>ThrownExceptions</c>, while one
     /// generated Bridge presents it, until the result is disposed. Exceptions that a Bridge call received, declared
     /// failures and cancellations are not logged, and nothing is logged while
-    /// <see cref="RunicReactiveExceptions.ObserveBridgeExceptions(IHandleObservableErrors, Action{Exception})"/>
+    /// <see cref="ReactiveBridgeExceptionExtensions.ObserveBridgeExceptions(IHandleObservableErrors, Action{Exception})"/>
     /// observes the command.
     /// </summary>
     public static IDisposable ObserveFailures<TInput, TResult>(

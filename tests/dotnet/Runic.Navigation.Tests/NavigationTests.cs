@@ -145,7 +145,7 @@ internal sealed partial class NavigationTests
         editor.Resume = null;
         var retried = await Wait(region.BackAsync());
         Require(retried is NavigationResult<Page>.Committed && Names(region) == "home,editor" && editor.Resumed == 2 && editor.Initialized == 1
-            && editor.LastResume == new NavigationResume(region.CurrentEntry!.Id, NavigationOperation.Back),
+            && editor.LastResume == new NavigationArrival(region.CurrentEntry!.Id, NavigationOperation.Back),
             "Retrying resumed without re-initializing.");
     }
 
@@ -1230,7 +1230,7 @@ internal sealed partial class NavigationTests
         await using var fixture = new Fixture();
         var home = new Page("home");
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
-        INavigationRegion view = region;
+        NavigationRegion view = region;
         var homeEntry = region.CurrentEntry;
         Require(ReferenceEquals(view.Navigator, fixture.Navigator) && view.ContentType == typeof(Page)
             && view.Current == home && view.CurrentEntry is { Content: var content, Ownership: NavigationOwnership.Borrowed } && content == home
@@ -1273,7 +1273,7 @@ internal sealed partial class NavigationTests
         await Wait(view.ClearAsync());
         Require(home.Disposed == 0 && selected.Disposed == 0, "The host-neutral borrow operation disposed its caller's content.");
         lock (changed)
-            Require(changed.Contains(nameof(INavigationRegion.Current)) && changed.Contains(nameof(INavigationRegion.CanGoBack)),
+            Require(changed.Contains(nameof(NavigationRegion.Current)) && changed.Contains(nameof(NavigationRegion.CanGoBack)),
                 $"The non-generic view raised {string.Join(", ", changed)}.");
     }
 
@@ -2202,7 +2202,7 @@ internal sealed partial class NavigationTests
         public TaskCompletionSource Waiting { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool IsExecuting => Inner.IsExecuting;
 
-        public event Action<Exception>? UnhandledTurnException
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException
         {
             add => Inner.UnhandledTurnException += value;
             remove => Inner.UnhandledTurnException -= value;
@@ -2260,7 +2260,7 @@ internal sealed partial class NavigationTests
     {
         public bool IsExecuting => inner.IsExecuting;
 
-        public event Action<Exception>? UnhandledTurnException
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException
         {
             add => inner.UnhandledTurnException += value;
             remove => inner.UnhandledTurnException -= value;
@@ -2305,10 +2305,10 @@ internal sealed partial class NavigationTests
 
         public string Name { get; } = name;
         public Func<NavigationDeparture, CancellationToken, ValueTask<bool>>? Guard { get; set; }
-        public Func<NavigationResume, CancellationToken, ValueTask>? Resume { get; set; }
+        public Func<NavigationArrival, CancellationToken, ValueTask>? Resume { get; set; }
         public Func<Task>? OnDispose { get; set; }
         public List<NavigationDeparture> Departures { get; } = [];
-        public NavigationResume? LastResume { get; private set; }
+        public NavigationArrival? LastResume { get; private set; }
         public int Resumed;
         public int Disposed => Volatile.Read(ref _disposed);
         public bool DisposedInTurn { get; private set; }
@@ -2322,7 +2322,7 @@ internal sealed partial class NavigationTests
             return Guard?.Invoke(departure, cancellationToken) ?? ValueTask.FromResult(true);
         }
 
-        public ValueTask ResumeAsync(NavigationResume resume, CancellationToken cancellationToken)
+        public ValueTask ResumeAsync(NavigationArrival resume, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref Resumed);
             LastResume = resume;

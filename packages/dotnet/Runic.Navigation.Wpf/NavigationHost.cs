@@ -35,7 +35,7 @@ namespace Runic.Navigation.Wpf;
 public class NavigationHost : ContentControl
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>
-    public static readonly DependencyProperty RegionProperty = DependencyProperty.Register(nameof(Region), typeof(INavigationRegion),
+    public static readonly DependencyProperty RegionProperty = DependencyProperty.Register(nameof(Region), typeof(NavigationRegion),
         typeof(NavigationHost), new PropertyMetadata(null, static (d, _) => ((NavigationHost)d).OnRegionChanged()));
 
     /// <summary>Identifies the <see cref="ViewLocator"/> dependency property.</summary>
@@ -71,9 +71,9 @@ public class NavigationHost : ContentControl
         typeof(NavigationHost), new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.Inherits));
 
     private readonly PropertyChangedEventHandler _regionChanged;
-    private INavigationRegion? _attached;
+    private NavigationRegion? _attached;
     // The region whose entries _presented and _kept refer to; entry ids are unique only within one navigator.
-    private INavigationRegion? _presentedRegion;
+    private NavigationRegion? _presentedRegion;
     private NavigationEntryId? _presented;
     private ContentPresenter? _presenter;
     // With RetainViews: the presenters of retained entries this host presented, by entry id.
@@ -97,9 +97,9 @@ public class NavigationHost : ContentControl
     }
 
     /// <summary>Gets or sets the region to present.</summary>
-    public INavigationRegion? Region
+    public NavigationRegion? Region
     {
-        get => (INavigationRegion?)GetValue(RegionProperty);
+        get => (NavigationRegion?)GetValue(RegionProperty);
         set => SetValue(RegionProperty, value);
     }
 
@@ -120,7 +120,7 @@ public class NavigationHost : ContentControl
     /// <summary>Gets whether the region has a transition in flight.</summary>
     public bool IsTransitioning => (bool)GetValue(IsTransitioningProperty);
 
-    /// <summary>Gets whether a request of the region has not completed (<see cref="INavigationRegion.IsBusy"/>).</summary>
+    /// <summary>Gets whether a request of the region has not completed (<see cref="NavigationRegion.IsBusy"/>).</summary>
     public bool IsBusy => (bool)GetValue(IsBusyProperty);
 
     /// <summary>Gets or sets whether <see cref="NavigationCommands.BrowseBack"/> goes back in the region. The default is <see langword="true"/>.</summary>
@@ -354,7 +354,7 @@ public class NavigationHost : ContentControl
     }
 
     // Drops the kept views of entries that are no longer retained in the region, or all of them without RetainViews.
-    private void KeepOnly(INavigationRegion region, bool retain)
+    private void KeepOnly(NavigationRegion region, bool retain)
     {
         if (_kept is null) return;
         if (!retain)
@@ -367,7 +367,7 @@ public class NavigationHost : ContentControl
         if (_kept.Count == 0) _kept = null;
     }
 
-    private static bool IsRetained(INavigationRegion region, NavigationEntryId id)
+    private static bool IsRetained(NavigationRegion region, NavigationEntryId id)
     {
         foreach (var entry in region.History)
             if (entry.Id == id) return true;
@@ -437,6 +437,6 @@ public class NavigationHost : ContentControl
     private sealed record KeptView(ContentPresenter Presenter, UIElement? Focused);
 
     // A region that rejects requests while busy would reject this Back as Busy.
-    private static bool CanGoBack(INavigationRegion region) =>
+    private static bool CanGoBack(NavigationRegion region) =>
         region.CanGoBack && !region.IsTransitioning && !(region.Admission == NavigationAdmission.RejectWhileBusy && region.IsBusy);
 }

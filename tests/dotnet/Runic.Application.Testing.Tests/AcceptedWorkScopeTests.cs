@@ -194,7 +194,7 @@ internal sealed class AcceptedWorkScopeTests
                 recoveryPublished = true;
             });
             return actualWork;
-        }, new Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider().For(context));
+        }, Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(context));
         var model = new RecoveryModel(command);
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport, rootModel: model);

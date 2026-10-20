@@ -485,7 +485,7 @@ sealed class OperationGuard(ConcurrentQueue<string> asked) : INavigationRegionGu
     public bool Running { get => _running; set => _running = value; }
     public TaskCompletionSource Asked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken)
+    public ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken)
     {
         asked.Enqueue("operation");
         Asked.TrySetResult();

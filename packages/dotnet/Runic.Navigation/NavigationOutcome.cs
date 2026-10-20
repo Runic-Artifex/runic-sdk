@@ -1,6 +1,7 @@
 namespace Runic.Navigation;
 
 /// <summary>How a navigation request ended, as reported by <see cref="NavigationOutcome.Kind"/>.</summary>
+/// <remarks>This set is open: a minor release may add kinds, so handle unknown values, for example with a default arm.</remarks>
 public enum NavigationOutcomeKind
 {
     /// <summary>The transition committed.</summary>
@@ -25,10 +26,10 @@ public enum NavigationOutcomeKind
 public sealed record NavigationOutcome(NavigationOutcomeKind Kind, NavigationRejection? Rejection = null)
 {
     /// <summary>
-    /// Gets how the activation hooks (<see cref="INavigationActivated"/>) of the entries a
+    /// Gets how the arrival hooks (<see cref="INavigationArrived"/>) of the entries a
     /// <see cref="NavigationOutcomeKind.Committed"/> transition made current ended, so a page can show that their data
-    /// failed to load; <see cref="NavigationActivationState.None"/> for every other kind. Only the full navigation result
-    /// carries the exception of a <see cref="NavigationActivationState.Failed"/> hook.
+    /// failed to load; <see cref="NavigationArrivalState.None"/> for every other kind. Only the full navigation result
+    /// carries the exception of a <see cref="NavigationArrivalState.Failed"/> hook.
     /// </summary>
-    public NavigationActivationState Activation { get; init; }
+    public NavigationArrivalState Arrival { get; init; }
 }

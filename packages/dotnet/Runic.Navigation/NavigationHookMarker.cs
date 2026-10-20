@@ -30,7 +30,7 @@ internal sealed class NavigationHookMarker
     [ThreadStatic] private static bool t_frameWrapped;
 
     private readonly WeakReference<NavigationTransition> _transition;
-    // The hook's own token when it isn't the transition's: an activation hook runs after its transition released admission.
+    // The hook's own token when it isn't the transition's: an arrival hook runs after its transition released admission.
     private readonly CancellationToken? _token;
 
     private NavigationHookMarker(NavigationTransition transition, CancellationToken? token)

@@ -3,7 +3,7 @@ namespace Runic.Navigation;
 /// <summary>
 /// Can veto a transition that departs from a whole region, independent of the entries' content: for example a guard
 /// that asks once whether to discard unsaved work anywhere in a window. Register it with
-/// <see cref="NavigationRegion{TContent}.AddDepartureGuard"/> or <see cref="RunicNavigator.AddDepartureGuard"/>.
+/// <see cref="NavigationRegion.AddDepartureGuard"/> or <see cref="RunicNavigator.AddDepartureGuard"/>.
 /// </summary>
 /// <remarks>
 /// Region guards run after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), or before them
@@ -16,7 +16,7 @@ public interface INavigationRegionGuard
     /// <summary>Returns whether the transition may depart. <see langword="false"/> rejects it as <see cref="NavigationRejection.Guard"/>.</summary>
     /// <param name="departure">The departing region, its departing entries, whether one of them retires, and the operation.</param>
     /// <param name="cancellationToken">Cancelled when the transition is superseded, cancelled or closed.</param>
-    ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken);
+    ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken);
 }
 
 /// <summary>When a region guard is asked.</summary>
@@ -50,6 +50,7 @@ public sealed record NavigationRegionGuardOptions
 /// region's guards in registration order; the <see cref="BeforeEntries"/> navigator guards; the entries' departure guards
 /// (<see cref="INavigationDepartureGuard"/>), deepest first; the <see cref="AfterEntries"/> region guards; and the
 /// <see cref="AfterEntries"/> navigator guards. The first veto ends the transition and asks no further guard.
+/// <para>This set is closed: it gains values only in a major release.</para>
 /// </remarks>
 public enum NavigationRegionGuardOrder
 {
@@ -74,7 +75,7 @@ public sealed class NavigationRegionDeparture
     // Set under the navigator's gate when the guard's task has completed.
     private bool _closed;
 
-    internal NavigationRegionDeparture(NavigationTransition transition, INavigationRegion region, NavigationDepartureKind kind,
+    internal NavigationRegionDeparture(NavigationTransition transition, NavigationRegion region, NavigationDepartureKind kind,
         IReadOnlyList<NavigationEntryId> entries, string guardType)
     {
         _transition = transition;
@@ -88,7 +89,7 @@ public sealed class NavigationRegionDeparture
     /// Gets the departing region. For a guard of <see cref="RunicNavigator.AddDepartureGuard"/>, it is the region the request
     /// was made to.
     /// </summary>
-    public INavigationRegion Region { get; }
+    public NavigationRegion Region { get; }
 
     /// <summary>Gets the requested operation.</summary>
     public NavigationOperation Operation => _transition.Operation;

@@ -292,7 +292,7 @@ internal sealed class RetainViewsTests
 
         public int Asks(NavigationEntryId id) => _asks.GetValueOrDefault(id);
 
-        public FrameworkElement? ResolveView(INavigationEntry entry)
+        public FrameworkElement? ResolveView(NavigationEntry entry)
         {
             _asks[entry.Id] = Asks(entry.Id) + 1;
             return null;
@@ -303,7 +303,7 @@ internal sealed class RetainViewsTests
     {
         public int Created { get; private set; }
 
-        public FrameworkElement? ResolveView(INavigationEntry entry)
+        public FrameworkElement? ResolveView(NavigationEntry entry)
         {
             if (entry.Content is not ShellViewModel) return null;
             Created++;

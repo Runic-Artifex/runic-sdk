@@ -1,3 +1,15 @@
 #nullable enable
 *REMOVED*Runic.Navigation.Wpf.DispatcherModelContext.RunHookAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! hook, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<T>!
 *REMOVED*Runic.Navigation.Wpf.DispatcherModelContext.YieldToPresentationAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Navigation.Wpf.DispatcherModelContext.UnhandledTurnException -> System.Action<System.Exception!>?
+*REMOVED*Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.INavigationEntry! entry) -> System.Windows.FrameworkElement?
+*REMOVED*Runic.Navigation.Wpf.NavigationDialogHost.Region.get -> Runic.Navigation.INavigationRegion?
+*REMOVED*Runic.Navigation.Wpf.NavigationHost.Region.get -> Runic.Navigation.INavigationRegion?
+*REMOVED*static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.INavigationRegion?
+*REMOVED*static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.INavigationRegion? region) -> void
+Runic.Navigation.Wpf.DispatcherModelContext.UnhandledTurnException -> System.EventHandler<Runic.Navigation.RunicModelTurnExceptionEventArgs!>?
+Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.NavigationEntry! entry) -> System.Windows.FrameworkElement?
+Runic.Navigation.Wpf.NavigationDialogHost.Region.get -> Runic.Navigation.NavigationRegion?
+Runic.Navigation.Wpf.NavigationHost.Region.get -> Runic.Navigation.NavigationRegion?
+static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.NavigationRegion?
+static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.NavigationRegion? region) -> void

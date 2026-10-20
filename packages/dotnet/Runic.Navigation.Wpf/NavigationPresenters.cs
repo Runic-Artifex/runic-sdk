@@ -13,7 +13,7 @@ internal static class NavigationPresenters
     // Locator order: the host's locator, the navigator's registered locator, the implicit DataTemplate.
     // With explicitTemplate, the template is resolved from `resourceScope` and set on the presenter, for
     // windows that don't inherit the host's resources.
-    public static ContentPresenter Create(FrameworkElement resourceScope, INavigationRegion region, INavigationEntry entry,
+    public static ContentPresenter Create(FrameworkElement resourceScope, NavigationRegion region, NavigationEntry entry,
         INavigationViewLocator? hostLocator, bool explicitTemplate)
     {
         var presenter = new ContentPresenter();

@@ -264,7 +264,7 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 // Window clears before it closes.
 internal interface IBridgeRegionSlots
 {
-    IReadOnlyList<INavigationRegion> NavigationRegions();
+    IReadOnlyList<NavigationRegion> NavigationRegions();
 }
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
@@ -1552,7 +1552,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             _observed.Remove(property.Name);
             var subscription = next switch
             {
-                INavigationRegion region => NavigationPresentationBinding.Observe(region, _content, Publish),
+                NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, Publish),
                 INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, Publish),
                 _ => null,
             };
@@ -1560,11 +1560,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    IReadOnlyList<INavigationRegion> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
+    IReadOnlyList<NavigationRegion> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
     {
-        List<INavigationRegion> regions = [];
+        List<NavigationRegion> regions = [];
         foreach (var property in _properties)
-            if (property.Observe?.Invoke(_vm) is INavigationRegion region && !regions.Contains(region)) regions.Add(region);
+            if (property.Observe?.Invoke(_vm) is NavigationRegion region && !regions.Contains(region)) regions.Add(region);
         return regions;
     });
 

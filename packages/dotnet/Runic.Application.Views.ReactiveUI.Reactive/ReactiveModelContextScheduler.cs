@@ -7,8 +7,11 @@ using Runic.Navigation;
 
 namespace Runic.Application.Views.ReactiveUI.Reactive;
 
-/// <summary>Provides System.Reactive schedulers bound to Runic model contexts.</summary>
-public interface IRunicReactiveSchedulerProvider
+/// <summary>
+/// Provides System.Reactive schedulers bound to Runic model contexts, as a service: <see cref="ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext"/>
+/// registers it. Code without a container calls <see cref="ReactiveSchedulers.For"/>.
+/// </summary>
+public interface IReactiveSchedulerProvider
 {
     /// <summary>Returns a scheduler that runs work on <paramref name="context"/>.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
@@ -21,10 +24,10 @@ public interface IRunicReactiveSchedulerProvider
 /// deliver work scheduled in a model turn to that turn's context.
 /// </summary>
 /// <remarks>
-/// Every provider returns the same scheduler for one context for as long as the context is alive, and the
+/// Every call returns the same scheduler for one context for as long as the context is alive, and the
 /// main-thread scheduler that <see cref="InstallMainThreadScheduler"/> installs uses that scheduler too.
 /// </remarks>
-public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProvider
+public static class ReactiveSchedulers
 {
     private static readonly ConditionalWeakTable<IRunicModelContext, RunicModelContextScheduler> Schedulers = new();
     private static readonly Lock InstallGate = new();
@@ -34,8 +37,11 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
     private static bool _installed;
     private static ModelContextMainThreadScheduler? _created;
 
-    /// <inheritdoc />
-    public IScheduler For(IRunicModelContext context)
+    /// <summary>Returns the scheduler that runs work on <paramref name="context"/>.</summary>
+    /// <param name="context">The model context.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
+        Justification = "The same name as IReactiveSchedulerProvider.For.")]
+    public static IScheduler For(IRunicModelContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         return Shared(context);
@@ -143,6 +149,22 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
         Schedulers.GetValue(context, static context => new RunicModelContextScheduler(context));
 }
 
+/// <summary>
+/// The <see cref="IReactiveSchedulerProvider"/> that <see cref="ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext"/>
+/// registers. It returns <see cref="ReactiveSchedulers.For"/>.
+/// </summary>
+public sealed class ReactiveSchedulerProvider : IReactiveSchedulerProvider
+{
+    internal static readonly ReactiveSchedulerProvider Instance = new();
+
+    internal ReactiveSchedulerProvider()
+    {
+    }
+
+    /// <inheritdoc />
+    public IScheduler For(IRunicModelContext context) => ReactiveSchedulers.For(context);
+}
+
 // ReactiveUI's main-thread scheduler in a Runic app. Each call resolves its target: the shared scheduler of
 // the model context whose turn is running, or the scheduler this one replaced.
 internal sealed class ModelContextMainThreadScheduler(IScheduler fallback) : IScheduler
@@ -153,7 +175,7 @@ internal sealed class ModelContextMainThreadScheduler(IScheduler fallback) : ISc
 
     internal IScheduler Fallback => fallback;
 
-    public DateTimeOffset Now => (ModelTurnFlow.Current is { } context ? RunicReactiveSchedulerProvider.Shared(context) : fallback).Now;
+    public DateTimeOffset Now => (ModelTurnFlow.Current is { } context ? ReactiveSchedulers.Shared(context) : fallback).Now;
 
     public IDisposable Schedule<TState>(TState state, Func<IScheduler, TState, IDisposable> action) =>
         Target(WorkOf(state)).Schedule(state, action);
@@ -170,7 +192,7 @@ internal sealed class ModelContextMainThreadScheduler(IScheduler fallback) : ISc
 
     private IScheduler Target(object? work)
     {
-        if (ModelTurnFlow.Current is { } context) return RunicReactiveSchedulerProvider.Shared(context);
+        if (ModelTurnFlow.Current is { } context) return ReactiveSchedulers.Shared(context);
         _outside.Report(Logger, work, fallback.GetType().Name);
         return fallback;
     }

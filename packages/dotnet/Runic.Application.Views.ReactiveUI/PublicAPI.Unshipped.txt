@@ -1,1 +1,30 @@
 #nullable enable
+*REMOVED*Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider
+*REMOVED*Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>.Current.get -> TViewModel?
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>.Dispose() -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.RoutingState! router) -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.RoutingState! router, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.RunicReactiveExceptions
+*REMOVED*Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider
+*REMOVED*Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+*REMOVED*Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.RunicReactiveSchedulerProvider() -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.RunicReactiveUIBuilderExtensions
+*REMOVED*static Runic.Application.Views.ReactiveUI.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, Microsoft.Extensions.Logging.ILogger! logger, string? sourceName = null) -> System.IDisposable!
+*REMOVED*static Runic.Application.Views.ReactiveUI.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, System.Action<System.Exception!>! onUnexpected) -> System.IDisposable!
+*REMOVED*static Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
+*REMOVED*static Runic.Application.Views.ReactiveUI.RunicReactiveUIBuilderExtensions.WithRunicModelContext(this ReactiveUI.Builder.IReactiveUIBuilder! builder) -> ReactiveUI.Builder.IReactiveUIBuilder!
+Runic.Application.Views.ReactiveUI.IReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.IReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+Runic.Application.Views.ReactiveUI.ReactiveBridgeExceptionExtensions
+Runic.Application.Views.ReactiveUI.ReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.ReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+Runic.Application.Views.ReactiveUI.ReactiveSchedulers
+Runic.Application.Views.ReactiveUI.ReactiveUIBuilderExtensions
+static Runic.Application.Views.ReactiveUI.ReactiveBridgeExceptionExtensions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, Microsoft.Extensions.Logging.ILogger! logger, string? sourceName = null) -> System.IDisposable!
+static Runic.Application.Views.ReactiveUI.ReactiveBridgeExceptionExtensions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, System.Action<System.Exception!>! onUnexpected) -> System.IDisposable!
+static Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+static Runic.Application.Views.ReactiveUI.ReactiveSchedulers.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
+static Runic.Application.Views.ReactiveUI.ReactiveUIBuilderExtensions.WithRunicModelContext(this ReactiveUI.Builder.IReactiveUIBuilder! builder) -> ReactiveUI.Builder.IReactiveUIBuilder!

@@ -26,10 +26,10 @@
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveInteractionDescriptor.cs" Link="Shared/ReactiveInteractionDescriptor.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactivePresentation.cs" Link="Shared/ReactivePresentation.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveLog.cs" Link="Shared/ReactiveLog.cs" />
-    <Compile Include="../Runic.Application.Views.ReactiveUI/RunicReactiveExceptions.cs" Link="Shared/RunicReactiveExceptions.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveBridgeExceptionExtensions.cs" Link="Shared/ReactiveBridgeExceptionExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveSchedulerDiagnostics.cs" Link="Shared/ReactiveSchedulerDiagnostics.cs" />
-    <Compile Include="../Runic.Application.Views.ReactiveUI/RunicReactiveUIBuilderExtensions.cs" Link="Shared/RunicReactiveUIBuilderExtensions.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveUIBuilderExtensions.cs" Link="Shared/ReactiveUIBuilderExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>

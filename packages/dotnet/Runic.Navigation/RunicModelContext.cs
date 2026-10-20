@@ -27,13 +27,18 @@ namespace Runic.Navigation;
 public interface IRunicModelContext : IAsyncDisposable
 {
     /// <summary>Gets whether the calling code is executing one of this context's turns.</summary>
+    /// <remarks>
+    /// An implementation may report <see langword="true"/> more broadly, for code that its turns are serialized with
+    /// anyway: Runic.Navigation.Wpf's <c>DispatcherModelContext</c> reports it for any code on its UI thread.
+    /// </remarks>
     bool IsExecuting { get; }
 
     /// <summary>
     /// Receives exceptions thrown by turns queued with <see cref="TryPost"/>, and an
-    /// <see cref="ObjectDisposedException"/> for each posted turn dropped by disposal.
+    /// <see cref="ObjectDisposedException"/> for each posted turn dropped by disposal
+    /// (<see cref="RunicModelTurnExceptionEventArgs.Dropped"/>). The sender is the context.
     /// </summary>
-    event Action<Exception>? UnhandledTurnException;
+    event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException;
 
     /// <summary>Queues a short synchronous turn when the context is still accepting work.</summary>
     bool TryPost(Action turn);
@@ -99,20 +104,28 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     }
 
     /// <inheritdoc />
-    public event Action<Exception>? UnhandledTurnException;
+    public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException;
 
     /// <inheritdoc />
     public bool IsExecuting => ReferenceEquals(Executing, this);
 
     /// <summary>
     /// Gets the context whose turn is executing on the calling thread, or <see langword="null"/> outside a turn of a
-    /// <see cref="RunicModelContext"/>.
+    /// <see cref="RunicModelContext"/>. For MVVM adapters; application code takes its <see cref="IRunicModelContext"/>
+    /// by injection.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// An <c>await</c> started in a turn resumes in a later turn, where this returns the context again. MVVM adapters
     /// use it to deliver work scheduled in a turn back to the same context, as a UI framework's main-thread scheduler
-    /// does for its dispatcher. Another <see cref="IRunicModelContext"/> implementation, such as a dispatcher context,
-    /// is not reported.
+    /// does for its dispatcher.
+    /// </para>
+    /// <para>
+    /// Another <see cref="IRunicModelContext"/> implementation is not reported: under Runic.Navigation.Wpf's
+    /// <c>DispatcherModelContext</c> it is always <see langword="null"/>. Runic has no static accessor for "the UI
+    /// thread's context", so code that needs one receives it from the container or from
+    /// <see cref="NavigationEntryContext.ModelContext"/>, and works with every implementation.
+    /// </para>
     /// </remarks>
     public static RunicModelContext? Current => Executing;
 
@@ -351,7 +364,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     {
         try
         {
-            UnhandledTurnException?.Invoke(error);
+            UnhandledTurnException?.Invoke(this, new RunicModelTurnExceptionEventArgs(error, dropped));
         }
         catch (Exception reportError)
         {

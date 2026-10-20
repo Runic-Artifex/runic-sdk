@@ -32,7 +32,7 @@ namespace Runic.Navigation.ReactiveUI;
 /// when the entry retires. Dispose either yourself only to stop it earlier.
 /// </para>
 /// </remarks>
-public static class ReactiveNavigationEntry
+public static class ReactiveNavigationEntryExtensions
 {
     /// <summary>
     /// Calls <paramref name="onNavigatedTo"/> each time the entry becomes its region's current entry: when the push,
@@ -56,7 +56,7 @@ public static class ReactiveNavigationEntry
     /// <param name="entry">The entry context.</param>
     /// <param name="onNavigatedTo">Receives the arrival and the scope for subscriptions that end when the entry is left.</param>
     /// <returns>The subscription, which ends when the entry retires. Dispose it only to stop the calls earlier.</returns>
-    public static IDisposable WhenNavigatedTo(this NavigationEntryContext entry, Action<NavigationResume, FlavorDisposables> onNavigatedTo)
+    public static IDisposable WhenNavigatedTo(this NavigationEntryContext entry, Action<NavigationArrival, FlavorDisposables> onNavigatedTo)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(onNavigatedTo);
@@ -102,9 +102,11 @@ public static class ReactiveNavigationEntry
     /// <param name="canExecute">The command's availability, or <see langword="null"/> to always allow it.</param>
     /// <param name="outputScheduler">
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's main-thread
-    /// scheduler, as in <see cref="ReactiveNavigation.CreateBackCommand{TContent}"/>.
+    /// scheduler, as in <see cref="ReactiveNavigationRegionExtensions.CreateBackCommand{TContent}"/>.
     /// </param>
     /// <returns>The command, which the entry disposes when it retires.</returns>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped as ReactiveNavigationEntry.CreateCompleteCommand; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         Func<CancellationToken, Task<TResult>> produce, IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
@@ -135,6 +137,8 @@ public static class ReactiveNavigationEntry
     /// scheduler.
     /// </param>
     /// <returns>The command, which the entry disposes when it retires.</returns>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped as ReactiveNavigationEntry.CreateCompleteCommand; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ReactiveCommand<TResult, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
@@ -209,12 +213,12 @@ public static class ReactiveNavigationEntry
     {
         private readonly Lock _lock = new();
         private readonly NavigationEntryContext _entry;
-        private readonly Action<NavigationResume, FlavorDisposables> _onNavigatedTo;
+        private readonly Action<NavigationArrival, FlavorDisposables> _onNavigatedTo;
         private readonly CancellationTokenRegistration _retirement;
         private FlavorDisposables? _scope;
         private bool _disposed;
 
-        public ArrivalSubscription(NavigationEntryContext entry, Action<NavigationResume, FlavorDisposables> onNavigatedTo)
+        public ArrivalSubscription(NavigationEntryContext entry, Action<NavigationArrival, FlavorDisposables> onNavigatedTo)
         {
             _entry = entry;
             _onNavigatedTo = onNavigatedTo;
@@ -234,7 +238,7 @@ public static class ReactiveNavigationEntry
                 if (_disposed) return;
                 _scope = scope;
             }
-            _onNavigatedTo(new NavigationResume(_entry.Id, change.Operation), scope);
+            _onNavigatedTo(new NavigationArrival(_entry.Id, change.Operation), scope);
         }
 
         private FlavorDisposables? TakeScope()

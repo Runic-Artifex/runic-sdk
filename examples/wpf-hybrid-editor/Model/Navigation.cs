@@ -45,7 +45,7 @@ public sealed class NotesListViewModel : ObservableObject, INavigationResume
     public ObservableCollection<Note> Notes { get; }
     public IAsyncRelayCommand<Note> OpenCommand { get; }
 
-    public ValueTask ResumeAsync(NavigationResume resume, CancellationToken token)
+    public ValueTask ResumeAsync(NavigationArrival resume, CancellationToken token)
     {
         Notes.ReplaceWith(_store.All);
         return ValueTask.CompletedTask;

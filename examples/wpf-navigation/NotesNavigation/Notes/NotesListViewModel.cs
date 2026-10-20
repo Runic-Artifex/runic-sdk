@@ -34,7 +34,7 @@ public sealed class NotesListViewModel : ObservableObject, INavigationResume
     public IAsyncRelayCommand<Note> DeleteCommand { get; } // [S2]
 
     // Runs each time the list becomes current again, for example after Back from a note.
-    public ValueTask ResumeAsync(NavigationResume resume, CancellationToken cancellationToken)
+    public ValueTask ResumeAsync(NavigationArrival resume, CancellationToken cancellationToken)
     {
         Notes.ReplaceWith(_store.All);
         return ValueTask.CompletedTask;

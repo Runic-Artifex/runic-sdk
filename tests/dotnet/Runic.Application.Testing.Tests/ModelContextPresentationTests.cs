@@ -85,7 +85,7 @@ internal sealed class ModelContextPresentationTests
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport, new ContextPageViewLocator());
         var context = session.ModelContext!;
-        var scheduler = new RunicReactiveSchedulerProvider().For(context);
+        var scheduler = ReactiveSchedulers.For(context);
         using var page = new ContextPageViewModel(scheduler);
         using var shell = new ContextShellViewModel(page, scheduler);
         var bridge = new ContextShellBridge(transport, shell, content: session);
@@ -105,7 +105,7 @@ internal sealed class ModelContextPresentationTests
     {
         await using var context = new RunicModelContext();
         await using var other = new RunicModelContext();
-        var scheduler = new RunicReactiveSchedulerProvider().For(context);
+        var scheduler = ReactiveSchedulers.For(context);
         using var page = new ContextPageViewModel(scheduler);
         using var shell = new ContextShellViewModel(page, scheduler);
 

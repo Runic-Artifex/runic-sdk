@@ -17,7 +17,7 @@ internal sealed class ReactiveNavigationTests
     [Test]
     public async Task WebViewAnswersLeaveConfirmationAsync()
     {
-        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
+        Require(ReactiveSchedulers.InstallMainThreadScheduler(),
             "The model-context main-thread scheduler was not installed.");
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
@@ -123,12 +123,12 @@ internal sealed class ReactiveNavigationTests
     }
 
     // The back command needs no scheduler and returns a NavigationOutcome, which the generated web client
-    // receives as a typed result (W250-014). It reports a failed activation hook of the page it went back to by its
+    // receives as a typed result (W250-014). It reports a failed arrival hook of the page it went back to by its
     // state only, without the exception (#385).
     [Test]
     public async Task BridgedBackCommandReturnsOutcomeAsync()
     {
-        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
+        Require(ReactiveSchedulers.InstallMainThreadScheduler(),
             "The model-context main-thread scheduler was not installed.");
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
@@ -154,9 +154,9 @@ internal sealed class ReactiveNavigationTests
         Require(root.GetProperty("kind").GetString() == "succeeded"
             && root.GetProperty("result").GetProperty("kind").GetString() is "committed" or "Committed"
             && root.GetProperty("result").GetProperty("rejection").ValueKind == JsonValueKind.Null
-            && root.GetProperty("result").GetProperty("activation").GetString() == "Failed"
+            && root.GetProperty("result").GetProperty("arrival").GetString() == "Failed"
             && !root.GetRawText().Contains("internal reload detail", StringComparison.Ordinal),
-            $"The back command did not return a committed outcome with a failed activation and no exception: {root}.");
+            $"The back command did not return a committed outcome with a failed arrival and no exception: {root}.");
         Require(model.Main.Current == home, "The bridged back command did not go back.");
         await Until(() => { lock (executing) return executing.Count >= 3; });
         lock (executing)

@@ -30,7 +30,7 @@ public sealed class AotProofViewModel : ReactiveObject
     {
         SaveCommand = ReactiveCommand.CreateFromTask<AotSaveRequest, AotSaveResult>(request => Task.FromResult(
             new AotSaveResult(request.DocumentId, request.ExpectedVersion + 1, request.Amount, request.When)),
-            new RunicReactiveSchedulerProvider().For(context));
+            ReactiveSchedulers.For(context));
     }
 
     public long ExactId { get; set; } = 9_007_199_254_740_993;

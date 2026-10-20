@@ -30,9 +30,8 @@ The Back command returns a
 `ReactiveCommand<Unit, NavigationOutcome>` and, without an `outputScheduler`,
 delivers on ReactiveUI's main-thread scheduler: the model context in a Runic
 Views app that calls `AddRunicReactiveModelContext()` from
-`Runic.Application.Views.ReactiveUI.Reactive`, the dispatcher in WPF. The scheduler
-provider and `AddRunicReactiveModelContext()` moved to that package in W250;
-see [Scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#scheduling).
+`Runic.Application.Views.ReactiveUI.Reactive`, the dispatcher in WPF; see
+[Scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#scheduling).
 
 The entry API is the same source as the default flavor's
 ([entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands),

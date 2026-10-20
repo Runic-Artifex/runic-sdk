@@ -24,7 +24,7 @@ public sealed class TypedReactiveViewModel : ReactiveObject
     public TypedReactiveViewModel(IRunicModelContext modelContext)
     {
         ArgumentNullException.ThrowIfNull(modelContext);
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+        var scheduler = ReactiveSchedulers.For(modelContext);
         var canSave = this.WhenAnyValue(model => model.SaveEnabled);
         SaveCommand = ReactiveCommand.CreateFromTask<TypedSaveRequest, TypedSaveResult>(async request =>
         {

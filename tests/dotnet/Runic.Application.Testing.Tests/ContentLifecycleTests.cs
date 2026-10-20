@@ -324,7 +324,7 @@ public sealed class ContentLifecycleTests
 
         public int Invocations => Volatile.Read(ref _invocations);
         public bool IsExecuting => Thread.CurrentThread == _thread;
-        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException { add { } remove { } }
 
         public bool TryPost(Action turn) => _queue.TryAdd(turn);
 

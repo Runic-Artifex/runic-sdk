@@ -18,7 +18,7 @@ public interface INavigationViewLocator
     /// </summary>
     /// <param name="entry">The entry to present.</param>
     /// <returns>A new view, or <see langword="null"/>.</returns>
-    FrameworkElement? ResolveView(INavigationEntry entry);
+    FrameworkElement? ResolveView(NavigationEntry entry);
 
     /// <summary>Creates a new view for plain content in a <see cref="ViewHost"/>, without a navigation entry.</summary>
     /// <remarks>

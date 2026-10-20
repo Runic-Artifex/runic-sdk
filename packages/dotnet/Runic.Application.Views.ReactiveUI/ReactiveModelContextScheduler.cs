@@ -7,8 +7,11 @@ using Runic.Navigation;
 
 namespace Runic.Application.Views.ReactiveUI;
 
-/// <summary>Provides ReactiveUI schedulers bound to Runic model contexts.</summary>
-public interface IRunicReactiveSchedulerProvider
+/// <summary>
+/// Provides ReactiveUI schedulers bound to Runic model contexts, as a service: <see cref="ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext"/>
+/// registers it. Code without a container calls <see cref="ReactiveSchedulers.For"/>.
+/// </summary>
+public interface IReactiveSchedulerProvider
 {
     /// <summary>Returns a sequencer that runs work on <paramref name="context"/>.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
@@ -21,11 +24,11 @@ public interface IRunicReactiveSchedulerProvider
 /// ReactiveUI's main-thread scheduler deliver work scheduled in a model turn to that turn's context.
 /// </summary>
 /// <remarks>
-/// A sequencer keeps its ordering state, so every provider returns the same sequencer for one context for as
+/// A sequencer keeps its ordering state, so every call returns the same sequencer for one context for as
 /// long as the context is alive, and the main-thread scheduler that
 /// <see cref="InstallMainThreadScheduler"/> installs uses that sequencer too.
 /// </remarks>
-public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProvider
+public static class ReactiveSchedulers
 {
     private static readonly ConditionalWeakTable<IRunicModelContext, RunicModelContextSequencer> Sequencers = new();
     private static readonly Lock InstallGate = new();
@@ -35,8 +38,11 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
     private static bool _installed;
     private static ModelContextMainThreadSequencer? _created;
 
-    /// <inheritdoc />
-    public ISequencer For(IRunicModelContext context)
+    /// <summary>Returns the sequencer that runs work on <paramref name="context"/>.</summary>
+    /// <param name="context">The model context.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
+        Justification = "The same name as IReactiveSchedulerProvider.For.")]
+    public static ISequencer For(IRunicModelContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         return Shared(context);
@@ -145,6 +151,22 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
         Sequencers.GetValue(context, static context => new RunicModelContextSequencer(context));
 }
 
+/// <summary>
+/// The <see cref="IReactiveSchedulerProvider"/> that <see cref="ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext"/>
+/// registers. It returns <see cref="ReactiveSchedulers.For"/>.
+/// </summary>
+public sealed class ReactiveSchedulerProvider : IReactiveSchedulerProvider
+{
+    internal static readonly ReactiveSchedulerProvider Instance = new();
+
+    internal ReactiveSchedulerProvider()
+    {
+    }
+
+    /// <inheritdoc />
+    public ISequencer For(IRunicModelContext context) => ReactiveSchedulers.For(context);
+}
+
 // ReactiveUI's main-thread scheduler in a Runic app. Each call resolves its target: the shared sequencer of
 // the model context whose turn is running, or the scheduler this one replaced. Now and Timestamp come from the
 // same target, so a due time an operator computes and schedules in one call is read on the same clock.
@@ -156,8 +178,8 @@ internal sealed class ModelContextMainThreadSequencer(ISequencer fallback) : ISe
 
     internal ISequencer Fallback => fallback;
 
-    public DateTimeOffset Now => (ModelTurnFlow.Current is { } context ? RunicReactiveSchedulerProvider.Shared(context) : fallback).Now;
-    public long Timestamp => (ModelTurnFlow.Current is { } context ? RunicReactiveSchedulerProvider.Shared(context) : fallback).Timestamp;
+    public DateTimeOffset Now => (ModelTurnFlow.Current is { } context ? ReactiveSchedulers.Shared(context) : fallback).Now;
+    public long Timestamp => (ModelTurnFlow.Current is { } context ? ReactiveSchedulers.Shared(context) : fallback).Timestamp;
 
     public void Schedule(IWorkItem item) => Target(item).Schedule(item);
 
@@ -165,7 +187,7 @@ internal sealed class ModelContextMainThreadSequencer(ISequencer fallback) : ISe
 
     private ISequencer Target(IWorkItem item)
     {
-        if (ModelTurnFlow.Current is { } context) return RunicReactiveSchedulerProvider.Shared(context);
+        if (ModelTurnFlow.Current is { } context) return ReactiveSchedulers.Shared(context);
         _outside.Report(Logger, item, fallback.GetType().Name);
         return fallback;
     }

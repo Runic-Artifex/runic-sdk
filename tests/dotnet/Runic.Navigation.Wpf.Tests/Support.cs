@@ -223,7 +223,7 @@ internal sealed class SignallingContext(DispatcherModelContext inner) : IRunicMo
 
     public bool IsExecuting => inner.IsExecuting;
 
-    public event Action<Exception>? UnhandledTurnException
+    public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException
     {
         add => inner.UnhandledTurnException += value;
         remove => inner.UnhandledTurnException -= value;

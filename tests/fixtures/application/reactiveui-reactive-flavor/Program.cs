@@ -15,8 +15,7 @@ using Runic.Navigation;
 AppLocator.CurrentMutable.RegisterConstant(new NullLogger(), typeof(ILogger));
 AppLocator.CurrentMutable.RegisterConstant(new DefaultLogManager(AppLocator.Current), typeof(ILogManager));
 await using var context = new RunicModelContext();
-var schedulers = new RunicReactiveSchedulerProvider();
-IScheduler commandScheduler = schedulers.For(context);
+IScheduler commandScheduler = ReactiveSchedulers.For(context);
 var model = new FlavorModel(commandScheduler);
 using var modelLease = RunicModelContextRegistry.Shared.Bind(context, model);
 model.Name = "ready";
@@ -90,7 +89,7 @@ if (RunicModelContextRegistry.Shared.TryGet(shell, out _)) throw new InvalidOper
 bool BoundTo(object model) =>
     RunicModelContextRegistry.Shared.TryGet(model, out var bound) && ReferenceEquals(bound, context);
 
-IScheduler scheduler = schedulers.For(context);
+IScheduler scheduler = ReactiveSchedulers.For(context);
 scheduler.Schedule("scheduled", static (_, value) =>
 {
     Scheduled.TrySetResult(value);

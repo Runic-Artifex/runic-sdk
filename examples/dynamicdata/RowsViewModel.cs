@@ -55,7 +55,7 @@ public sealed class RowsViewModel : ReactiveObject, IDisposable
     private int _start;
 
     public RowsViewModel(RowStore store, IRunicModelContext context)
-        : this(store, new RunicReactiveSchedulerProvider().For(context), 30)
+        : this(store, ReactiveSchedulers.For(context), 30)
     {
     }
 

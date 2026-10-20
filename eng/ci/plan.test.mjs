@@ -273,7 +273,7 @@ test('the standalone navigation consumer belongs to the navigation component', (
 
 test('the ReactiveUI navigation adapters belong to the navigation component', () => {
   for (const file of [
-    'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigation.cs',
+    'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigationRegionExtensions.cs',
     'packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj',
     'tests/fixtures/navigation/reactiveui-adapter/NavigationAdapterTests.cs',
     'tests/fixtures/navigation/reactiveui-consumer/Program.cs',
@@ -357,7 +357,7 @@ test('each platform rule plans its Windows and macOS legs, first match wins', ()
 
 test('owned files without a rule, engineering-only and neutral files plan no Windows or macOS leg', () => {
   for (const file of ['packages/web/svelte/src/index.ts', 'packages/web/views/src/index.ts', 'tools/Runic.Application.Templates/content/runic-app/Program.cs',
-    'packages/dotnet/Runic.Assets/AssetCatalog.cs', 'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigation.cs', 'examples/notes-view-first/Program.cs',
+    'packages/dotnet/Runic.Assets/AssetCatalog.cs', 'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigationRegionExtensions.cs', 'examples/notes-view-first/Program.cs',
     'docs/README.md', 'eng/ci/plan.test.mjs', 'tests/native/Runic.Desktop.Gtk4.Smoke/Program.cs', 'eng/portals/README.txt']) {
     const result = plan([file]);
     assert.deepEqual(result.platforms, [], file);

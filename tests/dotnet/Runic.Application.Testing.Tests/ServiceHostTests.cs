@@ -116,7 +116,7 @@ internal sealed class ServiceHostTests
             _ => (transport, content, vm) => new ContextShellBridge(transport, vm, content: content));
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();
-        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
+        Require(ReactiveSchedulers.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
 
         using (RunicWindowTestHost.Create<ContextShellViewModel>(scope.ServiceProvider))
             await TestHostOffTurnViewModel.PushOutsideTurnAsync();
