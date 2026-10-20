@@ -97,7 +97,14 @@ export interface MockCollection<TItem = unknown> {
   move(key: string, index: number): void;
 }
 
-export type MockOperationKind = "running" | "succeeded" | "domain-failed" | "failed" | "cancelled";
+/**
+ * An operation's status, with the wire tokens .NET sends (`RunicOperationStatusKind` in
+ * Runic.Application.Testing). `expired`: the window no longer retains the finished operation's outcome
+ * (`MockOperation.expire()`). `unknown`: the window does not know the request id, for example after a
+ * restart (`MockOperation.forget()`). The set is open: a minor release may add statuses, so code that
+ * switches over it handles an unknown value.
+ */
+export type MockOperationKind = "running" | "succeeded" | "domain-failed" | "failed" | "cancelled" | "expired" | "unknown";
 
 /** An operation a client started with `start{Command}()`. */
 export interface MockOperation<TInput = unknown, TResult = unknown> {
@@ -114,6 +121,18 @@ export interface MockOperation<TInput = unknown, TResult = unknown> {
   /** Ends the operation with its declared failure (`domain-failed`), as a wire value. */
   failWith(failure: unknown): void;
   cancel(): void;
+  /**
+   * Drops the finished operation's outcome, as .NET does when its retention runs out: its status, wait,
+   * stream and cancel then answer `expired`, and a `Start{Command}` that repeats its request id and input
+   * answers `expired`. Throws for a running operation, which .NET does not expire.
+   */
+  expire(): void;
+  /**
+   * Forgets the request id, as a restarted window has: its status, wait, stream and cancel then answer
+   * `unknown`, and a `Start{Command}` with the id starts a new operation. A running operation's signal
+   * aborts, and a later outcome of its handler is ignored.
+   */
+  forget(): void;
   /** Appends values to a stream operation. */
   emit(...items: TResult[]): void;
 }
@@ -546,6 +565,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (existing.view !== view || existing.member !== member || existing.inputJson !== inputJson)
         return JSON.stringify({ ...(contract ? { contract } : {}), requestId, kind: "rejected", status: "unknown",
           reason: "identity-conflict", terminal: null });
+      // An expired id stays reserved for its operation, which no longer has an outcome to observe.
+      if (existing.kind === "expired")
+        return JSON.stringify({ ...(contract ? { contract } : {}), requestId, kind: "expired", status: "expired", reason: "expired",
+          terminal: null });
       return JSON.stringify({ ...(contract ? { contract } : {}), requestId, kind: "duplicate", status: existing.kind, reason: null,
         terminal: contract && existing.kind !== "running" ? statusOf(contract, existing, requestId) : null });
     }
@@ -566,6 +589,22 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       fail: (message, detail) => settle(view, operation, "failed", undefined, { message: message ?? "The operation failed.", ...(detail ? { detail } : {}) }),
       failWith: failure => settle(view, operation, "domain-failed", failure),
       cancel: () => settle(view, operation, "cancelled"),
+      expire: () => {
+        if (operation.kind === "running") throw new TypeError(`The operation ${member} is running; only a finished operation expires.`);
+        if (operation.kind === "expired" || operation.kind === "unknown") return;
+        operation.kind = "expired";
+        delete operation.result;
+        delete operation.failure;
+        delete operation.error;
+        operation.items.length = 0;
+      },
+      forget: () => {
+        if (operation.kind === "unknown") return;
+        if (operation.kind === "running") settle(view, operation, "unknown");
+        else operation.kind = "unknown";
+        operation.controller.abort();
+        if (operations.get(requestId) === operation) operations.delete(requestId);
+      },
       emit: (...items) => {
         if (!operation.stream) throw new TypeError(`The operation ${member} is not a stream.`);
         if (operation.kind !== "running") throw new TypeError(`The operation ${member} has finished.`);
@@ -632,6 +671,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       case "__runicOperationCancel": {
         const { contract, requestId, view, operation } = findOperation(identity);
         if (!view || !operation) return JSON.stringify({ contract, requestId, kind: "unknown" });
+        if (operation.kind === "expired") return JSON.stringify({ contract, requestId, kind: "expired" });
         if (operation.kind !== "running") return JSON.stringify({ contract, requestId, kind: "not-running" });
         // The operation sees the request through its signal and decides how it ends.
         operation.controller.abort();
@@ -641,6 +681,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const { contract, requestId, operation } = findOperation(identity);
         const cursor = typeof identity?.["cursor"] === "number" ? identity["cursor"] : 0;
         if (!operation) return JSON.stringify({ contract, requestId, kind: "unknown" });
+        // An expired operation retains no stream items.
+        if (operation.kind === "expired") return JSON.stringify({ contract, requestId, kind: "expired" });
         return JSON.stringify({
           contract, requestId, kind: operation.kind, cursor: operation.items.length, completed: operation.kind !== "running",
           items: operation.items.map((value, index) => ({ sequence: index + 1, value })).filter(item => item.sequence > cursor),

@@ -59,6 +59,10 @@ export interface MockTypedOperation<TInput, TResult, TFailure = never> {
   /** Ends the operation with its declared failure (`domain-failed`). */
   failWith(failure: TFailure): void;
   cancel(): void;
+  /** Drops the finished operation's outcome, so it reports `expired`; throws while it runs. */
+  expire(): void;
+  /** Forgets the request id, as a restarted window has, so it reports `unknown`. */
+  forget(): void;
   emit(...items: TResult[]): void;
 }
 
@@ -249,6 +253,8 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       fail: (message, detail) => raw.fail(message, detail),
       failWith: failure => raw.failWith(plan.encodeFailure ? plan.encodeFailure(failure) : failure),
       cancel: () => raw.cancel(),
+      expire: () => raw.expire(),
+      forget: () => raw.forget(),
       emit: (...items) => raw.emit(...items.map(item => plan.encodeResult ? plan.encodeResult(item) : item)),
     };
   };
