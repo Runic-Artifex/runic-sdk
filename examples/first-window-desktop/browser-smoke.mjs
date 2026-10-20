@@ -35,13 +35,16 @@ try {
     globalThis.connectionStates = [];
     window.__runicBridge.onConnectionChange(connected => connectionStates.push(connected));
   })()`);
-  await retry(async () => { await listen(); return await states() === "[true]"; }, "the connection listener");
+  // A listener gets the host script's last reported state at once and each change after it. When a View
+  // subscribed first, that state can lag the WebSocket by one 250 ms poll, so wait for the latest to be true.
+  const latest = async () => JSON.parse(await states())?.at(-1);
+  await retry(async () => { await listen(); return await latest() === true; }, "the connection listener");
   // A line on standard input ends serving: WaitForCloseAsync returns and the application exits by itself.
   const ended = Date.now();
   host.stdin.end("\n");
   await retry(() => host.exitCode !== null, "host exit after a standard input line");
   if (host.exitCode !== 0) throw new Error(`Host exited with ${host.exitCode}: ${errors}`);
-  await retry(async () => await states() === "[true,false]", "the page seeing the ended host");
+  await retry(async () => await latest() === false, "the page seeing the ended host");
   const latency = Date.now() - ended;
   if (latency > 5_000) throw new Error(`The page saw the ended host only after ${latency} ms.`);
   console.log(`The page saw the ended host after ${latency} ms.`);
