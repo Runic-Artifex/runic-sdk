@@ -119,6 +119,8 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 30
+          # The archive is already zstd-compressed.
+          compression-level: 0
       # Package candidates come from the same build, after its outputs are archived, independently
       # of test results. Package consumers, templates and the WPF lane download them.
       - name: Pack the verified build inputs
