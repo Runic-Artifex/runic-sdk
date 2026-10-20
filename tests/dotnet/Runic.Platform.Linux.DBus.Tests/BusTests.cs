@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32.SafeHandles;
 using Runic.Platform;
@@ -54,6 +55,38 @@ internal sealed class BusTests
             Check(!handle.IsClosed, "Sending the descriptor closed the caller's handle.");
         }
         finally { File.Delete(file); }
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("disposing a subscription closes the descriptors of signals nobody read")]
+    public async Task UnreadDescriptorsAsync()
+    {
+        await using var service = await ConnectAsync();
+        await using var client = await ConnectAsync();
+        var echo = new EchoObject();
+        await using var export = service.Export(ObjectPath, echo);
+        var proxy = new DBusProxy(client, service.UniqueName, ObjectPath);
+        // Disposed before reading, and disposed after its enumeration stopped with a signal left unread.
+        foreach (bool enumerate in new[] { false, true })
+        {
+            var handed = await proxy.SubscribeSignalAsync(Interface, "Handed");
+            await using var marks = await proxy.SubscribeSignalAsync(Interface, "Pinged");
+            using var pipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.In);
+            Check(echo.Hand(pipe.ClientSafePipeHandle) && echo.Hand(pipe.ClientSafePipeHandle) && echo.Ping("after"), "emitting");
+            pipe.DisposeLocalCopyOfClientHandle();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            // The connection dispatches messages in order, so both descriptors are buffered once the mark arrives.
+            await using (var mark = marks.GetAsyncEnumerator(timeout.Token)) Check(await mark.MoveNextAsync(), "the mark arrived");
+            if (enumerate)
+            {
+                await using var reader = handed.GetAsyncEnumerator(timeout.Token);
+                Check(await reader.MoveNextAsync(), "the first descriptor arrived");
+                reader.Current.Arguments[0].GetUnixFd().Dispose();
+            }
+            await handed.DisposeAsync();
+            // The pipe reports end of file only when every copy of its write end is closed.
+            int read = await pipe.ReadAsync(new byte[1]).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Check(read == 0, "the pipe closed");
+        }
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("errors, unknown members, cancellation and concurrent calls")]
@@ -298,5 +331,7 @@ internal sealed class BusTests
         }
 
         public bool Ping(string text) => EmitSignal(Interface, "Pinged", DBusValue.From(text));
+
+        public bool Hand(SafeHandle descriptor) => EmitSignal(Interface, "Handed", DBusValue.UnixFd(descriptor));
     }
 }

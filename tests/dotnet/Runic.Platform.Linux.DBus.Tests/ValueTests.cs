@@ -43,6 +43,38 @@ internal sealed class ValueTests
         Check(DBusValue.Struct(DBusValue.From("it's"), DBusValue.From(true)).ToString() == "('it\\'s', true)", "struct text");
     }
 
+    [Test, DisplayName("default paths and signatures equal the values they print as")]
+    public void DefaultNameEquality()
+    {
+        Check(default(DBusObjectPath) == DBusObjectPath.Root && default(DBusObjectPath).Equals((object)DBusObjectPath.Root)
+            && default(DBusObjectPath).GetHashCode() == DBusObjectPath.Root.GetHashCode(), "the default path is the root");
+        Check(default(DBusObjectPath) != new DBusObjectPath("/a") && new DBusObjectPath("/a") == new DBusObjectPath("/a"), "paths compare by text");
+        Check(default(DBusSignature) == new DBusSignature("") && default(DBusSignature).GetHashCode() == new DBusSignature("").GetHashCode()
+            && default(DBusValue).Signature == default(DBusSignature), "the default signature is empty");
+        Check(new HashSet<DBusObjectPath> { default, DBusObjectPath.Root }.Count == 1, "a set holds the root once");
+    }
+
+    [Test, DisplayName("signals, property changes and calls compare by content")]
+    public void MessageEquality()
+    {
+        static DBusSignal Signal(string text) => new(":1.2", "/a", "org.example.I", "M", [DBusValue.From(text), DBusValue.StringArray(["x"])]);
+        Check(Signal("t") == Signal("t") && Signal("t").GetHashCode() == Signal("t").GetHashCode(), "equal signals");
+        Check(Signal("t") != Signal("u") && Signal("t") != Signal("t") with { Member = "N" }, "different signals");
+        Check(new DBusSignal(null, "/", "org.example.I", "M", default) == new DBusSignal(null, "/", "org.example.I", "M", []), "default arguments equal empty ones");
+
+        static DBusPropertyChanges Changes(params string[] invalidated) => new("org.example.I",
+            ImmutableDictionary<string, DBusValue>.Empty.Add("A", DBusValue.From(1)).Add("B", DBusValue.Variant(DBusValue.From("b"))), [.. invalidated]);
+        Check(Changes("C") == Changes("C") && Changes("C").GetHashCode() == Changes("C").GetHashCode(), "equal changes");
+        var reordered = new DBusPropertyChanges("org.example.I", ImmutableDictionary<string, DBusValue>.Empty.Add("B", DBusValue.Variant(DBusValue.From("b"))).Add("A", DBusValue.From(1)), ["C"]);
+        Check(reordered == Changes("C") && reordered.GetHashCode() == Changes("C").GetHashCode(), "entry order does not matter");
+        Check(Changes("C") != Changes("D") && Changes("C") != Changes("C") with { Changed = ImmutableDictionary<string, DBusValue>.Empty.Add("A", DBusValue.From(2)) },
+            "different changes");
+
+        static DBusMethodCall Call(int value) => new("org.example.S", "/a", "org.example.I", "M") { Arguments = [DBusValue.From(value)] };
+        Check(Call(1) == Call(1) && Call(1).GetHashCode() == Call(1).GetHashCode(), "equal calls");
+        Check(Call(1) != Call(2) && Call(1) != Call(1) with { Options = DBusCallOptions.NoAutoStart }, "different calls");
+    }
+
     [Test, DisplayName("values refuse what D-Bus cannot carry")]
     public void Validation()
     {
