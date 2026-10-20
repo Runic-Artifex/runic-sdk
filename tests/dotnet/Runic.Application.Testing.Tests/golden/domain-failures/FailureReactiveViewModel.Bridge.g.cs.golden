@@ -2,20 +2,20 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class FailureReactiveBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>
+internal sealed class FailureReactiveBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>
 {
     internal FailureReactiveBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureReactiveViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "failureReactive",
         CreateWriter(content),
         [
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Title", vm => vm.Title, (vm, e) => vm.Title = e.GetString()),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Title", vm => vm.Title, (vm, e) => vm.Title = e.GetString()),
         ],
         [
-            new global::Runic.Application.Views.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Title", "title", global::Runic.Application.Views.CheckedFieldValueKind.Json, vm => vm.Title, (vm, value) => vm.Title = (global::System.String)value!, ReadValue: element => TitleValueCodec.Read(element), WriteValue: (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.Title, (vm, value) => vm.Title = (global::System.String)value!, readValue: element => TitleValueCodec.Read(element), writeValue: (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Save", vm => (object)vm.SaveCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }, CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, changed), EncodeFailure: failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, logger, "FailureReactiveViewModel.SaveCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Import", vm => (object)vm.ImportCommand, CreateStream: () => new global::Runic.Application.Views.BridgeOperationStream(), ExecuteStreamAsync: async (vm, execution, token, argument) => await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default, execution.Stream!, result => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ImportCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, changed), EncodeFailure: failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ImportCommandFailureCodec.Write(writer, declared)) : null) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, logger, "FailureReactiveViewModel.ImportCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Save", vm => (object)vm.SaveCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }, CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null, ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, logger, "FailureReactiveViewModel.SaveCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Import", vm => (object)vm.ImportCommand) { CreateStream = () => new global::Runic.Application.Views.Generated.BridgeOperationStream(), ExecuteStreamAsync = async (vm, execution, token, argument) => await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImportCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImportCommandFailureCodec.Write(writer, declared)) : null, ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, logger, "FailureReactiveViewModel.ImportCommand") },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -25,9 +25,9 @@ internal sealed class FailureReactiveBridge : global::Runic.Application.Views.Vi
     {
     }
 
-    private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =
+    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.BridgeDataSubscriptionMember("title", static owner => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)owner).Title, propertyName: "Title"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("title", static owner => ((global::Runic.Application.Testing.Tests.FailureReactiveViewModel)owner).Title, propertyName: "Title"),
         ]
     ;
 private static class TitleValueCodec
@@ -42,7 +42,7 @@ private static class TitleValueCodec
 
     private static global::System.String Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
 }
@@ -59,7 +59,7 @@ private static class SaveCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -88,12 +88,12 @@ private static class SaveCommandFailureCodec
 
     private static global::Runic.Application.Testing.Tests.NoteSaveFailure Read0(global::System.Text.Json.JsonElement element)
     {
-        var discriminator = global::Runic.Application.Views.BridgeWire.ReadString(global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "$case"));
+        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
         return discriminator switch
         {
             "titleRequired" => Read1(element),
             "titleTaken" => Read2(element),
-            _ => throw global::Runic.Application.Views.BridgeWire.Invalid("Unknown bridge-union case."),
+            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
         };
     }
 
@@ -127,7 +127,7 @@ private static class SaveCommandFailureCodec
 
     private static global::System.String Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
 }
@@ -144,7 +144,7 @@ private static class ImportCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -173,12 +173,12 @@ private static class ImportCommandFailureCodec
 
     private static global::Runic.Application.Testing.Tests.NoteSaveFailure Read0(global::System.Text.Json.JsonElement element)
     {
-        var discriminator = global::Runic.Application.Views.BridgeWire.ReadString(global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "$case"));
+        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "$case"));
         return discriminator switch
         {
             "titleRequired" => Read1(element),
             "titleTaken" => Read2(element),
-            _ => throw global::Runic.Application.Views.BridgeWire.Invalid("Unknown bridge-union case."),
+            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Unknown bridge-union case."),
         };
     }
 
@@ -212,12 +212,12 @@ private static class ImportCommandFailureCodec
 
     private static global::System.String Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
 }
 
-    private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.FailureReactiveViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
+    private static global::Runic.Application.Views.Generated.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.FailureReactiveViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
     {
         return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);
     }
@@ -228,10 +228,10 @@ private static class ImportCommandFailureCodec
         writer.WriteNumber("revision", revision);
         writer.WritePropertyName("title");
         TitleValueCodec.Write(writer, vm.Title);
-        writer.WriteBoolean("canSave", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default));
-        writer.WriteBoolean("isSaveExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand));
-        writer.WriteBoolean("canImport", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default));
-        writer.WriteBoolean("isImportExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand));
+        writer.WriteBoolean("canSave", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default));
+        writer.WriteBoolean("isSaveExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand));
+        writer.WriteBoolean("canImport", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default));
+        writer.WriteBoolean("isImportExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand));
         writeFieldMetadata(writer);
         writer.WriteEndObject();
     }

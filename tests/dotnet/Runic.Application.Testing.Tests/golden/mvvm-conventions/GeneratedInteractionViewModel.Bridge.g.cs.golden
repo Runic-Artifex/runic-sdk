@@ -2,21 +2,23 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class GeneratedInteractionBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>
+internal sealed class GeneratedInteractionBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>
 {
     private readonly global::System.IDisposable? _rootInteractionMount;
     internal GeneratedInteractionBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "generatedInteraction",
         WriteSnapshot,
         [
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Attempt", vm => vm.Attempt, null),
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("AcceptedCount", vm => vm.AcceptedCount, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Attempt", vm => vm.Attempt, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("AcceptedCount", vm => vm.AcceptedCount, null),
         ],
         [
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Ask", vm => (object)vm.AskCommand, ExecuteResultAsync: async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }, CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, logger, "GeneratedInteractionViewModel.AskCommand") },
+        ],
+        [
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Ask", vm => (object)vm.AskCommand) { ExecuteResultAsync = async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, logger, "GeneratedInteractionViewModel.AskCommand") },
         ], "<fingerprint>", content,
         [
-            global::Runic.Application.Views.ReactiveUI.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel, global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirm", "<fingerprint>:interaction:Confirm", vm => vm.Confirm, input => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ConfirmInteractionInputCodec.Write(writer, input)), element => ConfirmInteractionOutputCodec.Read(element)),
+            global::Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel, global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirm", "<fingerprint>:interaction:Confirm", vm => vm.Confirm, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmInteractionInputCodec.Write(writer, input)), element => ConfirmInteractionOutputCodec.Read(element)),
         ],
         dataSubscriptions: DataMetadata,
         collections: [
@@ -27,10 +29,10 @@ internal sealed class GeneratedInteractionBridge : global::Runic.Application.Vie
         _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation("generatedInteraction") : null;
     }
 
-    private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =
+    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.BridgeDataSubscriptionMember("attempt", static owner => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)owner).Attempt, propertyName: "Attempt"),
-            new global::Runic.Application.Views.BridgeDataSubscriptionMember("acceptedCount", static owner => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)owner).AcceptedCount, propertyName: "AcceptedCount"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("attempt", static owner => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)owner).Attempt, propertyName: "Attempt"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("acceptedCount", static owner => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)owner).AcceptedCount, propertyName: "AcceptedCount"),
         ]
     ;
 private static class AttemptValueCodec
@@ -45,7 +47,7 @@ private static class AttemptValueCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -62,7 +64,7 @@ private static class AcceptedCountValueCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -92,7 +94,7 @@ private static class ConfirmInteractionInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -102,7 +104,7 @@ private static class ConfirmInteractionInputCodec
 
     private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -119,12 +121,12 @@ private static class ConfirmInteractionOutputCodec
 
     private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
     {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.BridgeWire.Invalid("Expected a boolean.");
+        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
     }
 
 }
 
-    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel vm, long revision)
+    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel vm, long revision, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)
     {
         writer.WriteStartObject();
         writer.WriteNumber("revision", revision);
@@ -132,8 +134,8 @@ private static class ConfirmInteractionOutputCodec
         AttemptValueCodec.Write(writer, vm.Attempt);
         writer.WritePropertyName("acceptedCount");
         AcceptedCountValueCodec.Write(writer, vm.AcceptedCount);
-        writer.WriteBoolean("canAsk", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default));
-        writer.WriteBoolean("isAskExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand));
+        writer.WriteBoolean("canAsk", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default));
+        writer.WriteBoolean("isAskExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand));
         writer.WriteEndObject();
     }
     public override void Dispose()
