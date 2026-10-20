@@ -10,6 +10,7 @@ const files = () => ({
   "eng/Versions.props": "<Project>\n  <PropertyGroup>\n    <RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>\n    <RunicPackageValidationBaselineVersion>0.6.0-preview.1</RunicPackageValidationBaselineVersion>\n  </PropertyGroup>\n</Project>\n",
   "bun.lock": '{\n  "lockfileVersion": 1,\n  "workspaces": {\n    "packages/web/views": {\n      "name": "@runic-artifex/views",\n      "version": "0.6.0-preview.1",\n    },\n    "packages/web/react": {\n      "name": "@runic-artifex/react",\n      "version": "0.6.0-preview.1",\n    },\n  },\n}\n',
   "packages/web/views/package.json": '{\n  "name": "@runic-artifex/views",\n  "version": "0.6.0-preview.1",\n  "devDependencies": { "typescript": "6.0.3" }\n}\n',
+  "packages/web/views/src/version.ts": '// The release this package belongs to.\nexport const viewsVersion = "0.6.0-preview.1";\n',
   "packages/web/react/package.json": '{\n  "name": "@runic-artifex/react",\n  "version": "0.6.0-preview.1",\n  "peerDependencies": { "@runic-artifex/views": "0.6.0-preview.1", "react": "0.6.0-preview.1" }\n}\n',
   "examples/app/packages.lock.json": JSON.stringify({ version: 2, dependencies: { "net10.0": {
     "Runic.External": { type: "Direct", requested: "[0.6.0-preview.1, )", resolved: "0.6.0-preview.1" },
@@ -30,6 +31,7 @@ test("a mismatched version copy fails", () => {
   for (const [path, from, to] of [
     ["eng/Versions.props", "<RunicSdkVersion>0.6.0-preview.1", "<RunicSdkVersion>0.6.0-preview.2"],
     ["packages/web/views/package.json", '"version": "0.6.0-preview.1"', '"version": "0.6.0"'],
+    ["packages/web/views/src/version.ts", 'viewsVersion = "0.6.0-preview.1"', 'viewsVersion = "0.6.0"'],
     ["packages/web/react/package.json", '"@runic-artifex/views": "0.6.0-preview.1"', '"@runic-artifex/views": "^0.6.0-preview.1"'],
     ["eng/Versions.props", "<RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>", ""],
     ["bun.lock", '"name": "@runic-artifex/react",\n      "version": "0.6.0-preview.1"', '"name": "@runic-artifex/react",\n      "version": "0.5.0"'],
@@ -46,6 +48,7 @@ test("version bump rewrites every copy and keeps the validation baseline", () =>
   const next = bumpVersionFiles(files(), "0.7.0-preview.1");
   assert.equal(checkVersions(next), "0.7.0-preview.1");
   assert.match(next["eng/Versions.props"], /<RunicPackageValidationBaselineVersion>0\.6\.0-preview\.1</);
+  assert.match(next["packages/web/views/src/version.ts"], /viewsVersion = "0\.7\.0-preview\.1"/);
   assert.match(next["packages/web/react/package.json"], /"react": "0\.6\.0-preview\.1"/, "external dependencies are untouched");
   assert.match(next["examples/app/packages.lock.json"], /"Runic\.Platform": "\[0\.7\.0-preview\.1, \)"/);
   assert.equal(next["examples/app/packages.lock.json"].match(/0\.6\.0-preview\.1/g)?.length, 3, "external NuGet packages are untouched");

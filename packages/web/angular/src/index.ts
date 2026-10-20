@@ -3,11 +3,4 @@ export { injectView, type InjectViewOptions, type ViewHandle } from "./inject-vi
 export { injectCommand, type CommandHandle, type InjectCommandOptions } from "./inject-command.js";
 export { injectOperation, type InjectOperationOptions, type OperationHandle } from "./inject-operation.js";
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
-export type {
-  CollectionViewport,
-  CollectionViewportOptions,
-  ViewClient,
-  ViewConnector,
-  ViewReference,
-  ViewSource,
-} from "@runic-artifex/views";
+

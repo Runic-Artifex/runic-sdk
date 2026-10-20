@@ -452,7 +452,7 @@ test("keeps a bounded, credential-redacted failure only on error entries", () =>
   plugin.diagnostics.report({
     source: "views",
     kind: "operation",
-    label: "Save timedOut",
+    label: "Save timed-out",
     failure: { type: "Ignored", message: "Not an error entry." },
   });
   const [error, operation] = latest.timeline;

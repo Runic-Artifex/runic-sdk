@@ -54,11 +54,10 @@ internal static class OperationTypeScriptEmitter
     {
         foreach (var operation in plans)
         {
-            var parameter = operation.HasInput ? $"{operation.InputName}: {operation.InputType}" : string.Empty;
+            var parameter = operation.HasInput ? $"{operation.InputName}: {operation.InputType}, " : string.Empty;
             var argument = operation.HasInput ? $", {operation.InputName}" : string.Empty;
-            ts.AppendLine($"    start{operation.Name}({parameter}) {{ return start{operation.Name}Operation(globalThis.crypto.randomUUID(){argument}); }},");
-            ts.AppendLine($"    start{operation.Name}WithRequestId(requestId: string{(operation.HasInput ? $", {parameter}" : string.Empty)}) {{ return start{operation.Name}Operation(requestId{argument}); }},");
-            ts.AppendLine($"    recover{operation.Name}WithRequestId(requestId: string) {{ return view.recoverOperation<{operation.TypeArguments}>({JsonSerializer.Serialize(operation.Name)}, requestId, value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{operation.FailureArguments}); }},");
+            ts.AppendLine($"    start{operation.Name}({parameter}options?: {Ref("BridgeOperationStartOptions")}) {{ return start{operation.Name}Operation(options?.requestId ?? globalThis.crypto.randomUUID(){argument}); }},");
+            ts.AppendLine($"    recover{operation.Name}(requestId: string) {{ return view.recoverOperation<{operation.TypeArguments}>({JsonSerializer.Serialize(operation.Name)}, requestId, value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{operation.FailureArguments}); }},");
         }
     }
 }

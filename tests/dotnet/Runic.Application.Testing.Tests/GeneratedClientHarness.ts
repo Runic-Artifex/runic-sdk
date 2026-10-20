@@ -133,8 +133,7 @@ expect(unionReceipt.kind === "applied" && unionReceipt.snapshot.value.$case === 
   && unionReceipt.snapshot.value.count === 42, "Checked-write union receipt did not decode.");
 
 const typed = await typedReactive.connectTypedReactive();
-const operation = await typed.startSaveWithRequestId(fixture.typedReactive.requestId,
-  { documentId: "document-1", content: "from-client", expectedVersion: 7 });
+const operation = await typed.startSave({ documentId: "document-1", content: "from-client", expectedVersion: 7 }, { requestId: fixture.typedReactive.requestId });
 expect(!calls.some(call => call.route === "__runicOperationWait"),
   "Operation admission eagerly started a terminal wait.");
 failNextWait = true;
@@ -148,7 +147,7 @@ expect(completion.kind === "succeeded" && completion.result?.documentId === "doc
 expect(calls.some(call => call.route === "typedReactiveStartSave")
   && calls.some(call => call.route === "__runicOperationWait"),
   "Generated typed operation client did not issue start and terminal-result calls.");
-await expectThrows(() => typed.recoverLastResultWithRequestId(fixture.typedReactive.requestId),
+await expectThrows(() => typed.recoverLastResult(fixture.typedReactive.requestId),
   "A recovery request for a different operation member was accepted.");
 
 // A throwing subscriber must not stop delivery to other subscribers, and an

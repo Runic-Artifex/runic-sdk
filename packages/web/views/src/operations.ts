@@ -1,18 +1,22 @@
 import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
-import { BridgeError, BridgeOperationUncertainError, decodeFailureDetail, type BridgeFailureDetail } from "./errors.js";
+import { BridgeError, decodeFailureDetail, uncertainOperation, type BridgeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { releasedRouteError, type RunicBridgeClient } from "./transport.js";
 
 /**
  * `domain-failed` means the command failed with its declared failure type.
- * `timedOut` is a client-side terminal state: `wait({ timeout })` passed its
+ * `timed-out` is a client-side terminal state: `wait({ timeout })` passed its
  * deadline and sent a cancellation request. .NET never reports it.
  */
 export type BridgeOperationStatusKind =
-  "running" | "succeeded" | "domain-failed" | "failed" | "cancelled" | "expired" | "unknown" | "timedOut";
-export type BridgeOperationDeliveryKind = "result-too-large" | "result-encoding-failed" | "stream-overflow" | "stream-retention-too-large";
-/** Why a completed operation's result or failure could not be delivered. */
-export interface BridgeOperationDelivery { readonly kind: BridgeOperationDeliveryKind; readonly message: string }
+  "running" | "succeeded" | "domain-failed" | "failed" | "cancelled" | "expired" | "unknown" | "timed-out";
+/**
+ * Why a completed operation's result or failure could not be delivered: .NET
+ * `BridgeOperationDeliveryFailureKind`. Open: a minor release may add a kind.
+ */
+export type BridgeOperationDeliveryFailureKind = "result-too-large" | "result-encoding-failed" | "stream-overflow" | "stream-retention-too-large";
+/** Why a completed operation's result or failure could not be delivered: .NET `BridgeOperationDeliveryFailure`. */
+export interface BridgeOperationDeliveryFailure { readonly kind: BridgeOperationDeliveryFailureKind; readonly message: string }
 interface BridgeOperationIdentity { readonly contract: string; readonly requestId: string }
 
 /**
@@ -25,14 +29,14 @@ export type BridgeOperationStatusOf<TResult, TFailure> =
     readonly kind: "succeeded";
     readonly result?: TResult;
     /** The result could not be retained or delivered. */
-    readonly delivery?: BridgeOperationDelivery;
+    readonly delivery?: BridgeOperationDeliveryFailure;
     readonly stream?: true;
   }
   | BridgeOperationIdentity & {
     readonly kind: "domain-failed";
     /** The declared failure; absent when it could not be delivered (`delivery`). */
     readonly failure?: TFailure;
-    readonly delivery?: BridgeOperationDelivery;
+    readonly delivery?: BridgeOperationDeliveryFailure;
     readonly stream?: true;
   }
   | BridgeOperationIdentity & {
@@ -43,7 +47,7 @@ export type BridgeOperationStatusOf<TResult, TFailure> =
   }
   | BridgeOperationIdentity & { readonly kind: "cancelled" | "expired" | "unknown"; readonly stream?: true }
   | BridgeOperationIdentity & {
-    readonly kind: "timedOut";
+    readonly kind: "timed-out";
     /** How .NET answered the cancellation request, or `unobserved` when the request failed. */
     readonly cancellation: BridgeOperationCancelKind | "unobserved";
   };
@@ -57,23 +61,35 @@ export type BridgeOperationStatus<TResult = void, TFailure = never> =
     ? Exclude<BridgeOperationStatusOf<TResult, never>, { readonly kind: "domain-failed" }>
     : BridgeOperationStatusOf<TResult, TFailure>;
 export type BridgeOperationCancelKind = "cancellation-requested" | "not-running" | "unknown" | "expired";
+/** Options of a generated `start{Command}()` call. */
+export interface BridgeOperationStartOptions {
+  /**
+   * Names the operation, so the page can find it again with `recover{Command}(requestId)`, for example
+   * after a reload. The default is a random UUID. A start with a request id that .NET already admitted
+   * returns that operation instead of starting another.
+   */
+  readonly requestId?: string;
+}
 export interface BridgeOperationWaitOptions {
   /**
    * Milliseconds to wait for the terminal status. When it passes, the client
-   * sends a cancellation request and resolves to a `timedOut` status.
+   * sends a cancellation request and resolves to a `timed-out` status.
    */
   readonly timeout?: number;
 }
 export interface BridgeOperationCancelResult { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationCancelKind; }
 export interface BridgeOperationStreamItem<TResult> { readonly sequence: number; readonly value: TResult; }
+/** One page of a stream operation's items: .NET `BridgeOperationStreamRead`. */
 export interface BridgeOperationStreamPage<TResult> {
   readonly contract: string;
   readonly requestId: string;
-  readonly kind: BridgeOperationStatusKind;
+  /** The operation's status kind. A page is never `timed-out`, which only `wait()` decides. */
+  readonly kind: Exclude<BridgeOperationStatusKind, "timed-out">;
+  /** The cursor of the next page: pass it to the next `stream(cursor)` call. */
   readonly cursor?: number;
   readonly completed?: boolean;
   readonly items?: readonly BridgeOperationStreamItem<TResult>[];
-  readonly delivery?: BridgeOperationDelivery;
+  readonly delivery?: BridgeOperationDeliveryFailure;
 }
 
 /** A recoverable .NET command execution identified by its request id. */
@@ -83,7 +99,7 @@ export interface BridgeOperation<TResult = void, TFailure = never> {
   /** The terminal status. A failed observation is retried by the next read. */
   readonly completion: Promise<BridgeOperationStatus<TResult, TFailure>>;
   /**
-   * Waits for the terminal status. With `timeout`, resolves to a `timedOut`
+   * Waits for the terminal status. With `timeout`, resolves to a `timed-out`
    * status after cancelling the operation, unless it finished first.
    */
   wait(options?: BridgeOperationWaitOptions): Promise<BridgeOperationStatus<TResult, TFailure>>;
@@ -91,7 +107,7 @@ export interface BridgeOperation<TResult = void, TFailure = never> {
   /**
    * Waits like `wait()` and resolves to the result, or to the declared failure.
    * Rejects with `BridgeError` for `failed` (`failed`), `cancelled` (`cancelled`),
-   * `timedOut` (`timeout`) and a result or failure that could not be delivered
+   * `timed-out` (`timeout`) and a result or failure that could not be delivered
    * (`failed`), and with `BridgeOperationUncertainError` for `expired` and
    * `unknown`: the outcome is unknown, so do not retry blindly.
    */
@@ -110,7 +126,7 @@ export interface BridgeStreamOperation<TItem = void, TFailure = never> extends B
 /** What the runtime returns for a started or recovered operation: either handle shape. */
 export type BridgeOperationRuntimeHandle<TResult, TFailure> = BridgeOperation<TResult, TFailure> & BridgeStreamOperation<TResult, TFailure>;
 
-// Kinds .NET may send; `timedOut` exists only on the client.
+// Kinds .NET may send; `timed-out` exists only on the client.
 const statusKinds: readonly string[] = ["running", "succeeded", "domain-failed", "failed", "cancelled", "expired", "unknown"];
 type Decode<T> = (value: unknown) => T;
 type Status<TResult, TFailure> = BridgeOperationStatusOf<TResult, TFailure>;
@@ -132,10 +148,10 @@ function outcomeOf<TResult, TFailure>(status: Status<TResult, TFailure>, contrac
       throw new BridgeError("failed", status.error.message, { route, cause: status, ...(status.error.detail === undefined ? {} : { detail: status.error.detail }) });
     case "cancelled":
       throw new BridgeError("cancelled", `The operation ${status.requestId} was cancelled.`, { route, cause: status });
-    case "timedOut":
+    case "timed-out":
       throw new BridgeError("timeout", `The operation ${status.requestId} did not complete in time; cancellation: ${status.cancellation}.`, { route, cause: status });
     default:
-      throw new BridgeOperationUncertainError(contract, status.requestId, `The outcome of operation ${status.requestId} is ${status.kind}.`, { cause: status });
+      throw uncertainOperation(contract, status.requestId, `The outcome of operation ${status.requestId} is ${status.kind}.`, status);
   }
 }
 
@@ -196,7 +212,7 @@ class OperationChannel {
     const route = wait ? "__runicOperationWait" : "__runicOperationStatus";
     let reply: string;
     try { reply = await this.bridge.call(route, identity); }
-    catch (cause) { throw new BridgeOperationUncertainError(this.contract, requestId, "The operation status could not be observed.", { cause }); }
+    catch (cause) { throw uncertainOperation(this.contract, requestId, "The operation status could not be observed.", cause); }
     return this.parseStatus(reply, requestId, decode, decodeFailure, route);
   }
 
@@ -204,7 +220,7 @@ class OperationChannel {
     const route = "__runicOperationCancel";
     let reply: string;
     try { reply = await this.bridge.call(route, JSON.stringify({ contract: this.contract, member, requestId })); }
-    catch (cause) { throw new BridgeOperationUncertainError(this.contract, requestId, "The cancellation request could not be observed.", { cause }); }
+    catch (cause) { throw uncertainOperation(this.contract, requestId, "The cancellation request could not be observed.", cause); }
     let result: BridgeOperationCancelResult;
     try { result = JSON.parse(reply) as BridgeOperationCancelResult; }
     catch (cause) { throw new BridgeError("failed", "The cancellation service returned invalid JSON.", { cause, route }); }
@@ -218,7 +234,7 @@ class OperationChannel {
     const route = "__runicOperationStream";
     let reply: string;
     try { reply = await this.bridge.call(route, JSON.stringify({ contract: this.contract, member, requestId, cursor })); }
-    catch (cause) { throw new BridgeOperationUncertainError(this.contract, requestId, "The operation stream could not be observed.", { cause }); }
+    catch (cause) { throw uncertainOperation(this.contract, requestId, "The operation stream could not be observed.", cause); }
     let page: BridgeOperationStreamPage<TResult>;
     try { page = JSON.parse(reply) as BridgeOperationStreamPage<TResult>; }
     catch (cause) { throw new BridgeError("failed", "The operation stream returned invalid JSON.", { cause, route }); }
@@ -292,17 +308,17 @@ class OperationChannel {
       }
     }
     emitBridgeDiagnostic({
-      kind: "operation", code: "timedOut", route: "__runicOperationWait", member, requestId,
+      kind: "operation", code: "timed-out", route: "__runicOperationWait", member, requestId,
       message: `The operation ${member} (${requestId}) did not complete within ${timeout} ms; cancellation: ${cancellation}.`,
     });
-    return { contract: this.contract, requestId, kind: "timedOut", cancellation };
+    return { contract: this.contract, requestId, kind: "timed-out", cancellation };
   }
 
   async recover<TResult, TFailure>(member: string, requestId: string, decode: Decode<TResult>, stream: boolean,
     decodeFailure: Decode<TFailure> | undefined): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>> {
     const status = await this.status(member, requestId, false, decode, decodeFailure);
     if (status.kind === "unknown" || status.kind === "expired")
-      throw new BridgeOperationUncertainError(this.contract, requestId, "The operation admission could not be recovered.");
+      throw uncertainOperation(this.contract, requestId, "The operation admission could not be recovered.");
     return this.handle(member, requestId, decode, decodeFailure, stream, status.kind === "running" ? undefined : status);
   }
 }
@@ -343,7 +359,7 @@ export const bridgeOperations: BridgeOperations = {
     catch (cause) {
       const recovered = await operations.status(member, requestId, false, decode, decodeFailure);
       if (recovered.kind === "unknown" || recovered.kind === "expired")
-        throw new BridgeOperationUncertainError(scope.contract, requestId, "The operation admission could not be recovered.", { cause });
+        throw uncertainOperation(scope.contract, requestId, "The operation admission could not be recovered.", cause);
       return operations.handle(member, requestId, decode, decodeFailure, stream, recovered.kind === "running" ? undefined : recovered);
     }
     let admission: {

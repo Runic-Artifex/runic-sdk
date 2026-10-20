@@ -244,7 +244,7 @@ test("copies of the package share one page runtime and one BridgeError identity"
     assert.ok(new a.BridgeError("failed", "copy") instanceof b.BridgeError);
     assert.ok(new b.BridgeError("failed", "copy") instanceof BridgeError);
     assert.ok(!(new Error("plain") instanceof a.BridgeError));
-    assert.ok(new a.BridgeOperationUncertainError("contract", "id", "copy") instanceof b.BridgeOperationUncertainError);
+    assert.ok(new a.BridgeOperationUncertainError("copy", { contract: "contract", requestId: "id" }) instanceof b.BridgeOperationUncertainError);
     class CustomError extends a.BridgeError {}
     assert.ok(!(new b.BridgeError("failed", "copy") instanceof CustomError));
     assert.ok(new CustomError("failed", "custom") instanceof CustomError);

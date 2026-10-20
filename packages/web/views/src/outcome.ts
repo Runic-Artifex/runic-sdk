@@ -1,9 +1,9 @@
 // The type-level brand. At run time the brand is the registered symbol
-// `Symbol.for("runic.bridgeOutcome")` as a non-enumerable property, so every
+// `Symbol.for("runic.views.BridgeOutcome")` as a non-enumerable property, so every
 // copy of this package recognizes an outcome, while a spread or a JSON
 // round-trip produces a plain object that is not one.
 declare const outcomeBrand: unique symbol;
-const runtimeBrand = Symbol.for("runic.bridgeOutcome");
+const runtimeBrand = Symbol.for("runic.views.BridgeOutcome");
 
 /**
  * How a command or operation that declares a failure type ended: `ok` with its

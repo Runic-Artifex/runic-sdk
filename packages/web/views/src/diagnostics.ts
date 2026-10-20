@@ -1,15 +1,22 @@
-import { BridgeError, BridgeOperationUncertainError, type BridgeFailureDetail } from "./errors.js";
+import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind, type BridgeFailureDetail } from "./errors.js";
+
+/**
+ * What a {@link BridgeDiagnostic} reports: a `BridgeErrorKind` other than `released`
+ * (a call of a released View is expected after navigation and is not reported),
+ * `uncertain` for a `BridgeOperationUncertainError`, `timed-out` for an operation
+ * wait that passed its timeout, `protocol` for a .NET host that speaks another Views
+ * protocol version, `version` for a .NET `Runic.Application.Views` of another release
+ * than this `@runic-artifex/views`, or `reported` for an application error the runtime
+ * caught. Open: a minor release may add a code, so handle unknown codes.
+ */
+export type BridgeDiagnosticCode =
+  | Exclude<BridgeErrorKind, "released"> | "uncertain" | "timed-out" | "protocol" | "version" | "reported";
 
 /** A failure or terminal event the Views runtime observed. */
 export interface BridgeDiagnostic {
   readonly kind: "error" | "operation";
-  /**
-   * A `BridgeErrorKind` other than `released`, `uncertain`, `timedOut`, `protocol` for a .NET
-   * host that speaks another Views protocol version, or `reported` for an application error
-   * the runtime caught. A call of a released View is expected after navigation: it rejects
-   * with a `released` BridgeError but is not reported here.
-   */
-  readonly code: string;
+  /** What happened; see {@link BridgeDiagnosticCode}. */
+  readonly code: BridgeDiagnosticCode;
   readonly message: string;
   /** The Bridge route, such as `counterIncrement`, when known. */
   readonly route?: string;
@@ -78,7 +85,8 @@ export function emitErrorDiagnostic(error: unknown, route?: string): void {
       ...(error.detail === undefined ? {} : { detail: error.detail }),
     });
   } else if (error instanceof BridgeOperationUncertainError) {
-    emitBridgeDiagnostic({ kind: "error", code: "uncertain", message: error.message, error, ...(route === undefined ? {} : { route }) });
+    const errorRoute = error.route ?? route;
+    emitBridgeDiagnostic({ kind: "error", code: "uncertain", message: error.message, error, ...(errorRoute === undefined ? {} : { route: errorRoute }) });
   } else {
     // A browser error already has its stack; DevTools shows it like .NET detail.
     const detail = error instanceof Error

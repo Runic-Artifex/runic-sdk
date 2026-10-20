@@ -3,6 +3,7 @@ import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, notConnectedError, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
+import { viewsVersion } from "./version.js";
 import * as bridgeWire from "./wire.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
@@ -91,7 +92,8 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
 type EnvelopeError = { readonly kind: string; readonly message: string; readonly detail?: unknown; readonly failure?: unknown };
 // `released` is true when .NET released the View during the call, so the reply has no state.
 type Envelope = {
-  readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null; readonly protocol?: unknown; readonly released?: unknown;
+  readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null; readonly protocol?: unknown; readonly version?: unknown;
+  readonly released?: unknown;
 };
 
 /** The Views wire protocol this runtime implements (specs/application/README.md). */
@@ -113,17 +115,28 @@ function replyError(error: EnvelopeError | null, route: string, fallback: string
   return new BridgeError(kind, error?.message ?? fallback, { route, ...(detail === undefined ? {} : { detail }) });
 }
 
-// The protocol version is informational. A snapshot reply from a host that
-// speaks another version is reported once per Bridge, as a diagnostic.
+// The protocol and package versions are informational. A snapshot reply from a
+// host that speaks another protocol version, or that runs Runic.Application.Views
+// of another release than this package, is reported once per Bridge, as a diagnostic.
 const protocolReported = new WeakSet<object>();
+const versionReported = new WeakSet<object>();
 function checkProtocol(reply: Envelope, entry: SharedEntry, route: string): void {
-  if (reply.protocol === undefined || reply.protocol === bridgeProtocol || protocolReported.has(entry.bridge)) return;
-  protocolReported.add(entry.bridge);
-  emitBridgeDiagnostic({
-    kind: "error", code: "protocol", route,
-    message: `The .NET host uses Views protocol ${String(reply.protocol)}, but this client was built for protocol ${bridgeProtocol}. ` +
-      "Use the same Runic.Application.Views and @runic-artifex/views version.",
-  });
+  if (reply.protocol !== undefined && reply.protocol !== bridgeProtocol && !protocolReported.has(entry.bridge)) {
+    protocolReported.add(entry.bridge);
+    emitBridgeDiagnostic({
+      kind: "error", code: "protocol", route,
+      message: `The .NET host uses Views protocol ${String(reply.protocol)}, but this client was built for protocol ${bridgeProtocol}. ` +
+        "Use the same Runic.Application.Views and @runic-artifex/views version.",
+    });
+  }
+  if (typeof reply.version === "string" && reply.version !== viewsVersion && !versionReported.has(entry.bridge)) {
+    versionReported.add(entry.bridge);
+    emitBridgeDiagnostic({
+      kind: "error", code: "version", route,
+      message: `The .NET host runs Runic.Application.Views ${reply.version}, but this page uses @runic-artifex/views ${viewsVersion}. ` +
+        "Use the .NET and npm packages of one release.",
+    });
+  }
 }
 
 // Parses a reply and accepts its state. Returns the envelope and the accepted
@@ -344,7 +357,7 @@ async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
 
 async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
   const { route } = options;
-  const bridge = await waitForBridge(options.timeout);
+  const bridge = await waitForBridge(options.timeout === undefined ? {} : { timeout: options.timeout });
   const runtime = sharedRuntimeFor(bridge);
   const contractId = `${options.contract}:${route}`;
   const routeEntry = sharedRouteFor(runtime, bridge, route);

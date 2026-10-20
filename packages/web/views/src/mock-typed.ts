@@ -16,7 +16,7 @@ import {
   type MockRoute,
   type MockState,
   type MockView,
-} from "./mock.js";
+} from "./mock-bridge.js";
 
 /** The wire form of a content reference in a mock state, such as `{ kind: "editor", id: "1" }`. */
 export interface MockReference<TKind extends string = string> {
@@ -102,7 +102,7 @@ export interface MockTypedInteraction<TInput, TOutput> {
 
 /** A client method name a failure can target, such as `save`, `startSave`, `setTitle` or `canSetViewport`. */
 export type MockMethodName<TClient> = Exclude<keyof TClient & string,
-  "snapshot" | "subscribe" | "dispose" | "interactions" | "fieldBaseline" | `recover${string}` | `${string}WithRequestId`>;
+  "snapshot" | "subscribe" | "dispose" | "interactions" | "fieldBaseline" | `recover${string}`>;
 
 /** The typed mock of one generated client, created by a generated `mock{Name}()`. */
 export interface MockTypedView<TState, TClient, TKind extends string = string> {

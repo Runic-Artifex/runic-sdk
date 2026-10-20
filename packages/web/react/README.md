@@ -155,7 +155,7 @@ The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failur
 `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
 `cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
 run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
-without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
+without an `error`; `failed` and `timed-out` statuses are still `error`. `pending`
 stays true after a Cancel response until the operation reaches its terminal status.
 Unmounting stops rendering feedback but never cancels accepted work. The optional
 `cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
@@ -226,7 +226,7 @@ registered handler's answer; see the
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, ref }`.
-`viewport` is the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
+`viewport` is the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
 range for the container; it changes only when the range or sizes change. Send
 the range to the ViewModel from an effect:
 

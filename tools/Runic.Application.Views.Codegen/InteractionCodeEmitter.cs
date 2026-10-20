@@ -115,8 +115,7 @@ internal static class InteractionCodeEmitter
             if (plan.IsAsync)
             {
                 view.Add("start" + name, command.Name + " operation starter");
-                view.Add("start" + name + "WithRequestId", command.Name + " operation starter");
-                view.Add("recover" + name + "WithRequestId", command.Name + " operation recovery");
+                view.Add("recover" + name, command.Name + " operation recovery");
             }
         }
         foreach (var interaction in interactionPlans)

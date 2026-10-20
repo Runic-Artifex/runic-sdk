@@ -39,7 +39,7 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
   // An explicit request ID makes the retry safe: a repeated start returns the
   // operation .NET is already running. The timeout cancels it in .NET; after
   // the editor is gone, a failed observation is no longer retried.
-  const saving = createEffectAction(() => writes.withPermit(Effect.void).pipe(Effect.andThen(operation(id => editor.startSaveWithRequestId(id), {
+  const saving = createEffectAction(() => writes.withPermit(Effect.void).pipe(Effect.andThen(operation(id => editor.startSave({ requestId: id }), {
     requestId: globalThis.crypto.randomUUID(),
     retry: Schedule.recurs(2),
     while: () => active,

@@ -1,4 +1,4 @@
-import { collectionViewport } from "@runic-artifex/views";
+import { collectionViewport } from "@runic-artifex/views/experimental";
 import { connectRows } from "./src/generated/rows.js";
 
 const view = await connectRows();

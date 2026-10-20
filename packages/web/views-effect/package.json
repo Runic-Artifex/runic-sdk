@@ -16,11 +16,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./experimental": {
+      "types": "./dist/experimental.d.ts",
+      "import": "./dist/experimental.js",
+      "default": "./dist/experimental.js"
     },
     "./react": {
       "types": "./dist/react.d.ts",
-      "import": "./dist/react.js"
+      "import": "./dist/react.js",
+      "default": "./dist/react.js"
     },
     "./package.json": "./package.json"
   },

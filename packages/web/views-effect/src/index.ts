@@ -1,8 +1,8 @@
 export {
   fromBridgeError,
-  ViewBridgeTimeout,
+  ViewTimeout,
   ViewCancelled,
-  ViewCommandFailed,
+  ViewFailed,
   ViewDisconnected,
   ViewDomainFailure,
   ViewOperationCancelled,
@@ -20,15 +20,12 @@ export {
 export {
   command,
   connect,
-  followViewport,
   operation,
   states,
-  viewportChanges,
   type CommandValue,
   type OperationOptions,
   type RetryOperationOptions,
   type StatesOptions,
-  type ViewportRange,
 } from "./view.js";
 export { catchCase } from "./cases.js";
 export {

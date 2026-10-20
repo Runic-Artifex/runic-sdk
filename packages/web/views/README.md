@@ -16,7 +16,8 @@ matches your Runic SDK packages.
 ## Generated clients
 
 Each generated module exports `connect<Name>()` for a root ViewModel and
-`page<Kind>(id)` references for presented content. A connected `<Name>Client`
+`page<Kind>(id)` references for presented content, each a `PageReference` (the
+counterpart of .NET `PageReference`, with the View `kind` and `connect()`). A connected `<Name>Client`
 has a `snapshot`, `subscribe(listener)`, `dispose()` and one method per setter,
 command and operation. As in any MVVM View, only a property with a public C#
 setter gets a `set<Property>` method; a `private set` keeps it read-only state:
@@ -36,6 +37,16 @@ try {
 stop();
 counter.dispose();
 ```
+
+A command whose ViewModel runs it as an operation also gets
+`start<Command>(input?, options?)`, which resolves to a `BridgeOperation` handle
+once .NET admitted it, and `recover<Command>(requestId)`. `options.requestId`
+(`BridgeOperationStartOptions`) names the operation so the page can recover it
+after a reload; the default is a random UUID, and starting again with an admitted
+request id returns that operation. A handle's statuses carry `delivery`, a
+`BridgeOperationDeliveryFailure` (.NET `BridgeOperationDeliveryFailure`), when a
+completed result could not be delivered; a stream page (`BridgeOperationStreamPage`,
+.NET `BridgeOperationStreamRead`) has `cursor`, the cursor of the next page.
 
 `subscribe` delivers the current state first. After `dispose()` the client
 keeps its last `snapshot`, and `subscribe` delivers that state once and returns
@@ -57,16 +68,23 @@ controllers in [Framework bindings](#framework-bindings).
 
 | Entry | For |
 | --- | --- |
-| `@runic-artifex/views` | Applications: errors, diagnostics, controllers, viewport helpers and client types |
-| `@runic-artifex/views/mock` | Development and tests without .NET |
-| `@runic-artifex/views/generated` | Generated modules and hand-written test clients: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
-| `@runic-artifex/views/generated/wire` | Generated modules, generated `*.mock.ts` files and hand-written test clients: the wire decoders, imported as `import * as bridgeWire` |
+| `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
+| `@runic-artifex/views/experimental` | APIs whose shape may change in a minor release: `createCollectionViewportController`, `collectionViewport` and `createLatestOperationController` ([experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#npm-packages)) |
+| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `mockFailure` and the `Mock*` types of generated mocks |
+| `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
+| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
+| `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
+| `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
 
-The generated entries follow the generator and may change between releases.
-Application code that uses generated clients imports only the root entry.
-Hand-written clients, such as a test client that connects a route without
-generated code, may import the generated entries; regenerate or update them
-with each SDK upgrade. A generated module passes the interaction, operation and keyed
+Every entry has `types`, `import` and `default` conditions; the package is ESM
+only. Application code imports the root entry, `/experimental` and `/mock`. The
+`/bindings` and `/generated*` entries are versioned with the generator and the
+.NET packages: code that a release generated keeps working with the runtime of
+any later release of the same major, but their shape is not for hand-written
+code. A framework binding depends on the exact same release. Use the .NET and
+npm packages of one release together: a .NET host of another release is
+reported as a diagnostic with code `version` (see
+[Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, operation and keyed
 collection runtimes to `connectView` only when its ViewModel has them, and
 imports the decoders as a namespace, so a bundler leaves out the protocol code
 and decoders a View does not use. `bun run size` in this package prints the
@@ -115,7 +133,9 @@ the collections, as `defineCollections({ log: defineText() })`; `nullable`
 accepts `null` for a `string?`. A change whose length does not match the
 client's text is unusable, and the client reads a fresh snapshot.
 
-### `collectionViewport(options)`
+### `collectionViewport(options)` (experimental)
+
+Exported from `@runic-artifex/views/experimental`.
 
 ```ts
 function collectionViewport(options: {
@@ -137,7 +157,7 @@ The ViewModel owns the windowed collection; the page sends the requested range
 through a command and renders the rows it receives:
 
 ```ts
-import { collectionViewport } from "@runic-artifex/views";
+import { collectionViewport } from "@runic-artifex/views/experimental";
 import { connectRows } from "./generated/rows.js";
 
 const view = await connectRows();
@@ -172,7 +192,8 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   function and does not notify; read `current` after calling it. `current` has
   `source`, `client`, `state`, `error` and `pending`. `retry()` connects
   again and `dispose()` releases the client. `isViewClient` and
-  `viewSourceIdentity` tell clients from connectors and compare sources.
+  `viewSourceIdentity` from `@runic-artifex/views/bindings` tell clients from
+  connectors and compare sources.
 - `createCommandController(command)` has `run(...args)`, which never rejects
   and resolves to `undefined` after a failure, and `current` with `pending`,
   `error` and `failure`. For a command that resolves a `BridgeOutcome`,
@@ -180,7 +201,7 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   unexpected failure. Starting a run and `reset()` clear both, and a run
   superseded by a later run or by `reset()` sets neither.
 - `createCollectionViewportController({ totalCount, rowHeight, overscan? })`
-  has `attach(element)`, which follows the element's scroll position (once per
+  (`@runic-artifex/views/experimental`) has `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the
   `collectionViewport` range and changes only when the range or sizes change.
 - `createOperationController(start, options?)` observes generated `start<Command>()`
@@ -191,8 +212,8 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   Angular `injectOperation` expose the same state. `reset()` clears
   feedback while retaining pending work and its cancellation identity; `dispose()`
   detaches feedback and settles UI observation promises without cancelling work.
-- `createLatestOperationController<TResult, TFailure>()` serializes superseding
-  read intent. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
+- `createLatestOperationController<TResult, TFailure>()`
+  (`@runic-artifex/views/experimental`) serializes superseding read intent. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
 
 ## Operation feedback and latest selection
 
@@ -219,7 +240,7 @@ push.dispose();
 `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
 `cancelError`. `pending` spans Start admission, terminal wait, any completion barrier
 and outcome delivery. A declared failure is an outcome and `failure`; an unexpected
-failure, including a `failed` or `timedOut` status, is `error`. A `cancelled` status,
+failure, including a `failed` or `timed-out` status, is `error`. A `cancelled` status,
 whether this UI or .NET requested it, is a normal end: `cancelled` becomes true,
 `run()` resolves to `undefined`, and `error`, `outcome` and `failure` stay undefined.
 Only a direct `operation.outcome()` call still rejects with `BridgeError("cancelled")`.
@@ -248,7 +269,7 @@ newest click, cancel the previous read, and await terminal admission before star
 the newest one. A queue can cover several generated read commands:
 
 ```ts
-import { createLatestOperationController } from "@runic-artifex/views";
+import { createLatestOperationController } from "@runic-artifex/views/experimental";
 
 const selections = createLatestOperationController<void>();
 function selectCommit(oid: string) {
@@ -281,7 +302,7 @@ UI callers and consumes late errors without cancelling accepted work.
 
 `current.blocked` signals that admission or completion is uncertain, with the reason
 in `current.error`. A failed Start whose admission is not explicitly `rejected`, a
-lost terminal observation, `unknown`, `expired`, `timedOut`, or a failed completion
+lost terminal observation, `unknown`, `expired`, `timed-out`, or a failed completion
 barrier discards queued input and blocks new Starts. Do not retry
 blindly. An explicit `clear("replace")` clears the block only because the application
 has established a new boundary; ordinary Cancel does not. Both controllers consume
@@ -477,7 +498,7 @@ way; `wait()` and `completion` still return the status, a union discriminated by
 | `domain-failed` | resolves `{ ok: false, failure }`; a failure that could not be delivered or decoded rejects `BridgeError("failed")` |
 | `failed` | rejects `BridgeError("failed")` with `detail` in development |
 | `cancelled` | rejects `BridgeError("cancelled")` |
-| `timedOut` | rejects `BridgeError("timeout")` with the status, including `cancellation`, as `cause` |
+| `timed-out` | rejects `BridgeError("timeout")` with the status, including `cancellation`, as `cause` |
 | `expired`, `unknown` | rejects `BridgeOperationUncertainError`: the outcome is unknown, so do not retry blindly |
 
 `bridgeSuccess(value)`, `bridgeFailure(failure)` and `isBridgeOutcome(value)`
@@ -530,31 +551,49 @@ const client = await connectWorkspace({ timeout: 30_000 });
 A framework hook takes the same option through a connect function declared
 once, outside the component: `const connectSlowly = () => connectWorkspace({ timeout: 30_000 });`
 then `useView({ connect: connectSlowly })`.
-`waitForBridge({ timeout })` (or `waitForBridge(30_000)`) waits for the Bridge
-without connecting a client.
+`waitForBridge({ timeout })` waits for the Bridge without connecting a client.
 
 An operation's `wait({ timeout })` bounds how long the client waits. When the
 timeout passes, the client asks .NET to cancel the operation and resolves to a
-status with `kind: "timedOut"` and `cancellation` set to .NET's answer
+status with `kind: "timed-out"` and `cancellation` set to .NET's answer
 (`cancellation-requested`, `unknown`, `expired`) or `unobserved` when the
 request failed. An operation that finished just before the cancellation keeps
-its real terminal status. `timedOut` is decided by the client; `completion`
+its real terminal status. `timed-out` is decided by the client; `completion`
 still reports the status .NET settles on. The cancellation applies to the
 operation itself, so every other observer of it, including another tab or a
-later `recover<Command>WithRequestId`, sees it cancelled. Use a timeout only
+later `recover<Command>(requestId)`, sees it cancelled. Use a timeout only
 when the caller owns the operation.
 
 ```ts
 const save = await editor.startSave();
 const status = await save.wait({ timeout: 10_000 });
-if (status.kind === "timedOut") showRetry();
+if (status.kind === "timed-out") showRetry();
 ```
 
-`onBridgeDiagnostic(listener)` observes runtime failures: failed calls, a
-missing or unconnected Bridge, operation timeouts, and errors the runtime caught
-from listeners, invalid pushes and reconnect work (those are also passed to
-`reportError`), and a .NET host that speaks another Views protocol version
-(`code: "protocol"`, once per Bridge). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
+`BridgeOperationUncertainError` is the other error class: the client could not
+observe whether .NET admitted or finished an operation, or .NET no longer knows
+its outcome. It has the View's `contract`, the operation's `requestId` and, when
+known, the View `route`; its constructor takes `(message, { contract, requestId,
+route?, cause? })`. It is deliberately not a `BridgeError`: a `BridgeError` is a
+failure a caller may retry, while an uncertain operation may have run, so start it
+again only with the same request id. `BridgeError` and
+`BridgeOperationUncertainError` have public constructors for tests and mocks.
+
+String unions are open or closed. `BridgeErrorKind`, `BridgeDiagnosticCode`,
+`BridgeOperationDeliveryFailureKind` and `BridgeOperationCancelKind` are open: a
+minor release may add a member, so a `switch` over them needs a `default`.
+`BridgeOperationStatusKind` and `BridgeConnectionState` are closed until the next
+major. Multi-word values are kebab-case, such as `domain-failed` and `timed-out`.
+
+`onBridgeDiagnostic(listener)` observes runtime failures. Each diagnostic has a
+`code` (`BridgeDiagnosticCode`): a `BridgeErrorKind` other than `released` for a
+failed call or a missing or unconnected Bridge, `uncertain` for an uncertain
+operation, `timed-out` for an operation `wait({ timeout })` that passed its
+deadline, `reported` for errors the runtime caught from listeners, invalid pushes
+and reconnect work (those are also passed to `reportError`), `protocol` for a
+.NET host that speaks another Views protocol version and `version` for a .NET
+host whose `Runic.Application.Views` is of another release than this package
+(each once per Bridge). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
 forwards them to its DevTools dock during development. A call of a released
 View is expected around every navigation, so its `released` rejection reaches
 the caller but is not reported as a diagnostic; `onBridgeConnection` reports a

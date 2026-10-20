@@ -55,7 +55,7 @@ test("waitForBridge tells a missing Bridge from one that does not connect", asyn
 
     const bridge = freshBridge();
     bridge.disconnect();
-    await assert.rejects(waitForBridge(60), (error: unknown) =>
+    await assert.rejects(waitForBridge({ timeout: 60 }), (error: unknown) =>
       error instanceof BridgeError && error.kind === "timeout" && /within 60 ms/.test(error.message));
     await assert.rejects(waitForBridge({ timeout: -1 }), RangeError);
     bridge.reconnect();
@@ -211,7 +211,7 @@ test("a listener failure is reported with its route", async () => {
   }
 });
 
-test("an operation wait with a timeout cancels and resolves to timedOut", async () => {
+test("an operation wait with a timeout cancels and resolves to timed-out", async () => {
   const bridge = freshBridge();
   bridge.view("counter", { state: { count: 1, label: "one" } });
   bridge.route("counterStartSave", payload => JSON.stringify({ contract, requestId: JSON.parse(String(payload)).requestId, kind: "accepted", terminal: null }));
@@ -234,9 +234,9 @@ test("an operation wait with a timeout cancels and resolves to timedOut", async 
   try {
     const operation = await client.startOperation("Save", "slow", () => JSON.stringify({ requestId: "slow", input: null }), value => value);
     const status = await operation.wait({ timeout: 20 });
-    assert.deepEqual(status, { contract, requestId: "slow", kind: "timedOut", cancellation: "cancellation-requested" });
+    assert.deepEqual(status, { contract, requestId: "slow", kind: "timed-out", cancellation: "cancellation-requested" });
     assert.deepEqual(cancels, ["slow"]);
-    assert.equal(diagnostics.at(-1)?.code, "timedOut");
+    assert.equal(diagnostics.at(-1)?.code, "timed-out");
     assert.equal(diagnostics.at(-1)?.route, "__runicOperationWait");
     assert.equal(diagnostics.at(-1)?.member, "Save");
     assert.equal(diagnostics.at(-1)?.requestId, "slow");
@@ -264,7 +264,7 @@ test("an operation wait with a timeout cancels and resolves to timedOut", async 
     bridge.route("__runicOperationCancel", () => { throw new Error("cancel lost"); });
     const unobserved = await client.startOperation("Save", "lost", () => JSON.stringify({ requestId: "lost", input: null }), value => value);
     const timedOut = await unobserved.wait({ timeout: 0 });
-    assert.equal(timedOut.kind === "timedOut" ? timedOut.cancellation : timedOut.kind, "unobserved");
+    assert.equal(timedOut.kind === "timed-out" ? timedOut.cancellation : timedOut.kind, "unobserved");
     assert.ok(diagnostics.some(diagnostic => diagnostic.code === "uncertain"
       && diagnostic.error instanceof BridgeOperationUncertainError && (diagnostic.error.cause as Error).message === "cancel lost"));
   } finally {
