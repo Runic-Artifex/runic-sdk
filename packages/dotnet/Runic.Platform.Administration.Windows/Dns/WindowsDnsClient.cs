@@ -79,6 +79,8 @@ public sealed class WindowsDnsClient
     }
 
     /// <summary>Modifies a single record in place. Record type and owner remain unchanged.</summary>
+    /// <remarks>Only the values that change are sent to the DNS server, and the result is read back. A modification
+    /// that the server applies differently is reported as a failure.</remarks>
     public Task UpdateAsync(DnsRecordKey key, DnsRecordUpdate update, CancellationToken cancellationToken = default)
     {
         ValidateKey(key);
@@ -90,17 +92,22 @@ public sealed class WindowsDnsClient
         return Execute(connection =>
         {
             var existing = Find(connection, key, cancellationToken) ?? throw NativeError.Win32("Update DNS record", 2);
-            if (update.Data is not null && update.Data != key.Data && Find(connection, key with { Data = update.Data }, cancellationToken) is not null)
+            var dataChanges = !DataEquals(existing.Snapshot.Key.Data, replacement);
+            if (dataChanges && Find(connection, key with { Data = replacement }, cancellationToken) is not null)
                 throw NativeError.Win32("Update DNS record", 183);
-            var values = Values(replacement);
-            values.Add("TTL", timeToLive ?? TimeToLiveSeconds(existing.Snapshot.TimeToLive, nameof(update)));
+            var seconds = timeToLive ?? TimeToLiveSeconds(existing.Snapshot.TimeToLive, nameof(update));
             cancellationToken.ThrowIfCancellationRequested();
-            connection.Invoke(existing.Path, "Modify", values);
+            connection.Invoke(existing.Path, "Modify", ModifyValues(replacement, dataChanges, seconds));
+            var result = Find(connection, key with { Data = replacement }, cancellationToken);
+            if (result is null || TimeToLiveSeconds(result.Snapshot.TimeToLive, nameof(update)) != seconds)
+                throw new WindowsAdministrationException("Update DNS record", AdministrationErrorCategory.NativeFailure, NativeErrorDomain.HResult, unchecked((int)0x80004005),
+                    "Update DNS record failed: the DNS server reported success, but the modified record was not read back.");
             return true;
         }, cancellationToken);
     }
 
     /// <summary>Deletes exactly one matching record. Returns false when absent; never removes a complete record set implicitly.</summary>
+    /// <remarks>The deletion is read back; a record that the server still holds afterwards is reported as a failure.</remarks>
     public Task<bool> DeleteAsync(DnsRecordKey key, CancellationToken cancellationToken = default)
     {
         ValidateKey(key);
@@ -110,8 +117,21 @@ public sealed class WindowsDnsClient
             if (existing is null) return false;
             cancellationToken.ThrowIfCancellationRequested();
             connection.Delete(existing.Path);
+            if (Find(connection, key, cancellationToken) is not null)
+                throw new WindowsAdministrationException("Delete DNS record", AdministrationErrorCategory.NativeFailure, NativeErrorDomain.HResult, unchecked((int)0x80004005),
+                    "Delete DNS record failed: the DNS server reported success, but the record still exists.");
             return true;
         }, cancellationToken);
+    }
+
+    /// <summary>Builds the input of the provider's Modify method.</summary>
+    /// <remarks>The MicrosoftDNS provider deletes a record when Modify receives unchanged record data, so record
+    /// data is sent only when it changes.</remarks>
+    internal static Dictionary<string, object> ModifyValues(DnsRecordData replacement, bool dataChanges, uint timeToLive)
+    {
+        var values = dataChanges ? Values(replacement) : [];
+        values.Add("TTL", timeToLive);
+        return values;
     }
 
     private Task<T> Execute<T>(Func<WmiConnection, T> action, CancellationToken cancellationToken) =>
@@ -148,7 +168,7 @@ public sealed class WindowsDnsClient
         return matches.SingleOrDefault();
     }
 
-    private static bool DataEquals(DnsRecordData left, DnsRecordData right) => (left, right) switch
+    internal static bool DataEquals(DnsRecordData left, DnsRecordData right) => (left, right) switch
     {
         (DnsRecordData.A a, DnsRecordData.A b) => a.Address.Equals(b.Address),
         (DnsRecordData.Aaaa a, DnsRecordData.Aaaa b) => a.Address.Equals(b.Address),
@@ -169,7 +189,7 @@ public sealed class WindowsDnsClient
             "MICROSOFTDNS_ATYPE" => new[] { "IPAddress" }, "MICROSOFTDNS_AAAATYPE" => ["IPv6Address"],
             "MICROSOFTDNS_CNAMETYPE" => ["PrimaryName"], "MICROSOFTDNS_PTRTYPE" => ["PTRDomainName"],
             "MICROSOFTDNS_MXTYPE" => ["Preference", "MailExchange"], "MICROSOFTDNS_TXTTYPE" => ["DescriptiveText"],
-            "MICROSOFTDNS_SRVTYPE" => ["Priority", "Weight", "Port", "DomainName"], "MICROSOFTDNS_NSTYPE" => ["NSHost"],
+            "MICROSOFTDNS_SRVTYPE" => ["Priority", "Weight", "Port", "SRVDomainName"], "MICROSOFTDNS_NSTYPE" => ["NSHost"],
             _ => []
         };
         if (fields.Length == 0) return new DnsRecordData.Unsupported(nativeClass, representation);
@@ -182,7 +202,7 @@ public sealed class WindowsDnsClient
             "MICROSOFTDNS_PTRTYPE" => new DnsRecordData.Ptr(Text(values, "PTRDomainName")),
             "MICROSOFTDNS_MXTYPE" => new DnsRecordData.Mx(SmallNumber(values, "Preference"), Text(values, "MailExchange")),
             "MICROSOFTDNS_TXTTYPE" => new DnsRecordData.Txt(Text(values, "DescriptiveText")),
-            "MICROSOFTDNS_SRVTYPE" => new DnsRecordData.Srv(SmallNumber(values, "Priority"), SmallNumber(values, "Weight"), SmallNumber(values, "Port"), Text(values, "DomainName")),
+            "MICROSOFTDNS_SRVTYPE" => new DnsRecordData.Srv(SmallNumber(values, "Priority"), SmallNumber(values, "Weight"), SmallNumber(values, "Port"), Text(values, "SRVDomainName")),
             "MICROSOFTDNS_NSTYPE" => new DnsRecordData.Ns(Text(values, "NSHost")),
             _ => throw NativeError.Win32("Read DNS record type", 13)
         };
@@ -217,7 +237,7 @@ public sealed class WindowsDnsClient
             DnsRecordData.Ptr p => new() { ["PTRDomainName"] = p.Target },
             DnsRecordData.Mx m => new() { ["Preference"] = (uint)m.Preference, ["MailExchange"] = m.Exchange },
             DnsRecordData.Txt t => new() { ["DescriptiveText"] = t.DescriptiveText },
-            DnsRecordData.Srv s => new() { ["Priority"] = (uint)s.Priority, ["Weight"] = (uint)s.Weight, ["Port"] = (uint)s.Port, ["DomainName"] = s.Target },
+            DnsRecordData.Srv s => new() { ["Priority"] = (uint)s.Priority, ["Weight"] = (uint)s.Weight, ["Port"] = (uint)s.Port, ["SRVDomainName"] = s.Target },
             DnsRecordData.Ns n => new() { ["NSHost"] = n.Host },
             _ => throw new ArgumentException("Unsupported DNS record.", nameof(data))
         };

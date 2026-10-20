@@ -116,6 +116,22 @@ internal sealed class ApiShapeTests
         Check(new DnsRecordData.Ptr("target.example.test") is DnsRecordData, "PTR record data missing.");
     }
 
+    // The MicrosoftDNS provider deletes a record when Modify receives its unchanged data, and its
+    // SRV class names the target SRVDomainName; DomainName is the zone (W319-009 domain acceptance).
+    [Test]
+    public void DnsModifySendsOnlyChangedData()
+    {
+        var ttlOnly = WindowsDnsClient.ModifyValues(new DnsRecordData.A(IPAddress.Parse("198.51.100.1")), dataChanges: false, 600);
+        Check(ttlOnly.Count == 1 && ttlOnly["TTL"] is 600u, "A TTL-only update must send only the TTL.");
+        var address = WindowsDnsClient.ModifyValues(new DnsRecordData.A(IPAddress.Parse("198.51.100.2")), dataChanges: true, 300);
+        Check(address.Count == 2 && (string)address["IPAddress"] == "198.51.100.2" && address["TTL"] is 300u, "A changed address must be sent with the TTL.");
+        var service = WindowsDnsClient.ModifyValues(new DnsRecordData.Srv(10, 20, 443, "target.example.test"), dataChanges: true, 300);
+        Check(service.Count == 5 && (string)service["SRVDomainName"] == "target.example.test" && !service.ContainsKey("DomainName")
+            && service["Priority"] is 10u && service["Weight"] is 20u && service["Port"] is 443u, "SRV create/modify input must name its target SRVDomainName.");
+        Check(WindowsDnsClient.DataEquals(new DnsRecordData.CName("Target.Example.Test."), new DnsRecordData.CName("target.example.test")),
+            "Equivalent DNS names must not count as a data change.");
+    }
+
     [Test]
     public void DnsTimeToLiveIsWholeSeconds()
     {
