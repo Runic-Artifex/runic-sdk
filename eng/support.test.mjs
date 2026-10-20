@@ -6,9 +6,11 @@ import { resolve } from "node:path";
 import { root, workspace } from "./run.mjs";
 import { readSupport, renderReadme, renderSupportMarkdown, supportRids, validateSupport } from "./support.mjs";
 import { nativeLegs } from "./ci/platforms.mjs";
+import { expandWorkflow } from "./ci/jobs.mjs";
 
 const support = readSupport(root);
-const workflow = Bun.YAML.parse(readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8"));
+// The Native job runs its Linux checks through eng/ci/jobs/native-linux.sh.
+const workflow = expandWorkflow(Bun.YAML.parse(readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8")));
 
 test("ci-verified support entries match the Native CI jobs", () => {
   // Every Native entry builds and runs Runic Desktop's native window layer (the WebView
@@ -46,7 +48,7 @@ test("ci-verified support entries match the Native CI jobs", () => {
     || step.if.split(" && ").every(condition => holds(condition, entry, runner(entry.os)));
   for (const entry of matrix) {
     const probes = [["Runic Desktop WebView smoke", /dotnet\s+\S*Runic\.Desktop\.WebViewSmoke\.dll|Runic\.Desktop\.WebViewSmoke\.exe/]];
-    if (entry.cswebui) probes.push(["CS-WebUI window probes", /CsWebUiWindowProbes\$\{\{ matrix\.extension \}\} --probe-window-close/]);
+    if (entry.cswebui) probes.push(["CS-WebUI window probes", /CsWebUiWindowProbes(\$\{\{ matrix\.extension \}\})? --probe-window-close/]);
     for (const [probe, pattern] of probes)
       assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && runsOn(step, entry)),
         `${entry.rid}: the Native job must run the ${probe}`);

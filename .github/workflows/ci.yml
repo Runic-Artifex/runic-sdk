@@ -329,58 +329,23 @@ jobs:
       - uses: ./.github/actions/restore-build
       - uses: ./.github/actions/install-browser
       - name: Exercise first Window generated client
-        run: |
-          node examples/first-window/browser-smoke.mjs
-          node examples/first-window/navigation-smoke.mjs
+        run: bash eng/ci/jobs/views.sh first-window
       - name: Exercise Runic Desktop Views host and ReactiveUI client
-        run: |
-          node examples/first-window-desktop/browser-smoke.mjs
-          xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
+        run: bash eng/ci/jobs/views.sh desktop-host
       - name: Check composed View lifetime and window scopes
-        run: |
-          dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
-          dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
-          node examples/notes-view-first/window-smoke.mjs
+        run: bash eng/ci/jobs/views.sh view-lifetime
       - name: Run the Notes and multi-window example unit tests
-        run: |
-          dotnet run --project examples/notes-view-first/Tests -c Release --no-build
-          dotnet run --project examples/multi-window/Tests -c Release --no-build
-          (cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
+        run: bash eng/ci/jobs/views.sh example-tests
       - name: Exercise CommunityToolkit and ReactiveUI typed clients
-        run: |
-          node examples/notes-view-first/browser-smoke.mjs
-          RUNIC_VERIFY_CALL_BURST=1 node examples/notes-reactive-views/browser-smoke.mjs
-          RUNIC_VERIFY_PENDING_MOUNT=1 node examples/notes-reactive-views/browser-smoke.mjs
-          RUNIC_VERIFY_CLIENT_DISCONNECT=1 node examples/notes-reactive-views/browser-smoke.mjs
+        run: bash eng/ci/jobs/views.sh typed-clients
       - name: Exercise the Effect adapter Notes variant
-        run: |
-          (cd examples/notes-view-first/Effect && bun run --bun build)
-          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
+        run: bash eng/ci/jobs/views.sh effect-variant
       - name: Exercise the React and Vue Notes editor variants
-        run: |
-          (cd examples/notes-view-first/React && bun run --bun build)
-          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
-          (cd examples/notes-view-first/Vue && bun run --bun build)
-          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
+        run: bash eng/ci/jobs/views.sh react-vue-variants
       - name: Exercise Svelte and Angular View outlets
-        run: |
-          (cd examples/notes-view-first/Svelte && bun install --frozen-lockfile && bun run build)
-          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/browser-smoke.mjs
-          npm --prefix examples/notes-view-first/Angular ci
-          npm --prefix examples/notes-view-first/Angular run build
-          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
-          (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile && bun run build)
-          RUNIC_WEB_ROOT="$PWD/examples/notes-reactive-views/Svelte/dist" node examples/notes-reactive-views/browser-smoke.mjs
-          npm --prefix examples/notes-reactive-views/Angular ci
-          npm --prefix examples/notes-reactive-views/Angular run build
-          RUNIC_WEB_ROOT="$PWD/examples/notes-reactive-views/Angular/dist/angular-reactive/browser" node examples/notes-reactive-views/browser-smoke.mjs
+        run: bash eng/ci/jobs/views.sh svelte-angular-outlets
       - name: Exercise View development reload and IDE host
-        run: |
-          RUNIC_HMR_FRONTEND=svelte RUNIC_HMR_VIA_RUNIC_DEV=1 node examples/notes-reactive-views/hmr-smoke.mjs
-          dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
-          node examples/notes-reactive-views/ide-host-smoke.mjs
-          node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
-          RUNIC_HOT_RELOAD_SCENARIO=getter node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
+        run: bash eng/ci/jobs/views.sh development-reload
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   package-consumers:
@@ -401,26 +366,21 @@ jobs:
           path: artifacts/packages
       - uses: ./.github/actions/install-browser
       - name: Verify isolated NuGet and npm consumers
-        run: bun run verify-packages
+        run: bash eng/ci/jobs/package-consumers.sh isolated-consumers
       - name: Verify packaged Angular View outlet
-        run: |
-          version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
-          bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
+        run: bash eng/ci/jobs/package-consumers.sh angular-outlet
       - name: Verify packaged Window factory, generated client, and browser
-        run: |
-          bun run --cwd packages/web/views --bun build
-          node examples/first-window/package-smoke.mjs
-          node examples/first-window-desktop/package-smoke.mjs
+        run: bash eng/ci/jobs/package-consumers.sh window-factory
       - name: Verify the packaged navigation consumer with JIT and NativeAOT
-        run: bun tests/fixtures/application/navigation-consumer/package-smoke.mjs
+        run: bash eng/ci/jobs/package-consumers.sh navigation-consumer
       - name: Verify packaged operation controls, selection and accepted-work shutdown
-        run: bun tests/fixtures/application/operations-consumer/package-smoke.mjs
+        run: bash eng/ci/jobs/package-consumers.sh operations-consumer
       - name: Verify WPF Bridge generation, single-project and split, from the packed packages
-        run: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs
+        run: bash eng/ci/jobs/package-consumers.sh wpf-bridge-consumer
       - name: Verify standalone Runic.Navigation without Runic.Application.Views, Node or a host
-        run: bun tests/fixtures/navigation/standalone-consumer/package-smoke.mjs
+        run: bash eng/ci/jobs/package-consumers.sh standalone-navigation
       - name: Verify the ReactiveUI navigation adapters pull in no Runic.Application.Views
-        run: bun tests/fixtures/navigation/reactiveui-consumer/package-smoke.mjs
+        run: bash eng/ci/jobs/package-consumers.sh reactiveui-navigation
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   wpf:
@@ -553,6 +513,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     env:
+      RID: ${{ matrix.rid }}
       RUNIC_SMOKE_TIMEOUT_SCALE: ${{ matrix.smoke-timeout-scale || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -603,7 +564,10 @@ jobs:
           overwrite: true
       - name: Install Linux native WebView prerequisites
         if: runner.os == 'Linux'
-        run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool
+        run: |
+          eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool gnome-keyring libsecret-tools libglib2.0-bin
+          # The GTK 4 right-to-left check runs under an Arabic locale.
+          sudo locale-gen ar_EG.UTF-8
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh
@@ -613,74 +577,39 @@ jobs:
         if: runner.os == 'Linux'
         # Real pointer drags through XTEST: a stuck drag must not hold the runner.
         timeout-minutes: 6
-        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+        run: bash eng/ci/jobs/native-linux.sh webview-smoke
       - name: Exercise the Desktop event-loop entry point on Linux
         if: runner.os == 'Linux'
-        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+        run: bash eng/ci/jobs/native-linux.sh webview-event-loop
       # Real key presses and wheel clicks through XTEST; see keyboard-driver.sh.
       - name: Exercise keyboard focus and zoom in the GTK 3 window
         if: runner.os == 'Linux'
         timeout-minutes: 8
-        run: GDK_BACKEND=x11 xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk3 dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+        run: bash eng/ci/jobs/native-linux.sh gtk3-keyboard
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
-        run: bun test --timeout 60000 tests/native/Runic.Desktop.WebViewSmoke/keyboard-script.test.mjs
+        run: bash eng/ci/jobs/native-linux.sh keyboard-script
       - name: Exercise direct portal protocol
         if: runner.os == 'Linux'
         # The explicit DBus cases need a session bus; the managed job runs the portable cases.
-        run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
+        run: bash eng/ci/jobs/native-linux.sh portal-protocol
       - name: Exercise the D-Bus client and service API on a private bus
         if: runner.os == 'Linux'
-        run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
+        run: bash eng/ci/jobs/native-linux.sh dbus-api
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
         timeout-minutes: 15
-        run: |
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
-          # The GTK runner has one lifetime per process; the entry-point check runs separately.
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
-          # SIGTERM closes the GTK window and disposes the host before the GTK loop ends.
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --signal
-          # DesktopWindow.AnnounceAsync reaches AT-SPI as Object:Announcement with GTK 3 and GTK 4 (#318).
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
-          # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
-          # direction is right to left without a translation, and the application can override it.
-          sudo locale-gen ar_EG.UTF-8
-          LC_ALL=ar_EG.UTF-8 LANG=ar_EG.UTF-8 LANGUAGE=ar GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --rtl
-          # Controlled-portal journey: directory and SaveFile requests through the production provider.
-          # A private runtime directory lets the isolated bus activate its own document portal, when
-          # installed, for the document-view save; otherwise that variant reports a skip with its reason.
-          journey_runtime=$(mktemp -d) && mkdir "$journey_runtime/data"
-          XDG_RUNTIME_DIR="$journey_runtime" XDG_DATA_HOME="$journey_runtime/data" GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --directory
-          # Without a display the entry point must fall back instead of letting gtk_init exit the process.
-          env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --no-display
+        run: bash eng/ci/jobs/native-linux.sh gtk4-services
       - name: Verify GTK4 and portal NativeAOT consumers
         if: runner.os == 'Linux'
-        run: |
-          dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
-          env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
-          dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
-          # The run without a filter keeps the portable cases covered under NativeAOT.
-          dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
-          dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
-          dotnet publish tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/dbus-aot
-          dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests
-          dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
+        run: bash eng/ci/jobs/native-linux.sh nativeaot-consumers
       # A real Secret Service: GNOME Keyring with an unlocked login keyring on a private session bus, from the JIT build
       # and the NativeAOT executable. The case requires the encrypted session and has secret-tool read what it stored.
       - name: Verify secret storage against GNOME Keyring with JIT and NativeAOT
         if: runner.os == 'Linux'
         timeout-minutes: 8
-        run: |
-          eng/ci/apt-install.sh gnome-keyring libsecret-tools
-          for tests in "dotnet tests/dotnet/Runic.Platform.Linux.Portal.Tests/bin/Release/net10.0/Runic.Platform.Linux.Portal.Tests.dll" artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests; do
-            RUNIC_TEST_SECRET_SERVICE=gnome-keyring dbus-run-session -- sh -c "printf runic | gnome-keyring-daemon --unlock --components=secrets >/dev/null && $tests --treenode-filter '/*/*/*/*[Category=SecretService]' --output detailed"
-          done
+        run: bash eng/ci/jobs/native-linux.sh secret-service
       # W315-011: the real xdg-desktop-portal and its GNOME backend publish every appearance key only from portal 1.20
       # on (Ubuntu 24.04 has 1.18), so they run in Fedora. The container runs the published tests and needs no .NET.
       # The same container runs the Trash portal (W310-003), which xdg-desktop-portal implements itself.
@@ -697,9 +626,7 @@ jobs:
       - name: Verify privileged actions under NativeAOT
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
-        run: |
-          dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
-          artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
+        run: bash eng/ci/jobs/native-linux.sh polkit-aot
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         # The Windows file drop drives a real OLE drag with SendInput: a stuck drag must not hold the runner.
@@ -724,6 +651,7 @@ jobs:
               --probe "$probe" --receipt artifacts/accessibility/webview2.json
             exit
           fi
+          if [[ "$RUNNER_OS" == Linux ]]; then exec bash eng/ci/jobs/native-linux.sh accessibility; fi
           dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0
           probe=(dotnet "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll")
           if [[ "$RUNNER_OS" == macOS ]]; then
@@ -731,10 +659,6 @@ jobs:
               --accessibility --probe "${probe[@]}" --voiceover --receipt artifacts/accessibility/wkwebview.json
             exit
           fi
-          for toolkit in gtk3 gtk4; do
-            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
-              -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --receipt "artifacts/accessibility/$toolkit.json"
-          done
       - name: Retain accessibility receipts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -805,18 +729,17 @@ jobs:
       - name: Verify native GTK clipboard
         if: runner.os == 'Linux'
         timeout-minutes: 3
-        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=Native]"
+        run: bash eng/ci/jobs/native-linux.sh clipboard
       - name: Verify native GTK directory chooser lifecycle
         if: runner.os == 'Linux'
         timeout-minutes: 3
-        run: |
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=DirectoryNative]"
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=DirectoryLoopStopped]"
+        run: bash eng/ci/jobs/native-linux.sh directory-chooser
       - name: Verify native clipboard
         if: runner.os != 'Linux'
         timeout-minutes: 3
         run: dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=Native]"
       - name: Publish native clipboard conformance with NativeAOT
+        if: runner.os != 'Linux'
         timeout-minutes: 10
         run: dotnet publish tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/clipboard-aot
       - name: Verify Windows system-sleep inhibition with JIT and NativeAOT
@@ -862,9 +785,7 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 3
         # The run without a filter keeps the portable checks covered under NativeAOT.
-        run: |
-          artifacts/clipboard-aot/Runic.Platform.Linux.Tests
-          GDK_BACKEND=x11 xvfb-run -a artifacts/clipboard-aot/Runic.Platform.Linux.Tests --treenode-filter "/*/*/*/*[Category=Native]"
+        run: bash eng/ci/jobs/native-linux.sh clipboard-aot
       - name: Verify NativeAOT clipboard
         if: runner.os != 'Linux'
         timeout-minutes: 3
@@ -933,12 +854,17 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivilegedRoot]" --output detailed || status=1
           exit $status
       - name: Publish and run platform runtime conformance with NativeAOT
+        if: runner.os != 'Linux'
         timeout-minutes: 10
         shell: bash
         run: |
           dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/platform-runtime-aot
           ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}
       # A real NSStatusItem without a window, its menu and actions, the unbundled login item and window presentation.
+      - name: Publish and run platform runtime conformance with NativeAOT on Linux
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: bash eng/ci/jobs/native-linux.sh platform-runtime-aot
       - name: Verify macOS status item, login item and window presentation with JIT and NativeAOT
         if: runner.os == 'macOS'
         timeout-minutes: 8
@@ -971,29 +897,22 @@ jobs:
       # to the run: a desktop entry opened with gio in an isolated session without a display (Linux), and a per-user
       # URL protocol opened by the shell (Windows). CI runners only.
       - name: Verify open requests through desktop registration with JIT and NativeAOT
-        if: runner.os != 'macOS'
+        if: runner.os == 'Windows'
         timeout-minutes: 8
         shell: bash
         env:
           RUNIC_TEST_OPEN_REGISTRATION: "1"
         run: |
-          if [ "$RUNNER_OS" = Linux ]; then eng/ci/apt-install.sh libglib2.0-bin; fi
           dotnet build tests/dotnet/Runic.Platform.Runtime.Tests -c Release
           for tests in tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests${{ matrix.extension }} artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}; do
-            if [ "$RUNNER_OS" = Linux ]; then
-              session=$(mktemp -d)
-              mkdir -p "$session/home" "$session/data" "$session/config" "$session/system-data" "$session/system-config" "$session/run"
-              chmod 700 "$session/run"
-              env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS HOME="$session/home" XDG_DATA_HOME="$session/data" \
-                XDG_CONFIG_HOME="$session/config" XDG_DATA_DIRS="$session/system-data" XDG_CONFIG_DIRS="$session/system-config" \
-                XDG_RUNTIME_DIR="$session/run" dbus-run-session -- "$tests" --treenode-filter "/*/*/*/*[Category=NativeOpen]" --output detailed
-              rm -rf "$session"
-            else
-              "$tests" --treenode-filter "/*/*/*/*[Category=NativeOpen]" --output detailed
-            fi
+            "$tests" --treenode-filter "/*/*/*/*[Category=NativeOpen]" --output detailed
           done
       # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms;
       # Command and A, C, V copy and paste through the Edit menu, and Command and Q asks the close guard.
+      - name: Verify open requests through desktop registration on Linux with JIT and NativeAOT
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        run: bash eng/ci/jobs/native-linux.sh open-registration
       - name: Exercise page zoom, Edit and Quit keys in the macOS window
         if: runner.os == 'macOS'
         timeout-minutes: 5
@@ -1037,27 +956,21 @@ jobs:
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
       # FirstWindow and the probes use the CS-WebUI host.
       - name: Publish Window and View application with NativeAOT
-        if: matrix.cswebui
+        if: matrix.cswebui && runner.os != 'Linux'
         shell: bash
         run: |
           dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
           dotnet publish tests/fixtures/application/cswebui-window-probes/CsWebUiWindowProbes.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-probes-aot
-          if [[ "$RUNNER_OS" == Linux ]]; then
-            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
-            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
-            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
-            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
-            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
-            GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
-          else
-            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
-            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
-            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
-            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
-            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
-            RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
-          fi
+          ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
+          ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-window-close
+          ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
+          ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
+          ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
+          RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
       # Development tooling, independent of the architecture: Windows x64 runs it.
+      - name: Publish Window and View application with NativeAOT on Linux
+        if: matrix.cswebui && runner.os == 'Linux'
+        run: bash eng/ci/jobs/native-linux.sh views-aot
       - name: Verify Windows View IDE launch and framework reload
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
@@ -1219,19 +1132,7 @@ jobs:
           restore-keys: flatpak-gnome-50-${{ runner.os }}-${{ runner.arch }}-
       - name: Package, install and open the Flatpak
         if: matrix.target == 'flatpak'
-        run: |
-          node "$PACKAGE" flatpak --project "$PROBE" --output artifacts/package/flatpak
-          flatpak install --user -y --noninteractive --bundle artifacts/package/flatpak/org.runic.tests.PackagingProbe.flatpak
-          entry=~/.local/share/flatpak/exports/share/applications/org.runic.tests.PackagingProbe.desktop
-          desktop-file-validate "$entry"
-          grep -qx 'MimeType=x-scheme-handler/runic-packaging-probe;' "$entry"
-          test -f ~/.local/share/flatpak/exports/share/icons/hicolor/scalable/apps/org.runic.tests.PackagingProbe.svg
-          receipts="$RUNNER_TEMP/receipts"
-          mkdir -p "$receipts"
-          flatpak run --user --filesystem="$receipts" org.runic.tests.PackagingProbe \
-            "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/packaged.json")"
-          bun eng/ci/packaging-probe-check.mjs "$receipts/packaged.json" flatpak
-          flatpak uninstall --user -y --noninteractive org.runic.tests.PackagingProbe
+        run: bash eng/ci/jobs/packaging-flatpak.sh
 
   verify:
     name: verify

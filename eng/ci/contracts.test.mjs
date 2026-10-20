@@ -11,9 +11,11 @@ import { buildPaths, validateBuild } from './build-artifact.mjs';
 import { managedGroups, managedTests, jobSuites, webTests, plan, applicationFixtures, applicationFixtureCommands } from './plan.mjs';
 import { actArguments } from './local.mjs';
 import { nativeLegs, wpfLegs } from './platforms.mjs';
+import { expandJobScripts, expandWorkflow } from './jobs.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
-const workflow = yaml('.github/workflows/ci.yml');
+// Job-script calls (eng/ci/jobs) are read as the commands they run.
+const workflow = expandWorkflow(yaml('.github/workflows/ci.yml'));
 const fixture = action => {
   const directory = mkdtempSync(resolve(tmpdir(), 'runic-ci-test-'));
   const git = (...args) => execFileSync('git', args, { cwd: directory, stdio: 'pipe' });
@@ -131,7 +133,7 @@ test('every executable application fixture runs in CI', () => {
   // Only command lines count, not paths filters or comments. A fixture that
   // restores packed packages runs through its own package-smoke.mjs.
   const commands = readdirSync(resolve(root, '.github/workflows'))
-    .flatMap(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8').split('\n'))
+    .flatMap(name => expandJobScripts(readFileSync(resolve(root, '.github/workflows', name), 'utf8')).split('\n'))
     .filter(line => /\bdotnet (run|publish|test)\b/.test(line) || /\b(bun|node) \S*package-smoke\.mjs\b/.test(line));
   // A package-smoke.mjs in the fixture's root folder also covers its nested projects.
   const runByWorkflow = path => {
