@@ -19,10 +19,7 @@ internal static class ViewLifetimeCheck
         // Like a real window, the session binds the shell to the window's model context. A
         // shell without one serializes its bridge with a lock instead of model turns, and a
         // navigation commit that publishes the shell could then deadlock with a snapshot.
-        using var content = new WindowContentSession(transport,
-            scope.ServiceProvider.GetRequiredService<IRunicViewLocator>(),
-            rootModel: vm,
-            modelContext: scope.ServiceProvider.GetRequiredService<IRunicModelContext>());
+        using var content = new WindowContentSession(transport, new WindowContentSessionOptions { ViewLocator = scope.ServiceProvider.GetRequiredService<IRunicViewLocator>(), RootModel = vm, ModelContext = scope.ServiceProvider.GetRequiredService<IRunicModelContext>() });
         var factory = scope.ServiceProvider.GetRequiredService<
             Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
         using (factory(transport, content, vm))
@@ -38,10 +35,7 @@ internal static class ViewLifetimeCheck
                     throw new InvalidOperationException("Two window scopes share a ShellViewModel.");
                 var secondNative = new ProbeTransport();
                 using var secondTransport = new RebindableBridgeTransport(secondNative);
-                using var secondContent = new WindowContentSession(secondTransport,
-                    secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>(),
-                    rootModel: secondVm,
-                    modelContext: secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>());
+                using var secondContent = new WindowContentSession(secondTransport, new WindowContentSessionOptions { ViewLocator = secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>(), RootModel = secondVm, ModelContext = secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>() });
                 var secondFactory = secondScope.ServiceProvider.GetRequiredService<
                     Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
                 using (secondFactory(secondTransport, secondContent, secondVm))

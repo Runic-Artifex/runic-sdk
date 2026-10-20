@@ -8,7 +8,11 @@ CommunityToolkit dependency. It provides:
   created without a scheduler deliver on the Window's model context (see
   [Model-context scheduling](#model-context-scheduling));
 - `ReactiveRunicView<T>`, which implements `IViewFor<T>` over a typed Runic
-  `DataContext`. Windows derive from `RunicWindow<T>` in
+  `DataContext` and activates an `IActivatableViewModel` while its web component
+  is mounted. Override the `protected virtual` hooks `OnAttached`, `OnDetached`,
+  `OnWebMounted` and `OnWebUnmounted` to add work; the activation runs either way,
+  so an override does not call `base` (see
+  [View lifetime hooks](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#view-lifetime-hooks)). Windows derive from `RunicWindow<T>` in
   `Runic.Application.Views` with ReactiveUI ViewModels too: the
   `ReactiveRunicWindow<T>` base was removed in 0.7.0-preview.7, so the same Window
   class opens on every host with either MVVM library;
@@ -438,7 +442,8 @@ The browser is asked when the page's own window starts the departure:
 
 ## System.Reactive flavor
 
-For DynamicData changesets, place `BatchBridgeSnapshots(model)` after
+For DynamicData changesets, place `BatchBridgeSnapshots(model)` (namespace
+`Runic.Application.Views`, for any `IObservable<T>`) after
 `ObserveOn(modelSequencer)` and before `Bind` or `SortAndBind`. The downstream
 delivery owns the batch even when scheduling is deferred. Annotate a read-only
 DTO collection with `[RunicCollection(nameof(Row.Id))]` to publish indexed

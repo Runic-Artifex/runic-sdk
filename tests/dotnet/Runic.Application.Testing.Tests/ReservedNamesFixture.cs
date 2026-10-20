@@ -73,7 +73,7 @@ public sealed class BridgeViewModel : ReactiveObject, IDisposable
 
     public Interaction<string, bool> Confirm { get; } = new();
 
-    [RunicCommandResult(BridgeCommandResultCardinality.Stream)]
+    [RunicCommandResult(RunicCommandResultCardinality.Stream)]
     public ReactiveCommand<string, int> StreamCommand { get; }
 
     public ReactiveCommand<string, int> SaveCommand { get; }

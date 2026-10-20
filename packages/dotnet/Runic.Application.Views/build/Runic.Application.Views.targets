@@ -55,6 +55,19 @@
          "origin: error CODE: text" form, as the generator, tsc and vue-tsc do. -->
     <_RunicBridgeCanonicalDiagnostic>(^|:)\s*(error|warning)\s+[A-Za-z]+\d+\s*:</_RunicBridgeCanonicalDiagnostic>
   </PropertyGroup>
+  <!-- A project that references a host adapter gets <RootNamespace>.RunicViewsComposition by default. The
+       namespace is RootNamespace (the project name unless the project sets another) made a valid C# namespace:
+       a character other than a letter, digit, underscore or dot becomes an underscore, and a segment that starts
+       with a digit or is a C# keyword gets an underscore prefix. The project body has set RootNamespace by now. -->
+  <PropertyGroup Condition="'$(RunicApplicationFrontendCompositionType)' == '' and '$(_RunicApplicationHostAdapter)' == 'true'">
+    <_RunicApplicationFrontendCompositionNamespace>$(RootNamespace)</_RunicApplicationFrontendCompositionNamespace>
+    <_RunicApplicationFrontendCompositionNamespace Condition="'$(_RunicApplicationFrontendCompositionNamespace)' == ''">$(MSBuildProjectName)</_RunicApplicationFrontendCompositionNamespace>
+    <_RunicApplicationFrontendCompositionNamespace>$([System.Text.RegularExpressions.Regex]::Replace('$(_RunicApplicationFrontendCompositionNamespace)', '[^\p{L}\p{Nd}_.]', '_'))</_RunicApplicationFrontendCompositionNamespace>
+    <_RunicApplicationFrontendCompositionNamespace>$([System.Text.RegularExpressions.Regex]::Replace('$(_RunicApplicationFrontendCompositionNamespace)', '\.\.+', '.').Trim('.'))</_RunicApplicationFrontendCompositionNamespace>
+    <_RunicApplicationFrontendCompositionNamespace>$([System.Text.RegularExpressions.Regex]::Replace('$(_RunicApplicationFrontendCompositionNamespace)', '(^|\.)(?=\p{Nd}|(?:abstract|as|base|bool|break|byte|case|catch|char|checked|class|const|continue|decimal|default|delegate|do|double|else|enum|event|explicit|extern|false|finally|fixed|float|for|foreach|goto|if|implicit|in|int|interface|internal|is|lock|long|namespace|new|null|object|operator|out|override|params|private|protected|public|readonly|ref|return|sbyte|sealed|short|sizeof|stackalloc|static|string|struct|switch|this|throw|true|try|typeof|uint|ulong|unchecked|unsafe|ushort|using|virtual|void|volatile|while)(?:\.|$))', '$1_'))</_RunicApplicationFrontendCompositionNamespace>
+    <_RunicApplicationFrontendCompositionNamespace Condition="'$(_RunicApplicationFrontendCompositionNamespace)' == ''">_</_RunicApplicationFrontendCompositionNamespace>
+    <RunicApplicationFrontendCompositionType>$(_RunicApplicationFrontendCompositionNamespace).RunicViewsComposition</RunicApplicationFrontendCompositionType>
+  </PropertyGroup>
   <!-- The hosts serve www/ next to the application; another web root reaches them through the runtime
        configuration (RunicWindowOptions.ContentRoot and RunicViewHost.ContentRoot still win). -->
   <ItemGroup Condition="'$(_RunicApplicationFrontendWebRoot)' != 'www'">

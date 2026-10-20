@@ -5,6 +5,7 @@ using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using Runic.Navigation;
 using TUnit.Core;
 
@@ -83,7 +84,7 @@ internal sealed class ModelContextPresentationTests
     public async Task HandBuiltSessionBindsTheBridgedModel()
     {
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, new ContextPageViewLocator());
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ViewLocator = new ContextPageViewLocator() });
         var context = session.ModelContext!;
         var scheduler = ReactiveSchedulers.For(context);
         using var page = new ContextPageViewModel(scheduler);

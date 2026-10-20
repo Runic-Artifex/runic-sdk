@@ -77,10 +77,10 @@ public sealed class TypedReactiveViewModel : ReactiveObject
     public IReactiveCommand<TypedSaveRequest, TypedSaveResult> SaveCommand { get; }
     public IReactiveCommand<TypedSaveRequest, int> MultiResultCommand { get; }
 
-    [RunicCommandResult(BridgeCommandResultCardinality.Last)]
+    [RunicCommandResult(RunicCommandResultCardinality.Last)]
     public IReactiveCommand<TypedSaveRequest, int> LastResultCommand { get; }
 
-    [RunicCommandResult(BridgeCommandResultCardinality.Stream)]
+    [RunicCommandResult(RunicCommandResultCardinality.Stream)]
     public IReactiveCommand<TypedSaveRequest, int> StreamResultCommand { get; }
     public IReactiveCommand<RxVoid, RxVoid> EmptyCompletionCommand { get; }
     public IReactiveCommand<string, RxVoid> ImmediateCompletionCommand { get; }

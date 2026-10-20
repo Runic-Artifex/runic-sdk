@@ -8,6 +8,7 @@ using ReactiveUI.Reactive;
 using ReactiveUiReactiveFlavorProof;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI.Reactive;
+using Runic.Application.Views.ReactiveUI.Reactive.Generated;
 using Runic.Application.Testing;
 using Splat;
 using Runic.Navigation;
@@ -77,7 +78,7 @@ using (var host = new RunicWindowTestHost<FlavorShellModel>(shell,
     {
         try
         {
-            _ = host.Content.Expose("flavor", foreign,
+            _ = host.Content.Present(shell, "Foreign", "flavor", foreign,
                 (transport, vm, route) => new FlavorModelBridge(transport, vm, route, content: host.Content));
             throw new InvalidOperationException("A child bound to another context was presented.");
         }

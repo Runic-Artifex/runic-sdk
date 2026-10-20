@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <RunicApplicationFrontendCompositionType>HybridNotes.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>HybridNotes.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../Frontend</RunicApplicationFrontendDirectory>
     <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
   </PropertyGroup>

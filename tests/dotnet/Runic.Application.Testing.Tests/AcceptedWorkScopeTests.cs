@@ -6,6 +6,7 @@ using ReactiveUI.Primitives;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
@@ -197,13 +198,13 @@ internal sealed class AcceptedWorkScopeTests
         }, Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(context));
         var model = new RecoveryModel(command);
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: model);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new RecoveryBridge(transport, model, session);
         var invocation = transport.CallAsync("recoverySave").AsTask();
         try
         {
             await started.Task.WaitAsync(Deadline);
-            var close = await session.BeginCloseAsync(TimeSpan.Zero);
+            var close = await session.DrainAsync(TimeSpan.Zero);
             using var reply = JsonDocument.Parse(await invocation.WaitAsync(Deadline));
             Require(reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "cancelled",
                 "Window close did not cancel the ReactiveUI invocation wrapper.");
@@ -351,15 +352,13 @@ internal sealed class AcceptedWorkScopeTests
     }
 
     private sealed class RecoveryBridge(IBridgeTransport transport, RecoveryModel model, WindowContentSession content)
-        : ViewModelBridge<RecoveryModel>(transport, model, "recovery", static (writer, _, revision) =>
+        : ViewModelBridge<RecoveryModel>(transport, model, "recovery", static (writer, _, revision, _) =>
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteEndObject();
-        }, [],
-        [new("Save", vm => (System.Windows.Input.ICommand)vm.Save,
-            ExecuteAsync: (vm, cancellation, _) => ReactiveCommandExecution.ExecuteCompletion(vm.Save, RxVoid.Default, cancellation),
-            CanExecute: (_, _) => true)],
+        }, [], [],
+        [new("Save", vm => (System.Windows.Input.ICommand)vm.Save) { ExecuteAsync = (vm, cancellation, _) => ReactiveCommandExecution.ExecuteCompletion(vm.Save, RxVoid.Default, cancellation), CanExecute = (_, _) => true }],
         content: content);
 
     private sealed record LogEntry(LogLevel Level, EventId EventId, Exception? Exception);

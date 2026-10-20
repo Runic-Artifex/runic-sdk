@@ -16,12 +16,12 @@ public sealed class WindowCloseTests
     {
         var model = new SlowModel();
         using var transport = new InMemoryViewTransport();
-        var session = new WindowContentSession(transport, rootModel: model);
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CallAsync("slowSave").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
-        var close = session.BeginCloseAsync(TimeSpan.FromSeconds(10)).AsTask();
+        var close = session.DrainAsync(TimeSpan.FromSeconds(10)).AsTask();
         await Task.Delay(50);
         Require(!close.IsCompleted && !model.Cancelled,
             "Close did not wait for an awaited command, or cancelled it before its timeout.");
@@ -38,24 +38,53 @@ public sealed class WindowCloseTests
         session.Dispose();
     }
 
+    // D37 Views-06: the token stops only this caller's wait; admission stays closed and the work keeps running.
+    [Test]
+    public async Task DrainTokenStopsTheWaitOnly()
+    {
+        var model = new SlowModel();
+        using var transport = new InMemoryViewTransport();
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
+        using var bridge = new SlowBridge(transport, model, session);
+        var call = transport.CallAsync("slowSave").AsTask();
+        Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
+
+        using var stop = new CancellationTokenSource();
+        var drain = session.DrainAsync(Timeout.InfiniteTimeSpan, stop.Token).AsTask();
+        await stop.CancelAsync();
+        var cancelled = false;
+        try { await drain.WaitAsync(TimeSpan.FromSeconds(5)); }
+        catch (OperationCanceledException) { cancelled = true; }
+        Require(cancelled, "Cancelling the token did not stop the drain wait.");
+        Require(!model.Cancelled, "Cancelling the wait cancelled the accepted command.");
+        using (var rejected = JsonDocument.Parse(await transport.CallAsync("slowSave")))
+            Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "disconnected",
+                "A cancelled drain reopened admission.");
+        model.Release.TrySetResult();
+        using (var reply = JsonDocument.Parse(await call))
+            Require(reply.RootElement.GetProperty("ok").GetBoolean(), "The command did not finish after the cancelled wait.");
+        Require((await session.DrainAsync(Timeout.InfiniteTimeSpan)).Drained, "A later drain did not observe the finished command.");
+        session.Dispose();
+    }
+
     [Test]
     public async Task CloseTimeoutCancelsRemainingAwaitedWork()
     {
         var model = new SlowModel();
         using var transport = new InMemoryViewTransport();
-        var session = new WindowContentSession(transport, rootModel: model);
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CallAsync("slowSave").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
-        var timedOut = await session.BeginCloseAsync(TimeSpan.Zero);
+        var timedOut = await session.DrainAsync(TimeSpan.Zero);
         Require(!timedOut.Drained && timedOut.RemainingOperations == 1,
             "Close did not count a running awaited command.");
         using (var reply = JsonDocument.Parse(await call.WaitAsync(TimeSpan.FromSeconds(5))))
             Require(reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "cancelled" && model.Cancelled,
                 "The close timeout did not cancel the remaining awaited command.");
         await timedOut.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        var drained = await session.BeginCloseAsync(Timeout.InfiniteTimeSpan);
+        var drained = await session.DrainAsync(Timeout.InfiniteTimeSpan);
         Require(drained.Drained, "Close did not drain after cancellation.");
         session.Dispose();
     }
@@ -102,14 +131,13 @@ public sealed class WindowCloseTests
     }
 
     private sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-        : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision) =>
+        : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision, _) =>
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteEndObject();
-        }, [],
-        [new("Save", vm => vm.Save, ExecuteAsync: (vm, cancellation, _) => vm.SaveAsync(cancellation),
-            CanExecute: (_, _) => true)],
+        }, [], [],
+        [new("Save", vm => vm.Save) { ExecuteAsync = (vm, cancellation, _) => vm.SaveAsync(cancellation), CanExecute = (_, _) => true }],
         content: content);
 
     private sealed class NoopCommand : ICommand

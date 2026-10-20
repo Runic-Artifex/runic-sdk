@@ -30,6 +30,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
     private int _reservedRunningStreamBytes;
     private bool _closing;
     private bool _disposed;
+    private readonly bool _includeFailureDetail;
 
     // `ownerId` is diagnostic identity for the window/session that owns the
     // work. Caller/component detachment is intentionally not represented here.
@@ -42,8 +43,10 @@ internal sealed class BridgeOperationRegistry : IDisposable
         int maximumRunningStreamBytes = 262_144,
         ILogger? logger = null,
         TimeProvider? timeProvider = null,
+        bool? includeFailureDetail = null,
         CancellationToken ownerShutdown = default)
     {
+        _includeFailureDetail = includeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
         _logger = logger ?? TraceFallbackLogger.Instance;
         _timeProvider = timeProvider ?? TimeProvider.System;
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
@@ -285,16 +288,16 @@ internal sealed class BridgeOperationRegistry : IDisposable
             // The command's observer logged it as BridgeDomainFailureNotEncoded.
             var error = notEncoded.InnerException ?? notEncoded;
             failure = "The operation failed.";
-            failureDetail = BridgeDiagnostics.Capture(error);
+            failureDetail = BridgeFailureDetails.Capture(error, _includeFailureDetail);
         }
         catch (Exception error)
         {
             terminal = BridgeOperationStatusKind.Failed;
             // The bounded message is the wire contract. Exception detail joins
-            // it only when BridgeDiagnostics allows local failure detail.
+            // it only when the window allows local failure detail.
             ViewsLog.OperationFailed(_logger, error, member, BridgeTelemetry.ErrorType(error));
             failure = "The operation failed.";
-            failureDetail = BridgeDiagnostics.Capture(error);
+            failureDetail = BridgeFailureDetails.Capture(error, _includeFailureDetail);
         }
 
         // A cancelled or failed producer must not keep a live stream writer
@@ -625,15 +628,3 @@ internal sealed record BridgeOperationCloseResult(bool Drained, int RemainingRun
     internal static BridgeOperationCloseResult Completed { get; } = new(true, 0, Task.CompletedTask);
 }
 internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status, BridgeOperationStreamRead? Stream);
-
-// Supplied only to the streaming admission overload. Command descriptors can
-// publish each encoded item as work progresses, while the registry retains the
-// bounded cursor/replay history under the operation identity.
-/// <summary>The execution context of a streaming operation.</summary>
-/// <param name="stream">The stream that receives the operation's results.</param>
-[EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class BridgeOperationExecution(BridgeOperationStream? stream)
-{
-    /// <summary>The stream that receives the operation's results, if any.</summary>
-    public BridgeOperationStream? Stream { get; } = stream;
-}

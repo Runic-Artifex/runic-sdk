@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using Runic.Navigation;
 using TUnit.Core;
 
@@ -25,7 +26,7 @@ public sealed class ModelContextTests
     {
         var logs = new CategoryLog();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, loggerFactory: logs);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { LoggerFactory = logs });
         var shutdown = new TaskCompletionSource();
         var context = new ManualShutdownContext(shutdown.Task);
         RunicModelContextDisposal.DisposeSynchronously(context, session.Logger);
@@ -84,14 +85,14 @@ public sealed class ModelContextTests
         await using var otherContext = new RunicModelContext();
         var model = new object();
         using var transport = new InMemoryViewTransport();
-        using (var session = new WindowContentSession(transport, rootModel: model, modelContext: applicationContext))
+        using (var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = applicationContext }))
         {
             Require(ReferenceEquals(session.ModelContext, applicationContext)
                 && ReferenceEquals(RunicModelContextRegistry.Shared.GetRequired(model), applicationContext),
                 "The session did not bind its root to the supplied application context.");
             using var conflicting = new InMemoryViewTransport();
             Require(Throws<InvalidOperationException>(() =>
-                _ = new WindowContentSession(conflicting, rootModel: model, modelContext: otherContext)),
+                _ = new WindowContentSession(conflicting, new WindowContentSessionOptions { RootModel = model, ModelContext = otherContext })),
                 "A session silently split a root model between two contexts.");
         }
         Require(!RunicModelContextRegistry.Shared.TryGet(model, out _),
@@ -106,7 +107,7 @@ public sealed class ModelContextTests
         var model = new NotifyingModel();
         var child = new NotifyingModel();
         using var transport = new InMemoryViewTransport();
-        var session = new WindowContentSession(transport, rootModel: model, modelContext: applicationContext);
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = applicationContext });
         var root = new ProbeBridge(transport, model, "probe", session);
         var reference = session.Expose("child", child, (_, current, route) =>
             session.AttachPresentation<ProbeView, NotifyingModel>(current, route,
@@ -133,7 +134,7 @@ public sealed class ModelContextTests
         await using var context = new DedicatedThreadContext();
         var model = new object();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: model, modelContext: context);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = context });
         var exposure = context.InvokeAsync(() => session.Expose("item", new object(),
             static (_, _, _) => new NoopAttachment())).AsTask();
         Require(await Task.WhenAny(exposure, Task.Delay(TimeSpan.FromSeconds(5))) == exposure,
@@ -149,8 +150,8 @@ public sealed class ModelContextTests
         IRunicModelContext context;
         using var firstTransport = new InMemoryViewTransport();
         using var secondTransport = new InMemoryViewTransport();
-        var first = new WindowContentSession(firstTransport, rootModel: model);
-        var second = new WindowContentSession(secondTransport, rootModel: model);
+        var first = new WindowContentSession(firstTransport, new WindowContentSessionOptions { RootModel = model });
+        var second = new WindowContentSession(secondTransport, new WindowContentSessionOptions { RootModel = model });
         try
         {
             context = first.ModelContext ?? throw new InvalidOperationException("The root model did not receive a context.");
@@ -352,7 +353,7 @@ public sealed class ModelContextTests
     {
         using var transport = new InMemoryViewTransport();
         var model = new object();
-        var session = new WindowContentSession(transport, rootModel: model);
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         var context = session.ModelContext ?? throw new InvalidOperationException("The root model did not receive a context.");
         var close = context.InvokeAsync(session.Dispose).AsTask();
         Require(await Task.WhenAny(close, Task.Delay(TimeSpan.FromSeconds(5))) == close,
@@ -406,12 +407,12 @@ public sealed class ModelContextTests
 
     private sealed class ProbeBridge(IBridgeTransport transport, NotifyingModel model, string route,
         WindowContentSession content)
-        : ViewModelBridge<NotifyingModel>(transport, model, route, static (writer, _, revision) =>
+        : ViewModelBridge<NotifyingModel>(transport, model, route, static (writer, _, revision, _) =>
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteEndObject();
-        }, [], [], content: content);
+        }, [], [], [], content: content);
 
     // Implements IRunicView directly so the bridge generator does not treat
     // this private probe as an application View.

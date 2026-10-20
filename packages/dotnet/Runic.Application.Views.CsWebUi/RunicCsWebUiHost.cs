@@ -177,10 +177,14 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var viewModel = opening.ViewModel;
             window = new WebUiWindow();
             transport = window.CreateBridgeSession();
-            content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
-                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>(),
-                loggerFactory: scope.ServiceProvider.GetService<ILoggerFactory>());
+            content = new WindowContentSession(transport, new WindowContentSessionOptions
+            {
+                ViewLocator = scope.ServiceProvider.GetService<IRunicViewLocator>(),
+                RootModel = viewModel,
+                ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
+                LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
+                IncludeFailureDetail = opening.Options.IncludeFailureDetail,
+            });
             var session = content;
             // Only the all-events binding receives disconnects. runic-cswebui.js
             // stops WebUI from also sending click events for elements with ids.

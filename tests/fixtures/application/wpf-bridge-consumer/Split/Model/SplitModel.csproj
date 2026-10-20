@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <RunicApplicationFrontendCompositionType>SplitModel.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>SplitModel.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../Frontend</RunicApplicationFrontendDirectory>
     <!-- The stand-in frontend has no dependencies to install. -->
     <RunicApplicationFrontendInstallEnabled>false</RunicApplicationFrontendInstallEnabled>

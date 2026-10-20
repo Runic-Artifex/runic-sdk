@@ -3,7 +3,28 @@
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.BridgeSnapshotObservableExtensions</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.ReactiveCommandExecution</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.ReactiveInteractionDescriptor</Target>
     <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
@@ -32,6 +53,34 @@
   <Suppression>
     <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:Runic.Application.Views.ReactiveUI.RunicReactiveUIBuilderExtensions</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0019</DiagnosticId>
+    <Target>M:Runic.Application.Views.ReactiveUI.ReactiveRunicView`1.OnAttached</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0019</DiagnosticId>
+    <Target>M:Runic.Application.Views.ReactiveUI.ReactiveRunicView`1.OnDetached</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0019</DiagnosticId>
+    <Target>M:Runic.Application.Views.ReactiveUI.ReactiveRunicView`1.OnWebMounted</Target>
+    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0019</DiagnosticId>
+    <Target>M:Runic.Application.Views.ReactiveUI.ReactiveRunicView`1.OnWebUnmounted</Target>
     <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

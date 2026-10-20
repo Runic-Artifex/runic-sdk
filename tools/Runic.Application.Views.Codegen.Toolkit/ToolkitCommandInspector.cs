@@ -56,7 +56,7 @@ public static class ToolkitCommandInspector
         if (contract is null || (contract.Input is not null && contract.Input != typeof(string))) return null;
 
         var readArgument = contract.HasInput
-            ? "ReadArgument: e => global::Runic.Application.Views.BridgeJson.ReadRequiredString(e.GetString())"
+            ? "ReadArgument: e => global::Runic.Application.Views.Generated.BridgeJson.ReadRequiredString(e.GetString())"
             : null;
         return (contract.HasInput, contract.IsAsync,
             DescriptorFor(command, modelType, contract, "string", readArgument));
@@ -82,7 +82,7 @@ public static class ToolkitCommandInspector
 
         var name = contract.Name.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("\"", "\\\"", StringComparison.Ordinal);
-        var prefix = $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{command.Name}";
+        var prefix = $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{command.Name}";
         var extras = JoinNamedArguments(readArgument, encodeArgument, subscribe);
         if (!contract.IsAsync) return prefix + extras + ")";
 

@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
-    <RunicApplicationFrontendCompositionType>NotesReactiveViews.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>NotesReactiveViews.RunicViewsComposition</RunicApplicationFrontendCompositionType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <OutputType>Library</OutputType>

@@ -72,14 +72,14 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             var readArgument = contract.HasInput
                 ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
             var encodeArgument = contract.HasInput
-                ? $"EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({toolkitType})argument!))" : null;
+                ? $"EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({toolkitType})argument!))" : null;
             // IsRunning can change without CanExecuteChanged (for example with
             // concurrent executions), so publish on the command's own change.
             var subscribeRunning = contract.IsAsync
                 ? $"Subscribe: (vm, changed) => new ToolkitRunningSubscription(vm.{property.Name}, changed)" : null;
             var resultType = plan.ResultGraph?.RootCSharpType();
             var encodeResult = resultType is null ? null
-                : $"global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)))";
+                : $"global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)))";
             return ToolkitCommandInspector.DescriptorFor(property, modelType, contract, toolkitType, readArgument, encodeArgument, subscribeRunning,
                 resultType, encodeResult);
         }

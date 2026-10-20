@@ -62,7 +62,7 @@ The failure notice is `{ "__runicFailure": 1, "revision", "error": { "kind",
 does not change the client's. The message names the model, field and rows but
 no key value, for example
 `CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection.`
-In development (see `BridgeDiagnostics`), `detail` carries the exception, whose
+In development (see `IncludeFailureDetail`), `detail` carries the exception, whose
 message names the key (`rows 0 and 1 have the duplicate key '1'`), as do the
 log entries. The client reports the notice as a `failed` `BridgeError` for
 `__{route}Changed` (`onBridgeDiagnostic` and `reportError`) and keeps its last

@@ -3,6 +3,7 @@ using ReactiveUI.Binding;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;

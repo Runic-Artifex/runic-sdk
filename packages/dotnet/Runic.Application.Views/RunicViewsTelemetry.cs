@@ -322,13 +322,13 @@ internal static partial class ViewsLog
     internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
 
     // Hot Reload applied an edit that changed a generated Bridge contract. The message is the IDE line that
-    // RunicBridgeHotReload also writes to standard error.
+    // RunicViewsHotReload also writes to standard error.
     [LoggerMessage(EventId = 1100, EventName = "HotReloadRestartRequired", Level = LogLevel.Error,
         Message = "RUNIC_IDE_CONTRACT_RESTART_REQUIRED|{Mismatch}")]
     internal static partial void HotReloadRestartRequired(ILogger logger, string mismatch);
 
     [LoggerMessage(EventId = 1101, EventName = "HotReloadRestartNotificationFailed", Level = LogLevel.Warning,
-        Message = "A RunicBridgeHotReload.RestartRequired handler failed with {ErrorType}.")]
+        Message = "A RunicViewsHotReload.RestartRequired handler failed with {ErrorType}.")]
     internal static partial void HotReloadRestartNotificationFailed(ILogger logger, Exception exception, string errorType);
 
     [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,

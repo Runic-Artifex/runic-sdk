@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.ComponentModel;
 using System.Collections.Specialized;
 using System.ComponentModel.DataAnnotations;
@@ -7,7 +8,7 @@ using System.Windows.Input;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Runic.Navigation;
-namespace Runic.Application.Views;
+namespace Runic.Application.Views.Generated;
 
 // A model can be exposed through more than one Bridge. The gate must follow
 // the model instance, not the individual Bridge, because synchronous
@@ -88,8 +89,8 @@ public enum CheckedFieldValueKind
 /// <param name="valueKind">The wire value type.</param>
 /// <param name="getter">Reads the property value.</param>
 /// <param name="setter">Writes the decoded property value.</param>
-/// <param name="ReadValue">Decodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
-/// <param name="WriteValue">Encodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
+/// <param name="readValue">Decodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
+/// <param name="writeValue">Encodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class CheckedPropertyDescriptor<T>(
     string name,
@@ -97,8 +98,8 @@ public sealed class CheckedPropertyDescriptor<T>(
     CheckedFieldValueKind valueKind,
     Func<T, object?> getter,
     Action<T, object?> setter,
-    Func<JsonElement, object?>? ReadValue = null,
-    Action<Utf8JsonWriter, object?>? WriteValue = null)
+    Func<JsonElement, object?>? readValue = null,
+    Action<Utf8JsonWriter, object?>? writeValue = null)
 {
     /// <summary>The .NET property name.</summary>
     public string Name { get; } = name;
@@ -108,8 +109,8 @@ public sealed class CheckedPropertyDescriptor<T>(
     public CheckedFieldValueKind ValueKind { get; } = valueKind;
     internal Func<T, object?> Get { get; } = getter;
     internal Action<T, object?> Set { get; } = setter;
-    internal Func<JsonElement, object?>? Read { get; } = ReadValue;
-    internal Action<Utf8JsonWriter, object?>? Write { get; } = WriteValue;
+    internal Func<JsonElement, object?>? Read { get; } = readValue;
+    internal Action<Utf8JsonWriter, object?>? Write { get; } = writeValue;
 
     // A detached copy of a mutable value: decode what the generated writer wrote.
     internal object? Snapshot(object? value)
@@ -145,35 +146,52 @@ public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
     long revision, Action<Utf8JsonWriter> writeFieldMetadata);
 
 /// <summary>Describes one bridged command. Created by generated bridges.</summary>
-/// <param name="Name">The command property name.</param>
-/// <param name="Get">Reads the command object from the ViewModel.</param>
-/// <param name="ExecuteAsync">Executes a command without a result.</param>
-/// <param name="ReadArgument">Decodes the browser argument.</param>
-/// <param name="ExecuteResultAsync">Executes a command that produces a result.</param>
-/// <param name="EncodeArgument">Encodes the argument for diagnostics and replay checks.</param>
-/// <param name="CanExecute">Evaluates whether the command can run with an argument.</param>
-/// <param name="Subscribe">Observes changes of the command's executability.</param>
-/// <param name="CreateStream">Creates the result stream of a streaming command.</param>
-/// <param name="ExecuteStreamAsync">Executes a streaming command.</param>
-/// <param name="EncodeFailure">
-/// Encodes the value of a <see cref="RunicFailureException"/> when it is the command's declared
-/// failure type, and returns <see langword="null"/> otherwise. <see langword="null"/> when the
-/// command declares no failure.
-/// </param>
+/// <remarks>
+/// Generated code sets the members a command needs with an object initializer, so a later release
+/// can add a member without changing the constructor.
+/// </remarks>
+/// <param name="name">The command property name.</param>
+/// <param name="get">Reads the command object from the ViewModel.</param>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed record CommandDescriptor<T>(
-    string Name,
-    Func<T, object> Get,
-    Func<T, CancellationToken, object?, Task>? ExecuteAsync = null,
-    Func<IBridgeArguments, object?>? ReadArgument = null,
-    Func<T, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteResultAsync = null,
-    Func<object?, string>? EncodeArgument = null,
-    Func<T, object?, bool>? CanExecute = null,
-    Func<T, Action, IDisposable>? Subscribe = null,
-    Func<BridgeOperationStream>? CreateStream = null,
-    Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync = null,
-    Func<object, string?>? EncodeFailure = null)
+public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
 {
+    /// <summary>The command property name.</summary>
+    public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
+
+    /// <summary>Reads the command object from the ViewModel.</summary>
+    public Func<T, object> Get { get; } = get ?? throw new ArgumentNullException(nameof(get));
+
+    /// <summary>Executes a command without a result.</summary>
+    public Func<T, CancellationToken, object?, Task>? ExecuteAsync { get; init; }
+
+    /// <summary>Decodes the browser argument.</summary>
+    public Func<IBridgeArguments, object?>? ReadArgument { get; init; }
+
+    /// <summary>Executes a command that produces a result.</summary>
+    public Func<T, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteResultAsync { get; init; }
+
+    /// <summary>Encodes the argument for diagnostics and replay checks.</summary>
+    public Func<object?, string>? EncodeArgument { get; init; }
+
+    /// <summary>Evaluates whether the command can run with an argument.</summary>
+    public Func<T, object?, bool>? CanExecute { get; init; }
+
+    /// <summary>Observes changes of the command's executability.</summary>
+    public Func<T, Action, IDisposable>? Subscribe { get; init; }
+
+    /// <summary>Creates the result stream of a streaming command.</summary>
+    public Func<BridgeOperationStream>? CreateStream { get; init; }
+
+    /// <summary>Executes a streaming command.</summary>
+    public Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync { get; init; }
+
+    /// <summary>
+    /// Encodes the value of a <see cref="RunicFailureException"/> when it is the command's declared
+    /// failure type, and returns <see langword="null"/> otherwise. <see langword="null"/> when the
+    /// command declares no failure.
+    /// </summary>
+    public Func<object, string?>? EncodeFailure { get; init; }
+
     /// <summary>
     /// Observes the failures that the command reports outside a Bridge call's reply, such as a ReactiveUI command's
     /// <c>ThrownExceptions</c>, while a Bridge presents the ViewModel. The Bridge passes its logger, which writes to
@@ -183,7 +201,7 @@ public sealed record CommandDescriptor<T>(
     public Func<T, Microsoft.Extensions.Logging.ILogger, IDisposable>? ObserveFailures { get; init; }
 }
 
-// Detail is present only when BridgeDiagnostics allows local failure detail.
+// Detail is present only when the window allows local failure detail.
 // Failure is the encoded declared failure of a domain-failed reply, which
 // never carries detail (D-1).
 internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null, string? Failure = null)
@@ -202,6 +220,12 @@ public static class BridgeProtocol
     /// </summary>
     /// <remarks>Version 2 adds the <c>domain-failed</c> reply error and operation status.</remarks>
     public const int Version = 2;
+
+    // The Runic.Application.Views package version, reported as "version" beside "protocol" so the browser runtime can
+    // report an @runic-artifex/views package of another release (D02). Build metadata (+commit) is dropped.
+    internal static string PackageVersion { get; } =
+        (typeof(BridgeProtocol).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? typeof(BridgeProtocol).Assembly.GetName().Version?.ToString() ?? "0.0.0").Split('+')[0];
 }
 
 internal interface IHotReloadableBridge
@@ -279,13 +303,14 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly BridgeModelTurn _modelTurn;
     private IRunicModelContextLease? _modelContextLease;
     private readonly WindowContentSession? _content;
+    // Read from the window's options when it opened; a Bridge without a window uses the environment.
+    private bool IncludesFailureDetail => _content?.IncludesFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
     private readonly IBridgeTransport _transport;
     private readonly T _vm;
     private readonly string _name;
     private static readonly string ModelName = typeof(T).Name;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
-    private readonly Action<Utf8JsonWriter, T, long> _writeSnapshot;
-    private readonly BridgeSnapshotWriter<T>? _writeSnapshotWithFields;
+    private readonly BridgeSnapshotWriter<T> _writeSnapshot;
     private readonly PropertyDescriptor<T>[] _properties;
     private readonly CheckedPropertyBinding[] _checkedProperties;
     private readonly CommandDescriptor<T>[] _commands;
@@ -317,25 +342,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private bool _disposed;
     private int _detaching;
 
-    /// <summary>Creates a bridge whose snapshot writer does not emit field-write metadata.</summary>
-    protected ViewModelBridge(
-        IBridgeTransport transport,
-        T vm,
-        string name,
-        Action<Utf8JsonWriter, T, long> writeSnapshot,
-        PropertyDescriptor<T>[] properties,
-        CommandDescriptor<T>[] commands,
-        string? contractFingerprint = null,
-        WindowContentSession? content = null,
-        BridgeInteractionDescriptor<T>[]? interactions = null,
-        BridgeDataSubscriptionMember[]? dataSubscriptions = null,
-        BridgeCollectionDescriptor<T>[]? collections = null)
-        : this(transport, vm, name, writeSnapshot, null, properties, [], commands,
-            contractFingerprint, content, interactions, dataSubscriptions, collections)
-    {
-    }
-
-    /// <summary>Creates a bridge with acknowledged field writes.</summary>
+    /// <summary>Creates the Bridge of a ViewModel. <paramref name="checkedProperties"/> are the properties with acknowledged field writes, if any.</summary>
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,
@@ -349,8 +356,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         BridgeInteractionDescriptor<T>[]? interactions = null,
         BridgeDataSubscriptionMember[]? dataSubscriptions = null,
         BridgeCollectionDescriptor<T>[]? collections = null)
-        : this(transport, vm, name, null, writeSnapshot, properties, checkedProperties,
-            commands, contractFingerprint, content, interactions, dataSubscriptions, collections)
+        : this(transport, vm, name, writeSnapshot, properties, checkedProperties,
+            commands, contractFingerprint, content, interactions, dataSubscriptions, collections, privateOverload: true)
     {
     }
 
@@ -358,8 +365,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         IBridgeTransport transport,
         T vm,
         string name,
-        Action<Utf8JsonWriter, T, long>? writeSnapshot,
-        BridgeSnapshotWriter<T>? writeSnapshotWithFields,
+        BridgeSnapshotWriter<T> writeSnapshot,
         PropertyDescriptor<T>[] properties,
         CheckedPropertyDescriptor<T>[] checkedProperties,
         CommandDescriptor<T>[] commands,
@@ -367,8 +373,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         WindowContentSession? content,
         BridgeInteractionDescriptor<T>[]? interactions,
         BridgeDataSubscriptionMember[]? dataSubscriptions,
-        BridgeCollectionDescriptor<T>[]? collections)
+        BridgeCollectionDescriptor<T>[]? collections,
+        bool privateOverload)
     {
+        _ = privateOverload;
         _transport = transport;
         _vm = vm;
         _modelGate = BridgeModelGates.For(vm);
@@ -389,8 +397,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _logger = content?.Logger ?? TraceFallbackLogger.Instance;
         _delivery = new(transport, name, _modelTurn, CaptureRequestedState, ModelName, _logger);
         _name = name;
-        _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
-        _writeSnapshotWithFields = writeSnapshotWithFields;
+        _writeSnapshot = writeSnapshot ?? throw new ArgumentNullException(nameof(writeSnapshot));
         _properties = properties;
         _textFields = [.. properties.Where(property => property.AppendOnlyTextField is not null)];
         _checkedProperties = [];
@@ -492,7 +499,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             }
             _bindings = [.. bindings];
             _subscribedCommands = [.. subscribedCommands];
-            RunicBridgeHotReload.Track(this);
+            RunicViewsHotReload.Track(this);
         }
         catch
         {
@@ -531,13 +538,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeDiagnostics.Capture(error)));
+                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
             }
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
                 ViewsLog.SetterFailed(_logger, error, ModelName, property.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeTerminal(new("failed", $"Could not update {property.Name}.", BridgeDiagnostics.Capture(error)));
+                return EncodeTerminal(new("failed", $"Could not update {property.Name}.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
             }
         }
     }
@@ -571,7 +578,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException or OverflowException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeDiagnostics.Capture(error)));
+                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
             }
 
             try
@@ -585,7 +592,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
                 ViewsLog.FieldWriteFailed(_logger, error, ModelName, property.Descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}.", BridgeDiagnostics.Capture(error)));
+                return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
             }
         }
     }
@@ -666,13 +673,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error)));
+                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
             }
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
                 ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeTerminal(new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(error)));
+                return EncodeTerminal(new("failed", $"{descriptor.Name} failed.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
             }
         }
     }
@@ -724,14 +731,14 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
         {
             call.Complete(BridgeCallOutcome.Rejected);
-            var detail = BridgeDiagnostics.Capture(error);
+            var detail = BridgeFailureDetails.Capture(error, IncludesFailureDetail);
             return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", detail)));
         }
         catch (Exception error)
         {
             call.Complete(BridgeCallOutcome.Failed, error);
             ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-            var detail = BridgeDiagnostics.Capture(error);
+            var detail = BridgeFailureDetails.Capture(error, IncludesFailureDetail);
             return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
         }
     }
@@ -751,7 +758,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
         call.Complete(BridgeCallOutcome.Failed, domain);
         ViewsLog.DomainFailureNotEncoded(_logger, logged, ModelName, descriptor.Name, _name, failureType, reason);
-        return new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(domain));
+        return new("failed", $"{descriptor.Name} failed.", BridgeFailureDetails.Capture(domain, IncludesFailureDetail));
     }
 
     // The model context can be gone when an awaited command completes after
@@ -788,7 +795,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         if (descriptor.ExecuteResultAsync is { } executeResult)
             return await executeResult(_vm, token, argument).ConfigureAwait(false);
         await descriptor.ExecuteAsync!(_vm, token, argument).ConfigureAwait(false);
-        return BridgeOperationResult.Empty;
+        return BridgeOperationResult.None;
     }
 
     private string StartOperation(WindowContentSession content, CommandDescriptor<T> descriptor, IBridgeArguments arguments)
@@ -849,13 +856,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error));
+                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
             }
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
                 ViewsLog.OperationAdmissionFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeDiagnostics.Capture(error));
+                return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
             }
         }
     }
@@ -921,7 +928,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         writer.WriteStartObject();
         writer.WriteString("kind", kind);
         writer.WriteString("reason", reason);
-        BridgeDiagnostics.Write(writer, detail);
+        BridgeFailureDetails.Write(writer, detail);
         writer.WriteEndObject();
     });
 
@@ -985,9 +992,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         using (BridgeSnapshotPublication.Enter(() => IsInactive))
         {
             CheckCollectionKeys();
-            if (_writeSnapshotWithFields is { } writerWithFields)
-                writerWithFields(writer, _vm, _revision, WriteFieldMetadata);
-            else _writeSnapshot(writer, _vm, _revision);
+            _writeSnapshot(writer, _vm, _revision, WriteFieldMetadata);
         }
     }
 
@@ -1077,14 +1082,14 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             writer.WriteStartObject();
             writer.WriteString("kind", failure.Kind);
             writer.WriteString("message", failure.Message);
-            BridgeDiagnostics.Write(writer, failure.Detail);
+            BridgeFailureDetails.Write(writer, failure.Detail);
             writer.WriteEndObject();
             writer.WriteEndObject();
         }));
     }
 
-    private static BridgeFailure RejectedKeysReply(BridgeCollectionKeyException keys) =>
-        new("failed", keys.ReplyMessage, BridgeDiagnostics.Capture(keys));
+    private BridgeFailure RejectedKeysReply(BridgeCollectionKeyException keys) =>
+        new("failed", keys.ReplyMessage, BridgeFailureDetails.Capture(keys, IncludesFailureDetail));
 
     private void LogRejectedKeys(BridgeCollectionKeyException keys)
     {
@@ -1198,11 +1203,15 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 writer.WritePropertyName("failure");
                 writer.WriteRawValue(failure, skipInputValidation: true);
             }
-            else BridgeDiagnostics.Write(writer, error.Detail);
+            else BridgeFailureDetails.Write(writer, error.Detail);
             writer.WriteEndObject();
         }
         if (released) writer.WriteBoolean("released", true);
-        if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);
+        if (protocol)
+        {
+            writer.WriteNumber("protocol", BridgeProtocol.Version);
+            writer.WriteString("version", BridgeProtocol.PackageVersion);
+        }
         writer.WriteEndObject();
     });
 

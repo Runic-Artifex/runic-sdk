@@ -14,6 +14,9 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
+    <Using Include="Runic.Application.Views.Generated" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="ReactiveUI.Reactive" />
     <!-- Direct references bound every package whose types the public API exposes (eng/release/README.md). -->
@@ -22,7 +25,6 @@
     <PackageReference Include="System.Reactive" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveCommandExecution.cs" Link="Shared/ReactiveCommandExecution.cs" />
-    <Compile Include="../Runic.Application.Views.ReactiveUI/BridgeSnapshotObservableExtensions.cs" Link="Shared/BridgeSnapshotObservableExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveInteractionDescriptor.cs" Link="Shared/ReactiveInteractionDescriptor.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactivePresentation.cs" Link="Shared/ReactivePresentation.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveLog.cs" Link="Shared/ReactiveLog.cs" />

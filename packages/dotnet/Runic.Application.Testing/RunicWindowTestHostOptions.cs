@@ -40,6 +40,13 @@ public sealed class RunicWindowTestHostOptions
     public Func<string>? CreateId { get; init; }
 
     /// <summary>
+    /// Whether the window's Bridge error replies carry exception detail
+    /// (<see cref="WindowContentSessionOptions.IncludeFailureDetail"/>). <see langword="null"/>, the default,
+    /// includes it only in a <c>Development</c> environment.
+    /// </summary>
+    public bool? IncludeFailureDetail { get; init; }
+
+    /// <summary>
     /// How long a driver waits for a state publication. Delivery runs off the calling
     /// thread, so this is real time. Defaults to five seconds.
     /// </summary>

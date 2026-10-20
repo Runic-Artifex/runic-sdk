@@ -10,10 +10,15 @@ using ReactiveUI.Binding;
 #endif
 using Runic.Application.Views;
 
+using Runic.Application.Views.Generated;
 #if SYSTEM_REACTIVE
-namespace Runic.Application.Views.ReactiveUI.Reactive;
+using Runic.Application.Views.ReactiveUI.Reactive;
+
+namespace Runic.Application.Views.ReactiveUI.Reactive.Generated;
 #else
-namespace Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI;
+
+namespace Runic.Application.Views.ReactiveUI.Generated;
 #endif
 
 /// <summary>

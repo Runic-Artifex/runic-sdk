@@ -73,7 +73,7 @@ internal abstract class MvvmCommand
     /// <summary>True when the command honours <see cref="RunicCommandResultAttribute"/>.</summary>
     internal virtual bool SelectsResultCardinality => false;
 
-    internal virtual BridgeCommandResultCardinality Cardinality => BridgeCommandResultCardinality.Single;
+    internal virtual RunicCommandResultCardinality Cardinality => RunicCommandResultCardinality.Single;
 
     /// <summary>
     /// The TSDoc of a command property without a source method. A library may replace the

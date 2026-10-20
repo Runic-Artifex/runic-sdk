@@ -20,8 +20,8 @@ public sealed class AotValidationItem : INotifyDataErrorInfo
     public bool HasErrors => true;
     public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
     public IEnumerable GetErrors(string? propertyName) => propertyName == nameof(Text)
-        ? new[] { new BridgeValidationMessage("Required", "required", "error", [nameof(Text)]) }
-        : Array.Empty<BridgeValidationMessage>();
+        ? new[] { new RunicValidationMessage("Required", "required", "error", [nameof(Text)]) }
+        : Array.Empty<RunicValidationMessage>();
 }
 
 public sealed class AotProofViewModel : ReactiveObject

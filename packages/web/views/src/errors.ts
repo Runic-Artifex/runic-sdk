@@ -9,7 +9,7 @@ export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnecte
 
 /**
  * Local failure detail that .NET adds to an error reply only in development
- * (host environment `Development`, or `BridgeDiagnostics.IncludeFailureDetail`).
+ * (host environment `Development`, or the window option `IncludeFailureDetail`).
  */
 export interface BridgeFailureDetail {
   /** The exception type, such as `System.InvalidOperationException`. */

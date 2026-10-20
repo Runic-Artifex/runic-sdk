@@ -74,9 +74,8 @@ internal sealed class CollectionDeltaTests
     private static async Task InvalidKeysAreWithheldAsync()
     {
         const string Rule = ". [RunicCollection] keys must be nonempty and unique within the collection.";
-        var detail = BridgeDiagnostics.IncludeFailureDetail;
-        BridgeDiagnostics.IncludeFailureDetail = true;
-        try
+        // Development detail is on for every window of this case, so failed reads carry the key.
+        var development = new WindowContentSessionOptions { IncludeFailureDetail = true };
         {
             // An explicit read fails with the bounded reason; development detail has the key.
             foreach (var (row, problem) in new[] { (new KeyedRow("", "empty"), "row 1 has an empty key"), (new KeyedRow(null!, "null"), "row 1 has a null key") })
@@ -85,14 +84,16 @@ internal sealed class CollectionDeltaTests
                 initial.Items.Add(new("a", "one"));
                 initial.Items.Add(row);
                 using var initialTransport = new InMemoryViewTransport();
-                using var initialBridge = new KeyedCollectionBridge(initialTransport, initial, "keyed");
+                using var initialSession = new WindowContentSession(initialTransport, development);
+                using var initialBridge = new KeyedCollectionBridge(initialTransport, initial, "keyed", content: initialSession);
                 RequireFailedRead(initialTransport, "keyedSnapshot", "KeyedCollectionViewModel.rows: " + problem + Rule);
             }
 
             var model = new KeyedCollectionViewModel();
             model.Items.Add(new("a", "one"));
             using var transport = new InMemoryViewTransport();
-            using var bridge = new KeyedCollectionBridge(transport, model, "keyed");
+            using var session = new WindowContentSession(transport, development);
+            using var bridge = new KeyedCollectionBridge(transport, model, "keyed", content: session);
             using (JsonDocument.Parse(transport.Call("keyedSnapshot"))) { }
             // Observers after the bridge, such as a ReactiveUI or DynamicData binding, still run.
             var later = 0;
@@ -150,7 +151,8 @@ internal sealed class CollectionDeltaTests
             // not a false duplicate and a real duplicate is not missed.
             var mutable = new MutableKeyedViewModel();
             using var mutableTransport = new InMemoryViewTransport();
-            using var mutableBridge = new MutableKeyedBridge(mutableTransport, mutable, "mutableKeyed");
+            using var mutableSession = new WindowContentSession(mutableTransport, development);
+            using var mutableBridge = new MutableKeyedBridge(mutableTransport, mutable, "mutableKeyed", content: mutableSession);
             using (JsonDocument.Parse(mutableTransport.Call("mutableKeyedSnapshot"))) { }
             mutable.Items[1].Key = "c";
             using (var changed = await NextAsync(mutableTransport))
@@ -168,10 +170,11 @@ internal sealed class CollectionDeltaTests
 
             var validated = new ValidatedCollectionViewModel();
             using var validatedTransport = new InMemoryViewTransport();
+            // Without a window, a Bridge's replies follow the environment, which is not Development here.
             using var validatedBridge = new ValidatedCollectionBridge(validatedTransport, validated, "validated");
             validated.Items.Add(new("a", "one"));
             validated.Items.Add(new("a", "again"));
-            RequireFailedRead(validatedTransport, "validatedSnapshot", "ValidatedCollectionViewModel.rows: rows 0 and 1 have the duplicate key 'a'" + Rule);
+            RequireFailedRead(validatedTransport, "validatedSnapshot", detail: null);
             var notices = 0;
             for (var waited = 0; waited < 2000 && notices == 0; waited += 10)
             {
@@ -180,15 +183,17 @@ internal sealed class CollectionDeltaTests
             }
             Require(notices == 1, "A validation model did not report its duplicate key.");
         }
-        finally { BridgeDiagnostics.IncludeFailureDetail = detail; }
     }
 
-    private static void RequireFailedRead(InMemoryViewTransport transport, string route, string detail)
+    private static void RequireFailedRead(InMemoryViewTransport transport, string route, string? detail)
     {
         using var reply = JsonDocument.Parse(transport.Call(route));
         var root = reply.RootElement;
+        var error = root.GetProperty("error");
         Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("state").ValueKind == JsonValueKind.Null &&
-            root.GetProperty("error").GetProperty("detail").GetProperty("message").GetString() == detail,
+            (detail is null
+                ? !error.TryGetProperty("detail", out _)
+                : error.GetProperty("detail").GetProperty("message").GetString() == detail),
             $"{route} did not fail with \"{detail}\": {root.GetRawText()}");
     }
 

@@ -158,8 +158,8 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             ClientKey: clientKey, ConnectionKey: connectionKey));
 
     /// <summary>Stops admission and waits for accepted Window operations.</summary>
-    public ValueTask<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout) =>
-        Content.BeginCloseAsync(timeout);
+    public ValueTask<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout) =>
+        Content.DrainAsync(timeout);
 
     /// <summary>Detaches the root bridge and disposes the content session and transport.</summary>
     public void Dispose()
@@ -186,6 +186,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             LoggerFactory = options?.LoggerFactory,
             TimeProvider = options?.TimeProvider ?? new FakeTimeProvider(),
             CreateId = options?.CreateId ?? (() => Interlocked.Increment(ref next).ToString(CultureInfo.InvariantCulture)),
+            IncludeFailureDetail = options?.IncludeFailureDetail,
         };
     }
 }

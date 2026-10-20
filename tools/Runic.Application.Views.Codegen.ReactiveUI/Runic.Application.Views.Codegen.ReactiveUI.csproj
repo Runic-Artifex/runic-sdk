@@ -7,6 +7,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <Using Include="Runic.Application.Views.Generated" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="ReactiveUI" />
     <ProjectReference Include="../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
   </ItemGroup>

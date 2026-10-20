@@ -28,12 +28,13 @@ internal sealed class BridgeOperationRouter : IDisposable
         int maximumRetainedExpiredIds = 128,
         ILogger? logger = null,
         TimeProvider? timeProvider = null,
+        bool? includeFailureDetail = null,
         CancellationToken ownerShutdown = default)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _operations = new BridgeOperationRegistry(
             ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown, logger: logger,
-            timeProvider: timeProvider);
+            timeProvider: timeProvider, includeFailureDetail: includeFailureDetail);
         var bindings = new List<IDisposable>();
         try
         {
@@ -132,8 +133,8 @@ internal sealed class BridgeOperationRouter : IDisposable
         return new(identity, lookup.Status, lookup.Stream);
     }
 
-    internal ValueTask<BridgeOperationCloseResult> BeginCloseAsync(TimeSpan timeout) =>
-        _operations.BeginCloseAsync(timeout);
+    internal ValueTask<BridgeOperationCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        _operations.BeginCloseAsync(timeout, cancellationToken);
 
     internal BridgeOperationRegistry.BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation) =>
         _operations.TryBeginAwaited(callerCancellation);
@@ -286,7 +287,7 @@ internal sealed class BridgeOperationRouter : IDisposable
             writer.WriteStartObject();
             writer.WriteString("kind", "failed");
             writer.WriteString("message", status.Failure ?? "The operation failed.");
-            BridgeDiagnostics.Write(writer, status.FailureDetail);
+            BridgeFailureDetails.Write(writer, status.FailureDetail);
             writer.WriteEndObject();
         }
         if (status.Kind is BridgeOperationStatusKind.DomainFailed)

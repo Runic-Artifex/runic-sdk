@@ -197,13 +197,13 @@ internal sealed class NavigationPresentationTests
         NavigationPresentationBinding.Bind(window.Navigator, window.Host.Content);
 
         using (var otherTransport = new InMemoryViewTransport())
-        using (var other = new WindowContentSession(otherTransport, modelContext: window.Context))
+        using (var other = new WindowContentSession(otherTransport, new WindowContentSessionOptions { ModelContext = window.Context }))
             Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(window.Navigator, other)),
                 "A second window session bound the same navigator.");
         await using (var foreignContext = new RunicModelContext())
         {
             using var foreignTransport = new InMemoryViewTransport();
-            using var foreign = new WindowContentSession(foreignTransport, modelContext: foreignContext);
+            using var foreign = new WindowContentSession(foreignTransport, new WindowContentSessionOptions { ModelContext = foreignContext });
             Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(window.Navigator, foreign)),
                 "A session with a different model context bound the navigator.");
             // The test host checks this through the generated Bridge.
@@ -242,9 +242,9 @@ internal sealed class NavigationPresentationTests
         await closed.DisposeAsync();
         Require(closed.IsClosed, "A disposed navigator is not closed.");
         using (var firstTransport = new InMemoryViewTransport())
-        using (var first = new WindowContentSession(firstTransport, modelContext: context))
+        using (var first = new WindowContentSession(firstTransport, new WindowContentSessionOptions { ModelContext = context }))
         using (var secondTransport = new InMemoryViewTransport())
-        using (var second = new WindowContentSession(secondTransport, modelContext: context))
+        using (var second = new WindowContentSession(secondTransport, new WindowContentSessionOptions { ModelContext = context }))
         {
             NavigationPresentationBinding.Bind(closed, first);
             NavigationPresentationBinding.Bind(closed, second);
@@ -255,12 +255,12 @@ internal sealed class NavigationPresentationTests
         var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         Require(!navigator.IsClosed, "A new navigator is closed.");
         using var boundTransport = new InMemoryViewTransport();
-        using var bound = new WindowContentSession(boundTransport, modelContext: context);
+        using var bound = new WindowContentSession(boundTransport, new WindowContentSessionOptions { ModelContext = context });
         NavigationPresentationBinding.Bind(navigator, bound);
         Require(NavigationPresentationBinding.BoundSession(navigator) == bound && bound.DisposalLinkCount == 1,
             "The live navigator did not bind the session.");
         using var otherTransport = new InMemoryViewTransport();
-        using var other = new WindowContentSession(otherTransport, modelContext: context);
+        using var other = new WindowContentSession(otherTransport, new WindowContentSessionOptions { ModelContext = context });
         Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(navigator, other)),
             "A second live session bound a live navigator.");
         await navigator.DisposeAsync();
@@ -283,7 +283,7 @@ internal sealed class NavigationPresentationTests
 
         // The next session binds without a conflict.
         using var transport = new InMemoryViewTransport();
-        using var next = new WindowContentSession(transport, modelContext: context);
+        using var next = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
         NavigationPresentationBinding.Bind(navigator, next);
         GC.KeepAlive(navigator);
     }
@@ -295,7 +295,7 @@ internal sealed class NavigationPresentationTests
     {
         await using var context = new RunicModelContext();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, modelContext: context);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
         var navigator = BindAndDisposeNavigator(session, context);
         Collect(navigator);
         Require(!navigator.IsAlive, "A live window session kept a disposed navigator reachable.");
@@ -335,7 +335,7 @@ internal sealed class NavigationPresentationTests
     private static WeakReference BindAndDispose(RunicNavigator navigator, IRunicModelContext context)
     {
         var transport = new InMemoryViewTransport();
-        var session = new WindowContentSession(transport, modelContext: context);
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
         NavigationPresentationBinding.Bind(navigator, session);
         session.Dispose();
         transport.Dispose();
@@ -359,7 +359,7 @@ internal sealed class NavigationPresentationTests
             && window.Navigator.UnretiredEntryCount == 2,
             "A disconnect or remount changed the region's entries.");
 
-        RunicBridgeHotReload.UpdateApplication(null);
+        RunicViewsHotReload.UpdateApplication(null);
         Require(host.Root.Snapshot().Reference(vm => vm.Main) == reference && window.Shell.Main.CurrentEntry == entry,
             "RefreshAfterHotReload changed the presented entry.");
     }
@@ -371,7 +371,7 @@ internal sealed class NavigationPresentationTests
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         var shell = new NavShellViewModel(navigator, new NavHomeViewModel());
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: shell, modelContext: context);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = shell, ModelContext = context });
         var observersBefore = ChangeObserverCount(shell.Main);
         using (var bridge = new RuntimeShellBridge(transport, shell, session))
         {
@@ -381,7 +381,7 @@ internal sealed class NavigationPresentationTests
                 && publication.StateJson.Contains("\"title\":\"runtime\"", StringComparison.Ordinal)),
                 "A Bridge built from runtime descriptors did not publish when Current changed.");
             using var otherTransport = new InMemoryViewTransport();
-            using var other = new WindowContentSession(otherTransport, modelContext: context);
+            using var other = new WindowContentSession(otherTransport, new WindowContentSessionOptions { ModelContext = context });
             Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(navigator, other)),
                 "The runtime descriptor hook did not bind the window session.");
         }
@@ -482,9 +482,9 @@ internal sealed class NavigationPresentationTests
     private sealed class RuntimeShellBridge(IBridgeTransport transport, NavShellViewModel vm, WindowContentSession content)
         : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell", Write,
             [new PropertyDescriptor<NavShellViewModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
-            [], content: content)
+            [], [], content: content)
     {
-        private static void Write(Utf8JsonWriter writer, NavShellViewModel vm, long revision)
+        private static void Write(Utf8JsonWriter writer, NavShellViewModel vm, long revision, Action<Utf8JsonWriter> writeFieldMetadata)
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);

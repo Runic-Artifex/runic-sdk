@@ -18,7 +18,7 @@ using Runic.Application.Views.CsWebUi;
 
 var services = new ServiceCollection();
 services.AddScoped<MainViewModel>();
-services.AddRunicViews(); // generated in <ProjectName>.RunicBridgeComposition
+services.AddRunicViews(); // generated in <RootNamespace>.RunicViewsComposition
 using var provider = services.BuildServiceProvider();
 
 return RunicCsWebUiHost.Run(provider, async host =>
@@ -71,7 +71,7 @@ container without it is checked only when `OpenWindowAsync` resolves the Bridge.
 
 Both hosts share one lifetime contract, `IBridgeWindow` from
 `Runic.Application.Views`: `CloseAsync(timeout, cancellationToken)` returns a
-`BridgeWindowCloseResult`, and disposal is asynchronous only. Accepted
+`RunicWindowCloseResult`, and disposal is asynchronous only. Accepted
 operations can keep the Window's DI scope alive after the visible window
 closes, so dispose the Window with `await using` before the application returns.
 

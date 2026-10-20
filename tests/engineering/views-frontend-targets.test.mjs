@@ -673,3 +673,32 @@ test("the frontend install and build state live below BaseIntermediateOutputPath
   result = build(app, { properties });
   assert.deepEqual(result.commands, [], "The relocated stamps keep an unchanged frontend up to date.");
 });
+
+// ViewsCodegen-03: the default composition type follows RootNamespace, made a valid C# namespace, so a project
+// named 2048Game or with a custom RootNamespace needs no RunicApplicationFrontendCompositionType.
+function defaultComposition(name, rootNamespace, hostAdapter = true) {
+  const project = join(directory, `composition-${name.replace(/[^A-Za-z0-9]/g, "_")}`);
+  mkdirSync(project, { recursive: true });
+  const projectFile = join(project, `${name}.proj`);
+  writeFileSync(projectFile, `<Project>
+  <PropertyGroup>
+    ${hostAdapter ? "<_RunicApplicationHostAdapter>true</_RunicApplicationHostAdapter>" : ""}
+    ${rootNamespace === undefined ? "" : `<RootNamespace>${rootNamespace}</RootNamespace>`}
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const result = spawnSync("dotnet", ["msbuild", projectFile, "-getProperty:RunicApplicationFrontendCompositionType",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false"], { cwd: project, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return result.stdout.trim();
+}
+
+test("the default composition type is the sanitized RootNamespace's RunicViewsComposition", () => {
+  assert.equal(defaultComposition("Notes", "Contoso.Notes"), "Contoso.Notes.RunicViewsComposition");
+  assert.equal(defaultComposition("My-App", undefined), "My_App.RunicViewsComposition");
+  assert.equal(defaultComposition("2048Game", undefined), "_2048Game.RunicViewsComposition");
+  assert.equal(defaultComposition("Keywords", "Contoso.class.9lives.Classic"), "Contoso._class._9lives.Classic.RunicViewsComposition");
+  assert.equal(defaultComposition("Spaces", "My App (Beta)"), "My_App__Beta_.RunicViewsComposition");
+  assert.equal(defaultComposition("Library", "Contoso.Library", false), "", "A project without a host adapter gets no composition.");
+});

@@ -470,6 +470,17 @@ requirement, not a consumer one.
 ### Package tiers
 
 - **Stable:** every shipped package from 1.0.0, under the rules above.
+- **Generated-code support API:** the types that generated code calls, in the
+  `Runic.Application.Views.Generated` namespace and the `.Generated` namespaces of
+  the ReactiveUI adapters, all `[EditorBrowsable(Never)]`. A minor or patch
+  release keeps them binary compatible for code that an earlier release of the
+  same major generated (a model library compiled against 1.0 runs on 1.1), but
+  their source shape is not for hand-written code and may change. The same rule
+  covers the code that the `RUNICDBUS` source generator of
+  Runic.Platform.Linux.DBus emits and calls. The generated output itself (file
+  names, private members, formatting) is not a contract; the generated public API
+  (the composition class and its `AddRunicViews()`/`AddRunicBridges()`, and the
+  generated TypeScript client shape) is.
 - **Experimental APIs in stable packages:** an unfinished API is marked
   `[Experimental]` with one diagnostic ID per API family, listed with its status
   in [`docs/experimental.md`](../../docs/experimental.md). Every use is a compile

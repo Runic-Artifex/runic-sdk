@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
@@ -23,6 +24,12 @@ internal sealed class WindowViewHostTests
                 "The generated root snapshot did not include the initial count.");
             Require(initial.RootElement.GetProperty("protocol").GetInt32() == BridgeProtocol.Version,
                 "The snapshot route did not report its wire protocol version.");
+            // D02: the package version lets the browser runtime report an npm package of another release.
+            var version = initial.RootElement.GetProperty("version").GetString()!;
+            Require(version == typeof(BridgeProtocol).Assembly
+                    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0]
+                && !version.Contains('+', StringComparison.Ordinal),
+                $"The snapshot route reported version {version}.");
             var child = Reference(initial);
             Require(host.Mount(child, "first:child", "first", "connection-one") == "ok",
                 "The first View mount failed.");

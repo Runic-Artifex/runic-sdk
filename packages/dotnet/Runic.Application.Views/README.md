@@ -42,7 +42,13 @@ These words name one concept each across the Runic packages and frontends.
 - **Bridge**: the code generated per ViewModel, C# and a typed TypeScript
   client, that carries snapshots, property writes, commands and operations
   between the ViewModel and its View over the wire protocol. `Bridge*` types
-  and the `RUNICBRIDGE` diagnostics belong to this generated layer.
+  and the `RUNICBRIDGE` diagnostics belong to this generated layer, along with
+  the host-adapter contracts `IBridgeWindow`, `IBridgeTransport` and
+  `BridgeSnapshotBatch`. Types an application names are `Runic*`, such as
+  `RunicWindowCloseResult`, `RunicValidationMessage` and `RunicCodecAttribute`.
+  The types that generated code calls are in the
+  `Runic.Application.Views.Generated` namespace (see
+  [Generated-code support API](#generated-code-support-api)).
 - **Host**: the adapter that opens Windows on a platform: `RunicDesktopHost`
   (`Runic.Application.Views.Desktop`) and `RunicCsWebUiHost`
   (`Runic.Application.Views.CsWebUi`), both an `IRunicWindowHost`. In WPF,
@@ -150,8 +156,9 @@ changes. The ViewModel belongs to its application or window DI scope and may
 survive View changes. Window-local routes and operation admission are
 host-neutral; native window creation belongs to the host adapter.
 
-The generated composition class (`<ProjectName>.RunicBridgeComposition`,
-or `RunicApplicationFrontendCompositionType`) provides two registrations:
+The generated composition class, `<RootNamespace>.RunicViewsComposition` unless
+`RunicApplicationFrontendCompositionType` names another, provides two
+registrations:
 
 - `AddRunicViews()` registers the generated Bridges, every non-Window View as
   transient, and `ServiceProviderViewLocator` as the default
@@ -163,7 +170,21 @@ or `RunicApplicationFrontendCompositionType`) provides two registrations:
 ViewModels stay explicit registrations because their lifetime is an
 application decision; a Window's root ViewModel must be scoped. The
 registrations are generated code, so they need no reflection and are
-NativeAOT-safe.
+NativeAOT-safe. The class carries `[GeneratedCode]` and
+`[ExcludeFromCodeCoverage]`.
+
+The namespace is the project's `RootNamespace` made a valid C# namespace: a
+character other than a letter, digit, underscore or dot becomes `_`, and a
+segment that starts with a digit or is a C# keyword gets a `_` prefix, so a
+project named `2048Game` gets `_2048Game.RunicViewsComposition`. When a
+project imports two compositions, for example its own and a model library's,
+`services.AddRunicViews()` is ambiguous (CS0121); call each by its class
+instead:
+
+```csharp
+Contoso.Notes.RunicViewsComposition.AddRunicViews(services);
+Contoso.Notes.Model.RunicViewsComposition.AddRunicBridges(services);
+```
 
 The window binds its root ViewModel to the window's model context, and a Bridge
 attached directly to a `WindowContentSession` binds its ViewModel for the
@@ -233,7 +254,7 @@ CommunityToolkit.Mvvm ViewModels.
 - `WaitForCloseAsync(cancellationToken)` completes when the window closes or
   starts closing; the token stops only the wait. `CloseAsync(timeout,
   cancellationToken)` stops new operations, waits up to `timeout` for accepted
-  ones, and returns a `BridgeWindowCloseResult`; its token also stops only the
+  ones, and returns a `RunicWindowCloseResult`; its token also stops only the
   caller's wait. Disposal is asynchronous only.
 - `RequestCloseAsync(cancellationToken)` closes the window as its close button
   does and returns whether it closed; with `GuardClose` it asks `CanCloseAsync`
@@ -241,6 +262,33 @@ CommunityToolkit.Mvvm ViewModels.
 - `Host` returns the host adapter, an `IBridgeWindow`:
   `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Presentation` and
   `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `NativeWindow`).
+
+### View lifetime hooks
+
+A View can implement two optional interfaces. They are about the View, the
+presentation object, not the ViewModel, which outlives its Views.
+
+| Hook | Called when |
+| --- | --- |
+| `IRunicViewLifetime.OnAttached()` | the content session has created the View for a presentation and bound its `DataContext`, before the web component mounts |
+| `IRunicWebMountLifetime.OnWebMounted()` | the browser reports that the View's web component mounted |
+| `IRunicWebMountLifetime.OnWebUnmounted()` | the web component unmounted, or its presentation ended (a closed window, a released connection) |
+| `IRunicViewLifetime.OnDetached()` | the View stops being presented, after `OnWebUnmounted` |
+
+The order is always attach, web mount, then web unmount, detach; then the
+session disposes the View if it is `IDisposable` and releases it. Each web
+presentation gets its own View instance, so two windows showing one ViewModel
+call the hooks of two Views. A View whose presentation fails to mount is
+unmounted and detached for the hooks that already ran. The session calls the
+hooks one at a time per View, in the window's model turn, so a hook may read
+its ViewModel; it should not block or wait for another turn.
+
+The hooks correspond to ReactiveUI's view activation (`WhenActivated`), Avalonia's
+`AttachedToVisualTree`/`DetachedFromVisualTree` and MAUI's `Loaded`/`Unloaded`.
+`ReactiveRunicView<T>` (`Runic.Application.Views.ReactiveUI`) implements both
+interfaces: it activates an `IActivatableViewModel` on web mount and deactivates
+it on web unmount and detach, and offers `protected virtual` hooks of the same
+names to override without calling `base`.
 
 ### Opening a Window from a ViewModel
 
@@ -874,10 +922,19 @@ export type DocumentPane = "Editor" | "Preview";
   `[RelayCommand]` method. Other commands name it after the argument's C# type,
   or `input` for scalars.
 
+<a id="generated-code-support-api"></a>
 The generated C# bridge calls public runtime types such as `ViewModelBridge<T>`,
 `PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire`, `BridgeJson` and
-`ReactiveCommandExecution`. They are marked `[EditorBrowsable(Never)]`, so they
-stay out of completion lists; they are not application API.
+`ReactiveCommandExecution`. They are in the `Runic.Application.Views.Generated`
+namespace (`Runic.Application.Views.ReactiveUI.Generated` and
+`Runic.Application.Views.ReactiveUI.Reactive.Generated` for the ReactiveUI
+helpers) and marked `[EditorBrowsable(Never)]`, so they stay out of completion
+lists and application namespaces. They are not application API: the release
+policy keeps them binary compatible within a major release for code that an
+earlier minor release generated, but their source shape may change for
+hand-written code. Generated files name them with `global::`, so regenerating
+is the only migration; hand-written code that names them, such as a test Bridge,
+adds `using Runic.Application.Views.Generated;`.
 
 ### Wire types
 
@@ -899,14 +956,14 @@ so a malformed reply never reaches application state.
 | `DateOnly` | `string` | `"2026-10-03"` |
 | `TimeOnly` | `string` | `"08:15:00.0000000"`; `"08:15:00"` is accepted. |
 | `TimeSpan` | `string` | .NET's invariant `c` format, `[-][d.]hh:mm:ss[.fffffff]`, such as `"1.02:03:04"`. |
-| An enum | A union of its wire names, such as `"Editor" \| "Preview"` | The C# name, or its `[RunicAlias]`. A `[Flags]` enum needs a `[RunicBridgeCodec]`. |
+| An enum | A union of its wire names, such as `"Editor" \| "Preview"` | The C# name, or its `[RunicAlias]`. A `[Flags]` enum needs a `[RunicCodec]`. |
 | `T?`, for a value or a reference type | `T \| null` | `null`. In a value that reaches the page the member is always present; see [Optional members](#optional-members) for values the page sends. |
 | `T` with nullable reference types enabled | `T` | Never `null`. Without annotations (`#nullable disable`), a reference type is `T` too. |
 | `T[]`, `List<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`, `IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `ImmutableArray<T>`, `ImmutableList<T>`, `ObservableCollection<T>`, `ReadOnlyObservableCollection<T>`, `ReadOnlyCollection<T>` | `readonly T[]` | An array. `string?[]` is `readonly (string \| null)[]`. Multi-dimensional arrays and other collections fail the build. |
 | `Dictionary<string, T>`, `IDictionary<string, T>`, `IReadOnlyDictionary<string, T>` | `Readonly<Record<string, T>>` | An object. Other key types fail the build. |
 | A record, class or struct (DTO) | An `interface` with `readonly` members | A member's name starts with a lower-case letter (`MeasuredAt` is `measuredAt`), unless `[RunicAlias]` or `[JsonPropertyName]` names it. |
 | A `[RunicUnion]` | A union discriminated by `$case` | |
-| A type with `[RunicBridgeCodec]` | The codec's TypeScript type | Whatever the codec writes. |
+| A type with `[RunicCodec]` | The codec's TypeScript type | Whatever the codec writes. |
 | `JsonElement`, `JsonElement?`, `JsonNode?` | `unknown` | Any JSON value, as it is. A `JsonElement` holds JSON `null` as a value; a default `JsonElement`, which holds none, is written as `null`. `JsonNode?` and `JsonElement?` are C# `null` for JSON `null`. |
 | `JsonNode` | `NonNullable<unknown>` | Any JSON value except `null`, which a `JsonNode` cannot hold. `JsonObject`, `JsonArray`, `JsonValue` and `JsonDocument` fail the build: declare a `JsonNode`, or a DTO for a known shape. |
 
@@ -1033,12 +1090,21 @@ an extension point.
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
 | `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
-| `RunicApplicationFrontendCompositionType` | `<project name>.RunicBridgeComposition` (host adapters) | Generated composition class. |
+| `RunicApplicationFrontendCompositionType` | `<RootNamespace>.RunicViewsComposition` (host adapters), with the namespace made a valid C# name | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
-| `RunicApplicationFrontendReactiveUiFlavor` | none | `primitives` or `reactive` for ReactiveUI projects. |
+| `RunicApplicationFrontendReactiveUiFlavor` | `reactive` with `Runic.Application.Views.ReactiveUI.Reactive`, otherwise inferred | `primitives` or `reactive`: which ReactiveUI flavor's command helpers the generated code calls. `Runic.Application.Views.ReactiveUI.Reactive` sets it; set it yourself only for a model assembly that references ReactiveUI but neither adapter package (see the [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md)). |
 | `RunicApplicationFrontendGenerationEnabled` | see below | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
+| `RunicApplicationFrontendBootstrap` | set by the targets (read-only) | `true` only in the bootstrap pass (see below). A project reads it, for example to leave a reference out of that pass; it does not set it. |
+
+These are not settings and not part of the compatibility promise: the generator's
+command line (`--generate`, `--composition-stub`, `--reactiveui-flavor`,
+`--path-map`, `--framework` and the others), the names of the generated files
+below `obj/<configuration>/<framework>/runic-bridge/`, and the stamp, state and
+cache files of the build (`runic-bridge-frontend*.stamp`, `.state`, `.outputs`,
+`RunicBridge.NoViews.marker`). Only the properties, items and targets this
+section names are a contract.
 
 `dotnet build` and `dotnet publish` copy the built frontend as loose files to
 `www/` (the web root) next to the executable; they do not embed it. `Runic.Assets` is the
@@ -1514,7 +1580,7 @@ names, list indexes, or dictionary keys and a `message`. Root entity errors use
 an empty path. Aliases are preserved, so a postal-code error might have the path
 `["profile", "postal-code"]`.
 
-Return a `BridgeValidationMessage` from `GetErrors` to supply a stable `Code`,
+Return a `RunicValidationMessage` from `GetErrors` to supply a stable `Code`,
 `Severity`, or relative CLR `MemberPaths`. Ordinary strings and
 `ValidationResult` remain supported. Generated metadata resolves paths without
 runtime reflection. Traversal and messages are bounded; `truncated` reports when
@@ -1532,17 +1598,12 @@ computed properties. A DTO the page sends needs a public constructor matching it
 included properties, or public setters with a public parameterless constructor;
 one that only reaches the page needs neither ([Optional members](#optional-members)).
 Use `[RunicIgnore]` to leave a property on .NET without exposing it to the Bridge.
-By default, `[JsonIgnore]` affects System.Text.Json serialization only; it does
-not exclude a Bridge property.
-
-For shared DTOs that already use System.Text.Json attributes, opt in from the
-assembly **declaring the ViewModel**:
-
-```csharp
-using Runic.Application.Views;
-
-[assembly: RunicBridgeJsonIgnore]
-```
+System.Text.Json's unconditional ignores apply too: a DTO property with
+`[JsonIgnore]`, `[JsonIgnore(Condition = JsonIgnoreCondition.Always)]` or
+`[JsonExtensionData]` is not part of the contract, as it is not part of the JSON,
+throughout the ViewModel's DTO graphs, including nested DTOs, collections,
+command values, interactions and declared failures. Generated codecs, TypeScript,
+validation traversal and the Hot Reload fingerprint use the same exclusions.
 
 For example, a separate Core assembly can keep its DTO free of Runic dependencies:
 
@@ -1556,10 +1617,15 @@ public sealed record HistoryQuery(string Message, string Author)
 }
 ```
 
-The opt-in excludes `[JsonIgnore]`, `[JsonIgnore(Condition = JsonIgnoreCondition.Always)]`
-and `[JsonExtensionData]` throughout that ViewModel's DTO graphs, including nested DTOs, collections,
-command values, interactions and declared failures. Generated codecs, TypeScript,
-validation traversal and the Hot Reload fingerprint use the same exclusions.
+To keep such properties in the contract, opt out from the assembly **declaring
+the ViewModel**:
+
+```csharp
+using Runic.Application.Views;
+
+[assembly: RunicIncludeJsonIgnored]
+```
+
 The Core assembly and the assembly declaring only a Window need no marker.
 Each ViewModel uses its own declaring assembly's policy.
 
@@ -1580,9 +1646,9 @@ public sealed record SavedRequest(string Kind)
 fields have a fixed contract and are emitted even when null or default.
 `[RunicIgnore]` always excludes a property, including one also marked
 `[JsonIgnore(Condition = JsonIgnoreCondition.Never)]`. Root ViewModel properties
-still use `[RunicIgnore]`; this opt-in applies to DTO properties only.
-Adding the marker can change an existing DTO wire contract and requires rebuilding
-the .NET application and generated frontend together.
+still use `[RunicIgnore]`; System.Text.Json's ignores apply to DTO properties only.
+Adding or removing the opt-out changes the DTO wire contract and requires
+rebuilding the .NET application and generated frontend together.
 
 ## Failure detail in development
 
@@ -1593,8 +1659,14 @@ development the error also carries `detail: {type, message, stack}`, which the
 TypeScript runtime exposes as `BridgeError.detail` and the Vite plugin shows in
 DevTools. Development means `DOTNET_ENVIRONMENT` (or else
 `ASPNETCORE_ENVIRONMENT`) is `Development`, which `dotnet runic dev` sets.
-Set `BridgeDiagnostics.IncludeFailureDetail` to `true` or `false` to choose
-explicitly. Detail can contain file paths and application data, so do not
+
+Each window decides for itself, when it opens: set
+`RunicWindowOptions.IncludeFailureDetail` (or
+`WindowContentSessionOptions.IncludeFailureDetail` for a session you create, and
+`RunicWindowTestHostOptions.IncludeFailureDetail` in tests) to `true` or `false`
+to choose explicitly; `null`, the default, follows the environment. Two windows
+in one process can differ. A Bridge attached without a window session follows
+the environment. Detail can contain file paths and application data, so do not
 enable it for a distributed build.
 
 ## Declared failures
@@ -1714,7 +1786,7 @@ its formatted message followed by the exception; a failed View mount goes to
 standard error instead.
 
 Every entry carries the exception, in every environment: logs belong to the
-operator, whereas `BridgeDiagnostics` governs only what a Bridge reply shows
+operator, whereas `IncludeFailureDetail` governs only what a Bridge reply shows
 to web content. Exception messages can contain application data, so treat log
 output accordingly. The message properties are listed per event.
 
@@ -1756,7 +1828,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1090 | `ReactiveSchedulerKept` | Information | A Runic Desktop, CS-WebUI or test-host window opens while ReactiveUI's main-thread scheduler is one set before `AddRunicReactiveModelContext()`, so Runic's was not installed. Once per scheduler type; a UI dispatcher's scheduler, such as WPF's, is not logged. | `Scheduler` |
 | 1091 | `ReactiveSchedulerReplaced` | Warning | Such a window opens after another scheduler replaced the installed one, for example a later `RxAppBuilder` `BuildApp()` with `WithPlatformServices()`. Call `WithRunicModelContext()` on that builder. Once per scheduler type; a UI dispatcher's scheduler is not logged. | `Scheduler` |
 | 1100 | `HotReloadRestartRequired` | Error | A Hot Reload edit changed a generated Bridge contract; restart the application. The `RUNIC_IDE_CONTRACT_RESTART_REQUIRED` line also goes to standard error. | `Mismatch` |
-| 1101 | `HotReloadRestartNotificationFailed` | Warning | A `RunicBridgeHotReload.RestartRequired` handler throws. | `ErrorType` |
+| 1101 | `HotReloadRestartNotificationFailed` | Warning | A `RunicViewsHotReload.RestartRequired` handler throws. | `ErrorType` |
 | 1102 | `HotReloadRefreshFailed` | Warning | Refreshing a Bridge after a Hot Reload update throws. | `Model`, `ErrorType` |
 | 1110 | `ViewHostFallbackShown` | Warning | A WPF `RunicViewHost` cannot open its web presentation and shows its `Fallback`. | `ErrorType` |
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
@@ -2027,7 +2099,7 @@ platform lost.
 Cancellation requests that a command stop; its invocation can finish before
 the underlying task completes. In particular, ReactiveUI bridge execution
 can settle a cancelled invocation and release its subscription while an
-uncooperative task continues recovery. `WindowContentSession.BeginCloseAsync`
+uncooperative task continues recovery. `WindowContentSession.DrainAsync`
 and its result's `Completion` drain bridge invocations. Their completion does
 not establish that independently accepted application work, durable changes,
 or recovery has finished.

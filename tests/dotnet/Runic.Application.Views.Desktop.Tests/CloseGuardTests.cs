@@ -543,8 +543,8 @@ sealed class GuardedShellModel : INotifyPropertyChanged
 // current page as content and names its reference, so the page is served by routes of its own.
 sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm, WindowContentSession content)
     : ViewModelBridge<GuardedShellModel>(transport, vm, "guardedShell",
-        (writer, model, revision) => Write(content, writer, model, revision),
-        [new PropertyDescriptor<GuardedShellModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
+        (writer, model, revision, _) => Write(content, writer, model, revision),
+        [new PropertyDescriptor<GuardedShellModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)], [],
         [], content: content)
 {
     private static void Write(WindowContentSession content, Utf8JsonWriter writer, GuardedShellModel vm, long revision)

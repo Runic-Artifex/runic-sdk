@@ -70,8 +70,8 @@ The navigation adapter (`WhenCurrentChanged`, `WhenCurrentEntryChanged` and
 `Runic.Navigation.ReactiveUI.Reactive` package, with `System.Reactive.Unit` as
 the back command's input. This package no longer references it; add it to
 navigate.
-`BatchBridgeSnapshots(model)` and `ObserveBridgeExceptions` are also available in
-this adapter's namespace; this flavor's commands implement the same
+`ObserveBridgeExceptions` is also available in this adapter's namespace, and
+`BatchBridgeSnapshots(model)` in `Runic.Application.Views`; this flavor's commands implement the same
 `IHandleObservableErrors`, and a generated Bridge logs their unexpected
 exceptions in the same way. See
 [Declared failures and ThrownExceptions](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#declared-failures-and-thrownexceptions).

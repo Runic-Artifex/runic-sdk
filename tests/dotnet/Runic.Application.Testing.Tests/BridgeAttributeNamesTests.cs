@@ -30,7 +30,7 @@ internal sealed class BridgeAttributeNamesTests
         using System.Text.Json.Serialization;
         using System.Windows;
 
-        [assembly: Runic.Application.Views.RunicBridgeJsonIgnore]
+        [assembly: Runic.Application.Views.RunicIncludeJsonIgnored]
         [assembly: Localizability]
 
         namespace Fixture;
@@ -72,7 +72,7 @@ internal sealed class BridgeAttributeNamesTests
             Require(Throws(() => assembly.CustomAttributes.ToList()) && Throws(() => Property("WhenNull").CustomAttributes.ToList()),
                 "The stand-in WPF attributes resolved; the metadata fallback is not exercised.");
 
-            Require(BridgeDtoContract.HonorsJsonIgnore(assembly), "The assembly opt-in was not found beside a WPF attribute.");
+            Require(!BridgeDtoContract.HonorsJsonIgnore(assembly), "The assembly opt-out was not found beside a WPF attribute.");
             foreach (var name in new[] { "Implicit", "Always", "ReflectedImplicit" })
                 Require(BridgeDtoContract.IsIgnored(Property(name), honorJsonIgnore: true), $"{name}: an unconditional [JsonIgnore] was not honored.");
             foreach (var name in new[] { "Extension", "ReflectedExtension" })
@@ -104,7 +104,7 @@ internal sealed class BridgeAttributeNamesTests
         try
         {
             const string Loaded = """
-                [assembly: Runic.Application.Views.RunicBridgeJsonIgnore]
+                [assembly: Runic.Application.Views.RunicIncludeJsonIgnored]
                 namespace Fixture;
                 public sealed class ItemViewModel { [Runic.Application.Views.RunicIgnore] public string Title { get; set; } = ""; }
                 """;
@@ -123,7 +123,7 @@ internal sealed class BridgeAttributeNamesTests
 
             var title = assembly.GetType("Fixture.ItemViewModel", throwOnError: true)!.GetProperty("Title")!;
             Require(BridgeDtoContract.IsRunicIgnored(title), "[RunicIgnore] of the loaded module was read from the file instead.");
-            Require(BridgeDtoContract.HonorsJsonIgnore(assembly), "The loaded assembly's opt-in was read from the file instead.");
+            Require(!BridgeDtoContract.HonorsJsonIgnore(assembly), "The loaded assembly's opt-out was read from the file instead.");
         }
         finally
         {

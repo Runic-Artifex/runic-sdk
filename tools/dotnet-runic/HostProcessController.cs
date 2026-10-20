@@ -222,7 +222,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             [AngularDevelopmentServer.KindEnvironmentVariable] = null,
         };
         // The app runs as a development host, so Bridge failures carry local
-        // detail (BridgeDiagnostics). An environment the developer chose wins.
+        // detail (IncludeFailureDetail). An environment the developer chose wins.
         if (string.IsNullOrEmpty(readEnvironment("DOTNET_ENVIRONMENT")) &&
             string.IsNullOrEmpty(readEnvironment("ASPNETCORE_ENVIRONMENT")))
         {

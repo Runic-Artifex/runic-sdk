@@ -43,6 +43,7 @@ internal sealed partial class CodegenDiagnosticsTests
         try
         {
             await RunDtoJsonIgnoreAsync(generator, temporaryRoot).ConfigureAwait(false);
+            await RunCompositionAndConfigurationDiagnosticsAsync(generator, temporaryRoot).ConfigureAwait(false);
             async Task Reject(string name, string members, params string[] expected)
             {
                 var output = await GenerateAsync(generator, temporaryRoot, name, Preamble + members).ConfigureAwait(false);
@@ -227,7 +228,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class OverrideFailureWindow : RunicWindow<OverrideFailureViewModel>;
                 """).ConfigureAwait(false);
             Require(Directory.GetFiles(overridden, "*OverrideFailureViewModel.Bridge.g.cs").Select(File.ReadAllText)
-                    .Any(text => text.Contains("EncodeFailure: failure => failure is global::System.String declared", StringComparison.Ordinal)),
+                    .Any(text => text.Contains("EncodeFailure = failure => failure is global::System.String declared", StringComparison.Ordinal)),
                 "An override of a declared abstract command lost its failure codec.");
             // A failure type the Bridge cannot encode is RUNICBRIDGE003 at {Model}.{Command}.failure.
             await RejectAt("FailurePayload", """
@@ -384,7 +385,7 @@ internal sealed partial class CodegenDiagnosticsTests
             await RejectAt("ToolkitResult", """
                 public sealed class ResultViewModel : FixtureModel
                 {
-                    [RunicCommandResult(BridgeCommandResultCardinality.Last)]
+                    [RunicCommandResult(RunicCommandResultCardinality.Last)]
                     public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                 }
                 public sealed partial class ResultWindow : RunicWindow<ResultViewModel>;
@@ -402,7 +403,7 @@ internal sealed partial class CodegenDiagnosticsTests
                     """).Emit(image);
                 Require(emitted.Success, $"{name}: the fingerprint fixture did not compile.");
                 var model = System.Reflection.Assembly.Load(image.ToArray()).GetType("Fixture.EchoViewModel")!;
-                return Runic.Application.Views.BridgeContractShape.Compute(model);
+                return Runic.Application.Views.Generated.BridgeContractShape.Compute(model);
             }
             Require(Fingerprint("FingerprintPlain", "ReactiveUI.ReactiveCommand<string, string>")
                 != Fingerprint("FingerprintNullable", "ReactiveUI.ReactiveCommand<string?, string>"),

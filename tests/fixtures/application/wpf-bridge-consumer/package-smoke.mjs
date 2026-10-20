@@ -133,7 +133,7 @@ try {
   assert.ok(!existsSync(join(directory, "Renamed/Client")), "The old frontend directory name is not used.");
 
   // 6. A 0.7.0-preview.6 split app upgraded as is: the model generates its composition
-  //    under the application's default name, SplitApp.RunicBridgeComposition. The
+  //    under the application's default name, SplitApp.RunicViewsComposition. The
   //    adapter turns generation on in the application too, whose bootstrap pass then
   //    uses the model's type instead of a stub beside it (CS0121 before W250-049).
   cpSync(join(directory, "Split"), join(directory, "Upgraded"), { recursive: true, filter: source => !/[\\/](bin|obj|dist|generated)$/.test(source) });
@@ -142,7 +142,7 @@ try {
     assert.ok(source.includes(from), `${path} no longer contains ${from}.`);
     writeFileSync(join(directory, path), source.replace(from, to));
   };
-  replaceIn("Upgraded/Model/SplitModel.csproj", "SplitModel.RunicBridgeComposition", "SplitApp.RunicBridgeComposition");
+  replaceIn("Upgraded/Model/SplitModel.csproj", "SplitModel.RunicViewsComposition", "SplitApp.RunicViewsComposition");
   const upgraded = build("Upgraded/App/SplitApp.csproj");
   assert.equal(summary(upgraded, "Warning"), 0, "The upgraded split layout reported warnings.");
   assert.equal(count(upgraded, /CS0121/), 0, "AddRunicViews() was ambiguous.");
@@ -170,7 +170,7 @@ public sealed partial class StatusWebView : RunicView<StatusViewModel>;
     "<OutputType>WinExe</OutputType><RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>");
   const clash = build("Upgraded/App/SplitApp.csproj", { fail: true });
   assert.equal(summary(clash, "Error"), 1, "Expected exactly one error.");
-  assert.ok(count(clash, /error RUNICBRIDGE018:.*SplitApp\.RunicBridgeComposition.*SplitModel.*RunicApplicationFrontendCompositionType/) > 0, "Expected RUNICBRIDGE018.");
+  assert.ok(count(clash, /error RUNICBRIDGE018:.*SplitApp\.RunicViewsComposition.*SplitModel.*RunicApplicationFrontendCompositionType/) > 0, "Expected RUNICBRIDGE018.");
   console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off|renamed-properties|upgraded-split|composition-clash");
 } finally {
   if (keep) console.log(`Kept ${directory}`);

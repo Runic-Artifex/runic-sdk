@@ -7,7 +7,7 @@ await using var context = new RunicModelContext();
 var model = new AotProofViewModel(context);
 using var modelLease = RunicModelContextRegistry.Shared.Bind(context, model);
 var transport = new AotTransport();
-using var content = new WindowContentSession(transport, rootModel: model);
+using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
 using var bridge = new AotProofBridge(transport, model, content: content);
 using var snapshot = JsonDocument.Parse(transport.Call("aotProofSnapshot"));
 var state = snapshot.RootElement.GetProperty("state");

@@ -1,1 +1,5 @@
 #nullable enable
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicWindowCloseResult!>
+Runic.Application.Testing.RunicWindowTestHostOptions.IncludeFailureDetail.get -> bool?
+Runic.Application.Testing.RunicWindowTestHostOptions.IncludeFailureDetail.init -> void

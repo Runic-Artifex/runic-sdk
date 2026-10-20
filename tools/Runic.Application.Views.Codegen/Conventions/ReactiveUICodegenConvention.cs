@@ -41,8 +41,8 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         ReactiveInteractionInspector.InspectContract(property) is { } contract ? new Interaction(contract) : null;
 
     private static string Helper(ReactiveUiFlavor flavor) => flavor is ReactiveUiFlavor.SystemReactive
-        ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
-        : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
+        ? "global::Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution"
+        : "global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution";
 
     private static string Void(Type input) => input.FullName == "System.Reactive.Unit"
         ? "default(global::System.Reactive.Unit)"
@@ -57,7 +57,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         internal override bool HasStringArgument => contract.HasInput && contract.Input == typeof(string);
         internal override bool HasExecutionState => true;
         internal override bool SelectsResultCardinality => true;
-        internal override BridgeCommandResultCardinality Cardinality => contract.Cardinality;
+        internal override RunicCommandResultCardinality Cardinality => contract.Cardinality;
 
         private string CommandType(GeneratedCommandPlan plan) =>
             $"global::ReactiveUI.IReactiveCommand<{plan.InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
@@ -72,20 +72,20 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
                 ? $", ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}"
                 : "";
             var canonical = contract.HasInput
-                ? $", EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({inputType})argument!))"
+                ? $", EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({inputType})argument!))"
                 : "";
             var canExecute = $", CanExecute: (vm, argument) => {helper}.CanExecute({typed}, {input})";
             var subscribe = $", Subscribe: (vm, changed) => {helper}.Observe({typed}, changed)";
-            if (contract.HasResult && contract.Cardinality is BridgeCommandResultCardinality.Stream)
+            if (contract.HasResult && contract.Cardinality is RunicCommandResultCardinality.Stream)
             {
-                var streamExecute = $"async (vm, execution, token, argument) => await {helper}.ExecuteStream({typed}, {input}, execution.Stream!, result => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)), token).ConfigureAwait(false)";
-                return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, CreateStream: () => new global::Runic.Application.Views.BridgeOperationStream(), ExecuteStreamAsync: {streamExecute}{read}{canonical}{canExecute}{subscribe})";
+                var streamExecute = $"async (vm, execution, token, argument) => await {helper}.ExecuteStream({typed}, {input}, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)), token).ConfigureAwait(false)";
+                return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, CreateStream: () => new global::Runic.Application.Views.Generated.BridgeOperationStream(), ExecuteStreamAsync: {streamExecute}{read}{canonical}{canExecute}{subscribe})";
             }
-            var executionMethod = contract.Cardinality is BridgeCommandResultCardinality.Last ? "ExecuteLast" : "Execute";
+            var executionMethod = contract.Cardinality is RunicCommandResultCardinality.Last ? "ExecuteLast" : "Execute";
             var execute = contract.HasResult
-                ? $"async (vm, token, argument) => {{ var result = await {helper}.{executionMethod}({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result))); }}"
-                : $"async (vm, token, argument) => {{ await {helper}.ExecuteCompletion({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }}";
-            return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, ExecuteResultAsync: {execute}{read}{canonical}{canExecute}{subscribe})";
+                ? $"async (vm, token, argument) => {{ var result = await {helper}.{executionMethod}({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result))); }}"
+                : $"async (vm, token, argument) => {{ await {helper}.ExecuteCompletion({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }}";
+            return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, ExecuteResultAsync: {execute}{read}{canonical}{canExecute}{subscribe})";
         }
 
         // While a Bridge presents the ViewModel, it logs the command's ThrownExceptions that no Bridge call
@@ -113,9 +113,9 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             string inputCodec, string outputCodec)
         {
             var adapterNamespace = contract.Flavor is ReactiveUiFlavor.SystemReactive
-                ? "global::Runic.Application.Views.ReactiveUI.Reactive"
-                : "global::Runic.Application.Views.ReactiveUI";
-            return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{modelType}, {plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", vm => vm.{plan.Property.Name}, input => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
+                ? "global::Runic.Application.Views.ReactiveUI.Reactive.Generated"
+                : "global::Runic.Application.Views.ReactiveUI.Generated";
+            return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{modelType}, {plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", vm => vm.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
         }
     }
 }

@@ -32,7 +32,7 @@ public static class ReactiveCommandInspector
         if (ReactiveCommandContract.IsVoid(arguments[1]) && cardinality != 0)
             throw new NotSupportedException($"{command.Name}: RxVoid commands cannot select a result cardinality.");
         return new(command.Name[..^"Command".Length], arguments[0], arguments[1], flavor,
-            (BridgeCommandResultCardinality)cardinality);
+            (RunicCommandResultCardinality)cardinality);
     }
 
     /// <summary>
@@ -47,12 +47,12 @@ public static class ReactiveCommandInspector
             || (contract.Input != typeof(RxVoid) && contract.Input != typeof(string))) return null;
         var hasStringArgument = contract.Input == typeof(string);
         var execution = hasStringArgument
-            ? $"global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<string, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, (string)argument!, token)"
-            : $"global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, global::ReactiveUI.Primitives.RxVoid.Default, token)";
+            ? $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<string, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, (string)argument!, token)"
+            : $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, global::ReactiveUI.Primitives.RxVoid.Default, token)";
         var readArgument = hasStringArgument
-            ? ", ReadArgument: e => global::Runic.Application.Views.BridgeJson.ReadRequiredString(e.GetString())"
+            ? ", ReadArgument: e => global::Runic.Application.Views.Generated.BridgeJson.ReadRequiredString(e.GetString())"
             : "";
-        var descriptor = $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (global::System.Windows.Input.ICommand)(object)vm.{command.Name}, "
+        var descriptor = $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (global::System.Windows.Input.ICommand)(object)vm.{command.Name}, "
             + $"async (vm, token, argument) => {{ await {execution}.ConfigureAwait(false); }}{readArgument})";
         return (hasStringArgument, true, descriptor);
     }
@@ -69,7 +69,7 @@ public static class ReactiveCommandInspector
 
 /// <summary>Typed command shape shared by source generation and diagnostics.</summary>
 public sealed record ReactiveCommandContract(string Name, Type Input, Type Result, ReactiveUiFlavor Flavor,
-    BridgeCommandResultCardinality Cardinality)
+    RunicCommandResultCardinality Cardinality)
 {
     public bool HasInput => !IsVoid(Input);
     public bool HasResult => !IsVoid(Result);

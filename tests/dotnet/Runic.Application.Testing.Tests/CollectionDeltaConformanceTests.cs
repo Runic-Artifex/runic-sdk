@@ -31,19 +31,6 @@ internal sealed class CollectionDeltaConformanceTests
         }
     }
 
-    // Failure notices and replies carry no development detail, so frames are byte-identical.
-    private bool? detail;
-
-    [Before(HookType.Test)]
-    public void DisableFailureDetail()
-    {
-        detail = BridgeDiagnostics.IncludeFailureDetail;
-        BridgeDiagnostics.IncludeFailureDetail = false;
-    }
-
-    [After(HookType.Test)]
-    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = detail;
-
     [Test]
     [MethodDataSource(nameof(Cases))]
     [DisplayName("$name")]
@@ -54,6 +41,7 @@ internal sealed class CollectionDeltaConformanceTests
         foreach (var row in initial["rows"]!.AsArray()) model.Items.Add(Row(row!));
         var held = testCase["delivery"]?.GetValue<string>() == "held";
         using var transport = new FixtureTransport(held);
+        // Failure notices and replies carry no development detail, so frames are byte-identical.
         using var bridge = new CollectionDeltaBridge(transport, model, Route);
         var error = testCase["error"]?.GetValue<string>();
         if (error is not null && testCase["steps"]!.AsArray().Count == 0)

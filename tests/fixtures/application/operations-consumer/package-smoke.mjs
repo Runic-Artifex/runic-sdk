@@ -51,7 +51,7 @@ function run(command, commandArgs, cwd = directory, allowFailure = false) {
 
 try {
   await Promise.all(candidateEntries.map(entry => rm(entry, { recursive: true, force: true })));
-  for (const file of ["OperationsConsumer.csproj", "OperationsWindow.cs", "OperationsViewModel.cs", "OptIn.cs", "Program.cs"])
+  for (const file of ["OperationsConsumer.csproj", "OperationsWindow.cs", "OperationsViewModel.cs", "OptOut.cs", "Program.cs"])
     await cp(join(fixture, file), join(directory, file));
   for (const folder of ["SharedContracts", "Frontend"])
     await cp(join(fixture, folder), join(directory, folder), { recursive: true,
@@ -70,12 +70,11 @@ try {
   const contractsAssets = JSON.parse(await readFile(join(directory, "SharedContracts/obj/project.assets.json"), "utf8"));
   assert.equal(Object.keys(contractsAssets.libraries).some(name => name.startsWith("Runic.")), false,
     "The shared DTO library acquired a Runic dependency.");
-  // Opt-in is a deliberate compatibility boundary. Default generation retains
-  // the existing diagnostic for a DTO the page sends instead of silently
-  // changing shared contracts.
+  // [assembly: RunicIncludeJsonIgnored] keeps [JsonIgnore] properties in the
+  // contract, so the computed DTO property the page sends is rejected again.
   const baseline = await run("dotnet", ["build", "OperationsConsumer.csproj", "-c", "Release", ...properties,
-    "-p:EnableJsonIgnoreOptIn=false", "-p:RunicApplicationFrontendBuildEnabled=false"], directory, true);
-  assert.notEqual(baseline.code, 0, "Generation unexpectedly accepted the computed DTO without opt-in.");
+    "-p:EnableJsonIgnoreOptOut=true", "-p:RunicApplicationFrontendBuildEnabled=false"], directory, true);
+  assert.notEqual(baseline.code, 0, "Generation unexpectedly accepted the computed DTO under the opt-out.");
   assert.match(baseline.output, /RUNICBRIDGE003/);
   await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], frontend);
   for (const name of ["views", "svelte"]) {

@@ -5,6 +5,8 @@ using System.Reactive.Disposables;
 using ReactiveUI.Reactive;
 using Runic.Navigation;
 
+using Runic.Application.Views.ReactiveUI.Reactive.Generated;
+
 namespace Runic.Application.Views.ReactiveUI.Reactive;
 
 /// <summary>

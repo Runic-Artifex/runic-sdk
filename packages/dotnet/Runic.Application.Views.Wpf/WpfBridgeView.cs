@@ -20,7 +20,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     private readonly IDisposable _attachment;
     private readonly ILogger _logger;
     private DesktopWindow? _presentation;
-    private Task<BridgeWindowCloseResult>? _close;
+    private Task<RunicWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _opening;
     // Drops reach the ViewModel one after another; closing cancels them.
@@ -105,10 +105,10 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     }
 
     /// <inheritdoc />
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(timeout));
-        TaskCompletionSource<BridgeWindowCloseResult> close;
+        TaskCompletionSource<RunicWindowCloseResult> close;
         lock (_gate)
         {
             if (_close is not null) return new(_close.WaitAsync(cancellationToken));
@@ -128,7 +128,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     public ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default) =>
         new(_closeStarted.Task.WaitAsync(cancellationToken));
 
-    private async Task RunCloseAsync(TaskCompletionSource<BridgeWindowCloseResult> close, TimeSpan timeout)
+    private async Task RunCloseAsync(TaskCompletionSource<RunicWindowCloseResult> close, TimeSpan timeout)
     {
         try { close.TrySetResult(await BeginCloseAsync(timeout).ConfigureAwait(false)); }
         catch (Exception error) { close.TrySetException(error); }
@@ -141,14 +141,14 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
+    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         List<Exception> errors = [];
         Surface.PresentationClosed -= OnPresentationClosed;
         Capture(_connections.Dispose);
         Capture(_attachment.Dispose);
-        BridgeWindowCloseResult result;
-        try { result = await _content.BeginCloseAsync(timeout).ConfigureAwait(false); }
+        RunicWindowCloseResult result;
+        try { result = await _content.DrainAsync(timeout).ConfigureAwait(false); }
         catch (Exception error)
         {
             errors.Add(error);

@@ -48,14 +48,51 @@ public abstract class ReactiveRunicView<TViewModel> : RunicView<TViewModel>,
             ?? throw new ArgumentException($"Expected {typeof(TViewModel).FullName}.", nameof(value));
     }
 
-    /// <inheritdoc />
-    public virtual void OnAttached() { }
-    /// <summary>Called when the view stops being presented; deactivates the ViewModel.</summary>
-    public virtual void OnDetached() => _mount.Unmount();
-    /// <summary>Activates an <see cref="IActivatableViewModel"/> when the web component mounts.</summary>
-    public void OnWebMounted() => _mount.Mount();
-    /// <summary>Deactivates the ViewModel when the web component unmounts.</summary>
-    public void OnWebUnmounted() => _mount.Unmount();
+    // The framework callbacks always do the activation work, so an override of a hook below cannot leave a
+    // ViewModel activated by forgetting to call the base method.
+    void IRunicViewLifetime.OnAttached() => OnAttached();
+
+    void IRunicViewLifetime.OnDetached()
+    {
+        _mount.Unmount();
+        OnDetached();
+    }
+
+    void IRunicWebMountLifetime.OnWebMounted()
+    {
+        _mount.Mount();
+        OnWebMounted();
+    }
+
+    void IRunicWebMountLifetime.OnWebUnmounted()
+    {
+        _mount.Unmount();
+        OnWebUnmounted();
+    }
+
+    /// <summary>
+    /// Called when the View starts being presented, before its web component mounts. It runs in the window's model
+    /// turn. The default does nothing; an override does not need to call it.
+    /// </summary>
+    protected virtual void OnAttached() { }
+
+    /// <summary>
+    /// Called when the View stops being presented, after the ViewModel was deactivated. It runs in the window's model
+    /// turn. The default does nothing; an override does not need to call it.
+    /// </summary>
+    protected virtual void OnDetached() { }
+
+    /// <summary>
+    /// Called after the web component mounted and an <see cref="IActivatableViewModel"/> was activated. The default does
+    /// nothing; an override does not need to call it.
+    /// </summary>
+    protected virtual void OnWebMounted() { }
+
+    /// <summary>
+    /// Called after the web component unmounted and the ViewModel was deactivated. The default does nothing; an override
+    /// does not need to call it.
+    /// </summary>
+    protected virtual void OnWebUnmounted() { }
 }
 
 internal sealed class ReactiveMount<TViewModel> where TViewModel : class

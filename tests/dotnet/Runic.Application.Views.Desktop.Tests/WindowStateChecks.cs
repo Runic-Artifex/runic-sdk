@@ -110,8 +110,8 @@ internal sealed class WindowStateChecks
 
     private sealed class ForeignWindow(AsyncServiceScope scope) : IBridgeWindow
     {
-        public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new BridgeWindowCloseResult(true, 0, Task.CompletedTask));
+        public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new RunicWindowCloseResult(true, 0, Task.CompletedTask));
 
         public ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 

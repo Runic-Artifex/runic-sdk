@@ -24,7 +24,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private Task? _webUiClosed;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IDisposable? _attachment;
-    private Task<BridgeWindowCloseResult>? _closeAdmission;
+    private Task<RunicWindowCloseResult>? _closeAdmission;
     private Task? _closeCompletion;
     private bool _admissionReleased;
     private bool _finalized;
@@ -109,11 +109,11 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     /// </summary>
     /// <param name="timeout">How long accepted operations may run before the window closes anyway.</param>
     /// <param name="cancellationToken">Stops this caller's wait; the close continues.</param>
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
-        Task<BridgeWindowCloseResult> admission;
+        Task<RunicWindowCloseResult> admission;
         lock (_closeGate)
             admission = _closeAdmission ??= BeginCloseAsync(timeout);
         _closeStarted.TrySetResult();
@@ -152,14 +152,14 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
+    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         var errors = new List<Exception>();
         Capture(ReleaseAdmissionRoutes, errors);
-        BridgeWindowCloseResult result;
+        RunicWindowCloseResult result;
         try
         {
-            result = await _content.BeginCloseAsync(timeout).ConfigureAwait(false);
+            result = await _content.DrainAsync(timeout).ConfigureAwait(false);
         }
         catch (Exception error)
         {
@@ -187,7 +187,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     {
         try
         {
-            _ = await _content.BeginCloseAsync(Timeout.InfiniteTimeSpan).ConfigureAwait(false);
+            _ = await _content.DrainAsync(Timeout.InfiniteTimeSpan).ConfigureAwait(false);
         }
         catch (Exception error)
         {

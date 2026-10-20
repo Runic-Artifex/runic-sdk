@@ -5,7 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicApplicationFrontendCompositionType>FirstWindowDesktop.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>FirstWindowDesktop.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
   </PropertyGroup>
   <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">

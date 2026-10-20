@@ -376,16 +376,16 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Boolean: source.AppendLine($"        writer.WriteBooleanValue({value});"); break;
             case BridgeWireKind.Int8: case BridgeWireKind.UInt8: case BridgeWireKind.Int16: case BridgeWireKind.UInt16:
             case BridgeWireKind.Int32: case BridgeWireKind.UInt32: source.AppendLine($"        writer.WriteNumberValue({value});"); break;
-            case BridgeWireKind.Single: case BridgeWireKind.Double: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteFiniteNumber(writer, {value});"); break;
-            case BridgeWireKind.Int64: case BridgeWireKind.UInt64: case BridgeWireKind.BigInteger: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteIntegerString(writer, {value});"); break;
-            case BridgeWireKind.Decimal: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteDecimal(writer, {value});"); break;
+            case BridgeWireKind.Single: case BridgeWireKind.Double: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteFiniteNumber(writer, {value});"); break;
+            case BridgeWireKind.Int64: case BridgeWireKind.UInt64: case BridgeWireKind.BigInteger: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteIntegerString(writer, {value});"); break;
+            case BridgeWireKind.Decimal: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteDecimal(writer, {value});"); break;
             case BridgeWireKind.String: source.AppendLine($"        writer.WriteStringValue({value});"); break;
-            case BridgeWireKind.Guid: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteGuid(writer, {value});"); break;
-            case BridgeWireKind.DateOnly: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteDateOnly(writer, {value});"); break;
-            case BridgeWireKind.TimeOnly: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteTimeOnly(writer, {value});"); break;
-            case BridgeWireKind.DateTime: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteDateTime(writer, {value});"); break;
-            case BridgeWireKind.DateTimeOffset: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteDateTimeOffset(writer, {value});"); break;
-            case BridgeWireKind.TimeSpan: source.AppendLine($"        global::Runic.Application.Views.BridgeWire.WriteTimeSpan(writer, {value});"); break;
+            case BridgeWireKind.Guid: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteGuid(writer, {value});"); break;
+            case BridgeWireKind.DateOnly: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteDateOnly(writer, {value});"); break;
+            case BridgeWireKind.TimeOnly: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteTimeOnly(writer, {value});"); break;
+            case BridgeWireKind.DateTime: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteDateTime(writer, {value});"); break;
+            case BridgeWireKind.DateTimeOffset: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteDateTimeOffset(writer, {value});"); break;
+            case BridgeWireKind.TimeSpan: source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteTimeSpan(writer, {value});"); break;
             case BridgeWireKind.Enum:
                 source.AppendLine($"        switch ({value})");
                 source.AppendLine("        {");
@@ -467,32 +467,32 @@ internal sealed class BridgeTypeGraph
         }
         switch (node.Kind)
         {
-            case BridgeWireKind.Boolean: source.AppendLine("        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected a boolean.\");"); break;
-            case BridgeWireKind.Int8: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadInt8(element);"); break;
-            case BridgeWireKind.UInt8: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadUInt8(element);"); break;
-            case BridgeWireKind.Int16: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadInt16(element);"); break;
-            case BridgeWireKind.UInt16: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadUInt16(element);"); break;
-            case BridgeWireKind.Int32: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);"); break;
-            case BridgeWireKind.UInt32: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadUInt32(element);"); break;
-            case BridgeWireKind.Single: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadSingle(element);"); break;
-            case BridgeWireKind.Double: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadDouble(element);"); break;
-            case BridgeWireKind.Int64: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadInt64String(element);"); break;
-            case BridgeWireKind.UInt64: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadUInt64String(element);"); break;
-            case BridgeWireKind.BigInteger: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadBigInteger(element);"); break;
-            case BridgeWireKind.Decimal: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadDecimal(element);"); break;
-            case BridgeWireKind.String: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadString(element);"); break;
-            case BridgeWireKind.Guid: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadGuid(element);"); break;
-            case BridgeWireKind.DateOnly: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadDateOnly(element);"); break;
-            case BridgeWireKind.TimeOnly: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadTimeOnly(element);"); break;
-            case BridgeWireKind.DateTime: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadDateTime(element);"); break;
-            case BridgeWireKind.DateTimeOffset: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadDateTimeOffset(element);"); break;
-            case BridgeWireKind.TimeSpan: source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadTimeSpan(element);"); break;
+            case BridgeWireKind.Boolean: source.AppendLine("        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected a boolean.\");"); break;
+            case BridgeWireKind.Int8: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt8(element);"); break;
+            case BridgeWireKind.UInt8: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt8(element);"); break;
+            case BridgeWireKind.Int16: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt16(element);"); break;
+            case BridgeWireKind.UInt16: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt16(element);"); break;
+            case BridgeWireKind.Int32: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);"); break;
+            case BridgeWireKind.UInt32: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt32(element);"); break;
+            case BridgeWireKind.Single: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadSingle(element);"); break;
+            case BridgeWireKind.Double: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadDouble(element);"); break;
+            case BridgeWireKind.Int64: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt64String(element);"); break;
+            case BridgeWireKind.UInt64: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadUInt64String(element);"); break;
+            case BridgeWireKind.BigInteger: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadBigInteger(element);"); break;
+            case BridgeWireKind.Decimal: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadDecimal(element);"); break;
+            case BridgeWireKind.String: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);"); break;
+            case BridgeWireKind.Guid: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadGuid(element);"); break;
+            case BridgeWireKind.DateOnly: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadDateOnly(element);"); break;
+            case BridgeWireKind.TimeOnly: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadTimeOnly(element);"); break;
+            case BridgeWireKind.DateTime: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadDateTime(element);"); break;
+            case BridgeWireKind.DateTimeOffset: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadDateTimeOffset(element);"); break;
+            case BridgeWireKind.TimeSpan: source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadTimeSpan(element);"); break;
             case BridgeWireKind.Enum:
-                source.AppendLine("        return global::Runic.Application.Views.BridgeWire.ReadString(element) switch");
+                source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element) switch");
                 source.AppendLine("        {");
                 foreach (var @case in node.EnumCases)
                     source.AppendLine($"            {Quote(@case.WireName)} => {CSharpType(node.NonNullableType)}.{@case.Field.Name},");
-                source.AppendLine("            _ => throw global::Runic.Application.Views.BridgeWire.Invalid(\"Unknown bridge enum name.\"),");
+                source.AppendLine("            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Unknown bridge enum name.\"),");
                 source.AppendLine("        };");
                 break;
             case BridgeWireKind.Array:
@@ -503,12 +503,12 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Dto:
                 AppendDtoReader(source, node); break;
             case BridgeWireKind.Union:
-                source.AppendLine("        var discriminator = global::Runic.Application.Views.BridgeWire.ReadString(global::Runic.Application.Views.BridgeWire.RequiredProperty(element, \"$case\"));");
+                source.AppendLine("        var discriminator = global::Runic.Application.Views.Generated.BridgeWire.ReadString(global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, \"$case\"));");
                 source.AppendLine("        return discriminator switch");
                 source.AppendLine("        {");
                 foreach (var @case in node.Cases)
                     source.AppendLine($"            {Quote(@case.Discriminator)} => Read{@case.Type.Id}(element),");
-                source.AppendLine("            _ => throw global::Runic.Application.Views.BridgeWire.Invalid(\"Unknown bridge-union case.\"),");
+                source.AppendLine("            _ => throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Unknown bridge-union case.\"),");
                 source.AppendLine("        };");
                 break;
             case BridgeWireKind.Custom:
@@ -518,7 +518,7 @@ internal sealed class BridgeTypeGraph
                 source.AppendLine("        return element.Clone();"); break;
             case BridgeWireKind.Json:
                 if (!node.IsNullable)
-                    source.AppendLine("        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected a JSON value other than null.\");");
+                    source.AppendLine("        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected a JSON value other than null.\");");
                 source.AppendLine("        return global::System.Text.Json.Nodes.JsonNode.Parse(element.GetRawText())!;"); break;
             default:
                 source.AppendLine("        throw new global::System.NotSupportedException(\"The generated codec needs a closed-union reader.\");"); break;
@@ -532,7 +532,7 @@ internal sealed class BridgeTypeGraph
     {
         var element = node.Element ?? throw new InvalidOperationException("A collection needs an element type.");
         var elementType = CSharpNodeType(element);
-        source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Array) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected an array.\");");
+        source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Array) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected an array.\");");
         source.AppendLine($"        var items = new global::System.Collections.Generic.List<{elementType}>(element.GetArrayLength());");
         source.AppendLine($"        foreach (var item in element.EnumerateArray()) items.Add(Read{element.Id}(item));");
         var generic = node.NonNullableType.GetGenericTypeDefinitionOrNull();
@@ -555,7 +555,7 @@ internal sealed class BridgeTypeGraph
     private static void AppendDictionaryReader(StringBuilder source, BridgeTypeNode node)
     {
         var value = node.Value ?? throw new InvalidOperationException("A dictionary node needs a value type.");
-        source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected an object.\");");
+        source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected an object.\");");
         source.AppendLine($"        var result = new global::System.Collections.Generic.Dictionary<string, {CSharpNodeType(value)}>(global::System.StringComparer.Ordinal);");
         source.AppendLine($"        foreach (var property in element.EnumerateObject()) result.Add(property.Name, Read{value.Id}(property.Value));");
         source.AppendLine("        return result;");
@@ -570,11 +570,11 @@ internal sealed class BridgeTypeGraph
             source.AppendLine($"        throw new global::System.NotSupportedException({Quote($"{TypeIdentity(node.NonNullableType)} is only written to the page.")});");
             return;
         }
-        source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected an object.\");");
+        source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"Expected an object.\");");
         foreach (var member in node.Members)
             source.AppendLine(member.Optional
                 ? $"        var has_{member.Index} = element.TryGetProperty({Quote(member.WireName)}, out var {Local(member)});"
-                : $"        var {Local(member)} = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, {Quote(member.WireName)});");
+                : $"        var {Local(member)} = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, {Quote(member.WireName)});");
         string Read(BridgeTypeMember member, string missing) => member.Optional
             ? $"has_{member.Index} ? Read{member.Type.Id}({Local(member)}) : {missing}"
             : $"Read{member.Type.Id}({Local(member)})";
@@ -681,7 +681,7 @@ internal sealed class BridgeTypeGraph
         // A failure is reported at the innermost declaration that led to it:
         // the DTO property, union case or ViewModel member.
         internal BridgeTypeNode Build(Type declared, TypeNullability? nullability, string path, HashSet<Type> stack,
-            RunicBridgeCodecAttribute? memberCodec, bool unionCase = false, MemberInfo? origin = null)
+            RunicCodecAttribute? memberCodec, bool unionCase = false, MemberInfo? origin = null)
         {
             try
             {
@@ -694,7 +694,7 @@ internal sealed class BridgeTypeGraph
         }
 
         private BridgeTypeNode BuildNode(Type declared, TypeNullability? nullability, string path, HashSet<Type> stack,
-            RunicBridgeCodecAttribute? memberCodec, bool unionCase)
+            RunicCodecAttribute? memberCodec, bool unionCase)
         {
             // Without annotations (a type from typeof, a union case, or a
             // contract argument the declaration does not close) every
@@ -726,12 +726,12 @@ internal sealed class BridgeTypeGraph
             var union = type.GetCustomAttribute<RunicUnionAttribute>(inherit: false);
             if (union is not null)
             {
-                if (memberCodec is not null || type.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true) is not null)
+                if (memberCodec is not null || type.GetCustomAttribute<RunicCodecAttribute>(inherit: true) is not null)
                     throw new BridgeTypeGraphException(path, "A closed union cannot also use an opaque custom codec.");
                 BuildUnion(node, union, path, stack);
                 return node;
             }
-            var custom = memberCodec ?? type.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true);
+            var custom = memberCodec ?? type.GetCustomAttribute<RunicCodecAttribute>(inherit: true);
             if (custom is not null)
             {
                 node.Kind = BridgeWireKind.Custom;
@@ -768,20 +768,20 @@ internal sealed class BridgeTypeGraph
             // A concrete collection outside the supported list would
             // otherwise be treated as a DTO and silently serialize as {}.
             if (UnsupportedCollection(type) is { } collectionError) throw new BridgeTypeGraphException(path, collectionError);
-            if (!IsDto(type)) throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not an explicitly supported bridge value. Use a supported scalar, collection, public DTO, RunicUnion, or RunicBridgeCodec.{NavigationResultHint(type)}");
+            if (!IsDto(type)) throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not an explicitly supported bridge value. Use a supported scalar, collection, public DTO, RunicUnion, or RunicCodec.{NavigationResultHint(type)}");
             node.Kind = BridgeWireKind.Dto;
             stack.Add(type);
             var members = DataProperties(type, path).ToArray();
             // An empty union case is a valid tag-only case. Any other DTO
             // without readable properties would always cross the bridge as {}.
             if (members.Length == 0 && !unionCase)
-                throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} has no public readable properties, so it would always serialize as {{}}. Add properties or a RunicBridgeCodec.");
+                throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} has no public readable properties, so it would always serialize as {{}}. Add properties or a RunicCodec.");
             foreach (var property in members)
             {
                 var info = MemberNullability(type, property, annotations);
                 node.Members.Add(new BridgeTypeMember(node.Members.Count, property, WireName(property),
                     Build(property.PropertyType, info, path + "." + WireName(property), stack,
-                        property.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true), origin: property)));
+                        property.GetCustomAttribute<RunicCodecAttribute>(inherit: true), origin: property)));
             }
             if (direction.HasFlag(BridgeValueDirection.FromPage)) node.Constructor = SelectConstructor(type, node.Members, path);
             MarkOptionalMembers(node, path);
@@ -801,7 +801,7 @@ internal sealed class BridgeTypeGraph
             {
                 if (!seenTypes.Add(type) || !type.IsPublic || type.IsNested || type.IsAbstract || type.ContainsGenericParameters || !node.NonNullableType.IsAssignableFrom(type))
                     throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not a distinct public concrete case of {TypeIdentity(node.NonNullableType)}.");
-                if (type.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true) is not null)
+                if (type.GetCustomAttribute<RunicCodecAttribute>(inherit: true) is not null)
                     throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} cannot be both a union case and an opaque custom codec.");
                 var tag = type.GetCustomAttribute<RunicUnionCaseAttribute>(inherit: false)?.Name;
                 if (string.IsNullOrWhiteSpace(tag) || tag.Length > 128 || tag.Any(char.IsControl) || !seenTags.Add(tag))
@@ -1040,8 +1040,8 @@ internal sealed class BridgeTypeGraph
             if (constructor is not null) return constructor;
             if (type.GetConstructor(Type.EmptyTypes) is not null && members.All(member => member.Writable)) return null;
             throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is read from the page, as a command input, an interaction result or a settable property, so it needs a public constructor whose parameters map to every required property, or a public parameterless constructor with public setters. "
-                + "Exclude computed or .NET-only DTO properties with [RunicIgnore]. To reuse unconditional [JsonIgnore] on shared DTOs, add [assembly: RunicBridgeJsonIgnore] to the presentation/ViewModel assembly. "
-                + "Without that opt-in, [JsonIgnore] only affects System.Text.Json serialization. JsonIgnore conditions Never, WhenWritingNull and WhenWritingDefault remain included in the Bridge contract.");
+                + "Exclude computed or .NET-only DTO properties with [RunicIgnore] or an unconditional [JsonIgnore]. "
+                + "[assembly: RunicIncludeJsonIgnored] in the presentation/ViewModel assembly keeps [JsonIgnore] properties in the contract. JsonIgnore conditions Never, WhenWritingNull and WhenWritingDefault remain included in the Bridge contract.");
         }
     }
 }
@@ -1112,8 +1112,8 @@ internal sealed record CustomCodecDescription(Type CodecType, string TypeScriptT
 {
     internal static CustomCodecDescription Create(Type valueType, Type codecType, string path)
     {
-        var contract = codecType.GetInterfaces().FirstOrDefault(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRunicBridgeCodec<>) && type.GenericTypeArguments[0] == valueType)
-            ?? throw new BridgeTypeGraphException(path, $"{BridgeTypeGraph.CSharpType(codecType)} must implement IRunicBridgeCodec<{BridgeTypeGraph.CSharpType(valueType)}>.");
+        var contract = codecType.GetInterfaces().FirstOrDefault(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRunicCodec<>) && type.GenericTypeArguments[0] == valueType)
+            ?? throw new BridgeTypeGraphException(path, $"{BridgeTypeGraph.CSharpType(codecType)} must implement IRunicCodec<{BridgeTypeGraph.CSharpType(valueType)}>.");
         _ = contract;
         var shape = codecType.GetCustomAttribute<RunicCodecShapeAttribute>(inherit: false);
         if (shape is null || string.IsNullOrWhiteSpace(shape.TypeScriptType) || string.IsNullOrWhiteSpace(shape.DecoderExpression))

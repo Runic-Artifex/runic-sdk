@@ -31,7 +31,7 @@ if (serveOnly)
     await using var surface = await desktop.CreateSurfaceAsync(surfaceOptions);
     var model = scope.ServiceProvider.GetRequiredService<RowsViewModel>();
     var transport = new DesktopBridgeTransport(surface);
-    using var content = new WindowContentSession(transport, rootModel: model);
+    using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
     using var attachment = scope.ServiceProvider.GetRequiredService<Func<IBridgeTransport, WindowContentSession, RowsViewModel, IDisposable>>()(transport, content, model);
     Console.WriteLine(surface.Url);
     await Console.In.ReadLineAsync();

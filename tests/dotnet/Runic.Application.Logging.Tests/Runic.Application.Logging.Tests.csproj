@@ -13,7 +13,7 @@
     <!-- Program.cs is hand-written: the case starts this executable as the application it checks. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- The application's Bridges and AddRunicViews() are generated as in an application; the page is www/index.html. -->
-    <RunicApplicationFrontendCompositionType>Runic.Application.Logging.Tests.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>Runic.Application.Logging.Tests.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
     <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
     <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicApplicationFrontendDirectory>

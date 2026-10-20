@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated;
 using Runic.Navigation;
 using TUnit.Core;
 
@@ -13,6 +14,7 @@ using System.Reactive.Linq;
 using Runic.Platform;
 using ReactiveUI.Binding.Reactive;
 using Runic.Application.Views.ReactiveUI.Reactive;
+using Runic.Application.Views.ReactiveUI.Reactive.Generated;
 using Runic.Navigation.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
 using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
@@ -25,6 +27,7 @@ using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using Runic.Navigation.ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 using FlavorScheduler = ReactiveUI.Primitives.Concurrency.ISequencer;
@@ -637,6 +640,59 @@ internal sealed class ConformanceTests
             && outside.Count(entry => entry.Source == typeof(OffTurnSecondViewModel).FullName) == 1
             && outside.All(static entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning),
             $"Work outside a model turn was not logged once per ViewModel type: {string.Join(", ", outside)}");
+    }
+
+    // D42 (vrx-04): ReactiveRunicView<T> activates and deactivates its ViewModel in explicit framework callbacks, so an
+    // override of a protected hook that does not call base cannot keep a ViewModel activated.
+    [Test, NotInParallel(Order = 14)]
+    public void ViewHooksCannotSkipDeactivation()
+    {
+        var viewModel = new LifetimeProbeViewModel();
+        var view = new LifetimeProbeView { DataContext = viewModel };
+        ((IRunicViewLifetime)view).OnAttached();
+        ((IRunicWebMountLifetime)view).OnWebMounted();
+        Require(viewModel.Active == 1, "Mounting did not activate the ViewModel.");
+        ((IRunicWebMountLifetime)view).OnWebUnmounted();
+        ((IRunicWebMountLifetime)view).OnWebMounted();
+        Require(viewModel.Active == 1, "Remounting did not reactivate the ViewModel once.");
+        ((IRunicViewLifetime)view).OnDetached();
+        Require(viewModel.Active == 0, "An override that did not call base kept the ViewModel activated.");
+        Require(view.Calls.SequenceEqual(["attached", "mounted", "unmounted", "mounted", "detached"]),
+            $"The hooks ran as {string.Join(", ", view.Calls)}.");
+        foreach (var name in new[] { "OnAttached", "OnDetached", "OnWebMounted", "OnWebUnmounted" })
+        {
+            var method = typeof(ReactiveRunicView<LifetimeProbeViewModel>).GetMethod(name,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic,
+                Type.EmptyTypes)!;
+            Require(method.IsFamily && method.IsVirtual, $"ReactiveRunicView<T>.{name} must be a protected virtual hook.");
+        }
+    }
+
+    private sealed class LifetimeProbeViewModel : ReactiveObject, IActivatableViewModel
+    {
+        public LifetimeProbeViewModel() =>
+            this.WhenActivated((Action<Action<IDisposable>>)(register =>
+            {
+                Active++;
+                register(new Deactivation(this));
+            }));
+
+        public int Active { get; private set; }
+        public ViewModelActivator Activator { get; } = new();
+
+        private sealed class Deactivation(LifetimeProbeViewModel owner) : IDisposable
+        {
+            public void Dispose() => owner.Active--;
+        }
+    }
+
+    private sealed class LifetimeProbeView : ReactiveRunicView<LifetimeProbeViewModel>
+    {
+        public List<string> Calls { get; } = [];
+        protected override void OnAttached() => Calls.Add("attached");
+        protected override void OnDetached() => Calls.Add("detached");
+        protected override void OnWebMounted() => Calls.Add("mounted");
+        protected override void OnWebUnmounted() => Calls.Add("unmounted");
     }
 
     // W260-015: ReactiveUI's builder after the install. Core services keep the model-context scheduler; platform
