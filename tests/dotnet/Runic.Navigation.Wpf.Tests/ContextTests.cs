@@ -17,7 +17,7 @@ internal sealed class ContextTests
 
     // nwpf-02 (W319-003 D26): the navigator's scheduling contract is not part of the context's public surface;
     // applications run work on the UI thread with InvokeAsync.
-    [Test, DisplayName("engine contract is explicit")]
+    [Test, DisplayName("engine contract is explicit"), NotInParallel("WpfSuite", Order = 47)]
     public void EngineContractIsExplicit()
     {
         foreach (var name in new[] { "RunHookAsync", "YieldToPresentationAsync" })
