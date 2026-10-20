@@ -471,12 +471,22 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   checks the desktop entry and icon, that the user service starts with an X
   session and a second launch reaches it, that `pkaction` lists the policy with
   the package's program, and that pkexec runs the action through the wrapper.
-- `tests/templates/Test-NixTemplate.sh <published-version> npm pnpm bun aot`
-  creates `--nix` projects from this checkout's template against a published
-  Runic version and builds their flakes with this checkout's builder. The npm
-  project has the test project (`--tests`), whose tests both of its packages
-  run. For npm it also checks that a lock without `linux-x64` and a stale lock
-  fail. With
+- `tests/templates/Test-NixTemplate.sh candidates artifacts/packages npm pnpm bun aot`
+  creates `--nix` projects from the template packed from this checkout
+  (`bun eng/run.mjs pack`) and builds their flakes with this checkout's builder
+  against the packed NuGet and npm packages. Their locked Runic NuGet packages
+  are added to the store as the fixed-output paths the builder would download,
+  and a loopback registry serves the npm archives to the sandbox's fixed-output
+  downloads. Pull requests and main run this mode, so a change to API that the
+  template uses is tested before it is published.
+  `tests/templates/Test-NixTemplate.sh published <version> npm pnpm bun aot`
+  creates the projects from the published template instead, with the packages
+  from the registries and the builder of the `v<version>` tag, as a user's
+  `dotnet new runic-app --nix` does. The Nix workflow runs it after Publish
+  preview succeeds, weekly, and on a manual run with `packages: published`.
+  In both modes the npm project has the test project (`--tests`), whose tests
+  both of its packages run. For npm it also checks that a lock without
+  `linux-x64` and a stale lock fail. With
   `RUNIC_NIX_TEMPLATE_WINDOW=1` each application opens its window under Xvfb
   and must load GTK and WebKitGTK from the store.
 - The `builder-locks` flake check requires that a Bun frontend whose lock

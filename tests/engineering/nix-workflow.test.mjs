@@ -42,7 +42,11 @@ test("the Nix workflow runs for every source of the packaged examples", () => {
       const file = statSync(resolve(root, source)).isDirectory() ? `${source}/Project.csproj` : source;
       assert.ok(matches(patterns, file), `${event} paths of nix.yml miss ${source}, which the flake checks build from`);
     }
-    for (const file of ["nix/lib/build-runic-application.nix", "flake.lock", "tools/Runic.Application.Templates/content/runic-app/flake.nix"])
+    // The template job builds the default (React) frontend against the packed candidates, which the loopback
+    // registry and the lock binding serve to the sandbox.
+    for (const file of ["nix/lib/build-runic-application.nix", "flake.lock", "tools/Runic.Application.Templates/content/runic-app/flake.nix",
+      "packages/web/react/src/index.ts", "packages/web/vite-plugin-runic/src/index.ts", "tests/templates/template-npm-registry.mjs",
+      "tests/templates/bind-template-candidate-integrities.mjs"])
       assert.ok(matches(patterns, file), `${event} paths of nix.yml miss ${file}`);
     assert.ok(!matches(patterns, "packages/dotnet/Runic.Desktop/README.md"), "documentation does not run the Nix workflow");
   }

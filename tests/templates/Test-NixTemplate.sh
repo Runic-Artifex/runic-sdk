@@ -1,50 +1,119 @@
 #!/usr/bin/env bash
-# Creates `dotnet new runic-app --nix` projects from this checkout's template and builds each project's flake in
-# the Nix sandbox, with this checkout's buildRunicApplication and the SDK's locked nixpkgs. The projects use a
-# published Runic version, whose NuGet and npm packages the sandbox's fixed-output fetches can download: the
-# template is packed with its locks bound to that version's npm archives. Each built application is then served
-# without a window and its page fetched.
+# Creates `dotnet new runic-app --nix` projects and builds each project's flake in the Nix sandbox. Each built
+# application is then served without a window and its page fetched.
 #
-#   tests/templates/Test-NixTemplate.sh <published-version> [npm|pnpm|bun|aot ...]
+#   tests/templates/Test-NixTemplate.sh candidates <package-directory> [npm|pnpm|bun|aot ...]
+#   tests/templates/Test-NixTemplate.sh published <version> [npm|pnpm|bun|aot ...]
+#
+# candidates: the packages packed from this checkout (`bun eng/run.mjs pack` or the CI artifact), with the
+#   layout of artifacts/packages: nuget/ with the template and NuGet packages, npm/ with the npm archives. The
+#   projects are created from that template, whose locks are bound to those archives, and built with this
+#   checkout's buildRunicApplication and the SDK's locked nixpkgs. The sandbox's fixed-output downloads cannot
+#   reach the candidates in the registries, so:
+#   - NuGet: the projects restore the Runic packages from the candidate feed (a NuGet.config above them maps
+#     their IDs to it), and each locked candidate is added to the store as the fixed-output path that
+#     buildRunicApplication would download, which Nix then does not download.
+#   - npm: a loopback registry (template-npm-registry.mjs) serves the candidate archives. The projects' .npmrc
+#     points @runic-artifex at it, and the npm project's package-lock.json at its archives
+#     (bind-template-candidate-integrities.mjs, which first checks the locks against the archives). On Linux,
+#     fixed-output derivations share the host's network, so the sandbox reaches the loopback address.
+#   Pull requests and main run this mode, so it tests the code a change makes.
+# published: what a user downloads. The template is the published Runic.Application.Templates <version> from
+#   nuget.org, its NuGet and npm packages come from the registries, and its flake uses its own runic-sdk input
+#   (the v<version> tag) with that tag's locked nixpkgs. The Nix workflow runs this mode after a preview is
+#   published, weekly and on request.
 #
 # "aot" builds the npm project's native-aot package as well. The npm project has the TUnit test project
 # (--tests), which both of its packages build and run. With RUNIC_NIX_TEMPLATE_WINDOW=1 each application
 # also opens its window under Xvfb (xvfb-run and dbus-run-session from the development shell) with only the
 # wrapper's environment, and must have loaded GTK 3 and WebKitGTK 4.1 from the Nix store and started WebKit's
-# web process. Run it in the SDK's development shell (it packs the template with dotnet and Bun); it needs
-# network access and Nix with flakes.
+# web process. Run it in the SDK's packaging shell (nix develop .#packaging); it needs network access and Nix
+# with flakes.
 set -euo pipefail
 
-version="${1:?usage: Test-NixTemplate.sh <published-version> [npm|pnpm|bun|aot ...]}"
-shift
+usage="usage: Test-NixTemplate.sh candidates <package-directory> | published <version> [npm|pnpm|bun|aot ...]"
+mode="${1:?$usage}"
+source_argument="${2:?$usage}"
+shift 2
 cases=("$@")
 [[ ${#cases[@]} -gt 0 ]] || cases=(npm pnpm bun)
 
 sdk="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="$(mktemp -d -t runic-nix-template.XXXXXX)"
 served=""
+registry=""
 cleanup() {
   if [[ -n "$served" ]]; then kill -9 -- "-$served" 2>/dev/null || true; fi
+  if [[ -n "$registry" ]]; then kill "$registry" 2>/dev/null || true; wait "$registry" 2>/dev/null || true; fi
   rm -rf "$work"
 }
 trap cleanup EXIT
 
-workspace_version="$(jq -r .version "$sdk/eng/workspace.json")"
-nixpkgs="github:NixOS/nixpkgs/$(jq -r .nodes.nixpkgs.locked.rev "$sdk/flake.lock")"
 export NUGET_PACKAGES="$work/nuget"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
-
-echo "Packing the template against the published $version packages"
-mkdir -p "$work/npm"
-for name in $(jq -r '.npm[].name' "$sdk/eng/workspace.json"); do
-  archive="${name#@}"
-  # stage-template-locks.mjs names the archives by the workspace version and binds the locks to their contents.
-  curl -fsSL "https://registry.npmjs.org/$name/-/${name#*/}-$version.tgz" -o "$work/npm/${archive/\//-}-$workspace_version.tgz"
-done
-dotnet pack "$sdk/tools/Runic.Application.Templates/Runic.Application.Templates.csproj" -c Release -o "$work/template" \
-  -p:RunicNuGetTemplateVersion="$version" -p:RunicNpmTemplateVersion="$version" -p:RunicTemplateNpmDirectory="$work/npm" \
-  -nologo -v:q
-dotnet new install "$work"/template/Runic.Application.Templates.*.nupkg --debug:custom-hive "$work/hive" > /dev/null
+registry_url=""
+case "$mode" in
+  candidates)
+    packages="$(cd "$source_argument" && pwd)"
+    version="$(jq -r .version "$sdk/eng/workspace.json")"
+    template="$packages/nuget/Runic.Application.Templates.$version.nupkg"
+    npm_archives=()
+    for name in $(jq -r '.npm[].name' "$sdk/eng/workspace.json"); do
+      archive="${name#@}"
+      npm_archives+=("$packages/npm/${archive/\//-}-$version.tgz")
+    done
+    for required in "$template" "${npm_archives[@]}"; do
+      [[ -f "$required" ]] || { echo "Missing candidate $required; pack with bun eng/run.mjs pack." >&2; exit 1; }
+    done
+    echo "Using the $version candidates in $packages"
+    # Only the candidate feed provides the packages it contains, so a published package of the same version
+    # cannot take their place.
+    {
+      echo '<?xml version="1.0" encoding="utf-8"?>'
+      echo '<configuration>'
+      echo '  <packageSources>'
+      echo '    <clear />'
+      echo "    <add key=\"runic-candidate\" value=\"$packages/nuget\" />"
+      echo '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />'
+      echo '  </packageSources>'
+      echo '  <packageSourceMapping>'
+      echo '    <packageSource key="runic-candidate">'
+      for package in "$packages"/nuget/*.nupkg; do
+        id="$(basename "$package" | sed -E 's/\.[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?\.nupkg$//')"
+        echo "      <package pattern=\"$id\" />"
+      done
+      echo '    </packageSource>'
+      echo '    <packageSource key="nuget.org">'
+      echo '      <package pattern="*" />'
+      echo '    </packageSource>'
+      echo '  </packageSourceMapping>'
+      echo '</configuration>'
+    } > "$work/NuGet.config"
+    bun "$sdk/tests/templates/template-npm-registry.mjs" "$work/registry.url" "${npm_archives[@]}" &
+    registry=$!
+    for _ in $(seq 1 100); do
+      [[ -s "$work/registry.url" ]] && break
+      sleep 0.05
+    done
+    [[ -s "$work/registry.url" ]] || { echo "The candidate npm registry did not start." >&2; exit 1; }
+    registry_url="$(<"$work/registry.url")"
+    dotnet new install "$template" --debug:custom-hive "$work/hive" > /dev/null
+    nixpkgs="github:NixOS/nixpkgs/$(jq -r .nodes.nixpkgs.locked.rev "$sdk/flake.lock")"
+    flake=(--override-input runic-sdk "git+file://$sdk?shallow=1" --override-input nixpkgs "$nixpkgs")
+    ;;
+  published)
+    version="$source_argument"
+    echo "Using the published $version template and packages"
+    dotnet new install "Runic.Application.Templates::$version" --debug:custom-hive "$work/hive" > /dev/null
+    rev="$(nix flake metadata "github:Runic-Artifex/runic-sdk/v$version" --json | jq -r .locks.nodes.nixpkgs.locked.rev)"
+    flake=(--override-input nixpkgs "github:NixOS/nixpkgs/$rev")
+    ;;
+  *)
+    echo "$usage" >&2
+    exit 2
+    ;;
+esac
+flake+=(--no-write-lock-file)
 
 # Runs a command quietly, and prints its output when it fails.
 quiet() {
@@ -54,7 +123,6 @@ quiet() {
 # Builds a flake output; a fixed-output hash that the project leaves as lib.fakeHash is replaced by the one Nix reports.
 build() {
   local project="$1" output="$2" log="$work/build.log"
-  local -a flake=(--override-input runic-sdk "git+file://$sdk?shallow=1" --override-input nixpkgs "$nixpkgs" --no-write-lock-file)
   for _ in 1 2; do
     if nix build "$project#$output" "${flake[@]}" -L --out-link "$project/result-$output" > "$log" 2>&1; then
       return 0
@@ -119,11 +187,40 @@ EOF
   fi
 }
 
+# Candidates: points the project's npm packages at the candidate registry.
+use_candidate_registry() {
+  local project="$1" manager="$2"
+  printf '@runic-artifex:registry=%s/\n' "$registry_url" >> "$project/Frontend/.npmrc"
+  if [[ "$manager" == npm ]]; then
+    RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$sdk/tests/templates/bind-template-candidate-integrities.mjs" \
+      "$project/Frontend/package-lock.json" "${npm_archives[@]}"
+  fi
+}
+
+# Candidates: adds each locked candidate package to the store as the fixed-output path that buildRunicApplication
+# fetches it to (nix/lib/nuget-lock-deps.nix: named <id>.<version>.nupkg, with the lock's contentHash).
+store_candidates() {
+  local project="$1" lock name resolved hash package stored=0
+  for lock in "$project/packages.lock.json" "$project/packages.aot.lock.json" "$project"/*/packages.lock.json; do
+    [[ -f "$lock" ]] || continue
+    while read -r name resolved hash; do
+      package="$(find "$packages/nuget" -maxdepth 1 -iname "$name.$resolved.nupkg" | head -n 1)"
+      [[ -n "$package" ]] || continue
+      [[ "$(nix hash file --type sha512 --base64 "$package")" == "$hash" ]] \
+        || { echo "$lock locks $name $resolved with another contentHash than $package" >&2; return 1; }
+      nix store add --mode flat --hash-algo sha512 --name "$name.$resolved.nupkg" "$package" > /dev/null
+      stored=$((stored + 1))
+    done < <(jq -r '.dependencies[] | to_entries[] | select(.value.type != "Project" and .value.contentHash != null)
+      | "\(.key) \(.value.resolved) \(.value.contentHash)"' "$lock" | sort -u)
+  done
+  [[ $stored -gt 0 ]] || { echo "$project locks no candidate package" >&2; return 1; }
+  echo "  candidates: $stored locked packages from $packages/nuget"
+}
+
 # The build restores in locked mode: a lock without the runtime's section fails at evaluation, and one that no
 # longer matches the project fails the restore with NU1004.
 locked() {
   local project="$1" log="$work/locked.log"
-  local -a flake=(--override-input runic-sdk "git+file://$sdk?shallow=1" --override-input nixpkgs "$nixpkgs" --no-write-lock-file)
   jq 'del(.dependencies["net10.0/linux-x64"])' "$project/packages.lock.json" > "$work/lock.json"
   cp "$work/lock.json" "$project/packages.lock.json"
   if nix eval "$project#default.drvPath" "${flake[@]}" > "$log" 2>&1 || ! grep -q 'has no linux-x64 section' "$log"; then
@@ -170,6 +267,10 @@ for case in "${cases[@]}"; do
     # The NativeAOT graph adds the compiler package.
     jq -e '.dependencies["net10.0"]["Microsoft.DotNet.ILCompiler"]' "$project/packages.aot.lock.json" > /dev/null \
       || { echo "packages.aot.lock.json does not lock the NativeAOT compiler" >&2; exit 1; }
+    if [[ "$mode" == candidates ]]; then
+      use_candidate_registry "$project" "$manager"
+      store_candidates "$project"
+    fi
     git -C "$project" init -q
     git -C "$project" add -A
   fi

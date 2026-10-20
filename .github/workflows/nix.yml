@@ -1,23 +1,38 @@
 name: Nix packaging
 # buildRunicApplication, its modules and the runic-app template's flake; see nix/README.md. Path-filtered, so not
 # a required check. The paths cover every source of nix/examples.nix and nix/tests (tests/engineering/nix-workflow.test.mjs
-# checks that) and the template test's inputs.
+# checks that) and the template test's inputs. Pull requests and main build the template against the packages packed
+# from the checkout; the published-template job checks the published preview after a release, weekly and on request.
 on:
   push:
     branches: [main]
-    paths: ['flake.nix', 'flake.lock', 'nix/**', 'nixos/packaging/**', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json', 'NuGet.config', 'eng/Versions.props', 'eng/build/**', 'eng/branding/desktop/**', 'eng/workspace.json', 'packages/dotnet/**', 'packages/web/views/**', 'tools/Runic.Application.Views.Codegen*/**', 'examples/Directory.*', 'examples/NuGet.config', 'examples/status-icon/**', 'tests/native/Runic.Privileged.Smoke/**', 'tests/fixtures/nix/**', 'tools/Runic.Application.Templates/**', 'tests/templates/Test-NixTemplate.sh', 'eng/release/stage-template-locks.mjs', 'eng/release/stamp-template-lock.mjs', 'eng/release/template-locks.mjs', '.github/workflows/nix.yml', '!**/*.md']
+    paths: ['flake.nix', 'flake.lock', 'nix/**', 'nixos/packaging/**', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json', 'NuGet.config', 'eng/Versions.props', 'eng/build/**', 'eng/branding/desktop/**', 'eng/workspace.json', 'packages/dotnet/**', 'packages/web/views/**', 'packages/web/react/**', 'packages/web/vite-plugin-runic/**', 'tools/Runic.Application.Views.Codegen*/**', 'examples/Directory.*', 'examples/NuGet.config', 'examples/status-icon/**', 'tests/native/Runic.Privileged.Smoke/**', 'tests/fixtures/nix/**', 'tools/Runic.Application.Templates/**', 'tests/templates/Test-NixTemplate.sh', 'tests/templates/template-npm-registry.mjs', 'tests/templates/bind-template-candidate-integrities.mjs', 'eng/release/stage-template-locks.mjs', 'eng/release/stamp-template-lock.mjs', 'eng/release/template-locks.mjs', '.github/workflows/nix.yml', '!**/*.md']
   pull_request:
-    paths: ['flake.nix', 'flake.lock', 'nix/**', 'nixos/packaging/**', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json', 'NuGet.config', 'eng/Versions.props', 'eng/build/**', 'eng/branding/desktop/**', 'eng/workspace.json', 'packages/dotnet/**', 'packages/web/views/**', 'tools/Runic.Application.Views.Codegen*/**', 'examples/Directory.*', 'examples/NuGet.config', 'examples/status-icon/**', 'tests/native/Runic.Privileged.Smoke/**', 'tests/fixtures/nix/**', 'tools/Runic.Application.Templates/**', 'tests/templates/Test-NixTemplate.sh', 'eng/release/stage-template-locks.mjs', 'eng/release/stamp-template-lock.mjs', 'eng/release/template-locks.mjs', '.github/workflows/nix.yml', '!**/*.md']
+    paths: ['flake.nix', 'flake.lock', 'nix/**', 'nixos/packaging/**', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json', 'NuGet.config', 'eng/Versions.props', 'eng/build/**', 'eng/branding/desktop/**', 'eng/workspace.json', 'packages/dotnet/**', 'packages/web/views/**', 'packages/web/react/**', 'packages/web/vite-plugin-runic/**', 'tools/Runic.Application.Views.Codegen*/**', 'examples/Directory.*', 'examples/NuGet.config', 'examples/status-icon/**', 'tests/native/Runic.Privileged.Smoke/**', 'tests/fixtures/nix/**', 'tools/Runic.Application.Templates/**', 'tests/templates/Test-NixTemplate.sh', 'tests/templates/template-npm-registry.mjs', 'tests/templates/bind-template-candidate-integrities.mjs', 'eng/release/stage-template-locks.mjs', 'eng/release/stamp-template-lock.mjs', 'eng/release/template-locks.mjs', '.github/workflows/nix.yml', '!**/*.md']
   workflow_dispatch:
+    inputs:
+      packages:
+        description: candidates (this ref's packed packages, every job) or published (the latest preview, template only)
+        type: choice
+        options: [candidates, published]
+        default: candidates
+  # Publish preview creates the release with GITHUB_TOKEN, which starts no release event, and ends when every NuGet
+  # package is indexed.
+  workflow_run:
+    workflows: [Publish preview]
+    types: [completed]
+  schedule:
+    - cron: '37 4 * * 1'
 permissions:
   contents: read
 concurrency:
-  group: nix-${{ github.ref }}
+  group: nix-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   # The status-icon example under JIT and NativeAOT, the privileged-actions smoke, the Home Manager module and the
   # builder's fixtures.
   flake-check:
+    if: ${{ github.event_name != 'workflow_run' && github.event_name != 'schedule' && inputs.packages != 'published' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -32,6 +47,7 @@ jobs:
 
   # Installs the packaged applications through the NixOS module in a VM.
   nixos-vm:
+    if: ${{ github.event_name != 'workflow_run' && github.event_name != 'schedule' && inputs.packages != 'published' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -48,14 +64,26 @@ jobs:
           extra_nix_config: system-features = nixos-test benchmark big-parallel kvm
       - run: nix build .#packaging-nixos -L
 
-  # `dotnet new runic-app --nix` with each package manager, against the latest published Runic packages.
+  # `dotnet new runic-app --nix` with each package manager, against the packages packed from this checkout as the CI
+  # workflow's build job packs them, so the job tests the template and packages that a change makes.
   template:
+    if: ${{ github.event_name != 'workflow_run' && github.event_name != 'schedule' && inputs.packages != 'published' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - name: Restore managed dependencies
+        run: dotnet restore RunicSdk.Core.slnx --locked-mode
+      - name: Build and pack the package candidates
+        run: |
+          bun eng/run.mjs build-core
+          bun eng/run.mjs build-web
+          bun eng/run.mjs pack-built
       - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       # WebKitGTK sandboxes its web process with the bubblewrap from the Nix store, which Ubuntu's AppArmor
       # profile for /usr/bin/bwrap (eng/ci/permit-webkit-sandbox.sh) does not cover.
@@ -64,6 +92,26 @@ jobs:
       - name: Build the template's flakes and open their windows
         env:
           RUNIC_NIX_TEMPLATE_WINDOW: '1'
+        run: nix develop .#packaging -c bash tests/templates/Test-NixTemplate.sh candidates artifacts/packages npm pnpm bun aot
+
+  # What a user downloads: the latest published preview's template, NuGet and npm packages from the registries and
+  # its tag's builder. After Publish preview succeeds, weekly, and on request.
+  published-template:
+    if: >-
+      ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      || github.event_name == 'schedule' || inputs.packages == 'published' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+      - name: Permit unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build the published template's flakes and open their windows
+        env:
+          RUNIC_NIX_TEMPLATE_WINDOW: '1'
         run: |
           version="$(curl -fsSL https://registry.npmjs.org/@runic-artifex/views | jq -r '."dist-tags".preview')"
-          nix develop .#packaging -c bash tests/templates/Test-NixTemplate.sh "$version" npm pnpm bun aot
+          nix develop .#packaging -c bash tests/templates/Test-NixTemplate.sh published "$version" npm pnpm bun aot
