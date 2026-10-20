@@ -23,7 +23,9 @@ The build fails when the checkout is not at the pinned revision; pass
 The source dependency is explicit; it is not an SDK shipping dependency. To
 copy the example outside this repository, replace the SDK source imports and
 project references with the corresponding Runic packages, and the fork source
-reference with `Runic.DynamicData` from its release assets.
+reference with the [`RunicArtifex.DynamicData`](https://www.nuget.org/packages/RunicArtifex.DynamicData)
+package from nuget.org (`RunicArtifex.DynamicData.Reactive` for the System.Reactive
+flavor). The namespaces stay `DynamicData`.
 
 Scroll the list and click **Update 100 rows**. Rows 0–99 change in the source;
 an off-screen viewport receives no collection update. A second window can use
@@ -67,8 +69,10 @@ pull requests it skips.
 
 The fork reviews upstream DynamicData monthly
 ([procedure](https://github.com/Runic-Artifex/DynamicData/blob/main/docs/maintenance.md#monthly-upstream-review))
-and publishes tested commits as `v10.0.0-runic.N` releases. To adopt a new
-revision:
+and publishes tested commits as `v10.0.0-runic.N` releases, pushed to nuget.org as
+`RunicArtifex.DynamicData` and `RunicArtifex.DynamicData.Reactive` `10.0.0-runic.N`.
+Its [fork differences](https://github.com/Runic-Artifex/DynamicData/blob/main/docs/fork-differences.md)
+list the behaviour changes to review. To adopt a new revision:
 
 1. Choose a released fork commit; prefer the release that follows a completed
    monthly review.
