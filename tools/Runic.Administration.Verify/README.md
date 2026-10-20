@@ -98,7 +98,37 @@ Windows DNS server with its MicrosoftDNS WMI provider and permitted remote acces
 .\Runic.AdminVerify.exe domain --server dc1.example.test --domain example.test --dns-server dns1.example.test --dns-zone example.test --base-dn "OU=RunicTests,DC=example,DC=test" --allow-changes --only dns
 ~~~
 
-Domain selections: ldap, gpo, dns. The CLI uses signed/sealed integrated LDAP.
+Domain selections: ldap, gpo, dns. Without `--credential-stdin`, the CLI uses
+the current Windows identity, with signed/sealed integrated LDAP.
+
+### Explicit and restricted identities
+
+`--credential-stdin` reads two lines from standard input: a user name
+(`DOMAIN\user` or a UPN) and its password. Pipe them in; never put a password on
+the command line. The option refuses an interactive console (`RAV1009`), which
+would echo the password. Only the user name appears in the output and reports. LDAP and DNS receive them as an explicit `NetworkCredential`,
+and the LDAP checks then include Basic binds over TLS and StartTLS. GPMC takes no
+credential, so the GPO checks run under a network-only logon (`LogonUser` with
+`LOGON32_LOGON_NEW_CREDENTIALS`) for that identity. GPMC report generation fails
+under such a logon (`0x80072020`; `Get-GPOReport` fails the same way), so run the
+`gpo` selection under the identity's own logon, for example from a scheduled
+task that runs as that user, and use `--credential-stdin` with `--only ldap,dns`.
+
+~~~powershell
+# A restricted identity: every owned write below --base-dn and in --dns-zone must be denied.
+.\Runic.AdminVerify.exe domain --server dc1.example.test --domain example.test --base-dn "OU=RunicTests,DC=example,DC=test" --dns-zone example.test --expect-denied
+~~~
+
+With `--expect-denied`, the domain suite attempts to create an OU below
+`--base-dn`, change its description, create a GPO, link the Default Domain Policy
+to `--base-dn` and create an A record in `--dns-zone`. Each must fail with
+`AccessDenied`, and an independent read must show that nothing changed. A write
+that unexpectedly succeeds is rolled back at once, and the check fails. The
+restricted identity may not be able to read DNS records; the report then says
+that record absence must be verified independently.
+
+### Domain writes
+
 For writes, it creates its own child OU under --base-dn. All AD objects and GPO
 links belong to that child OU; existing OU settings are not changed. GPO names,
 GUIDs and DNS owners are unique to the run. The GPOs are empty and disabled.
@@ -157,15 +187,20 @@ disabled firewall-rule updates and duplicate handling, cleanup/absence checks ev
 when firewall creation throws, optional stored share security, explicit owner/group/ACL
 roundtrips, security-descriptor preservation and repeated deletion.
 
-Domain: RootDSE and explicit OU lookup; page-size-one search, user/group/computer
-creation, membership and SPNs, attribute edits/rename, binary SID, password reset,
-account enablement and password change; GPO backup/import/restore/XML report,
-permission inspection, no-filter association, link ordering/flags and inheritance;
-eight DNS record types with TTL updates and cleanup.
+Domain: RootDSE and explicit OU lookup; DC discovery from the joined client;
+LDAP over TLS and StartTLS with Negotiate and (with an explicit credential) Basic
+binds, and rejection of a TLS certificate that does not name the requested host;
+page-size-one search, user/group/computer creation, membership and SPNs, attribute
+edits/rename, binary SID, password reset, account enablement and password change;
+ranged retrieval of a 3100-member group; GPO backup/import/restore/XML report,
+permission grant/upgrade/removal, rename, no-filter association, link
+ordering/flags and inheritance; eight DNS record types with TTL and data updates
+and cleanup; and, with `--expect-denied`, denied LDAP, GPO and DNS writes for a
+restricted identity.
 
-Not covered as full acceptance: large ranged LDAP attributes, all task trigger
-executions, task password identities, GPO security-delegation writes or real WMI
-filter associations, denied-rights matrices beyond creation by a standard user,
+Not covered as full acceptance: all task trigger
+executions, task password identities, real WMI
+filter associations, denied-rights matrices beyond the listed writes,
 all firewall protocol transitions, DNS sibling-record concurrency, service
 failure/reboot actions, other architectures and all Windows Server versions.
 
