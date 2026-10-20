@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
-import { root } from "./run.mjs";
-import { bumpVersionFiles, checkVersions, readVersionFiles } from "./version.mjs";
+import { nugetPackArguments, root } from "./run.mjs";
+import { bumpVersionFiles, checkVersions, packageVersion, readVersionFiles } from "./version.mjs";
 
 const files = () => ({
   "eng/workspace.json": '{\n  "schemaVersion": 2,\n  "version": "0.6.0-preview.1",\n  "npm": [\n    { "name": "@runic-artifex/views", "path": "packages/web/views" },\n    { "name": "@runic-artifex/react", "path": "packages/web/react" }\n  ]\n}\n',
@@ -60,4 +60,81 @@ test("Runic.CommandLine has its own exact pin, independent of the SDK version", 
     props.match(new RegExp(`<PackageVersion Include="${name.replaceAll(".", "\\.")}" Version="([^"]+)" />`))?.[1]);
   for (const pin of pins) assert.match(pin ?? "", /^\d+\.\d+\.\d+(?:-[\w.]+)?$/, "Runic.CommandLine pins must be exact released versions");
   assert.equal(pins[0], pins[1], "Runic.CommandLine and Runic.CommandLine.Spectre are released together");
+});
+
+// Runic.Application.Views.CsWebUi may ship on a version of its own (eng/version.mjs separateVersions).
+const cswebui = "Runic.Application.Views.CsWebUi";
+const separateFiles = (cswebuiVersion, { workspaceEntry = cswebuiVersion } = {}) => {
+  const value = files();
+  const entry = workspaceEntry === null ? "" : `, "version": "${workspaceEntry}"`;
+  value["eng/workspace.json"] = value["eng/workspace.json"].replace('  "npm": [',
+    `  "nuget": [\n    { "name": "${cswebui}"${entry}, "project": "packages/dotnet/${cswebui}/${cswebui}.csproj" },\n    { "name": "Runic.Platform", "project": "packages/dotnet/Runic.Platform/Runic.Platform.csproj" }\n  ],\n  "npm": [`);
+  value["eng/Versions.props"] = value["eng/Versions.props"].replace("  </PropertyGroup>",
+    `    <RunicCsWebUiPackageVersion Condition="'$(RunicCsWebUiPackageVersion)' == ''">${cswebuiVersion}</RunicCsWebUiPackageVersion>\n  </PropertyGroup>`);
+  value["examples/web/packages.lock.json"] = JSON.stringify({ version: 2, dependencies: { "net10.0": {
+    "consumer.tests": { type: "Project", dependencies: { [cswebui]: `[${cswebuiVersion}, )`, "Runic.Platform": "[0.6.0-preview.1, )" } },
+    "runic.application.views.cswebui": { type: "Project", dependencies: { "Runic.Platform": "[0.6.0-preview.1, )" } },
+    "runic.platform": { type: "Project" },
+  } } }, null, 2) + "\n";
+  return value;
+};
+const cswebuiCopies = value => [
+  /<RunicCsWebUiPackageVersion [^>]*>([^<]*)</.exec(value["eng/Versions.props"])[1],
+  JSON.parse(value["eng/workspace.json"]).nuget[0].version,
+  JSON.parse(value["examples/web/packages.lock.json"]).dependencies["net10.0"]["consumer.tests"].dependencies[cswebui],
+];
+
+test("packageVersion gives a package's own version, else the release train", () => {
+  const workspace = JSON.parse(separateFiles("1.0.0-preview.1")["eng/workspace.json"]);
+  assert.equal(packageVersion(workspace, cswebui), "1.0.0-preview.1");
+  assert.equal(packageVersion(workspace, cswebui.toLowerCase()), "1.0.0-preview.1", "NuGet ids are case-insensitive");
+  assert.equal(packageVersion(workspace, "Runic.Platform"), "0.6.0-preview.1");
+  assert.equal(packageVersion(workspace, "Runic.Unlisted"), "0.6.0-preview.1");
+  assert.equal(packageVersion(JSON.parse(separateFiles("0.6.0-preview.1", { workspaceEntry: null })["eng/workspace.json"]), cswebui), "0.6.0-preview.1");
+});
+
+test("check compares the CsWebUi copies with its own version", () => {
+  assert.equal(checkVersions(separateFiles("1.0.0-preview.1")), "0.6.0-preview.1");
+  assert.equal(checkVersions(separateFiles("0.6.0-preview.1", { workspaceEntry: null })), "0.6.0-preview.1");
+  for (const [path, from, to] of [
+    ["eng/Versions.props", ">1.0.0-preview.1</RunicCsWebUiPackageVersion>", ">0.6.0-preview.1</RunicCsWebUiPackageVersion>"],
+    ["eng/Versions.props", ">1.0.0-preview.1</RunicCsWebUiPackageVersion>", ">$(RunicSdkVersion)</RunicCsWebUiPackageVersion>"],
+    ["examples/web/packages.lock.json", `"${cswebui}": "[1.0.0-preview.1, )"`, `"${cswebui}": "[0.6.0-preview.1, )"`],
+    ["eng/workspace.json", '"version": "1.0.0-preview.1"', '"version": "1.0"'],
+    ["eng/workspace.json", `"name": "${cswebui}", "version": "1.0.0-preview.1", "project": "packages/dotnet/${cswebui}/${cswebui}.csproj"`,
+      `"name": "${cswebui}", "project": "packages/dotnet/${cswebui}/${cswebui}.csproj", "version": "1.0.0-preview.1"`],
+    ["eng/workspace.json", '"name": "Runic.Platform",', '"name": "Runic.Platform", "version": "0.6.0-preview.1",'],
+  ]) {
+    const value = separateFiles("1.0.0-preview.1");
+    assert.notEqual(value[path].replace(from, to), value[path], `${path}: ${from}`);
+    value[path] = value[path].replace(from, to);
+    assert.throws(() => checkVersions(value), undefined, `${path}: ${to}`);
+  }
+});
+
+test("bump moves an equal CsWebUi version with the train, keeps a distinct one, and --cswebui sets it", () => {
+  const equal = bumpVersionFiles(separateFiles("0.6.0-preview.1"), "0.7.0-preview.1");
+  assert.deepEqual(cswebuiCopies(equal), ["0.7.0-preview.1", "0.7.0-preview.1", "[0.7.0-preview.1, )"]);
+  const implicit = bumpVersionFiles(separateFiles("0.6.0-preview.1", { workspaceEntry: null }), "0.7.0-preview.1");
+  assert.match(implicit["eng/Versions.props"], />0\.7\.0-preview\.1<\/RunicCsWebUiPackageVersion>/);
+  const distinct = bumpVersionFiles(separateFiles("1.0.0-preview.1"), "1.0.0");
+  assert.equal(checkVersions(distinct), "1.0.0");
+  assert.deepEqual(cswebuiCopies(distinct), ["1.0.0-preview.1", "1.0.0-preview.1", "[1.0.0-preview.1, )"]);
+  assert.match(distinct["examples/web/packages.lock.json"], /"Runic\.Platform": "\[1\.0\.0, \)"/);
+  const set = bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { [cswebui]: "1.0.0-preview.1" });
+  assert.equal(checkVersions(set), "1.0.0");
+  assert.deepEqual(cswebuiCopies(set), ["1.0.0-preview.1", "1.0.0-preview.1", "[1.0.0-preview.1, )"]);
+  assert.match(set["eng/Versions.props"], /<RunicSdkVersion>1\.0\.0</);
+  assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { [cswebui]: "1.0" }));
+  assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { "Runic.Platform": "1.0.0-preview.1" }));
+  assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1", { workspaceEntry: null }), "1.0.0", { [cswebui]: "1.0.0-preview.1" }));
+});
+
+test("each NuGet package packs at its own version", () => {
+  const workspace = JSON.parse(separateFiles("1.0.0-preview.1")["eng/workspace.json"]);
+  const version = p => nugetPackArguments(workspace, p, { built: true, nuget: "/feed", npm: "/npm" }).filter(arg => arg.startsWith("-p:PackageVersion="));
+  assert.deepEqual(version(workspace.nuget[0]), ["-p:PackageVersion=1.0.0-preview.1"]);
+  assert.deepEqual(version(workspace.nuget[1]), ["-p:PackageVersion=0.6.0-preview.1"]);
+  assert.deepEqual(nugetPackArguments(workspace, workspace.nuget[1], { built: false, nuget: "/feed", npm: "/npm", selectedConfiguration: "Release" }),
+    ["pack", "packages/dotnet/Runic.Platform/Runic.Platform.csproj", "-c", "Release", "--no-restore", "-o", "/feed", "-p:PackageVersion=0.6.0-preview.1"]);
 });

@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { basename, extname, resolve, join } from "node:path";
 import { root, workspace, run, configuration } from "./run.mjs";
 import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions } from "./nupkg.mjs";
+import { packageVersion } from "./version.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -197,7 +198,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
     `${label} leaked a project reference`);
   const ownedPackages = new Set(workspace.nuget.map(packageEntry => packageEntry.name.toLowerCase()));
   for (const library of libraries.filter(name => ownedPackages.has(name.split("/")[0].toLowerCase()))) {
-    assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
+    assert.equal(library.split("/")[1], packageVersion(workspace, library.split("/")[0]), `stale internal dependency ${library}`);
   }
   // Host adapters use the DI abstractions; the application chooses and references a container.
   if (["Runic.Application.Views.Desktop", "Runic.Application.Views.CsWebUi", "Runic.Application.Views.Wpf"].includes(label)) {
@@ -268,12 +269,12 @@ async function verifyConsumers(directory, packageName) {
   assert.ok(!packageName || libraries.length === 1, `Unknown NuGet library consumer ${packageName}`);
   for (const p of packageName ? libraries : workspace.nuget) {
     assert.ok(
-      readdirSync(nuget).includes(`${p.name}.${workspace.version}.nupkg`),
+      readdirSync(nuget).includes(`${p.name}.${packageVersion(workspace, p.name)}.nupkg`),
       `Pack ${p.name} first`,
     );
   }
   for (const p of packageName ? libraries : workspace.nuget)
-    verifyPackageLayout(join(nuget, `${p.name}.${workspace.version}.nupkg`), p.name, workspace.version);
+    verifyPackageLayout(join(nuget, `${p.name}.${packageVersion(workspace, p.name)}.nupkg`), p.name, workspace.version);
   const archives = (packageName ? [] : workspace.npm).map((p) => {
     const file = `${p.name.replace("@", "").replace("/", "-")}-${workspace.version}.tgz`;
     assert.ok(readdirSync(npm).includes(file), `Pack ${p.name} first`);
@@ -305,7 +306,7 @@ async function verifyConsumers(directory, packageName) {
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application.Views" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${packageVersion(workspace, p.name)}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application.Views" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),

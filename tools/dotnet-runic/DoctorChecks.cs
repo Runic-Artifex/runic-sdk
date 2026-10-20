@@ -260,7 +260,7 @@ internal static class DoctorChecks
             if (HostCheckIds(project, host, runtime, target) is not { } ids)
             {
                 uncovered.Add(name);
-                return $"{name}, which --rid {target?.Value} cannot check from this {DescribeOs(runtime.Platform.Os)} machine";
+                return $"{name}, which --runtime {target?.Value} cannot check from this {DescribeOs(runtime.Platform.Os)} machine";
             }
             return $"{name}, checked by {ids}";
         }));
@@ -269,7 +269,7 @@ internal static class DoctorChecks
         checks.Add(uncovered.Count == 0
             ? Pass(id, summary)
             : Warn(id, summary,
-                $"Run 'dotnet runic doctor --rid {target!.Value}' on a {DescribeOs(target.Family)} machine to check {string.Join(" and ", uncovered)} too."));
+                $"Run 'dotnet runic doctor --runtime {target!.Value}' on a {DescribeOs(target.Family)} machine to check {string.Join(" and ", uncovered)} too."));
     }
 
     internal static string DescribeHost(DoctorProjectConfiguration project, RunicViewsHost host, IDoctorRuntime runtime,

@@ -16,6 +16,7 @@ internal static class Program
     internal const int CreateFailure = 1;
     internal const int UsageFailure = 2;
     internal const int InternalFailure = 3;
+    internal const int Cancelled = 130;
 
     /// <summary>
     /// Selects human or JSON output. <c>--output</c> and <c>-o</c> choose the
@@ -55,14 +56,13 @@ internal static class Program
             "dnx Runic.Create -- MyApp --yes --dry-run",
             "dnx Runic.Create -- MyApp -o apps/MyApp --yes",
         ])]
-    [DefaultCommand]
-    [CommandResult("runic.create/1", typeof(CreateJsonContext))]
+    [RootCommand]
+    [CommandResult("runic.create/2", typeof(CreateJsonContext))]
     internal static Task<CommandOutcome<CreateResult>> Create(
         CommandExecutionContext context,
         CancellationToken cancellationToken,
         [Argument(Description = "Project name and default directory.")] string? name = null,
         [Option("--output", "-o", ValueName = "PATH", Description = "Create the project in this directory instead, as dotnet new --output does.")] string? output = null,
-        [Option("--directory", ValueName = "PATH", Hidden = true, Description = "Former name of --output.")] string? directory = null,
         [Option("--frontend", Description = "Frontend framework.")] string? frontend = null,
         [Option("--package-manager", Description = "JavaScript package manager.")] string? packageManager = null,
         [Option("--host", Description = "Window host: desktop opens a native window, cswebui opens a browser window.")] string? host = null,
@@ -74,17 +74,9 @@ internal static class Program
         [Option("--dry-run", Description = "Print the commands without running them.")] bool dryRun = false,
         [Option("--template-source", ValueName = "SOURCE", Description = "An additional NuGet source for the template package.")] string? templateSource = null)
     {
-        string? destination = Optional(output);
-        string? formerDestination = Optional(directory);
-        if (destination is not null && formerDestination is not null &&
-            !string.Equals(destination, formerDestination, StringComparison.Ordinal))
-        {
-            return Task.FromResult(CreateApplication.Failure(CommandExitCategory.Usage, "RCREATE006",
-                "Pass the destination once with --output (-o). --directory is its former name."));
-        }
         var request = new CreateRequest(
             Optional(name),
-            destination ?? formerDestination,
+            Optional(output),
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["frontend"] = frontend ?? "",
@@ -129,17 +121,21 @@ internal sealed record CreateRequest(
     string? TemplateSource,
     IReadOnlyDictionary<string, bool> Toggles);
 
-// The runic.create/1 payload names its properties in PascalCase. They are spelled out
+// The runic.create/2 payload names its properties in camelCase. They are spelled out
 // so that the JSON context's options cannot rename them: since Runic.CommandLine
 // 0.6.0-preview.3, the generated codec serializes through CreateJsonContext.Default.
+// Options holds the template's choice parameters and Toggles its Boolean parameters,
+// both keyed by their long option names.
 internal sealed record CreateResult(
-    [property: JsonPropertyName("Name")] string Name,
-    [property: JsonPropertyName("Directory")] string Directory,
-    [property: JsonPropertyName("Version")] string Version,
-    [property: JsonPropertyName("Options")] IReadOnlyDictionary<string, string> Options,
-    [property: JsonPropertyName("Commands")] IReadOnlyList<string> Commands,
-    [property: JsonPropertyName("ReproduceCommand")] string ReproduceCommand,
-    [property: JsonPropertyName("Created")] bool Created)
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("directory")] string Directory,
+    [property: JsonPropertyName("fullPath")] string FullPath,
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("options")] IReadOnlyDictionary<string, string> Options,
+    [property: JsonPropertyName("toggles")] IReadOnlyDictionary<string, bool> Toggles,
+    [property: JsonPropertyName("commands")] IReadOnlyList<string> Commands,
+    [property: JsonPropertyName("reproduceCommand")] string ReproduceCommand,
+    [property: JsonPropertyName("created")] bool Created)
 {
     [JsonIgnore]
     public string HumanOutput { get; init; } = "";
@@ -156,6 +152,7 @@ internal sealed class CreateExitCodePolicy : IExitCodePolicy
         CommandExitCategory.Success => Program.Success,
         CommandExitCategory.Usage or CommandExitCategory.Validation => Program.UsageFailure,
         CommandExitCategory.CommandFailure or CommandExitCategory.Unavailable => Program.CreateFailure,
+        CommandExitCategory.Cancelled => Program.Cancelled,
         _ => Program.InternalFailure,
     };
 }

@@ -46,13 +46,63 @@ commands in the browser.
 | `--template-source` | An additional NuGet source for the template | |
 
 As with `dotnet new`, `--output apps/MyApp` or `-o apps/MyApp` chooses the
-destination directory. Earlier versions named this option `--directory`, which
-still works. The creator's global `--format human|json` option selects the
-command output format.
+destination directory. The creator's global `--format human|json` option selects
+the command output format.
+
+The creator has no subcommand to name: `dnx Runic.Create -- create` creates a
+project named `create`.
 
 The frontend, package manager, host and ViewModel choices, `--tests`, `--nix` and `--packaging` come from
 the template itself, so `dotnet new runic-app --help` lists the same options.
 With `--tests`, the next steps include `dotnet test --project MyApp.Tests`.
+
+## JSON output
+
+`--format json` writes one `runic.commandline/1` response to standard output
+with `"command": "create"` and the `runic.create/2` payload:
+
+```json
+{
+  "name": "MyApp",
+  "directory": "apps/MyApp",
+  "fullPath": "/work/apps/MyApp",
+  "version": "<VERSION>",
+  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "view-models": "reactiveui" },
+  "toggles": { "tests": true, "nix": false, "packaging": false },
+  "commands": [
+    "dotnet new install Runic.Application.Templates@<VERSION>",
+    "dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests"
+  ],
+  "reproduceCommand": "dnx Runic.Create@<VERSION> -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests",
+  "created": true
+}
+```
+
+| Property | Meaning |
+| --- | --- |
+| `name` | The project name. |
+| `directory` | The destination as given with `--output`, or the project name. |
+| `fullPath` | The absolute path of `directory`. |
+| `version` | The creator and template version. |
+| `options` | The selected value of each choice option, keyed by its long name. |
+| `toggles` | Whether each Boolean option is on, keyed by its long name. |
+| `commands` | The `dotnet new install` and `dotnet new runic-app` commands. |
+| `reproduceCommand` | The `dnx Runic.Create` invocation that creates the same project without questions. |
+| `created` | `true` when the project was created; `false` for `--dry-run`, which runs no command and leaves the directory untouched. |
+
+JSON output never asks questions; options you do not pass use their
+defaults. A failed run sets `success` to `false` and carries the `RCREATE` code
+in `fault.code`. The output of `dotnet new` goes to standard error.
+
+## Exit codes
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The project was created, or `--dry-run` printed its commands. |
+| `1` | The project could not be created: `dotnet new install` or `dotnet new runic-app` failed (`RCREATE004`, `RCREATE005`). |
+| `2` | Usage or validation error, such as an unknown option value, an invalid name or a non-empty destination (`RCREATE001` to `RCREATE003`). |
+| `3` | Internal failure. |
+| `130` | Cancelled, for example with Ctrl+C. |
 
 See the [getting-started guide](https://docs.runic-artifex.eu/getting-started/),
 [source](https://github.com/Runic-Artifex/runic-sdk/tree/main/tools/Runic.Create),

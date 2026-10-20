@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { authority, sha256, validateCandidate, dependencyOrder, VERSION, REPOSITORY } from './artifacts.mjs';
+import { authority, json, sha256, validateCandidate, dependencyOrder, VERSION, REPOSITORY } from './artifacts.mjs';
 function candidate() {
  const body={schema:'runic.preview/1',version:VERSION,repository:REPOSITORY,source:'a'.repeat(40),ciRunId:'123',packages:[{name:'A',file:'nuget/A.nupkg',sha256:'b'.repeat(64),dependencies:{}}]};
  return {...body,digest:sha256(JSON.stringify(body))};
@@ -107,7 +107,7 @@ test('registry polling is bounded and never retries mismatching published bytes'
  const response=await fetchRegistry('https://registry.npmjs.org/test',{waitForAvailability:true,maxAttempts:3,now:()=>0,sleep:async()=>{},fetchImpl:async()=>{attempts++;return new Response('',{status:404});}});
  expect(response.status).toBe(404);expect(attempts).toBe(3);
  await expect(fetchRegistry('https://registry.npmjs.org/test',{now:()=>0,budgetMs:1000,fetchImpl:async()=>new Response('',{status:429,headers:{'retry-after':'60'}})})).rejects.toThrow('Retry-After');
- let reads=0; const p={name:'@runic-artifex/test',registry:'npm',sha256:sha256('correct')};
+ let reads=0; const p={name:'@runic-artifex/test',registry:'npm',version:VERSION,sha256:sha256('correct')};
  await expect(registryMatches(p,{waitForAvailability:true,fetchImpl:async()=>{
   reads++;return reads===1 ? Response.json({name:p.name,version:VERSION,dist:{tarball:'https://registry.npmjs.org/test.tgz'}}) : new Response('wrong');
  }})).rejects.toThrow('Registry bytes differ');
@@ -152,4 +152,40 @@ test('a dry run treats an npm package that does not exist yet as having no lates
  const published=async url=>url.includes('/dist-tags') ? Response.json({latest:'0.6.0-preview.1'}) : Response.json({});
  expect(await npmLatest('@runic-artifex/views',{fetchImpl:published})).toBe('0.6.0-preview.1');
  await expect(npmLatest('@runic-artifex/new',{fetchImpl:async()=>new Response('',{status:401}),waitForAvailability:true,maxAttempts:1})).rejects.toThrow('401');
+});
+
+test('a package on its own version is scanned at that version and dependents pin it',()=>{
+ const workspace=json(new URL('../workspace.json',import.meta.url));
+ const cswebui=authority(workspace).find(p=>p.name==='Runic.Application.Views.CsWebUi');
+ expect(cswebui.version).toBe(workspace.nuget.find(p=>p.name===cswebui.name).version ?? VERSION);
+ expect(authority({...workspace,nuget:workspace.nuget.map(p=>p.name===cswebui.name?{...p,version:'9.0.0-preview.1'}:p)})
+  .find(p=>p.name===cswebui.name).version).toBe('9.0.0-preview.1');
+ const dir=mkdtempSync(join(tmpdir(),'runic-own-version-test-')), source='a'.repeat(40), own='9.0.0-preview.1';
+ const inventory=[{registry:'nuget',name:'Runic.Own',version:own},{registry:'nuget',name:'Runic.Consumer',version:VERSION}];
+ mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
+ const script=`import zipfile,sys,xml.etree.ElementTree as E
+d,r,s,own_version,consumer_version,range=sys.argv[1:]
+for name,v in [('Runic.Own',own_version),('Runic.Consumer',consumer_version)]:
+ root=E.Element('package');m=E.SubElement(root,'metadata')
+ E.SubElement(m,'id').text=name;E.SubElement(m,'version').text=v
+ E.SubElement(m,'repository',url='https://github.com/'+r,commit=s)
+ if name=='Runic.Consumer':E.SubElement(E.SubElement(m,'dependencies'),'dependency',id='Runic.Own',version=range)
+ with zipfile.ZipFile(d+'/nuget/'+name+'.nupkg','w') as z:z.writestr(name+'.nuspec',E.tostring(root))
+`;
+ const pack=(ownVersion,range)=>execFileSync('python3',['-c',script,dir,REPOSITORY,source,ownVersion,VERSION,range]);
+ try {
+  pack(own,`[${own}]`);
+  expect(scan(dir,inventory,source).map(p=>[p.name,p.version])).toEqual([['Runic.Own',own],['Runic.Consumer',VERSION]]);
+  pack(VERSION,`[${own}]`);expect(()=>scan(dir,inventory,source)).toThrow('Mixed version Runic.Own');
+  pack(own,`[${VERSION}]`);expect(()=>scan(dir,inventory,source)).toThrow('Internal nuget dependency must pin candidate Runic.Own');
+ } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('registry lookups use the version each package ships on', async()=>{
+ const urls=[];const p={name:'Runic.Own',registry:'nuget',version:'9.0.0-Preview.1'};
+ expect(await registryMatches(p,{fetchImpl:async url=>{urls.push(url);return new Response('',{status:404});}})).toBe(false);
+ expect(urls).toEqual(['https://api.nuget.org/v3-flatcontainer/runic.own/9.0.0-preview.1/runic.own.9.0.0-preview.1.nupkg']);
+ const npm={name:'@runic-artifex/own',registry:'npm',version:'9.0.0-preview.1'};urls.length=0;
+ expect(await registryMatches(npm,{fetchImpl:async url=>{urls.push(url);return new Response('',{status:404});}})).toBe(false);
+ expect(urls).toEqual(['https://registry.npmjs.org/%40runic-artifex%2Fown/9.0.0-preview.1']);
 });
