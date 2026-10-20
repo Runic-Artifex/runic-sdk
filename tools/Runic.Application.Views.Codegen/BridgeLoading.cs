@@ -324,9 +324,9 @@ static class BridgeLoading
                 CheckProperty(member, $"{path}.{member.Name}", visited, honorJsonIgnore);
     }
 
-    private const string CodecAttribute = "Runic.Application.Views.RunicBridgeCodecAttribute";
+    private const string CodecAttribute = "Runic.Application.Views.RunicCodecAttribute";
 
-    // [RunicBridgeCodec] is inherited by derived types.
+    // [RunicCodec] is inherited by derived types.
     private static bool HasCodec(Type type)
     {
         for (var current = type; current is not null && current != typeof(object); current = current.BaseType)

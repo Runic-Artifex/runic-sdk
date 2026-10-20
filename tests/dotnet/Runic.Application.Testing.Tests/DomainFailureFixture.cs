@@ -102,7 +102,7 @@ public sealed class FailureReactiveViewModel : ReactiveObject
     [RunicFailure(typeof(NoteSaveFailure))]
     public ReactiveCommand<RxVoid, int> SaveCommand { get; }
 
-    [RunicFailure(typeof(NoteSaveFailure)), RunicCommandResult(BridgeCommandResultCardinality.Stream)]
+    [RunicFailure(typeof(NoteSaveFailure)), RunicCommandResult(RunicCommandResultCardinality.Stream)]
     public ReactiveCommand<RxVoid, int> ImportCommand { get; }
 
     private sealed class FailingSequence : IObservable<int>

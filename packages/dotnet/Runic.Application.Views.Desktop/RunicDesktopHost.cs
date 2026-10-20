@@ -354,10 +354,14 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 surfaceOptions = surfaceOptions with { Resources = resources };
             surface = await Desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
-            content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
-                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>(),
-                loggerFactory: loggerFactory);
+            content = new WindowContentSession(transport, new WindowContentSessionOptions
+            {
+                ViewLocator = scope.ServiceProvider.GetService<IRunicViewLocator>(),
+                RootModel = viewModel,
+                ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
+                LoggerFactory = loggerFactory,
+                IncludeFailureDetail = opening.Options.IncludeFailureDetail,
+            });
             var session = content;
             connectionBinding = surface.SubscribeConnectionEvents(invocation =>
             {

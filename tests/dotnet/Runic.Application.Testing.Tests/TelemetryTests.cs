@@ -21,32 +21,18 @@ namespace Runic.Application.Testing.Tests;
 // Views ActivitySource and Meter report calls, failures and snapshot frames.
 internal sealed class TelemetryTests
 {
-    // The former runner ran FailingCommandIsLoggedTracedAndMeasuredAsync with BridgeDiagnostics.IncludeFailureDetail
-    // off and on, the other cases with it off, and then restored it.
-    private bool? includeFailureDetail;
-
-    [Before(HookType.Test)]
-    public void DisableFailureDetail()
-    {
-        includeFailureDetail = BridgeDiagnostics.IncludeFailureDetail;
-        BridgeDiagnostics.IncludeFailureDetail = false;
-    }
-
-    [After(HookType.Test)]
-    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = includeFailureDetail;
-
+    // FailingCommandIsLoggedTracedAndMeasuredAsync runs with the window's failure detail off and on.
     [Test]
     [Arguments(false)]
     [Arguments(true)]
     [DisplayName("FailingCommandIsLoggedTracedAndMeasuredAsync(development: $development)")]
     public async Task FailingCommandIsLoggedTracedAndMeasuredAsync(bool development)
     {
-        BridgeDiagnostics.IncludeFailureDetail = development;
         using var telemetry = new TelemetryCapture();
         var logs = new LogCapture();
         var model = new Model();
         using var transport = new InMemoryViewTransport();
-        using var content = new WindowContentSession(transport, rootModel: model, loggerFactory: logs);
+        using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, LoggerFactory = logs, IncludeFailureDetail = development });
         using var bridge = new FailingBridge(transport, model, content);
 
         using var reply = JsonDocument.Parse(transport.Call("failingThrow"));
@@ -54,7 +40,7 @@ internal sealed class TelemetryTests
         Require(error.GetProperty("kind").GetString() == "failed", $"The command did not fail: {reply.RootElement}");
         // D-12: the reply follows D-1, but the operator's log always has the exception.
         Require(error.TryGetProperty("detail", out _) == development,
-            $"The reply detail did not follow BridgeDiagnostics: {reply.RootElement}");
+            $"The reply detail did not follow the window option: {reply.RootElement}");
 
         var entry = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1000)
             ?? throw new InvalidOperationException($"No BridgeCommandFailed entry was logged: {string.Join(", ", logs.Entries.Select(e => e.EventId))}");
@@ -94,7 +80,7 @@ internal sealed class TelemetryTests
         var logs = new LogCapture();
         var model = new Model();
         using var transport = new InMemoryViewTransport();
-        using var content = new WindowContentSession(transport, rootModel: model, loggerFactory: logs);
+        using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, LoggerFactory = logs });
         using var bridge = new FailingBridge(transport, model, content);
 
         using var admission = JsonDocument.Parse(transport.Call("failingStartFailAsync", new(StringValue: "telemetry-failure")));
@@ -125,7 +111,7 @@ internal sealed class TelemetryTests
         using var telemetry = new TelemetryCapture();
         var model = new Model();
         using var transport = new InMemoryViewTransport();
-        using var content = new WindowContentSession(transport, rootModel: model, loggerFactory: new LogCapture());
+        using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, LoggerFactory = new LogCapture() });
         using var bridge = new FailingBridge(transport, model, content);
         _ = transport.Call("failingSetCount", new(Int64Value: 3));
         var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -173,18 +159,17 @@ internal sealed class TelemetryTests
     }
 
     private sealed class FailingBridge(IBridgeTransport transport, Model model, WindowContentSession content)
-        : ViewModelBridge<Model>(transport, model, "failing", (writer, vm, revision) =>
+        : ViewModelBridge<Model>(transport, model, "failing", (writer, vm, revision, _) =>
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteNumber("count", vm.Count);
             writer.WriteEndObject();
         },
-        [new("Count", vm => vm.Count, (vm, e) => vm.Count = checked((int)e.GetInt64()))],
+        [new("Count", vm => vm.Count, (vm, e) => vm.Count = checked((int)e.GetInt64()))], [],
         [
             new("Throw", vm => vm.Throw),
-            new("FailAsync", vm => vm.Throw,
-                ExecuteAsync: (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret."))),
+            new("FailAsync", vm => vm.Throw) { ExecuteAsync = (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret.")) },
         ],
         contractFingerprint: "telemetry", content: content);
 

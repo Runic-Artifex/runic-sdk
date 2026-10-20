@@ -3,6 +3,7 @@ using ReactiveUI;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using Runic.Navigation;
 using TUnit.Core;
 

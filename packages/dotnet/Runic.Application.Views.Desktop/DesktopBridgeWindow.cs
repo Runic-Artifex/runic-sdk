@@ -27,7 +27,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     private DesktopNativeOwner? _nativeOwner;
     private DesktopWindowPlatformServices? _platformServices;
     private Task? _served;
-    private Task<BridgeWindowCloseResult>? _close;
+    private Task<RunicWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _completion;
     private bool _finalized;
@@ -139,11 +139,11 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     }
 
     /// <inheritdoc />
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
-        Task<BridgeWindowCloseResult> close;
+        Task<RunicWindowCloseResult> close;
         lock (_closeGate) close = _close ??= BeginCloseAsync(timeout);
         _closeStarted.TrySetResult();
         return new(close.WaitAsync(cancellationToken));
@@ -185,7 +185,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
+    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         var errors = new List<Exception>();
         Capture(_dropStop.Cancel, errors);
@@ -198,8 +198,8 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         Capture(_connectionBinding.Dispose, errors);
         if (_attachment is not null) Capture(_attachment.Dispose, errors);
 
-        BridgeWindowCloseResult result;
-        try { result = await _content.BeginCloseAsync(timeout).ConfigureAwait(false); }
+        RunicWindowCloseResult result;
+        try { result = await _content.DrainAsync(timeout).ConfigureAwait(false); }
         catch (Exception error)
         {
             errors.Add(error);
@@ -230,7 +230,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
 
     private async Task DrainThenFinalizeAsync(List<Exception> errors)
     {
-        try { _ = await _content.BeginCloseAsync(Timeout.InfiniteTimeSpan).ConfigureAwait(false); }
+        try { _ = await _content.DrainAsync(Timeout.InfiniteTimeSpan).ConfigureAwait(false); }
         catch (Exception error) { errors.Add(error); }
         await FinalizeAsync(errors).ConfigureAwait(false);
         if (errors.Count > 0) throw new AggregateException(errors);

@@ -6,6 +6,7 @@ using ReactiveUI.Primitives;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Application.Views.ReactiveUI.Generated;
 using Runic.Navigation;
 using TUnit.Core;
 
@@ -464,7 +465,7 @@ internal sealed class TestWindow<TViewModel>(AsyncServiceScope scope, RunicWindo
 {
     private readonly object _gate = new();
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private Task<BridgeWindowCloseResult>? _closing;
+    private Task<RunicWindowCloseResult>? _closing;
 
     public RunicWindowTestHost<TViewModel> Host { get; } = host;
     public bool IsOpen => !_closed.Task.IsCompleted;
@@ -477,7 +478,7 @@ internal sealed class TestWindow<TViewModel>(AsyncServiceScope scope, RunicWindo
         return true;
     }
 
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         lock (_gate) _closing ??= Task.Run(() => CloseCoreAsync(timeout));
         return new(_closing.WaitAsync(cancellationToken));
@@ -488,7 +489,7 @@ internal sealed class TestWindow<TViewModel>(AsyncServiceScope scope, RunicWindo
 
     public async ValueTask DisposeAsync() => await CloseAsync(TimeSpan.Zero);
 
-    private async Task<BridgeWindowCloseResult> CloseCoreAsync(TimeSpan timeout)
+    private async Task<RunicWindowCloseResult> CloseCoreAsync(TimeSpan timeout)
     {
         _closed.TrySetResult();
         var result = await Host.BeginCloseAsync(timeout);

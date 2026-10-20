@@ -26,7 +26,7 @@ internal static class BridgeDataSubscriptionEmitter
     private static void AppendMember(StringBuilder source, string name, string propertyName, string getter, BridgeTypeNode node, int indent)
     {
         var pad = new string(' ', indent);
-        source.Append($"{pad}new global::Runic.Application.Views.BridgeDataSubscriptionMember({Quote(name)}, {getter}");
+        source.Append($"{pad}new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember({Quote(name)}, {getter}");
         var children = Children(node);
         if (children.Count > 0)
         {
@@ -42,13 +42,13 @@ internal static class BridgeDataSubscriptionEmitter
         if (node.Kind is BridgeWireKind.Array or BridgeWireKind.List)
         {
             source.Append(", enumerateChildren: static value => (global::System.Collections.IEnumerable)value");
-            source.Append(", enumerateValidationChildren: static value => global::Runic.Application.Views.BridgeValidation.EnumerateIndexed((global::System.Collections.IEnumerable)value)");
+            source.Append(", enumerateValidationChildren: static value => global::Runic.Application.Views.Generated.BridgeValidation.EnumerateIndexed((global::System.Collections.IEnumerable)value)");
         }
         else if (node.Kind is BridgeWireKind.StringDictionary)
         {
             var valueType = BridgeTypeGraph.CSharpType(node.Value!.Type);
             source.Append($", enumerateChildren: static value => global::System.Linq.Enumerable.Select((global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, {valueType}>>)value, static entry => (object?)entry.Value)");
-            source.Append($", enumerateValidationChildren: static value => global::Runic.Application.Views.BridgeValidation.EnumerateDictionary((global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, {valueType}>>)value)");
+            source.Append($", enumerateValidationChildren: static value => global::Runic.Application.Views.Generated.BridgeValidation.EnumerateDictionary((global::System.Collections.Generic.IEnumerable<global::System.Collections.Generic.KeyValuePair<string, {valueType}>>)value)");
         }
         if (name == "$items") source.Append(", isPathTransparent: true");
         source.Append($", propertyName: {Quote(propertyName)})");

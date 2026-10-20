@@ -13,8 +13,8 @@ public sealed record PageReference(
     [property: JsonPropertyName("id")] string Id);
 
 /// <summary>
-/// Experimental instance routing for content ViewModels. The window owns this
-/// session and the application or DI scope continues to own the ViewModels.
+/// Routes the content ViewModels of one window to their browser presentations. The window
+/// owns this session and the application or DI scope continues to own the ViewModels.
 /// </summary>
 public sealed class WindowContentSession : IDisposable
 {
@@ -61,52 +61,10 @@ public sealed class WindowContentSession : IDisposable
     // navigator it once presented reachable.
     private readonly List<WeakReference<IDisposable>> _disposalLinks = [];
 
-    /// <summary>Creates the content session for one window.</summary>
+    /// <summary>Creates the content session for one window with the default options.</summary>
     /// <param name="transport">The window's host transport.</param>
-    /// <param name="viewLocator">Resolves .NET Views for presented content.</param>
-    /// <param name="operationShutdown">Cancels window-owned operations when signalled.</param>
-    /// <param name="rootModel">The window's root ViewModel, if any.</param>
-    /// <param name="modelContext">
-    /// An application-owned context, such as the scoped DI context, that the window graph
-    /// must share. The root model is bound to it; a root already owned by a different
-    /// context is rejected. When omitted, the root's existing context is reused or the
-    /// session creates and owns one.
-    /// </param>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
-        Justification = "Published constructor; reordering its parameters would break callers.")]
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator,
-        CancellationToken operationShutdown, object? rootModel, IRunicModelContext? modelContext)
-        : this(transport, viewLocator, operationShutdown, rootModel, modelContext, loggerFactory: null)
-    {
-    }
-
-    /// <summary>Creates the content session for one window.</summary>
-    /// <param name="transport">The window's host transport.</param>
-    /// <param name="viewLocator">Resolves .NET Views for presented content.</param>
-    /// <param name="operationShutdown">Cancels window-owned operations when signalled.</param>
-    /// <param name="rootModel">The window's root ViewModel, if any.</param>
-    /// <param name="modelContext">
-    /// An application-owned context, such as the scoped DI context, that the window graph
-    /// must share. The root model is bound to it; a root already owned by a different
-    /// context is rejected. When omitted, the root's existing context is reused or the
-    /// session creates and owns one.
-    /// </param>
-    /// <param name="loggerFactory">
-    /// Creates the loggers of this window's Bridges, operations and mounts, and of a model
-    /// context the session creates. When omitted, failures are written to
-    /// <see cref="System.Diagnostics.Trace"/>.
-    /// </param>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
-        Justification = "Published constructor; reordering its optional parameters would break callers.")]
-    public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator = null,
-        CancellationToken operationShutdown = default, object? rootModel = null,
-        IRunicModelContext? modelContext = null, ILoggerFactory? loggerFactory = null)
-        : this(transport, new WindowContentSessionOptions
-        {
-            ViewLocator = viewLocator, OperationShutdown = operationShutdown, RootModel = rootModel,
-            ModelContext = modelContext, LoggerFactory = loggerFactory,
-        })
+    public WindowContentSession(IBridgeTransport transport)
+        : this(transport, new WindowContentSessionOptions())
     {
     }
 
@@ -123,6 +81,7 @@ public sealed class WindowContentSession : IDisposable
         var modelContext = options.ModelContext;
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
+        IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
@@ -147,7 +106,7 @@ public sealed class WindowContentSession : IDisposable
         try
         {
             operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), ownerShutdown: operationShutdown, logger: Logger,
-                timeProvider: TimeProvider);
+                timeProvider: TimeProvider, includeFailureDetail: IncludesFailureDetail);
             interactions = new BridgeInteractionRouter(this, _transport);
             fieldWrites = new BridgeFieldWriteRegistryProvider(Guid.NewGuid().ToString("N"));
             _operations = operations;
@@ -265,6 +224,9 @@ public sealed class WindowContentSession : IDisposable
     // The clock of interaction deadlines and close timeouts.
     internal TimeProvider TimeProvider { get; }
 
+    /// <summary>Whether this window's Bridge error replies carry exception detail, read once when it opens.</summary>
+    internal bool IncludesFailureDetail { get; }
+
     // Content and interaction request ids. A custom source must keep them
     // unique, because an id names a route.
     internal string CreateId()
@@ -329,15 +291,21 @@ public sealed class WindowContentSession : IDisposable
     /// cancel; call again to wait for it. Content, fields, and routes owned by
     /// this session stay intact until the owner later disposes the session.
     /// </summary>
+    /// <param name="timeout">How long to wait for accepted work, or <see cref="Timeout.InfiniteTimeSpan"/>.</param>
+    /// <param name="cancellationToken">
+    /// Stops this caller's wait. Admission stays stopped and accepted work keeps running.
+    /// </param>
     /// <remarks>
-    /// The result's <see cref="BridgeWindowCloseResult.Completion"/> completes when the
+    /// The result's <see cref="RunicWindowCloseResult.Completion"/> completes when the
     /// remaining operations reach a terminal result. It never faults; the session
     /// itself stays alive until its owner disposes it.
     /// </remarks>
-    public async ValueTask<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeout"/> is negative and not infinite.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         lock (_gate) ThrowIfDisposed();
-        var result = await _operations.BeginCloseAsync(timeout).ConfigureAwait(false);
+        var result = await _operations.DrainAsync(timeout, cancellationToken).ConfigureAwait(false);
         return new(result.Drained, result.RemainingRunningOperations, result.Remaining);
     }
 
@@ -410,7 +378,7 @@ public sealed class WindowContentSession : IDisposable
     /// the same reference, including after Suspend. The factory is expected
     /// to attach a generated ViewModel Bridge using the supplied route prefix.
     /// </summary>
-    public PageReference Expose<T>(string kind, T viewModel,
+    internal PageReference Expose<T>(string kind, T viewModel,
         Func<IBridgeTransport, T, string, IDisposable> attach) where T : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
@@ -621,7 +589,7 @@ public sealed class WindowContentSession : IDisposable
     }
 
     /// <summary>Detaches routes while retaining the object's window identity.</summary>
-    public void Suspend(object viewModel)
+    internal void Suspend(object viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         List<IDisposable> attachments = [];
@@ -664,7 +632,7 @@ public sealed class WindowContentSession : IDisposable
     /// while the same content detaches off-turn and that detachment needs a model turn can therefore deadlock; a navigator
     /// calls it outside turns.
     /// </remarks>
-    public void Forget(object viewModel)
+    internal void Forget(object viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         List<IDisposable> attachments = [];

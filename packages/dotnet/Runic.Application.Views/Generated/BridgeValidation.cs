@@ -4,20 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Buffers;
 using System.Text.Json;
 
-namespace Runic.Application.Views;
-
-/// <summary>
-/// A structured validation error that a model may return from
-/// <see cref="INotifyDataErrorInfo.GetErrors(string?)"/>. Member paths are
-/// relative CLR property paths (for example <c>Address.Postcode</c>); the
-/// bridge resolves them through generated metadata before placing them on the
-/// wire. One message is emitted for each supplied member path.
-/// </summary>
-public sealed record BridgeValidationMessage(
-    string Message,
-    string? Code = null,
-    string? Severity = null,
-    IReadOnlyList<string>? MemberPaths = null);
+namespace Runic.Application.Views.Generated;
 
 /// <summary>
 /// One generated collection traversal entry. <see cref="PathSegment"/> must
@@ -179,7 +166,7 @@ public static class BridgeValidation
                 if (_errors >= MaximumErrors) { _truncated = true; return; }
                 switch (value)
                 {
-                    case BridgeValidationMessage message:
+                    case RunicValidationMessage message:
                         AddMessage(message.Message, message.Code, message.Severity, message.MemberPaths, defaultPath, members, nodePath);
                         break;
                     case ValidationResult result:

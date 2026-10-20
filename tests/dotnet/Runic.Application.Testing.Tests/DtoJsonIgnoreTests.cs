@@ -8,12 +8,14 @@ namespace Runic.Application.Testing.Tests;
 
 internal sealed partial class CodegenDiagnosticsTests
 {
-    private const string JsonIgnoreOptIn = "[assembly: RunicBridgeJsonIgnore]\n";
+    private const string JsonIgnoreOptOut = "[assembly: RunicIncludeJsonIgnored]\n";
 
     private static async Task RunDtoJsonIgnoreAsync(string generator, string temporaryRoot)
     {
-        var preamble = Preamble.Replace("using System.Text;", "using System.Text;\nusing System.Text.Json.Serialization;", StringComparison.Ordinal);
-        var optedInPreamble = preamble.Replace("namespace Fixture;", JsonIgnoreOptIn + "namespace Fixture;", StringComparison.Ordinal);
+        // System.Text.Json's unconditional ignores apply by default ("on"); [assembly: RunicIncludeJsonIgnored]
+        // keeps those properties in the contract ("off").
+        var optedInPreamble = Preamble.Replace("using System.Text;", "using System.Text;\nusing System.Text.Json.Serialization;", StringComparison.Ordinal);
+        var preamble = optedInPreamble.Replace("namespace Fixture;", JsonIgnoreOptOut + "namespace Fixture;", StringComparison.Ordinal);
         const string Computed = """
             public sealed record HistoryQuery(string Message, string Author)
             {
@@ -25,7 +27,7 @@ internal sealed partial class CodegenDiagnosticsTests
             """;
 
         var rejected = await GenerateAsync(generator, temporaryRoot, "JsonIgnoreComputedOff", preamble + Computed).ConfigureAwait(false);
-        foreach (var text in new[] { "RUNICBRIDGE003", "HistoryViewModel.Query", "[RunicIgnore]", "[assembly: RunicBridgeJsonIgnore]", "Without that opt-in", "WhenWritingNull", "WhenWritingDefault", "Never" })
+        foreach (var text in new[] { "RUNICBRIDGE003", "HistoryViewModel.Query", "[RunicIgnore]", "[assembly: RunicIncludeJsonIgnored]", "WhenWritingNull", "WhenWritingDefault", "Never" })
             Require(rejected.Contains(text, StringComparison.Ordinal), $"Computed DTO diagnostic omitted '{text}'.\n{rejected}");
         var computed = await GenerateValidAsync(generator, temporaryRoot, "JsonIgnoreComputedOn", optedInPreamble + Computed).ConfigureAwait(false);
         Require(!File.ReadAllText(Path.Combine(computed, "Fixture.HistoryViewModel.Bridge.g.cs")).Contains("value.IsFiltered", StringComparison.Ordinal),
@@ -155,11 +157,11 @@ internal sealed partial class CodegenDiagnosticsTests
         Require(errors.GetArrayLength() == 1 && errors[0].GetProperty("message").GetString() == "visible error"
             && errors[0].GetProperty("path").EnumerateArray().Select(segment => segment.GetString()).SequenceEqual(["validationDto", "value"]),
             "Generated validation traversed a DTO property excluded by JsonIgnore.");
-        await VerifyMixedJsonIgnorePoliciesAsync(generator, temporaryRoot, optedInPreamble, references).ConfigureAwait(false);
+        await VerifyMixedJsonIgnorePoliciesAsync(generator, temporaryRoot, optedInPreamble.Replace("namespace Fixture;", JsonIgnoreOptOut + "namespace Fixture;", StringComparison.Ordinal), references).ConfigureAwait(false);
     }
 
     private static async Task VerifyMixedJsonIgnorePoliciesAsync(string generator, string temporaryRoot,
-        string optedInPreamble, MetadataReference[] coreReferences)
+        string optedOutPreamble, MetadataReference[] coreReferences)
     {
         const string DefaultModel = """
             using System.ComponentModel;
@@ -178,7 +180,7 @@ internal sealed partial class CodegenDiagnosticsTests
         }
         _ = Assembly.LoadFrom(modelPath);
         MetadataReference[] references = [.. coreReferences, MetadataReference.CreateFromFile(modelPath)];
-        var source = optedInPreamble + """
+        var source = optedOutPreamble + """
             public sealed class MixedJsonIgnoreViewModel : FixtureModel { public SharedCore.PolicyDto Value { get; } = new(); }
             public sealed partial class MixedJsonIgnoreWindow : RunicWindow<MixedJsonIgnoreViewModel>;
             public sealed partial class MixedDefaultWindow : RunicWindow<SharedModels.MixedDefaultViewModel>;
@@ -190,8 +192,8 @@ internal sealed partial class CodegenDiagnosticsTests
         var types = File.ReadAllText(Path.Combine(directory, "ts", "types.ts"));
         foreach (var (typeName, module, includeIgnored) in new[]
         {
-            ("SharedModels.MixedDefaultViewModel", "mixedDefault", true),
-            ("Fixture.MixedJsonIgnoreViewModel", "mixedJsonIgnore", false),
+            ("SharedModels.MixedDefaultViewModel", "mixedDefault", false),
+            ("Fixture.MixedJsonIgnoreViewModel", "mixedJsonIgnore", true),
         })
         {
             var model = assembly.GetType(typeName) ?? Assembly.LoadFrom(modelPath).GetType(typeName)!;
@@ -205,8 +207,8 @@ internal sealed partial class CodegenDiagnosticsTests
                 "Named TypeScript declarations shared DTO shapes across different ViewModel exclusion policies.");
         }
         using var result = JsonDocument.Parse((string)assembly.GetType("Fixture.MixedJsonIgnoreProbe")!.GetMethod("Run")!.Invoke(null, null)!);
-        Require(result.RootElement.GetProperty("defaultState").GetProperty("state").GetProperty("value").TryGetProperty("ignored", out _)
-            && !result.RootElement.GetProperty("optedInState").GetProperty("state").GetProperty("value").TryGetProperty("ignored", out _),
+        Require(!result.RootElement.GetProperty("defaultState").GetProperty("state").GetProperty("value").TryGetProperty("ignored", out _)
+            && result.RootElement.GetProperty("optedInState").GetProperty("state").GetProperty("value").TryGetProperty("ignored", out _),
             "A Window's assembly policy overrode its external ViewModel's policy.");
     }
 

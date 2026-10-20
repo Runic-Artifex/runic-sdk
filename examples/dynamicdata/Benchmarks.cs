@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated;
 
 namespace DynamicDataExample;
 
@@ -72,9 +73,9 @@ internal static class Benchmarks
 
     private sealed class FullBridge(MeteredTransport transport, RowsViewModel model)
         : ViewModelBridge<RowsViewModel>(transport, model, "rows", Write,
-            [new("Rows", current => current.Rows, null)], [])
+            [new("Rows", current => current.Rows, null)], [], [])
     {
-        private static void Write(Utf8JsonWriter writer, RowsViewModel current, long revision)
+        private static void Write(Utf8JsonWriter writer, RowsViewModel current, long revision, Action<Utf8JsonWriter> writeFieldMetadata)
         {
             writer.WriteStartObject(); writer.WriteNumber("revision", revision); writer.WriteStartArray("rows");
             foreach (var row in current.Rows)

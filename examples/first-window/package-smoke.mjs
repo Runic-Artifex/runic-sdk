@@ -73,7 +73,7 @@ try {
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicApplicationFrontendCompositionType>FirstWindow.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>FirstWindow.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>

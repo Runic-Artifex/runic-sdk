@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
 
-namespace Runic.Application.Views;
+namespace Runic.Application.Views.Generated;
 
 // The result is encoded before it enters the operation registry.  Keeping the
 // wire value immutable means a later mutation of a command result cannot
@@ -21,8 +21,6 @@ public sealed record BridgeOperationResult(
 {
     /// <summary>A completed operation without a result value.</summary>
     public static BridgeOperationResult None { get; } = new(BridgeOperationResultKind.None);
-    /// <summary>The same as <see cref="None"/>.</summary>
-    public static BridgeOperationResult Empty => None;
 
     /// <summary>Creates a value result from already encoded JSON.</summary>
     /// <exception cref="JsonException"><paramref name="encodedJson"/> is not valid JSON.</exception>

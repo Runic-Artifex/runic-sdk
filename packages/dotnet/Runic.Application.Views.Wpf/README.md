@@ -111,7 +111,7 @@ project that references `Runic.Application.Views`, that project generates and bu
 the frontend, and the WPF application copies its `dist` to `www/`. The
 application can then set `RunicApplicationFrontendGenerationEnabled` to `false`. If
 the model's composition has the application's default name
-(`<application project>.RunicBridgeComposition`, common in apps from
+(`<application RootNamespace>.RunicViewsComposition`, common in apps from
 0.7.0-preview.6), the application's `AddRunicViews()` call uses it. An application
 that also declares Views gets
 [RUNICBRIDGE018](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge018)

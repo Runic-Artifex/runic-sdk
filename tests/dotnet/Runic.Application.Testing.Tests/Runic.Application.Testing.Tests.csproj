@@ -23,6 +23,10 @@
     <DeterministicSourcePaths>true</DeterministicSourcePaths>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The tests construct generated-code support types directly. -->
+    <Using Include="Runic.Application.Views.Generated" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="TUnit.Core" />
     <PackageReference Include="TUnit.Engine" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />

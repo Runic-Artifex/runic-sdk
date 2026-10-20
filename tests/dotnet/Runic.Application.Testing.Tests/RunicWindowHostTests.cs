@@ -350,7 +350,7 @@ internal sealed class RunicWindowHostTests
                 OpenStarted.TrySetResult();
                 if (BlockOpen) await Task.Delay(Timeout.Infinite, cancellationToken);
                 var transport = new InMemoryViewTransport();
-                var content = new WindowContentSession(transport, rootModel: opening.ViewModel);
+                var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = opening.ViewModel });
                 var attached = opening.AttachBridge(transport, content);
                 var window = new RecordingWindow(opening.Scope, attached, content, transport);
                 Opened.Add((window, opening.Options, attached as Attachment));
@@ -371,12 +371,12 @@ internal sealed class RunicWindowHostTests
         public bool CloseStarted { get; private set; }
         public CancellationToken CloseToken { get; private set; }
 
-        public async ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+        public async ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
         {
             CloseStarted = true;
             CloseToken = cancellationToken;
             _closed.TrySetResult();
-            var result = await content.BeginCloseAsync(timeout);
+            var result = await content.DrainAsync(timeout, CancellationToken.None);
             attached.Dispose();
             content.Dispose();
             transport.Dispose();

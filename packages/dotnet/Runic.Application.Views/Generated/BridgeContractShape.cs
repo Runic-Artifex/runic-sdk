@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 using System.Windows.Input;
 using Runic.Navigation;
 
-namespace Runic.Application.Views;
+namespace Runic.Application.Views.Generated;
 
 /// <summary>Build-time/Debug reconstruction of the generated Bridge wire shape.</summary>
 [RequiresUnreferencedCode("Reflects over arbitrary model, DTO and view types; used only by code generation and Hot Reload.")]
@@ -57,7 +57,7 @@ public static class BridgeContractShape
                 AppendType(parts, command.GenericTypeArguments[0], ContractAnnotation(property, command, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
                 AppendType(parts, command.GenericTypeArguments[1], ContractAnnotation(property, command, nullability, 1), $"{model.Name}.{property.Name}.result", [], honorJsonIgnore);
                 var cardinality = property.GetCustomAttribute<RunicCommandResultAttribute>(true)?.Cardinality
-                    ?? BridgeCommandResultCardinality.Single;
+                    ?? RunicCommandResultCardinality.Single;
                 parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
                 AppendFailure(parts, model, property);
                 continue;
@@ -101,7 +101,7 @@ public static class BridgeContractShape
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}");
                 continue;
             }
-            AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], honorJsonIgnore, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
+            AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], honorJsonIgnore, property.GetCustomAttribute<RunicCodecAttribute>(true));
         }
         parts.Add($"validation-errors:{TypeName(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
     }
@@ -120,7 +120,7 @@ public static class BridgeContractShape
 
     // Canonical recursive shape only. Generated code uses direct accesses; it
     // never invokes this reflection path under trimming/AOT.
-    private static void AppendType(List<string> parts, Type declared, NullabilityInfo? annotation, string path, HashSet<Type> stack, bool honorJsonIgnore, RunicBridgeCodecAttribute? memberCodec = null)
+    private static void AppendType(List<string> parts, Type declared, NullabilityInfo? annotation, string path, HashSet<Type> stack, bool honorJsonIgnore, RunicCodecAttribute? memberCodec = null)
     {
         var nullable = !declared.IsValueType ? annotation?.ReadState == NullabilityState.Nullable : Nullable.GetUnderlyingType(declared) is not null;
         var type = Nullable.GetUnderlyingType(declared) ?? declared;
@@ -135,7 +135,7 @@ public static class BridgeContractShape
                 parts.Add($"enum-case:{path}:{field.Name}:wire:{field.GetCustomAttribute<RunicAliasAttribute>()?.Name ?? field.Name}");
             return;
         }
-        var custom = memberCodec ?? type.GetCustomAttribute<RunicBridgeCodecAttribute>(true);
+        var custom = memberCodec ?? type.GetCustomAttribute<RunicCodecAttribute>(true);
         if (custom is not null)
         {
             var shape = custom.CodecType.GetCustomAttribute<RunicCodecShapeAttribute>();
@@ -183,7 +183,7 @@ public static class BridgeContractShape
         {
             var wire = WireName(property);
             parts.Add($"dto-member:{path}:{property.DeclaringType?.FullName}:{property.Name}:wire:{wire}:set:{property.SetMethod?.IsPublic == true}:collision:{!names.Add(wire)}");
-            AppendType(parts, property.PropertyType, new NullabilityInfoContext().Create(property), path + "." + wire, stack, honorJsonIgnore, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
+            AppendType(parts, property.PropertyType, new NullabilityInfoContext().Create(property), path + "." + wire, stack, honorJsonIgnore, property.GetCustomAttribute<RunicCodecAttribute>(true));
         }
         var constructors = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public).OrderBy(constructor => constructor.MetadataToken)
             .Select(constructor => string.Join(",", constructor.GetParameters().Select(parameter => parameter.Name + ":" + TypeName(parameter.ParameterType)

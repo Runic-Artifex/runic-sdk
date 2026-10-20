@@ -515,8 +515,8 @@ A `BridgeError` names what failed and why:
   decoder error of an invalid state.
 - `detail` is `{type, message, stack}` of the .NET exception. .NET sends it
   only in development: when the host environment is `Development`, which
-  `dotnet runic dev` sets, or when the application sets
-  `BridgeDiagnostics.IncludeFailureDetail = true`. Production replies carry
+  `dotnet runic dev` sets, or when the window's
+  `RunicWindowOptions.IncludeFailureDetail` is `true`. Production replies carry
   only the bounded message, such as `"Save failed."`.
 
 A generated `connect<Name>()` waits up to five seconds (5000 ms) for the host

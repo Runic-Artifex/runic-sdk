@@ -48,7 +48,7 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default);
 
     /// <inheritdoc cref="IBridgeWindow.CloseAsync"/>
-    ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+    ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 
     /// <inheritdoc cref="RunicWindow{TViewModel}.RequestCloseAsync"/>
     ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
@@ -205,7 +205,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         Host.WaitForCloseAsync(cancellationToken);
 
     /// <inheritdoc/>
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         var host = Host;
         CloseWithoutAsking();
@@ -336,15 +336,16 @@ public sealed class RunicViewContractAttribute(string contract) : Attribute
 public sealed class RunicIgnoreAttribute : Attribute;
 
 /// <summary>
-/// Opts ViewModels declared in the annotated assembly into excluding DTO properties marked
-/// with <c>System.Text.Json.Serialization.JsonIgnoreAttribute</c> when its condition
-/// is <c>Always</c> (including an unspecified condition). This applies throughout
-/// nested DTO graphs, including DTOs from assemblies that do not reference Runic.
-/// ViewModel properties still use <see cref="RunicIgnoreAttribute"/>; conditional
-/// JSON ignores and <c>Never</c> remain included in the Bridge contract.
+/// Keeps DTO properties that System.Text.Json ignores in the Bridge contract of the ViewModels declared in the
+/// annotated assembly. Without it, a property marked with <c>System.Text.Json.Serialization.JsonIgnoreAttribute</c>
+/// whose condition is <c>Always</c> (including an unspecified condition), or with <c>JsonExtensionDataAttribute</c>,
+/// is not part of the contract, throughout nested DTO graphs and including DTOs from assemblies that do not
+/// reference Runic. Conditional JSON ignores and <c>Never</c> stay included either way. ViewModel properties use
+/// <see cref="RunicIgnoreAttribute"/>.
 /// </summary>
+/// <remarks>Adding or removing the attribute changes the generated contract, and the frontend's types with it.</remarks>
 [AttributeUsage(AttributeTargets.Assembly)]
-public sealed class RunicBridgeJsonIgnoreAttribute : Attribute;
+public sealed class RunicIncludeJsonIgnoredAttribute : Attribute;
 
 /// <summary>Resolves a fresh .NET view for a presented ViewModel.</summary>
 public interface IRunicViewLocator
@@ -409,7 +410,7 @@ public interface IRunicWebMountLifetime
 /// presentation. The presentation identifier is private transport bookkeeping;
 /// application code should not manufacture or retain it.
 /// </summary>
-public interface IRunicWebPresentationLifetime
+internal interface IRunicWebPresentationLifetime
 {
     /// <summary>Called when the web presentation <paramref name="presentationId"/> mounted.</summary>
     void OnWebMounted(string presentationId);

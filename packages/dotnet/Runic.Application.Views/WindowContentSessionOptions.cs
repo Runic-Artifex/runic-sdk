@@ -36,4 +36,14 @@ public sealed class WindowContentSessionOptions
     /// and digits. Defaults to random GUIDs; tests pass a sequence for stable routes.
     /// </summary>
     public Func<string>? CreateId { get; init; }
+
+    /// <summary>
+    /// Whether this window's Bridge error replies carry the exception type, message and stack, which the
+    /// TypeScript runtime exposes as <c>BridgeError.detail</c> and the Vite plugin shows in DevTools.
+    /// <see langword="null"/>, the default, includes them only when the host environment is
+    /// <c>Development</c>: <c>DOTNET_ENVIRONMENT</c>, or else <c>ASPNETCORE_ENVIRONMENT</c>, which
+    /// <c>dotnet runic dev</c> sets. Detail can contain file paths and application data. The session reads
+    /// the value once, when it is created.
+    /// </summary>
+    public bool? IncludeFailureDetail { get; init; }
 }

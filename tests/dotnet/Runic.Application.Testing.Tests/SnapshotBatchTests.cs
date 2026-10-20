@@ -33,6 +33,49 @@ internal sealed class SnapshotBatchTests
         Require(model.Value == 100, "The batch did not preserve the final model state.");
     }
 
+    // vrx-06: BatchBridgeSnapshots is core API for any IObservable<T>, not a ReactiveUI flavor's.
+    [Test]
+    public async Task ObservableChangesetsCaptureOnceEach()
+    {
+        var model = new Model();
+        using var transport = new InMemoryViewTransport();
+        var counter = new CaptureCounter();
+        using var bridge = new ProbeBridge(transport, model, "observable", counter);
+        var source = new Subject<int[]>();
+        var completed = false;
+        using var subscription = source.BatchBridgeSnapshots(model).Subscribe(new Observer<int[]>(changes =>
+        {
+            foreach (var value in changes) model.Value = value;
+            Require(counter.Count == 0, "A changeset captured state before its delivery ended.");
+        }, () => completed = true));
+
+        source.OnNext([1, 2, 3]);
+        await counter.SettleAsync(1);
+        Require(counter.Count == 1 && model.Value == 3, "One changeset should capture exactly one snapshot.");
+        source.OnCompleted();
+        Require(completed, "Completion was not forwarded.");
+    }
+
+    private sealed class Subject<T> : IObservable<T>
+    {
+        private readonly List<IObserver<T>> _observers = [];
+        public IDisposable Subscribe(IObserver<T> observer)
+        {
+            _observers.Add(observer);
+            return new Unsubscriber(() => _observers.Remove(observer));
+        }
+        public void OnNext(T value) { foreach (var observer in _observers.ToArray()) observer.OnNext(value); }
+        public void OnCompleted() { foreach (var observer in _observers.ToArray()) observer.OnCompleted(); }
+        private sealed class Unsubscriber(Action dispose) : IDisposable { public void Dispose() => dispose(); }
+    }
+
+    private sealed class Observer<T>(Action<T> next, Action completed) : IObserver<T>
+    {
+        public void OnNext(T value) => next(value);
+        public void OnError(Exception error) => throw error;
+        public void OnCompleted() => completed();
+    }
+
     [Test]
     public async Task NestedScopesFlushOnce()
     {
@@ -115,7 +158,7 @@ internal sealed class SnapshotBatchTests
     {
         var model = new Model();
         using var transport = new InMemoryViewTransport();
-        using var content = new WindowContentSession(transport, rootModel: model);
+        using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         var counter = new CaptureCounter();
         using var bridge = new CheckedProbeBridge(transport, model, content, counter);
         // Content-session revisions are window-monotonic rather than starting
@@ -295,23 +338,23 @@ internal sealed class SnapshotBatchTests
     }
 
     private sealed class ProbeBridge(IBridgeTransport transport, Model model, string route, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, route, (writer, vm, revision) =>
+        : ViewModelBridge<Model>(transport, model, route, (writer, vm, revision, _) =>
         {
             counter.Capture(revision);
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteNumber("value", vm.Value);
             writer.WriteEndObject();
-        }, [], []);
+        }, [], [], []);
 
     private sealed class ThrowingProbeBridge(IBridgeTransport transport, Model model)
-        : ViewModelBridge<Model>(transport, model, "throwing", (writer, vm, revision) =>
+        : ViewModelBridge<Model>(transport, model, "throwing", (writer, vm, revision, _) =>
         {
             ObjectDisposedException.ThrowIf(vm.Value == 13, vm);
             writer.WriteStartObject();
             writer.WriteNumber("value", vm.Value);
             writer.WriteEndObject();
-        }, [], []);
+        }, [], [], []);
 
     private sealed class CheckedProbeBridge(IBridgeTransport transport, Model model,
         WindowContentSession content, CaptureCounter counter)

@@ -22,8 +22,8 @@ internal static class GeneratedClientFixtureExporter
         var typedReactive = await CreateTypedReactiveTranscriptAsync();
         var toolkitTyped = await ToolkitGeneratedClientFixture.CreateAsync();
         var validationModel = new ValidationViewModel();
-        validationModel.SetErrors(null, new BridgeValidationMessage("Entity failure", "entity", "error"));
-        validationModel.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new BridgeValidationMessage("Invalid postal code", "postal"));
+        validationModel.SetErrors(null, new RunicValidationMessage("Entity failure", "entity", "error"));
+        validationModel.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new RunicValidationMessage("Invalid postal code", "postal"));
         validationModel.Items[0].SetErrors(nameof(ValidationItem.Name), "Missing label");
         using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel, "validation",
             (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());

@@ -13,13 +13,13 @@ internal sealed class ValidationTests
     public void WritesAliasedStructuredPaths()
     {
         var root = new ManualRoot();
-        root.SetErrors(null, new BridgeValidationMessage("Entity failure", "entity", "warning"));
+        root.SetErrors(null, new RunicValidationMessage("Entity failure", "entity", "warning"));
         root.Child.SetErrors(null, "Nested entity failure",
-            new BridgeValidationMessage("Explicit nested entity failure", MemberPaths: [""]));
+            new RunicValidationMessage("Explicit nested entity failure", MemberPaths: [""]));
         root.Child.SetErrors(nameof(ManualChild.Value),
-            new BridgeValidationMessage("Aliased nested failure", "nested", "error", [nameof(ManualChild.Value)]));
+            new RunicValidationMessage("Aliased nested failure", "nested", "error", [nameof(ManualChild.Value)]));
         root.Child.SetErrors(nameof(ManualChild.Value),
-            new BridgeValidationMessage("Aliased nested failure", "nested", "error", [nameof(ManualChild.Value)]),
+            new RunicValidationMessage("Aliased nested failure", "nested", "error", [nameof(ManualChild.Value)]),
             new System.ComponentModel.DataAnnotations.ValidationResult("ValidationResult member path", [nameof(ManualChild.Value)]));
         root.Items[0].SetErrors(nameof(ManualChild.Value), "First item failed");
         root.Lookup["slot"].SetErrors(nameof(ManualChild.Value), "Dictionary item failed");
@@ -69,7 +69,7 @@ internal sealed class ValidationTests
         Require(HasError(errors, ["wire-child"], "Explicit nested entity failure"),
             "An explicitly empty member path did not retain its nested owner path.");
         Require(HasError(errors, ["wire-child", "wire-value"], "Aliased nested failure", "nested", "error"),
-            "A BridgeValidationMessage member path did not resolve CLR names through wire aliases.");
+            "A RunicValidationMessage member path did not resolve CLR names through wire aliases.");
         Require(HasError(errors, ["wire-child", "wire-value"], "ValidationResult member path"),
             "ValidationResult.MemberNames did not resolve relative to its containing object.");
         Require(HasError(errors, ["wire-items", 0, "wire-value"], "First item failed"),
@@ -110,8 +110,8 @@ internal sealed class ValidationTests
     public async Task GeneratedBridgeWritesAndPublishesNestedValidationAsync()
     {
         var model = new ValidationViewModel();
-        model.SetErrors(null, new BridgeValidationMessage("Form invalid", "form", "warning"));
-        model.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new BridgeValidationMessage(
+        model.SetErrors(null, new RunicValidationMessage("Form invalid", "form", "warning"));
+        model.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new RunicValidationMessage(
             "Postal code required", "required", "error", [nameof(ValidationProfile.PostalCode)]));
         model.Items[0].SetErrors(nameof(ValidationItem.Name), "Item label required");
         model.Lookup["primary"].SetErrors(nameof(ValidationItem.Name), "Primary label required");

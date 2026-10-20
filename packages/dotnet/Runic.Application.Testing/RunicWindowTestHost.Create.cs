@@ -52,6 +52,7 @@ public static class RunicWindowTestHost
             LoggerFactory = loggerFactory,
             TimeProvider = options.TimeProvider,
             CreateId = options.CreateId,
+            IncludeFailureDetail = options.IncludeFailureDetail,
             PublicationTimeout = options.PublicationTimeout,
         });
     }

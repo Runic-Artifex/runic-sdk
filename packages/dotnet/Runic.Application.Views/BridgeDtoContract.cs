@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace Runic.Application.Views;
 
 // One exclusion rule for the build-time codecs, their subscription/validation
-// metadata, and the reflection shape used by Hot Reload. The opt-in belongs to
+// metadata, and the reflection shape used by Hot Reload. The opt-out belongs to
 // the model assembly, not to each DTO's assembly.
 //
 // Attributes are matched by name (see BridgeAttributeNames) and before the
@@ -13,19 +13,20 @@ namespace Runic.Application.Views;
 internal static class BridgeDtoContract
 {
     private const string RunicIgnore = "Runic.Application.Views.RunicIgnoreAttribute";
-    private const string RunicBridgeJsonIgnore = "Runic.Application.Views.RunicBridgeJsonIgnoreAttribute";
+    private const string RunicIncludeJsonIgnored = "Runic.Application.Views.RunicIncludeJsonIgnoredAttribute";
     private const string JsonIgnore = "System.Text.Json.Serialization.JsonIgnoreAttribute";
     private const string JsonExtensionData = "System.Text.Json.Serialization.JsonExtensionDataAttribute";
 
+    // System.Text.Json's ignores apply unless the model assembly opts out.
     internal static bool HonorsJsonIgnore(Assembly modelAssembly) =>
-        BridgeAttributeNames.Has(modelAssembly, RunicBridgeJsonIgnore);
+        !BridgeAttributeNames.Has(modelAssembly, RunicIncludeJsonIgnored);
 
     // [RunicIgnore] on the property or on a base property it overrides: an
     // attribute on a property is inherited by its overrides.
     internal static bool IsRunicIgnored(PropertyInfo property) =>
         InheritanceChain(property).Any(declared => BridgeAttributeNames.Has(declared, RunicIgnore));
 
-    // Under the opt-in: an unconditional [JsonIgnore] (Condition is Always, its
+    // Unless the assembly opts out: an unconditional [JsonIgnore] (Condition is Always, its
     // default; the nearest declaration wins, as with GetCustomAttribute(inherit:
     // true)), or [JsonExtensionData], whose members System.Text.Json keeps for
     // round-tripping unknown JSON members and which is .NET-only too.

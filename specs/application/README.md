@@ -12,10 +12,13 @@ specification is maintained by [Runic Translations](https://github.com/Runic-Art
 
 ## Version
 
-Every reply from a snapshot route carries `"protocol": 2`; command, setter and
-write replies do not. The version is informational: generated clients do not
-gate on it, and report a snapshot reply whose `protocol` differs from their own
-as a diagnostic, in every environment and once per Bridge. Clients ignore envelope members they do not
+Every reply from a snapshot route carries `"protocol": 2` and `"version"`, the
+`Runic.Application.Views` package version without build metadata (such as
+`"0.9.0-preview.1"`); command, setter and write replies do not. Both are
+informational: generated clients do not gate on them, and report a snapshot reply
+whose `protocol` differs from their own as a diagnostic, in every environment and
+once per Bridge. The .NET and npm packages of one release are meant to be used
+together (see the [release policy](../../eng/release/README.md)). Clients ignore envelope members they do not
 know, so adding members is compatible. The version changes only when a client
 built for the previous version could misread a reply. Version 2 added the
 `domain-failed` error and operation status kind.
@@ -109,12 +112,12 @@ routes exist only for a root bridge that exposes interactions.
 ## Reply envelope and state
 
 ```json
-{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 2 }
+{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 2, "version": "0.9.0-preview.1" }
 ```
 
 `error` is `{kind, message}` with `kind` one of `rejected`, `cancelled`,
 `failed`, `domain-failed` or `disconnected`; `ok` is false exactly when `error`
-is set. In development (`BridgeDiagnostics`), an error caused by an exception
+is set. In development (`IncludeFailureDetail`, a window option), an error caused by an exception
 adds `detail: {type, message, stack}`; production replies never carry it.
 
 `domain-failed` is a command's declared failure (`[RunicFailure]`, thrown as

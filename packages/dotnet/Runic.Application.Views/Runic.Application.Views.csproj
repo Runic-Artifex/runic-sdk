@@ -15,6 +15,10 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The generated-code support API (Generated/) is used throughout the runtime. -->
+    <Using Include="Runic.Application.Views.Generated" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />

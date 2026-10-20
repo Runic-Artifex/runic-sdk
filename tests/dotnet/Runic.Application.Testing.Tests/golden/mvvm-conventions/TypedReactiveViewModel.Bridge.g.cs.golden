@@ -2,30 +2,30 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class TypedReactiveBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>
+internal sealed class TypedReactiveBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>
 {
     internal TypedReactiveBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.TypedReactiveViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "typedReactive",
         CreateWriter(content),
         [
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("SaveEnabled", vm => vm.SaveEnabled, (vm, e) => vm.SaveEnabled = e.GetBoolean()),
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Executions", vm => vm.Executions, null),
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("PlainApplyCount", vm => vm.PlainApplyCount, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("SaveEnabled", vm => vm.SaveEnabled, (vm, e) => vm.SaveEnabled = e.GetBoolean()),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Executions", vm => vm.Executions, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("PlainApplyCount", vm => vm.PlainApplyCount, null),
         ],
         [
-            new global::Runic.Application.Views.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("SaveEnabled", "saveEnabled", global::Runic.Application.Views.CheckedFieldValueKind.Json, vm => vm.SaveEnabled, (vm, value) => vm.SaveEnabled = (global::System.Boolean)value!, ReadValue: element => SaveEnabledValueCodec.Read(element), WriteValue: (writer, value) => SaveEnabledValueCodec.Write(writer, (global::System.Boolean)value!)),
+            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("SaveEnabled", "saveEnabled", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.SaveEnabled, (vm, value) => vm.SaveEnabled = (global::System.Boolean)value!, readValue: element => SaveEnabledValueCodec.Read(element), writeValue: (writer, value) => SaveEnabledValueCodec.Write(writer, (global::System.Boolean)value!)),
         ],
         [
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Save", vm => (object)vm.SaveCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return SaveCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => SaveCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, logger, "TypedReactiveViewModel.SaveCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("MultiResult", vm => (object)vm.MultiResultCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => MultiResultCommandResultCodec.Write(writer, result))); }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return MultiResultCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => MultiResultCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, logger, "TypedReactiveViewModel.MultiResultCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("LastResult", vm => (object)vm.LastResultCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteLast((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => LastResultCommandResultCodec.Write(writer, result))); }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return LastResultCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => LastResultCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, logger, "TypedReactiveViewModel.LastResultCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("StreamResult", vm => (object)vm.StreamResultCommand, CreateStream: () => new global::Runic.Application.Views.BridgeOperationStream(), ExecuteStreamAsync: async (vm, execution, token, argument) => await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, execution.Stream!, result => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => StreamResultCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false), ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return StreamResultCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => StreamResultCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, logger, "TypedReactiveViewModel.StreamResultCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("EmptyCompletion", vm => (object)vm.EmptyCompletionCommand, ExecuteResultAsync: async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }, CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, logger, "TypedReactiveViewModel.EmptyCompletionCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("ImmediateCompletion", vm => (object)vm.ImmediateCompletionCommand, ExecuteResultAsync: async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, (global::System.String)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ImmediateCompletionCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ImmediateCompletionCommandInputCodec.Write(writer, (global::System.String)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, (global::System.String)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, logger, "TypedReactiveViewModel.ImmediateCompletionCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Fail", vm => (object)vm.FailCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => FailCommandResultCodec.Write(writer, result))); }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return FailCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => FailCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, logger, "TypedReactiveViewModel.FailCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Cancel", vm => (object)vm.CancelCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => CancelCommandResultCodec.Write(writer, result))); }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return CancelCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => CancelCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, logger, "TypedReactiveViewModel.CancelCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("InterfaceOnly", vm => (object)vm.InterfaceOnlyCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, (global::System.String)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => InterfaceOnlyCommandResultCodec.Write(writer, result))); }, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return InterfaceOnlyCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => InterfaceOnlyCommandInputCodec.Write(writer, (global::System.String)argument!)), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, (global::System.String)argument!), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, logger, "TypedReactiveViewModel.InterfaceOnlyCommand") },
-            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("PlainApply", vm => (object)vm.PlainApplyCommand, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return PlainApplyCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => PlainApplyCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!))),
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Save", vm => (object)vm.SaveCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return SaveCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand, logger, "TypedReactiveViewModel.SaveCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("MultiResult", vm => (object)vm.MultiResultCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => MultiResultCommandResultCodec.Write(writer, result))); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return MultiResultCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => MultiResultCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand, logger, "TypedReactiveViewModel.MultiResultCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("LastResult", vm => (object)vm.LastResultCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteLast((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => LastResultCommandResultCodec.Write(writer, result))); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return LastResultCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => LastResultCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand, logger, "TypedReactiveViewModel.LastResultCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("StreamResult", vm => (object)vm.StreamResultCommand) { CreateStream = () => new global::Runic.Application.Views.Generated.BridgeOperationStream(), ExecuteStreamAsync = async (vm, execution, token, argument) => await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, execution.Stream!, result => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => StreamResultCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false), ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return StreamResultCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => StreamResultCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand, logger, "TypedReactiveViewModel.StreamResultCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("EmptyCompletion", vm => (object)vm.EmptyCompletionCommand) { ExecuteResultAsync = async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, logger, "TypedReactiveViewModel.EmptyCompletionCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("ImmediateCompletion", vm => (object)vm.ImmediateCompletionCommand) { ExecuteResultAsync = async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, (global::System.String)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ImmediateCompletionCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ImmediateCompletionCommandInputCodec.Write(writer, (global::System.String)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, (global::System.String)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand, logger, "TypedReactiveViewModel.ImmediateCompletionCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Fail", vm => (object)vm.FailCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FailCommandResultCodec.Write(writer, result))); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return FailCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FailCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand, logger, "TypedReactiveViewModel.FailCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("Cancel", vm => (object)vm.CancelCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => CancelCommandResultCodec.Write(writer, result))); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return CancelCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => CancelCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand, logger, "TypedReactiveViewModel.CancelCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("InterfaceOnly", vm => (object)vm.InterfaceOnlyCommand) { ExecuteResultAsync = async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, (global::System.String)argument!, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => InterfaceOnlyCommandResultCodec.Write(writer, result))); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return InterfaceOnlyCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => InterfaceOnlyCommandInputCodec.Write(writer, (global::System.String)argument!)), CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, (global::System.String)argument!), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, changed), ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand, logger, "TypedReactiveViewModel.InterfaceOnlyCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.TypedReactiveViewModel>("PlainApply", vm => (object)vm.PlainApplyCommand) { ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return PlainApplyCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PlainApplyCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.TypedSaveRequest)argument!)) },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -35,11 +35,11 @@ internal sealed class TypedReactiveBridge : global::Runic.Application.Views.View
     {
     }
 
-    private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =
+    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
-            new global::Runic.Application.Views.BridgeDataSubscriptionMember("saveEnabled", static owner => ((global::Runic.Application.Testing.Tests.TypedReactiveViewModel)owner).SaveEnabled, propertyName: "SaveEnabled"),
-            new global::Runic.Application.Views.BridgeDataSubscriptionMember("executions", static owner => ((global::Runic.Application.Testing.Tests.TypedReactiveViewModel)owner).Executions, propertyName: "Executions"),
-            new global::Runic.Application.Views.BridgeDataSubscriptionMember("plainApplyCount", static owner => ((global::Runic.Application.Testing.Tests.TypedReactiveViewModel)owner).PlainApplyCount, propertyName: "PlainApplyCount"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("saveEnabled", static owner => ((global::Runic.Application.Testing.Tests.TypedReactiveViewModel)owner).SaveEnabled, propertyName: "SaveEnabled"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("executions", static owner => ((global::Runic.Application.Testing.Tests.TypedReactiveViewModel)owner).Executions, propertyName: "Executions"),
+            new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember("plainApplyCount", static owner => ((global::Runic.Application.Testing.Tests.TypedReactiveViewModel)owner).PlainApplyCount, propertyName: "PlainApplyCount"),
         ]
     ;
 private static class SaveEnabledValueCodec
@@ -54,7 +54,7 @@ private static class SaveEnabledValueCodec
 
     private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
     {
-        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.BridgeWire.Invalid("Expected a boolean.");
+        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected a boolean.");
     }
 
 }
@@ -71,7 +71,7 @@ private static class ExecutionsValueCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -88,7 +88,7 @@ private static class PlainApplyCountValueCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -109,10 +109,10 @@ private static class SaveCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -123,7 +123,7 @@ private static class SaveCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -133,7 +133,7 @@ private static class SaveCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -143,7 +143,7 @@ private static class SaveCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -174,7 +174,7 @@ private static class SaveCommandResultCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -184,7 +184,7 @@ private static class SaveCommandResultCodec
 
     private static global::System.Int32 Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -194,7 +194,7 @@ private static class SaveCommandResultCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -215,10 +215,10 @@ private static class MultiResultCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -229,7 +229,7 @@ private static class MultiResultCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -239,7 +239,7 @@ private static class MultiResultCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -249,7 +249,7 @@ private static class MultiResultCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -266,7 +266,7 @@ private static class MultiResultCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -287,10 +287,10 @@ private static class LastResultCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -301,7 +301,7 @@ private static class LastResultCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -311,7 +311,7 @@ private static class LastResultCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -321,7 +321,7 @@ private static class LastResultCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -338,7 +338,7 @@ private static class LastResultCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -359,10 +359,10 @@ private static class StreamResultCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -373,7 +373,7 @@ private static class StreamResultCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -383,7 +383,7 @@ private static class StreamResultCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -393,7 +393,7 @@ private static class StreamResultCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -410,7 +410,7 @@ private static class StreamResultCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -427,7 +427,7 @@ private static class ImmediateCompletionCommandInputCodec
 
     private static global::System.String Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
 }
@@ -448,10 +448,10 @@ private static class FailCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -462,7 +462,7 @@ private static class FailCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -472,7 +472,7 @@ private static class FailCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -482,7 +482,7 @@ private static class FailCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -499,7 +499,7 @@ private static class FailCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -520,10 +520,10 @@ private static class CancelCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -534,7 +534,7 @@ private static class CancelCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -544,7 +544,7 @@ private static class CancelCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -554,7 +554,7 @@ private static class CancelCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -571,7 +571,7 @@ private static class CancelCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -588,7 +588,7 @@ private static class InterfaceOnlyCommandInputCodec
 
     private static global::System.String Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
 }
@@ -605,7 +605,7 @@ private static class InterfaceOnlyCommandResultCodec
 
     private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
@@ -626,10 +626,10 @@ private static class PlainApplyCommandInputCodec
 
     private static global::Runic.Application.Testing.Tests.TypedSaveRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "documentId");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "content");
-        var value_2 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "expectedVersion");
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.Generated.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "documentId");
+        var value_1 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "content");
+        var value_2 = global::Runic.Application.Views.Generated.BridgeWire.RequiredProperty(element, "expectedVersion");
         return new global::Runic.Application.Testing.Tests.TypedSaveRequest(Read1(value_0), Read2(value_1), Read3(value_2));
     }
 
@@ -640,7 +640,7 @@ private static class PlainApplyCommandInputCodec
 
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
@@ -650,7 +650,7 @@ private static class PlainApplyCommandInputCodec
 
     private static global::System.String Read2(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadString(element);
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -660,12 +660,12 @@ private static class PlainApplyCommandInputCodec
 
     private static global::System.Int32 Read3(global::System.Text.Json.JsonElement element)
     {
-        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+        return global::Runic.Application.Views.Generated.BridgeWire.ReadInt32(element);
     }
 
 }
 
-    private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.TypedReactiveViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
+    private static global::Runic.Application.Views.Generated.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.TypedReactiveViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
     {
         return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);
     }
@@ -680,16 +680,16 @@ private static class PlainApplyCommandInputCodec
         ExecutionsValueCodec.Write(writer, vm.Executions);
         writer.WritePropertyName("plainApplyCount");
         PlainApplyCountValueCodec.Write(writer, vm.PlainApplyCount);
-        writer.WriteBoolean("isSaveExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand));
-        writer.WriteBoolean("isMultiResultExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand));
-        writer.WriteBoolean("isLastResultExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand));
-        writer.WriteBoolean("isStreamResultExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand));
-        writer.WriteBoolean("canEmptyCompletion", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, global::ReactiveUI.Primitives.RxVoid.Default));
-        writer.WriteBoolean("isEmptyCompletionExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand));
-        writer.WriteBoolean("isImmediateCompletionExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand));
-        writer.WriteBoolean("isFailExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand));
-        writer.WriteBoolean("isCancelExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand));
-        writer.WriteBoolean("isInterfaceOnlyExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand));
+        writer.WriteBoolean("isSaveExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::Runic.Application.Testing.Tests.TypedSaveResult>)vm.SaveCommand));
+        writer.WriteBoolean("isMultiResultExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.MultiResultCommand));
+        writer.WriteBoolean("isLastResultExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.LastResultCommand));
+        writer.WriteBoolean("isStreamResultExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.StreamResultCommand));
+        writer.WriteBoolean("canEmptyCompletion", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand, global::ReactiveUI.Primitives.RxVoid.Default));
+        writer.WriteBoolean("isEmptyCompletionExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.EmptyCompletionCommand));
+        writer.WriteBoolean("isImmediateCompletionExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::System.String, global::ReactiveUI.Primitives.RxVoid>)vm.ImmediateCompletionCommand));
+        writer.WriteBoolean("isFailExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.FailCommand));
+        writer.WriteBoolean("isCancelExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::Runic.Application.Testing.Tests.TypedSaveRequest, global::System.Int32>)vm.CancelCommand));
+        writer.WriteBoolean("isInterfaceOnlyExecuting", global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::System.String, global::System.Int32>)vm.InterfaceOnlyCommand));
         writeFieldMetadata(writer);
         writer.WriteEndObject();
     }

@@ -136,7 +136,7 @@ internal sealed class DesktopBridgeTransportTests
         var model = scope.ServiceProvider.GetRequiredService<SlowModel>();
         var surface = await host.CreateSurfaceAsync();
         var transport = new DesktopBridgeTransport(surface);
-        var content = new WindowContentSession(transport, rootModel: model);
+        var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         var connections = surface.SubscribeConnectionEvents(_ => { });
         var window = new DesktopBridgeWindow<SlowModel>(scope, surface, transport, content, connections, model);
         // The command route is served by an in-memory transport so the test can
@@ -442,12 +442,12 @@ sealed class OrderedCollectionModel : INotifyPropertyChanged
 }
 
 sealed class OrderedCollectionBridge(IBridgeTransport transport, OrderedCollectionModel model)
-    : ViewModelBridge<OrderedCollectionModel>(transport, model, "ordered", static (writer, vm, revision) =>
+    : ViewModelBridge<OrderedCollectionModel>(transport, model, "ordered", static (writer, vm, revision, _) =>
     {
         writer.WriteStartObject(); writer.WriteNumber("revision", revision); writer.WriteStartArray("rows");
         foreach (var value in vm.Rows) writer.WriteNumberValue(value);
         writer.WriteEndArray(); writer.WriteEndObject();
-    }, [new("Rows", vm => vm.Rows, null)], [], collections:
+    }, [new("Rows", vm => vm.Rows, null)], [], [], collections:
     [new("rows", vm => vm.Rows, static (writer, item) => writer.WriteNumberValue((int)item!),
         static item => ((int)item!).ToString(System.Globalization.CultureInfo.InvariantCulture))]);
 
@@ -468,13 +468,13 @@ sealed class SlowModel : INotifyPropertyChanged
 }
 
 sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-    : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision) =>
+    : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision, _) =>
     {
         writer.WriteStartObject();
         writer.WriteNumber("revision", revision);
         writer.WriteEndObject();
-    }, [],
-    [new("Save", vm => vm.Save, ExecuteAsync: (vm, _, _) => vm.SaveAsync(), CanExecute: (_, _) => true)],
+    }, [], [],
+    [new("Save", vm => vm.Save) { ExecuteAsync = (vm, _, _) => vm.SaveAsync(), CanExecute = (_, _) => true }],
     content: content);
 
 sealed class NoopCommand : ICommand

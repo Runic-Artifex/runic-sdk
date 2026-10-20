@@ -132,7 +132,7 @@ try
         foreach (var entry in models)
             if (entry.Model.Assembly.GetType($"{(entry.Model.Namespace is null ? "" : entry.Model.Namespace + ".")}{entry.Name}Bridge") is { } existing
                 && !(existing.BaseType is { IsGenericType: true } bridgeBase
-                    && bridgeBase.GetGenericTypeDefinition().FullName == "Runic.Application.Views.ViewModelBridge`1"
+                    && bridgeBase.GetGenericTypeDefinition().FullName == "Runic.Application.Views.Generated.ViewModelBridge`1"
                     && bridgeBase.GenericTypeArguments[0] == entry.Model))
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                     $"{existing.FullName} has the name of the Bridge generated for {entry.Model.FullName}. Rename the type, or the ViewModel.",
@@ -414,8 +414,11 @@ static void GenerateCompositionRegistration(string path, string compositionType,
     cs.AppendLine("using Microsoft.Extensions.DependencyInjection.Extensions;");
     cs.AppendLine("using Runic.Application.Views;");
     cs.AppendLine($"namespace {string.Join('.', parts[..^1])};");
+    cs.AppendLine("/// <summary>Registers this project's generated Runic Views for dependency injection.</summary>");
+    AppendGeneratedCodeAttributes(cs, "");
     cs.AppendLine($"public static class {parts[^1]}");
     cs.AppendLine("{");
+    cs.AppendLine("    /// <summary>Registers only the generated Bridges, for an application that creates its Views itself. <see cref=\"AddRunicViews\"/> calls it.</summary>");
     cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicBridges(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
     cs.AppendLine("    {");
     cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(services);");
@@ -476,6 +479,7 @@ static void GenerateCompositionStub(string path, string compositionType, string?
     cs.AppendLine("#nullable enable");
     cs.AppendLine("using Microsoft.Extensions.DependencyInjection;");
     cs.AppendLine($"namespace {string.Join('.', parts[..^1])};");
+    AppendGeneratedCodeAttributes(cs, "");
     cs.AppendLine($"public static class {parts[^1]}");
     cs.AppendLine("{");
     cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicBridges(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services) => services;");
@@ -514,6 +518,16 @@ static string? ReferencedDeclaration(string referencesPath, string[] composition
         }
     }
     return null;
+}
+
+// The markers CommunityToolkit.Mvvm and the ReactiveUI source generators emit: tools and coverage skip the code.
+static void AppendGeneratedCodeAttributes(StringBuilder cs, string indent)
+{
+    var version = typeof(BridgeTypeGraph).Assembly
+        .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+        ?? typeof(BridgeTypeGraph).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+    cs.AppendLine($"{indent}[global::System.CodeDom.Compiler.GeneratedCode(\"Runic.Application.Views.Codegen\", \"{version}\")]");
+    cs.AppendLine($"{indent}[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
 }
 
 static string[] CompositionParts(string compositionType)
@@ -729,7 +743,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined",
             plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
             plan.HasArgument,
-            plan.Command?.Cardinality is BridgeCommandResultCardinality.Stream,
+            plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
             plan.ParameterName,
             plan.FailureGraph?.TypeScriptType(),
             plan.FailureGraph?.EmitTypeScriptDecoder("value"));
@@ -759,7 +773,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("#nullable enable");
     cs.AppendLine("using Runic.Application.Views;");
     AppendNamespace(cs, model.Namespace);
-    cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.ViewModelBridge<{fullType}>");
+    cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.Generated.ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
     if (interactions.Length > 0)
         cs.AppendLine("    private readonly global::System.IDisposable? _rootInteractionMount;");
@@ -770,9 +784,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     cs.AppendLine($"    internal {shortName}Bridge(global::Runic.Application.Views.IBridgeTransport transport, {fullType} vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(");
     cs.AppendLine($"        transport, vm, routePrefix ?? \"{prefix}\",");
-    cs.AppendLine(needsCheckedWriter
-        ? "        CreateWriter(content),"
-        : hasContent
+    cs.AppendLine(needsCheckedWriter || hasContent
         ? "        CreateWriter(content),"
         : "        WriteSnapshot,");
     cs.AppendLine("        [");
@@ -787,27 +799,26 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                         : property.PropertyType == typeof(string) && !IsNullableString(property)
                             ? $"(vm, e) => vm.{property.Name} = e.GetString()"
                             : property.PropertyType == typeof(string)
-                                ? $"(vm, e) => vm.{property.Name} = global::Runic.Application.Views.BridgeJson.ReadNullableString(e.GetString())"
+                                ? $"(vm, e) => vm.{property.Name} = global::Runic.Application.Views.Generated.BridgeJson.ReadNullableString(e.GetString())"
                                 : $"(vm, e) => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); vm.{property.Name} = {property.Name}ValueCodec.Read(document.RootElement); }}"
             : "null";
         if (regionSlots.Contains(property))
         {
             // The runtime observes the region and binds the window session.
-            cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
             continue;
         }
         // Validation stays atomic with full states, as for collections.
         var text = textFields.Contains(property) && !hasValidation ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
-        cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}){text},");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}){text},");
     }
     cs.AppendLine("        ],");
-    if (needsCheckedWriter)
     {
         cs.AppendLine("        [");
         foreach (var property in checkedProperties)
         {
             var type = valueProperties[property].RootCSharpType();
-            cs.AppendLine($"            new global::Runic.Application.Views.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, ReadValue: element => {property.Name}ValueCodec.Read(element), WriteValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, readValue: element => {property.Name}ValueCodec.Read(element), writeValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
         }
         cs.AppendLine("        ],");
     }
@@ -834,7 +845,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var keyExpression = key.PropertyType == typeof(string) ? keyAccess
             : key.PropertyType == typeof(Guid) ? keyAccess + ".ToString(\"D\")"
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
-        cs.AppendLine($"            new global::Runic.Application.Views.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}{(hasValidation ? ", PublishesChanges: false" : "")}),");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}{(hasValidation ? ", PublishesChanges: false" : "")}),");
     }
     cs.AppendLine("        ]");
     cs.AppendLine("        )");
@@ -847,7 +858,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     cs.AppendLine("    }");
     cs.AppendLine();
-    cs.AppendLine("    private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =");
+    cs.AppendLine("    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =");
     BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties);
     cs.AppendLine("    ;");
     foreach (var (property, graph) in valueProperties)
@@ -866,20 +877,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         convention.AppendSupportTypes(cs, commandPlans.Values);
     if (hasContent || needsCheckedWriter)
     {
-        cs.AppendLine(needsCheckedWriter
-            ? $"    private static global::Runic.Application.Views.BridgeSnapshotWriter<{fullType}> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)"
-            : $"    private static global::System.Action<global::System.Text.Json.Utf8JsonWriter, {fullType}, long> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)");
+        cs.AppendLine($"    private static global::Runic.Application.Views.Generated.BridgeSnapshotWriter<{fullType}> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)");
         cs.AppendLine("    {");
         if (hasContent) cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
-        cs.AppendLine(needsCheckedWriter
-            ? (hasContent
-                ? "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, content, writeFieldMetadata);"
-                : "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);")
-            : "        return (writer, current, revision) => WriteSnapshot(writer, current, revision, content);");
+        cs.AppendLine(hasContent
+            ? "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, content, writeFieldMetadata);"
+            : "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);");
         cs.AppendLine("    }");
         cs.AppendLine();
     }
-    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(hasContent ? ", global::Runic.Application.Views.WindowContentSession content" : "")}{(needsCheckedWriter ? ", global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata" : "")})");
+    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(hasContent ? ", global::Runic.Application.Views.WindowContentSession content" : "")}, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)");
     cs.AppendLine("    {");
     cs.AppendLine("        writer.WriteStartObject();");
     cs.AppendLine("        writer.WriteNumber(\"revision\", revision);");
@@ -989,12 +996,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         else throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated value codec.");
         if (hasErrors)
-            cs.AppendLine($"        global::Runic.Application.Views.BridgeJson.WriteErrors(writer, vm, \"{property.Name}\", \"{jsonName}Errors\");");
+            cs.AppendLine($"        global::Runic.Application.Views.Generated.BridgeJson.WriteErrors(writer, vm, \"{property.Name}\", \"{jsonName}Errors\");");
     }
     if (hasValidation)
     {
         cs.AppendLine("        writer.WritePropertyName(\"validation\");");
-        cs.AppendLine("        global::Runic.Application.Views.BridgeValidation.Write(writer, vm, DataMetadata);");
+        cs.AppendLine("        global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata);");
     }
     // Availability without an argument is state; a command with an argument
     // is queried through can<Name>(argument). Execution state needs no
@@ -1373,7 +1380,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var name = command.Name[..^"Command".Length];
             return new MockOperation(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : "void",
                 plan.ResultGraph?.TypeScriptType() ?? "void", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
-                plan.ResultGraph?.EncodeTypeScript("typed"), plan.Command?.Cardinality is BridgeCommandResultCardinality.Stream,
+                plan.ResultGraph?.EncodeTypeScript("typed"), plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
                 plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
         }).ToArray(),
         interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
@@ -1805,9 +1812,9 @@ sealed record GeneratedCommandPlan(
         if (FailureGraph is not null)
         {
             if (!descriptor.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
-            descriptor = descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
+            descriptor = descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
         }
-        return Command?.DescriptorInitializer(property, this) is { } initializer ? $"{descriptor} {{ {initializer} }}" : descriptor;
+        return CommandDescriptorSyntax.WithInitializer(descriptor, Command?.DescriptorInitializer(property, this));
     }
 
     private string DescriptorCore(PropertyInfo property, string modelType)
@@ -1818,6 +1825,76 @@ sealed record GeneratedCommandPlan(
         var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
         var plainInputType = plainGraph.RootCSharpType();
         var name = property.Name[..^"Command".Length];
-        return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
+        return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
+    }
+}
+
+// The conventions describe a command as a constructor call with C# named arguments, such as
+// new CommandDescriptor<T>("Save", vm => vm.SaveCommand, ExecuteResultAsync: ..., CanExecute: ...).
+// CommandDescriptor<T> takes only the name and the getter; everything else is an init property, so a later
+// release can add members without changing its constructor. This rewrites the call into that shape:
+// new CommandDescriptor<T>("Save", vm => vm.SaveCommand) { ExecuteResultAsync = ..., CanExecute = ... }.
+internal static class CommandDescriptorSyntax
+{
+    // The init properties, in the order of the former positional parameters after Name and Get.
+    private static readonly string[] Positional =
+        ["ExecuteAsync", "ReadArgument", "ExecuteResultAsync", "EncodeArgument", "CanExecute", "Subscribe", "CreateStream",
+            "ExecuteStreamAsync", "EncodeFailure"];
+
+    internal static string WithInitializer(string call, string? extraInitializer)
+    {
+        var open = call.IndexOf('(');
+        if (open < 0 || !call.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
+        var arguments = SplitArguments(call[(open + 1)..^1]);
+        if (arguments.Count < 2) throw new InvalidOperationException("A command descriptor needs a name and a getter.");
+        var assignments = new List<string>();
+        for (var index = 2; index < arguments.Count; index++)
+        {
+            var argument = arguments[index];
+            var colon = NamedArgumentColon(argument);
+            assignments.Add(colon < 0
+                ? $"{Positional[index - 2]} = {argument}"
+                : $"{argument[..colon].Trim()} = {argument[(colon + 1)..].Trim()}");
+        }
+        if (!string.IsNullOrWhiteSpace(extraInitializer)) assignments.Add(extraInitializer);
+        var constructor = $"{call[..(open + 1)]}{arguments[0]}, {arguments[1]})";
+        return assignments.Count == 0 ? constructor : $"{constructor} {{ {string.Join(", ", assignments)} }}";
+    }
+
+    // The colon of "Name: value", or -1 for a positional argument.
+    private static int NamedArgumentColon(string argument)
+    {
+        var index = 0;
+        while (index < argument.Length && (char.IsLetterOrDigit(argument[index]) || argument[index] == '_')) index++;
+        return index > 0 && index < argument.Length && argument[index] == ':' ? index : -1;
+    }
+
+    // Splits top-level arguments, skipping commas inside brackets, strings and character literals.
+    private static List<string> SplitArguments(string text)
+    {
+        var result = new List<string>();
+        var depth = 0;
+        var start = 0;
+        for (var index = 0; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (character is '"' or '\'')
+            {
+                var verbatim = character == '"' && index > 0 && text[index - 1] == '@';
+                for (index++; index < text.Length && text[index] != character; index++)
+                    if (text[index] == '\\' && !verbatim) index++;
+                continue;
+            }
+            // Generic argument lists only appear inside parentheses (casts, calls), and '>' is also part of '=>'.
+            if (character is '(' or '{' or '[') depth++;
+            else if (character is ')' or '}' or ']') depth--;
+            else if (character == ',' && depth == 0)
+            {
+                result.Add(text[start..index].Trim());
+                start = index + 1;
+            }
+        }
+        result.Add(text[start..].Trim());
+        return result;
     }
 }

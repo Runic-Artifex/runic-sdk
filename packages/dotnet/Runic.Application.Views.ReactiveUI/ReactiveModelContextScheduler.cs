@@ -5,6 +5,8 @@ using ReactiveUI.Primitives.Advanced;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Navigation;
 
+using Runic.Application.Views.ReactiveUI.Generated;
+
 namespace Runic.Application.Views.ReactiveUI;
 
 /// <summary>

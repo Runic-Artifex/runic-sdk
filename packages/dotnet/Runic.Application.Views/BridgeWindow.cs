@@ -7,7 +7,7 @@ namespace Runic.Application.Views;
 /// Completes when the remaining operations have finished and the closer has released
 /// what it owns. A Window host faults it with any release failures.
 /// </param>
-public sealed record BridgeWindowCloseResult(bool Drained, int RemainingOperations, Task Completion);
+public sealed record RunicWindowCloseResult(bool Drained, int RemainingOperations, Task Completion);
 
 /// <summary>
 /// The lifetime contract shared by every Window host adapter, such as
@@ -34,7 +34,7 @@ public interface IBridgeWindow : IAsyncDisposable
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeout"/> is negative and not infinite.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+    ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Completes when the window closes: the user closed it, or <see cref="CloseAsync"/> or

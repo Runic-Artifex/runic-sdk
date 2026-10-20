@@ -1,6 +1,6 @@
 using System.Reflection.Metadata;
 
-[assembly: MetadataUpdateHandler(typeof(Runic.Application.Views.RunicBridgeHotReload))]
+[assembly: MetadataUpdateHandler(typeof(Runic.Application.Views.RunicViewsHotReload))]
 
 namespace Runic.Application.Views;
 
@@ -10,14 +10,18 @@ namespace Runic.Application.Views;
 /// <see cref="System.Diagnostics.Trace"/> without one. The <c>RUNIC_IDE_CONTRACT_RESTART_REQUIRED</c> line for IDEs
 /// is always written to standard error.
 /// </remarks>
-public static class RunicBridgeHotReload
+public static class RunicViewsHotReload
 {
     private static readonly object Gate = new();
     private static readonly List<WeakReference<IHotReloadableBridge>> Active = [];
     private static bool _restartRequired;
 
-    /// <summary>Raised when an applied Debug edit changes a generated Bridge contract.</summary>
-    public static event Action<string>? RestartRequired;
+    /// <summary>
+    /// Raised once when an applied Debug edit changes a generated Bridge contract, so the running frontend no longer
+    /// matches and the application must restart. The sender is <see langword="null"/>. The event is static: unsubscribe
+    /// a handler whose owner ends before the process.
+    /// </summary>
+    public static event EventHandler<RunicHotReloadRestartEventArgs>? RestartRequired;
 
     internal static void Track(IHotReloadableBridge bridge)
     {
@@ -61,7 +65,7 @@ public static class RunicBridgeHotReload
             var message = $"RUNIC_IDE_CONTRACT_RESTART_REQUIRED|{mismatch}";
             Console.Error.WriteLine(message);
             ViewsLog.HotReloadRestartRequired(bridge.Logger, mismatch);
-            try { RestartRequired?.Invoke(mismatch); }
+            try { RestartRequired?.Invoke(null, new RunicHotReloadRestartEventArgs(mismatch)); }
             catch (Exception error) { ViewsLog.HotReloadRestartNotificationFailed(bridge.Logger, error, BridgeTelemetry.ErrorType(error)); }
             return;
         }
@@ -74,4 +78,19 @@ public static class RunicBridgeHotReload
             }
         }
     }
+}
+
+/// <summary>The data of <see cref="RunicViewsHotReload.RestartRequired"/>.</summary>
+public sealed class RunicHotReloadRestartEventArgs : EventArgs
+{
+    /// <summary>Creates the event data.</summary>
+    /// <param name="mismatch">Which generated contract the edit changed.</param>
+    public RunicHotReloadRestartEventArgs(string mismatch)
+    {
+        ArgumentNullException.ThrowIfNull(mismatch);
+        Mismatch = mismatch;
+    }
+
+    /// <summary>Which generated contract the edit changed, as written after <c>RUNIC_IDE_CONTRACT_RESTART_REQUIRED|</c>.</summary>
+    public string Mismatch { get; }
 }

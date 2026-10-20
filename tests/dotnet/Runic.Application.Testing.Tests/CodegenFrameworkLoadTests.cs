@@ -146,7 +146,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed class ShapesViewModel : FixtureModel { public Shape? Current { get; } }
                 public sealed partial class ShapesView : RunicView<ShapesViewModel>;
                 public sealed class SwatchCodec { }
-                [RunicBridgeCodec(typeof(SwatchCodec))] public sealed class Swatch { public System.Windows.Media.Brush? Paint { get; init; } }
+                [RunicCodec(typeof(SwatchCodec))] public sealed class Swatch { public System.Windows.Media.Brush? Paint { get; init; } }
                 public sealed class SwatchViewModel : FixtureModel { public Swatch Current { get; } = new(); }
                 public sealed partial class SwatchView : RunicView<SwatchViewModel>;
                 // A command's failure value crosses the Bridge.

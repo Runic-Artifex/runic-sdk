@@ -21,7 +21,7 @@ public sealed class ContentLifecycleTests
         var root = new Item();
         var views = new ViewCounter();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: root);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var route = $"content{Present(session, root, new Item(), views).Id}";
         ViewTestArguments From(string connection) =>
             new(StringValue: "browser:page", ClientKey: "client", ConnectionKey: connection);
@@ -47,7 +47,7 @@ public sealed class ContentLifecycleTests
         var b = new Item();
         var views = new ViewCounter();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: root);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var reference = Present(session, root, a, views);
         var route = $"content{reference.Id}";
         Require(transport.Call($"{route}Mount", Browser("browser:a")) == "ok", "The first presentation did not mount.");
@@ -81,7 +81,7 @@ public sealed class ContentLifecycleTests
         var a = new Item();
         var views = new ViewCounter();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: root);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var reference = Present(session, root, a, views);
         var route = $"content{reference.Id}";
         Require(transport.Call($"{route}Mount", Browser("browser:a")) == "ok", "The presentation did not mount.");
@@ -112,7 +112,7 @@ public sealed class ContentLifecycleTests
         var views = new ViewCounter();
         var context = new CountingThreadContext();
         using var transport = new InMemoryViewTransport();
-        var session = new WindowContentSession(transport, rootModel: root, modelContext: context);
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root, ModelContext = context });
         using var started = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         var deadlocked = false;
@@ -168,7 +168,7 @@ public sealed class ContentLifecycleTests
     {
         var root = new Item();
         using var transport = new InMemoryViewTransport();
-        using var session = new WindowContentSession(transport, rootModel: root);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var released = Churn(session, root, count: 32);
         Require(session.RetainedContentModelLeaseCount == 1,
             $"Pruned collection items retained {session.RetainedContentModelLeaseCount} context leases.");

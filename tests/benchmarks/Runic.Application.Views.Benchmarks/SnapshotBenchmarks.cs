@@ -90,7 +90,7 @@ public class CheckedFieldBenchmarks
     {
         var model = new BoardModel(rows: 20);
         _host = new HostTransport();
-        _content = new WindowContentSession(_host, rootModel: model);
+        _content = new WindowContentSession(_host, new WindowContentSessionOptions { RootModel = model });
         _bridge = new BoardBridge(_host, model, _content);
         _codec = new BridgeValueCodec<Preferences>(Wire.ReadPreferences, Wire.WritePreferences);
         for (var index = 0; index < 2; index++) _encoded[index] = _codec.Encode(_values[index]);

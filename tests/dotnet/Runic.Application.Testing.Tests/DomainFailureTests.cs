@@ -22,28 +22,15 @@ namespace Runic.Application.Testing.Tests;
 // emit failure encoders yet, so these descriptors carry a hand-written one.
 internal sealed partial class DomainFailureTests
 {
-    // The former runner ran the first three cases with BridgeDiagnostics.IncludeFailureDetail off and on (D-1: a
-    // domain failure never carries detail, in either mode), the others with it off, and then restored it.
-    private bool? includeFailureDetail;
-
-    [Before(HookType.Test)]
-    public void DisableFailureDetail()
-    {
-        includeFailureDetail = BridgeDiagnostics.IncludeFailureDetail;
-        BridgeDiagnostics.IncludeFailureDetail = false;
-    }
-
-    [After(HookType.Test)]
-    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = includeFailureDetail;
-
+    // The first three cases run with the window's failure detail off and on (D-1: a domain failure never carries
+    // detail, in either mode), the others with it off.
     [Test]
     [Arguments(false)]
     [Arguments(true)]
     [DisplayName("CommandsReplyWithTheDeclaredFailureAsync(development: $development)")]
     public async Task CommandsReplyWithTheDeclaredFailureAsync(bool development)
     {
-        BridgeDiagnostics.IncludeFailureDetail = development;
-        using var host = Host(new EditorModel(), out var logs);
+        using var host = Host(new EditorModel(), out var logs, development);
         // Sync plain ICommand: only a synchronous throw from Execute is seen.
         var sync = await host.Root.ExecuteAsync(vm => vm.SaveCommand);
         RequireDomainReply(sync.Json, "Save", """{"$case":"titleRequired"}""");
@@ -68,8 +55,7 @@ internal sealed partial class DomainFailureTests
     [DisplayName("OperationsEndDomainFailedAsync(development: $development)")]
     public async Task OperationsEndDomainFailedAsync(bool development)
     {
-        BridgeDiagnostics.IncludeFailureDetail = development;
-        using var host = Host(new EditorModel(), out var logs);
+        using var host = Host(new EditorModel(), out var logs, development);
         host.ViewModel.NextFailure = () => new RunicFailureException(new TitleTaken("Todo"));
         var operation = host.Root.Start(vm => vm.SubmitCommand, requestId: "submit-1");
         var status = await operation.WaitAsync();
@@ -102,10 +88,10 @@ internal sealed partial class DomainFailureTests
     [DisplayName("KeyFailureKeepsTheDomainFailure(development: $development)")]
     public void KeyFailureKeepsTheDomainFailure(bool development)
     {
-        BridgeDiagnostics.IncludeFailureDetail = development;
         var model = new EditorModel();
         using var transport = new InMemoryViewTransport();
-        using var bridge = new EditorBridge(transport, model, content: null, keyed: true);
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = development });
+        using var bridge = new EditorBridge(transport, model, content: session, keyed: true);
         model.Rows = ["a", "a"];
         using var reply = JsonDocument.Parse(transport.Call("editorSave"));
         var root = reply.RootElement;
@@ -438,11 +424,14 @@ internal sealed partial class DomainFailureTests
             $"{member} did not reply with its declared failure: {json}");
     }
 
-    private static RunicWindowTestHost<EditorModel> Host(EditorModel model, out LogCapture logs)
+    private static RunicWindowTestHost<EditorModel> Host(EditorModel model, out LogCapture logs, bool development = false)
     {
         logs = new LogCapture();
         return new RunicWindowTestHost<EditorModel>(model, (transport, content, vm) => new EditorBridge(transport, vm, content),
-            new RunicWindowTestHostOptions { RootRoute = "editor", LoggerFactory = logs, ViewLocator = new TestViewLocator() });
+            new RunicWindowTestHostOptions
+            {
+                RootRoute = "editor", LoggerFactory = logs, ViewLocator = new TestViewLocator(), IncludeFailureDetail = development,
+            });
     }
 
     private static string Describe(LogCapture logs) =>
@@ -507,21 +496,20 @@ internal sealed partial class DomainFailureTests
     }
 
     private sealed class EditorBridge(IBridgeTransport transport, EditorModel model, WindowContentSession? content, bool keyed = false)
-        : ViewModelBridge<EditorModel>(transport, model, "editor", (writer, vm, revision) =>
+        : ViewModelBridge<EditorModel>(transport, model, "editor", (writer, vm, revision, _) =>
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteString("title", vm.Title);
             writer.WriteEndObject();
         },
-        [],
+        [], [],
         [
-            new("Save", vm => vm.SaveCommand, EncodeFailure: Encode),
+            new("Save", vm => vm.SaveCommand) { EncodeFailure = Encode },
             new("Undeclared", vm => vm.UndeclaredCommand),
-            new("Submit", vm => vm.SubmitCommand, ExecuteAsync: (vm, _, _) => vm.SubmitAsync(), EncodeFailure: Encode),
-            new("Race", vm => vm.RaceCommand, ExecuteAsync: (_, token, _) => EditorModel.RaceAsync(token), EncodeFailure: Encode),
-            new("Publish", vm => vm.PublishCommand, CreateStream: () => new BridgeOperationStream(),
-                ExecuteStreamAsync: (vm, execution, _, _) => vm.PublishAsync(execution), EncodeFailure: Encode),
+            new("Submit", vm => vm.SubmitCommand) { ExecuteAsync = (vm, _, _) => vm.SubmitAsync(), EncodeFailure = Encode },
+            new("Race", vm => vm.RaceCommand) { ExecuteAsync = (_, token, _) => EditorModel.RaceAsync(token), EncodeFailure = Encode },
+            new("Publish", vm => vm.PublishCommand) { CreateStream = () => new BridgeOperationStream(), ExecuteStreamAsync = (vm, execution, _, _) => vm.PublishAsync(execution), EncodeFailure = Encode },
         ],
         BridgeContractShape.Compute(typeof(EditorModel)), content,
         collections: keyed

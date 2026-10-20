@@ -3,7 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace Runic.Application.Views;
+namespace Runic.Application.Views.Generated;
 
 // Generated bridge metadata describes the reachable DTO graph with delegates.
 // Keeping the shape in generated code means subscriptions require neither

@@ -112,7 +112,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `RunicDesktopHost.GetSurface(window)` returns the `Surface` of any Window of
   this host without naming its ViewModel type, and `null` for another host's.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
-  host, and returns the same `BridgeWindowCloseResult`.
+  host, and returns the same `RunicWindowCloseResult`.
 - A Window with `GuardClose` (see
   [Guarding a user close](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#guarding-a-user-close))
   passes its `CanCloseAsync` to the embedded window as
@@ -378,7 +378,7 @@ Pages that load `runic-desktop-views.js` keep working. `runic({ desktop: true })
 is not needed for a Views page. The adapter uses the same host-neutral client
 contract as the CS-WebUI adapter, and its build defaults match
 `Runic.Application.Views.CsWebUi`, so `AddRunicViews()` is generated in
-`<ProjectName>.RunicBridgeComposition`.
+`<RootNamespace>.RunicViewsComposition`.
 
 The [First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window-desktop)
 example is a complete application. See the

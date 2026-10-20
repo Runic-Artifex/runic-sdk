@@ -75,7 +75,7 @@ try {
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
-    <RunicApplicationFrontendCompositionType>FirstWindowDesktop.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendCompositionType>FirstWindowDesktop.RunicViewsComposition</RunicApplicationFrontendCompositionType>
     <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
     <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
   </PropertyGroup>

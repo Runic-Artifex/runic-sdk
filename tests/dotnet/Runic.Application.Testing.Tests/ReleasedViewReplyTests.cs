@@ -105,7 +105,7 @@ public sealed class ReleasedViewReplyTests
         public Fixture()
         {
             Transport = new InMemoryViewTransport();
-            Session = new WindowContentSession(Transport, rootModel: Root);
+            Session = new WindowContentSession(Transport, new WindowContentSessionOptions { RootModel = Root });
             Page = new Page(() => Present(new Page(() => { })));
             Route = $"content{Present(Page).Id}";
             Require(Transport.Call($"{Route}Mount", new(StringValue: "browser:page", ClientKey: "client", ConnectionKey: "connection")) == "ok",
@@ -204,11 +204,11 @@ public sealed class ReleasedViewReplyTests
         [new("Count", "count", CheckedFieldValueKind.Int32, vm => vm.Count, (vm, value) => vm.Count = (int)value!)],
         [
             new("Leave", vm => vm.LeaveCommand),
-            new("LeaveAsync", vm => vm.LeaveCommand, ExecuteAsync: async (vm, _, _) =>
+            new("LeaveAsync", vm => vm.LeaveCommand) { ExecuteAsync = async (vm, _, _) =>
             {
                 await Task.Yield();
                 vm.Leave();
-            }),
+            } },
         ],
         contractFingerprint: "released-view-reply", content: content);
 

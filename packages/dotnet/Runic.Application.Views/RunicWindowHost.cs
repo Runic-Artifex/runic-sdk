@@ -101,6 +101,13 @@ public sealed record RunicWindowOptions
     public int? Height { get; init; }
 
     /// <summary>
+    /// Whether the window's Bridge error replies carry the exception type, message and stack
+    /// (<see cref="WindowContentSessionOptions.IncludeFailureDetail"/>). <see langword="null"/>, the default,
+    /// includes them only in a <c>Development</c> environment. Hosts read it when the window opens.
+    /// </summary>
+    public bool? IncludeFailureDetail { get; init; }
+
+    /// <summary>
     /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
     /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
     /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
@@ -337,7 +344,7 @@ internal static class RunicWindowOpening
         RunicWindowConfigurationException.BridgeNotRegisteredCode,
         $"No generated Bridge is registered for {Name<TViewModel>()}.",
         "Call services.AddRunicViews() (or AddRunicBridges()) from the generated " +
-            "<Project>.RunicBridgeComposition class. If it is missing or has no Bridge for this ViewModel, " +
+            "<Project>.RunicViewsComposition class. If it is missing or has no Bridge for this ViewModel, " +
             "check that the project references a host package (Runic.Application.Views.Desktop or Runic.Application.Views.CsWebUi) " +
             "and that the ViewModel is a public, top-level class implementing INotifyPropertyChanged.");
 
@@ -353,13 +360,20 @@ internal static class RunicWindowOpening
 }
 
 /// <summary>Whether a Window diagnostic prevents the window from opening or only reports a limitation.</summary>
+/// <remarks>
+/// Values grow with severity, as in <c>Microsoft.Extensions.Logging.LogLevel</c>, so
+/// <c>severity &gt;= RunicWindowDiagnosticSeverity.Warning</c> selects warnings and errors. The set is closed.
+/// </remarks>
 public enum RunicWindowDiagnosticSeverity
 {
-    /// <summary>The window cannot open as configured.</summary>
-    Error,
+    /// <summary>The window opens as requested; the diagnostic only informs.</summary>
+    Information = 0,
 
     /// <summary>The window opens, but ignores or narrows part of the request.</summary>
-    Warning,
+    Warning = 1,
+
+    /// <summary>The window cannot open as configured.</summary>
+    Error = 2,
 }
 
 /// <summary>One finding of a Window check, on any host.</summary>

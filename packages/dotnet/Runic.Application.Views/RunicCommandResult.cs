@@ -1,7 +1,7 @@
 namespace Runic.Application.Views;
 
 /// <summary>Controls how an observable ReactiveUI command result is retained.</summary>
-public enum BridgeCommandResultCardinality
+public enum RunicCommandResultCardinality
 {
     /// <summary>Require exactly one observable result.</summary>
     Single,
@@ -19,8 +19,8 @@ public enum BridgeCommandResultCardinality
 /// attribute.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
-public sealed class RunicCommandResultAttribute(BridgeCommandResultCardinality cardinality) : Attribute
+public sealed class RunicCommandResultAttribute(RunicCommandResultCardinality cardinality) : Attribute
 {
     /// <summary>How the command's observable results are retained.</summary>
-    public BridgeCommandResultCardinality Cardinality { get; } = cardinality;
+    public RunicCommandResultCardinality Cardinality { get; } = cardinality;
 }

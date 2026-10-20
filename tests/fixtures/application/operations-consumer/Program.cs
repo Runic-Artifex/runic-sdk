@@ -18,7 +18,7 @@ await using var surface = await desktop.CreateSurfaceAsync(new DesktopSurfaceOpt
 });
 var transport = new DesktopBridgeTransport(surface);
 var model = scope.ServiceProvider.GetRequiredService<OperationsViewModel>();
-using var content = new WindowContentSession(transport, rootModel: model);
+using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
 using var attachment = scope.ServiceProvider.GetRequiredService<
     Func<IBridgeTransport, WindowContentSession, OperationsViewModel, IDisposable>>()(transport, content, model);
 Console.WriteLine($"OPERATIONS_CONSUMER_URL={surface.Url}");
@@ -30,7 +30,7 @@ if (await Console.In.ReadLineAsync() != "close")
     throw new InvalidOperationException("Expected the driver to close after the browser journey.");
 if (!model.MutationActive || !model.RecoveryStarted || model.RecoveryPublished)
     throw new InvalidOperationException("Expected cancelled invocation with accepted recovery still running.");
-var close = await content.BeginCloseAsync(TimeSpan.FromSeconds(5));
+var close = await content.DrainAsync(TimeSpan.FromSeconds(5));
 await close.Completion;
 if (!close.Drained) throw new InvalidOperationException("The generated invocation wrapper did not drain.");
 Console.WriteLine("OPERATIONS_CONTENT_CLOSE_COMPLETED");

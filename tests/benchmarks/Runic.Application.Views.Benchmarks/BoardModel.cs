@@ -106,7 +106,7 @@ public sealed class BoardBridge(IBridgeTransport transport, BoardModel model, Wi
         [
             new("Preferences", "preferences", CheckedFieldValueKind.Json, vm => vm.Preferences,
                 (vm, value) => vm.Preferences = (Preferences)value!,
-                ReadValue: element => Wire.ReadPreferences(element),
-                WriteValue: (writer, value) => Wire.WritePreferences(writer, (Preferences)value!)),
+                readValue: element => Wire.ReadPreferences(element),
+                writeValue: (writer, value) => Wire.WritePreferences(writer, (Preferences)value!)),
         ],
         [], contractFingerprint: "benchmarks", content: content);

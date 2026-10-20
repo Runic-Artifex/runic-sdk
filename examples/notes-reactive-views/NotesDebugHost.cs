@@ -23,7 +23,7 @@ internal sealed class NotesDebugHost : IDisposable
         _window = window;
         _profilePath = profilePath;
         Url = url;
-        RunicBridgeHotReload.RestartRequired += OnRestartRequired;
+        RunicViewsHotReload.RestartRequired += OnRestartRequired;
     }
 
     public string Url { get; }
@@ -163,7 +163,7 @@ internal sealed class NotesDebugHost : IDisposable
 
     private void StopFrontend()
     {
-        RunicBridgeHotReload.RestartRequired -= OnRestartRequired;
+        RunicViewsHotReload.RestartRequired -= OnRestartRequired;
         if (!_frontend.HasExited)
         {
             try { _frontend.Kill(entireProcessTree: true); }
@@ -173,7 +173,7 @@ internal sealed class NotesDebugHost : IDisposable
         _frontend.Dispose();
     }
 
-    private void OnRestartRequired(string mismatch)
+    private void OnRestartRequired(object? sender, RunicHotReloadRestartEventArgs restart)
     {
         const string notice = "Bridge contract changed. Restart debugging to rebuild the bridge and reconnect the view.";
         try

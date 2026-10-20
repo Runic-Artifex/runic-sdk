@@ -82,8 +82,8 @@ A state, command or interaction value type is not a supported bridge value. The
 message names the member path, for example `EditorViewModel.Current.value`.
 
 **Fix:** use a supported scalar, collection, public DTO, `[RunicUnion]` or
-`[RunicBridgeCodec]` type. Exclude computed DTO properties with
-`[RunicIgnore]`, or opt into unconditional `[JsonIgnore]` and `[JsonExtensionData]` as described under
+`[RunicCodec]` type. Exclude computed DTO properties with
+`[RunicIgnore]` or an unconditional `[JsonIgnore]`, or remove `[assembly: RunicIncludeJsonIgnored]`, as described under
 [Shared DTO exclusions](../packages/dotnet/Runic.Application.Views/README.md#shared-dto-exclusions).
 A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
 `NavigationOutcome`, instead.
@@ -290,7 +290,7 @@ declares Runic Views and generates its composition
 declares a type of the same name. Both would define `AddRunicViews()`, so the
 call would be ambiguous (`CS0121`). A typical case is a WPF application with a
 separate model project: the WPF adapter generates in the application, whose
-default composition name is `<project name>.RunicBridgeComposition`, and the
+default composition name is `<RootNamespace>.RunicViewsComposition`, and the
 model project uses that name for its own composition. A project without Views
 of its own is not affected; its bootstrap build uses the referenced type.
 

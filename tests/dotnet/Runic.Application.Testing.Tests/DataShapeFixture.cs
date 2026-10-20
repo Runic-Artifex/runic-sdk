@@ -36,11 +36,11 @@ public sealed record DataShapeText(string Text) : DataShapePayload;
 [RunicUnionCase("count")]
 public sealed record DataShapeCount(int Count) : DataShapePayload;
 
-[RunicBridgeCodec(typeof(DataShapeMoneyCodec))]
+[RunicCodec(typeof(DataShapeMoneyCodec))]
 public readonly record struct DataShapeMoney(decimal Value);
 
 [RunicCodecShape("string", "bridgeWire.decimal($value)")]
-public sealed class DataShapeMoneyCodec : IRunicBridgeCodec<DataShapeMoney>
+public sealed class DataShapeMoneyCodec : IRunicCodec<DataShapeMoney>
 {
     public static DataShapeMoney Read(JsonElement value) => new(BridgeWire.ReadDecimal(value));
     public static void Write(Utf8JsonWriter writer, DataShapeMoney value) => BridgeWire.WriteDecimal(writer, value.Value);

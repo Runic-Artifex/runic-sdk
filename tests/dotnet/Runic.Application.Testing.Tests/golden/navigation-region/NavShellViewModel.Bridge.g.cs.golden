@@ -2,7 +2,7 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class NavShellBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.NavShellViewModel>
+internal sealed class NavShellBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.NavShellViewModel>
 {
     private readonly global::Runic.Application.Views.WindowContentSession _content;
     private readonly global::Runic.Application.Testing.Tests.NavShellViewModel _owner;
@@ -10,7 +10,9 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.ViewModel
         transport, vm, routePrefix ?? "navShell",
         CreateWriter(content),
         [
-            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.NavShellViewModel>("Main", vm => vm.Main?.Current, null, static vm => vm.Main),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.NavShellViewModel>("Main", vm => vm.Main?.Current, null, static vm => vm.Main),
+        ],
+        [
         ],
         [
         ], "<fingerprint>", content,
@@ -23,17 +25,17 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.ViewModel
         _content = content!; _owner = vm;
     }
 
-    private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =
+    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =
         [
         ]
     ;
-    private static global::System.Action<global::System.Text.Json.Utf8JsonWriter, global::Runic.Application.Testing.Tests.NavShellViewModel, long> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
+    private static global::Runic.Application.Views.Generated.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.NavShellViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
     {
         global::System.ArgumentNullException.ThrowIfNull(content);
-        return (writer, current, revision) => WriteSnapshot(writer, current, revision, content);
+        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, content, writeFieldMetadata);
     }
 
-    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NavShellViewModel vm, long revision, global::Runic.Application.Views.WindowContentSession content)
+    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NavShellViewModel vm, long revision, global::Runic.Application.Views.WindowContentSession content, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)
     {
         writer.WriteStartObject();
         writer.WriteNumber("revision", revision);
