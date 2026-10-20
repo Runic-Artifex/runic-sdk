@@ -416,6 +416,13 @@ A definition takes:
   operation ends when its handler stops (a throw after the request ends it
   `cancelled`) or the test settles it. A request id names one operation: a
   repeated start returns it, and reuse for another command or input is rejected.
+  An operation's `kind` is one of the statuses .NET sends: `running`,
+  `succeeded`, `domain-failed`, `failed`, `cancelled`, `expired` and `unknown`
+  (an open set, as in .NET). `expire()` drops a finished operation's outcome,
+  as .NET does when its retention runs out, so its status, wait and cancel
+  answer `expired` and repeating its start answers `expired`. `forget()` makes
+  the window forget the request id, as after a restart: it answers `unknown`,
+  and a start with the id begins a new operation.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
 .NET publication), `calls`, `failNext(method, { kind, message, detail })` or

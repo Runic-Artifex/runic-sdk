@@ -169,6 +169,65 @@ test("operations stay running until the test settles them and report executing s
   client.dispose();
 });
 
+test("an expired operation reports expired, as .NET does after its retention runs out", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] }, operations: { save: "manual" } });
+  const client = await connect();
+  const decode = (value: unknown) => bridgeWire.string(value);
+  const operation = await client.startOperation<string>("Save", "request-1", () => "request-1", decode);
+  const mock = notes.operations.save[0]!;
+  // .NET only expires a finished operation.
+  assert.throws(() => mock.expire(), TypeError);
+  mock.succeed("saved");
+  mock.expire();
+  assert.equal(mock.kind, "expired");
+  assert.deepEqual(await operation.status(), { contract: `${contract}:notes`, requestId: "request-1", kind: "expired" });
+  assert.deepEqual(await operation.wait(), { contract: `${contract}:notes`, requestId: "request-1", kind: "expired" });
+  assert.equal((await operation.cancel()).kind, "expired");
+  const identity = JSON.stringify({ contract: `${contract}:notes`, member: "Save", requestId: "request-1", cursor: 0 });
+  assert.deepEqual(JSON.parse(await bridge.call("__runicOperationStream", identity)), { contract: `${contract}:notes`, requestId: "request-1", kind: "expired" });
+  // The id stays reserved: repeating the start answers expired, and other input is still an identity conflict.
+  assert.deepEqual(JSON.parse(await bridge.call("notesStartSave", "request-1")),
+    { contract: `${contract}:notes`, requestId: "request-1", kind: "expired", status: "expired", reason: "expired", terminal: null });
+  await assert.rejects(client.startOperation<string>("Save", "request-1", () => "request-1", decode),
+    (error: unknown) => error instanceof BridgeError && error.kind === "failed" && error.message === "expired");
+  assert.equal(JSON.parse(await bridge.call("notesStartSave", JSON.stringify({ requestId: "request-1", input: 1 })))["reason"], "identity-conflict");
+  await assert.rejects(client.recoverOperation<string>("Save", "request-1", decode), BridgeOperationUncertainError);
+  assert.equal(notes.operations.save.length, 1);
+  client.dispose();
+});
+
+test("a forgotten operation reports unknown, as after the window restarted", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] }, operations: { save: "manual" } });
+  const client = await connect();
+  const decode = (value: unknown) => bridgeWire.string(value);
+  const operation = await client.startOperation<string>("Save", "request-1", () => "request-1", decode);
+  const completion = operation.wait();
+  const mock = notes.operations.save[0]!;
+  mock.forget();
+  assert.equal(mock.kind, "unknown");
+  assert.equal(mock.signal.aborted, true);
+  assert.equal(client.snapshot.isSaveExecuting, false);
+  assert.deepEqual(await completion, { contract: `${contract}:notes`, requestId: "request-1", kind: "unknown" });
+  assert.deepEqual(await operation.status(), { contract: `${contract}:notes`, requestId: "request-1", kind: "unknown" });
+  assert.equal((await operation.cancel()).kind, "unknown");
+  // A late outcome of the forgotten operation changes nothing.
+  mock.succeed("late");
+  assert.equal(mock.kind, "unknown");
+  await assert.rejects(client.recoverOperation<string>("Save", "request-1", decode), BridgeOperationUncertainError);
+  // The id is free again: a start begins a new operation.
+  const again = await client.startOperation<string>("Save", "request-1", () => "request-1", decode);
+  assert.equal(notes.operations.save.length, 2);
+  notes.operations.save[1]!.succeed("saved");
+  const status = await again.wait();
+  assert.equal(status.kind === "succeeded" ? status.result : status.kind, "saved");
+  // Forgetting a finished operation works the same way.
+  notes.operations.save[1]!.forget();
+  assert.equal((await again.status()).kind, "unknown");
+  client.dispose();
+});
+
 test("operation handlers run on the virtual clock", async () => {
   const bridge = fresh();
   mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] },
