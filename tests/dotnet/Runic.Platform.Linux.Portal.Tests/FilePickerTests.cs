@@ -78,7 +78,7 @@ internal sealed class FilePickerTests
             string path = Path.Combine(saveDirectory, "original.txt");
             await File.WriteAllTextAsync(path, "original");
             var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new FakeTransport(new(0, [new Uri(path).AbsoluteUri]))));
-            Check(backend.SupportsAtomicReplace && PortalPlatformProvider.CreateFileDialogs(owner).SupportsAtomicReplace, "portal dialogs report atomic save support");
+            Check(backend.SupportsAtomicReplace && new PortalApplication().CreateFileDialogs(owner).SupportsAtomicReplace, "portal dialogs report atomic save support");
             await using (var lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation))
                 Check(new PresentationFiles(lifetime, backend).GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Available, "facade reports Linux portal save as available");
             var selected = await backend.SaveFileAsync(new SaveFileOptions("original.txt"));

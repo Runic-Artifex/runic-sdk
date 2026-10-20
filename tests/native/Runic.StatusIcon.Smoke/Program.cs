@@ -5,6 +5,9 @@ using System.Collections.Immutable;
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 
+// A Linux smoke: the portal services are Linux only.
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
+
 if (args.Length != 1) { Console.Error.WriteLine("Usage: Runic.StatusIcon.Smoke LOG"); return 2; }
 var log = new StreamWriter(args[0], append: true) { AutoFlush = true };
 void Log(string line) { lock (log) log.WriteLine(line); }
@@ -40,7 +43,7 @@ DesktopStatusIconState State() => new(icon, "Runic status icon smoke")
     ],
 };
 
-await using var statusIcon = PortalPlatformProvider.CreateStatusIcon(diagnostic => Log($"diagnostic {diagnostic.Code}"));
+await using var statusIcon = new PortalApplication(null, diagnostic => Log($"diagnostic {diagnostic.Code}")).CreateStatusIcon();
 var quit = new TaskCompletionSource();
 var updates = System.Threading.Channels.Channel.CreateUnbounded<string>();
 statusIcon.Activated += (_, activation) =>

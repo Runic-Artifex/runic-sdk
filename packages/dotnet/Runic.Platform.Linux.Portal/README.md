@@ -1,37 +1,42 @@
 # Runic.Platform.Linux.Portal
 
-Direct XDG desktop portal file dialogs and URI opening, independent of GTK.
-The session portal chooses the desktop backend: a GTK Runic window can therefore
-use KDE's file chooser on Plasma. This package uses the MIT-licensed
-`Tmds.DBus.Protocol` 0.95.1 with NativeAOT-compatible bindings; Registry and
-Notification bindings are generated from pinned upstream XML.
+The Linux provider of the application-scoped Runic.Platform services, built on XDG
+desktop portals, D-Bus services and freedesktop.org specifications, independent of
+GTK. It also serves the portal file dialogs, file handoff and URI opening that
+Runic's hosts create for each window. The session portal chooses the desktop
+backend: a GTK Runic window can therefore use KDE's file chooser on Plasma. This
+package uses the MIT-licensed `Tmds.DBus.Protocol` 0.95.1 with NativeAOT-compatible
+bindings; Registry and Notification bindings are generated from pinned upstream XML.
+Every type is annotated `[SupportedOSPlatform("linux")]`, and `PortalApplication`
+throws `PlatformNotSupportedException` on another operating system.
 
 ```csharp
 // Configure once at application composition. Install the matching .desktop file.
 var portals = new PortalApplication("org.example.MyApp",
     diagnostic => Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Remediation}"));
-var parent = new Gtk3PortalWindowOwner(desktopNativeOwner); // Runic.Platform.Linux
-// Or Gtk4PortalWindowOwner from Runic.Platform.Linux.Gtk4.
-var files = portals.CreateFileDialogs(parent);
-var launcher = portals.CreateFileLauncher(parent);
 // Register these as application-scoped services and dispose them at shutdown.
 var settings = portals.CreateSettings();
 var notifications = portals.CreateNotifications();
+var volumes = portals.CreateVolumes();
 ```
 
-`PortalApplication` is immutable and has no connection or disposal requirement.
-Its settings, notifications, file dialogs, file handoffs and URI opening all use
-one application ID, registering each owned host connection before portal calls.
-Existing static factories remain available for desktop-inferred identity.
-Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` uses those static
-factories for GTK 4 windows; compose the services yourself to pass a `PortalApplication`.
-It also registers notifications with `PortalPlatformProvider.CreateNotifications`,
-with the application ID passed to `AddRunicPlatformServices(applicationId)`, or
-desktop-inferred identity without one.
-Its inhibition comes from `PortalApplication.CreateUnparentedInhibition()`: an
-application-scoped Inhibit request with the empty parent window identifier, so
-it works without a window and is not tied to one. `CreateInhibition(owner)`
-associates each request with a presentation instead.
+`PortalApplication` is the package's entry point. It is immutable and has no
+connection or disposal requirement. Its services all use one application ID,
+registering each owned host connection before portal calls, and report setup
+problems to one [diagnostic sink](#diagnostics). Windows and macOS have static
+providers instead (`WindowsPlatformProvider`, `MacOSPlatformProvider`), because
+there the process carries its identity (the AppUserModelID or the bundle); the
+portals identify an application by the desktop ID it registers on each connection.
+
+File dialogs, file handoff and URI opening belong to a window. Runic.Application.Views.Desktop's
+`PlatformServices.ForWindow` and `services.AddRunicPlatformServices()` create them for
+each GTK 3 or GTK 4 window, parented to it, with desktop-inferred identity.
+`AddRunicPlatformServices(applicationId)` creates the notifications with the
+application ID, or desktop-inferred identity without one. Its inhibition comes from
+`PortalApplication.CreateInhibition()`: an application-scoped Inhibit request with
+the empty parent window identifier, so it works without a window and is not tied to
+one, as the Windows and macOS inhibition is. An application without a window uses
+`CreateUnparentedFileDialogs()` for dialogs that the portal shows without a parent.
 
 Calls are bound to a specific portal service owner. An interrupted operation
 returns unavailable; it is never replayed automatically. Notifications detect
@@ -87,9 +92,7 @@ mid-save, a hidden `.xdp-*` tempfile can remain beside the document. Document
 portals older than 1.14 reject `RENAME_NOREPLACE`; a new file is then created after
 re-checking that the name is still absent.
 
-`LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` remains an explicit GTK3
-opt-in for unsandboxed applications and saves the same way. There is no automatic
-fallback to toolkit dialogs, including when a portal fails.
+There is no automatic fallback to GTK's own dialogs, including when a portal fails.
 
 File dialog filters become FileChooser `filters` (case-insensitive glob patterns,
 such as `*.[pP][nN][gG]`) with the first as `current_filter`; the initial folder
@@ -105,8 +108,7 @@ a chooser and accepts one exact local directory URI. Its directory lease retains
 presentation ownership; persistent portal document permissions remain owned by
 the user's permission store.
 
-`OpenUriAsync(owner, uri)` uses OpenURI for HTTP, HTTPS and mailto links; the file
-launcher's `LaunchUriAsync(uri)` sends the same request. Relative URIs, paths and other
+The file launcher's `LaunchUriAsync(uri)` uses OpenURI for HTTP, HTTPS and mailto links. Relative URIs, paths and other
 schemes throw `ArgumentException` before any D-Bus call, and cancelling the portal's
 application chooser is `Failed(UserDismissed)`. Local-file opening uses the file
 launcher's `LaunchAsync` and passes a retained file descriptor.
@@ -194,7 +196,7 @@ file access and the per-platform verification status.
 
 ## Status icon
 
-`CreateStatusIcon()` on `PortalApplication` or `PortalPlatformProvider` shows an
+`PortalApplication.CreateStatusIcon()` shows an
 application's icon in the desktop's status area, with a tooltip, an attention
 state and a menu. Status icons have no portal: the icon is a StatusNotifierItem
 with a `com.canonical.dbusmenu` menu, registered with
@@ -222,8 +224,8 @@ Plasma 6 and through Waybar's tray.
 
 ## Login startup
 
-`CreateLoginStartup(applicationId)` on `PortalApplication` or
-`PortalPlatformProvider` starts the application when the user logs in. Outside a
+`PortalApplication.CreateLoginStartup()` starts the application with the
+`PortalApplication`'s ID when the user logs in. Outside a
 sandbox it writes `~/.config/autostart/<applicationId>.desktop`, which every
 XDG desktop reads at login, and marks it with `X-Runic-Application`. It never
 changes or removes an entry it did not write, and an entry the user turned off
@@ -243,7 +245,7 @@ await startup.EnableAsync(new LoginStartupRequest(["--background"]) { Reason = "
 
 ## Secret storage
 
-`CreateSecretStore()` on `PortalApplication` or `PortalPlatformProvider` keeps
+`PortalApplication.CreateSecretStore()` keeps
 secrets in the desktop's Secret Service (`org.freedesktop.secrets`): GNOME
 Keyring, KeePassXC or KWallet. Secrets travel over an encrypted
 `dh-ietf1024-sha256-aes128-cbc-pkcs7` session; a service without it gets a
@@ -261,7 +263,7 @@ yet. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/
 
 ## Trash
 
-`CreateTrash()` on `PortalApplication` or `PortalPlatformProvider` follows the
+`PortalApplication.CreateTrash()` follows the
 freedesktop.org Trash specification, as GIO and KIO do, so Files, Dolphin and
 `gio trash --list` show and restore the items. Outside a sandbox it moves an
 item into `$XDG_DATA_HOME/Trash`, or, on another file system, into the trash at
@@ -274,7 +276,7 @@ application can write; a symbolic link cannot be trashed there. See the
 
 ## Volumes
 
-`PortalPlatformProvider.CreateVolumes()` lists, mounts, unmounts and ejects
+`PortalApplication.CreateVolumes()` lists, mounts, unmounts and ejects
 volumes through UDisks2 (`org.freedesktop.UDisks2`) on the system bus, as GNOME
 Files and Dolphin do; it needs no portal, no window and no GTK. UDisks2 asks
 Polkit, whose authentication agent may prompt; without an agent, a request
@@ -288,7 +290,7 @@ Snap, connect the `udisks2` interface. See the
 
 ## Desktop applications
 
-`CreateApplications()` on `PortalApplication` or `PortalPlatformProvider` reads
+`PortalApplication.CreateApplications()` reads
 the desktop's application database without GIO: desktop entries from the XDG
 data directories, the shared MIME-info database (globs, magic, aliases,
 subclasses, icons and descriptions), the MIME Apps `mimeapps.list` files and
@@ -305,7 +307,7 @@ Flatpak or Snap only content types and icons work. See the
 
 ## Thumbnails
 
-`CreateThumbnails()` on `PortalApplication` or `PortalPlatformProvider` reads
+`PortalApplication.CreateThumbnails()` reads
 the freedesktop.org thumbnail cache, `$XDG_CACHE_HOME/thumbnails`, which GNOME
 Files, Dolphin and Thunar fill. An entry counts only when its `Thumb::URI` and
 `Thumb::MTime` (and `Thumb::Size`, if present) match the file; a matching entry

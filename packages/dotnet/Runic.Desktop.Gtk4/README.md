@@ -44,10 +44,8 @@ keeps the platform's own embedded host. It throws `ArgumentException` when the
 options already carry another factory. When the profile cannot run,
 `DesktopHost.Validate` and `GetAvailability` list every missing library
 (`gtk4-runtime-missing`, `webkitgtk6-runtime-missing`) rather than only the
-first. `dotnet runic doctor` adds a `gtk4-profile` check that also names the
-missing `Runic.Platform.Linux.Gtk4` and `Runic.Platform.Linux.Portal` packages,
-and warns when the project restores `Runic.Platform.Linux`, whose GTK 3 portal
-parent would load GTK 3 into the GTK 4 process.
+first. `dotnet runic doctor` adds a `gtk4-profile` check that also names a
+missing `Runic.Application.Views.Desktop`, which creates the GTK 4 window services.
 
 Pass an installed application identity with `WithGtk4("org.example.MyApp")`
 or `Gtk4Application.Run(callback, "org.example.MyApp")`. Inside Flatpak the runner automatically uses `FLATPAK_ID`;
@@ -63,11 +61,10 @@ Each view owns a separate WebKit context.
 GTK4 deliberately omits `Move` and rejects global position, centering,
 transparent, high-contrast, profile-path, custom-argument, and icon-file
 options; `DesktopHost.Validate` reports each one as a `window-option-unsupported`
-error before a window opens. It supports independent minimum dimensions. Use
-`Runic.Platform.Linux.Portal` with `Gtk4PlatformProvider.CreatePortalWindowOwner`
-for portal-first file dialogs, so KDE uses its own picker. Runic.Application.Views.Desktop
-applications get this composition from `services.AddRunicPlatformServices()`, which
-selects the GTK 4 provider when the process runs this backend.
+error before a window opens. It supports independent minimum dimensions.
+Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` selects the
+GTK 4 window services when the process runs this backend: portal-first file dialogs,
+parented through `Runic.Platform.Linux.Gtk4`, so KDE uses its own picker.
 
 GTK 4 has no window position: it neither reports nor sets where a top-level
 window is, on X11 or Wayland, so the compositor places every window. The window

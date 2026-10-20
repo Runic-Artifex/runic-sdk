@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Runic.Platform.Runtime.Tests")]
 [assembly: InternalsVisibleTo("Runic.Platform.MacOS.Tests")]
-// PlatformServices creates the status icon, login startup and window presentation without public provider API.
+// PlatformServices creates each window's services and presentation, which are not public API.
 [assembly: InternalsVisibleTo("Runic.Application.Views.Desktop")]

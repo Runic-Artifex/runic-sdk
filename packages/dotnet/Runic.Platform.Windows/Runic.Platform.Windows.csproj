@@ -7,7 +7,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <PackageId>Runic.Platform.Windows</PackageId>
-    <Description>Explicit Windows native file dialog and text clipboard provider for Runic.</Description>
+    <Description>The Windows provider of the Runic.Platform services: desktop services, status icon, and the window services of Runic hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -17,8 +17,10 @@
     <Compile Include="../Runic.Platform/DesktopApplicationNames.cs" Link="Shared/DesktopApplicationNames.cs" />
     <InternalsVisibleTo Include="Runic.Platform.Windows.Tests" />
     <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
-    <!-- PlatformServices selects the status icon and window presentation without widening this package's API. -->
+    <!-- PlatformServices creates each window's services and presentation, which are not public API. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
+    <!-- The window services (dialogs, clipboard, file handoff) are internal; the native smoke drives the dialogs directly. -->
+    <InternalsVisibleTo Include="Runic.Desktop.WebViewSmoke" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="docs/**/*.md" Pack="true" PackagePath="docs/" />
   </ItemGroup>

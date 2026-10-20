@@ -1,12 +1,15 @@
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 
+// A Linux smoke: the portal services are Linux only.
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
+
 // Volumes against the machine's UDisks2 on the system bus. Only nixos/volumes runs it, inside a VM with a scratch disk:
 //   list                    print each volume
 //   mount <id> | unmount <id> | eject <id>
 //   watch <seconds>         print each change for that long
 // Each command ends with "result: ..." for the test script.
-await using var volumes = PortalPlatformProvider.CreateVolumes();
+await using var volumes = new PortalApplication().CreateVolumes();
 string command = args.Length > 0 ? args[0] : "list";
 switch (command)
 {

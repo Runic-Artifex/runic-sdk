@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Runic.Platform.Windows")]
 [assembly: InternalsVisibleTo("Runic.Platform.Linux")]
 [assembly: InternalsVisibleTo("Runic.Platform.Linux.Portal")]
+[assembly: InternalsVisibleTo("Runic.Platform.Linux.Gtk4")]
 [assembly: InternalsVisibleTo("Runic.Application.Views.Desktop")]
 [assembly: InternalsVisibleTo("Runic.Platform.Runtime.Tests")]
 [assembly: InternalsVisibleTo("Runic.Platform.Linux.Tests")]

@@ -1,1 +1,6 @@
 #nullable enable
+*REMOVED*Runic.Platform.Windows.Elevation.WindowsElevationOptions.OwnerWindow.get -> nint
+*REMOVED*Runic.Platform.Windows.Elevation.WindowsElevationOptions.OwnerWindow.init -> void
+*REMOVED*Runic.Platform.Windows.Elevation.WindowsPrivilegedActions.RunAsync(Runic.Platform.PrivilegedActionRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PrivilegedActionCompletion!>!>
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.Owner.get -> Runic.Platform.Runtime.INativeWindowOwner?
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.Owner.init -> void

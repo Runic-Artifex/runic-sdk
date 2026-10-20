@@ -65,7 +65,7 @@ internal sealed class PkexecTests
         Check(!File.Exists(Path.Combine(fixture.Directory, "injected")) && !File.Exists("injected"), "no shell ran the arguments");
         Check(fixture.Argv.SequenceEqual(["--disable-internal-agent", fixture.ReportAction.Program, "report", .. arguments]), $"argv: {string.Join(" | ", fixture.Argv)}");
         var environment = fixture.Environment;
-        Check(environment.GetValueOrDefault("PATH") == PolkitPrivilegedActions.PkexecPath, $"pkexec gets a fixed PATH: {environment.GetValueOrDefault("PATH")}");
+        Check(environment.GetValueOrDefault("PATH") == PolkitActionRunner.PkexecPath, $"pkexec gets a fixed PATH: {environment.GetValueOrDefault("PATH")}");
         Check(!environment.ContainsKey("SHELL") && !environment.ContainsKey("HOME") && !environment.ContainsKey("NUGET_PACKAGES"),
             $"pkexec gets no SHELL (it would reject one missing from /etc/shells) and nothing else of the caller's: {string.Join(",", environment.Keys)}");
         // The program may already have exited and been reaped when the pidfd is opened; CancelBeforeStartAsync checks the
@@ -114,9 +114,9 @@ internal sealed class PkexecTests
     {
         if (!OperatingSystem.IsLinux()) return;
         using var fixture = new Fixture("allow");
-        var missing = new PolkitPrivilegedActions([fixture.ReportAction], new PolkitOptions(), new FakeHost(null));
+        var missing = new PolkitActionRunner([fixture.ReportAction], new PolkitOptions(), new FakeHost(null));
         Check(await missing.RunAsync(new PrivilegedActionRequest(fixture.ReportAction, [])) is PlatformResult<PrivilegedActionCompletion>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "none found");
-        var broken = new PolkitPrivilegedActions([fixture.ReportAction], new PolkitOptions(), new FakeHost(Path.Combine(fixture.Directory, "no-such-pkexec")));
+        var broken = new PolkitActionRunner([fixture.ReportAction], new PolkitOptions(), new FakeHost(Path.Combine(fixture.Directory, "no-such-pkexec")));
         Check(await broken.RunAsync(new PrivilegedActionRequest(fixture.ReportAction, [])) is PlatformResult<PrivilegedActionCompletion>.Unavailable, "cannot start");
         Check(LinuxPolkitHost.Instance.FindPkexec(fixture.Pkexec) is null, "a pkexec that is not setuid root is not used");
     }
@@ -263,7 +263,7 @@ internal sealed class PkexecTests
             ReportAction = new PrivilegedActionDeclaration("org.example.app.report", Script("report", Report)) { Verb = "report", MaximumArguments = 8 };
             WaitAction = new PrivilegedActionDeclaration("org.example.app.wait", Script("wait", Wait)) { Verb = "wait" };
             Host = new FakeHost(Pkexec);
-            Actions = new PolkitPrivilegedActions([ReportAction, WaitAction], options ?? new PolkitOptions(), Host);
+            Actions = new PolkitActionRunner([ReportAction, WaitAction], options ?? new PolkitOptions(), Host);
         }
 
         public string Directory { get; }
@@ -271,7 +271,7 @@ internal sealed class PkexecTests
         public PrivilegedActionDeclaration ReportAction { get; }
         public PrivilegedActionDeclaration WaitAction { get; }
         public FakeHost Host { get; }
-        public PolkitPrivilegedActions Actions { get; }
+        public PolkitActionRunner Actions { get; }
         public string[] Argv => File.ReadAllText(Path.Combine(Directory, "argv")).Split('\n')[..^1];
         public Dictionary<string, string> Environment => File.ReadAllLines(Path.Combine(Directory, "environment"))
             .Select(line => line.Split('=', 2)).Where(p => p.Length == 2).ToDictionary(p => p[0], p => p[1]);

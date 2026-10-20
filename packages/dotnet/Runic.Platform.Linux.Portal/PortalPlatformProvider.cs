@@ -5,68 +5,9 @@ using System.Text;
 
 namespace Runic.Platform.Linux.Portal;
 
-/// <summary>Direct desktop portal services, independent of GTK version.</summary>
-public static class PortalPlatformProvider
+// The portal requests the services of PortalApplication share. Internal: PortalApplication is the package's entry point.
+internal static class PortalPlatformProvider
 {
-    /// <summary>Creates application-scoped appearance preferences without selecting a GTK toolkit.</summary>
-    public static IDesktopSettings CreateSettings() => new PortalDesktopSettings();
-    /// <summary>Creates application-scoped notifications. Disposal leaves delivered notifications in the desktop.</summary>
-    /// <remarks>A supplied host ID requires a matching installed desktop entry and the host Registry portal. Diagnostic callbacks never receive notification text.</remarks>
-    public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(applicationId, diagnosticSink).CreateNotifications();
-    /// <summary>Creates a status icon with a menu, registered with the desktop's StatusNotifierWatcher.</summary>
-    /// <remarks>Plasma, Waybar's tray and GNOME's AppIndicator extension show it; elsewhere it reports unavailable
-    /// and appears once a status area starts.</remarks>
-    public static IDesktopStatusIcon CreateStatusIcon(Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(null, diagnosticSink).CreateStatusIcon();
-    /// <summary>Creates login startup for the application with the installed desktop ID <paramref name="applicationId"/>.</summary>
-    /// <remarks>Without an ID it works only inside Flatpak or Snap, where the portal knows the application.</remarks>
-    public static IDesktopLoginStartup CreateLoginStartup(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(applicationId, diagnosticSink).CreateLoginStartup();
-    /// <summary>Creates secret storage in the desktop's Secret Service, such as GNOME Keyring or KeePassXC.</summary>
-    /// <remarks>Diagnostic callbacks never receive secrets, services or accounts.</remarks>
-    public static IDesktopSecretStore CreateSecretStore(Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(null, diagnosticSink).CreateSecretStore();
-    /// <summary>Creates the user's trash, following the freedesktop.org Trash specification.</summary>
-    /// <remarks>Inside Flatpak or Snap it asks the Trash portal. Diagnostic callbacks never receive paths.</remarks>
-    public static IDesktopTrash CreateTrash(Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(null, diagnosticSink).CreateTrash();
-    /// <summary>Creates the desktop's storage volumes from UDisks2 on the system bus.</summary>
-    /// <remarks>UDisks2 asks Polkit for authorization itself and may show a prompt. The volumes need no portal and no
-    /// presentation; a sandbox must allow talking to <c>org.freedesktop.UDisks2</c> on the system bus. Creating them
-    /// connects to nothing; the first request does.</remarks>
-    public static IDesktopVolumes CreateVolumes() => new UDisksVolumes();
-
-    /// <summary>Creates the desktop's application database: content types, installed applications, default applications
-    /// and icons, read from the freedesktop.org files.</summary>
-    /// <remarks>Diagnostic callbacks never receive file contents.</remarks>
-    public static IDesktopApplications CreateApplications(Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(null, diagnosticSink).CreateApplications();
-    /// <summary>Creates thumbnails from the freedesktop.org thumbnail cache, and from the session's thumbnailer on a miss.</summary>
-    /// <remarks>Diagnostic callbacks never receive paths.</remarks>
-    public static IDesktopThumbnails CreateThumbnails(Action<PortalDiagnostic>? diagnosticSink = null) =>
-        new PortalApplication(null, diagnosticSink).CreateThumbnails();
-    /// <summary>Creates owned local-file and URI handoff operations.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
-    { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }
-
-    /// <summary>Creates portal-only file dialogs bound to a verified presentation.</summary>
-    public static IPickerBackend CreateFileDialogs(IPortalWindowOwner owner, Action<PortalDiagnostic>? diagnosticSink = null)
-    {
-        ArgumentNullException.ThrowIfNull(owner);
-        return new NativePickerBackend(owner, new PortalFilePicker(owner, new PortalTransport(), diagnosticSink));
-    }
-
-    /// <summary>Explicitly creates unparented dialogs for an application with no native presentation.</summary>
-    public static IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new UnparentedOwner());
-
-    /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
-    /// <remarks>The same request as <see cref="IDesktopFileLauncher.LaunchUriAsync"/> of <see cref="CreateFileLauncher"/>'s
-    /// launcher. The user dismissing the portal's application chooser is <see cref="PlatformFailureCode.UserDismissed"/>.</remarks>
-    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>
-    public static ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
-        OpenUriCoreAsync(owner, uri, new PortalTransport(), cancellationToken);
-
     internal static async ValueTask<PlatformResult<PlatformUnit>> OpenUriCoreAsync(IPortalWindowOwner owner, Uri uri, IPortalTransport transport, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);

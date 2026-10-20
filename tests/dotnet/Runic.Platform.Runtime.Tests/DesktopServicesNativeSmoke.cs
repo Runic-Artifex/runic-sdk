@@ -32,12 +32,13 @@ internal static class DesktopServicesNativeSmoke
             launcher = MacOSPlatformProvider.CreateFileLauncher(owner);
             notifications = MacOSPlatformProvider.CreateNotifications();
         }
-        else
+        else if (OperatingSystem.IsLinux())
         {
             var portals = new Runic.Platform.Linux.Portal.PortalApplication(applicationId, diagnostic => Console.WriteLine($"Portal diagnostic: {diagnostic}"));
             launcher = portals.CreateFileLauncher(new Gtk3PortalWindowOwner(owner));
             notifications = portals.CreateNotifications();
         }
+        else throw new PlatformNotSupportedException();
         await using (notifications)
         {
             var activated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -169,7 +170,7 @@ internal static class NativePlatformSmoke
             ? WindowsPlatformProvider.CreateFileDialogs(owner)
             : OperatingSystem.IsMacOS()
                 ? MacOSPlatformProvider.CreateFileDialogs(owner)
-                : LinuxPlatformProvider.CreateFileDialogs(owner);
+                : OperatingSystem.IsLinux() ? LinuxPlatformProvider.CreateFileDialogs(owner) : throw new PlatformNotSupportedException();
         await using var lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
         var files = new PresentationFiles(lifetime, backend);
         var result = await files.OpenFileAsync(new(), cancellationToken);

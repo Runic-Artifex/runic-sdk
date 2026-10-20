@@ -1,8 +1,18 @@
+using System.Runtime.Versioning;
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.MacOS;
 
-/// <summary>Explicit AppKit provider selection; no native initialization occurs until used.</summary>
+/// <summary>The macOS provider of the application-scoped Runic.Platform services; no native initialization occurs
+/// until used.</summary>
+/// <remarks>
+/// Every factory throws <see cref="PlatformNotSupportedException"/> on another operating system. The services take no
+/// application ID: macOS identifies the application by its bundle. Window services (file dialogs, the clipboard and file
+/// handoff) belong to a window: Runic's hosts create them for each window, such as <c>PlatformServices.ForWindow</c> of
+/// Runic.Application.Views.Desktop. The privileged actions (<see cref="MacPrivilegedActions"/>) report unavailable instead,
+/// because generated code registers them on every platform.
+/// </remarks>
+[SupportedOSPlatform("macos")]
 public static class MacOSPlatformProvider
 {
     /// <summary>Creates operation-scoped idle power inhibition.</summary>
@@ -12,6 +22,16 @@ public static class MacOSPlatformProvider
     /// <summary>Creates appearance preferences. The AppKit main loop must be running before use.</summary>
     public static IDesktopSettings CreateSettings()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopSettings(); }
+    /// <summary>Creates the menu-bar status icon with a menu, an <c>NSStatusItem</c>.</summary>
+    /// <remarks>It needs no window; the Desktop event loop (<c>DesktopEventLoop.Run</c>) must service the main thread, or
+    /// requests report <see cref="PlatformUnavailableReason.BackendUnavailable"/> after five seconds.</remarks>
+    public static IDesktopStatusIcon CreateStatusIcon()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacStatusIcon(); }
+    /// <summary>Creates login startup for the application bundle, through <c>SMAppService.mainAppService</c>.</summary>
+    /// <remarks>macOS 13 and later; a process outside an application bundle, or an earlier macOS, reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. macOS starts the bundle without the request's arguments.</remarks>
+    public static IDesktopLoginStartup CreateLoginStartup()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacLoginStartup(); }
     /// <summary>Creates UserNotifications for a bundled application. The AppKit main loop must run before use.</summary>
     public static IDesktopNotifications CreateNotifications()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopNotifications(); }
@@ -74,20 +94,20 @@ public static class MacOSPlatformProvider
     /// </remarks>
     public static IDesktopApplications CreateApplications()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopApplications(); }
-    /// <summary>Creates owned file and URI handoff operations. Caller retains security-scoped access through completion.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
+    // Owned file and URI handoff operations for a window. The caller retains security-scoped access through completion.
+    internal static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }
 
-    /// <summary>Creates AppKit file dialogs bound to a verified presentation owner.</summary>
-    public static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
+    // AppKit file dialogs for a window.
+    internal static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
         return new NativePickerBackend(owner, new MacOsFilePicker(owner));
     }
 
-    /// <summary>Creates AppKit text clipboard services for a verified presentation owner.</summary>
-    public static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
+    // AppKit text clipboard services for a window.
+    internal static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");

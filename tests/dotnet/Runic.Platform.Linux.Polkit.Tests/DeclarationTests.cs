@@ -144,7 +144,7 @@ internal sealed class DeclarationTests
         PrivilegedActionDeclaration Declare(string pattern) =>
             new("org.example.app.system", "/opt/app/helper") { Verb = "run", MaximumArguments = 2, Commands = [new("gc", pattern)] };
         // Without pkexec, a request the provider accepts is unavailable rather than run.
-        var actions = new PolkitPrivilegedActions([Declare("[0-9]+")], new PolkitOptions(), new PkexecTests.FakeHost(null));
+        var actions = new PolkitActionRunner([Declare("[0-9]+")], new PolkitOptions(), new PkexecTests.FakeHost(null));
         Check(await actions.RunAsync(new PrivilegedActionRequest(Declare("[0-9]+"), ["gc", "1"])) is PlatformResult<PrivilegedActionCompletion>.Unavailable,
             "an equal declaration is the provider's");
         await ThrowsAsync<ArgumentException>(() => actions.RunAsync(new PrivilegedActionRequest(Declare("[0-9a-z]+"), ["gc", "1"])).AsTask(),

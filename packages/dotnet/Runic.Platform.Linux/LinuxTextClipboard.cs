@@ -6,7 +6,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Linux;
 
 /// <summary>GTK clipboard with presentation-thread ownership and asynchronous transfer draining.</summary>
-public sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITextClipboard, IAsyncDisposable
+internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITextClipboard, IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Ownership? _ownership;

@@ -67,3 +67,10 @@ Runic.Platform.Runtime.NativePickerBackend.NativePickerBackend(Runic.Platform.Ru
 Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException(string? message) -> void
 Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException(string? message, System.Exception? innerException) -> void
 static Runic.Platform.Runtime.ApplicationInstance.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
+*REMOVED*Runic.Platform.Runtime.IPortalWindowOwner
+*REMOVED*Runic.Platform.Runtime.IPortalWindowOwner.ExportParentAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.PortalParentLease!>
+*REMOVED*Runic.Platform.Runtime.PortalParentLease
+*REMOVED*Runic.Platform.Runtime.PortalParentLease.PortalParentLease() -> void
+*REMOVED*abstract Runic.Platform.Runtime.PortalParentLease.DisposeAsync() -> System.Threading.Tasks.ValueTask
+*REMOVED*abstract Runic.Platform.Runtime.PortalParentLease.Identifier.get -> string!
+*REMOVED*virtual Runic.Platform.Runtime.PortalParentLease.OwnerClosed.get -> System.Threading.CancellationToken

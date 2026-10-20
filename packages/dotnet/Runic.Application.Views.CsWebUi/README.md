@@ -109,7 +109,7 @@ owner, so every operation and the capability snapshot report
 requests return `Unavailable(ProviderNotConfigured)`: this package selects no
 native provider. They need no window, so register a platform provider's service,
 such as `WindowsPlatformProvider.CreateSettings()` or
-`new PortalApplication("org.example.Notes").CreateUnparentedInhibition()`, before
+`new PortalApplication("org.example.Notes").CreateInhibition()`, before
 it to use one on CS-WebUI. The
 [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
 lists each service's result on both hosts. A root ViewModel that implements `IRunicFileDropTarget` is

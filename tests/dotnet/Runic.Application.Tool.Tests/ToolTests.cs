@@ -1721,7 +1721,8 @@ internal sealed class ToolTests
     public void DoctorGtk4ProfileListsEveryMissingPiece()
     {
         using var workspace = new TestWorkspace();
-        // A custom composition on Runic.Desktop chooses its platform providers itself.
+        // A custom composition on Runic.Desktop has no native window services: only Runic.Application.Views.Desktop creates
+        // them, because the providers keep them internal (W319-003 D33).
         DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, null, out var authority)
             with { UsesGtk4 = true, DirectReferences = ["Runic.Desktop.Gtk4"] };
         DoctorReport Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
@@ -1729,35 +1730,29 @@ internal sealed class ToolTests
 
         DoctorCheck bare = Check(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain)), "gtk4-profile");
         Equal(DoctorStatus.Warning, bare.Status);
-        foreach (string piece in new[] { "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal", "libgtk-4.so.1", "libwebkitgtk-6.0.so.4" })
+        foreach (string piece in new[] { "Runic.Application.Views.Desktop", "libgtk-4.so.1", "libwebkitgtk-6.0.so.4" })
         {
             Contains(bare.Message, piece);
         }
-        Contains(bare.Message, "4 piece(s)");
+        Contains(bare.Message, "3 piece(s)");
+        Contains(bare.Remediation ?? string.Empty, "reference Runic.Application.Views.Desktop");
         Contains(bare.Remediation ?? string.Empty, "WithGtk4()");
-        Contains(bare.Remediation ?? string.Empty, "CreatePortalWindowOwner");
+        DoesNotContain(bare.Remediation ?? string.Empty, "CreatePortalWindowOwner");
 
-        // Runic.Platform.Linux brings the portal transitively; the restore graph shows it.
-        Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
-        {
-            libraries = new Dictionary<string, object>
-            {
-                ["Runic.Desktop/1.0.0"] = new { type = "package" },
-                ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
-            },
-        }));
+        // The provider packages alone do not complete the profile.
         string[] gtk4 = ["libgtk-4.so.1", "libwebkitgtk-6.0.so.4"];
-        DoctorCheck old = Check(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain)
+        DoctorProjectConfiguration providers = desktop with { DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal"] };
+        DoctorCheck old = Check(Inspect(providers, new FakeDoctorRuntime(authority.Toolchain)
         {
             Libraries = [.. gtk4], Executables = ["pkg-config"], Gtk4Version = "4.10.1",
         }), "gtk4-profile");
         Equal(DoctorStatus.Warning, old.Status);
         Contains(old.Message, "2 piece(s)");
-        Contains(old.Message, "Runic.Platform.Linux.Gtk4");
+        Contains(old.Message, "Runic.Application.Views.Desktop");
         Contains(old.Message, "GTK 4.10.1");
-        DoesNotContain(old.Message, "Runic.Platform.Linux.Portal");
 
-        DoctorProjectConfiguration complete = desktop with { DirectReferences = [.. desktop.DirectReferences, "Runic.Platform.Linux.Gtk4"] };
+        // Runic.Application.Views.Desktop brings the platform providers and selects the GTK 4 one, even before restore.
+        DoctorProjectConfiguration complete = desktop with { DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] };
         Equal(DoctorStatus.Pass, Check(Inspect(complete, new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4] }), "gtk4-profile").Status);
 
         // Native libraries are not checked on other machines, and --rid reports them under target-presentation.
@@ -1772,16 +1767,21 @@ internal sealed class ToolTests
         using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"}]}}""");
         SequenceEqual(["Runic.Platform.Linux.Gtk4"], DoctorProjectConfiguration.ReferenceIdentities(evaluation.RootElement));
 
-        // Runic.Application.Views.Desktop brings the platform providers and selects the GTK 4 one, even before restore.
+        // Restored transitively, the host counts too.
+        Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
+        {
+            libraries = new Dictionary<string, object> { ["Runic.Application.Views.Desktop/1.0.0"] = new { type = "package" } },
+        }));
+        Equal(DoctorStatus.Pass, Check(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4] }), "gtk4-profile").Status);
+
         using var hosted = new TestWorkspace();
         DoctorProjectConfiguration application = CreateDoctorProject(hosted, null, out _)
             with { Host = RunicViewsHost.Desktop, UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] };
         DoctorCheck libraries = Check(Inspect(application, new FakeDoctorRuntime(authority.Toolchain)), "gtk4-profile");
         Equal(DoctorStatus.Warning, libraries.Status);
         Contains(libraries.Message, "2 piece(s)");
-        DoesNotContain(libraries.Message, "Runic.Platform");
+        DoesNotContain(libraries.Message, "Runic.Application.Views.Desktop");
         Contains(libraries.Remediation ?? string.Empty, "AddRunicPlatformServices()");
-        DoesNotContain(libraries.Remediation ?? string.Empty, "CreatePortalWindowOwner");
         Equal(DoctorStatus.Pass, Check(Inspect(application, new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4] }), "gtk4-profile").Status);
     }
 
@@ -1846,60 +1846,18 @@ internal sealed class ToolTests
         }), "target-presentation").Remediation ?? string.Empty, "on Debian/Ubuntu: libgtk-4-1 and libwebkitgtk-6.0-4");
     }
 
-    [Test, DisplayName("doctor warns when a GTK 4 project restores Runic.Platform.Linux")]
-    public void DoctorGtk4ProfileRejectsGtk3Platform()
+    // Runic.Platform.Linux has no public API since W319-003 D33: a GTK 4 project that references it cannot call its GTK 3
+    // services, and Runic.Application.Views.Desktop never loads them in a GTK 4 process.
+    [Test, DisplayName("doctor does not warn about a Runic.Platform.Linux reference in a GTK 4 project")]
+    public void DoctorGtk4ProfileIgnoresGtk3Package()
     {
         using var workspace = new TestWorkspace();
         DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
-            with { UsesGtk4 = true, DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux"] };
+            with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4", "Runic.Platform.Linux"] };
         var runtime = new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-4.so.1", "libwebkitgtk-6.0.so.4"] };
-        DoctorCheck Inspect(DoctorProjectConfiguration project) =>
-            Check(DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult(), "gtk4-profile");
-
-        // Runic.Platform.Linux restores the portal, so only the GTK 3 conflict remains.
-        Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
-        {
-            libraries = new Dictionary<string, object>
-            {
-                ["Runic.Platform.Linux/1.0.0"] = new { type = "package" },
-                ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
-            },
-        }));
-        DoctorCheck conflict = Inspect(desktop);
-        Equal(DoctorStatus.Warning, conflict.Status);
-        Contains(conflict.Message, "Runic.Platform.Linux is referenced");
-        Contains(conflict.Message, "libgtk-3");
-        DoesNotContain(conflict.Message, "piece(s)");
-        Contains(conflict.Remediation ?? string.Empty, "remove Runic.Platform.Linux");
-        Contains(conflict.Remediation ?? string.Empty, "reference Runic.Platform.Linux.Portal directly");
-
-        // Only restored transitively, it still loads GTK 3.
-        DoctorCheck transitive = Inspect(desktop with { DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal"] });
-        Equal(DoctorStatus.Warning, transitive.Status);
-        DoesNotContain(transitive.Remediation ?? string.Empty, "Portal directly");
-
-        Write(desktop.ProjectAssetsFile, "{}");
-        Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal"] }).Status);
-
-        // Runic.Application.Views.Desktop restores Runic.Platform.Linux but never loads it in a GTK 4 process. Only a direct
-        // reference, for an application that calls LinuxPlatformProvider itself, still conflicts.
-        Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
-        {
-            libraries = new Dictionary<string, object>
-            {
-                ["Runic.Application.Views.Desktop/1.0.0"] = new { type = "package" },
-                ["Runic.Platform.Linux/1.0.0"] = new { type = "package" },
-                ["Runic.Platform.Linux.Gtk4/1.0.0"] = new { type = "package" },
-                ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
-            },
-        }));
-        Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] }).Status);
-        DoctorCheck direct = Inspect(desktop with { DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4", "Runic.Platform.Linux"] });
-        Equal(DoctorStatus.Warning, direct.Status);
-        Contains(direct.Message, "Runic.Platform.Linux is referenced directly");
-        Contains(direct.Remediation ?? string.Empty, "remove Runic.Platform.Linux");
-        Contains(direct.Remediation ?? string.Empty, "AddRunicPlatformServices()");
-        DoesNotContain(direct.Remediation ?? string.Empty, "Portal directly");
+        DoctorCheck check = Check(DoctorChecks.InspectAsync(desktop, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult(), "gtk4-profile");
+        Equal(DoctorStatus.Pass, check.Status);
+        DoesNotContain(check.Message, "libgtk-3");
     }
 
     [Test, DisplayName("doctor names the platform-services provider and checks the portal")]

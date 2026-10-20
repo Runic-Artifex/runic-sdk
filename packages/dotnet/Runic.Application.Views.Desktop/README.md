@@ -345,12 +345,10 @@ The same Window and `async host => ...` body run on CS-WebUI with
   [Volumes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#volumes).
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativeWindowOwner`, which the services above bind to. The
-  provider APIs that take it directly, such as
-  `WindowsPlatformProvider.CreateFileDialogs(owner)` or
-  `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`,
-  keep working for applications that compose providers themselves.
-  `LinuxPlatformProvider` parents dialogs through GTK 3, so do not use it
-  with a GTK 4 window.
+  window services (file dialogs, the clipboard and file handoff) are created only
+  here, through `PlatformServices.ForWindow`; the providers keep them internal.
+  Pass the owner where an API asks for a window, such as
+  `WindowsElevationOptions.Owner` for the UAC prompt.
 
   The owner runs provider callbacks on the window's native thread and becomes
   unavailable when the window closes or the surface replaces it. A presentation

@@ -2,11 +2,14 @@ using System.Runtime.Versioning;
 using Runic.Platform;
 using Runic.Platform.Runtime;
 
+[assembly: SupportedOSPlatform("linux")]
+
 namespace Runic.Platform.Linux.Gtk4;
 
-/// <summary>Creates GTK 4 services bound to a verified GTK 4 presentation owner.</summary>
+/// <summary>Creates GTK 4 services bound to a verified GTK 4 presentation owner. Internal: Runic.Application.Views.Desktop
+/// selects them for GTK 4 windows.</summary>
 [SupportedOSPlatform("linux")]
-public static class Gtk4PlatformProvider
+internal static class Gtk4PlatformProvider
 {
     /// <summary>Creates a GTK 4 clipboard that dispatches all native work through <paramref name="owner"/>.</summary>
     public static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
