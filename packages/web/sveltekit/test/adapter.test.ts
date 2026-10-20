@@ -1,11 +1,27 @@
 import { readdir, readFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { runicAdapter } from "../src/index.js";
+import { expectTypeOf } from "vitest";
+import * as root from "../src/index.js";
+import { runicAdapter, type RunicSvelteKitAdapterOptions } from "../src/index.js";
 
 const out = resolve(".tmp-adapter-test");
 
 afterEach(async () => rm(out, { recursive: true, force: true }));
+
+describe("runicAdapter options (sveltekit-01, sveltekit-02)", () => {
+  test("a field the mode ignores does not type-check", () => {
+    expectTypeOf<{ mode: "spa"; fallback: "200.html" }>().toExtend<RunicSvelteKitAdapterOptions>();
+    expectTypeOf<{ entrypoint: "index.html" }>().toExtend<RunicSvelteKitAdapterOptions>();
+    expectTypeOf<{ fallback: "200.html" }>().not.toExtend<RunicSvelteKitAdapterOptions>();
+    expectTypeOf<{ mode: "spa"; entrypoint: "index.html" }>().not.toExtend<RunicSvelteKitAdapterOptions>();
+  });
+
+  test("page options are only in the browser-safe ./page-options entry", () => {
+    expect("runicSpaPageOptions" in root).toBe(false);
+    expect("runicPrerenderedPageOptions" in root).toBe(false);
+  });
+});
 
 describe("runicAdapter", () => {
   test("delegates static output and makes the Desktop entrypoint relocatable", async () => {

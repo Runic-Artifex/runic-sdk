@@ -1,8 +1,10 @@
 # `@runic-artifex/svelte`
 
-Svelte 5 Application Views helpers. `@runic-artifex/svelte` and
-`@runic-artifex/svelte/views` export `useView`, `ViewOutlet`, `ViewRegistry`,
-`useCommand`, `useOperation` and `useCollectionViewport` for generated Window/View clients.
+Svelte 5 Application Views helpers. `@runic-artifex/svelte` exports `useView`,
+`ViewOutlet`, `ViewRegistry`, `useCommand` and `useOperation` for generated
+Window/View clients, and `@runic-artifex/svelte/experimental` exports
+`useCollectionViewport`. The `@runic-artifex/svelte/views` entry of earlier
+previews is gone: import from `@runic-artifex/svelte`.
 
 Generated View clients import `@runic-artifex/views`, which this package also
 builds on, so a Views application installs both packages:
@@ -19,7 +21,7 @@ the same floor as SvelteKit 3 and `@runic-artifex/sveltekit`.
 
 ```svelte
 <script lang="ts">
-  import { useCommand, useView } from "@runic-artifex/svelte/views";
+  import { useCommand, useView } from "@runic-artifex/svelte";
   import type { CounterPageReference } from "./generated/counter.js";
 
   let { page }: { page: CounterPageReference } = $props();
@@ -33,9 +35,10 @@ the same floor as SvelteKit 3 and `@runic-artifex/sveltekit`.
 {#if increment.error ?? counter.error}<p role="alert">{String(increment.error ?? counter.error)}</p>{/if}
 ```
 
-## `useView(source)`
+## `useView(source, options?)`
 
-Call `useView` during component initialization. It connects a generated page
+Call `useView` during component initialization. `options.release(client)`
+replaces `client.dispose()` for a client the helper connected. It connects a generated page
 reference, or `{ connect: connect<Name> }` for a root ViewModel, while the
 component is mounted and disposes it on destroy or when the getter returns a
 reference with a different `connect` function. An already connected client is
@@ -53,7 +56,7 @@ Read state one way from `state`. A property with a public C# setter also gets a
 ```svelte
 <script lang="ts">
   // C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
-  import { useCommand, useView } from "@runic-artifex/svelte/views";
+  import { useCommand, useView } from "@runic-artifex/svelte";
   import type { CounterPageReference } from "./generated/counter.js";
 
   let { page }: { page: CounterPageReference } = $props();
@@ -75,7 +78,7 @@ the reference as its `page` prop:
 
 ```svelte
 <script lang="ts">
-  import { useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/svelte/views";
+  import { useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/svelte";
   import { connectWorkspace, type WorkspaceState } from "./generated/workspace.js";
   import CounterPage from "./pages/CounterPage.svelte";
   import WelcomePage from "./pages/WelcomePage.svelte";
@@ -120,7 +123,7 @@ generated View snapshot:
 
 ```svelte
 <script lang="ts">
-  import { useOperation, useView } from "@runic-artifex/svelte/views";
+  import { useOperation, useView } from "@runic-artifex/svelte";
   import { connectWorkspace } from "./generated/workspace.js";
 
   const workspace = useView(() => ({ connect: connectWorkspace }));
@@ -208,7 +211,7 @@ the client changes or the component is destroyed:
 
 ```svelte
 <script lang="ts">
-  import { useView } from "@runic-artifex/svelte/views";
+  import { useView } from "@runic-artifex/svelte";
   import type { EditPageReference } from "./generated/edit.js";
 
   let { page }: { page: EditPageReference } = $props();
@@ -237,7 +240,10 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## `useCollectionViewport(options)`
+## `useCollectionViewport(options)` (experimental)
+
+Exported from `@runic-artifex/svelte/experimental`, like the
+`@runic-artifex/views/experimental` controller it wraps.
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
 `viewport` is the reactive [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)

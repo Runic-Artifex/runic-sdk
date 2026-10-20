@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "types": ["node", "@vitejs/devtools-kit"]
   },
-  "include": ["src/**/*.ts", "virtual.d.ts"]
+  "include": ["src/**/*.ts"]
 }
 

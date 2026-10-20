@@ -7,8 +7,7 @@ import type {
   RunicDiagnosticDetail,
   RunicDiagnosticFailure,
   RunicDiagnosticSource,
-  RunicRuntimeState,
-} from "./client.js";
+} from "./diagnostics.js";
 import { isAbsolute, relative } from "node:path";
 import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
@@ -18,26 +17,28 @@ export type {
   RunicDiagnosticDetailValue,
   RunicDiagnosticFailure,
   RunicDiagnosticEntry,
-  RunicDiagnosticReporter,
   RunicDiagnosticSource,
-  RunicRuntimeState,
   RunicTraceKind,
-} from "./client.js";
+} from "./diagnostics.js";
 
 const virtualClientId = "virtual:runic/client";
 const resolvedVirtualClientId = `\0${virtualClientId}`;
 const clientPackageId = "@runic-artifex/vite-plugin-runic/client";
 const stateEvent = "runic:state";
 const diagnosticEvent = "runic:diagnostic";
+const connectionEvent = "runic:connection";
 const stateKey = "runic:state";
 const defaultTimelineLimit = 200;
 const maximumTimelineLimit = 500;
 
+/** The API another Vite plugin reaches through `plugin.api`, Vite's inter-plugin convention. */
+export interface RunicVitePluginApi {
+  /** Adds a display-safe entry to the DevTools timeline, for example from a companion plugin. */
+  reportDiagnostic(entry: RunicDiagnosticEntry): void;
+}
+
 export interface RunicVitePlugin extends Plugin {
-  /** Server-side input for display-safe companion diagnostics. */
-  readonly diagnostics: Readonly<{
-    report(entry: RunicDiagnosticEntry): void;
-  }>;
+  readonly api: RunicVitePluginApi;
 }
 
 export interface RunicViteOptions {
@@ -71,19 +72,13 @@ export interface RunicDevelopmentState {
     mode: string;
     root: string;
   }>;
+  /**
+   * The page's connection to its .NET host, as `@runic-artifex/views` reports it
+   * (`BridgeConnectionState`), or `unknown` until a View connects.
+   */
   readonly connection: Readonly<{
-    state: string;
-    transport: string;
-    sessionId: string;
-    revision: number;
-    sequence: number;
+    state: "connecting" | "connected" | "reconnecting" | "lost" | "unknown";
   }>;
-  readonly operations: readonly Readonly<{
-    id: string;
-    state: string;
-    completed: number;
-    total: number;
-  }>[];
   readonly timeline: readonly Readonly<Required<Pick<RunicDiagnosticEntry, "id" | "timestamp" | "kind" | "label">> & {
     source?: RunicDiagnosticSource;
     detail: RunicDiagnosticDetail;
@@ -108,21 +103,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     server?.ws.send({ type: "custom", event: stateEvent, data: state });
   };
 
-  const applyRuntimeState = (candidate: unknown): void => {
-    const update = sanitizeRuntimeState(candidate);
-    state = {
-      ...state,
-      ...(update.contract ? { contract: { ...state.contract, ...update.contract } } : {}),
-      ...(update.connection ? { connection: { ...state.connection, ...update.connection } } : {}),
-      ...(update.operations ? {
-        operations: update.operations.map((operation) => ({
-          id: operation.id,
-          state: operation.state,
-          completed: operation.completed ?? 0,
-          total: operation.total ?? 0,
-        })),
-      } : {}),
-    };
+  const applyConnection = (candidate: unknown): void => {
+    const next = connectionState(isRecord(candidate) ? candidate.state : undefined);
+    if (next === state.connection.state) return;
+    state = { ...state, connection: { state: next } };
     publish();
   };
 
@@ -202,7 +186,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           : tags;
       },
     },
-    diagnostics: { report: (entry) => appendDiagnostic(entry) },
+    api: { reportDiagnostic: (entry) => appendDiagnostic(entry) },
     configResolved(resolved) {
       if (resolved.command === "build" && desktopBootstrapUrl !== undefined && resolved.base !== "./") {
         throw new TypeError("desktop: true requires the resolved Vite base to be './' for relocatable surface output.");
@@ -221,7 +205,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     async configureServer(viteServer) {
       server = viteServer;
-      viteServer.ws.on(stateEvent, (payload) => applyRuntimeState(payload));
+      viteServer.ws.on(connectionEvent, (payload) => applyConnection(payload));
       viteServer.ws.on(diagnosticEvent, (payload) => appendDiagnostic(payload));
       viteServer.middlewares.use("/__runic/state", (_request, response) => {
         response.statusCode = 200;
@@ -238,7 +222,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     load(id) {
       if (id !== resolvedVirtualClientId) return undefined;
-      return `export * from ${JSON.stringify(clientPackageId)};`;
+      return `import ${JSON.stringify(clientPackageId)};`;
     },
     devtools: {
       async setup(context) {
@@ -288,44 +272,8 @@ function initialState(options: RunicViteOptions): RunicDevelopmentState {
       fingerprint: cleanString(options.contract?.fingerprint),
     },
     vite: { command: "serve", mode: "development", root: "" },
-    connection: {
-      state: "disconnected",
-      transport: "unknown",
-      sessionId: "",
-      revision: 0,
-      sequence: 0,
-    },
-    operations: [],
+    connection: { state: "unknown" },
     timeline: [],
-  };
-}
-
-function sanitizeRuntimeState(candidate: unknown): RunicRuntimeState {
-  if (!isRecord(candidate)) return {};
-  const contract = isRecord(candidate.contract) ? {
-    identity: cleanString(candidate.contract.identity),
-    version: cleanString(candidate.contract.version),
-    fingerprint: cleanString(candidate.contract.fingerprint),
-  } : undefined;
-  const connection = isRecord(candidate.connection) ? {
-    state: connectionState(candidate.connection.state),
-    transport: cleanString(candidate.connection.transport),
-    sessionId: cleanString(candidate.connection.sessionId),
-    revision: finiteNumber(candidate.connection.revision),
-    sequence: finiteNumber(candidate.connection.sequence),
-  } : undefined;
-  const operations: RunicDevelopmentState["operations"] | undefined = Array.isArray(candidate.operations)
-    ? candidate.operations.slice(0, 64).flatMap((operation) => isRecord(operation) ? [{
-        id: cleanString(operation.id),
-        state: cleanString(operation.state),
-        completed: finiteNumber(operation.completed),
-        total: finiteNumber(operation.total),
-      }] : [])
-    : undefined;
-  return {
-    ...(contract ? { contract } : {}),
-    ...(connection ? { connection } : {}),
-    ...(operations ? { operations } : {}),
   };
 }
 
@@ -340,26 +288,17 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
       root: {
         type: "Stack",
         props: { direction: "column", gap: 12 },
-        children: ["heading", "connection", "contract", "operations", "failure", "timeline"],
+        children: ["heading", "connection", "contract", "failure", "timeline"],
       },
       heading: { type: "Text", props: { text: "Runic", variant: "heading" } },
       ...section("connection", "Connection", {
-        State: current.connection.state,
-        Transport: current.connection.transport,
-        Session: current.connection.sessionId || "not initialized",
-        Revision: String(current.connection.revision),
-        Sequence: String(current.connection.sequence),
+        State: current.connection.state === "unknown" ? "no View connected" : current.connection.state,
       }),
       ...section("contract", "Contract", {
         Identity: current.contract.identity || "not reported",
         Version: current.contract.version || "not reported",
         Fingerprint: current.contract.fingerprint || "not reported",
       }),
-      ...section("operations", `Operations (${current.operations.length})`, current.operations.length === 0
-        ? { Active: "none" }
-        : Object.fromEntries(current.operations.map((operation) => [
-            operation.id, `${operation.state} ${operation.completed}/${operation.total}`,
-          ]))),
       ...section("failure", "Last failure", lastFailure(current)),
       ...section("timeline", "Recent timeline", current.timeline.length === 0
         ? { Events: "none" }
@@ -391,10 +330,10 @@ function lastFailure(current: RunicDevelopmentState): Record<string, string> {
   };
 }
 
-function connectionState(value: unknown): "connecting" | "connected" | "disconnected" | "closed" {
-  return value === "connecting" || value === "connected" || value === "closed"
+function connectionState(value: unknown): RunicDevelopmentState["connection"]["state"] {
+  return value === "connecting" || value === "connected" || value === "reconnecting" || value === "lost"
     ? value
-    : "disconnected";
+    : "unknown";
 }
 
 function timelineLimit(value: number | undefined): number {
@@ -404,10 +343,6 @@ function timelineLimit(value: number | undefined): number {
 
 function cleanString(value: unknown): string {
   return typeof value === "string" ? value.slice(0, 512) : "";
-}
-
-function finiteNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

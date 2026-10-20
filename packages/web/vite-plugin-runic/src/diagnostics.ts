@@ -1,3 +1,4 @@
+/** The timeline kind of an entry. Closed: the dock accepts only these. */
 export type RunicTraceKind =
   | "command"
   | "receipt"
@@ -6,10 +7,11 @@ export type RunicTraceKind =
   | "connection"
   | "error";
 
-export type RunicDiagnosticSource =
-  | "views"
-  | "assets"
-  | "translations";
+/**
+ * The Runic subsystem an entry comes from: a short lowercase name. `views`, `assets` and
+ * `translations` are reserved for the Runic packages of those names; another plugin uses its own.
+ */
+export type RunicDiagnosticSource = string;
 
 export type RunicDiagnosticDetailValue = string | number | boolean | null;
 export type RunicDiagnosticDetail = Readonly<Record<string, RunicDiagnosticDetailValue>>;
@@ -126,10 +128,9 @@ function failureText(value: unknown, maximumLength: number, multiline: boolean):
     .replace(bearerCredential, `$1 ${redacted}`);
 }
 
+// A source is a short lowercase name, such as `views`; anything else is dropped.
 export function diagnosticSource(value: unknown): RunicDiagnosticSource | undefined {
-  return value === "views" || value === "assets" || value === "translations"
-    ? value
-    : undefined;
+  return typeof value === "string" && /^[a-z][a-z0-9-]{0,31}$/u.test(value) ? value : undefined;
 }
 
 function sanitizeDetail(candidate: unknown): RunicDiagnosticDetail {

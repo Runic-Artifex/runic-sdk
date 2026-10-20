@@ -41,9 +41,11 @@ export function CounterPage({ page }: { page: CounterPageReference }) {
 }
 ```
 
-## `useView(source)`
+## `useView(source, options?)`
 
-Returns `{ state, client, error, pending, retry }`:
+Returns `{ state, client, error, pending, retry }`. `options.release(client)`
+replaces `client.dispose()` for a client the hook connected, for example to keep
+a client alive in a cache:
 
 - A generated page reference, or `{ connect: connect<Name> }` for a root
   ViewModel, is connected while the component is mounted and disposed when it
@@ -86,7 +88,12 @@ export function CounterPage({ page }: { page: CounterPageReference }) {
 The control shows the ViewModel's value, so it reverts when the setter throws
 or keeps a different value.
 
-## `useSuspenseView(source)`
+## `useSuspenseView(source)` (experimental)
+
+`useSuspenseView` and `retrySuspenseView` are exported from
+`@runic-artifex/react/experimental`: the module-wide connection cache and its
+ten-second timeout may change in a minor release (see
+[experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#npm-packages)).
 
 Suspends the component until a reference connects, then returns
 `{ state, client }` without `undefined`. A failed connection is thrown to the
@@ -123,8 +130,9 @@ remounts the component; a kind without a component renders an alert, and
 Returns `{ run, pending, error, failure, reset }`. `run(...args)` calls the latest
 `command`, so it may close over the current client, and resolves to its result
 or to `undefined` after a failure, which `error` then holds until the next run.
-It never rejects, so handlers need no `try`/`catch`. One command can serve
-several buttons:
+It never rejects, so handlers need no `try`/`catch`. Unmounting disposes the
+command's controller, so `pending`, `error` and `failure` stop updating; a run in
+flight still resolves. One command can serve several buttons:
 
 ```tsx
 const navigate = useCommand((name: "showWelcome" | "showCounter") => client?.[name]());
@@ -157,7 +165,11 @@ The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failur
 run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
 without an `error`; `failed` and `timed-out` statuses are still `error`. `pending`
 stays true after a Cancel response until the operation reaches its terminal status.
-Unmounting stops rendering feedback but never cancels accepted work. The optional
+Unmounting disposes the controller, as `useCommand` does: a run still in flight
+resolves to `undefined`, `waitForCompletion` is not called after it, and accepted
+work is never cancelled. StrictMode's simulated unmount, and a component that
+React shows again, start with a fresh controller, so feedback of a run started
+before the unmount ends there. The optional
 `cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
 controller's options.
 
@@ -223,7 +235,10 @@ the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## `useCollectionViewport(options)`
+## `useCollectionViewport(options)` (experimental)
+
+Exported from `@runic-artifex/react/experimental`, like the
+`@runic-artifex/views/experimental` controller it wraps.
 
 Follows a fixed-row-height scroll container and returns `{ viewport, ref }`.
 `viewport` is the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)

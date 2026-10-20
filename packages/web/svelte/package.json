@@ -21,13 +21,16 @@
     ".": {
       "types": "./dist/index.d.ts",
       "svelte": "./dist/index.js",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "./views": {
-      "types": "./dist/views/index.d.ts",
-      "svelte": "./dist/views/index.js",
-      "import": "./dist/views/index.js"
-    }
+    "./experimental": {
+      "types": "./dist/experimental.d.ts",
+      "svelte": "./dist/experimental.js",
+      "import": "./dist/experimental.js",
+      "default": "./dist/experimental.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

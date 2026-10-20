@@ -17,8 +17,7 @@ omit the plugin entirely. A Runic Views frontend needs neither: its page loads
 `runic-views.js`, the Views client that every host provides, so `runic()` with
 `base: "./"` builds one page for Runic Desktop and CS-WebUI. The Views build
 passes the host it builds for as `RUNIC_APPLICATION_HOST` for a configuration
-that still differs per host. `virtual:runic/client` and the `/client` entry point
-provide bounded diagnostics and HMR resource ownership helpers. The optional
+that still differs per host. The optional
 `@vitejs/devtools` peer enables the Runic dock; register `DevTools()` in your
 Vite configuration when selecting `devtools: true`.
 
@@ -31,8 +30,12 @@ and the Runic dock appears when `DevTools()` is registered. `true` also requires
 `maxTimelineEntries` sets how many timeline entries the dock keeps: 200 by
 default, rounded down and limited to 1 to 500.
 
-While serving, the plugin adds `virtual:runic/client` to `index.html`. It
-forwards `@runic-artifex/views` failures to the timeline: the failed route, the
+While serving, the plugin adds `virtual:runic/client`, which loads the
+development client (`@runic-artifex/vite-plugin-runic/client`), to `index.html`.
+The client has no exports. It shows the page's connection to its .NET host, as
+`@runic-artifex/views` reports it (`connecting`, `connected`, `reconnecting`,
+`lost`), on the dock's **Connection** card once a View connects, and forwards
+`@runic-artifex/views` failures to the timeline: the failed route, the
 error kind and, for errors, a failure with the exception type, message and
 stack. .NET includes that detail only in development (see the
 `IncludeFailureDetail` window option of Runic.Application.Views). The **Last failure** card of the
@@ -53,3 +56,24 @@ unbundled, so `vite build` prints no "can't be bundled without
 type="module"" warning, and points them at the web root from every page: a
 nested page such as `pages/settings.html` loads `../webui.js` in the build and
 during `dotnet runic dev`.
+
+## Plugin API
+
+Another Vite plugin adds display-safe entries to the timeline through the
+plugin's `api`, Vite's convention for inter-plugin communication:
+
+```ts
+const runicPlugin = config.plugins.find(plugin => plugin.name === "runic") as RunicVitePlugin | undefined;
+runicPlugin?.api.reportDiagnostic({ source: "my-plugin", kind: "event", label: "Catalog reloaded" });
+```
+
+`source` is a short lowercase name; `views`, `assets` and `translations` are
+reserved for the Runic packages of those names. `kind` is one of `command`,
+`receipt`, `event`, `operation`, `connection` and `error` (a closed set); only an
+`error` entry keeps its `failure`. The plugin bounds and redacts every entry.
+
+The HMR resource helpers (`preserveRunicHmrResource`, `disposeRunicHmrResource`)
+and `reportRunicState` of earlier previews are gone: keep HMR state in
+`import.meta.hot.data`, and the connection state now comes from
+`@runic-artifex/views` without application code.
+

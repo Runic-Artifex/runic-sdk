@@ -1,6 +1,2 @@
-import { createRunicDiagnosticReporter } from "virtual:runic/client";
-
-createRunicDiagnosticReporter("assets").report({
-  kind: "event",
-  label: "Asset fixture loaded",
-});
+// The development client is loaded for its side effects; it has no exports.
+import "virtual:runic/client";

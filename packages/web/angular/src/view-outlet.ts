@@ -9,13 +9,17 @@ export type ViewRegistry<R extends PageReference | null | undefined> = {
   readonly [K in NonNullable<R>["kind"]]: Type<{ readonly page: InputSignal<Extract<NonNullable<R>, { readonly kind: K }>> }>;
 };
 
+// Projected content renders while there is no reference, like React's `fallback`, Vue's default slot
+// and Svelte's `fallback` snippet: `<runic-view-outlet [content]="…" [registry]="…">Loading…</runic-view-outlet>`.
 const outletTemplate = `
     <ng-container #mount />
+    @if (!content()) { <ng-content /> }
     @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
   `;
 
 /**
- * Headless host for a selected logical .NET View. A changed reference remounts its component.
+ * Headless host for a selected logical .NET View. A changed reference remounts its component, and
+ * the projected content renders while there is no reference.
  * The element keeps Angular's prefix convention: `<runic-view-outlet [content]="…" [registry]="…" />`.
  */
 @Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })

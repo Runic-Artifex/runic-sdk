@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { useCommand, useView } from "@runic-artifex/svelte/views";
+  import { useCommand, useView } from "@runic-artifex/svelte";
   import type { CounterPageReference } from "../generated/counter.js";
 
   let { page }: { page: CounterPageReference } = $props();

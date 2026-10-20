@@ -52,6 +52,19 @@ function mount(source: () => ViewSource<FakeClient>) {
   return { view, destroy };
 }
 
+describe("useView options", () => {
+  test("release replaces dispose for a client the helper connected", async () => {
+    const reference = fakeReference();
+    const released: FakeClient[] = [];
+    const destroy = $effect.root(() => { useView(() => reference, { release: client => released.push(client) }); });
+    flushSync();
+    await settle();
+    destroy();
+    expect(released).toEqual(reference.clients);
+    expect(reference.clients[0]!.disposed).toBe(0);
+  });
+});
+
 describe("useView", () => {
   test("connects a reference into reactive properties and disposes it with its owner", async () => {
     const reference = fakeReference();

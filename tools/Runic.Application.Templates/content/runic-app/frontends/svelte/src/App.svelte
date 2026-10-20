@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { useCommand, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/svelte/views";
+  import { useCommand, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/svelte";
   import { connectWorkspace, type WorkspaceState } from "./generated/workspace.js";
   import CounterPage from "./pages/CounterPage.svelte";
   import WelcomePage from "./pages/WelcomePage.svelte";

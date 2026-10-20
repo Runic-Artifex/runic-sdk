@@ -2,7 +2,9 @@
 
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
-import { useCollectionViewport, useCommand, useOperation, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
+import { useCommand, useOperation, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
+import { useCollectionViewport } from "../dist/experimental.js";
+import * as root from "../dist/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
 type State = { readonly count: number };
@@ -83,13 +85,13 @@ describe("useCommand", () => {
       outcomes.push(() => fail ? reject(new Error("rejected")) : resolve(1));
     })))!;
     const failed = command.run(true);
-    expect(command.pending).toBe(true);
+    expect(command.pending.value).toBe(true);
     outcomes.shift()!();
     expect(await failed).toBeUndefined();
-    expect(command.pending).toBe(false);
-    expect((command.error as Error).message).toBe("rejected");
+    expect(command.pending.value).toBe(false);
+    expect((command.error.value as Error).message).toBe("rejected");
     const succeeded = command.run(false);
-    expect(command.error).toBeUndefined();
+    expect(command.error.value).toBeUndefined();
     outcomes.shift()!();
     expect(await succeeded).toBe(1);
     scope.stop();
@@ -101,39 +103,45 @@ describe("useCommand", () => {
     const command = effectScope().run(() => useCommand(() => new Promise<BridgeOutcome<number, Fail>>((resolve, reject) => {
       outcomes.push(value => value instanceof Error ? reject(value) : resolve(value));
     })))!;
-    expectTypeOf(command.failure).toEqualTypeOf<Fail | undefined>();
+    expectTypeOf(command.failure.value).toEqualTypeOf<Fail | undefined>();
     // A watcher observes failure like any other reactive property.
     const observed: (Fail | undefined)[] = [];
     const watching = effectScope();
-    watching.run(() => watchEffect(() => { observed.push(command.failure); }, { flush: "sync" }));
+    watching.run(() => watchEffect(() => { observed.push(command.failure.value); }, { flush: "sync" }));
     const failed = command.run();
     outcomes[0]!(bridgeFailure({ $case: "titleRequired" }));
     await failed;
     expect(observed).toEqual([undefined, { $case: "titleRequired" }]);
     watching.stop();
-    expect(command.failure).toEqual({ $case: "titleRequired" });
-    expect(command.error).toBeUndefined();
+    expect(command.failure.value).toEqual({ $case: "titleRequired" });
+    expect(command.error.value).toBeUndefined();
     const stale = command.run();
     const latest = command.run();
-    expect(command.failure).toBeUndefined();
+    expect(command.failure.value).toBeUndefined();
     outcomes[2]!(bridgeSuccess(2));
     await latest;
     outcomes[1]!(bridgeFailure({ $case: "titleTaken", existingTitle: "Todo" }));
     await stale;
-    expect(command.failure).toBeUndefined();
+    expect(command.failure.value).toBeUndefined();
     const broken = command.run();
     outcomes[3]!(new Error("broken"));
     await broken;
-    expect((command.error as Error).message).toBe("broken");
-    expect(command.failure).toBeUndefined();
+    expect((command.error.value as Error).message).toBe("broken");
+    expect(command.failure.value).toBeUndefined();
     const again = command.run();
     outcomes[4]!(bridgeFailure({ $case: "titleRequired" }));
     await again;
     command.reset();
-    expect(command.failure).toBeUndefined();
-    expect(command.error).toBeUndefined();
+    expect(command.failure.value).toBeUndefined();
+    expect(command.error.value).toBeUndefined();
+    // D40 c: the handle is destructurable, as useView's is.
+    const { run, pending } = effectScope().run(() => useCommand(() => Promise.resolve(2)))!;
+    const done = run();
+    expect(pending.value).toBe(true);
+    expect(await done).toBe(2);
+    expect(pending.value).toBe(false);
     const plain = effectScope().run(() => useCommand(() => Promise.resolve(1)))!;
-    expectTypeOf(plain.failure).toEqualTypeOf<undefined>();
+    expectTypeOf(plain.failure.value).toEqualTypeOf<undefined>();
   });
 
   test("infers the result of a command that returns one of several command promises", async () => {
@@ -148,17 +156,21 @@ describe("useCommand", () => {
     const command = effectScope().run(() => useCommand((name: "save" | "publish" | "discard") =>
       name === "save" ? client.save() : name === "publish" ? client.publish() : client.discard()))!;
     expectTypeOf(command.run).returns.resolves.toEqualTypeOf<BridgeOutcome<State, SaveFailure> | BridgeOutcome<State, PublishFailure> | State | undefined>();
-    expectTypeOf(command.failure).toEqualTypeOf<SaveFailure | PublishFailure | undefined>();
+    expectTypeOf(command.failure.value).toEqualTypeOf<SaveFailure | PublishFailure | undefined>();
     await command.run("save");
-    expect(command.failure).toEqual({ $case: "titleRequired" });
+    expect(command.failure.value).toEqual({ $case: "titleRequired" });
     expect(await command.run("discard")).toEqual({ title: "Discarded" });
-    expect(command.failure).toBeUndefined();
+    expect(command.failure.value).toBeUndefined();
     const optional = effectScope().run(() => useCommand((name: "save" | "discard") => name === "save" ? undefined : client.discard()))!;
-    expectTypeOf(optional.failure).toEqualTypeOf<undefined>();
+    expectTypeOf(optional.failure.value).toEqualTypeOf<undefined>();
   });
 });
 
 describe("useCollectionViewport", () => {
+  test("is only in @runic-artifex/vue/experimental", () => {
+    expect("useCollectionViewport" in root).toBe(false);
+  });
+
   test("measures the attached container and follows the options getter", async () => {
     const count = shallowRef(100);
     const scope = effectScope();
@@ -249,6 +261,21 @@ function fakeOperation(requestId: string) {
   return { operation, finish, cancels: () => cancels };
 }
 
+describe("useView options", () => {
+  test("release replaces dispose for a client the composable connected", async () => {
+    const released: unknown[] = [];
+    let disposed = 0;
+    const client = { snapshot: { count: 1 }, subscribe: (listener: (state: { count: number }) => void) => { listener({ count: 1 }); return () => {}; },
+      dispose: () => { disposed++; } };
+    const scope = effectScope();
+    scope.run(() => useView({ connect: async () => client }, { release: connected => released.push(connected) }));
+    await settle();
+    scope.stop();
+    expect(released).toEqual([client]);
+    expect(disposed).toBe(0);
+  });
+});
+
 describe("useOperation", () => {
   test("Cancel ends in a cancelled state without an error; failed and timed-out runs are errors", async () => {
     let current = fakeOperation("first");
@@ -256,22 +283,22 @@ describe("useOperation", () => {
     const seen: boolean[] = [];
     const operation = scope.run(() => {
       const handle = useOperation(() => current.operation);
-      watchEffect(() => { seen.push(handle.cancelled); });
+      watchEffect(() => { seen.push(handle.cancelled.value); });
       return handle;
     })!;
-    expectTypeOf(operation.cancelled).toEqualTypeOf<boolean>();
+    expectTypeOf(operation.cancelled.value).toEqualTypeOf<boolean>();
     const result = operation.run();
-    expect(operation.pending).toBe(true);
+    expect(operation.pending.value).toBe(true);
     await settle();
     await operation.cancel();
     expect(current.cancels()).toBe(1);
-    expect(operation.cancellationRequested).toBe(true);
+    expect(operation.cancellationRequested.value).toBe(true);
     current.finish({ contract: "test", requestId: "first", kind: "cancelled" });
     expect(await result).toBeUndefined();
     await nextTick();
-    expect(operation.cancelled).toBe(true);
-    expect(operation.error).toBeUndefined();
-    expect(operation.pending).toBe(false);
+    expect(operation.cancelled.value).toBe(true);
+    expect(operation.error.value).toBeUndefined();
+    expect(operation.pending.value).toBe(false);
     expect(seen.at(-1)).toBe(true);
 
     for (const [status, kind] of [
@@ -280,14 +307,14 @@ describe("useOperation", () => {
     ] as const) {
       current = fakeOperation("next");
       const run = operation.run();
-      expect(operation.cancelled).toBe(false);
+      expect(operation.cancelled.value).toBe(false);
       current.finish(status);
       expect(await run).toBeUndefined();
-      expect(operation.cancelled).toBe(false);
-      expect((operation.error as BridgeError).kind).toBe(kind);
+      expect(operation.cancelled.value).toBe(false);
+      expect((operation.error.value as BridgeError).kind).toBe(kind);
     }
     operation.reset();
-    expect(operation.error).toBeUndefined();
+    expect(operation.error.value).toBeUndefined();
     scope.stop();
   });
 });

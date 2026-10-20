@@ -82,6 +82,7 @@ shape is breaking.
 | --- | --- | --- |
 | `runic.views.generated-client-runtime` | `globalThis` | The page's runtime of generated clients: routes, operations and the mount session for the current `__runicBridge`. |
 | `runic.views.diagnostics` | `globalThis` | A `Set` of listener functions. Each is called with a `BridgeDiagnostic`: `kind` (`error` or `operation`), `code`, `message`, and optionally `route`, `detail`, `member`, `requestId` and, for local observers only, `error`. `code` is an open set; a listener ignores codes and fields it does not know. |
+| `runic.views.connection` | `globalThis` | `{ listeners, state }`: a `Set` of listener functions called with the page's `BridgeConnectionState` on each change, and the latest state. The first View that connects starts it. |
 | `runic.views.diagnosticReported` | An error | `true` once a diagnostic reported the error, so each error is reported once. |
 | `runic.views.unavailableReported` | `globalThis` | `true` once the page reported that it has no `__runicBridge`. |
 | `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |

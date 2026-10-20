@@ -168,3 +168,23 @@ test("the mock Bridge reports disconnect() and reconnect()", () => {
   assert.deepEqual(states, ["connected", "reconnecting", "connected"]);
   stop();
 });
+
+// D40 a: the first View that connects publishes the page's connection on a registered channel,
+// which the Vite plugin's development client forwards to its dock.
+test("connecting a View publishes the connection on the shared channel", async () => {
+  const { connectView } = await import("../dist/generated.js");
+  const key = Symbol.for("runic.views.connection");
+  const page = globalThis as unknown as Record<symbol, { listeners: Set<(state: string) => void>; state?: string } | undefined>;
+  const seen: string[] = [];
+  page[key] = { listeners: new Set([state => seen.push(state)]) };
+  const fake = hostBridge(true);
+  host.__runicBridge = { ...fake.bridge, call: async () => JSON.stringify({ ok: true, state: { revision: 1 }, error: null }) };
+  const client = await connectView({ contract: "Tests.Shared:1", route: "shared", mount: false, hydrate: (wire: unknown) => wire });
+  assert.equal(page[key]!.state, "connected");
+  fake.set(false);
+  assert.equal(page[key]!.state, "reconnecting");
+  assert.deepEqual(seen, ["connected", "reconnecting"]);
+  client.dispose();
+  fake.set(true);
+  delete page[key];
+});

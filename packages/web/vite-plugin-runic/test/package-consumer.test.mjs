@@ -27,7 +27,7 @@ test("packed package is source-free and works from an isolated consumer", { time
     const files = (await execFile("tar", ["-tf", tarball])).stdout.split("\n").filter(Boolean);
     assert.ok(files.includes("package/package.json"));
     assert.ok(files.includes("package/dist/index.js"));
-    assert.ok(files.includes("package/virtual.d.ts"));
+    assert.equal(files.includes("package/virtual.d.ts"), false);
     assert.equal(files.some((file) => file.startsWith("package/src/") || file.startsWith("package/test/")), false);
 
     await writeFile(
@@ -42,6 +42,7 @@ test("packed package is source-free and works from an isolated consumer", { time
           vite: "8.3.2",
           "@vitejs/devtools": "0.7.6",
           typescript: "6.0.3",
+          "@types/node": "24.19.1",
         },
       }),
       "utf8",
@@ -51,11 +52,6 @@ test("packed package is source-free and works from an isolated consumer", { time
     ], { cwd: root });
     await writeFile(join(root, "index.html"), '<script type="module" src="/entry.js"></script>', "utf8");
     await writeFile(
-      join(root, "vite-env.d.ts"),
-      '/// <reference types="@runic-artifex/vite-plugin-runic/virtual" />\n',
-      "utf8",
-    );
-    await writeFile(
       join(root, "tsconfig.json"),
       JSON.stringify({
         compilerOptions: {
@@ -64,35 +60,35 @@ test("packed package is source-free and works from an isolated consumer", { time
           moduleResolution: "NodeNext",
           strict: true,
           noEmit: true,
+          lib: ["ES2022", "ESNext.Disposable", "DOM"],
+          types: ["node"],
+          skipLibCheck: true,
         },
-        include: ["consumer.ts", "vite-env.d.ts"],
+        include: ["consumer.ts"],
       }),
       "utf8",
     );
     await writeFile(
       join(root, "consumer.ts"),
       [
-        'import {',
-        '  createRunicDiagnosticReporter, disposeRunicHmrResource, preserveRunicHmrResource, reportRunicDiagnostic, reportRunicState,',
-        '  type RunicDiagnosticDetail, type RunicDiagnosticDetailValue, type RunicDiagnosticEntry, type RunicDiagnosticReporter, type RunicDiagnosticSource, type RunicRuntimeState, type RunicTraceKind,',
-        '} from "virtual:runic/client";',
+        'import { runic, type RunicDevelopmentState, type RunicDiagnosticDetail, type RunicDiagnosticDetailValue,',
+        '  type RunicDiagnosticEntry, type RunicDiagnosticSource, type RunicTraceKind, type RunicVitePluginApi } from "@runic-artifex/vite-plugin-runic";',
         'const value: RunicDiagnosticDetailValue = true;',
         'const detail: RunicDiagnosticDetail = { value };',
-        'const source: RunicDiagnosticSource = "assets";',
+        'const source: RunicDiagnosticSource = "my-plugin";',
         'const kind: RunicTraceKind = "event";',
-        'const state: RunicRuntimeState = { connection: { state: "connected", transport: "consumer", revision: 1 } };',
         'const diagnostic: RunicDiagnosticEntry = { source, kind, label: "ready", detail };',
-        'const reporter: RunicDiagnosticReporter = createRunicDiagnosticReporter(source);',
-        'reportRunicState(state); reportRunicDiagnostic(diagnostic); reporter.report({ kind, label: "ready", detail });',
-        'const resource = preserveRunicHmrResource("type-consumer", () => ({ dispose() {} }));',
-        'void disposeRunicHmrResource("type-consumer", (value) => { (value as typeof resource).dispose(); });',
+        'const api: RunicVitePluginApi = runic().api;',
+        'api.reportDiagnostic(diagnostic);',
+        'const state: RunicDevelopmentState["connection"]["state"] = "reconnecting";',
+        'void state;',
       ].join("\n"),
       "utf8",
     );
     await execFile(process.execPath, ["node_modules/typescript/bin/tsc", "--noEmit"], { cwd: root });
     await writeFile(
       join(root, "entry.js"),
-      'import { reportRunicDiagnostic } from "virtual:runic/client"; reportRunicDiagnostic({ source: "assets", kind: "event", label: "ready" });',
+      'import "virtual:runic/client";',
       "utf8",
     );
     await writeFile(
@@ -106,6 +102,10 @@ test("packed package is source-free and works from an isolated consumer", { time
     await execFile(process.execPath, ["devtools.mjs"], { cwd: root, timeout: 30_000 });
     await execFile("node", ["devtools.mjs"], { cwd: root, timeout: 30_000 });
     const manifest = JSON.parse(await readFile(join(root, "node_modules", "@runic-artifex", "vite-plugin-runic", "package.json"), "utf8"));
+    // VITE-08: the manifest is an export, and every entry has a default condition.
+    await execFile("node", ["--input-type=module", "--eval",
+      'import { createRequire } from "node:module"; const require = createRequire(import.meta.url); require.resolve("@runic-artifex/vite-plugin-runic/package.json"); require.resolve("@runic-artifex/vite-plugin-runic");'],
+      { cwd: root });
     assert.equal(manifest.name, "@runic-artifex/vite-plugin-runic");
 
   } finally {
