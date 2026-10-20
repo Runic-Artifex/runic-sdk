@@ -1,2 +1,3 @@
 #nullable enable
 *REMOVED*static Runic.Platform.Runtime.SecretStoreValidation.EncodeSecret(string! secret) -> byte[]?
+Runic.Platform.Runtime.PresentationFileLauncher.LaunchUriAsync(System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>

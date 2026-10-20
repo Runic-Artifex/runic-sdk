@@ -63,7 +63,7 @@ public sealed class PortalApplication
     /// run none, so there only thumbnails their file managers cached are returned. Inside Flatpak the sandbox must allow
     /// reading the host's cache (<c>--filesystem=xdg-cache/thumbnails:ro</c>) and talking to the thumbnailer.</remarks>
     public IDesktopThumbnails CreateThumbnails() => new LinuxThumbnails(LinuxThumbnailOptions.FromProcess(), this);
-    /// <summary>Creates file handoffs for a presentation owner.</summary>
+    /// <summary>Creates file and URI handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }
     /// <summary>Creates portal file dialogs for a presentation owner.</summary>
@@ -75,8 +75,11 @@ public sealed class PortalApplication
     /// <summary>Creates explicitly unparented file dialogs for a hostless application.</summary>
     public IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new PortalPlatformProvider.UnparentedOwner());
     /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
+    /// <remarks>The same request as <see cref="IDesktopFileLauncher.LaunchUriAsync"/> of <see cref="CreateFileLauncher"/>'s
+    /// launcher.</remarks>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>
     public ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
-        PortalPlatformProvider.OpenUriCoreAsync(owner, uri, this, cancellationToken);
+        PortalPlatformProvider.OpenUriCoreAsync(owner, uri, new PortalTransport(application: this), cancellationToken);
 
     internal void Diagnose(string code, string message, string remedy)
     {

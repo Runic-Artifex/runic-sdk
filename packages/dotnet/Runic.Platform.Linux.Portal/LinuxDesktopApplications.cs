@@ -418,7 +418,7 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
     {
         if (!options.Sandboxed) return null;
         _application.Diagnose("desktop-applications-sandboxed", "Inside Flatpak or Snap the host's applications and default applications are out of reach.",
-            "Open files and URIs with IDesktopFileLauncher or OpenUriAsync, which ask the desktop portal.");
+            "Open files and URIs with IDesktopFileLauncher (LaunchAsync, LaunchUriAsync), which asks the desktop portal.");
         return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     }
 

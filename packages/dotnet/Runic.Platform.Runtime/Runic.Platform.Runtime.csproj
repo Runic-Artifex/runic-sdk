@@ -13,6 +13,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- The URI launch policy of Runic.Platform; the Windows and macOS providers use this copy. -->
+    <Compile Include="../Runic.Platform/DesktopUriPolicy.cs" Link="Shared/DesktopUriPolicy.cs" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

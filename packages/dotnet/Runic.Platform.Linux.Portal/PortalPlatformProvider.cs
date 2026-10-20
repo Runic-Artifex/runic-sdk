@@ -46,7 +46,7 @@ public static class PortalPlatformProvider
     /// <remarks>Diagnostic callbacks never receive paths.</remarks>
     public static IDesktopThumbnails CreateThumbnails(Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(null, diagnosticSink).CreateThumbnails();
-    /// <summary>Creates owned local-file handoff operations.</summary>
+    /// <summary>Creates owned local-file and URI handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }
 
@@ -61,19 +61,26 @@ public static class PortalPlatformProvider
     public static IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new UnparentedOwner());
 
     /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
+    /// <remarks>The same request as <see cref="IDesktopFileLauncher.LaunchUriAsync"/> of <see cref="CreateFileLauncher"/>'s
+    /// launcher. The user dismissing the portal's application chooser is <see cref="PlatformFailureCode.UserDismissed"/>.</remarks>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>
     public static ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
-        OpenUriCoreAsync(owner, uri, null, cancellationToken);
+        OpenUriCoreAsync(owner, uri, new PortalTransport(), cancellationToken);
 
-    internal static async ValueTask<PlatformResult<PlatformUnit>> OpenUriCoreAsync(IPortalWindowOwner owner, Uri uri, PortalApplication? application, CancellationToken cancellationToken)
+    internal static async ValueTask<PlatformResult<PlatformUnit>> OpenUriCoreAsync(IPortalWindowOwner owner, Uri uri, IPortalTransport transport, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        ArgumentNullException.ThrowIfNull(uri);
-        if (!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto"))
-            throw new ArgumentException("Only absolute HTTP, HTTPS and mailto URIs are supported. Local files require a file-descriptor portal request.", nameof(uri));
+        string target = DesktopUriPolicy.Require(uri);
         try
         {
-            var response = await PortalRequest.RunAsync(owner, new PortalTransport(application: application), "OpenURI", uri.AbsoluteUri, cancellationToken).ConfigureAwait(false);
-            return response.Code == 0 ? new PlatformResult<PlatformUnit>.Success(new PlatformUnit()) : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, response.Diagnostic);
+            var response = await PortalRequest.RunAsync(owner, transport, "OpenURI", target, cancellationToken).ConfigureAwait(false);
+            return response.Code switch
+            {
+                0 => new PlatformResult<PlatformUnit>.Success(new PlatformUnit()),
+                // The user cancelled the portal's application chooser.
+                1 => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed, response.Diagnostic),
+                _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, response.Diagnostic),
+            };
         }
         catch (OwnerClosedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
         catch (NativeBackendUnavailableException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }

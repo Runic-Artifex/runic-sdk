@@ -36,6 +36,8 @@ sealed class FakeTransport(PortalResponse? result) : IPortalTransport
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public bool Cancelled;
     public string? Method;
+    public string? Argument;
+    public int Requests;
     public PortalChooserOptions? Chooser;
     public ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken)
     {
@@ -45,6 +47,9 @@ sealed class FakeTransport(PortalResponse? result) : IPortalTransport
     }
     public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken)
     {
+        Method = method;
+        Argument = argument;
+        Requests++;
         Started.TrySetResult();
         if (result is not null) return result;
         try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }

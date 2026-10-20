@@ -10,7 +10,7 @@ public static class LinuxPlatformProvider
     public static IDesktopSettings CreateSettings() => Portal.PortalPlatformProvider.CreateSettings();
     /// <summary>Creates application-scoped desktop portal notifications.</summary>
     public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) => Portal.PortalPlatformProvider.CreateNotifications(applicationId, diagnosticSink);
-    /// <summary>Creates owned file handoffs for a GTK3 presentation.</summary>
+    /// <summary>Creates owned file and URI handoffs for a GTK3 presentation.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return Portal.PortalPlatformProvider.CreateFileLauncher(new Gtk3PortalWindowOwner(owner)); }
 

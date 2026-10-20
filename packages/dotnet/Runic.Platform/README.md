@@ -117,6 +117,31 @@ them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
 capabilities all report that reason. Tests can use the same instance.
 
+### Opening links
+
+`IDesktopFileLauncher.LaunchUriAsync(uri)` opens a web or mail link in the
+user's default browser or mail client and reports the outcome as a
+`PlatformResult` (capability `platform.uris.launch`):
+
+```csharp
+var result = await launcher.LaunchUriAsync(new Uri("https://example.org/help"));
+```
+
+It accepts only absolute `http`, `https` and `mailto` URIs. A relative URI, a
+path (an absolute path parses as a `file:` URI, a UNC path too) and every other
+scheme throw `ArgumentException` before anything native runs, so a link never
+starts a program; open local files with `LaunchAsync`. The URI comes from
+trusted application code: validate links a web page supplies before passing them
+on.
+
+| Platform | Mechanism | Outcomes |
+| --- | --- | --- |
+| Linux (GTK 3 and GTK 4, also in Flatpak and Snap) | The OpenURI desktop portal, as `PortalPlatformProvider.OpenUriAsync` | The portal may let the user choose an application; cancelling is `Failed(UserDismissed)` |
+| Windows | `ShellExecuteEx` with the URI and the shell's URL association (the user's default), with zone checks | Without a handler, for example no mail client, Windows 11 offers to find an application and reports success; older shells report `Unavailable(BackendUnavailable)` |
+| macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Failed(IoError)` with the `NSError` domain and code (macOS 26: `NSCocoaErrorDomain 256`) |
+
+Success means the desktop accepted the URI, not that an application showed it.
+
 `IDesktopSettings` is application-scoped, so `AddRunicPlatformServices()`
 registers one singleton for it. A host or platform without a provider
 registers `DesktopSettings.Unavailable(reason)`: reads return

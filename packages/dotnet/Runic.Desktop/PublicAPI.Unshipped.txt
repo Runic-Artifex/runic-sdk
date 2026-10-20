@@ -1,1 +1,2 @@
 #nullable enable
+*REMOVED*static Runic.Desktop.DesktopPlatform.OpenUrl(string! url) -> void

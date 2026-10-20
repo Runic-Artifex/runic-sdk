@@ -340,7 +340,7 @@ internal sealed partial class ApplicationsTests
     }
 
     // Open With choosers the shell started, which the case closes.
-    private static int Choosers()
+    internal static int Choosers()
     {
         var choosers = System.Diagnostics.Process.GetProcessesByName("OpenWith");
         foreach (var chooser in choosers) { try { chooser.Kill(); } catch (InvalidOperationException) { } catch (System.ComponentModel.Win32Exception) { } chooser.Dispose(); }
@@ -439,7 +439,7 @@ internal sealed partial class ApplicationsTests
         catch (T error) when (error.GetType() == typeof(T) || typeof(T) == typeof(ArgumentException) && error is ArgumentException and not ArgumentOutOfRangeException and not ArgumentNullException) { return true; }
     }
 
-    private static void AssociationsChanged() => SHChangeNotify(0x08000000, 0, 0, 0); // SHCNE_ASSOCCHANGED, SHCNF_IDLIST
+    internal static void AssociationsChanged() => SHChangeNotify(0x08000000, 0, 0, 0); // SHCNE_ASSOCCHANGED, SHCNF_IDLIST
 
     [LibraryImport("shell32.dll")]
     private static partial void SHChangeNotify(int eventId, uint flags, nint item1, nint item2);
