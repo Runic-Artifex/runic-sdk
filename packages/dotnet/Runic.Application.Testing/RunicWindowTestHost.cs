@@ -23,8 +23,8 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// <param name="operationShutdown">Cancels window-owned operations when signalled.</param>
     /// <param name="modelContext">The model context the window graph must share, if any.</param>
     /// <remarks>
-    /// This host uses the system clock and random content ids. The constructor that takes
-    /// <see cref="RunicWindowTestHostOptions"/> uses a fake clock and sequential ids.
+    /// This host uses the system clock and random content ids. The other constructors, including the one that takes
+    /// only the ViewModel and the bridge factory, use a <see cref="FakeTimeProvider"/> and sequential ids.
     /// </remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
         Justification = "Published constructor that mirrors WindowContentSession; reordering would break callers.")]
@@ -48,7 +48,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// <param name="attach">
     /// The generated bridge factory, such as the
     /// <c>Func&lt;IBridgeTransport, WindowContentSession, TViewModel, IDisposable&gt;</c> that
-    /// the generated <c>AddRunicBridges()</c> registers.
+    /// the generated <c>AddRunicViews()</c> registers.
     /// </param>
     /// <param name="options">The root route, View locator, clock and id source.</param>
     public RunicWindowTestHost(TViewModel viewModel,

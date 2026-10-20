@@ -79,10 +79,12 @@ let the frontend build's up-to-date check skip unchanged frontends.
 
 ### Deterministic time and ids
 
-With `RunicWindowTestHostOptions`, the window uses a
+`RunicWindowTestHost.Create`, the constructor that takes
+`RunicWindowTestHostOptions` and the constructor that takes only the ViewModel and the
+bridge factory give the window a
 [`FakeTimeProvider`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.time.testing.faketimeprovider)
 from `Microsoft.Extensions.TimeProvider.Testing`, which this package depends on, unless
-the options supply another `TimeProvider`. Its time passes only through `Advance` or
+options supply another `TimeProvider`. Its time passes only through `Advance` or
 `SetUtcNow`, which fire due timers, `CancellationTokenSource` timeouts and
 `Task.Delay(TimeSpan, TimeProvider)` in order; a timer due now fires at once. The
 window uses it for interaction deadlines and `BeginCloseAsync` timeouts; register
@@ -112,7 +114,9 @@ Content ids are `1`, `2`, ... in presentation order, so routes are `content1`,
 drivers issue mount tokens `test:mount1`, ... and operation request ids `request1`,
 ....
 
-The constructor without options keeps the system clock and random ids.
+Only the constructor that takes a root route
+(`new RunicWindowTestHost<T>(viewModel, rootRoute, attach, viewLocator, ...)`) keeps
+the system clock and random ids.
 
 ### File watchers
 
