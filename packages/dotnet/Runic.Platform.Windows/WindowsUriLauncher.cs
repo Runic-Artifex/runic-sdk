@@ -34,7 +34,8 @@ internal sealed class WindowsUriLauncher(INativePickerOwner owner)
 
     // ShellExecuteEx with the URI as the file and no class: a string that starts with a scheme of two or more letters
     // is a URL to the shell, which opens it with the scheme's association (UserChoice included), never as a path. No
-    // UI: a scheme without a handler fails instead of asking the user to pick an application. Zone checks stay on.
+    // error UI; for a scheme without a handler, Windows 11 still offers to find an application and reports success.
+    // Zone checks stay on.
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
     private static unsafe PlatformResult<PlatformUnit> Launch(nint window, string uri)
     {

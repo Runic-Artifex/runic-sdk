@@ -110,7 +110,8 @@ public interface IDesktopFileLauncher
     /// <remarks>Success acknowledges that the desktop accepted the URI, not that an application showed it. Linux asks the
     /// desktop portal (OpenURI), which may let the user choose an application and reports
     /// <see cref="PlatformFailureCode.UserDismissed"/> when they cancel; Windows uses the shell's URL association; macOS
-    /// uses <c>NSWorkspace</c>. Without a registered handler, for example no mail client for <c>mailto</c>, the result is
+    /// uses <c>NSWorkspace</c>. Without a registered handler, for example no mail client for <c>mailto</c>, the desktop
+    /// may offer to find an application (Windows 11 does, and reports success), or the result is
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> or a failure, depending on the platform.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>

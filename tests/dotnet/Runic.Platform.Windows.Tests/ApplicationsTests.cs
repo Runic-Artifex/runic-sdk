@@ -340,7 +340,7 @@ internal sealed partial class ApplicationsTests
     }
 
     // Open With choosers the shell started, which the case closes.
-    private static int Choosers()
+    internal static int Choosers()
     {
         var choosers = System.Diagnostics.Process.GetProcessesByName("OpenWith");
         foreach (var chooser in choosers) { try { chooser.Kill(); } catch (InvalidOperationException) { } catch (System.ComponentModel.Win32Exception) { } chooser.Dispose(); }

@@ -137,8 +137,8 @@ on.
 | Platform | Mechanism | Outcomes |
 | --- | --- | --- |
 | Linux (GTK 3 and GTK 4, also in Flatpak and Snap) | The OpenURI desktop portal, as `PortalPlatformProvider.OpenUriAsync` | The portal may let the user choose an application; cancelling is `Failed(UserDismissed)` |
-| Windows | `ShellExecuteEx` with the URI and the shell's URL association (the user's default), without UI and with zone checks | No handler, for example no mail client: `Unavailable(BackendUnavailable)` |
-| macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Unavailable(BackendUnavailable)` |
+| Windows | `ShellExecuteEx` with the URI and the shell's URL association (the user's default), with zone checks | Without a handler, for example no mail client, Windows 11 offers to find an application and reports success; older shells report `Unavailable(BackendUnavailable)` |
+| macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Failed(IoError)` with the `NSError` domain and code (macOS 26: `NSCocoaErrorDomain 256`) |
 
 Success means the desktop accepted the URI, not that an application showed it.
 

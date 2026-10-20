@@ -6,7 +6,8 @@ namespace Runic.Platform.MacOS;
 // Opens a web or mail URI with NSWorkspace: the user's default browser or mail client.
 internal sealed class MacUriLauncher(INativePickerOwner owner)
 {
-    // Launch Services has no application for the URL's scheme (kLSApplicationNotFoundErr).
+    // Launch Services has no application for the URL's scheme (kLSApplicationNotFoundErr). macOS 26 reports a scheme
+    // without an application as NSCocoaErrorDomain 256 instead, which stays IoError: the code is not specific to it.
     private const long ApplicationNotFound = -10814;
     // NSUserCancelledError.
     private const long UserCancelled = 3072;
