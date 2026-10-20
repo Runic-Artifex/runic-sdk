@@ -78,6 +78,25 @@ internal sealed class CreateTests
             True(!CreateApplication.IsValidName(name), name);
     }
 
+    [Test, DisplayName("the template install is checked with English SDK messages")]
+    public void InstallCheckDoesNotDependOnSdkLanguage()
+    {
+        // W319-003 create-09: exit code 106 covers other install failures too, and a localized SDK does not print
+        // "is already installed", which turned an installed template into RCREATE004.
+        var install = CreateApplication.CreateDotNetStartInfo(["new", "install", "Runic.Application.Templates@1.0.0"], capture: true, json: false);
+        Equal("en", install.Environment["DOTNET_CLI_UI_LANGUAGE"]);
+        Equal("new|install|Runic.Application.Templates@1.0.0", string.Join('|', install.ArgumentList));
+        True(install.RedirectStandardOutput && install.RedirectStandardError, "the install output is captured");
+        // dotnet new runic-app writes to the terminal in the user's language.
+        var create = CreateApplication.CreateDotNetStartInfo(["new", "runic-app"], capture: false, json: false);
+        True(!create.Environment.ContainsKey("DOTNET_CLI_UI_LANGUAGE") || create.Environment["DOTNET_CLI_UI_LANGUAGE"] == Environment.GetEnvironmentVariable("DOTNET_CLI_UI_LANGUAGE"),
+            "dotnet new keeps the user's language");
+
+        True(CreateApplication.IsAlreadyInstalled(106, "The following template packages will be installed:\n   Runic.Application.Templates@1.0.0\n\nRunic.Application.Templates@1.0.0 is already installed."), "already installed");
+        True(!CreateApplication.IsAlreadyInstalled(106, "Runic.Application.Templates@9.9.9 could not be installed, the package does not exist."), "another 106 failure");
+        True(!CreateApplication.IsAlreadyInstalled(1, "is already installed"), "another exit code");
+    }
+
     [Test, DisplayName("plans print the same choices for dotnet new and the creator")]
     public void PlansAreReproducible()
     {

@@ -592,7 +592,8 @@ read and write them.
 ### RTKSIZE1001
 
 `size` received invalid options: no `--runtime`, `--verify-argument` without
-`--verify`, or a `--report` path that already exists.
+`--verify`, or a `--report` path that already exists. The command exits with
+code 2.
 
 **Fix:** pass `--runtime`, for example `linux-x64`, add `--verify`, or choose a
 new report path; `size` does not overwrite earlier reports. See
@@ -601,7 +602,8 @@ new report path; `size` does not overwrite earlier reports. See
 ### RTKSIZE1002
 
 `size` could not evaluate the project's publish settings with `dotnet msbuild`.
-The message includes the MSBuild output.
+The message includes the MSBuild output. This is a command failure, exit code 1,
+not an option error.
 
 **Fix:** check that the project restores and builds for the selected runtime.
 

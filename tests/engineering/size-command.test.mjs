@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,5 +53,46 @@ test("size preserves failed verification, publish failures and existing evidence
     assert.notEqual(failure.publishExitCode, 0);
     assert.equal(failure.verification.status, "not-run");
     assert.ok(!existsSync(marker), "A failed publish must not run the checker");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+const size = (directory, args) => {
+  const result = spawnSync(process.env.DOTNET_HOST_PATH ?? "dotnet", [cli, "size", ...args],
+    { cwd: directory, encoding: "utf8", timeout: 120000, maxBuffer: 8 * 1024 * 1024 });
+  if (result.error) throw result.error;
+  return result;
+};
+
+// W319-003 cli-10: the default report was always runic-size.json, so a second run without --report failed.
+test("size without --report writes a new report each run", { timeout: 180000 }, () => {
+  assert.ok(existsSync(cli), `Build tools/dotnet-runic first: ${cli} is missing.`);
+  const directory = mkdtempSync(join(tmpdir(), "runic-size-default-"));
+  try {
+    writeFileSync(join(directory, "Probe.csproj"), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup></Project>');
+    writeFileSync(join(directory, "Program.cs"), 'System.Console.WriteLine("size probe");');
+    const reports = () => readdirSync(directory).filter(name => /^runic-size-.+\.json$/.test(name)).sort();
+    for (const run of [1, 2]) {
+      const result = size(directory, ["--runtime", rid, "--no-aot"]);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.equal(reports().length, run, reports().join(", "));
+    }
+    for (const name of reports()) {
+      assert.match(name, new RegExp(`^runic-size-${rid}-\\d{8}T\\d{6}Z(-\\d+)?\\.json$`));
+      const report = JSON.parse(readFileSync(join(directory, name), "utf8"));
+      assert.ok(existsSync(report.archive) && report.archive.startsWith(join(directory, name.slice(0, -".json".length))), report.archive);
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+// W319-003 cli-07: an MSBuild evaluation failure is a failed command (exit code 1), not a usage error (2).
+test("size reports a project MSBuild cannot evaluate as a command failure", { timeout: 120000 }, () => {
+  assert.ok(existsSync(cli), `Build tools/dotnet-runic first: ${cli} is missing.`);
+  const directory = mkdtempSync(join(tmpdir(), "runic-size-evaluation-"));
+  try {
+    writeFileSync(join(directory, "Broken.csproj"), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>');
+    const result = size(directory, ["--project", join(directory, "Broken.csproj"), "--runtime", rid, "--output", "json"]);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /"code": ?"RTKSIZE1002"/);
+    assert.deepEqual(readdirSync(directory), ["Broken.csproj"], "Nothing is written before the settings are known.");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

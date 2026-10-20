@@ -29,7 +29,7 @@ internal static partial class ProcessTreeSignal
     private const uint CtrlCEvent = 0;
 
     /// <summary>Signals the processes that stop the application and returns the ones to wait for.</summary>
-    internal static async Task<IReadOnlyList<int>> RequestStopAsync(int root, CancellationToken cancellationToken)
+    internal static async Task<IReadOnlyList<int>> RequestStopAsync(int root, CancellationToken cancellationToken, Action<string>? warn = null)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -37,7 +37,23 @@ internal static partial class ProcessTreeSignal
             return [root];
         }
 
-        IReadOnlyList<int> targets = SelectStopTargets(root, await SnapshotAsync(cancellationToken).ConfigureAwait(false));
+        IReadOnlyList<ProcessEntry> processes;
+        try
+        {
+            processes = await SnapshotAsync(cancellationToken).ConfigureAwait(false);
+            if (!processes.Any(process => process.Id == root))
+            {
+                throw new IOException($"the process list does not contain process {root}");
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DevUsageException)
+        {
+            // Without a process list, the dotnet run processes below a dotnet watch root cannot be found. Asking
+            // the root to stop is still right for dotnet run, so say why the stop may not wait for the application.
+            warn?.Invoke($"Could not list the application's processes ({exception.Message}), so only process {root} is asked to stop.");
+            processes = [];
+        }
+        IReadOnlyList<int> targets = SelectStopTargets(root, processes);
         foreach (int target in targets)
         {
             _ = Kill(target, SigTerm);
@@ -109,10 +125,67 @@ internal static partial class ProcessTreeSignal
         }
     }
 
-    private static async Task<IReadOnlyList<ProcessEntry>> SnapshotAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Lists the running processes: from <c>/proc</c> on Linux, which minimal containers and build sandboxes have
+    /// without procps, and from <c>ps</c> elsewhere.
+    /// </summary>
+    private static Task<IReadOnlyList<ProcessEntry>> SnapshotAsync(CancellationToken cancellationToken) =>
+        OperatingSystem.IsLinux()
+            ? Task.FromResult(ReadProcSnapshot("/proc"))
+            : PsSnapshotAsync(cancellationToken);
+
+    /// <summary>Reads every process's parent from <c>&lt;proc&gt;/&lt;pid&gt;/stat</c> and its arguments from <c>cmdline</c>.</summary>
+    /// <exception cref="IOException">The directory lists no process.</exception>
+    internal static IReadOnlyList<ProcessEntry> ReadProcSnapshot(string proc)
+    {
+        var processes = new List<ProcessEntry>();
+        foreach (string directory in Directory.EnumerateDirectories(proc))
+        {
+            if (!int.TryParse(Path.GetFileName(directory), NumberStyles.None, CultureInfo.InvariantCulture, out int pid))
+            {
+                continue;
+            }
+            try
+            {
+                if (ParseProcStatParent(File.ReadAllText(Path.Combine(directory, "stat"))) is not int parent)
+                {
+                    continue;
+                }
+                // Arguments are separated by NUL; a zombie or kernel thread has none.
+                string commandLine = string.Join(' ', File.ReadAllText(Path.Combine(directory, "cmdline"))
+                    .Split('\0', StringSplitOptions.RemoveEmptyEntries));
+                processes.Add(new(pid, parent, commandLine));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // The process exited while it was read, or belongs to another user.
+            }
+        }
+        return processes.Count != 0
+            ? processes
+            : throw new IOException($"{proc} lists no process");
+    }
+
+    /// <summary>The parent process ID in a <c>/proc/&lt;pid&gt;/stat</c> line, or null when it is malformed.</summary>
+    /// <remarks>The command name in parentheses may contain spaces and parentheses, so fields follow the last one.</remarks>
+    internal static int? ParseProcStatParent(string stat)
+    {
+        int end = stat.LastIndexOf(')');
+        if (end < 0) return null;
+        string[] fields = stat[(end + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return fields.Length >= 2 && int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out int parent)
+            ? parent
+            : null;
+    }
+
+    private static async Task<IReadOnlyList<ProcessEntry>> PsSnapshotAsync(CancellationToken cancellationToken)
     {
         CommandResult result = await CommandRunner.RunAsync("ps", Environment.CurrentDirectory,
             ["-A", "-o", "pid=,ppid=,args="], cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            throw new IOException($"ps exited with code {result.ExitCode}");
+        }
         var processes = new List<ProcessEntry>();
         foreach (string line in result.StandardOutput.Split('\n'))
         {

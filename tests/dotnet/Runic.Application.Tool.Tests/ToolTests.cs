@@ -2035,6 +2035,73 @@ internal sealed class ToolTests
         SequenceEqual<int>([103], ProcessTreeSignal.SelectStopTargets(103, processes));
     }
 
+    [Test, DisplayName("size names a new report for each run without --report")]
+    public void SizeDefaultReportIsUnique()
+    {
+        using var workspace = new TestWorkspace();
+        var now = new DateTimeOffset(2026, 10, 20, 9, 15, 0, TimeSpan.FromHours(2));
+        string first = SizeApplication.DefaultReportPath(workspace.Root, "linux-x64", now);
+        Equal(Path.Combine(workspace.Root, "runic-size-linux-x64-20261020T071500Z.json"), first);
+        File.WriteAllText(first, "{}");
+        string second = SizeApplication.DefaultReportPath(workspace.Root, "linux-x64", now);
+        Equal(Path.Combine(workspace.Root, "runic-size-linux-x64-20261020T071500Z-2.json"), second);
+        File.WriteAllText(second, "{}");
+        Equal(Path.Combine(workspace.Root, "runic-size-linux-x64-20261020T071500Z-3.json"), SizeApplication.DefaultReportPath(workspace.Root, "linux-x64", now));
+    }
+
+    [Test, DisplayName("the Linux process list comes from /proc, without ps")]
+    public void ProcSnapshotWithoutPs()
+    {
+        // W319-003 L1: without procps (minimal containers, the Nix sandbox) the stop neither waited nor signalled.
+        using var workspace = new TestWorkspace();
+        string proc = Path.Combine(workspace.Root, "proc");
+        void Process(string pid, string? stat, string cmdline)
+        {
+            Directory.CreateDirectory(Path.Combine(proc, pid));
+            if (stat is not null) File.WriteAllText(Path.Combine(proc, pid, "stat"), stat);
+            File.WriteAllText(Path.Combine(proc, pid, "cmdline"), cmdline);
+        }
+        Process("100", "100 (dotnet) S 1 100 100 0 -1 4194560 0 0", "dotnet\0watch\0run\0");
+        // The command name may contain spaces and parentheses.
+        Process("102", "102 (a (b) c) S 100 100 100 0 -1", "/usr/share/dotnet/dotnet\0run\0--no-launch-profile\0");
+        Process("2", "2 (kthreadd) S 0 0 0 0 -1", "");
+        Process("103", null, "exited\0");
+        Process("104", "104 (truncated", "");
+        Directory.CreateDirectory(Path.Combine(proc, "self-not-a-pid"));
+        File.WriteAllText(Path.Combine(proc, "uptime"), "1.0 2.0");
+
+        var processes = ProcessTreeSignal.ReadProcSnapshot(proc).OrderBy(process => process.Id).ToArray();
+        SequenceEqual(
+            [new ProcessTreeSignal.ProcessEntry(2, 0, ""), new(100, 1, "dotnet watch run"), new(102, 100, "/usr/share/dotnet/dotnet run --no-launch-profile")],
+            processes);
+        SequenceEqual<int>([102], ProcessTreeSignal.SelectStopTargets(100, processes));
+        Equal<int?>(7, ProcessTreeSignal.ParseProcStatParent("8 (x) R 7 8 8"));
+        Equal<int?>(null, ProcessTreeSignal.ParseProcStatParent("8 (x"));
+
+        Directory.Delete(proc, recursive: true);
+        Directory.CreateDirectory(proc);
+        // An empty process list is an error, not an empty tree.
+        Throws<IOException>(() => ProcessTreeSignal.ReadProcSnapshot(proc));
+
+        if (OperatingSystem.IsLinux())
+        {
+            var self = ProcessTreeSignal.ReadProcSnapshot("/proc").Single(process => process.Id == Environment.ProcessId);
+            True(self.ParentId > 0 && self.CommandLine.Length > 0, self.ToString());
+        }
+    }
+
+    [Test, DisplayName("stopping the host says so when it cannot list the processes")]
+    public async Task StopWarnsWithoutProcessList()
+    {
+        if (OperatingSystem.IsWindows()) return; // Windows raises Ctrl+C on the console instead.
+        // No process has this ID, so it is missing from the list; the root is still asked to stop.
+        const int Missing = int.MaxValue;
+        var warnings = new List<string>();
+        var targets = await ProcessTreeSignal.RequestStopAsync(Missing, CancellationToken.None, warnings.Add);
+        SequenceEqual<int>([Missing], targets);
+        True(warnings.Count == 1 && warnings[0].Contains($"only process {Missing} is asked to stop", StringComparison.Ordinal), string.Join('\n', warnings));
+    }
+
     [Test, DisplayName("stopping the host lets the application exit before the tree is killed")]
     public void StopLetsApplicationExit()
     {
