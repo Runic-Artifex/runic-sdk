@@ -466,6 +466,7 @@ jobs:
       # WebView2 content, through UI Automation and real key presses (tests/native/wpf-ui-automation/README.md).
       - name: Check the hybrid WPF editor with UI Automation
         if: matrix.rid == 'win-x64'
+        shell: pwsh
         run: |
           dotnet build examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj -c Release
           powershell -NoProfile -ExecutionPolicy Bypass -File tests/native/wpf-ui-automation/wpf-ui-automation.ps1 `

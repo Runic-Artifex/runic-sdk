@@ -100,7 +100,7 @@ function Describe($Element) {
 
 function Pass([string]$Name, [string]$Detail) {
     $checks.Add([ordered]@{ check = $Name; result = 'pass'; detail = $Detail })
-    Write-Output "PASS $Name - $Detail"
+    Write-Host "PASS $Name - $Detail"
 }
 
 function Assert-Check([bool]$Condition, [string]$Name, [string]$Detail) {
