@@ -44,13 +44,13 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
     var known = await startup.IsEnabledAsync();
     bool startsAtLogin = known is PlatformResult<bool>.Success { Value: true };
     bool canChange = known is not PlatformResult<bool>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
-    DesktopStatusIconState State() => new(new DesktopIcon { ThemeName = "applications-system" }, "Status icon sample")
+    DesktopStatusIconState State() => new(new DesktopIcon { IconName = "applications-system" }, "Status icon sample")
     {
         Tooltip = "Click to open the counter",
         Menu =
         [
             new DesktopMenuCommand("open", "Open window"),
-            new DesktopMenuCommand("login", "Start at login") { Checked = startsAtLogin, Enabled = canChange },
+            new DesktopMenuCommand("login", "Start at login") { IsChecked = startsAtLogin, IsEnabled = canChange },
             new DesktopMenuSeparator(),
             new DesktopMenuCommand("quit", "Quit"),
         ],

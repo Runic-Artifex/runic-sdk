@@ -202,7 +202,7 @@ internal sealed partial class MacDesktopApplications : IDesktopApplications
         ("NSCocoaErrorDomain", 3072) or ("NSOSStatusErrorDomain", -128) => Failed(PlatformFailureCode.UserDismissed, diagnostic),
         // permErr, kLSNotAnApplicationErr is not a permission problem; NSFileWriteNoPermissionError; EPERM, EACCES.
         ("NSOSStatusErrorDomain", -54) or ("NSCocoaErrorDomain", 513) or ("NSPOSIXErrorDomain", 1 or 13) => Failed(PlatformFailureCode.PermissionDenied, diagnostic),
-        _ => Failed(PlatformFailureCode.IoError, diagnostic),
+        _ => Failed(PlatformFailureCode.Other, diagnostic),
     };
 
     internal static PlatformResult<PlatformUnit> MapLaunchError(PlatformDiagnostic diagnostic) => (diagnostic.Domain, diagnostic.Code) switch
@@ -210,7 +210,7 @@ internal sealed partial class MacDesktopApplications : IDesktopApplications
         ("NSCocoaErrorDomain", 3072) or ("NSOSStatusErrorDomain", -128) => Failed(PlatformFailureCode.UserDismissed, diagnostic),
         // NSFileReadNoPermissionError; EPERM, EACCES; permErr.
         ("NSCocoaErrorDomain", 257) or ("NSPOSIXErrorDomain", 1 or 13) or ("NSOSStatusErrorDomain", -54) => Failed(PlatformFailureCode.PermissionDenied, diagnostic),
-        _ => Failed(PlatformFailureCode.IoError, diagnostic),
+        _ => Failed(PlatformFailureCode.Other, diagnostic),
     };
 
     private static PlatformResult<DesktopContentType> ContentType(string path, DesktopContentDetection detection)
@@ -230,9 +230,9 @@ internal sealed partial class MacDesktopApplications : IDesktopApplications
                 return (diagnostic.Domain, diagnostic.Code) switch
                 {
                     ("NSCocoaErrorDomain", 4 or 260) or ("NSPOSIXErrorDomain", 2 or 20) =>
-                        new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromErrno(2)),
+                        new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromErrno(2)),
                     ("NSCocoaErrorDomain", 257) or ("NSPOSIXErrorDomain", 1 or 13) => new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.PermissionDenied, diagnostic),
-                    _ => new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, diagnostic),
+                    _ => new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.Other, diagnostic),
                 };
             }
         }

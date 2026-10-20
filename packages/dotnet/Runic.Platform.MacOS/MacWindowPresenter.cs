@@ -16,7 +16,7 @@ internal static class MacWindowPresenter
     internal static readonly PlatformDiagnostic NotActivated = new("NSApplication", 0,
         "macOS did not activate the application; the active application keeps the focus.");
 
-    internal static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativePickerOwner owner, CancellationToken cancellationToken = default)
+    internal static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativeWindowOwner owner, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(owner);
         bool cooperative = false;
@@ -50,7 +50,7 @@ internal static class MacWindowPresenter
     private static nint Application() => Send(Class("NSApplication"), Sel("sharedApplication"));
 
     // Activation completes asynchronously.
-    private static async Task<bool> ActiveAsync(INativePickerOwner owner, TimeSpan timeout, CancellationToken cancellationToken)
+    private static async Task<bool> ActiveAsync(INativeWindowOwner owner, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (true)

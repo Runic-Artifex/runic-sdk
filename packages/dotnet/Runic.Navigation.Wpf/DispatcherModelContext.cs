@@ -128,8 +128,8 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         return new(item.Completion);
     }
 
-    /// <inheritdoc />
-    public Task<T> RunHookAsync<T>(Func<Task<T>> hook, CancellationToken cancellationToken)
+    // The navigator's hook scheduler, implemented explicitly: applications run work on the UI thread with InvokeAsync.
+    Task<T> IRunicModelHookScheduler.RunHookAsync<T>(Func<Task<T>> hook, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(hook);
         if (Volatile.Read(ref _closed)) return Task.FromException<T>(new ObjectDisposedException(nameof(DispatcherModelContext)));
@@ -146,7 +146,8 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     /// </summary>
     /// <param name="cancellationToken">Stops waiting.</param>
     /// <exception cref="ObjectDisposedException">The context is closed.</exception>
-    public ValueTask YieldToPresentationAsync(CancellationToken cancellationToken)
+    /// <remarks>The navigator calls it through <see cref="IRunicModelPresentationYield"/>.</remarks>
+    ValueTask IRunicModelPresentationYield.YieldToPresentationAsync(CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _closed)) return ValueTask.FromException(new ObjectDisposedException(nameof(DispatcherModelContext)));
         if (cancellationToken.IsCancellationRequested) return ValueTask.FromCanceled(cancellationToken);

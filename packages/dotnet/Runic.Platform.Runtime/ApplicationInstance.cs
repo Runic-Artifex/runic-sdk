@@ -93,19 +93,22 @@ public static class ApplicationInstance
     /// Delivers the files and URLs of <paramref name="launch"/> and of each later launch that <paramref name="instance"/>
     /// receives, as Linux and Windows pass them: as arguments.
     /// </summary>
-    /// <param name="instance">The running instance, or <see langword="null"/> without single instance.</param>
-    /// <param name="launch">This process's launch, usually <see cref="ApplicationLaunch.FromProcess"/>.</param>
     /// <param name="options">The URL schemes and files the application registered.</param>
+    /// <param name="instance">The running instance, or <see langword="null"/> without single instance.</param>
+    /// <param name="launch">This process's launch, usually <see cref="ApplicationLaunch.FromProcess"/>; <see langword="null"/>
+    /// delivers only later launches.</param>
     /// <returns>Open requests to dispose when the application ends; disposal stops listening to the instance.</returns>
+    /// <exception cref="ArgumentException"><paramref name="options"/> names a string that is not a URL scheme, or <c>file</c>.</exception>
     /// <remarks>
     /// Each launch becomes a request through <see cref="DesktopOpenRequests.FromLaunch"/>; a launch without files or
     /// registered URLs raises nothing. The instance's own <see cref="IApplicationInstance.Launched"/> handlers still
     /// receive every launch, and complete <see cref="ApplicationLaunch.Reply"/> where one is set. On macOS the system
     /// sends open events instead; <c>MacOSPlatformProvider.CreateOpenRequests</c> handles both.
     /// </remarks>
-    public static IDesktopOpenRequests CreateOpenRequests(IApplicationInstance? instance, ApplicationLaunch launch, DesktopOpenOptions options)
+    public static IDesktopOpenRequests CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null)
     {
-        var first = DesktopOpenRequests.FromLaunch(launch, options);
+        // An empty launch checks the options as a launch with arguments does.
+        var first = DesktopOpenRequests.FromLaunch(launch ?? new ApplicationLaunch([], Environment.CurrentDirectory), options);
         var queue = new OpenRequestQueue();
         if (first is not null) queue.Post(first);
         Attach(queue, instance, options);
@@ -184,7 +187,7 @@ public static class ApplicationInstance
         }
         catch (Exception error) when (error is IOException or SocketException or UnauthorizedAccessException)
         {
-            return new PlatformResult<ApplicationInstanceClaim>.Failed(PlatformFailureCode.IoError);
+            return new PlatformResult<ApplicationInstanceClaim>.Failed(PlatformFailureCode.IOError);
         }
     }
 
@@ -440,7 +443,7 @@ public static class ApplicationInstance
             {
                 switch (await ReadFrameAsync(stream, _header, cancellationToken).ConfigureAwait(false))
                 {
-                    case null: return End(new PlatformResult<int>.Failed(PlatformFailureCode.IoError));
+                    case null: return End(new PlatformResult<int>.Failed(PlatformFailureCode.IOError));
                     case { Type: Message, Length: >= 0 and <= MaxMessage } frame:
                         if (_payload.Length < frame.Length) _payload = new byte[Math.Max(frame.Length, Math.Min(_payload.Length * 2, MaxMessage))];
                         await stream.ReadExactlyAsync(_payload.AsMemory(0, frame.Length), cancellationToken).ConfigureAwait(false);
@@ -453,19 +456,19 @@ public static class ApplicationInstance
             // Part of a frame may have been read: the reply cannot continue, and closing it cancels the launch.
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                End(new PlatformResult<int>.Failed(PlatformFailureCode.IoError));
+                End(new PlatformResult<int>.Failed(PlatformFailureCode.IOError));
                 throw;
             }
             // The read failed because cancelling closed the connection.
             catch (Exception error) when (error is IOException or SocketException or EndOfStreamException or ObjectDisposedException
                 && cancellationToken.IsCancellationRequested)
             {
-                End(new PlatformResult<int>.Failed(PlatformFailureCode.IoError));
+                End(new PlatformResult<int>.Failed(PlatformFailureCode.IOError));
                 throw new OperationCanceledException(cancellationToken);
             }
             catch (Exception error) when (error is IOException or SocketException or EndOfStreamException or ObjectDisposedException)
             {
-                return End(new PlatformResult<int>.Failed(PlatformFailureCode.IoError));
+                return End(new PlatformResult<int>.Failed(PlatformFailureCode.IOError));
             }
         }
 
@@ -487,7 +490,7 @@ public static class ApplicationInstance
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                Interlocked.CompareExchange(ref _result, new PlatformResult<int>.Failed(PlatformFailureCode.IoError), null);
+                Interlocked.CompareExchange(ref _result, new PlatformResult<int>.Failed(PlatformFailureCode.IOError), null);
                 Close();
             }
             return ValueTask.CompletedTask;

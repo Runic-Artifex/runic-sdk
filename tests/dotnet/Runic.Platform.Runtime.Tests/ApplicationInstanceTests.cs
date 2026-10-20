@@ -392,7 +392,7 @@ internal sealed class ApplicationInstanceTests
                 }
                 Check(!await Within(leftWrite.Task, $"the running instance's write after leaving (dispose: {dispose})"), "the running instance is cancelled, and its writes are no longer sent");
                 Check(await Within(reasons.Task, $"the reasons after leaving (dispose: {dispose})") == (false, true, true), $"leaving is Disconnected, not CancelRequested (dispose: {dispose}): {reasons.Task.Result}");
-                Check(await Within(reply.WaitForExitAsync().AsTask(), "the result of a reply left early") is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "a reply left early has no exit status");
+                Check(await Within(reply.WaitForExitAsync().AsTask(), "the result of a reply left early") is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "a reply left early has no exit status");
             }
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
@@ -521,7 +521,7 @@ internal sealed class ApplicationInstanceTests
             Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "one", "the reply starts");
             await instance.DisposeAsync();
             Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the running instance");
-            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "no exit status is an I/O failure");
+            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "no exit status is an I/O failure");
             Check(await after.Task.WaitAsync(Wait) == (true, true, false, false), "ending the instance cancels the reply as Disconnected");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
@@ -548,7 +548,7 @@ internal sealed class ApplicationInstanceTests
             Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "running", "the reply starts");
             primary.Kill();
             Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the crashed process");
-            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "no exit status is an I/O failure");
+            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "no exit status is an I/O failure");
         }
         finally
         {
@@ -643,7 +643,7 @@ internal sealed class ApplicationInstanceTests
             System.IO.Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.OtherExecute | UnixFileMode.OtherWrite);
             File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.OtherExecute | UnixFileMode.OtherWrite);
             var shared = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
-            Check(shared is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.IoError }, "a directory others can enter is refused");
+            Check(shared is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.IOError }, "a directory others can enter is refused");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }

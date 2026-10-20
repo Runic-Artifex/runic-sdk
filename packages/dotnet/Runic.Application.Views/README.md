@@ -59,7 +59,7 @@ These words name one concept each across the Runic packages and frontends.
   surface.
 - **Owner**: the native window that platform services, such as file dialogs,
   the clipboard and file launchers, attach to: `DesktopNativeOwner` for a Runic
-  Desktop window, or an `INativePickerOwner` for another host. Native dialogs
+  Desktop window, or an `INativeWindowOwner` for another host. Native dialogs
   require one (`OwnerPolicy.RequireOwner`).
 
 ## A minimal Window

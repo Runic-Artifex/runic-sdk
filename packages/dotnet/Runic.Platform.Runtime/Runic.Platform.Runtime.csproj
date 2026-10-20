@@ -8,7 +8,7 @@
     <AssemblyName>Runic.Platform.Runtime</AssemblyName>
     <RootNamespace>Runic.Platform.Runtime</RootNamespace>
     <PackageId>Runic.Platform.Runtime</PackageId>
-    <Description>Shared scoped lifetime, file leases, atomic writes and native provider infrastructure.</Description>
+    <Description>Single instance, requests to open files and URLs, and file transfers for Runic applications, and the contract for native platform providers.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

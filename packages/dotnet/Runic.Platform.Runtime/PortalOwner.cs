@@ -1,7 +1,7 @@
 namespace Runic.Platform.Runtime;
 
 /// <summary>A verified presentation owner that can export an XDG portal parent.</summary>
-public interface IPortalWindowOwner : INativePickerOwner
+public interface IPortalWindowOwner : INativeWindowOwner
 {
     /// <summary>Exports a parent valid until the returned lease is disposed.</summary>
     ValueTask<PortalParentLease> ExportParentAsync(CancellationToken cancellationToken = default);

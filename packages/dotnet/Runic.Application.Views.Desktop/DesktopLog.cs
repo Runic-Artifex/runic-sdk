@@ -28,7 +28,7 @@ internal static partial class DesktopLog
     // A rejected identity or an unreachable portal is a warning; accepted requests and registrations are details.
     internal static void PortalDiagnostic(ILogger logger, PortalDiagnostic diagnostic) =>
         PortalDiagnostic(logger, IsProblem(diagnostic.Code) ? LogLevel.Warning : LogLevel.Debug, diagnostic.Code,
-            diagnostic.Message, diagnostic.Remediation);
+            diagnostic.Message, diagnostic.Remediation ?? string.Empty);
 
     internal static bool IsProblem(string code) =>
         code.EndsWith("-failed", StringComparison.Ordinal) || code.EndsWith("-unavailable", StringComparison.Ordinal)

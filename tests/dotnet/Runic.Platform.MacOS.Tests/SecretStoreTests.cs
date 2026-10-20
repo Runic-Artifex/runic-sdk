@@ -13,7 +13,7 @@ internal sealed class SecretStoreTests
         Check(MacSecretStore.Failure<bool>(MacSecretStore.AuthFailed) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.PermissionDenied }, "denied");
         Check(MacSecretStore.Failure<bool>(MacSecretStore.NoSuchKeychain) is PlatformResult<bool>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "no keychain");
         Check(MacSecretStore.Failure<bool>(MacSecretStore.NoDefaultKeychain) is PlatformResult<bool>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "no default keychain");
-        Check(MacSecretStore.Failure<bool>(-50) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Code: -50 }, "other statuses");
+        Check(MacSecretStore.Failure<bool>(-50) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Code: -50 }, "other statuses");
 #pragma warning restore CA1416
     }
 

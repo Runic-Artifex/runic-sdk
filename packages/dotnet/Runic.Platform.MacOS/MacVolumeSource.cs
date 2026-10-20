@@ -127,7 +127,7 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
             (0xF8DA000C, _) or (_, 45) => new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable), // Unsupported, ENOTSUP
             (0xF8DA0007, _) when mount => new PlatformResult<T>.Failed(PlatformFailureCode.Conflict, diagnostic), // NotMounted
             (0xF8DA0007, _) => new PlatformResult<T>.Success(default!), // NotMounted: an unmount or eject has nothing to do
-            _ => new PlatformResult<T>.Failed(PlatformFailureCode.IoError, diagnostic),
+            _ => new PlatformResult<T>.Failed(PlatformFailureCode.Other, diagnostic),
         };
     }
 

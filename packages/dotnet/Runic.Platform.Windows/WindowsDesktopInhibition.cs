@@ -49,7 +49,7 @@ internal sealed class WindowsDesktopInhibition : IDesktopInhibition
     {
         int error = Marshal.GetLastPInvokeError();
         return new PlatformResult<IDesktopInhibitionLease>.Failed(
-            error == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(error));
+            error == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other, PlatformDiagnostic.FromWin32Error(error));
     }
     private sealed class Lease(SafeFileHandle handle, DesktopInhibitionEffects effects) : IDesktopInhibitionLease
     {

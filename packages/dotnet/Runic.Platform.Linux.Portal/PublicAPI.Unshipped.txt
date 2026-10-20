@@ -1,1 +1,7 @@
 #nullable enable
+*REMOVED*Runic.Platform.Linux.Portal.PortalDiagnostic.Deconstruct(out string! Code, out string! Message, out string! Remediation) -> void
+*REMOVED*Runic.Platform.Linux.Portal.PortalDiagnostic.PortalDiagnostic(string! Code, string! Message, string! Remediation) -> void
+*REMOVED*Runic.Platform.Linux.Portal.PortalDiagnostic.Remediation.get -> string!
+Runic.Platform.Linux.Portal.PortalDiagnostic.Deconstruct(out string! Code, out string! Message, out string? Remediation) -> void
+Runic.Platform.Linux.Portal.PortalDiagnostic.PortalDiagnostic(string! Code, string! Message, string? Remediation = null) -> void
+Runic.Platform.Linux.Portal.PortalDiagnostic.Remediation.get -> string?

@@ -95,7 +95,7 @@ public static class DesktopVolumes
 | A conflicting state | `Failed(Conflict)` | `AlreadyMounted`, `NotMounted` from a mount, `Cancelled` | — | `kDAReturnNotMounted` from a mount |
 | Not offered by the volume or platform | `Unavailable(BackendUnavailable)` | Mount or unmount of a volume without a filesystem; eject of a drive that is not ejectable | Mount of a volume Windows did not mount, unmount of a mounted one; eject of a drive without a removable device or of the system's disk; `PNP_VetoNonDisableable`, `PNP_VetoIllegalDeviceRequest`, `PNP_VetoLegacyDriver` | Mount of a volume that is not mountable, the startup disk's volumes, eject of a drive that is not ejectable; `kDAReturnUnsupported`, `ENOTSUP` |
 | No volume service | `Unavailable(BackendUnavailable)` | No system bus, `ServiceUnknown`, `NameHasNoOwner`, `NoReply`, a disconnected bus | — | No Disk Arbitration session |
-| Other errors | `Failed(IoError)` | `Failed` and other UDisks2 errors, with the D-Bus error name | Other `CONFIGRET` results and vetoes; a listing that fails, with the Win32 error | Other `DAReturn` values |
+| Other errors | `Failed(Other)` | `Failed` and other UDisks2 errors, with the D-Bus error name | Other `CONFIGRET` results and vetoes; a listing that fails, with the Win32 error | Other `DAReturn` values |
 
 Diagnostics carry the D-Bus error name, the `CONFIGRET` or `PNP_VETO_TYPE` value,
 the Win32 error or the `DAReturn` value only, never a path, label or the veto's

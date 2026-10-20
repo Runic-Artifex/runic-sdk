@@ -117,7 +117,7 @@ internal static class MacPrivilegedOutcome
         AuthorizationDenied => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.PermissionDenied, new(AuthorizationDomain, status)),
         // No authorization dialog can be shown, as in a session without a user interface.
         AuthorizationInteractionNotAllowed => new PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
-        _ => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(AuthorizationDomain, status)),
+        _ => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, new(AuthorizationDomain, status)),
     };
 
     /// <summary>The result of the daemon's reply to a run; <see cref="MacReplyStatus.Cancelled"/> is the caller's to throw.</summary>
@@ -134,11 +134,11 @@ internal static class MacPrivilegedOutcome
         MacReplyStatus.Unreachable => new PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
         MacReplyStatus.Busy => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.ResourceBusy,
             new(DaemonDomain, 11, "The privileged daemon runs as many actions as it allows; try again when one finished.")),
-        MacReplyStatus.Interrupted => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError,
+        MacReplyStatus.Interrupted => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IOError,
             new(DaemonDomain, 6, "The connection to the privileged daemon broke; the program may have run.")),
-        MacReplyStatus.Failed => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(DaemonDomain, reply.Code)),
+        MacReplyStatus.Failed => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, new(DaemonDomain, reply.Code)),
         MacReplyStatus.Cancelled => throw new ArgumentException("A cancelled run has no result.", nameof(reply)),
-        _ => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(DaemonDomain, 7, "The privileged daemon sent a reply this version does not understand.")),
+        _ => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, new(DaemonDomain, 7, "The privileged daemon sent a reply this version does not understand.")),
     };
 
     internal static PlatformDiagnostic ProgramDiagnostic(long code) => code switch

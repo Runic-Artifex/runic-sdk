@@ -47,7 +47,7 @@ var result = await actions.RunAsync(
 | UAC is off and the user is not an administrator, so `runas` started the helper without elevation; or the Application Information service is disabled | `Unavailable(BackendUnavailable)` |
 | The helper is missing, can be changed by non-administrators, is a JIT build (runtime files beside it, or a .NET apphost), or is unsigned where Windows requires signed elevation | `Failed(InvalidData)`; no prompt is shown and nothing starts |
 | The started helper refuses: it runs on a JIT runtime the check above missed, finds its own location changeable, or does not accept the action | `Failed(InvalidData)`; the action does not run, but a JIT helper's runtime has already started with the user's environment |
-| The helper exited before it reported, or another launch failure | `Failed(IoError)` |
+| The helper exited before it reported, or another launch failure | `Failed(Other)` |
 | Cancelled before the action started | `OperationCanceledException` |
 
 UAC returns the same error when the user declines the consent prompt and when a

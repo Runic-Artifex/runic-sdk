@@ -1,1 +1,7 @@
 #nullable enable
+*REMOVED*static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+*REMOVED*static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+*REMOVED*static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.ITextClipboard!

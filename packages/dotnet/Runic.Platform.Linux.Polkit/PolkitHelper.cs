@@ -15,7 +15,7 @@ namespace Runic.Platform.Linux.Polkit;
 /// </para>
 /// <para>
 /// When the application ends while the program runs, nothing signals the program: pkexec's parent-death signal is
-/// cleared when it switches to root. Standard input reaches its end instead (see <see cref="WatchStandardInput"/>),
+/// cleared when it switches to root. Standard input reaches its end instead (see <see cref="WatchCancellation"/>),
 /// and nothing reads standard output and error any more: .NET's console drops writes silently, while the tools the
 /// program starts get write errors (EPIPE) or, when they handle SIGPIPE by default, are killed. A step that must
 /// finish should not depend on either: redirect the output of the tools it starts, or run them in their own systemd
@@ -130,12 +130,13 @@ public static partial class PolkitHelper
     }
 
     /// <summary>
-    /// A token that is cancelled when standard input reaches its end. The application closes it to ask a running
-    /// action to stop, because it cannot signal a process that runs as root, and it also ends when the application
-    /// dies.
+    /// A token that is cancelled when the application asks the action to stop, or dies: the same contract as
+    /// <c>ElevatedHelper.WatchCancellation</c> on Windows.
     /// </summary>
-    /// <remarks>The first call starts a background thread that reads and discards standard input.</remarks>
-    public static CancellationToken WatchStandardInput() => s_standardInputClosed.Value;
+    /// <remarks>The application closes the program's standard input to ask it to stop, because it cannot signal a
+    /// process that runs as root, so the token is cancelled when standard input reaches its end. The first call starts a
+    /// background thread that reads and discards standard input.</remarks>
+    public static CancellationToken WatchCancellation() => s_standardInputClosed.Value;
 
     private static CancellationToken WatchStandardInputCore()
     {

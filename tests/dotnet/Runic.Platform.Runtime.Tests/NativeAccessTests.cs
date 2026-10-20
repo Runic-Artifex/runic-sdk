@@ -21,7 +21,7 @@ internal sealed class NativeAccessTests
             Check(access.Releases == 1, "Failed native acquisition leaked access.");
             access = new Access();
             selected.Result = new(Path.Combine(directory, "missing.txt"), access, false);
-            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IoError },
+            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IOError },
                 "A file removed after selection must produce a stable failure.");
             Check(access.Releases == 1, "Disappeared selection leaked access.");
             if (!OperatingSystem.IsWindows())
@@ -31,7 +31,7 @@ internal sealed class NativeAccessTests
                 using (var mkfifo = System.Diagnostics.Process.Start("mkfifo", [fifo])) await mkfifo.WaitForExitAsync();
                 access = new Access();
                 selected.Result = new(fifo, access, false);
-                Check(await backend.OpenFileAsync(new()).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IoError },
+                Check(await backend.OpenFileAsync(new()).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IOError },
                     "A special file must be refused without blocking.");
                 Check(access.Releases == 1, "Refused special file leaked access.");
                 File.Delete(fifo);
@@ -80,7 +80,7 @@ internal sealed class NativeAccessTests
         finally { Directory.Delete(directory, recursive: true); }
     }
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
-    private sealed class TestOwner : INativePickerOwner
+    private sealed class TestOwner : INativeWindowOwner
     {
         public Guid Generation { get; set; } = Guid.NewGuid();
         public bool IsAvailable => true;
@@ -88,8 +88,8 @@ internal sealed class NativeAccessTests
     }
     private sealed class CallbackSelection(Func<NativeFileSelection?> select) : INativeFilePicker
     {
-        public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
-            => ValueTask.FromResult(select());
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
+            => ValueTask.FromResult<IReadOnlyList<NativeFileSelection>?>(select() is { } selection ? [selection] : null);
     }
     private sealed class Access : IAsyncDisposable
     {
@@ -100,7 +100,7 @@ internal sealed class NativeAccessTests
     {
         internal NativeFileSelection Result = result;
         internal bool Unavailable;
-        public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
-            => Unavailable ? ValueTask.FromException<NativeFileSelection?>(new NativeBackendUnavailableException()) : ValueTask.FromResult<NativeFileSelection?>(Result);
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
+            => Unavailable ? ValueTask.FromException<IReadOnlyList<NativeFileSelection>?>(new NativeBackendUnavailableException()) : ValueTask.FromResult<IReadOnlyList<NativeFileSelection>?>([Result]);
     }
 }

@@ -79,7 +79,7 @@ public static class PortalPlatformProvider
                 0 => new PlatformResult<PlatformUnit>.Success(new PlatformUnit()),
                 // The user cancelled the portal's application chooser.
                 1 => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed, response.Diagnostic),
-                _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, response.Diagnostic),
+                _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, response.Diagnostic),
             };
         }
         catch (OwnerClosedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
@@ -107,7 +107,8 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     // staging name into a private host tempfile and renames it onto the document.
     // A read-only or revoked grant is reported per save, not as a capability.
     public bool SupportsAtomicReplace => true;
-    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) =>
+    // Shorthands for the tests.
+    internal ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) =>
         SelectDirectoryAsync(null, cancellationToken);
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
@@ -166,7 +167,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     }
     public bool SupportsMultipleSelection => true;
 
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
+    internal async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
         (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
 
     public async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)

@@ -9,7 +9,7 @@ internal static partial class FileTransferNative
 {
     internal enum RenameStatus { Done, Exists, CrossDevice, Failed }
 
-    internal readonly record struct RenameResult(RenameStatus Status, PlatformFailureCode Code = PlatformFailureCode.IoError, PlatformDiagnostic? Diagnostic = null);
+    internal readonly record struct RenameResult(RenameStatus Status, PlatformFailureCode Code = PlatformFailureCode.Other, PlatformDiagnostic? Diagnostic = null);
 
     // Renames source to target, never replacing an existing target: Exists. Another file system or volume is
     // CrossDevice; nothing is copied.
@@ -59,7 +59,9 @@ internal static partial class FileTransferNative
         1 or 13 or 30 => PlatformFailureCode.PermissionDenied,      // EPERM, EACCES, EROFS
         16 or 26 => PlatformFailureCode.ResourceBusy,               // EBUSY, ETXTBSY
         22 => PlatformFailureCode.InvalidData,                      // EINVAL: a directory into itself
-        _ => PlatformFailureCode.IoError,
+        5 or 28 => PlatformFailureCode.IOError,                     // EIO, ENOSPC
+        _ when error == (OperatingSystem.IsMacOS() ? 69 : 122) => PlatformFailureCode.IOError, // EDQUOT
+        _ => PlatformFailureCode.Other,
     };
 
     private static RenameResult RenameWindows(string source, string target)
@@ -80,7 +82,9 @@ internal static partial class FileTransferNative
         2 or 3 => PlatformFailureCode.NotFound,                     // ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
         5 or 19 => PlatformFailureCode.PermissionDenied,            // ERROR_ACCESS_DENIED, ERROR_WRITE_PROTECT
         32 or 33 => PlatformFailureCode.ResourceBusy,               // ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION
-        _ => PlatformFailureCode.IoError,
+        // ERROR_HANDLE_DISK_FULL, ERROR_DISK_FULL, ERROR_DISK_QUOTA_EXCEEDED, ERROR_WRITE_FAULT, ERROR_READ_FAULT, ERROR_CRC, ERROR_IO_DEVICE.
+        39 or 112 or 1295 or 29 or 30 or 23 or 1117 => PlatformFailureCode.IOError,
+        _ => PlatformFailureCode.Other,
     };
 
     // Whether an entry, a dangling link included, exists at the path.

@@ -63,7 +63,7 @@ internal sealed class DesktopApplicationsTests
         string[] expected = ["dbus.desktop", "editor.desktop", "kde4-okular.desktop", "shadowed.desktop", "tryexec-present.desktop"];
         Check(gnome.Select(static app => app.Id).Order(StringComparer.Ordinal).SequenceEqual(expected), $"shown in GNOME: {string.Join(", ", gnome.Select(static app => app.Id))}");
         var editor = gnome.Single(static app => app.Id == "editor.desktop");
-        Check(editor is { Name: "Bearbeiter", Description: "Edits text", IconName: "accessories-text-editor", Hidden: false }
+        Check(editor is { Name: "Bearbeiter", Description: "Edits text", IconName: "accessories-text-editor", IsHidden: false }
             && editor.ContentTypes.SequenceEqual(["text/plain", "text/x-csrc"]), "localized name, comment, icon and canonical content types");
         Check(gnome.Single(static app => app.Id == "shadowed.desktop").Name == "User copy", "XDG_DATA_HOME shadows XDG_DATA_DIRS");
         Check(gnome.Select(static app => app.Name).SequenceEqual(gnome.Select(static app => app.Name).Order(StringComparer.CurrentCultureIgnoreCase)), "sorted by name");
@@ -210,7 +210,7 @@ internal sealed class DesktopApplicationsTests
         string link = Path.Combine(fixture.Root, "files", "link");
         File.CreateSymbolicLink(link, Path.Combine(fixture.Root, "files", "image"));
         Check(await TypeAsync(applications, link) == "image/png", "a link is classified by its target");
-        Check(await applications.GetContentTypeAsync(Path.Combine(fixture.Root, "missing")) is PlatformResult<DesktopContentType>.Failed { Code: PlatformFailureCode.IoError, Diagnostic: { Domain: "errno", Code: 2 } },
+        Check(await applications.GetContentTypeAsync(Path.Combine(fixture.Root, "missing")) is PlatformResult<DesktopContentType>.Failed { Code: PlatformFailureCode.IOError, Diagnostic: { Domain: "errno", Code: 2 } },
             "a missing file is an I/O error with ENOENT");
 
         if (Environment.UserName != "root")
@@ -305,7 +305,7 @@ internal sealed class DesktopApplicationsTests
         Check((await HandlersAsync(plain, "image/png")).SequenceEqual(["viewer.desktop", "editor.desktop", "kde4-okular.desktop", "hexed.desktop"]),
             $"added associations before the directory's entries: {string.Join(", ", await HandlersAsync(plain, "image/png"))}");
         Check(await plain.GetApplicationsForAsync("text/plain") is PlatformResult<ImmutableArray<DesktopApplicationInfo>>.Success(var list)
-            && list.Single(static app => app.Id == "handler.desktop").Hidden, "a NoDisplay handler is listed as hidden");
+            && list.Single(static app => app.Id == "handler.desktop").IsHidden, "a NoDisplay handler is listed as hidden");
         Check(await plain.GetApplicationsForAsync("not a type") is PlatformResult<ImmutableArray<DesktopApplicationInfo>>.Failed { Code: PlatformFailureCode.InvalidData }
             && await plain.GetDefaultApplicationAsync("text/") is PlatformResult<DesktopApplicationInfo?>.Failed { Code: PlatformFailureCode.InvalidData },
             "malformed MIME types are invalid data");
@@ -482,8 +482,8 @@ internal sealed class DesktopApplicationsTests
         Check(await applications.LaunchAsync("terminal.desktop", []) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
             && diagnostics.Any(static d => d.Code == "desktop-application-terminal"), "terminal applications are unavailable");
         Check(await applications.LaunchAsync("broken.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData }, "malformed Exec");
-        Check(await applications.LaunchAsync("missing-program.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Code: 2 }, "missing program");
-        Check(await applications.LaunchAsync("bad-path.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "missing working directory");
+        Check(await applications.LaunchAsync("missing-program.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IOError, Diagnostic.Code: 2 }, "missing program");
+        Check(await applications.LaunchAsync("bad-path.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IOError }, "missing working directory");
         foreach (var id in (string[])["unknown.desktop", many, "many", "../share/applications/many.desktop", Environment.ProcessPath!])
             Check(await applications.LaunchAsync(id, []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData }, $"'{id}' is not an installed desktop ID");
         Check((await LaunchProbe.WaitAsync(output, 0)).Count == 0, "no rejected launch started a process");
@@ -529,9 +529,9 @@ internal sealed class DesktopApplicationsTests
         Check(await applications.LaunchAsync("org.runic.Test-App.desktop", []) is PlatformResult<PlatformUnit>.Success
             && application.Calls.Count == 2 && application.Calls[1] is ("Activate", []), $"Activate without items: {application}");
         application.Fail = true;
-        Check(await applications.LaunchAsync("org.runic.Test-App.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "org.runic.Error.Failed" }
+        Check(await applications.LaunchAsync("org.runic.Test-App.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "org.runic.Error.Failed" }
             && diagnostics.Any(static d => d.Code == "desktop-application-activation-failed"), "a D-Bus error is an I/O failure that names it");
-        Check(await applications.LaunchAsync("org.runic.Absent.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "org.freedesktop.DBus.Error.ServiceUnknown" },
+        Check(await applications.LaunchAsync("org.runic.Absent.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "org.freedesktop.DBus.Error.ServiceUnknown" },
             "an application that is not on the bus");
         Check(await applications.LaunchAsync("not-a-bus-name.desktop", []) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData },
             "an ID that is not a bus name");

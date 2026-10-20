@@ -156,7 +156,7 @@ public static partial class PlatformServices
         else if (OperatingSystem.IsLinux()) icon = CreatePortalStatusIcon(applicationId, logger);
         else if (OperatingSystem.IsMacOS()) icon = CreateMacOSStatusIcon();
 #endif
-        return icon ?? DesktopStatusIcons.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        return icon ?? DesktopStatusIcon.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
 #if RUNIC_PORTABLE_PLATFORMS
@@ -270,7 +270,7 @@ public static partial class PlatformServices
 #if RUNIC_PORTABLE_PLATFORMS
         if (OperatingSystem.IsMacOS()) return CreateMacOSOpenRequests(options, instance, launch);
 #endif
-        return ApplicationInstance.CreateOpenRequests(instance, launch ?? new ApplicationLaunch([], Environment.CurrentDirectory), options);
+        return ApplicationInstance.CreateOpenRequests(options, instance, launch);
     }
 
 #if RUNIC_PORTABLE_PLATFORMS

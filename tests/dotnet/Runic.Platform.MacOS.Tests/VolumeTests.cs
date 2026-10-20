@@ -64,7 +64,7 @@ internal sealed partial class VolumeTests
         Check(MacVolumeSource.Result<PlatformUnit>(unchecked((int)0xF8DA000C), false) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "unsupported");
         Check(MacVolumeSource.Result<PlatformUnit>(unchecked((int)0xF8DA0007), false) is PlatformResult<PlatformUnit>.Success, "an unmount of a volume that is not mounted");
         Check(MacVolumeSource.Result<string?>(unchecked((int)0xF8DA0007), true) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Conflict }, "a mount that finds nothing mounted");
-        Check(MacVolumeSource.Result<PlatformUnit>(unchecked((int)0xF8DA0001), false) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "other errors");
+        Check(MacVolumeSource.Result<PlatformUnit>(unchecked((int)0xF8DA0001), false) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "other errors");
 #pragma warning restore CA1416
     }
 

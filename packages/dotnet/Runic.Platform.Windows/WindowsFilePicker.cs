@@ -11,23 +11,18 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // Generated unmanaged Common Item Dialog bindings preserve NativeAOT support.
-internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INativeFilePicker, INativeDirectoryPicker
+internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public bool SupportsMultipleSelection => true;
 
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
-        (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
-
     public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         return SelectCoreAsync(request, false, cancellationToken);
     }
-
-    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) => SelectDirectoryAsync(null, cancellationToken);
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
     {

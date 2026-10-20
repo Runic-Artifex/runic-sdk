@@ -125,7 +125,7 @@ switch (result)
 | The user dismissed the authentication dialog | `Failed(UserDismissed)`, diagnostic `pkexec 126` |
 | No polkitd, no authentication agent, no setuid pkexec, not Linux | `Unavailable(BackendUnavailable)` |
 | The program is missing, behind a symbolic link, or replaceable by other users | `Failed(InvalidData)`; pkexec is not started |
-| Another pkexec failure | `Failed(IoError)`, diagnostic `pkexec 127` |
+| Another pkexec failure | `Failed(Other)`, diagnostic `pkexec 127` |
 
 A request whose action the provider was not created with, or whose arguments are
 outside the declaration, throws `ArgumentException` before anything runs. Check
@@ -175,7 +175,7 @@ check only catches mistakes early.
 if (PolkitHelper.Match(PrivilegedActions.All, args, out var arguments) is not { } action)
     return 2;
 var caller = PolkitHelper.GetCallerUserId();
-var stop = PolkitHelper.WatchStandardInput(); // cancelled when the application cancels or dies
+var stop = PolkitHelper.WatchCancellation(); // cancelled when the application cancels or dies
 // Then check positions and meaning yourself: resolve each path with realpath(3), check the resolved
 // path (a NixOS system with bin/switch-to-configuration) and use only the resolved path from then on.
 ```
@@ -213,7 +213,7 @@ var stop = PolkitHelper.WatchStandardInput(); // cancelled when the application 
   authorization.
 - When the application dies, nothing signals the program: the kernel clears
   pkexec's parent-death signal when pkexec becomes root. Standard input reaches
-  its end, so a program using `WatchStandardInput` stops, and one that ignores
+  its end, so a program using `WatchCancellation` stops, and one that ignores
   its input runs on. Its own writes to standard output go nowhere (.NET's
   console drops them), and the tools it starts get write errors or SIGPIPE. Run
   steps that must finish, such as `switch-to-configuration`, with redirected

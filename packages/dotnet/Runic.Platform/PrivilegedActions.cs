@@ -332,6 +332,7 @@ public sealed record PrivilegedActionRequest(PrivilegedActionDeclaration Action,
 }
 
 /// <summary>The output stream a line came from.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum PrivilegedOutputChannel
 {
     /// <summary>Standard output.</summary>

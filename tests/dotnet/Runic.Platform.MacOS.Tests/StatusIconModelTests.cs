@@ -45,13 +45,13 @@ internal sealed class StatusIconModelTests
         var menu = MacStatusMenu.Build(
         [
             new DesktopMenuCommand("open", "Open window"),
-            new DesktopMenuCommand("daily", "Check daily") { Checked = true },
+            new DesktopMenuCommand("daily", "Check daily") { IsChecked = true },
             new DesktopMenuSeparator(),
             new DesktopMenuSubmenu("More",
             [
-                new DesktopMenuCommand("attention", "Ask for attention") { Checked = false },
-                new DesktopMenuCommand("disabled", "Unavailable") { Enabled = false },
-            ]) { Enabled = false },
+                new DesktopMenuCommand("attention", "Ask for attention") { IsChecked = false },
+                new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false },
+            ]) { IsEnabled = false },
             new DesktopMenuCommand("quit", "Quit_now"),
         ]);
         Check(menu.Commands.SequenceEqual(["open", "daily", "attention", "disabled", "quit"]), string.Join(",", menu.Commands));
@@ -103,7 +103,7 @@ internal sealed class StatusIconModelTests
         Check(MacStatusIconModel.IsMonochrome(faint), "Nearly transparent colour is ignored.");
         Check(MacStatusIconModel.IsTemplate(new DesktopIcon { Images = [black, Image(8, 8, 0, 0, 0, 255)] }), "All monochrome: template.");
         Check(!MacStatusIconModel.IsTemplate(new DesktopIcon { Images = [black, Image(8, 8, 200, 0, 0, 255)] }), "One colour image: no template.");
-        Check(!MacStatusIconModel.IsTemplate(new DesktopIcon { ThemeName = "applications-system" }), "No images: no template.");
+        Check(!MacStatusIconModel.IsTemplate(new DesktopIcon { IconName = "applications-system" }), "No images: no template.");
     }
 
     [Test]
@@ -169,19 +169,19 @@ internal sealed class StatusIconModelTests
         var unsigned = MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, new(Domain, MacLoginStartupModel.ErrorInvalidSignature));
         Check(unsigned is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic: { Code: 3, Message: { } signature } }
             && signature.Contains("sign", StringComparison.Ordinal), $"{unsigned}");
-        Check(Outcome(new("NSCocoaErrorDomain", 11)) is (PlatformFailureCode.IoError, 11), "Code 11 of another domain is no denial.");
-        Check(Outcome(new(Domain, 22)) is (PlatformFailureCode.IoError, 22), "Other errors.");
+        Check(Outcome(new("NSCocoaErrorDomain", 11)) is (PlatformFailureCode.Other, 11), "Code 11 of another domain is no denial.");
+        Check(Outcome(new(Domain, 22)) is (PlatformFailureCode.Other, 22), "Other errors.");
         // A call that succeeded without changing the status says so, and is no denial.
         var unchanged = MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, null);
-        Check(unchanged is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic: { Domain: "SMAppServiceStatus", Message: { } text } }
+        Check(unchanged is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic: { Domain: "SMAppServiceStatus", Message: { } text } }
             && text.Contains("did not change", StringComparison.Ordinal), $"{unchanged}");
         Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, new(Domain, MacLoginStartupModel.ErrorAlreadyRegistered))
-            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "SMAppServiceStatus" }, "Already registered but not enabled.");
+            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "SMAppServiceStatus" }, "Already registered but not enabled.");
         Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusNotFound, new(Domain, 113)) is PlatformResult<PlatformUnit>.Success, "Gone is gone.");
         Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusEnabled, new(Domain, 1))
             is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "Still registered.");
         Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusEnabled, null)
-            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Message: { } } , "Removal accepted, still registered.");
+            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Message: { } } , "Removal accepted, still registered.");
     }
 
     private static (PlatformFailureCode, long)? Outcome(PlatformDiagnostic error) =>

@@ -92,7 +92,7 @@ public static class WindowsPlatformProvider
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsStatusIcon(); }
 
     // Restores and raises an owned window, or flashes its taskbar button; used by PlatformServices.PresentAsync.
-    internal static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativePickerOwner owner, CancellationToken cancellationToken)
+    internal static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativeWindowOwner owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
@@ -100,18 +100,18 @@ public static class WindowsPlatformProvider
     }
 
     /// <summary>Creates owned shell handoff operations: files, and http, https and mailto URIs through the shell's URL association.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
+    public static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }
 
     /// <summary>Creates owned native file dialogs. The owner must dispatch on its Windows STA.</summary>
-    public static IPickerBackend CreateFileDialogs(INativePickerOwner owner)
+    public static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new NativePickerBackend(owner, new WindowsFilePicker(owner));
     }
 
     /// <summary>Creates native Unicode text clipboard services for a verified presentation owner.</summary>
-    public static ITextClipboard CreateTextClipboard(INativePickerOwner owner)
+    public static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new WindowsTextClipboard(owner, new Win32Clipboard());

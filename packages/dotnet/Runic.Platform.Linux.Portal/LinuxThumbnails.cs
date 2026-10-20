@@ -120,7 +120,7 @@ internal sealed class LinuxThumbnails(LinuxThumbnailOptions options, PortalAppli
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         { return new PlatformResult<FileStamp?>.Failed(PlatformFailureCode.NotFound, PlatformDiagnostic.FromErrno(2)); }
         catch (UnauthorizedAccessException) { return new PlatformResult<FileStamp?>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromErrno(13)); }
-        catch (IOException error) { return new PlatformResult<FileStamp?>.Failed(PlatformFailureCode.IoError, LinuxDesktopApplications.Errno(error)); }
+        catch (IOException error) { return new PlatformResult<FileStamp?>.Failed(PlatformFailureCode.IOError, LinuxDesktopApplications.Errno(error)); }
     }
 
     private static PlatformResult<DesktopThumbnail?> Forward(PlatformResult<FileStamp?> result) => result switch

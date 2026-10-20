@@ -353,7 +353,7 @@ internal sealed class WindowServiceChecks
                     "A platform without a status icon provider did not report it unconfigured.");
         }
 
-        await using var custom = DesktopStatusIcons.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var custom = DesktopStatusIcon.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
         Require(ReferenceEquals(kept.GetRequiredService<IDesktopStatusIcon>(), custom),
             "AddRunicPlatformServices replaced the application's status icon.");
@@ -399,7 +399,7 @@ internal sealed class WindowServiceChecks
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];
-        Type[] notServices = [typeof(IPlatformCapabilities), typeof(IUiDispatcher), typeof(IDirectoryLease), typeof(IReadFileLease),
+        Type[] notServices = [typeof(IPlatformCapabilities), typeof(IDirectoryLease), typeof(IReadFileLease),
             typeof(IReadFileLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
             typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply)];
         var contracts = typeof(IFileDialogs).Assembly.GetExportedTypes().Where(static type => type.IsInterface).ToHashSet();

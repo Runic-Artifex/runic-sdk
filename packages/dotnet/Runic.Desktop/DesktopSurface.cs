@@ -805,11 +805,11 @@ public sealed class DesktopWindow : IAsyncDisposable
 
     /// <summary>Runs native work on this owner's thread. Cancellation prevents queued work;
     /// a running callback is awaited to completion. No native handle may outlive this window.</summary>
-    public ValueTask DispatchNativeAsync(Action<nint> action, CancellationToken cancellationToken = default)
+    public ValueTask InvokeNativeAsync(Action<nint> action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
         if (!SupportsNativeDispatch) throw new NotSupportedException("The presentation has no native dispatcher.");
-        return _engine.DispatchNativeAsync(() =>
+        return _engine.InvokeNativeAsync(() =>
         {
             ObjectDisposedException.ThrowIf(!IsOpen || NativeHandle == 0, this);
             action(NativeHandle);

@@ -9,7 +9,7 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-internal sealed class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
+internal sealed class WindowsFileLauncher(INativeWindowOwner owner) : IDesktopFileLauncher
 {
     private readonly WindowsUriLauncher _uris = new(owner);
 
@@ -52,7 +52,7 @@ internal sealed class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFi
                         // legacy status code as a module handle and free it.
                         nint status = PInvoke.ShellExecute(hwnd, verb, file, null, null, SHOW_WINDOW_CMD.SW_SHOWNORMAL);
                         return status > 32 ? Success() : new PlatformResult<PlatformUnit>.Failed(
-                            status == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                            status == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                             new PlatformDiagnostic("ShellExecute", status));
                     }
                 }
@@ -104,6 +104,6 @@ internal sealed class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFi
         {
             unchecked((int)0x800704C7) => PlatformFailureCode.UserDismissed,
             unchecked((int)0x80070005) => PlatformFailureCode.PermissionDenied,
-            _ => PlatformFailureCode.IoError
+            _ => PlatformFailureCode.Other
         }, PlatformDiagnostic.FromHResult(result));
 }

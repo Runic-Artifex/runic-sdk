@@ -7,7 +7,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Linux.Gtk4;
 
 /// <summary>GTK 4 clipboard operations confined to a verified presentation dispatcher.</summary>
-internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITextClipboard, IAsyncDisposable
+internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : ITextClipboard, IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Ownership? _ownership;
@@ -239,7 +239,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                 // GDK reports an empty or non-text clipboard as an unavailable format.
                 request.Result.TrySetResult(IsMissingFormat(error)
                     ? new PlatformResult<string?>.Success(null)
-                    : new PlatformResult<string?>.Failed(PlatformFailureCode.IoError, Diagnostic(error)));
+                    : new PlatformResult<string?>.Failed(PlatformFailureCode.Other, Diagnostic(error)));
                 return;
             }
             if (text == 0)
@@ -262,7 +262,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
         }
         catch
         {
-            request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError));
+            request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.Other));
         }
         finally
         {

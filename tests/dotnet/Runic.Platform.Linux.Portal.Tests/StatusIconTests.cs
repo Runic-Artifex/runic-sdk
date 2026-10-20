@@ -11,24 +11,24 @@ internal sealed class StatusIconTests
     private static readonly int[] RootMenu = [0];
 
     private static DesktopStatusIconState State(DesktopStatusIconStatus status = DesktopStatusIconStatus.Active) =>
-        new(new DesktopIcon { ThemeName = "system-software-update", Images = [new DesktopIconImage(1, 1, [0x10, 0x20, 0x30, 0x40])] }, "Nix Manager")
+        new(new DesktopIcon { IconName = "system-software-update", Images = [new DesktopIconImage(1, 1, [0x10, 0x20, 0x30, 0x40])] }, "Nix Manager")
         {
             Status = status,
             Tooltip = "2 updates",
-            AttentionIcon = new DesktopIcon { ThemeName = "software-update-available" },
+            AttentionIcon = new DesktopIcon { IconName = "software-update-available" },
             Menu =
             [
                 new DesktopMenuCommand("open", "Open_dashboard"),
                 new DesktopMenuSeparator(),
-                new DesktopMenuCommand("check", "Check daily") { Checked = true },
-                new DesktopMenuSubmenu("More", [new DesktopMenuCommand("disabled", "Unavailable") { Enabled = false }]),
+                new DesktopMenuCommand("check", "Check daily") { IsChecked = true },
+                new DesktopMenuSubmenu("More", [new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false }]),
             ],
         };
 
     [Test, DisplayName("an unavailable status icon reports every request unavailable")]
     public async Task UnavailableAsync()
     {
-        await using var icon = DesktopStatusIcons.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var icon = DesktopStatusIcon.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "show unavailable");
         Check(await icon.HideAsync() is PlatformResult<PlatformUnit>.Unavailable, "hide unavailable");
     }
@@ -139,7 +139,7 @@ internal sealed class StatusIconTests
             static (message, _) => message.GetBodyReader().ReadUInt32(), notification => { if (notification.HasValue) layout.TrySetResult(notification.Value); },
             emitOnCapturedContext: false, flags: ObserverFlags.EmitAll);
         Check(await icon.ShowAsync(State(DesktopStatusIconStatus.NeedsAttention) with
-        { Menu = [new DesktopMenuCommand("quit", "Quit"), new DesktopMenuCommand("check", "Check daily") { Checked = false }] }) is PlatformResult<PlatformUnit>.Success, "update");
+        { Menu = [new DesktopMenuCommand("quit", "Quit"), new DesktopMenuCommand("check", "Check daily") { IsChecked = false }] }) is PlatformResult<PlatformUnit>.Success, "update");
         Check(await status.Task.WaitAsync(Wait) == "NeedsAttention", "NewStatus carries the status");
         Check(await layout.Task.WaitAsync(Wait) > revision, "LayoutUpdated carries a newer revision");
         var (_, updated) = await Layout(host, item);

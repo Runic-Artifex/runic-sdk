@@ -1,7 +1,7 @@
 namespace Runic.Platform.Runtime;
 
 /// <summary>Shared validation for native inhibition requests.</summary>
-public static class InhibitionValidation
+internal static class InhibitionValidation
 {
     /// <summary>Validates flags and a bounded user-visible reason before touching native state.</summary>
     public static void Validate(DesktopInhibitionEffects effects, string reason)

@@ -74,8 +74,8 @@ internal sealed class PrivilegedModelTests
     [Arguments(-60006, "Failed:UserDismissed")]
     [Arguments(-60005, "Failed:PermissionDenied")]
     [Arguments(-60007, "Unavailable:BackendUnavailable")]
-    [Arguments(-60008, "Failed:IoError")]
-    [Arguments(-60002, "Failed:IoError")]
+    [Arguments(-60008, "Failed:Other")]
+    [Arguments(-60002, "Failed:Other")]
     public void AuthorizationOutcomes(int status, string expected)
     {
         var result = MacPrivilegedOutcome.FromAuthorization(status);
@@ -95,9 +95,9 @@ internal sealed class PrivilegedModelTests
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Rejected))) == "Failed:InvalidData", "rejected");
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.UntrustedDaemon))) == "Failed:InvalidData", "untrusted daemon");
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Unreachable))) == "Unavailable:BackendUnavailable", "no daemon");
-        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Interrupted))) == "Failed:IoError", "broken connection");
-        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Failed, 2))) == "Failed:IoError", "spawn failure");
-        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Invalid))) == "Failed:IoError", "unknown reply");
+        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Interrupted))) == "Failed:IOError", "broken connection");
+        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Failed, 2))) == "Failed:Other", "spawn failure");
+        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Invalid))) == "Failed:Other", "unknown reply");
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Busy))) == "Failed:ResourceBusy", "too many runs");
         foreach (var code in new[] { 8L, 9L, 10L })
             Check(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Untrusted, code)) is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData } failed && failed.Diagnostic!.Code == code, $"program code {code}");
@@ -318,7 +318,7 @@ internal sealed class PrivilegedModelTests
         host.Channel.PrepareReply = new(MacReplyStatus.Interrupted);
         Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Unavailable:BackendUnavailable", "a daemon that refused or left before anything ran");
         host.Channel.PrepareReply = new(MacReplyStatus.Failed, -60005);
-        Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Failed:IoError", "the rights could not be defined");
+        Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Failed:Other", "the rights could not be defined");
         Check(host.Authorizations == 0 && host.Channel.Disposals == 4, "never asked; every connection closed");
     }
 

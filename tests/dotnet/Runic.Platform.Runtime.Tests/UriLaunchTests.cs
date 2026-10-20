@@ -92,7 +92,7 @@ internal sealed class UriLaunchTests
             "unavailable services report their reason");
     }
 
-    private sealed class CountingOwner : INativePickerOwner
+    private sealed class CountingOwner : INativeWindowOwner
     {
         internal int Dispatches;
         public Guid Generation { get; } = Guid.NewGuid();

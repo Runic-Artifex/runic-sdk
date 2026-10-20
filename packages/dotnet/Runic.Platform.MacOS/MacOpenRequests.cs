@@ -102,7 +102,7 @@ internal static partial class MacOpenEvents
             var direct = Arg(appleEvent, Sel("paramDescriptorForKeyword:"), (nint)DirectObject);
             if (direct == 0) return;
             var items = ImmutableArray.CreateBuilder<Uri>();
-            if (eventClass == CoreEventClass && eventId == OpenDocuments && options.Files)
+            if (eventClass == CoreEventClass && eventId == OpenDocuments && options.IncludeFiles)
             {
                 // A list of file references; a single file may arrive as one descriptor rather than a list of one.
                 long count = Send(direct, Sel("numberOfItems"));

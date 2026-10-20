@@ -235,7 +235,7 @@ internal sealed partial class TrashTests
         }
 
         portal.Result = 0;
-        Check(await trash.MoveToTrashAsync(item).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "refused");
+        Check(await trash.MoveToTrashAsync(item).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "refused");
         Check(await trash.MoveToTrashAsync(Path.Combine(scratch.Root, "missing")).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound },
             "a missing item is not sent");
 

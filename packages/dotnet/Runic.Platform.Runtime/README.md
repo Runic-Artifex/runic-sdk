@@ -1,22 +1,43 @@
 # Runic.Platform.Runtime
 
-Shared scoped lifetime, file leases, atomic writes and native provider infrastructure.
+Single instance, requests to open files and URLs, and file transfers for Runic applications, and the contract for native platform providers.
 
 Preview API targeting .NET 10. Native providers are explicitly selected; this package has no Desktop or ASP.NET Core dependency.
 
-## Native file pickers
+The package has two audiences:
 
-`NativePickerBackend` turns an `INativeFilePicker` into `IFileDialogs`. It passes
-each dialog's filters, initial folder and multiplicity as a `NativeFileDialogRequest`
-to `INativeFilePicker.SelectAsync(request, cancellationToken)`, and the initial
-folder of a directory dialog to `INativeDirectoryPicker.SelectDirectoryAsync(initialDirectory, cancellationToken)`.
-Both have default implementations that call the original single-file methods and
-ignore the hints, so a picker written before them keeps working. A picker that
-returns more than one selection also returns `true` from
-`SupportsMultipleSelection`; otherwise `OpenFilesAsync` reports
-`Unavailable(BackendUnavailable)` without showing a dialog. The backend releases
-the access of every selection it does not hand to a lease, including after a
-failure or cancellation.
+- **Applications** use the [single instance](#single-instance-and-replies-to-later-launches)
+  (`ApplicationInstance.ClaimAsync`, `ApplicationInstanceOptions`), the
+  [requests to open files and URLs](#opening-files-and-urls)
+  (`ApplicationInstance.CreateOpenRequests`) and the managed
+  [file transfers](#file-transfers) (`LocalFileTransfers.Create()`). They need no
+  window and no Desktop host.
+- **Hosts and native providers** implement the [provider contract](#provider-contract).
+
+The presentation lifetime, the argument checks the providers share and the
+settings base class are internal to Runic's own providers and hosts.
+
+## Provider contract
+
+A host gives each window an `INativeWindowOwner`: the window's generation, whether it
+is still available, and `InvokeAsync(Action<nint>)`, which runs a callback on the
+window's native thread with its handle (an `HWND`, an `NSWindow*` or a `GtkWindow*`).
+The handle must not escape the callback. Once the window has closed, `InvokeAsync`
+throws `OwnerClosedException`.
+
+A file-dialog provider is an `IPickerBackend`. `NativePickerBackend` turns an
+`INativeFilePicker` into one: it passes each dialog's filters, initial folder and
+multiplicity as a `NativeFileDialogRequest` to
+`INativeFilePicker.SelectAsync(request, cancellationToken)`, and the initial folder
+of a directory dialog to
+`INativeDirectoryPicker.SelectDirectoryAsync(initialDirectory, cancellationToken)`.
+A picker that cannot show a dialog throws `NativeBackendUnavailableException`, which
+the backend reports as `Unavailable(BackendUnavailable)`. A picker that returns more
+than one selection also returns `true` from `SupportsMultipleSelection`; otherwise
+`OpenFilesAsync` reports `Unavailable(BackendUnavailable)` without showing a dialog.
+The backend releases the access of every selection it does not hand to a lease,
+including after a failure or cancellation, and reports the native error of a failed
+selection or commit in the `Diagnostic` of the result.
 
 ## Single instance and replies to later launches
 
@@ -69,7 +90,7 @@ instance.Launched += (_, launch) => _ = Task.Run(async () =>
   not buffered in memory. Pass a token to `WriteAsync` to bound the wait; a write
   cancelled that way ends the reply.
 - When the running instance ends or crashes before the exit status, the
-  messages end and `WaitForExitAsync` reports `Failed(IoError)`.
+  messages end and `WaitForExitAsync` reports `Failed(IOError)`.
 - With `ApplicationInstanceOptions.ForwardOnly`, the process never becomes the
   running instance: a command line that talks to a running daemon gets
   `ApplicationInstanceClaim.Forwarded`, or `ApplicationInstanceClaim.NotRunning`
@@ -96,10 +117,10 @@ instance.Launched += (_, launch) => _ = Task.Run(async () =>
 
 ## Opening files and URLs
 
-`ApplicationInstance.CreateOpenRequests(instance, launch, options)` turns this
-launch and each later launch into `IDesktopOpenRequests.Opened` requests: the
-arguments that are URLs with a registered scheme and, with `Files`, existing
-files. Linux desktop entries (`Exec=app %U`) and Windows registrations
+`ApplicationInstance.CreateOpenRequests(options, instance, launch)` turns this
+launch (by default none) and each later launch of `instance` into
+`IDesktopOpenRequests.Opened` requests: the arguments that are URLs with a
+registered scheme and, with `IncludeFiles`, existing files. Linux desktop entries (`Exec=app %U`) and Windows registrations
 (`"app.exe" "%1"`) pass them that way. The instance's own `Launched` handlers
 still receive every launch. See the
 [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).

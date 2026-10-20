@@ -35,7 +35,7 @@ public sealed record DesktopApplicationInfo(string Id, string Name)
     public string? Description { get; init; }
     public string? IconName { get; init; }
     public ImmutableArray<string> ContentTypes { get; init; }
-    public bool Hidden { get; init; }
+    public bool IsHidden { get; init; }
 }
 public sealed record DesktopIconData(string MediaType, ImmutableArray<byte> Data, int Size);
 public sealed record DesktopIconRequest
@@ -97,14 +97,14 @@ public static IDesktopApplications PlatformServices.CreateApplications();
 | Situation | Result |
 | --- | --- |
 | Done | `Success`; a lookup with no answer is a successful empty list or `null` |
-| A missing file, for `NameAndContent` | `Failed(IoError)` with `errno` 2 |
+| A missing file, for `NameAndContent` | `Failed(IOError)` with `errno` 2 |
 | An unreadable file, or an unwritable `mimeapps.list` | `Failed(PermissionDenied)` |
 | A malformed content type, an application that is not installed or not associated with the type, or an item the application cannot take | `Failed(InvalidData)`, nothing changes |
 | An icon file over 4 MiB | `Failed(TooLarge)` |
 | A terminal application (Linux), or the host's applications from a sandbox | `Unavailable(BackendUnavailable)` |
 | `SetDefaultApplicationAsync` on Windows, for an application that opens the type | `Failed(PermissionDenied)`; the diagnostic points to `ms-settings:defaultapps` |
 | The user declines a default change macOS asks about | `Failed(UserDismissed)` |
-| A failed start or D-Bus activation | `Failed(IoError)` or `Failed(PermissionDenied)` with the `errno` or the D-Bus error name |
+| A failed start or D-Bus activation | `Failed(Other)` or `Failed(PermissionDenied)` with the `errno` or the D-Bus error name; a program or working directory that does not exist (Linux) is `Failed(IOError)` with `errno` 2 |
 
 Diagnostics carry an error code and remediation, never file contents.
 
@@ -138,7 +138,7 @@ desktop entries and `mimeapps.list` are read on each request.
 - `GetApplicationsAsync` lists the usable entries the current desktop shows:
   not `NoDisplay`, and allowed by `OnlyShowIn`/`NotShowIn` against
   `XDG_CURRENT_DESKTOP`. Other usable entries remain handlers and appear in
-  `GetApplicationsForAsync` with `Hidden` set.
+  `GetApplicationsForAsync` with `IsHidden` set.
 - `Description` is `Comment`, else `GenericName`; `IconName` is the `Icon` key,
   a theme name or an absolute path; `ContentTypes` are the `MimeType` key's
   types with aliases resolved.
@@ -226,7 +226,7 @@ lowercased, come before `mimeapps.list`.
   on the session bus: the bus name is the ID without `.desktop`, the path that
   name with `.` as `/` and `-` as `_`. No items call `Activate`, items call
   `Open` with each one as a URI. Platform data is empty. A D-Bus error is
-  `Failed(IoError)`, or `PermissionDenied` for an access error, naming the D-Bus
+  `Failed(Other)`, or `PermissionDenied` for an access error, naming the D-Bus
   error. Without a reachable session bus the `Exec` key starts the
   application; without one either, the launch is
   `Unavailable(BackendUnavailable)`.
@@ -242,7 +242,7 @@ lowercased, come before `mimeapps.list`.
   undefined, expands as if unquoted. Without a file code, items are passed as
   `%f` would pass them, as GLib does.
 - The program is the first argument: an absolute path or a name searched on
-  `PATH`, which must be executable, else `Failed(IoError)` with `errno` 2. The
+  `PATH`, which must be executable, else `Failed(IOError)` with `errno` 2. The
   working directory is the `Path` key, which must exist.
 - Success means the processes started, or the activation call was accepted.
   Startup notification and activation tokens are not sent.
@@ -374,7 +374,7 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
 - **Without items** the application must be in `shell:AppsFolder`; it starts
   as the Start menu starts it (`ShellExecute` of
   `shell:AppsFolder\<AppUserModelID>`). Other IDs are `Failed(InvalidData)`.
-- A failure is `Failed(IoError)`, or `PermissionDenied` for
+- A failure is `Failed(Other)`, or `PermissionDenied` for
   `E_ACCESSDENIED`, with the HRESULT.
 
 ### Icons
@@ -452,7 +452,7 @@ macOS 12 or earlier; Runic supports macOS 15 and later.
   items as `NSURL`s, or `openApplicationAtURL:configuration:completionHandler:`
   without items; Launch Services starts the application and sends it the items
   as an open-documents or get-URL Apple event. Success is the completion
-  without an error; an error is `Failed(IoError)`, or `PermissionDenied` for a
+  without an error; an error is `Failed(Other)`, or `PermissionDenied` for a
   permission error, with the `NSError` domain and code.
 
 ### Icons

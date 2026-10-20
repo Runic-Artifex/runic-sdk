@@ -8,7 +8,7 @@ using Runic.Platform.Windows;
 // Opt-in interactive fixture. Also keeps all three providers' new ABI paths in the native AOT consumer.
 internal static class DesktopServicesNativeSmoke
 {
-    internal static async Task RunAsync(INativePickerOwner owner, CancellationToken token)
+    internal static async Task RunAsync(INativeWindowOwner owner, CancellationToken token)
     {
         var applicationId = Environment.GetEnvironmentVariable("RUNIC_TEST_APP_ID");
         var service = Environment.GetEnvironmentVariable("RUNIC_TEST_SERVICE") ?? "All";
@@ -162,7 +162,7 @@ internal static class NativePlatformSmoke
         }
     }
 
-    private static async Task ExerciseManualSelectionAsync(INativePickerOwner owner, CancellationToken cancellationToken)
+    private static async Task ExerciseManualSelectionAsync(INativeWindowOwner owner, CancellationToken cancellationToken)
     {
         Console.WriteLine("MANUAL: select a readable file outside the app sandbox; its bytes will not be printed.");
         IPickerBackend backend = OperatingSystem.IsWindows()
@@ -184,11 +184,11 @@ internal static class NativePlatformSmoke
         }
     }
 
-    private sealed class DesktopWindowPickerOwner(DesktopWindow window) : INativePickerOwner
+    private sealed class DesktopWindowPickerOwner(DesktopWindow window) : INativeWindowOwner
     {
         public Guid Generation { get; } = Guid.NewGuid();
         public bool IsAvailable => window.IsOpen;
         public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) =>
-            window.DispatchNativeAsync(action, cancellationToken);
+            window.InvokeNativeAsync(action, cancellationToken);
     }
 }

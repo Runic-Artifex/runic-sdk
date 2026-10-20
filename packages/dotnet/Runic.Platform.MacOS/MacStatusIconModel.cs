@@ -45,10 +45,10 @@ internal sealed record MacStatusMenu(ImmutableArray<MacMenuEntry> Entries, Immut
             {
                 case DesktopMenuCommand command:
                     commands.Add(command.Id);
-                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Command, command.Label, command.Enabled, command.Checked, commands.Count, []));
+                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Command, command.Label, command.IsEnabled, command.IsChecked, commands.Count, []));
                     break;
                 case DesktopMenuSubmenu submenu:
-                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Submenu, submenu.Label, submenu.Enabled, null, 0, Add(submenu.Items, commands)));
+                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Submenu, submenu.Label, submenu.IsEnabled, null, 0, Add(submenu.Items, commands)));
                     break;
                 default:
                     entries.Add(new MacMenuEntry(MacMenuEntryKind.Separator, "", true, null, 0, []));

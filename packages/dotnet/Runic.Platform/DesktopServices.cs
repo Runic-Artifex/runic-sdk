@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 namespace Runic.Platform;
 
 /// <summary>The desktop's preference; an application override takes precedence.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum DesktopColorScheme
 {
     /// <summary>No native preference is available.</summary>
@@ -80,6 +81,7 @@ public interface IDesktopNotifications : IAsyncDisposable
     ValueTask<PlatformResult<PlatformUnit>> RemoveAsync(string id, CancellationToken cancellationToken = default);
 }
 /// <summary>Local-file handoff operations; asking for an application is distinct from opening the default.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum DesktopFileOperation
 {
     /// <summary>Open with the registered default application.</summary>

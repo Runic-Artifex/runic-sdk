@@ -36,6 +36,7 @@ public sealed record DesktopVolume(string Id, string DisplayName)
 }
 
 /// <summary>A change that <see cref="IDesktopVolumes.WatchAsync"/> reports.</summary>
+/// <remarks>This set is closed: it gains cases only in a major release.</remarks>
 public abstract record DesktopVolumeChange
 {
     private DesktopVolumeChange() { }

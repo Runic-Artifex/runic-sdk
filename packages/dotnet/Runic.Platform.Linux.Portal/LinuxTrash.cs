@@ -129,7 +129,7 @@ internal sealed partial class LinuxTrash(PortalApplication? application = null, 
                 _ => new Outcome.Done(Failure(renamed)),
             };
         }
-        return new Outcome.Done(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError));
+        return new Outcome.Done(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other));
     }
 
     // GIO's names: "name", then "name.2" with the number before the first extension, as in "report.2.tar.gz".
@@ -217,7 +217,7 @@ internal sealed partial class LinuxTrash(PortalApplication? application = null, 
                 .TrashFileAsync(new PortalTransport.BorrowedHandle(file)).WaitAsync(deadline.Token).ConfigureAwait(false);
             // The portal reports 0 when it cannot trash the item, including when the sandbox may not write it.
             return result == 1 ? new PlatformResult<PlatformUnit>.Success(default)
-                : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, new PlatformDiagnostic("portal", result));
+                : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, new PlatformDiagnostic("portal", result));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (DBusErrorReplyException error) when (error.ErrorName == "org.freedesktop.DBus.Error.AccessDenied")
@@ -238,10 +238,11 @@ internal sealed partial class LinuxTrash(PortalApplication? application = null, 
         ENOENT or ENOTDIR => PlatformFailureCode.NotFound,
         EACCES or EPERM or EROFS => PlatformFailureCode.PermissionDenied,
         EBUSY or ETXTBSY => PlatformFailureCode.ResourceBusy,
-        _ => PlatformFailureCode.IoError,
+        EIO or ENOSPC or EDQUOT => PlatformFailureCode.IOError,
+        _ => PlatformFailureCode.Other,
     }, PlatformDiagnostic.FromErrno(errno));
 
-    private const int EPERM = 1, ENOENT = 2, EACCES = 13, EBUSY = 16, EEXIST = 17, EXDEV = 18, ENOTDIR = 20, EISDIR = 21, EINVAL = 22,
+    private const int EPERM = 1, ENOENT = 2, EIO = 5, EACCES = 13, EBUSY = 16, EEXIST = 17, EXDEV = 18, ENOTDIR = 20, EISDIR = 21, EINVAL = 22,
         ENOSPC = 28, EROFS = 30, ENOSYS = 38, ENOTEMPTY = 39, ELOOP = 40, EDQUOT = 122, ETXTBSY = 26;
     private const int O_WRONLY = 0x1, O_RDWR = 0x2, O_CREAT = 0x40, O_NOCTTY = 0x100, O_NONBLOCK = 0x800, O_EXCL = 0x80, O_CLOEXEC = 0x80000, O_PATH = 0x200000;
     // The one flag used here whose value differs between architectures: ARM's is 0100000, x86's and others' 0400000.

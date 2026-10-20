@@ -14,7 +14,7 @@ internal sealed class TrashTests
         Check(WindowsTrash.FromHResult(unchecked((int)0x80070003)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "path not found");
         Check(WindowsTrash.FromHResult(unchecked((int)0x80070005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Domain: "HRESULT" }, "access denied");
         Check(WindowsTrash.FromHResult(unchecked((int)0x80070020)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.ResourceBusy }, "sharing violation");
-        Check(WindowsTrash.FromHResult(unchecked((int)0x80004005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "other errors");
+        Check(WindowsTrash.FromHResult(unchecked((int)0x80004005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "other errors");
 
         var state = new WindowsTrash.RecycleState();
         nint sink = WindowsTrash.RecycleSink.Create(state);

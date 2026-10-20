@@ -86,7 +86,7 @@ internal sealed class ClipboardTests
     }
 }
 
-internal sealed class Owner : INativePickerOwner
+internal sealed class Owner : INativeWindowOwner
 {
     public Guid Generation { get; } = Guid.NewGuid();
     public bool Available { get; set; } = true;

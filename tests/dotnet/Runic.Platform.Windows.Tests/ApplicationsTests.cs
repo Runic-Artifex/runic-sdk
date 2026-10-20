@@ -133,7 +133,7 @@ internal sealed partial class ApplicationsTests
         Check(WindowsShellAssociations.FindEntry(entries, folder + "other.exe") is null && WindowsShellAssociations.FindEntry(null, "x") is null,
             "an unknown ID has no entry, not an empty one");
         Check(WindowsDesktopApplications.FromHResult(unchecked((int)0x80070005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "access denied");
-        Check(WindowsDesktopApplications.FromHResult(unchecked((int)0x80004005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "HRESULT" }, "other errors");
+        Check(WindowsDesktopApplications.FromHResult(unchecked((int)0x80004005)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "HRESULT" }, "other errors");
         Check(WindowsDesktopApplications.DefaultsPolicy.Message!.Contains("ms-settings:defaultapps", StringComparison.Ordinal), "the policy names Settings");
     }
 
@@ -227,7 +227,7 @@ internal sealed partial class ApplicationsTests
             Check(Success(await applications.GetContentTypeAsync(Path.Combine(root, "x" + plainExtension), DesktopContentDetection.NameOnly)).Id == plainExtension,
                 "a MIME type the database does not map back leaves the extension as the ID");
             Check(Success(await applications.GetContentTypeAsync(root)).Id == "inode/directory", "a directory");
-            Check(await applications.GetContentTypeAsync(Path.Combine(root, "missing" + extension)) is PlatformResult<DesktopContentType>.Failed { Code: PlatformFailureCode.IoError },
+            Check(await applications.GetContentTypeAsync(Path.Combine(root, "missing" + extension)) is PlatformResult<DesktopContentType>.Failed { Code: PlatformFailureCode.IOError },
                 "a missing file");
             string sniffed = Path.Combine(root, "image.unknown" + unique);
             File.WriteAllBytes(sniffed, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);

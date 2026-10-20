@@ -121,7 +121,7 @@ files.
 | The user dismissed the prompt | `Failed(UserDismissed)` |
 | No authorization service, agent or pkexec | `Unavailable(BackendUnavailable)` |
 | The program is missing or untrusted | `Failed(InvalidData)`; nothing runs |
-| Another launch failure | `Failed(IoError)` |
+| Another launch failure | `Failed(Other)` |
 | Cancelled before the program started | `OperationCanceledException` |
 
 A request with an undeclared action or arguments outside the declaration throws
@@ -138,7 +138,7 @@ pkexec exits with the program's code once the program runs. Before that:
 | 127 | `... No authentication agent found.`, `Error creating textual authentication agent:`, `Error registering local authentication agent:` | Unavailable |
 | 127 | `Error checking for authorization ...`, `Error getting authority:` (polkitd not running or failing) | Unavailable |
 | 127 | `pkexec must be setuid root` | Unavailable |
-| 127 | anything else (`Cannot run program`, `Error executing ...`, changing user failed) | `Failed(IoError)` |
+| 127 | anything else (`Cannot run program`, `Error executing ...`, changing user failed) | `Failed(Other)` |
 
 Because 126 and 127 are pkexec's, a privileged program must not use them. The
 markers are matched at the start of a line in the first 4 KiB of standard error.
@@ -173,7 +173,7 @@ user ID until authorization succeeded, so the caller can still kill it: the
 provider sends SIGKILL, polkitd withdraws the request from the agent, and
 `RunAsync` throws `OperationCanceledException`. Once pkexec switched to root and
 executed the program, the signal fails with `EPERM`; the provider then closes the
-program's standard input, which `PolkitHelper.WatchStandardInput` turns into a
+program's standard input, which `PolkitHelper.WatchCancellation` turns into a
 cancellation token, waits for the exit and returns the actual completion.
 nix-manager behaves the same way today ("cancellation waits for the privileged
 step to finish"). An application that itself runs as root (`sudo`) could signal
@@ -193,7 +193,7 @@ its credentials to root's, so it only guards the authorization.
 ### When the application dies
 
 Nothing signals the running program when the application dies. Its standard
-input reaches its end, so a program using `WatchStandardInput` stops, and one
+input reaches its end, so a program using `WatchCancellation` stops, and one
 that ignores its input runs on. Nothing reads its output any more: .NET's
 console drops writes to a closed pipe silently, and tools the program starts
 get `EPIPE` write errors (or SIGPIPE where they keep its default disposition).
@@ -421,7 +421,7 @@ pkexec's 126 and 127, every exit code of a helper that ran is its own.
 | The helper is missing, fails the location check, or is a JIT build | `Failed(InvalidData)`; no prompt |
 | `ERROR_ACCESS_DENIED` also when the user cannot read the helper | `Failed(PermissionDenied)` |
 | A cancelled helper outlives `TerminateAfterCancellation` and cannot be terminated | `Failed(PermissionDenied)`; it may still run |
-| The helper exits without a greeting, or another launch error | `Failed(IoError)` |
+| The helper exits without a greeting, or another launch error | `Failed(Other)` |
 | The helper ran | `Success` with its exit code |
 
 ### Output and cancellation
@@ -677,7 +677,7 @@ describes the API, the build properties and the packaging.
    `AuthorizationCopyRights(kAuthorizationFlagInteractionAllowed |
    kAuthorizationFlagExtendRights)` on a thread of its own, which shows the
    dialog. -60006 is `UserDismissed`, -60005 `PermissionDenied`, -60007 (no
-   dialog possible) `Unavailable`, others `IoError`.
+   dialog possible) `Unavailable`, others `Other`.
 5. `run` sends the action ID, the arguments after the verb, the 32-byte
    `AuthorizationExternalForm` and the locale variables.
 6. The daemon checks the message's sender again
@@ -903,7 +903,7 @@ Cancellation matches Linux as far as macOS allows:
   killing pkexec withdraws the request.
 - Once the program runs, cancellation closes its standard input and the result
   reports how it ended. The daemon could signal it, but the contract, and
-  programs written for `PolkitHelper.WatchStandardInput`, expect the end of
+  programs written for `PolkitHelper.WatchCancellation`, expect the end of
   standard input.
 - When the application dies, the daemon sees the connection end: the
   program's standard input closes, and its further output is read and dropped,

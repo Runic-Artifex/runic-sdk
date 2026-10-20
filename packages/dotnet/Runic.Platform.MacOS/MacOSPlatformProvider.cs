@@ -75,11 +75,11 @@ public static class MacOSPlatformProvider
     public static IDesktopApplications CreateApplications()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopApplications(); }
     /// <summary>Creates owned file and URI handoff operations. Caller retains security-scoped access through completion.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
+    public static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }
 
     /// <summary>Creates AppKit file dialogs bound to a verified presentation owner.</summary>
-    public static IPickerBackend CreateFileDialogs(INativePickerOwner owner)
+    public static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
@@ -87,7 +87,7 @@ public static class MacOSPlatformProvider
     }
 
     /// <summary>Creates AppKit text clipboard services for a verified presentation owner.</summary>
-    public static ITextClipboard CreateTextClipboard(INativePickerOwner owner)
+    public static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");

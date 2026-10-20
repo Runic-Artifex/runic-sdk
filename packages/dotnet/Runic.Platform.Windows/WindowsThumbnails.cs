@@ -78,7 +78,7 @@ internal sealed class WindowsThumbnails : IDesktopThumbnails
         unchecked((int)0x80070002) or unchecked((int)0x80070003) => Failed(PlatformFailureCode.NotFound, hr),
         unchecked((int)0x80070005) => Failed(PlatformFailureCode.PermissionDenied, hr),
         unchecked((int)0x80070020) or unchecked((int)0x80070021) => Failed(PlatformFailureCode.ResourceBusy, hr),
-        unchecked((int)0x8007000E) => Failed(PlatformFailureCode.IoError, hr),
+        unchecked((int)0x8007000E) => Failed(PlatformFailureCode.Other, hr),
         _ => new PlatformResult<DesktopThumbnail?>.Success(null),
     };
 
@@ -90,7 +90,7 @@ internal sealed class WindowsThumbnails : IDesktopThumbnails
     {
         int hr = WindowsPng.Encode(bitmap, default, out var png, out uint width, out uint height, out bool unavailable);
         if (unavailable) return new PlatformResult<DesktopThumbnail?>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-        if (hr < 0 || png is null) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(hr < 0 ? hr : unchecked((int)0x80004005)));
+        if (hr < 0 || png is null) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.Other, PlatformDiagnostic.FromHResult(hr < 0 ? hr : unchecked((int)0x80004005)));
         return new PlatformResult<DesktopThumbnail?>.Success(new DesktopThumbnail(ImmutableCollectionsMarshal.AsImmutableArray(png), (int)width, (int)height));
     }
 }

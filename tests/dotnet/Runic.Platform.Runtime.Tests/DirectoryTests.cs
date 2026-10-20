@@ -167,7 +167,7 @@ internal sealed class DirectoryTests
         try { await action(); throw new InvalidOperationException("Expected " + typeof(T).Name); }
         catch (T) { }
     }
-    private sealed class Owner : INativePickerOwner
+    private sealed class Owner : INativeWindowOwner
     {
         public Guid Generation { get; set; } = Guid.NewGuid();
         public bool IsAvailable => true;
@@ -202,9 +202,9 @@ internal sealed class DirectoryTests
         internal Func<NativeDirectorySelection?> Select = () => null;
         internal TaskCompletionSource<NativeDirectorySelection?>? Pending;
         internal TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
+        public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
         { Started.TrySetResult(); return Pending is null ? ValueTask.FromResult(Select()) : new(Pending.Task); }
-        public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) => ValueTask.FromResult<NativeFileSelection?>(null);
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<IReadOnlyList<NativeFileSelection>?>(null);
     }
     private sealed class Access : IAsyncDisposable
     {

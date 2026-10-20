@@ -11,7 +11,7 @@ internal sealed class ThumbnailTests
         Check(MacThumbnails.Map(new("QLThumbnailErrorDomain", 0)) is PlatformResult<DesktopThumbnail?>.Success(null), "generation failed: no thumbnail");
         Check(MacThumbnails.Map(new("NSCocoaErrorDomain", 260)) is PlatformResult<DesktopThumbnail?>.Failed { Code: PlatformFailureCode.NotFound }, "no such file");
         Check(MacThumbnails.Map(new("NSCocoaErrorDomain", 257)) is PlatformResult<DesktopThumbnail?>.Failed { Code: PlatformFailureCode.PermissionDenied }, "no permission");
-        Check(MacThumbnails.Map(new("QLThumbnailErrorDomain", 4)) is PlatformResult<DesktopThumbnail?>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Code: 4 }, "an invalid request");
+        Check(MacThumbnails.Map(new("QLThumbnailErrorDomain", 4)) is PlatformResult<DesktopThumbnail?>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Code: 4 }, "an invalid request");
     }
 
     // Quick Look on the runner, on a BMP this case writes, and a file of a type it cannot thumbnail.

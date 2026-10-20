@@ -14,6 +14,17 @@ public sealed class DesktopApiTests
 {
     private const int PacketHeaderSize = 8;
 
+    // D26 (W319-003): native-thread work uses the CheckAccess/InvokeAsync vocabulary of Runic.Platform and WPF.
+    [Test]
+    public void NativeDispatchUsesTheInvokeVocabulary()
+    {
+        Assert.Null(typeof(DesktopWindow).GetMethod("DispatchNativeAsync"));
+        Assert.Equal(typeof(Action<nint>), typeof(DesktopWindow).GetMethod(nameof(DesktopWindow.InvokeNativeAsync))!.GetParameters()[0].ParameterType);
+        var spi = typeof(IDesktopNativeDispatchWindowHost).GetMethod(nameof(IDesktopNativeDispatchWindowHost.InvokeNativeAsync))!;
+        Assert.Null(typeof(IDesktopNativeDispatchWindowHost).GetMethod("DispatchNativeAsync"));
+        Assert.True(spi.GetParameters()[1].HasDefaultValue, "The SPI defaults its token like the window member.");
+    }
+
     [Test]
     [DisplayName("MacOsDiscoveryRequiresFrameworkAndAnAvailableMainThread(frameworkAvailable: $frameworkAvailable, isMainThread: $isMainThread, eventLoopRunning: $eventLoopRunning, diagnosticCode: $diagnosticCode)")]
     [Arguments(true, false, true, null)] // Application.Run worker, AppKit loop active.

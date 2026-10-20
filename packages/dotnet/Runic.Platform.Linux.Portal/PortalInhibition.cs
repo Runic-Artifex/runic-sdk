@@ -58,7 +58,7 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
                 var response = await responses.Reader.ReadAsync(deadline.Token).ConfigureAwait(false);
                 if (response.Path != handle) continue;
                 if (response.Code != 0)
-                    return new PlatformResult<IDesktopInhibitionLease>.Failed(response.Code == 1 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                    return new PlatformResult<IDesktopInhibitionLease>.Failed(response.Code == 1 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                         PortalErrors.Response(response.Code));
                 break;
             }

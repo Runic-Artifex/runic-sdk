@@ -181,6 +181,12 @@ New API follows the conventions that keep it compatible under the
   optional), not a separate timeout. Platform, Desktop and Views runtime paths
   return `ValueTask`/`ValueTask<T>`; administration and test APIs may return
   `Task`. No `Begin…`/`End…` pairs.
+- **Failures.** A host capability (the Runic.Platform services) returns its
+  outcome as a `PlatformResult<T>` (or `PickerResult<T>`, `FileCommitResult`)
+  and throws only for caller mistakes, cancellation and use after disposal.
+  Administration APIs and the Desktop window host throw exceptions that keep
+  the native error. A `Failed` case carries a `PlatformDiagnostic` with the
+  native detail when the provider observed one.
 - **Records.** A positional record is fine for data Runic creates; it gains data
   later only as optional `init` properties, never through its primary
   constructor.

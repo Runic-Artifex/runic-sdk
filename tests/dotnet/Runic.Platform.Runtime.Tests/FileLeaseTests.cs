@@ -64,7 +64,7 @@ internal sealed class FileLeaseTests
             cancelled.Cancel();
             var closed = pendingSave.DisposeAsync().AsTask();
             Check(!closed.IsCompleted && !commit.IsCompleted && grant.Releases == 0, "Cancellation abandoned a submitted replacement.");
-            replacement.Result.SetResult(new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError));
+            replacement.Result.SetResult(new FileCommitResult.CommitUnknown(PlatformFailureCode.IOError));
             Check(await commit is FileCommitResult.CommitUnknown, "The actual uncertain outcome was lost.");
             await closed; await pendingSave.DisposeAsync();
             Check(grant.Releases == 1 && Directory.GetFiles(directory).Length == 1, "Access or staging leaked after unknown commit.");
@@ -135,15 +135,18 @@ internal sealed class FileLeaseTests
         {
             string before = await File.ReadAllTextAsync(path);
             var refused = new LocalAtomicFileReplacement(rename: (_, _, value) => { flags = value; return error; });
-            Check(await CommitWith(path, refused) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.ResourceBusy } && flags == 0,
+            Check(await CommitWith(path, refused) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "errno" } diagnostic }
+                && diagnostic.Code == error && flags == 0,
                 $"errno {error} must leave the overwrite uncommitted.");
             Check(await File.ReadAllTextAsync(path) == before && Directory.GetFiles(directory).Length == 1,
                 $"errno {error} must not copy over the target and must remove staging.");
         }
         Check(await CommitWith(path, new LocalAtomicFileReplacement(rename: (_, _, _) => 13)) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.PermissionDenied },
             "EACCES is a refused rename.");
-        Check(await CommitWith(path, new LocalAtomicFileReplacement(rename: (_, _, _) => 5)) is FileCommitResult.CommitUnknown { Code: PlatformFailureCode.IoError },
-            "EIO after submission is an uncertain outcome.");
+        Check(await CommitWith(path, new LocalAtomicFileReplacement(rename: (_, _, _) => 5)) is FileCommitResult.CommitUnknown { Code: PlatformFailureCode.IOError, Diagnostic: { Domain: "errno", Code: 5 } },
+            "EIO after submission is an uncertain outcome, with the errno.");
+        Check(await CommitWith(path, new LocalAtomicFileReplacement(rename: (_, _, _) => 95)) is FileCommitResult.CommitUnknown { Code: PlatformFailureCode.Other, Diagnostic: { Domain: "errno", Code: 95 } },
+            "An unclassified errno after submission is Other, with the errno.");
 
         // A filesystem or older document portal that rejects RENAME_NOREPLACE re-checks the name.
         var calls = new List<uint>();

@@ -109,7 +109,7 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
                     Unavailable();
                     return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
                 default:
-                    return new PlatformResult<T>.Failed(PlatformFailureCode.IoError, diagnostic);
+                    return new PlatformResult<T>.Failed(PlatformFailureCode.Other, diagnostic);
             }
         }
         catch (Exception error) when (error is NativeBackendUnavailableException or DBusExceptionBase or TimeoutException)
@@ -282,8 +282,8 @@ internal sealed class SecretServiceClient : IDisposable
             var reader = reply.GetBodyReader();
             return (reader.ReadObjectPathAsString(), reader.ReadObjectPathAsString());
         }).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (prompt != "/") collection = (await PromptAsync(prompt, PlatformFailureCode.IoError, cancellationToken).ConfigureAwait(false)).GetObjectPathAsString();
-        if (collection == "/") throw new SecretServiceFailure(PlatformFailureCode.IoError);
+        if (prompt != "/") collection = (await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false)).GetObjectPathAsString();
+        if (collection == "/") throw new SecretServiceFailure(PlatformFailureCode.Other);
         return collection;
     }
 
@@ -321,7 +321,7 @@ internal sealed class SecretServiceClient : IDisposable
             var reader = reply.GetBodyReader();
             return (reader.ReadObjectPathAsString(), reader.ReadObjectPathAsString());
         }).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (prompt != "/") await PromptAsync(prompt, PlatformFailureCode.IoError, cancellationToken).ConfigureAwait(false);
+        if (prompt != "/") await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<bool> DeleteItemAsync(string item, CancellationToken cancellationToken)
@@ -335,7 +335,7 @@ internal sealed class SecretServiceClient : IDisposable
         // Another client removed it first.
         catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.Secret.Error.NoSuchObject" or "org.freedesktop.DBus.Error.UnknownObject")
         { return false; }
-        if (prompt != "/") await PromptAsync(prompt, PlatformFailureCode.IoError, cancellationToken).ConfigureAwait(false);
+        if (prompt != "/") await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

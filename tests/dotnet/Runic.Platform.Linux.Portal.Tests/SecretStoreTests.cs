@@ -108,7 +108,7 @@ internal sealed class SecretStoreTests
         Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "plain" }, "read back");
         Check(diagnostics.All(d => !(d.Message + d.Remediation).Contains(Account) && !(d.Message + d.Remediation).Contains(Service)), "diagnostics carry no names");
         var strict = new SecretServiceStore(destination: fake.Name, requireEncryption: true);
-        Check(await strict.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.IoError },
+        Check(await strict.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Other },
             "a store that requires encryption does not fall back");
     }
 
@@ -178,7 +178,7 @@ internal sealed class SecretStoreTests
         var store = new SecretServiceStore(destination: "org.runic.NoSuchSecretService", application: new PortalApplication(null, diagnostics.Add));
         Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
             "unavailable");
-        Check(diagnostics.Any(d => d.Code == "secret-service-unavailable" && d.Remediation.Contains("--talk-name=org.freedesktop.secrets")),
+        Check(diagnostics.Any(d => d.Code == "secret-service-unavailable" && d.Remediation?.Contains("--talk-name=org.freedesktop.secrets") == true),
             "the diagnostic names the sandbox permission");
     }
 

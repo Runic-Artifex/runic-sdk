@@ -49,9 +49,9 @@ internal sealed partial class ApplicationsTests
         Check(MacDesktopApplications.MapDefaultError(new("NSCocoaErrorDomain", 3072)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed }, "declined");
         Check(MacDesktopApplications.MapDefaultError(new("NSOSStatusErrorDomain", -128)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed }, "userCanceledErr");
         Check(MacDesktopApplications.MapDefaultError(new("NSOSStatusErrorDomain", -54)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "permErr");
-        Check(MacDesktopApplications.MapDefaultError(new("NSOSStatusErrorDomain", -10814)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Code: -10814 }, "other");
+        Check(MacDesktopApplications.MapDefaultError(new("NSOSStatusErrorDomain", -10814)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Code: -10814 }, "other");
         Check(MacDesktopApplications.MapLaunchError(new("NSCocoaErrorDomain", 257)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "no permission");
-        Check(MacDesktopApplications.MapLaunchError(new("NSCocoaErrorDomain", 260)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "no such file");
+        Check(MacDesktopApplications.MapLaunchError(new("NSCocoaErrorDomain", 260)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "no such file");
     }
 
     [Test, DisplayName("applications: arguments are checked before any native call")]
@@ -90,7 +90,7 @@ internal sealed partial class ApplicationsTests
             Check(text.Id == "public.plain-text" && text.MimeType == "text/plain" && text.Extensions.Contains("txt") && text.Parents.FirstOrDefault() == "public.text"
                 && text.Parents.Contains("public.data") && !string.IsNullOrEmpty(text.Description), "public.plain-text");
             Check(Success(await applications.GetContentTypeAsync(root)).Id == "public.folder", "a folder");
-            Check(await applications.GetContentTypeAsync(Path.Combine(root, "missing.txt")) is PlatformResult<DesktopContentType>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Code: 2 },
+            Check(await applications.GetContentTypeAsync(Path.Combine(root, "missing.txt")) is PlatformResult<DesktopContentType>.Failed { Code: PlatformFailureCode.IOError, Diagnostic.Code: 2 },
                 "a missing file");
             Check(Success(await applications.GetContentTypeAsync("/any/name." + unique, DesktopContentDetection.NameOnly)).Id == "public.data", "an unknown extension");
 

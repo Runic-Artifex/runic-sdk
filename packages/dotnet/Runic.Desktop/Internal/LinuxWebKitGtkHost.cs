@@ -46,7 +46,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
-    public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
+    public async ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _nativeShutdown.Token);
         await InvokeWindowAsync(action, linked.Token).ConfigureAwait(false);

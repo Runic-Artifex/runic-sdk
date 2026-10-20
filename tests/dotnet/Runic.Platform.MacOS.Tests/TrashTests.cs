@@ -12,7 +12,7 @@ internal sealed class TrashTests
         Check(MacTrash.Map(new("NSPOSIXErrorDomain", 2)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "ENOENT");
         Check(MacTrash.Map(new("NSCocoaErrorDomain", 513)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "no permission");
         Check(MacTrash.Map(new("NSPOSIXErrorDomain", 13)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "EACCES");
-        Check(MacTrash.Map(new("NSCocoaErrorDomain", 512)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "NSCocoaErrorDomain" }, "other errors");
+        Check(MacTrash.Map(new("NSCocoaErrorDomain", 512)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "NSCocoaErrorDomain" }, "other errors");
     }
 
     // The runner's Trash. Each item has a name unique to this run and is removed from the Trash afterwards.

@@ -546,7 +546,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         return ValueTask.CompletedTask;
     }
     public bool CheckNativeAccess() => _onNativeThread;
-    public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
+    public async ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken)
     {
         if (HoldDispatch is { } hold) await hold.Task.ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();

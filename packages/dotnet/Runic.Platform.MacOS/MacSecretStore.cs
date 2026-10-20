@@ -155,7 +155,7 @@ internal sealed partial class MacSecretStore : IDesktopSecretStore
             UserCanceled => new PlatformResult<T>.Failed(PlatformFailureCode.UserDismissed, diagnostic),
             AuthFailed or ReadOnly or WritePermission or MissingEntitlement => new PlatformResult<T>.Failed(PlatformFailureCode.PermissionDenied, diagnostic),
             NoSuchKeychain or NotAvailable or NoDefaultKeychain or InvalidKeychain => new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
-            _ => new PlatformResult<T>.Failed(PlatformFailureCode.IoError, diagnostic),
+            _ => new PlatformResult<T>.Failed(PlatformFailureCode.Other, diagnostic),
         };
     }
 

@@ -96,7 +96,7 @@ internal sealed unsafe class WindowsSecretStore : IDesktopSecretStore
         ErrorAccessDenied => new PlatformResult<T>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromWin32Error(error)),
         ErrorCancelled => new PlatformResult<T>.Failed(PlatformFailureCode.UserDismissed, PlatformDiagnostic.FromWin32Error(error)),
         ErrorInvalidParameter or ErrorBadUserName => new PlatformResult<T>.Failed(PlatformFailureCode.InvalidData, PlatformDiagnostic.FromWin32Error(error)),
-        _ => new PlatformResult<T>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(error)),
+        _ => new PlatformResult<T>.Failed(PlatformFailureCode.Other, PlatformDiagnostic.FromWin32Error(error)),
     };
 
     private static ValueTask<PlatformResult<T>> Result<T>(PlatformResult<T> result) => ValueTask.FromResult(result);

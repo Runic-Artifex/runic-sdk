@@ -15,6 +15,19 @@ internal sealed class ContextTests
 {
     private const int ProbeMessage = 0x8000 + 0x2A; // WM_APP + 42
 
+    // nwpf-02 (W319-003 D26): the navigator's scheduling contract is not part of the context's public surface;
+    // applications run work on the UI thread with InvokeAsync.
+    [Test, DisplayName("engine contract is explicit"), NotInParallel("WpfSuite", Order = 47)]
+    public void EngineContractIsExplicit()
+    {
+        foreach (var name in new[] { "RunHookAsync", "YieldToPresentationAsync" })
+            if (typeof(DispatcherModelContext).GetMethod(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance) is not null)
+                throw new InvalidOperationException(name + " must be an explicit interface implementation.");
+        if (!typeof(IRunicModelHookScheduler).IsAssignableFrom(typeof(DispatcherModelContext))
+            || !typeof(IRunicModelPresentationYield).IsAssignableFrom(typeof(DispatcherModelContext)))
+            throw new InvalidOperationException("The navigator still finds the contract.");
+    }
+
     [Test, DisplayName("context basics"), NotInParallel("WpfSuite", Order = 3)]
     public void Basics()
     {
@@ -103,7 +116,7 @@ internal sealed class ContextTests
         SynchronizationContext? captured = null;
         SynchronizationContext? resumedUnder = null;
         var resumedOnUi = false;
-        var task = context.RunHookAsync(async () =>
+        var task = ((IRunicModelHookScheduler)context).RunHookAsync(async () =>
         {
             ran = true;
             captured = SynchronizationContext.Current;
@@ -118,14 +131,14 @@ internal sealed class ContextTests
             $"The hook ran under {captured?.GetType().Name}, resumed under {resumedUnder?.GetType().Name}, on the UI thread: {resumedOnUi}.");
 
         // A synchronous throw is the hook's outcome.
-        var thrown = context.RunHookAsync<int>(() => throw new FormatException(), CancellationToken.None);
+        var thrown = ((IRunicModelHookScheduler)context).RunHookAsync<int>(() => throw new FormatException(), CancellationToken.None);
         PumpUntil(() => thrown.IsCompleted, "the throwing hook");
         Require(thrown.Exception?.InnerException is FormatException, $"A throwing hook gave {thrown.Status}.");
 
         // Cancelled before the operation starts: the hook never runs.
         var cancellation = new CancellationTokenSource();
         var cancelledRan = false;
-        var cancelled = context.RunHookAsync(() =>
+        var cancelled = ((IRunicModelHookScheduler)context).RunHookAsync(() =>
         {
             cancelledRan = true;
             return Task.FromResult(1);
@@ -137,7 +150,7 @@ internal sealed class ContextTests
 
         // Closed before it starts: ObjectDisposedException, never runs; posted turns are reported dropped.
         var closedRan = false;
-        var closed = context.RunHookAsync(() =>
+        var closed = ((IRunicModelHookScheduler)context).RunHookAsync(() =>
         {
             closedRan = true;
             return Task.FromResult(1);
@@ -154,7 +167,7 @@ internal sealed class ContextTests
         Require(!context.IsExecuting && !context.TryPost(() => { }), "A closed context still accepts turns.");
         var late = context.InvokeAsync(() => 1).AsTask();
         Require(late.IsFaulted && late.Exception!.InnerException is ObjectDisposedException, "A closed context ran a turn.");
-        var lateHook = context.RunHookAsync(() => Task.FromResult(1), CancellationToken.None);
+        var lateHook = ((IRunicModelHookScheduler)context).RunHookAsync(() => Task.FromResult(1), CancellationToken.None);
         Require(lateHook.IsFaulted && lateHook.Exception!.InnerException is ObjectDisposedException, "A closed context ran a hook.");
         fixture.Dispose();
     }

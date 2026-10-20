@@ -24,7 +24,7 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
 
     bool SupportsNativeDispatch => false;
     bool CheckNativeAccess() => false;
-    ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>
+    ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken) =>
         ValueTask.FromException(new NotSupportedException("This host does not expose native dispatch."));
 
     /// <summary>Occurs after the platform window has closed.</summary>

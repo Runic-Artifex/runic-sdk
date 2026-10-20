@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace Runic.Platform.Runtime;
 
 /// <summary>Drains file and URI handoffs before the native presentation owner is destroyed.</summary>
-public sealed class PresentationFileLauncher(PresentationLifetime lifetime, IDesktopFileLauncher? backend = null) : IDesktopFileLauncher, IPlatformCapabilities
+internal sealed class PresentationFileLauncher(PresentationLifetime lifetime, IDesktopFileLauncher? backend = null) : IDesktopFileLauncher, IPlatformCapabilities
 {
     /// <inheritdoc />
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)

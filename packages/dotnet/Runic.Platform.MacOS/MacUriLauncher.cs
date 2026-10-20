@@ -4,10 +4,10 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 namespace Runic.Platform.MacOS;
 
 // Opens a web or mail URI with NSWorkspace: the user's default browser or mail client.
-internal sealed class MacUriLauncher(INativePickerOwner owner)
+internal sealed class MacUriLauncher(INativeWindowOwner owner)
 {
     // Launch Services has no application for the URL's scheme (kLSApplicationNotFoundErr). macOS 26 reports a scheme
-    // without an application as NSCocoaErrorDomain 256 instead, which stays IoError: the code is not specific to it.
+    // without an application as NSCocoaErrorDomain 256 instead, which stays Other: the code is not specific to it.
     private const long ApplicationNotFound = -10814;
     // NSUserCancelledError.
     private const long UserCancelled = 3072;
@@ -52,7 +52,7 @@ internal sealed class MacUriLauncher(INativePickerOwner owner)
         {
             ApplicationNotFound => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
             UserCancelled when diagnostic.Domain == "NSCocoaErrorDomain" => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed, diagnostic),
-            _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, diagnostic),
+            _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, diagnostic),
         };
     }
 }

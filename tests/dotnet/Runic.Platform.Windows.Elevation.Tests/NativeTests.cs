@@ -71,7 +71,7 @@ internal sealed partial class NativeTests
         var host = new StandInHost("any") { ThroughCmd = true };
         var result = await new WindowsPrivilegedActions(PrivilegedActions.All, PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, host)
             .RunAsync(new(PrivilegedActions.Wait, [])).AsTask().WaitAsync(TimeSpan.FromSeconds(60));
-        Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, { Code: 7 }), $"result {result}");
+        Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, { Code: 7 }), $"result {result}");
     }
 
     [Test, Explicit, Category("NativeElevation"), DisplayName("stand-in: an unelevated helper reports UAC off, and a JIT helper refuses")]

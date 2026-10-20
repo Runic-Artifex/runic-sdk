@@ -27,7 +27,7 @@ internal static partial class DirectorySmoke
 
     // Run under dbus-run-session. This controls only the portal service boundary;
     // the window, owner export, production provider and leases are real.
-    internal static async Task RunAsync(INativePickerOwner owner, IDesktopWindowHost host)
+    internal static async Task RunAsync(INativeWindowOwner owner, IDesktopWindowHost host)
     {
         var connection = _connection ?? throw new InvalidOperationException("Start the controlled portal before GTK initialization.");
         string root = Path.Combine(Path.GetTempPath(), "runic-gtk4-directory-" + Guid.NewGuid().ToString("N"));

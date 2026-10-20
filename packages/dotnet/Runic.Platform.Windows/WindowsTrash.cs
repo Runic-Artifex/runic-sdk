@@ -74,10 +74,10 @@ internal sealed class WindowsTrash : IDesktopTrash
             if (hr < 0) return FromHResult(hr);
             global::Windows.Win32.Foundation.BOOL aborted;
             if (operation->GetAnyOperationsAborted(&aborted).Value >= 0 && aborted)
-                return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(E_ABORT));
+                return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, PlatformDiagnostic.FromHResult(E_ABORT));
             // The item is gone only if the shell reported deleting it.
             return state.Deleted ? new PlatformResult<PlatformUnit>.Success(default)
-                : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError);
+                : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other);
         }
         finally
         {
@@ -93,7 +93,10 @@ internal sealed class WindowsTrash : IDesktopTrash
         unchecked((int)0x80070002) or unchecked((int)0x80070003) => PlatformFailureCode.NotFound,
         unchecked((int)0x80070005) => PlatformFailureCode.PermissionDenied,
         unchecked((int)0x80070020) or unchecked((int)0x80070021) => PlatformFailureCode.ResourceBusy,
-        _ => PlatformFailureCode.IoError,
+        // ERROR_HANDLE_DISK_FULL, ERROR_DISK_FULL, ERROR_WRITE_FAULT, ERROR_READ_FAULT, ERROR_CRC, ERROR_IO_DEVICE.
+        unchecked((int)0x80070027) or unchecked((int)0x80070070) or unchecked((int)0x8007001D) or unchecked((int)0x8007001E)
+            or unchecked((int)0x80070017) or unchecked((int)0x8007045D) => PlatformFailureCode.IOError,
+        _ => PlatformFailureCode.Other,
     }, PlatformDiagnostic.FromHResult(hr));
 
     internal sealed class RecycleState

@@ -20,9 +20,9 @@ internal sealed partial class StatusIconTests
     [
         .. extra,
         new DesktopMenuCommand("open", "Open & show"),
-        new DesktopMenuCommand("daily", "Check daily") { Checked = checkedDaily },
+        new DesktopMenuCommand("daily", "Check daily") { IsChecked = checkedDaily },
         new DesktopMenuSeparator(),
-        new DesktopMenuSubmenu("More", [new DesktopMenuCommand("about", "About"), new DesktopMenuCommand("off", "Off") { Enabled = false }]),
+        new DesktopMenuSubmenu("More", [new DesktopMenuCommand("about", "About"), new DesktopMenuCommand("off", "Off") { IsEnabled = false }]),
         new DesktopMenuCommand("quit", "Quit"),
     ];
 
@@ -79,7 +79,7 @@ internal sealed partial class StatusIconTests
         Check(Model.SelectImage(icon, 20)!.Width == 24, "the smallest image at least as large as the small icon");
         Check(Model.SelectImage(icon, 64)!.Width == 48, "else the largest");
         Check(Model.SelectImage(icon, 16)!.Width == 16, "an exact size");
-        Check(Model.SelectImage(new DesktopIcon { ThemeName = "applications-system" }, 16) is null, "theme names are ignored");
+        Check(Model.SelectImage(new DesktopIcon { IconName = "applications-system" }, 16) is null, "theme names are ignored");
 
         var normal = new DesktopIcon { Images = [Image(16)] };
         var attention = new DesktopIcon { Images = [Image(32)] };
@@ -112,7 +112,7 @@ internal sealed partial class StatusIconTests
 
         var image = new DesktopIconImage(16, 16, [.. Enumerable.Range(0, 16 * 16).SelectMany(_ => new byte[] { 0x30, 0x90, 0xE0, 0xFF })]);
         var red = new DesktopIconImage(32, 32, [.. Enumerable.Range(0, 32 * 32).SelectMany(_ => new byte[] { 0xE0, 0x20, 0x20, 0xFF })]);
-        var state = new DesktopStatusIconState(new DesktopIcon { ThemeName = "applications-system", Images = [image] }, "Runic status icon test")
+        var state = new DesktopStatusIconState(new DesktopIcon { IconName = "applications-system", Images = [image] }, "Runic status icon test")
         {
             Tooltip = new string('t', 400),
             AttentionIcon = new DesktopIcon { Images = [red] },
@@ -126,7 +126,7 @@ internal sealed partial class StatusIconTests
         Check(window != 0, "the icon has its window");
         Check(await icon.ShowAsync(state with { Status = DesktopStatusIconStatus.NeedsAttention }) is var attention
             && attention.GetType() == shown.GetType(), "the attention icon replaces the icon");
-        Check(await icon.ShowAsync(state with { Icon = new DesktopIcon { ThemeName = "only-a-theme-name" } }) is var themed
+        Check(await icon.ShowAsync(state with { Icon = new DesktopIcon { IconName = "only-a-theme-name" } }) is var themed
             && themed.GetType() == shown.GetType(), "a theme name alone shows the application's icon");
         Check(await icon.ShowAsync(state) is var again && again.GetType() == shown.GetType(), "showing again modifies the icon");
 
@@ -275,7 +275,7 @@ internal sealed partial class StatusIconTests
     }
 
     // Dispatches inline: the test thread owns the window.
-    private sealed class InlineOwner(nint window) : INativePickerOwner
+    private sealed class InlineOwner(nint window) : INativeWindowOwner
     {
         public Guid Generation { get; } = Guid.NewGuid();
         public bool IsAvailable => window != 0;

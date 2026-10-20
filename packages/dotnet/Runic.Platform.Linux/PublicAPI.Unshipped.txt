@@ -1,1 +1,13 @@
 #nullable enable
+*REMOVED*Runic.Platform.Linux.Gtk3PortalWindowOwner.Gtk3PortalWindowOwner(Runic.Platform.Runtime.INativePickerOwner! owner) -> void
+*REMOVED*Runic.Platform.Linux.LinuxTextClipboard.LinuxTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> void
+*REMOVED*static Runic.Platform.Linux.LinuxPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+*REMOVED*static Runic.Platform.Linux.LinuxPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+*REMOVED*static Runic.Platform.Linux.LinuxPlatformProvider.CreateGtkNativeFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+*REMOVED*static Runic.Platform.Linux.LinuxPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Linux.LinuxTextClipboard!
+Runic.Platform.Linux.Gtk3PortalWindowOwner.Gtk3PortalWindowOwner(Runic.Platform.Runtime.INativeWindowOwner! owner) -> void
+Runic.Platform.Linux.LinuxTextClipboard.LinuxTextClipboard(Runic.Platform.Runtime.INativeWindowOwner! owner) -> void
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateGtkNativeFileDialogs(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.Linux.LinuxTextClipboard!

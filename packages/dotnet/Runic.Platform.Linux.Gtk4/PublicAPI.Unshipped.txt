@@ -1,1 +1,7 @@
 #nullable enable
+*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.Gtk4PortalWindowOwner(Runic.Platform.Runtime.INativePickerOwner! owner) -> void
+*REMOVED*static Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider.CreatePortalWindowOwner(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPortalWindowOwner!
+*REMOVED*static Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
+Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.Gtk4PortalWindowOwner(Runic.Platform.Runtime.INativeWindowOwner! owner) -> void
+static Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider.CreatePortalWindowOwner(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.Runtime.IPortalWindowOwner!
+static Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativeWindowOwner! owner) -> Runic.Platform.ITextClipboard!

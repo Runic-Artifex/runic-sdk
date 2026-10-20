@@ -101,13 +101,13 @@ internal sealed partial class LocalAtomicFileReplacement(NativeFileLocation loca
             if (existed && OperatingSystem.IsWindows()) File.Replace(stagingPath, targetPath, null);
             else File.Move(stagingPath, targetPath, overwrite: existed);
         }
-        catch (UnauthorizedAccessException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied)); }
+        catch (UnauthorizedAccessException error) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error))); }
         // A no-overwrite move refuses a destination created since selection.
         catch (IOException error) when (!existed && IsAlreadyExists(error))
-        { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict)); }
+        { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict, FileErrors.Diagnose(error))); }
         // An IO error can be reported after the filesystem accepted a rename.
         // Never delete the target or automatically retry an uncertain outcome.
-        catch (IOException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError)); }
+        catch (IOException error) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.CommitUnknown(PlatformFailureCode.IOError, FileErrors.Diagnose(error))); }
         SyncDirectory(Path.GetDirectoryName(targetPath)!);
         return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.Committed());
     }
@@ -116,7 +116,7 @@ internal sealed partial class LocalAtomicFileReplacement(NativeFileLocation loca
         ? error.HResult is unchecked((int)0x80070050) or unchecked((int)0x800700B7) // ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS
         : error.HResult == 17; // EEXIST
 
-    private const int EPERM = 1, EACCES = 13, EBUSY = 16, EEXIST = 17, EXDEV = 18, EISDIR = 21, EINVAL = 22, EROFS = 30, ENOSYS = 38, ENOTEMPTY = 39;
+    private const int EPERM = 1, EIO = 5, EACCES = 13, EBUSY = 16, EEXIST = 17, EXDEV = 18, EISDIR = 21, EINVAL = 22, EROFS = 30, ENOSYS = 38, ENOTEMPTY = 39;
     private const uint RenameNoReplace = 1; // RENAME_NOREPLACE
 
     // Rename directly instead of File.Move: it copies and deletes on EXDEV (for
@@ -139,12 +139,13 @@ internal sealed partial class LocalAtomicFileReplacement(NativeFileLocation loca
                 // A document view ignores directory sync; its rename is durable once the host filesystem commits it.
                 SyncDirectory(Path.GetDirectoryName(target)!);
                 return new FileCommitResult.Committed();
-            case EEXIST or ENOTEMPTY or EISDIR: return new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict);
+            case EEXIST or ENOTEMPTY or EISDIR: return new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict, PlatformDiagnostic.FromErrno(error));
             // A mount point or another filesystem cannot be replaced atomically. Never copy.
-            case EXDEV or EBUSY: return new FileCommitResult.NotCommitted(PlatformFailureCode.ResourceBusy);
-            case EACCES or EPERM or EROFS: return new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied);
+            case EXDEV or EBUSY: return new FileCommitResult.NotCommitted(PlatformFailureCode.ResourceBusy, PlatformDiagnostic.FromErrno(error));
+            case EACCES or EPERM or EROFS: return new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromErrno(error));
             // A network or FUSE filesystem can report an error after it applied the rename.
-            default: return new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError);
+            case EIO: return new FileCommitResult.CommitUnknown(PlatformFailureCode.IOError, PlatformDiagnostic.FromErrno(error));
+            default: return new FileCommitResult.CommitUnknown(PlatformFailureCode.Other, PlatformDiagnostic.FromErrno(error));
         }
     }
 
@@ -273,8 +274,8 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
             // A read-only or revoked document grant refuses the staging file; the document is untouched.
             catch (UnauthorizedAccessException) when (document) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(
                 new PlatformResult<IFileWriteTransaction>.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable)); }
-            catch (UnauthorizedAccessException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.PermissionDenied)); }
-            catch (IOException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.IoError)); }
+            catch (UnauthorizedAccessException error) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error))); }
+            catch (IOException error) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error))); }
         }
     }
 
@@ -387,8 +388,16 @@ internal sealed class FileWriteTransaction(string staging, string target, byte[]
             completion.SetResult(outcome);
         }
         catch (OperationCanceledException error) when (!submitted) { completion.SetCanceled(error.CancellationToken); }
-        catch (UnauthorizedAccessException) { completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(PlatformFailureCode.PermissionDenied) : new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied)); }
-        catch (IOException) { completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError) : new FileCommitResult.NotCommitted(PlatformFailureCode.IoError)); }
+        catch (UnauthorizedAccessException error)
+        {
+            var diagnostic = FileErrors.Diagnose(error);
+            completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(PlatformFailureCode.PermissionDenied, diagnostic) : new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied, diagnostic));
+        }
+        catch (IOException error)
+        {
+            var diagnostic = FileErrors.Diagnose(error);
+            completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(PlatformFailureCode.IOError, diagnostic) : new FileCommitResult.NotCommitted(PlatformFailureCode.IOError, diagnostic));
+        }
         catch (Exception error) { completion.SetException(error); }
     }
 

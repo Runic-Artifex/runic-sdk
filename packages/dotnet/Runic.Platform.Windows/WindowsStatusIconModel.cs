@@ -47,12 +47,12 @@ internal static class WindowsStatusIconModel
             switch (item)
             {
                 case DesktopMenuCommand command:
-                    var entry = new Command(ids.For(command.Id), command.Id, MenuLabel(command.Label), command.Enabled, command.Checked);
+                    var entry = new Command(ids.For(command.Id), command.Id, MenuLabel(command.Label), command.IsEnabled, command.IsChecked);
                     commands[entry.Id] = entry;
                     entries.Add(entry);
                     break;
                 case DesktopMenuSubmenu submenu:
-                    entries.Add(new Submenu(MenuLabel(submenu.Label), submenu.Enabled, Build(submenu.Items, ids, commands)));
+                    entries.Add(new Submenu(MenuLabel(submenu.Label), submenu.IsEnabled, Build(submenu.Items, ids, commands)));
                     break;
                 default:
                     entries.Add(new Separator());
