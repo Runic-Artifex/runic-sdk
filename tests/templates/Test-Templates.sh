@@ -121,9 +121,10 @@ fi
 
 dotnet new install "$template_package" --force
 # --host cswebui references the preview Runic.Application.Views.CsWebUi package, which ships on its own
-# prerelease version (eng/release/README.md, "Package tiers"); the template stamps that version separately.
-# verify_template does not pass --runic-cswebui-version, so each cswebui variant restores the stamped version
-# from the candidate feed.
+# prerelease version (eng/release/README.md, "Package tiers"); the template pack stamps that version separately.
+# The template has no version options: the candidate template is packed with the versions it references
+# (-p:RunicNuGetTemplateVersion=..., -p:RunicCsWebUiNuGetTemplateVersion=..., -p:RunicNpmTemplateVersion=...),
+# and each cswebui variant restores the stamped version from the candidate feed.
 cswebui_packages=("$package_directory"/Runic.Application.Views.CsWebUi.*.nupkg)
 if [[ ${#cswebui_packages[@]} -ne 1 || ! -f "${cswebui_packages[0]}" ]]; then
   echo "Expected one Runic.Application.Views.CsWebUi package in $package_directory." >&2
@@ -259,26 +260,31 @@ verify_template() {
   local view_models="$4"
   # Trailing flags: "defaults" omits --host and --view-models, so the checks
   # below prove that the template's defaults are this host and ViewModel
-  # library; "tests" adds the TUnit test project and runs it.
-  local defaults="" tests="" flag
+  # library; "tests" adds the TUnit test project and runs it; "gtk4" adds
+  # --linux-gtk 4 to the desktop host.
+  local defaults="" tests="" linux_gtk=3 flag
   for flag in "${@:5}"; do
     case "$flag" in
       defaults) defaults=defaults ;;
       tests) tests=tests ;;
+      gtk4) linux_gtk=4 ;;
       *) echo "Unknown verify_template flag: $flag" >&2; exit 2 ;;
     esac
   done
+  if [[ "$linux_gtk" == 4 && ( "$host" != desktop || "$defaults" == defaults ) ]]; then
+    echo "The gtk4 flag needs an explicit desktop host." >&2
+    exit 2
+  fi
   local selection=(--host "$host" --view-models "$view_models")
+  [[ "$linux_gtk" == 4 ]] && selection+=(--linux-gtk 4)
   [[ "$defaults" == defaults ]] && selection=()
   local tests_options=()
   [[ "$tests" == tests ]] && tests_options=(--tests)
-  # desktop-gtk4 becomes DesktopGtk4.
-  local host_name="" host_part
-  local -a host_parts
-  IFS=- read -ra host_parts <<< "$host"
-  for host_part in "${host_parts[@]}"; do host_name+="${host_part^}"; done
+  # --host desktop --linux-gtk 4 names the project ...DesktopGtk4... and its directory ...-desktop-gtk4-....
+  local host_label="$host" host_name="${host^}"
+  if [[ "$linux_gtk" == 4 ]]; then host_label+=-gtk4; host_name+=Gtk4; fi
   local project_name="Acceptance${framework^}${manager^}${host_name}${view_models^}"
-  local output="$template_tmp/$framework-$manager-$host-$view_models"
+  local output="$template_tmp/$framework-$manager-$host_label-$view_models"
   local expected_manager_version
   local selected_lock
   case "$manager" in
@@ -293,9 +299,19 @@ verify_template() {
     --frontend "$framework" \
     --package-manager "$manager" \
     "${selection[@]}" \
-    "${tests_options[@]}" \
-    --runic-version "$package_version" \
-    --runic-npm-version "$views_npm_version"
+    "${tests_options[@]}"
+
+  # The candidate template references the candidate packages: the pack stamped their versions.
+  if ! grep -Fq "\"version\": \"$package_version\"" "$output/.config/dotnet-tools.json" \
+    || grep -E 'Include="Runic\.[^"]*" Version=' "$output/$project_name.csproj" \
+      | grep -vF "Version=\"$package_version\"" | grep -vF "Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\""; then
+    echo "The template does not reference the Runic $package_version packages; pack it with -p:RunicNuGetTemplateVersion=$package_version." >&2
+    exit 1
+  fi
+  if ! grep -Fq "\"@runic-artifex/views\": \"$views_npm_version\"" "$output/Frontend/package.json"; then
+    echo "The template does not reference the Runic $views_npm_version npm packages; pack it with -p:RunicNpmTemplateVersion=$views_npm_version." >&2
+    exit 1
+  fi
 
   test -f "$output/Frontend/$selected_lock"
   for other_lock in package-lock.json pnpm-lock.yaml bun.lock; do
@@ -339,7 +355,7 @@ verify_template() {
       grep -Fq "<PackageReference Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\" />" "$output/$project_name.csproj"
       grep -Fq 'return RunicCsWebUiHost.Run(provider, RunAsync);' "$output/Program.cs"
       ;;
-    desktop|desktop-gtk4)
+    desktop)
       host_client=runic-desktop-views.js
       grep -Fq 'Runic.Application.Views.Desktop' "$output/$project_name.csproj"
       grep -Fq 'return RunicDesktopHost.Run(provider, options, RunAsync);' "$output/Program.cs"
@@ -353,7 +369,7 @@ verify_template() {
     exit 1
   fi
   # Only the GTK 4 variant selects GTK 4 and references its desktop package.
-  if [[ "$host" == desktop-gtk4 ]]; then
+  if [[ "$linux_gtk" == 4 ]]; then
     grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4(ApplicationIdentity.Id);' "$output/Program.cs"
     grep -Fq '"Runic.Desktop.Gtk4"' "$output/$project_name.csproj"
   elif grep -nE 'Gtk4|Linux\.Portal' "$output/Program.cs" "$output/$project_name.csproj"; then
@@ -546,13 +562,13 @@ verify_template() {
   # The smoke lane opens the default Runic Desktop (GTK 3) project once, with
   # npm, and every GTK 4 variant.
   if [[ "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]] &&
-    [[ "$host" == desktop-gtk4 || ( "$host" == desktop && "$manager" == npm ) ]]; then
-    run_desktop_smoke "$output" "$project_name" "$host"
+    [[ "$linux_gtk" == 4 || ( "$host" == desktop && "$manager" == npm ) ]]; then
+    run_desktop_smoke "$output" "$project_name" "$host_label" "$linux_gtk"
   fi
   if [[ "$tests" == tests ]]; then
     run_generated_tests "$output" "$project_name"
   fi
-  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models" "${tests:-no-tests}"
+  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}"
 }
 
 # Runs the generated test project as its README documents. The tests build the
@@ -588,11 +604,12 @@ run_generated_tests() {
 # Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:
 # the generated Program must open its embedded window, connect its bridge, and exit 0 without
 # manual wiring. Needs Xvfb, dbus-run-session and WebKitGTK 4.1 (GTK 3) or GTK 4.12+ with
-# WebKitGTK 6 (desktop-gtk4).
+# WebKitGTK 6 (--linux-gtk 4).
 run_desktop_smoke() {
   local output="$1"
   local project_name="$2"
   local host="$3"
+  local linux_gtk="$4"
   local log="$output/desktop-smoke.log"
   local status=0
   # The application runs directly, not through dotnet run, so no build server keeps the session open.
@@ -604,7 +621,7 @@ run_desktop_smoke() {
     tail -n 80 "$log" >&2
     exit 1
   fi
-  if [[ "$host" == desktop-gtk4 ]]; then
+  if [[ "$linux_gtk" == 4 ]]; then
     check_diagnostics_log "$output" "$project_name"
   fi
   echo "DESKTOP_SMOKE_OK|$project_name"
@@ -619,7 +636,7 @@ check_diagnostics_log() {
   local copy="$template_tmp/diagnostics-$project_name"
   local data="$copy-data"
   local application_id log run
-  application_id="$(sed -n 's|.*<RunicApplicationId>\(.*\)</RunicApplicationId>.*|\1|p' "$output/$project_name.csproj")"
+  application_id="$(sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' "$output/$project_name.csproj")"
   log="$data/$application_id/diagnostics.log"
   rm -rf "$copy" "$data"
   cp -R "$output/bin/Release/net10.0" "$copy"
@@ -673,7 +690,7 @@ verify_creator() {
   # Accepting every default selects Runic Desktop and ReactiveUI.
   (cd "$creator_directory/guided" && "$tool_directory/runic-create" Defaults --yes --dry-run) \
     > "$creator_directory/defaults.txt"
-  grep -Fq 'dotnet new runic-app --name Defaults --frontend react --package-manager npm --host desktop --view-models reactiveui' \
+  grep -Fq 'dotnet new runic-app --name Defaults --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui' \
     "$creator_directory/defaults.txt"
   echo 'CREATOR_OK'
 }
@@ -722,7 +739,7 @@ verify_package_names() {
     echo "A project without --packaging has packaging/." >&2
     exit 1
   fi
-  (cd "$names_directory" && dotnet new runic-app --name Packaged --output packaged --host desktop-gtk4 --packaging) > /dev/null
+  (cd "$names_directory" && dotnet new runic-app --name Packaged --output packaged --host desktop --linux-gtk 4 --packaging) > /dev/null
   if ! diff -r "$packaging_source" "$names_directory/packaged/packaging"; then
     echo "--packaging did not copy packaging/ unchanged." >&2
     exit 1
@@ -744,7 +761,7 @@ check_application_id() {
   local project_name="$2"
   local expected="$3"
   local generated
-  generated="$(sed -n 's|.*<RunicApplicationId>\(.*\)</RunicApplicationId>.*|\1|p' "$output/$project_name.csproj")"
+  generated="$(sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' "$output/$project_name.csproj")"
   if [[ "$generated" != "$expected" ]]; then
     echo "Project '$project_name' declared application ID '$generated', expected '$expected'." >&2
     exit 1
@@ -773,7 +790,7 @@ variants=(
   "angular npm cswebui reactiveui tests"
   "svelte bun desktop toolkit tests"
   "angular pnpm desktop toolkit tests"
-  "vue npm desktop-gtk4 toolkit tests"
+  "vue npm desktop toolkit tests gtk4"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then

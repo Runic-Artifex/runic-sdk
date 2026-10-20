@@ -21,8 +21,8 @@
     <ProjectReference Include="../Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <ProjectReference Include="../Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"
         UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
-    <AdditionalFiles Include="UDisks/org.freedesktop.UDisks2.xml" RunicDBusMode="Proxy" Namespace="Runic.Platform.Linux.Portal.UDisks" GenerateDBusTypes="false" />
-    <AdditionalFiles Include="Thumbnails/org.freedesktop.thumbnails.Thumbnailer1.xml" RunicDBusMode="Proxy" Namespace="Runic.Platform.Linux.Portal.Thumbnails" GenerateDBusTypes="false" />
+    <AdditionalFiles Include="UDisks/org.freedesktop.UDisks2.xml" RunicDBusMode="Proxy" RunicDBusNamespace="Runic.Platform.Linux.Portal.UDisks" GenerateDBusTypes="false" />
+    <AdditionalFiles Include="Thumbnails/org.freedesktop.thumbnails.Thumbnailer1.xml" RunicDBusMode="Proxy" RunicDBusNamespace="Runic.Platform.Linux.Portal.Thumbnails" GenerateDBusTypes="false" />
     <None Remove="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json;UDisks/*.xml;Thumbnails/*.xml" />
     <None Include="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" Pack="true" PackagePath="protocol/" />
     <!-- Secret encoding is internal to Runic.Platform.Runtime; compiling it here needs no InternalsVisibleTo across packages. -->

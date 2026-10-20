@@ -145,14 +145,14 @@ published XML, and list it as an `AdditionalFiles` item:
 
 ```xml
 <ItemGroup>
-  <AdditionalFiles Include="DBus/org.mpris.MediaPlayer2.Player.xml" RunicDBusMode="Proxy" Namespace="MyApp.DBus" />
+  <AdditionalFiles Include="DBus/org.mpris.MediaPlayer2.Player.xml" RunicDBusMode="Proxy" RunicDBusNamespace="MyApp.DBus" />
 </ItemGroup>
 ```
 
 | Metadata | Values |
 | --- | --- |
 | `RunicDBusMode` | `Proxy`, `Service`, or `Proxy,Service` for both (a comma, not a semicolon). Required. |
-| `Namespace` | The namespace of the generated types. Required. |
+| `RunicDBusNamespace` | The namespace of the generated types. Required. `Namespace`, its name before 0.9, still works until 2.0; `RunicDBusNamespace` wins when both are set. |
 | `RunicDBusVisibility` | `internal` (default) or `public`. |
 | `RunicDBusClassName` | The generated class's name, instead of one derived from the interface. |
 

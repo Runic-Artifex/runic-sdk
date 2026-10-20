@@ -11,7 +11,8 @@
       </PropertyGroup>
 
     Each build then writes the daemon's launchd property list, copied to the output and publish directories at
-    $(RunicMacLaunchDaemonOutputPath)<label>.plist for the bundle's Contents/Library/LaunchDaemons, and a part of the
+    $(RunicMacLaunchDaemonOutputPath)<label>.plist for the bundle's Contents/Library/LaunchDaemons unless
+    RunicMacLaunchDaemonPlistCopyEnabled is false, and a part of the
     PrivilegedActions class with MacOSDaemon, the daemon's definition. An item's optional MacProgram metadata is where
     the daemon finds the program: a path inside the bundle, such as Contents/MacOS/helper, or an absolute path.
     MacProgramIdentifier is the program's code-signing identifier, required for a program inside the bundle: a
@@ -25,6 +26,9 @@
 
     Runic.Platform's RunicValidatePrivilegedActions checks the platform-neutral part of the items first; this target
     reports RUNICPA101 to RUNICPA104, and Runic.Platform writes the declarations only after it succeeded.
+
+    "PrivilegedDaemon" names the daemon (RunicMacPrivilegedDaemon*); "LaunchDaemon" names only its launchd property
+    list (RunicMacLaunchDaemonOutputPath, RunicMacLaunchDaemonPlistCopyEnabled).
   -->
 
   <PropertyGroup>
@@ -87,7 +91,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
     public override bool Execute()
     {
         if (!IsIdentifier(Label)) Error("RUNICPA101", $"RunicMacPrivilegedDaemonLabel '{Label}' must be a reverse-DNS name of ASCII letters, digits and hyphens, such as org.example.app.privileged.");
-        if (!IsIdentifier(BundleIdentifier ?? "")) Error("RUNICPA101", $"RunicMacBundleIdentifier '{BundleIdentifier}' must be the application's bundle identifier, a reverse-DNS name. It defaults to ApplicationId, then RunicApplicationId.");
+        if (!IsIdentifier(BundleIdentifier ?? "")) Error("RUNICPA101", $"RunicMacBundleIdentifier '{BundleIdentifier}' must be the application's bundle identifier, a reverse-DNS name. It defaults to ApplicationId.");
         if (!IsTeamIdentifier(TeamIdentifier ?? "")) Error("RUNICPA101", $"RunicMacTeamIdentifier '{TeamIdentifier}' must be the ten-character Team ID that signs the application; the daemon's launch constraint requires it.");
         if (!IsIdentifier(DaemonIdentifier ?? "")) Error("RUNICPA101", $"RunicMacPrivilegedDaemonIdentifier '{DaemonIdentifier}' must be the daemon's code-signing identifier, a reverse-DNS name.");
         if (!IsProgramPath(DaemonProgram ?? "") || !DaemonProgram.StartsWith("Contents/", StringComparison.Ordinal))
@@ -246,6 +250,16 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
     </Task>
   </UsingTask>
 
+  <!--
+    RUNICPA108: the former name RunicMacLaunchDaemonPlist is no longer applied, so a project that still
+    sets it fails with the new name. Design-time builds skip the check.
+  -->
+  <Target Name="_RunicMacReportRenamedNames" BeforeTargets="PrepareForBuild;RunicValidatePrivilegedActions"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicMacLaunchDaemonPlist)' != ''">
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICPA108" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa108"
+           Text="The Runic build property RunicMacLaunchDaemonPlist is renamed to RunicMacLaunchDaemonPlistCopyEnabled. Rename it in $(MSBuildProjectFile), its imports or the command line." />
+  </Target>
+
   <Target Name="RunicGenerateMacPrivilegedDaemon"
           DependsOnTargets="RunicValidatePrivilegedActions"
           BeforeTargets="AssignTargetPaths;CoreCompile"
@@ -253,11 +267,9 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
     <!-- Defaults are set here, when the target runs, so they see the final project properties. -->
     <PropertyGroup>
       <RunicMacBundleIdentifier Condition="'$(RunicMacBundleIdentifier)' == ''">$(ApplicationId)</RunicMacBundleIdentifier>
-      <!-- The runic-app template declares the application's identity as RunicApplicationId. -->
-      <RunicMacBundleIdentifier Condition="'$(RunicMacBundleIdentifier)' == ''">$(RunicApplicationId)</RunicMacBundleIdentifier>
       <RunicMacPrivilegedDaemonIdentifier Condition="'$(RunicMacPrivilegedDaemonIdentifier)' == ''">$(RunicMacPrivilegedDaemonLabel)</RunicMacPrivilegedDaemonIdentifier>
       <RunicMacLaunchDaemonOutputPath Condition="'$(RunicMacLaunchDaemonOutputPath)' == ''">Library/LaunchDaemons/</RunicMacLaunchDaemonOutputPath>
-      <RunicMacLaunchDaemonPlist Condition="'$(RunicMacLaunchDaemonPlist)' == ''">true</RunicMacLaunchDaemonPlist>
+      <RunicMacLaunchDaemonPlistCopyEnabled Condition="'$(RunicMacLaunchDaemonPlistCopyEnabled)' == ''">true</RunicMacLaunchDaemonPlistCopyEnabled>
       <_RunicPrivilegedMacDirectory>$(IntermediateOutputPath)runic-privileged-macos/</_RunicPrivilegedMacDirectory>
     </PropertyGroup>
     <RunicWriteMacPrivilegedDaemon Actions="@(RunicPrivilegedAction)"
@@ -272,14 +284,14 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
                                    Namespace="$(RunicPrivilegedActionsNamespace)"
                                    ClassName="$(RunicPrivilegedActionsClassName)"
                                    ProjectFile="$(MSBuildProjectFullPath)"
-                                   HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+                                   HelpLinkBase="$(_RunicDiagnosticsHelpLinkBase)" />
     <ItemGroup>
       <Compile Remove="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs" />
       <Compile Include="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs" />
       <FileWrites Include="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs;$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
       <None Remove="$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
       <None Include="$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
-            Condition="'$(RunicMacLaunchDaemonPlist)' == 'true'"
+            Condition="'$(RunicMacLaunchDaemonPlistCopyEnabled)' == 'true'"
             Link="$(RunicMacLaunchDaemonOutputPath)$(RunicMacPrivilegedDaemonLabel).plist"
             CopyToOutputDirectory="PreserveNewest"
             CopyToPublishDirectory="PreserveNewest" />
@@ -294,22 +306,22 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
   -->
   <Target Name="RunicCheckMacPrivilegedDaemon" BeforeTargets="CoreCompile"
           Condition="'$(RunicMacPrivilegedDaemon)' == 'true' and '$(PublishAot)' != 'true' and ('$(RuntimeIdentifier)' != '' or '$(_IsPublishing)' == 'true')">
-    <Error Code="RUNICPA106" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa106"
+    <Error Code="RUNICPA106" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa106"
            Text="The macOS privileged daemon (RunicMacPrivilegedDaemon) must set PublishAot to true: a JIT runtime loads assemblies and configuration that code signing does not cover." />
   </Target>
 
   <!-- A build for a macOS runtime identifier makes a deployable application too; development signing allows JIT. -->
   <Target Name="RunicCheckMacPrivilegedClient" BeforeTargets="CoreCompile"
           Condition="'$(RunicMacPrivilegedDaemonLabel)' != '' and '@(RunicPrivilegedAction)' != '' and '$(RunicMacPrivilegedDaemon)' != 'true' and '$(RunicMacPrivilegedDevelopmentSigning)' != 'true' and '$(PublishAot)' != 'true' and $(RuntimeIdentifier.StartsWith('osx'))">
-    <Error Code="RUNICPA107" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa107"
+    <Error Code="RUNICPA107" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa107"
            Text="An application that runs macOS privileged actions must set PublishAot to true when it is built for a macOS runtime identifier: a JIT runtime reads startup hooks and debugger or profiler settings from whoever starts it, so code with the application's signature could run code it does not contain." />
   </Target>
 
   <Target Name="RunicCheckMacPrivilegedPublish" BeforeTargets="PrepareForPublish"
           Condition="'$(RunicMacPrivilegedDaemonLabel)' != '' and '@(RunicPrivilegedAction)' != '' and '$(PublishAot)' != 'true' and $(RuntimeIdentifier.StartsWith('osx'))">
-    <Error Condition="'$(RunicMacPrivilegedDaemon)' == 'true'" Code="RUNICPA106" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa106"
+    <Error Condition="'$(RunicMacPrivilegedDaemon)' == 'true'" Code="RUNICPA106" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa106"
            Text="The macOS privileged daemon (RunicMacPrivilegedDaemon) must be published with PublishAot set to true: a JIT runtime loads assemblies and configuration that code signing does not cover." />
-    <Error Condition="'$(RunicMacPrivilegedDaemon)' != 'true' and '$(RunicMacPrivilegedDevelopmentSigning)' != 'true'" Code="RUNICPA107" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa107"
+    <Error Condition="'$(RunicMacPrivilegedDaemon)' != 'true' and '$(RunicMacPrivilegedDevelopmentSigning)' != 'true'" Code="RUNICPA107" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa107"
            Text="An application that runs macOS privileged actions must be published with PublishAot set to true: a JIT runtime reads startup hooks and debugger or profiler settings from whoever starts it, so code with the application's signature could run code it does not contain." />
   </Target>
 </Project>

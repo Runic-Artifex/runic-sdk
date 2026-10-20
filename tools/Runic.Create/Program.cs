@@ -66,6 +66,7 @@ internal static class Program
         [Option("--frontend", Description = "Frontend framework.")] string? frontend = null,
         [Option("--package-manager", Description = "JavaScript package manager.")] string? packageManager = null,
         [Option("--host", Description = "Window host: desktop opens a native window, cswebui opens a browser window.")] string? host = null,
+        [Option("--linux-gtk", Description = "GTK version of Runic Desktop on Linux: 3 or 4.")] string? linuxGtk = null,
         [Option("--view-models", Description = "MVVM library for the C# ViewModels.")] string? viewModels = null,
         [Option("--tests", Description = "Add a TUnit test project for the Window.")] bool tests = false,
         [Option("--nix", Description = "Add a Nix flake that builds the application with the Runic SDK's builder.")] bool nix = false,
@@ -82,6 +83,7 @@ internal static class Program
                 ["frontend"] = frontend ?? "",
                 ["package-manager"] = packageManager ?? "",
                 ["host"] = host ?? "",
+                ["linux-gtk"] = linuxGtk ?? "",
                 ["view-models"] = viewModels ?? "",
             },
             yes,
@@ -92,7 +94,7 @@ internal static class Program
     }
 
     /// <summary>The template options the creator exposes as flags, by long name.</summary>
-    internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "view-models"];
+    internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "linux-gtk", "view-models"];
 
     /// <summary>The template's Boolean parameters the creator exposes as presence flags, by long name.</summary>
     internal static IReadOnlyList<string> ToggleFlags { get; } = ["tests", "nix", "packaging"];

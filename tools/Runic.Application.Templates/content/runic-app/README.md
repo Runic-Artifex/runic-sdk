@@ -56,7 +56,7 @@ another presentation, call `DesktopEventLoop.Run` and create a
 `RunicDesktopHost` with other `WindowOptions`; see the
 [Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop/README.md)
 for native prerequisites and platform services. Create the project with
-`--host desktop-gtk4` to use GTK 4 and WebKitGTK 6 on Linux.
+`--linux-gtk 4` to use GTK 4 and WebKitGTK 6 on Linux.
 <!--#else -->
 `RunicCsWebUiHost.Run` in `Program.cs` uses CS-WebUI. It opens the app
 in an installed browser in app mode (Chrome, Edge or another Chromium-based
@@ -238,8 +238,8 @@ The project file declares the application's identity once:
 
 | Property | Value | Used for |
 | --- | --- | --- |
-| `RunicApplicationId` | `__RUNIC_APPLICATION_ID__` | The desktop entry, icon and Flatpak ID on Linux, the bundle identifier on macOS, the package name and AppUserModelID on Windows. |
-| `RunicApplicationName` | `__RUNIC_APPLICATION_NAME__` | The name users see. |
+| `ApplicationId` | `__RUNIC_APPLICATION_ID__` | The desktop entry, icon and Flatpak ID on Linux, the bundle identifier on macOS, the package name and AppUserModelID on Windows. |
+| `ApplicationTitle` | `__RUNIC_APPLICATION_NAME__` | The name users see. |
 | `Version` | `1.0.0` | The application's version. |
 | `ApplicationIcon` | `icons/icon.ico` | The executable's icon in Explorer and the taskbar. |
 
@@ -297,7 +297,7 @@ guide covers publish modes, signing and packaging per platform.
 ## Package it
 
 `packaging/package.mjs` packages the application on the platform it runs on.
-It reads `RunicApplicationId`, `RunicApplicationName`, `Version`,
+It reads `ApplicationId`, `ApplicationTitle`, `Version`,
 `Description`, `PackageProjectUrl`, `RunicApplicationPublisher` and
 `RunicApplicationUrlSchemes` from the project file, publishes with NativeAOT, fills the `{{...}}` fields of
 the manifests in `packaging/` and writes the package to `artifacts/package/`.
@@ -322,7 +322,7 @@ installs the GNOME runtime and SDK on the first build.
 | Linux | `<id>.flatpak` and a repository in `artifacts/package/flatpak/repo`, from `packaging/linux/flatpak.yml`, `app.desktop` and `app.metainfo.xml` | Unsigned: install the bundle with `flatpak install --user <id>.flatpak`. | A GPG key for your own repository (`--gpg-sign <key id>`). Flathub reviews a submission from your account and builds from source in its own sandbox, which needs a manifest that builds the .NET project offline (the `org.freedesktop.Sdk.Extension.dotnet` SDK extension and generated NuGet sources) instead of installing this published folder. |
 
 The Flatpak runs on the GNOME runtime, which provides GTK 4 and WebKitGTK 6,
-so create the project with `--host desktop-gtk4` for it. Inside Flatpak the
+so create the project with `--linux-gtk 4` for it. Inside Flatpak the
 application ID is `FLATPAK_ID`, which `WithGtk4` accepts when it matches.
 
 ### Identity on each platform
@@ -400,7 +400,7 @@ The package installs the program in `bin`, the desktop entry
 `share/applications/__RUNIC_APPLICATION_ID__.desktop` with the icons from
 `icons/` under the same name, and GTK and WebKitGTK as run-time libraries.
 `flake.nix` repeats the application ID; change it there too when you change
-`RunicApplicationId`. `nix develop`
+`ApplicationId`. `nix develop`
 opens a shell with the .NET SDK, Node, the package manager and those libraries.
 The SDK's
 [Nix packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/nix/README.md)

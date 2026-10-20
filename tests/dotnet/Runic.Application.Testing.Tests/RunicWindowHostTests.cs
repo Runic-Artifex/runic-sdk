@@ -37,6 +37,30 @@ internal sealed class RunicWindowHostTests
         Require(new RunicWindowOptions { ContentRoot = "/srv/www" }.ResolveContentRoot() == "/srv/www", "An explicit ContentRoot was not used.");
     }
 
+    // W319-003 D16: the build's RunicApplicationFrontendWebRoot reaches the hosts as a runtime option.
+    [Test, NotInParallel(Order = 0)]
+    public void DefaultContentRootFollowsTheBuildWebRoot()
+    {
+        const string bundle = "/Applications/Notes.app/Contents/";
+        Require(RunicWindowOptions.DefaultContentRoot("/opt/notes/", macOS: false, _ => false, "wwwroot") == Path.Combine("/opt/notes/", "wwwroot"),
+            "The web root was not used beside the application.");
+        Require(RunicWindowOptions.DefaultContentRoot(bundle + "MacOS/", macOS: true, path => path == Path.Combine(bundle + "Resources", "wwwroot"), "wwwroot")
+                == Path.Combine(bundle + "Resources", "wwwroot"),
+            "A macOS bundle did not use Contents/Resources/<web root>.");
+        Require(RunicWindowOptions.DefaultWebRoot == "www", "Without the runtime option the web root is not www.");
+        AppContext.SetData("Runic.Application.FrontendWebRoot", "wwwroot");
+        try
+        {
+            Require(RunicWindowOptions.DefaultWebRoot == "wwwroot", "The runtime option did not select the web root.");
+            Require(new RunicWindowOptions().ResolveContentRoot() == Path.Combine(AppContext.BaseDirectory, "wwwroot"),
+                "ResolveContentRoot did not follow the runtime option.");
+        }
+        finally
+        {
+            AppContext.SetData("Runic.Application.FrontendWebRoot", null);
+        }
+    }
+
     [Test, NotInParallel(Order = 1)]
     public async Task OpenResolvesTheViewModelInANewScopeAndAssignsIt()
     {

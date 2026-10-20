@@ -181,7 +181,7 @@ for case in "${cases[@]}"; do
     grep -q 'Test run summary: Passed!' "$work/build.log" || { tail -n 60 "$work/build.log" >&2; echo "The build ran no tests." >&2; exit 1; }
     echo "  tests: passed in the build"
   fi
-  # The desktop entry and icons are named after the project's RunicApplicationId.
+  # The desktop entry and icons are named after the project's ApplicationId.
   test -f "$project/result-$output/share/applications/com.example.NixApp.desktop"
   grep -qx 'Icon=com.example.NixApp' "$project/result-$output/share/applications/com.example.NixApp.desktop"
   test -f "$project/result-$output/share/icons/hicolor/scalable/apps/com.example.NixApp.svg"

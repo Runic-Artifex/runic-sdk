@@ -55,7 +55,7 @@ public static class ElevatedHelper
     /// administrators and SYSTEM can open, removed when the process exits.</item>
     /// </list>
     /// The NativeAOT runtime reads its own settings from the environment before <c>Main</c>. A helper built with
-    /// <c>RunicElevatedHelper</c> has no standalone GC (<c>DOTNET_GCPath</c>, <c>DOTNET_GCName</c>), no EventPipe or
+    /// <c>RunicWindowsElevatedHelper</c> has no standalone GC (<c>DOTNET_GCPath</c>, <c>DOTNET_GCName</c>), no EventPipe or
     /// diagnostic server (<c>DOTNET_DiagnosticPorts</c>, <c>DOTNET_EventPipeOutputPath</c>) and invariant
     /// globalization compiled in, so ICU (<c>DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU</c>) is never loaded; what is
     /// left (server GC, conservative stack scanning, the stress log and heap settings) changes performance but loads

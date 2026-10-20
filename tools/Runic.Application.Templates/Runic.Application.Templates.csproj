@@ -32,7 +32,11 @@
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
-  <Target Name="PrepareTemplatePackContent" BeforeTargets="_GetPackageFiles">
+  <!-- The shipped template has no version parameters (W319-003 D19 tmpl-04): its version symbols are constants
+       whose values the pack stamps here, so a project references the packages this template was packed with. A
+       candidate template for other versions is packed with -p:RunicNuGetTemplateVersion=...,
+       -p:RunicCsWebUiNuGetTemplateVersion=... and -p:RunicNpmTemplateVersion=.... -->
+  <Target Name="StampTemplateJson">
     <RemoveDir Directories="$(TemplatePackContentRoot)" />
     <Copy SourceFiles="content/runic-app/.template.config/template.json"
           DestinationFiles="$(TemplatePackContentRoot)runic-app/.template.config/template.json" />
@@ -44,7 +48,9 @@
     <WriteLinesToFile File="$(TemplatePackContentRoot)runic-app/.template.config/template.json"
                       Lines="$(_StampedTemplateJson)"
                       Overwrite="true" />
+  </Target>
 
+  <Target Name="PrepareTemplatePackContent" BeforeTargets="_GetPackageFiles" DependsOnTargets="StampTemplateJson">
     <Exec Command="bun &quot;$(MSBuildProjectDirectory)/../../eng/release/stage-template-locks.mjs&quot; &quot;$(MSBuildProjectDirectory)/content&quot; &quot;$(RunicTemplateNpmDirectory)&quot; &quot;$(TemplatePackContentRoot)&quot;" />
 
     <ItemGroup>

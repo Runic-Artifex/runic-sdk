@@ -6,16 +6,18 @@
          choice to Runic's generator. -->
     <RunicApplicationFrontendReactiveUiFlavor Condition="'$(RunicApplicationFrontendReactiveUiFlavor)' == ''">reactive</RunicApplicationFrontendReactiveUiFlavor>
   </PropertyGroup>
-  <Target Name="RunicRejectMixedReactiveUiFlavors" BeforeTargets="ResolveReferences">
+  <Target Name="RunicViewsRejectMixedReactiveUiFlavors" BeforeTargets="ResolveReferences">
     <ItemGroup>
       <_RunicDefaultReactiveUiPackage Include="@(PackageReference)" Condition="'%(Identity)' == 'Runic.Application.Views.ReactiveUI'" />
       <_RunicDefaultReactiveUiProject Include="@(ProjectReference)" Condition="'%(Filename)' == 'Runic.Application.Views.ReactiveUI'" />
       <_RunicDefaultNavigationReactiveUiPackage Include="@(PackageReference)" Condition="'%(Identity)' == 'Runic.Navigation.ReactiveUI'" />
       <_RunicDefaultNavigationReactiveUiProject Include="@(ProjectReference)" Condition="'%(Filename)' == 'Runic.Navigation.ReactiveUI'" />
     </ItemGroup>
-    <Error Condition="'@(_RunicDefaultReactiveUiPackage)' != '' Or '@(_RunicDefaultReactiveUiProject)' != ''"
+    <Error Code="RUNICBRIDGE023" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge023"
+           Condition="'@(_RunicDefaultReactiveUiPackage)' != '' Or '@(_RunicDefaultReactiveUiProject)' != ''"
            Text="Runic.Application.Views.ReactiveUI.Reactive uses ReactiveUI's System.Reactive flavor and cannot be referenced with Runic.Application.Views.ReactiveUI. Select one ReactiveUI flavor for the application." />
-    <Error Condition="'@(_RunicDefaultNavigationReactiveUiPackage)' != '' Or '@(_RunicDefaultNavigationReactiveUiProject)' != ''"
+    <Error Code="RUNICBRIDGE023" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge023"
+           Condition="'@(_RunicDefaultNavigationReactiveUiPackage)' != '' Or '@(_RunicDefaultNavigationReactiveUiProject)' != ''"
            Text="Runic.Application.Views.ReactiveUI.Reactive uses ReactiveUI's System.Reactive flavor and cannot be referenced with Runic.Navigation.ReactiveUI. Reference Runic.Navigation.ReactiveUI.Reactive instead and select one ReactiveUI flavor for the application." />
   </Target>
 </Project>

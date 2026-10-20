@@ -628,11 +628,11 @@ runs.
 
 The Window types and entry points of the two hosts were merged into this API,
 and package, build property and outlet names now match what they are. Earlier
-API shapes were removed rather than deprecated. Old build property names still
-work in 0.7.0-preview.7 with warning
+API shapes were removed rather than deprecated. Since 0.9 the old build property
+and item names no longer apply: each fails the build with
 [RUNICBRIDGE017](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge017),
-and Angular's `RunicViewOutlet` remains a deprecated alias; both are removed in
-the next preview. The old package IDs get no further releases, so replace them
+which names the new one. Angular's `RunicViewOutlet` remains a deprecated alias,
+removed in the next preview. The old package IDs get no further releases, so replace them
 in `PackageReference` and `Directory.Packages.props`; namespaces are unchanged.
 
 | Before | Now |
@@ -672,9 +672,11 @@ in `PackageReference` and `Directory.Packages.props`; namespaces are unchanged.
 | `RunicBridgeModelAssembly` | `RunicApplicationFrontendModelAssembly` |
 | `RunicBridgeReactiveUiFlavor` | `RunicApplicationFrontendReactiveUiFlavor` |
 | `RunicBridgeDocumentation` | `RunicApplicationFrontendDocumentationEnabled` |
-| `RunicBridgeBootstrap` (set in the bootstrap pass) | `RunicApplicationFrontendBootstrap`; the old name is still set in this preview |
+| `RunicBridgeBootstrap` (set in the bootstrap pass) | `RunicApplicationFrontendBootstrap`; the bootstrap pass no longer sets the old name |
 | `RunicViewsWindowProject` | `RunicApplicationFrontendWindowProject` |
 | `RunicBridgeFrontendInput` items | `RunicApplicationFrontendInput` items |
+| `RunicApplicationId` (`runic-app` template, 0.8 and earlier) | `ApplicationId`, which `Runic.Platform.MacOS` and `Runic.Platform.Linux.Polkit` read too |
+| `RunicApplicationName` (`runic-app` template, 0.8 and earlier) | `ApplicationTitle` |
 | `RunicViewOutlet` (`@runic-artifex/angular`) | `ViewOutlet`, as in React, Vue and Svelte; the element stays `<runic-view-outlet>` |
 
 Runic Desktop's window lifecycle is asynchronous too: see the
@@ -980,7 +982,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `017`, `019` and `020` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019` and `020` are warnings; the generator's
 (`013` and `020`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -1004,10 +1006,18 @@ references a host adapter. A project needs none of these properties unless it
 departs from the conventional `Frontend` folder. Every property except
 `RunicApplicationHost` starts with `RunicApplicationFrontend`, as do the
 development-server properties of `dotnet runic dev`. The `RunicBridge*` and `RunicViewsWindowProject` names of
-0.7.0-preview.6 and earlier still apply in this preview with warning
+0.7.0-preview.6 and earlier no longer apply and fail the build with
 `RUNICBRIDGE017`; the [rename table](#moved-and-renamed-since-070-preview6)
-maps them. Underscore-prefixed properties, `RunicApplicationHostAdapter` (which
-the host adapters set) and the `RunicViews*` target names are not settings.
+maps them. Underscore-prefixed properties, such as `_RunicApplicationHostAdapter`,
+which the host adapters set, are not settings.
+
+`RunicViewsGenerateBridge`, `RunicViewsBuildFrontend` and `RunicViewsCopyFrontend`
+are extension points: a project may run its own targets before or after them
+(`BeforeTargets`/`AfterTargets`), and they keep their names and order. Other
+`RunicViews*` target names are implementation details and may change in any
+release. `RunicViewsGetFrontendFiles`, which an application calls on the
+projects it references, is a protocol between Runic packages of one release, not
+an extension point.
 
 | Property | Default | Purpose |
 | --- | --- | --- |
@@ -1019,8 +1029,10 @@ the host adapters set) and the `RunicViews*` target names are not settings.
 | `RunicApplicationFrontendInstallEnabled` | `true` | Set `false` when a workspace install owns the frontend packages. |
 | `RunicApplicationFrontendNodeModulesDirectory` | none | A `node_modules` installed by something else, such as the [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md) from the lock file. The install does not run, and the frontend's `node_modules` becomes a symbolic link (a junction on Windows) to it; an existing `node_modules` that is not a link is `RUNICBRIDGE021`. |
 | `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
-| `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors `<frontend>/dist` to `www/` in the build output: a file that an earlier copy wrote and `dist` no longer has is deleted. Publish always mirrors it. |
-| `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `www/runic-views.js`. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
+| `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
+| `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
+| `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
+| `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
 | `RunicApplicationFrontendCompositionType` | `<project name>.RunicBridgeComposition` (host adapters) | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
 | `RunicApplicationFrontendReactiveUiFlavor` | none | `primitives` or `reactive` for ReactiveUI projects. |
@@ -1029,7 +1041,7 @@ the host adapters set) and the `RunicViews*` target names are not settings.
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
 
 `dotnet build` and `dotnet publish` copy the built frontend as loose files to
-`www/` next to the executable; they do not embed it. `Runic.Assets` is the
+`www/` (the web root) next to the executable; they do not embed it. `Runic.Assets` is the
 separate pipeline that embeds a frontend in the assembly, for ASP.NET Core and
 non-Views Desktop applications, with its own `RunicAssetsDist` property; see
 [Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder)
@@ -1068,7 +1080,7 @@ Bridge generation turns on by default for a project that references
 `Runic.Application.Views` directly, references a host adapter
 (`Runic.Application.Views.Desktop`, `Runic.Application.Views.CsWebUi` or
 `Runic.Application.Views.Wpf`) directly or transitively, or builds in this repository.
-Each adapter's build props set `RunicApplicationHostAdapter` to `true`, which is
+Each adapter's build props set `_RunicApplicationHostAdapter` to `true`, which is
 what the targets check. A project that reaches `Runic.Application.Views` only through
 another project, such as a library that references a model project, does not
 generate; if it declares a Window or View anyway, the build warns with

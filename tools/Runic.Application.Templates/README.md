@@ -19,9 +19,13 @@ dotnet runic dev
 | --- | --- | --- |
 | `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
-| `--host` | `desktop` (Runic Desktop), `desktop-gtk4` (Runic Desktop with GTK 4 on Linux), `cswebui` (CS-WebUI) | `desktop` |
+| `--host` | `desktop` (Runic Desktop), `cswebui` (CS-WebUI) | `desktop` |
+| `--linux-gtk` | `3` (GTK 3 and WebKitGTK 4.1), `4` (GTK 4 and WebKitGTK 6): the GTK version of Runic Desktop on Linux | `3` |
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
+| `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
+| `--packaging` | Adds `packaging/package.mjs`, which packages the application as MSIX, a signed `.app` in a disk image, or a Flatpak | No packaging recipes |
+| `--application-id` | The reverse-DNS application ID, such as `org.example.Notes` | `com.example.` and the project name's ASCII letters and digits |
 
 `dotnet runic dev` restores NuGet packages, installs the frontend packages,
 builds the application, starts the frontend development server, and opens the
@@ -43,13 +47,14 @@ What each host opens:
 - `desktop` opens a native window with the platform's embedded WebView, native
   file dialogs and the clipboard, through `RunicDesktopHost.Run`, which picks
   the event loop each platform needs.
-- `desktop-gtk4` is `desktop` on GTK 4 and WebKitGTK 6 on Linux (`WithGtk4()`,
-  with the GTK 4 portal and clipboard packages); on Windows and macOS it is the
-  same as `desktop`.
+- `desktop --linux-gtk 4` is `desktop` on GTK 4 and WebKitGTK 6 on Linux
+  (`WithGtk4()`, with the GTK 4 portal and clipboard packages); on Windows and
+  macOS it is the same as `desktop`.
 - `cswebui` opens a browser window: an installed browser in app mode (Chrome,
   Edge or another Chromium-based browser works best), with the platform WebView
   as a fallback. It is supported on a best-effort basis and has no native
-  dialogs or clipboard.
+  dialogs or clipboard. `--linux-gtk` does not change a `cswebui` project:
+  CS-WebUI has no GTK choice.
 
 `--view-models toolkit` uses CommunityToolkit.Mvvm instead of ReactiveUI and is
 equally supported. `dotnet publish` writes the executable and a `www` folder
@@ -69,7 +74,12 @@ cd MyCandidateApp/Frontend
 npm config set --location=project @runic-artifex:registry http://127.0.0.1:<PORT>
 ```
 
-`<CANDIDATE>` and the npm registry must come from the same package set. The
+`<CANDIDATE>` and the npm registry must come from the same package set: the
+template has no version options, and its pack stamps the Runic NuGet and npm
+versions that projects reference. Pack a candidate template for other versions
+with `-p:RunicNuGetTemplateVersion=<VERSION>`,
+`-p:RunicCsWebUiNuGetTemplateVersion=<VERSION>` and
+`-p:RunicNpmTemplateVersion=<VERSION>`. The
 SDK's template acceptance check (`bun run verify:templates`) runs the commands
 above for every frontend and package manager with the default Runic Desktop and
 ReactiveUI, plus pairwise CS-WebUI and CommunityToolkit.Mvvm variants, and
@@ -80,7 +90,7 @@ without opening a browser and prints `RUNIC_APPLICATION_URL=<url>`. Setting
 `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` makes a Runic Desktop app print
 `RUNIC_APPLICATION_OPENED=<presentation>` once its Window has opened and
 connected, then close it; with `RUNIC_TEMPLATE_DESKTOP_SMOKE=1` the acceptance
-check runs a default `desktop` project and the `desktop-gtk4` variant this way
+check runs a default `desktop` project and the `--linux-gtk 4` variant this way
 under Xvfb.
 
 See the [getting-started guide](https://docs.runic-artifex.eu/getting-started/), [project creator](https://docs.runic-artifex.eu/create/), [template source](https://github.com/Runic-Artifex/runic-sdk/tree/main/tools/Runic.Application.Templates), [runnable examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples), and [issues](https://github.com/Runic-Artifex/runic-sdk/issues). Preview package; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

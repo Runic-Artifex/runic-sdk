@@ -1,4 +1,6 @@
 <Project>
+  <!-- The help links of the RAS2xxx build errors at this package's release tag, generated when it was packed. -->
+  <Import Project="$(MSBuildThisFileDirectory)Runic.Assets.HelpLinks.props" Condition="Exists('$(MSBuildThisFileDirectory)Runic.Assets.HelpLinks.props')" />
   <!-- Defaults a project may replace, set before the project file so that an empty value stays empty:
        <RunicAssetsDistExclude></RunicAssetsDistExclude> packs every file of RunicAssetsDist. -->
   <PropertyGroup>

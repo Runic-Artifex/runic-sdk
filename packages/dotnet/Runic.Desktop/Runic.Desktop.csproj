@@ -10,6 +10,8 @@
     <NoWarn>$(NoWarn);CA1720</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
+    <!-- Packs buildTransitive/$(PackageId).props with the diagnostics help links (eng/build/release-links.targets). -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
 
   <ItemGroup>

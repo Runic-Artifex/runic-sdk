@@ -22,7 +22,7 @@ Declare each action once, as an item in the application's project:
                          Verb="activate"
                          Description="Activate a system configuration"
                          Message="Authentication is required to activate the system configuration."
-                         IconName="system-software-update"
+                         PolkitIconName="system-software-update"
                          MaximumArguments="2"
                          ArgumentPattern="switch|boot|/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+-]+" />
 </ItemGroup>
@@ -31,8 +31,10 @@ Declare each action once, as an item in the application's project:
 The items, their shared metadata and the generated `PrivilegedActions` class
 come from Runic.Platform, which this package depends on; see
 [Declare privileged actions](../Runic.Platform/README.md#declare-privileged-actions).
-This package adds the Polkit policy and the metadata only Polkit reads
-(`IconName`, `AllowAny`, `AllowInactive`, `AllowActive` and `AllowGui`).
+This package adds the Polkit policy and the metadata only Polkit reads, named
+with a `Polkit` prefix like `WindowsProgram` and `MacProgram` of the other
+platforms (`PolkitIconName`, `PolkitAllowAny`, `PolkitAllowInactive`,
+`PolkitAllowActive` and `PolkitAllowGui`).
 
 `RunicApplicationInstallPrefix` is the prefix the application is installed
 under, `/usr` unless the build sets it. The [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#privileged-actions)
@@ -46,19 +48,20 @@ under.
 
 Declare the actions in one project. When the privileged program is a separate
 project, give both projects the same items, for example from one imported
-`.props` file, and set `RunicPolkitPolicy` to `false` in all but one of them, so
-exactly one policy file declares each action ID.
+`.props` file, and set `RunicPolkitPolicyCopyEnabled` to `false` in all but one of
+them, so exactly one policy file declares each action ID.
 
 | Metadata | Meaning |
 | --- | --- |
 | Item identity | The action ID: lowercase reverse-DNS, at least two segments. It is the Polkit action ID and stays the same on every platform. |
 | `Program` | The absolute path the privileged program is installed at, without symbolic links (pkexec matches the policy against the real path). Required. |
 | `Verb` | The first argument, which selects the action (the policy's `org.freedesktop.policykit.exec.argv1`, polkit 0.107 and later). Every action needs its own verb, also across programs: pkexec matches the program's path and the verb, but the privileged program sees only the verb, and one executable may be installed under several paths. An action without a verb is allowed only on its own (`RUNICPA003`). |
-| `Description`, `Message`, `IconName` | What the authentication dialog shows. One line each. |
+| `Description`, `Message` | What the authentication dialog shows. One line each. |
+| `PolkitIconName` | The icon the authentication dialog shows. One line. |
 | `MaximumArguments` | Arguments accepted after the verb, 0 to 64. Default 0. |
 | `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, compiled with `RegexOptions.NonBacktracking`, so backreferences and lookarounds are build errors. `\d` and `\w` match every script's digits and letters, a negated class such as `[^/]` matches a line break, an inline `(?i)` makes `[a-z]` match the Kelvin sign (U+212A), and `(?x)` turns `#` into a comment: list the allowed characters, without inline options. The pattern is checked alone and anchored at build time. |
-| `AllowAny`, `AllowInactive`, `AllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. Polkit keeps an `auth_admin_keep` authorization for one action ID, so operations that should share it are commands of one action (`RunicPrivilegedCommand`), which share its policy entry. `yes`, `auth_self` and `auth_self_keep` are warnings (`RUNICPA014`): grant passwordless access to specific users in a site rule in `/etc/polkit-1/rules.d` instead. |
-| `AllowGui` | `true` keeps `DISPLAY` and `XAUTHORITY` for a program that opens windows as root. Default off. |
+| `PolkitAllowAny`, `PolkitAllowInactive`, `PolkitAllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. Polkit keeps an `auth_admin_keep` authorization for one action ID, so operations that should share it are commands of one action (`RunicPrivilegedCommand`), which share its policy entry. `yes`, `auth_self` and `auth_self_keep` are warnings (`RUNICPA014`): grant passwordless access to specific users in a site rule in `/etc/polkit-1/rules.d` instead. |
+| `PolkitAllowGui` | `true` keeps `DISPLAY` and `XAUTHORITY` for a program that opens windows as root. Default off. |
 | `Name` | The generated property name, when the last ID segment does not make a good one. |
 
 Each build writes, under `obj/.../runic-privileged/`:
@@ -78,15 +81,18 @@ Each build writes, under `obj/.../runic-privileged/`:
 
 | Property | Default |
 | --- | --- |
-| `RunicPolkitPolicyName` | `$(AssemblyName)`; use the application's reverse-DNS ID. |
+| `RunicPolkitPolicyName` | `$(ApplicationId)` when it is set, otherwise `$(AssemblyName)`; use the application's reverse-DNS ID. |
 | `RunicPolkitPolicyOutputPath` | `share/polkit-1/actions/` |
-| `RunicPolkitPolicy` | `true`, except for `win-*` and `osx-*` runtime identifiers, where no policy is copied. |
+| `RunicPolkitPolicyCopyEnabled` | `true`, except for `win-*` and `osx-*` runtime identifiers. `false` skips only the copy to the output and publish directories; the policy is still written under `obj/`. |
 | `RunicPrivilegedActionsClassName` | `PrivilegedActions` |
 | `RunicPrivilegedActionsNamespace` | `$(RootNamespace)` |
 
 Invalid declarations are build errors `RUNICPA001` to `RUNICPA013`: Runic.Platform
 reports the shared ones first, then this package `RUNICPA010`, `RUNICPA012` and
-`RUNICPA013`, and the warning `RUNICPA014`. They are described in
+`RUNICPA013`, and the warning `RUNICPA014`. A project that still sets a former
+name, `RunicPolkitPolicy` or the metadata `AllowAny`, `AllowInactive`,
+`AllowActive`, `AllowGui` or `IconName`, fails with `RUNICPA108`, which names
+the replacement; the old names no longer apply. They are described in
 the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#privileged-actions).
 
 ## Run an action

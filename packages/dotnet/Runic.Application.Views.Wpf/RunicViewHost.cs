@@ -43,9 +43,14 @@ public class RunicViewHost : Decorator
     public static readonly DependencyProperty ModelContextProperty = DependencyProperty.Register(nameof(ModelContext),
         typeof(IRunicModelContext), typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
+    // The runtime configuration option that the Runic build sets for RunicApplicationFrontendWebRoot; the same as
+    // RunicWindowOptions in Runic.Application.Views.
+    private static string DefaultWebRoot =>
+        AppContext.GetData("Runic.Application.FrontendWebRoot") is string { Length: > 0 } webRoot ? webRoot : "www";
+
     /// <summary>Identifies the <see cref="ContentRoot"/> dependency property.</summary>
     public static readonly DependencyProperty ContentRootProperty = DependencyProperty.Register(nameof(ContentRoot), typeof(string),
-        typeof(RunicViewHost), new PropertyMetadata("www", Reopen));
+        typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
     /// <summary>Identifies the <see cref="EntryPage"/> dependency property.</summary>
     public static readonly DependencyProperty EntryPageProperty = DependencyProperty.Register(nameof(EntryPage), typeof(string),
@@ -118,7 +123,11 @@ public class RunicViewHost : Decorator
         set => SetValue(ModelContextProperty, value);
     }
 
-    /// <summary>Gets or sets the built frontend's directory, relative to the application's base directory. The default is <c>www</c>.</summary>
+    /// <summary>
+    /// Gets or sets the built frontend's directory, relative to the application's base directory.
+    /// <see langword="null"/>, the default, is the build's web root: <c>www</c>, or the directory that the build
+    /// property <c>RunicApplicationFrontendWebRoot</c> names.
+    /// </summary>
     public string? ContentRoot
     {
         get => (string?)GetValue(ContentRootProperty);
@@ -209,7 +218,7 @@ public class RunicViewHost : Decorator
             "RunicViewHost has no Services. Set RunicViewHost.Services, on the host or its window, to the provider with AddRunicViews().");
         var surfaceOptions = SurfaceOptions ?? new DesktopSurfaceOptions
         {
-            Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? "www"), EntryPage),
+            Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), EntryPage),
         };
         var control = new RunicWebView();
         lifecycle.Own(() =>

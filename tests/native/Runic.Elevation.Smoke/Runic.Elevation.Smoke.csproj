@@ -9,7 +9,7 @@
          requireAdministrator manifest. CI publishes it for win-x64 with -p:PublishAot=true (RUNICEL002 refuses
          anything else) and installs it under Program Files. PublishAot is not set here, so the RID-neutral restore of
          RunicSdk.Core.slnx keeps a lock file; an application's helper sets it in its project. -->
-    <RunicElevatedHelper>true</RunicElevatedHelper>
+    <RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" />

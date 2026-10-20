@@ -7,8 +7,9 @@
     <RuntimeHostConfigurationOption Include="Runic.Desktop.MinimalHost" Value="$(RunicDesktopMinimalHost)" Trim="true" />
   </ItemGroup>
   <Target Name="RunicDesktopValidateHostProfile" BeforeTargets="PrepareForBuild">
-    <Error Condition="'$(RunicDesktopMinimalHost)' != '' and '$(RunicDesktopMinimalHost)' != 'true' and '$(RunicDesktopMinimalHost)' != 'false'"
-           Text="RunicDesktopMinimalHost must be true or false." />
+    <Error Code="RUNICDESK001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk001"
+           Condition="'$(RunicDesktopMinimalHost)' != '' and '$(RunicDesktopMinimalHost)' != 'true' and '$(RunicDesktopMinimalHost)' != 'false'"
+           Text="RunicDesktopMinimalHost is '$(RunicDesktopMinimalHost)'; it must be true or false." />
   </Target>
   <Target Name="RunicDesktopLinkWebView2Loader" AfterTargets="ResolvePackageAssets"
           Condition="'$(PublishAot)' == 'true' and ('$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64')">
@@ -21,7 +22,8 @@
       <DirectPInvoke Include="WebView2Loader" Condition="'@(_RunicWebView2Static)' != ''" />
       <NativeLibrary Include="@(_RunicWebView2Static)" />
     </ItemGroup>
-    <Error Condition="'@(_RunicWebView2Static)' != '' and !Exists('%(_RunicWebView2Static.Identity)')"
+    <Error Code="RUNICDESK002" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk002"
+           Condition="'@(_RunicWebView2Static)' != '' and !Exists('%(_RunicWebView2Static.Identity)')"
            Text="Runic Desktop could not find the restored WebView2 static loader: %(_RunicWebView2Static.Identity). Restore the Microsoft.Web.WebView2 native SDK assets before publishing." />
   </Target>
   <Target Name="RunicDesktopRemoveLinkedWebView2Loader" AfterTargets="ComputeFilesToPublish"

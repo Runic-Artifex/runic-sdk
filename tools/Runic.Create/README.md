@@ -37,7 +37,8 @@ commands in the browser.
 | --- | --- | --- |
 | `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
-| `--host` | `desktop`, `desktop-gtk4`, `cswebui` | `desktop` |
+| `--host` | `desktop`, `cswebui` | `desktop` |
+| `--linux-gtk` | `3`, `4`: the GTK version of Runic Desktop on Linux; Windows, macOS and `cswebui` are the same with either, so the creator asks for it, and prints it, only with `--host desktop` unless you pass it | `3` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
@@ -52,7 +53,7 @@ the command output format.
 The creator has no subcommand to name: `dnx Runic.Create -- create` creates a
 project named `create`.
 
-The frontend, package manager, host and ViewModel choices, `--tests`, `--nix` and `--packaging` come from
+The frontend, package manager, host, Linux GTK and ViewModel choices, `--tests`, `--nix` and `--packaging` come from
 the template itself, so `dotnet new runic-app --help` lists the same options.
 With `--tests`, the next steps include `dotnet test --project MyApp.Tests`.
 
@@ -67,13 +68,13 @@ with `"command": "create"` and the `runic.create/2` payload:
   "directory": "apps/MyApp",
   "fullPath": "/work/apps/MyApp",
   "version": "<VERSION>",
-  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "view-models": "reactiveui" },
+  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "linux-gtk": "3", "view-models": "reactiveui" },
   "toggles": { "tests": true, "nix": false, "packaging": false },
   "commands": [
     "dotnet new install Runic.Application.Templates@<VERSION>",
-    "dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests"
+    "dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests"
   ],
-  "reproduceCommand": "dnx Runic.Create@<VERSION> -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests",
+  "reproduceCommand": "dnx Runic.Create@<VERSION> -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests",
   "created": true
 }
 ```

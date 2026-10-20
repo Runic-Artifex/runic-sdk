@@ -21,11 +21,11 @@
                            MaximumArguments="8" />
     <RunicPrivilegedAction Include="dev.runic.privileged-smoke.prompt" Program="$(RunicPrivilegedSmokeProgram)" Verb="prompt"
                            Description="Run the smoke step that asks for a password" Message="Authentication is required to run the &lt;prompt&gt; smoke step &amp; check escaping."
-                           MaximumArguments="8" IconName="dialog-password" />
+                           MaximumArguments="8" PolkitIconName="dialog-password" />
     <!-- Commands: one action, and one kept authorization, for operations whose arguments are checked by position. -->
     <RunicPrivilegedAction Include="dev.runic.privileged-smoke.commands" Program="$(RunicPrivilegedSmokeProgram)" Verb="commands"
                            Description="Run a smoke command" Message="Authentication is required to run a smoke command."
-                           AllowActive="auth_admin_keep" />
+                           PolkitAllowActive="auth_admin_keep" />
     <RunicPrivilegedCommand Include="report" Action="dev.runic.privileged-smoke.commands" Arguments="[0-9]{1,3};[A-Za-z ]+" MinimumArguments="1" />
     <RunicPrivilegedCommand Include="state" Action="dev.runic.privileged-smoke.commands" />
   </ItemGroup>

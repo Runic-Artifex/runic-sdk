@@ -247,7 +247,7 @@ internal static class DoctorChecks
         if (hosts.Count == 0)
         {
             checks.Add(project.ReferencesHostAdapter
-                ? Warn(id, "A Runic Views host is referenced indirectly (RunicApplicationHostAdapter is true), so doctor cannot tell which host's requirements to check.",
+                ? Warn(id, "A Runic Views host is referenced indirectly (_RunicApplicationHostAdapter is true), so doctor cannot tell which host's requirements to check.",
                     $"Reference the host package ({references}) directly in the application project so doctor checks it.")
                 : Warn(id, "The project references no Runic Views host, so doctor checked no host's requirements.",
                     $"Reference {references}."));

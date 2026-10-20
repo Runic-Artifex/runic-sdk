@@ -2,8 +2,10 @@
   <!--
     The Polkit policy for the RunicPrivilegedAction items (see Runic.Platform's buildTransitive targets, which
     validate them and write the PrivilegedActions class). Each build writes the policy, which is copied to the output
-    and publish directories at $(RunicPolkitPolicyOutputPath)$(RunicPolkitPolicyName).policy. Packages get
-    Runic.Platform's targets through the package dependency; a project in this repository imports both files.
+    and publish directories at $(RunicPolkitPolicyOutputPath)$(RunicPolkitPolicyName).policy unless
+    RunicPolkitPolicyCopyEnabled is false. The metadata only the policy carries is Polkit-prefixed: PolkitAllowAny,
+    PolkitAllowInactive, PolkitAllowActive, PolkitAllowGui and PolkitIconName. Packages get Runic.Platform's targets
+    through the package dependency; a project in this repository imports both files.
   -->
 
   <PropertyGroup>
@@ -72,19 +74,19 @@ public sealed class RunicWritePolkitPolicy : Task
         action.Program = Get("Program") ?? "";
         action.Description = Get("Description") ?? "";
         action.Message = Get("Message") ?? "";
-        foreach (var name in new[] { "Program", "Description", "Message", "Verb", "IconName" })
+        foreach (var name in new[] { "Program", "Description", "Message", "Verb", "PolkitIconName" })
         {
             var value = Get(name);
             if (value != null && (value.Any(char.IsControl) || value.Contains(CDataEnd) || !IsXmlText(value)))
                 Error("RUNICPA013", $"Privileged action '{action.Id}' has a line break, another control character, a character XML cannot carry or '{CDataEnd}' in {name}; the policy cannot carry it.");
         }
         action.Verb = Get("Verb");
-        action.IconName = Get("IconName");
-        action.AllowAny = Authorization(item, action.Id, "AllowAny");
-        action.AllowInactive = Authorization(item, action.Id, "AllowInactive");
-        action.AllowActive = Authorization(item, action.Id, "AllowActive");
-        var gui = Get("AllowGui") ?? "false";
-        if (!bool.TryParse(gui, out action.AllowGui)) Error("RUNICPA010", $"Privileged action '{action.Id}' has AllowGui '{gui}'; use true or false.");
+        action.IconName = Get("PolkitIconName");
+        action.AllowAny = Authorization(item, action.Id, "PolkitAllowAny");
+        action.AllowInactive = Authorization(item, action.Id, "PolkitAllowInactive");
+        action.AllowActive = Authorization(item, action.Id, "PolkitAllowActive");
+        var gui = Get("PolkitAllowGui") ?? "false";
+        if (!bool.TryParse(gui, out action.AllowGui)) Error("RUNICPA010", $"Privileged action '{action.Id}' has PolkitAllowGui '{gui}'; use true or false.");
         return action;
     }
 
@@ -200,27 +202,52 @@ public sealed class RunicWritePolkitPolicy : Task
     </Task>
   </UsingTask>
 
+  <!--
+    RUNICPA108: the former names RunicPolkitPolicy and AllowAny, AllowInactive, AllowActive, AllowGui and IconName are
+    no longer applied, so a project that still sets one fails once per name, and the error names its replacement. Design-time builds skip the check.
+  -->
+  <Target Name="_RunicPolkitReportRenamedNames" BeforeTargets="PrepareForBuild;RunicValidatePrivilegedActions"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_RunicPolkitRenamedMetadata Include="@(RunicPrivilegedAction)" Condition="'%(RunicPrivilegedAction.AllowAny)' != ''" OldName="AllowAny" NewName="PolkitAllowAny" />
+      <_RunicPolkitRenamedMetadata Include="@(RunicPrivilegedAction)" Condition="'%(RunicPrivilegedAction.AllowInactive)' != ''" OldName="AllowInactive" NewName="PolkitAllowInactive" />
+      <_RunicPolkitRenamedMetadata Include="@(RunicPrivilegedAction)" Condition="'%(RunicPrivilegedAction.AllowActive)' != ''" OldName="AllowActive" NewName="PolkitAllowActive" />
+      <_RunicPolkitRenamedMetadata Include="@(RunicPrivilegedAction)" Condition="'%(RunicPrivilegedAction.AllowGui)' != ''" OldName="AllowGui" NewName="PolkitAllowGui" />
+      <_RunicPolkitRenamedMetadata Include="@(RunicPrivilegedAction)" Condition="'%(RunicPrivilegedAction.IconName)' != ''" OldName="IconName" NewName="PolkitIconName" />
+    </ItemGroup>
+    <Error Condition="'$(RunicPolkitPolicy)' != ''" ContinueOnError="ErrorAndContinue"
+           Code="RUNICPA108" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa108"
+           Text="The Runic build property RunicPolkitPolicy is renamed to RunicPolkitPolicyCopyEnabled. Rename it in $(MSBuildProjectFile), its imports or the command line." />
+    <Error Condition="'%(_RunicPolkitRenamedMetadata.OldName)' != ''" ContinueOnError="ErrorAndContinue"
+           Code="RUNICPA108" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa108"
+           Text="The RunicPrivilegedAction metadata %(_RunicPolkitRenamedMetadata.OldName) on '%(_RunicPolkitRenamedMetadata.Identity)' is renamed to %(_RunicPolkitRenamedMetadata.NewName). Rename it in $(MSBuildProjectFile) or its imports." />
+    <ItemGroup>
+      <_RunicPolkitRenamedMetadata Remove="@(_RunicPolkitRenamedMetadata)" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="RunicGeneratePolkitPolicy"
           DependsOnTargets="RunicValidatePrivilegedActions"
           BeforeTargets="AssignTargetPaths;CoreCompile"
           Condition="'@(RunicPrivilegedAction)' != ''">
     <!-- Defaults are set here, when the target runs, so they see the final project properties. -->
     <PropertyGroup>
+      <RunicPolkitPolicyName Condition="'$(RunicPolkitPolicyName)' == ''">$(ApplicationId)</RunicPolkitPolicyName>
       <RunicPolkitPolicyName Condition="'$(RunicPolkitPolicyName)' == ''">$(AssemblyName)</RunicPolkitPolicyName>
       <RunicPolkitPolicyOutputPath Condition="'$(RunicPolkitPolicyOutputPath)' == ''">share/polkit-1/actions/</RunicPolkitPolicyOutputPath>
-      <RunicPolkitPolicy Condition="'$(RunicPolkitPolicy)' == '' and ($(RuntimeIdentifier.StartsWith('win')) or $(RuntimeIdentifier.StartsWith('osx')))">false</RunicPolkitPolicy>
-      <RunicPolkitPolicy Condition="'$(RunicPolkitPolicy)' == ''">true</RunicPolkitPolicy>
+      <RunicPolkitPolicyCopyEnabled Condition="'$(RunicPolkitPolicyCopyEnabled)' == '' and ($(RuntimeIdentifier.StartsWith('win')) or $(RuntimeIdentifier.StartsWith('osx')))">false</RunicPolkitPolicyCopyEnabled>
+      <RunicPolkitPolicyCopyEnabled Condition="'$(RunicPolkitPolicyCopyEnabled)' == ''">true</RunicPolkitPolicyCopyEnabled>
       <_RunicPrivilegedPolicyDirectory>$(IntermediateOutputPath)runic-privileged/</_RunicPrivilegedPolicyDirectory>
     </PropertyGroup>
     <RunicWritePolkitPolicy Actions="@(RunicPrivilegedAction)"
                             PolicyFile="$(_RunicPrivilegedPolicyDirectory)$(RunicPolkitPolicyName).policy"
                             ProjectFile="$(MSBuildProjectFullPath)"
-                            HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+                            HelpLinkBase="$(_RunicDiagnosticsHelpLinkBase)" />
     <ItemGroup>
       <FileWrites Include="$(_RunicPrivilegedPolicyDirectory)$(RunicPolkitPolicyName).policy" />
       <None Remove="$(_RunicPrivilegedPolicyDirectory)$(RunicPolkitPolicyName).policy" />
       <None Include="$(_RunicPrivilegedPolicyDirectory)$(RunicPolkitPolicyName).policy"
-            Condition="'$(RunicPolkitPolicy)' == 'true'"
+            Condition="'$(RunicPolkitPolicyCopyEnabled)' == 'true'"
             Link="$(RunicPolkitPolicyOutputPath)$(RunicPolkitPolicyName).policy"
             CopyToOutputDirectory="PreserveNewest"
             CopyToPublishDirectory="PreserveNewest" />

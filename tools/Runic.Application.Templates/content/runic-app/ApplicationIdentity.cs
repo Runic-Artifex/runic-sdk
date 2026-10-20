@@ -2,14 +2,14 @@ using System.Reflection;
 
 namespace RunicWindowApp;
 
-// The identity that the project file declares (RunicApplicationId and RunicApplicationName), read from the assembly so
+// The identity that the project file declares (ApplicationId and ApplicationTitle), read from the assembly so
 // the ID is written in one place. Packages register the same ID: the desktop entry and Flatpak on Linux, the bundle on
 // macOS and the MSIX package or the installer's shortcut on Windows.
 public static class ApplicationIdentity
 {
-    public static string Id { get; } = Read("RunicApplicationId");
+    public static string Id { get; } = Read("ApplicationId");
 
-    public static string Name { get; } = Read("RunicApplicationName");
+    public static string Name { get; } = Read("ApplicationTitle");
 
     private static string Read(string key) =>
         typeof(ApplicationIdentity).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()

@@ -7,7 +7,7 @@
 //   node packaging/package.mjs macos [--sign "Developer ID Application: Example Ltd (TEAMID)"] [--notary-profile <name>]
 //   node packaging/package.mjs flatpak [--gpg-sign <key id>]
 //
-// It reads the application's identity from the project file (RunicApplicationId, RunicApplicationName, Version,
+// It reads the application's identity from the project file (ApplicationId, ApplicationTitle, Version,
 // RunicApplicationUrlSchemes, RunicApplicationPublisher, Description, PackageProjectUrl), publishes it with NativeAOT for the platform,
 // fills the {{...}} fields of the manifests next to this script and writes the package to artifacts/package. Without
 // signing options the package is unsigned (Windows), ad-hoc signed (macOS) or unsigned (Flatpak): install it to test
@@ -38,7 +38,7 @@ export function parseArguments(argv) {
 // Every platform accepts this ID: a D-Bus and Flatpak name, a bundle identifier and an MSIX package name.
 export function checkApplicationId(id) {
   if (!/^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/.test(id) || id.length > 50)
-    throw new Error(`RunicApplicationId '${id}' must be a reverse-DNS name of ASCII letters and digits, each part starting with a letter, at most 50 characters (org.example.Notes).`);
+    throw new Error(`ApplicationId '${id}' must be a reverse-DNS name of ASCII letters and digits, each part starting with a letter, at most 50 characters (org.example.Notes).`);
   return id;
 }
 
@@ -128,18 +128,18 @@ function findProject(option) {
 }
 
 function readIdentity(project, options) {
-  const names = ["RunicApplicationId", "RunicApplicationName", "Version", "RunicApplicationUrlSchemes", "RunicApplicationPublisher", "Description",
+  const names = ["ApplicationId", "ApplicationTitle", "Version", "RunicApplicationUrlSchemes", "RunicApplicationPublisher", "Description",
     "PackageProjectUrl", "AssemblyName"];
   const output = run("dotnet", ["msbuild", project, ...names.map(name => `-getProperty:${name}`)], { capture: true });
   const properties = JSON.parse(output).Properties;
-  const id = checkApplicationId(properties.RunicApplicationId ?? "");
+  const id = checkApplicationId(properties.ApplicationId ?? "");
   return {
     id,
-    name: properties.RunicApplicationName || properties.AssemblyName,
+    name: properties.ApplicationTitle || properties.AssemblyName,
     version: properties.Version || "1.0.0",
     urlSchemes: urlSchemes(properties.RunicApplicationUrlSchemes),
     publisher: options.publisher || properties.RunicApplicationPublisher || "CN=Example",
-    description: properties.Description || properties.RunicApplicationName || properties.AssemblyName,
+    description: properties.Description || properties.ApplicationTitle || properties.AssemblyName,
     homepage: properties.PackageProjectUrl || "https://example.com",
     executable: properties.AssemblyName,
   };

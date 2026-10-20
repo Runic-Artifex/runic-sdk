@@ -9,8 +9,8 @@
     <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
     <!-- The application's identity, in one place: the desktop entry, Flatpak and GTK application ID on Linux, the
          bundle identifier on macOS and the package name on Windows. Program.cs reads it from the assembly. -->
-    <RunicApplicationId>__RUNIC_APPLICATION_ID__</RunicApplicationId>
-    <RunicApplicationName>__RUNIC_APPLICATION_NAME__</RunicApplicationName>
+    <ApplicationId>__RUNIC_APPLICATION_ID__</ApplicationId>
+    <ApplicationTitle>__RUNIC_APPLICATION_NAME__</ApplicationTitle>
     <Version>1.0.0</Version>
 <!--#if (packaging) -->
     <!-- packaging/package.mjs reads these too. The summary software centers and the Start menu show. -->
@@ -38,8 +38,8 @@
 <!--#endif -->
   </PropertyGroup>
   <ItemGroup>
-    <AssemblyMetadata Include="RunicApplicationId" Value="$(RunicApplicationId)" />
-    <AssemblyMetadata Include="RunicApplicationName" Value="$(RunicApplicationName)" />
+    <AssemblyMetadata Include="ApplicationId" Value="$(ApplicationId)" />
+    <AssemblyMetadata Include="ApplicationTitle" Value="$(ApplicationTitle)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
