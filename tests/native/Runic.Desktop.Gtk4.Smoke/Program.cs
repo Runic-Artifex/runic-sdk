@@ -97,9 +97,10 @@ static void AssertRunnerContract()
     try
     {
         _ = factory.Create();
-        throw new InvalidOperationException("GTK4 factory accepted host creation outside Gtk4Application.Run.");
+        throw new InvalidOperationException("GTK4 factory accepted host creation outside the GTK 4 application lifetime.");
     }
-    catch (InvalidOperationException error) when (error.Message.Contains("Gtk4Application.Run", StringComparison.Ordinal))
+    // The message names the public entry point, not the internal runner.
+    catch (InvalidOperationException error) when (error.Message.Contains("DesktopEventLoop.Run(options.WithGtk4(), application)", StringComparison.Ordinal))
     {
     }
 
