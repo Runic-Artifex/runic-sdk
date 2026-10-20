@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);RUNICWPF001;RUNICDESK100;RUNICDESK101</NoWarn>
+    <NoWarn>$(NoWarn);RUNICDESK100;RUNICDESK101</NoWarn>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
   <ItemGroup>

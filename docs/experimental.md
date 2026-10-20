@@ -8,7 +8,6 @@ your project accepts changes to that API before it is supported.
 
 | ID | API family | Packages |
 |---|---|---|
-| [`RUNICWPF001`](#RUNICWPF001) | WPF child web presentation | `Runic.Application.Views.Wpf` |
 | [`RUNICASSETS001`](#RUNICASSETS001) | Linux development-directory asset source | `Runic.Assets` |
 | [`RUNICDESK100`](#RUNICDESK100) | Custom window host providers | `Runic.Desktop`, `Runic.Desktop.Gtk4` |
 | [`RUNICDESK101`](#RUNICDESK101) | Low-level presentation transport | `Runic.Desktop` |
@@ -29,48 +28,32 @@ Suppress the ID for a whole project, for example in its `.csproj` or a
 
 ```xml
 <PropertyGroup>
-  <NoWarn>$(NoWarn);RUNICWPF001</NoWarn>
+  <NoWarn>$(NoWarn);RUNICASSETS001</NoWarn>
 </PropertyGroup>
 ```
 
 Or suppress it where you use the API, for a file or a region of one:
 
 ```csharp
-#pragma warning disable RUNICWPF001 // The WPF web View host is experimental.
-RunicViewHost.SetServices(mainWindow, services);
-#pragma warning restore RUNICWPF001
+#pragma warning disable RUNICASSETS001 // The development-directory source is experimental.
+using var source = new DevelopmentDirectoryAssetSource(frontendDirectory, "index.html");
+#pragma warning restore RUNICASSETS001
 ```
 
-Code that the WPF markup compiler generates for you needs no suppression.
-`Runic.Application.Views.Wpf` suppresses its ID in the project's intermediate
-`.g.cs` files, where WPF declares a named control such as
-`<rv:RunicViewHost x:Name="Editor" />`. The diagnostic is reported only in your
-own code, so a per-site suppression is enough with
-`TreatWarningsAsErrors`.
+<a id="retired"></a>
 
-Navigation (`Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`
-and `Runic.Navigation.ReactiveUI.Reactive`) is no longer experimental as of
-0.7.0-preview.7. Its former diagnostic ID is retired; remove its suppressions.
+## Graduated and retired IDs
 
-<a id="RUNICWPF001"></a>
+When a family graduates, its attribute is removed and its API is supported like
+the rest of its package. Its ID is retired and never names another family, so a
+leftover suppression is harmless; remove it.
 
-## RUNICWPF001
+<a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
 
-**Covers:** the WPF child presentation of a Runic web View in
-`Runic.Application.Views.Wpf`: `RunicViewHost`, `RunicViewHostState`,
-`RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions`
-(`CreateWpfViewAsync`) and `WpfPlatformServices`.
-
-**Status:** experimental. It hosts Runic Desktop's WebView2 controller inside an
-existing WPF visual tree, and its lifecycle API is still being shaped by the
-[hybrid WPF example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-hybrid-editor/README.md).
-It is planned to graduate before 1.0, once these are done: keyboard focus can
-leave the web View with Tab in both directions (done in 0.9), a Narrator check,
-a smoke test of two hosts in one window, and the remaining API changes of the
-review (`OpenAsync` without its options parameter, a cancellation token on
-`ReloadAsync` and `WpfPlatformServices.ForWindow(Window)`; `StartPage`,
-`ViewModel`, the shared `Services` and the removal of the public `DiagnosticId`
-are done in 0.9). Graduation removes the attribute and retires the ID.
+| ID | API family | Graduated in |
+|---|---|---|
+| `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined [`RUNICDESK100`](#RUNICDESK100), the custom window-host family it belongs to. | 0.9.0-preview.1 |
+| `RUNICNAV001` | Navigation (`Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`) | 0.7.0-preview.7 |
 
 <a id="RUNICASSETS001"></a>
 
@@ -99,11 +82,14 @@ GTK 4 provider and the WPF control implement: `IDesktopWindowHostFactory`,
 `IDesktopWindowStateHost`, `IDesktopFileDropWindowHost`,
 `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`,
 `LinuxDesktopRuntime.ClaimBackend` and `LinuxDesktopRuntime.IsLibraryAvailable`
-in `Runic.Desktop`, and `Gtk4WindowHostFactory` in `Runic.Desktop.Gtk4`.
+in `Runic.Desktop`, `Gtk4WindowHostFactory` in `Runic.Desktop.Gtk4`, and
+`RunicWebView.CreateWindowHostFactory()` in `Runic.Application.Views.Wpf`.
 
 **Status:** experimental since 0.9.0-preview.1. Applications that use the
 built-in windows, or select GTK 4 with `WithGtk4()`, do not use this family and
-need no suppression; `LinuxDesktopRuntime.CanUse` stays stable. A window host
+need no suppression; `LinuxDesktopRuntime.CanUse` stays stable. Neither do WPF
+applications that use `RunicViewHost`; only composing a `RunicWebView` with your
+own `DesktopHost` uses this family. A window host
 must follow threading and credential rules that are still changing:
 `DocumentStartScript` carries the session credential, and each new window
 capability so far has been another optional interface. The family graduates

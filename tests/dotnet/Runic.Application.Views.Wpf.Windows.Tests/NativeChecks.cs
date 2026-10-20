@@ -5,6 +5,8 @@ using Runic.Desktop;
 using Runic.Navigation.Wpf;
 using Runic.Platform;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -212,7 +214,7 @@ internal sealed class NativeChecks
         }
     }
 
-    // RunicViewHost in XAML terms: Model bound to the DataContext, Services inherited from the window.
+    // RunicViewHost in XAML terms: ViewModel bound to the DataContext, Services inherited from the window.
     [Test, NotInParallel("WpfSuite", Order = 12)]
     public async Task HostAsync()
     {
@@ -229,6 +231,7 @@ internal sealed class NativeChecks
         var model = new HostedModel();
         var fallback = new TextBlock { Text = "Native editor" };
         var host = Host(fallback);
+        AutomationProperties.SetName(host, "Web editor");
         var window = new Window { Content = host, Width = 600, Height = 400, Title = "RunicViewHost smoke", DataContext = model };
         // RunicViewHost shares the inherited Services property of the navigation ViewHost: one provider serves both.
         ViewHost.SetServices(window, services);
@@ -240,10 +243,32 @@ internal sealed class NativeChecks
             var opened = await SettledAsync(host);
             Program.Check(opened == RunicViewHostState.Open && host.Surface is not null && host.Child is RunicWebView,
                 $"The host did not open on Loaded: {host.State} {host.Error}");
+            // The web View's pane carries the host's accessible name for screen readers.
+            var pane = UIElementAutomationPeer.CreatePeerForElement((RunicWebView)host.Child);
+            Program.Check(pane.GetName() == "Web editor" && pane.GetAutomationControlType() == AutomationControlType.Pane,
+                $"The web View's automation peer is not the named pane: '{pane.GetName()}' {pane.GetAutomationControlType()}.");
             var first = host.Surface;
             await host.ReloadAsync().WaitAsync(TimeSpan.FromSeconds(30));
             Program.Check(host.State == RunicViewHostState.Open && !ReferenceEquals(first, host.Surface) && attachments is [{ Disposed: true }, { Disposed: false }],
                 "Reload did not replace the session after releasing the first one.");
+
+            // vwpf-06: the token stops the wait, not the reload.
+            var reloaded = host.Surface;
+            using (var stop = new CancellationTokenSource())
+            {
+                stop.Cancel();
+                var waited = host.ReloadAsync(stop.Token);
+                try
+                {
+                    await waited;
+                    Program.Check(false, "A cancelled ReloadAsync wait completed instead of stopping.");
+                }
+                catch (OperationCanceledException) { }
+            }
+            await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            Program.Check(host.State == RunicViewHostState.Open && !ReferenceEquals(reloaded, host.Surface)
+                && attachments.Count == 3 && attachments.Count(item => !item.Disposed) == 1,
+                "Cancelling the ReloadAsync wait stopped the reload.");
 
             // Two swaps in one turn collapse: one fresh session for the latest model.
             window.DataContext = new HostedModel();
@@ -295,6 +320,131 @@ internal sealed class NativeChecks
             var host = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), Fallback = fallback };
             host.SetBinding(RunicViewHost.ViewModelProperty, new Binding());
             return host;
+        }
+    }
+
+    // vwpf-08: a WPF window's platform services are unavailable until it has a handle, owned by it while it is open,
+    // and closed with it. The clipboard is the service a test can use without a person: a CI desktop may hold the
+    // clipboard elsewhere, which reports ResourceBusy or PermissionDenied rather than the owner being unavailable.
+    [Test, NotInParallel("WpfSuite", Order = 17)]
+    public async Task ForWindowBindsPlatformServicesToTheWpfWindow()
+    {
+        var window = new Window { Width = 320, Height = 200, Title = "Runic WPF platform services", ShowActivated = false };
+        var services = WpfPlatformServices.ForWindow(window);
+        var dialogs = services.FileDialogs;
+        var clipboard = services.Clipboard;
+        Program.Check(await clipboard.ReadTextAsync(64) is PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "The services of a window without a handle did not report the owner unavailable.");
+        Program.Check(services.GetSnapshot().Statuses.Values.All(status => status is CapabilityStatus.Unavailable),
+            "The services of a window without a handle reported an available capability.");
+        try
+        {
+            window.Show();
+            var snapshot = services.GetSnapshot();
+            Program.Check(snapshot.Statuses.TryGetValue("platform.clipboard.readText", out var read) && read is CapabilityStatus.Available
+                && snapshot.Statuses.TryGetValue("platform.files.open", out var open) && open is CapabilityStatus.Available,
+                $"The open window's services did not report the Windows provider's capabilities: {snapshot}.");
+            var text = $"Runic WPF {Guid.NewGuid():N}";
+            // From a thread-pool thread: the services run the native call on the window's dispatcher.
+            var written = await Task.Run(async () => await clipboard.WriteTextAsync(text));
+            if (written is PlatformResult<PlatformUnit>.Success)
+            {
+                var copied = await clipboard.ReadTextAsync(text.Length);
+                Program.Check(copied is PlatformResult<string?>.Success { Value: var value } && value == text,
+                    $"The clipboard did not return the text written through the WPF window: {copied}.");
+            }
+            else Program.Check(written is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.ResourceBusy or PlatformFailureCode.PermissionDenied },
+                $"Writing the clipboard through the open WPF window failed: {written}.");
+            Program.Check(ReferenceEquals(dialogs, services.FileDialogs), "The services replaced their file dialogs when the window opened.");
+        }
+        finally { window.Close(); }
+        await UntilAsync(() => services.GetSnapshot().Statuses.Values.All(status => status is CapabilityStatus.Unavailable));
+        Program.Check(await clipboard.ReadTextAsync(64) is PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "The services of a closed window did not report the owner closed.");
+        Program.Check(await dialogs.OpenFileAsync(new OpenFileOptions()) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "The file dialog of a closed window did not report the owner closed.");
+        var offThread = await Task.Run(() =>
+        {
+            try { WpfPlatformServices.ForWindow(window); return null; }
+            catch (InvalidOperationException error) { return error; }
+        });
+        Program.Check(offThread is not null, "ForWindow accepted a call from another thread than the window's.");
+        Console.WriteLine("WpfPlatformServices.ForWindow unavailable/bound/closed checks passed.");
+    }
+
+    // D09 two-host smoke: two RunicViewHosts in one WPF window and a Runic Desktop window, each with its own Desktop
+    // host and session, open together in one process; closing one leaves the others connected to their own models.
+    [Test, NotInParallel("WpfSuite", Order = 18)]
+    public async Task TwoHostsAndADesktopWindowShareOneProcess()
+    {
+        Dictionary<HostedModel, Attachment> attachments = [];
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((_, model) =>
+        {
+            var attachment = new Attachment();
+            lock (attachments) attachments.Add(model, attachment);
+            return attachment;
+        });
+        await using var services = collection.BuildServiceProvider();
+        HostedModel left = new(), right = new(), desktopModel = new();
+        var leftHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = left, Height = 150 };
+        var rightHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = right, Height = 150 };
+        var panel = new StackPanel();
+        panel.Children.Add(leftHost);
+        panel.Children.Add(rightHost);
+        var window = new Window { Content = panel, Width = 600, Height = 400, Title = "Runic WPF two hosts" };
+        RunicViewHost.SetServices(window, services);
+        window.Show();
+        try
+        {
+            // The Desktop window: WpfBridgeView over a DesktopHost with its own WebView2 window and thread.
+            await using var desktop = await DesktopHost.StartAsync(new() { ConnectionTimeout = TimeSpan.FromSeconds(20) });
+            await using var desktopView = await services.CreateWpfViewAsync(desktop, Program.HtmlOptions(), desktopModel);
+            await desktopView.OpenAsync();
+            Program.Check(await SettledAsync(leftHost) == RunicViewHostState.Open && await SettledAsync(rightHost) == RunicViewHostState.Open,
+                $"The two hosts did not open together: {leftHost.State} {leftHost.Error} / {rightHost.State} {rightHost.Error}");
+            DesktopSurface[] surfaces = [leftHost.Surface!, rightHost.Surface!, desktopView.Surface];
+            Program.Check(surfaces.Select(surface => surface.Url.Port).Distinct().Count() == 3,
+                "The hosts did not each serve their presentation from their own Desktop host.");
+            lock (attachments)
+                Program.Check(attachments.Count == 3 && attachments.Values.All(item => !item.Disposed),
+                    "Each host and the Desktop window did not attach one session to its own model.");
+            await ConnectedAsync(surfaces);
+
+            // Closing the Desktop window releases its session only.
+            await desktopView.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+            lock (attachments)
+                Program.Check(attachments[desktopModel].Disposed && !attachments[left].Disposed && !attachments[right].Disposed,
+                    "Closing the Desktop window released another host's session.");
+            Program.Check(leftHost.State == RunicViewHostState.Open && rightHost.State == RunicViewHostState.Open,
+                "Closing the Desktop window closed a WPF host.");
+            await ConnectedAsync([leftHost.Surface!, rightHost.Surface!]);
+
+            // Unloading one host leaves the other open and connected.
+            panel.Children.Remove(leftHost);
+            await UntilAsync(() => !leftHost.IsLoaded);
+            await leftHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            lock (attachments)
+                Program.Check(leftHost.State == RunicViewHostState.Closed && attachments[left].Disposed && !attachments[right].Disposed
+                    && rightHost.State == RunicViewHostState.Open, "Unloading one host released or closed the other.");
+            await ConnectedAsync([rightHost.Surface!]);
+            Console.WriteLine("Two RunicViewHosts and a Desktop window in one process: open, isolated close and unload checks passed.");
+        }
+        finally { window.Close(); }
+        await UntilAsync(() => !rightHost.IsLoaded);
+        await rightHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        lock (attachments)
+            Program.Check(attachments.Values.All(item => item.Disposed), "Closing the WPF window left a session open.");
+
+        // Each document answers through its own surface, so the sessions are live, not just created.
+        static async Task ConnectedAsync(IEnumerable<DesktopSurface> surfaces)
+        {
+            foreach (var surface in surfaces)
+            {
+                var origin = await surface.ExecuteJavaScriptAsync("return location.origin;", TimeSpan.FromSeconds(20));
+                Program.Check(origin == surface.Url.GetLeftPart(UriPartial.Authority),
+                    $"The document of {surface.Url} did not answer from its own origin: {origin}.");
+            }
         }
     }
 

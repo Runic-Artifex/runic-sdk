@@ -16,7 +16,7 @@ test("every Experimental attribute sets a documentation UrlFormat", () => {
     [...text.matchAll(/\[(?:System\.Diagnostics\.CodeAnalysis\.)?Experimental\(([^\]]*)\)\]/g)].map(([, args]) => ({ file, args })));
   assert.ok(attributes.length > 0);
   const missing = attributes.filter(({ args }) =>
-    !/UrlFormat = (RunicReleaseLinks\.ExperimentalUrlFormat|WpfDiagnostics\.UrlFormat)$/.test(args));
+    !/UrlFormat = RunicReleaseLinks\.ExperimentalUrlFormat$/.test(args));
   assert.deepEqual(missing, [], "Set UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat");
 });
 
@@ -25,7 +25,7 @@ test("docs/experimental.md has an entry for every experimental diagnostic ID", (
     ...[...text.matchAll(/const string \w*Id = "(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
     ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
   ]));
-  assert.deepEqual([...ids].sort(), ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101", "RUNICWPF001"]);
+  assert.deepEqual([...ids].sort(), ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101"]);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.
     assert.ok(docs.includes(`<a id="${id}"></a>`), `docs/experimental.md has no anchor for ${id}`);
@@ -40,14 +40,28 @@ test("experimental help links name the release tag, not main", () => {
   assert.match(targets, /<RunicExperimentalHelpLinkBase [^>]*>\$\(RunicReleaseSourceUrl\)docs\/experimental\.md#<\/RunicExperimentalHelpLinkBase>/);
 });
 
-test("the WPF Views package suppresses its experimental ID only in intermediate .g.cs files", () => {
-  for (const [project, id] of [["Runic.Application.Views.Wpf", "RUNICWPF001"]]) {
-    const targets = readFileSync(resolve(root, `packages/dotnet/${project}/buildTransitive/${project}.targets`), "utf8");
-    assert.match(targets, new RegExp(`dotnet_diagnostic\\.${id}\\.severity = none`));
-    assert.equal([...targets.matchAll(/dotnet_diagnostic\./g)].length, 1, `${project} suppresses more than ${id}`);
-    assert.match(targets, /StartsWith\('\$\(_\w+Intermediate\)'\)/, `${project} must limit the suppression to the intermediate directory`);
-    const csproj = readFileSync(resolve(root, `packages/dotnet/${project}/${project}.csproj`), "utf8");
-    assert.ok(csproj.includes(`<None Include="buildTransitive/${project}.targets" Pack="true" PackagePath="buildTransitive/" />`),
-      `${project} does not pack its buildTransitive targets`);
+// A graduated family's ID is never reused: it stays listed as retired and no source marks an API with it.
+const retired = ["RUNICNAV001", "RUNICWPF001"];
+
+test("graduated diagnostic IDs are retired, not reused", () => {
+  const section = docs.slice(docs.indexOf('<a id="retired"></a>'));
+  assert.ok(section.length < docs.length, "docs/experimental.md has no retired-ID section");
+  for (const id of retired) {
+    assert.ok(!sources.some(([, text]) => text.includes(`"${id}"`)), `${id} is retired but a source still uses it`);
+    assert.match(section, new RegExp(`\\| \`${id}\` \\|`), `docs/experimental.md does not list ${id} as retired`);
+    assert.doesNotMatch(docs, new RegExp(`^## ${id}$`, "m"), `docs/experimental.md still has a section for ${id}`);
   }
+});
+
+test("the WPF Views package graduated: no experimental attribute and no suppression targets", () => {
+  const project = "Runic.Application.Views.Wpf";
+  const files = execFileSync("git", ["ls-files", `packages/dotnet/${project}`], { cwd: root, encoding: "utf8" }).trim().split("\n");
+  assert.ok(!files.includes(`packages/dotnet/${project}/buildTransitive/${project}.targets`), "the RUNICWPF001 suppression targets came back");
+  const csproj = readFileSync(resolve(root, `packages/dotnet/${project}/${project}.csproj`), "utf8");
+  assert.doesNotMatch(csproj, /RUNICWPF001|\.targets" Pack/);
+  // Only the custom window-host factory of RunicWebView stays experimental, in Runic.Desktop's RUNICDESK100 family.
+  const marked = sources.filter(([file]) => file.startsWith(`packages/dotnet/${project}/`))
+    .flatMap(([file, text]) => [...text.matchAll(/\[Experimental\("(\w+)"[^\]]*\]\s*(?:\/\/\/.*\s*)*public [^(]*?(\w+)\(/g)]
+      .map(([, id, member]) => `${file.split("/").pop()} ${member} ${id}`));
+  assert.deepEqual(marked, ["RunicWebView.cs CreateWindowHostFactory RUNICDESK100"]);
 });

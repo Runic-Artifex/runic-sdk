@@ -302,7 +302,8 @@ of the same major without changes by its author. That includes:
   | `RUNICEL` | The Runic.Platform.Windows.Elevation build targets |
   | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |
   | `RUNICDESK` | The Runic.Desktop build targets; experimental Desktop APIs |
-  | `RUNICASSETS`, `RUNICWPF` | Experimental APIs of Runic.Assets and Runic.Application.Views.Wpf |
+  | `RUNICASSETS` | Experimental APIs of Runic.Assets |
+  | `RUNICNAV`, `RUNICWPF` | Retired: graduated experimental families of Navigation and Runic.Application.Views.Wpf |
   | `RUNICP` | `@runic-artifex/vite-plugin-runic` |
   | `RAPPCLI`, `RAPPDEV`, `RAPPSIZE` | `dotnet runic` |
   | `RCLI` | The Runic.CommandLine codes the tools report, and `dotnet runic doctor` checks (`RCLI81xx`) |
@@ -496,15 +497,16 @@ requirement, not a consumer one.
   in [`docs/experimental.md`](../../docs/experimental.md). Every use is a compile
   error until the project suppresses the ID, and the API may change or be removed
   in a minor release. An experimental type does not appear in a stable API's
-  signature. Graduation removes the attribute. IDs follow the numbering in
-  `docs/experimental.md` (from `100` where the prefix already names
-  diagnostics, such as `RUNICDBUS100`). Today's families are `RUNICWPF001` (WPF
-  child web presentation), planned to graduate before 1.0, `RUNICASSETS001`
-  (Linux development-directory asset source), `RUNICDESK100` (custom Desktop
-  window host providers) and `RUNICDESK101` (the low-level Desktop presentation
-  transport). An npm package exports its experimental APIs only from its
-  `./experimental` subpath, which may change in a minor release; graduation
-  moves an export to the root entry.
+  signature. Graduation removes the attribute and retires the ID, which is
+  never reused. IDs follow the numbering in `docs/experimental.md` (from `100`
+  where the prefix already names diagnostics, such as `RUNICDBUS100`). Today's
+  families are `RUNICASSETS001` (Linux development-directory asset source),
+  `RUNICDESK100` (custom Desktop window host providers) and `RUNICDESK101` (the
+  low-level Desktop presentation transport). Retired: `RUNICNAV001`
+  (Navigation, graduated in 0.7.0-preview.7) and `RUNICWPF001` (WPF child web
+  presentation, graduated in 0.9.0-preview.1). An npm package exports its
+  experimental APIs only from its `./experimental` subpath, which may change in
+  a minor release; graduation moves an export to the root entry.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each stable release on a
   prerelease version and may change in any release. `RunicCsWebUiPackageVersion`

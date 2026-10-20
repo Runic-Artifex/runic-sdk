@@ -462,6 +462,24 @@ jobs:
         run: |
           bun run --cwd packages/web/views --bun build
           dotnet run --project examples/wpf-hybrid-editor/WindowsSmoke/HybridNotes.WindowsSmoke.csproj -c Release
+      # D09: what a screen reader reads in the hybrid editor and how Tab crosses between the WPF shell and the
+      # WebView2 content, through UI Automation and real key presses (tests/native/wpf-ui-automation/README.md).
+      - name: Check the hybrid WPF editor with UI Automation
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          dotnet build examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj -c Release
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests/native/wpf-ui-automation/wpf-ui-automation.ps1 `
+            -Executable examples/wpf-hybrid-editor/App/bin/Release/net10.0-windows/HybridNotes.Wpf.exe `
+            -ReceiptPath artifacts/wpf-ui-automation/receipt.json
+      - name: Retain the UI Automation receipt and tree
+        if: always() && matrix.rid == 'win-x64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wpf-ui-automation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/wpf-ui-automation
+          if-no-files-found: ignore
+          retention-days: 14
       # #269 and #270 were reported on Windows: generate beside WPF stand-ins and
       # ASP.NET Core types, and from the packed packages, there too.
       - name: Test Bridge generation beside WPF and ASP.NET Core types

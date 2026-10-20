@@ -80,8 +80,7 @@ export const packageLayouts = {
   // in every project that references them, directly or transitively.
   "Runic.Application.Views.Desktop": { includes: ["buildTransitive/Runic.Application.Views.Desktop.props"] },
   "Runic.Application.Views.CsWebUi": { includes: ["buildTransitive/Runic.Application.Views.CsWebUi.props"] },
-  // The Wpf targets also suppress RUNICWPF001 in XAML-generated code (docs/experimental.md).
-  "Runic.Application.Views.Wpf": { includes: ["buildTransitive/Runic.Application.Views.Wpf.props", "buildTransitive/Runic.Application.Views.Wpf.targets"] },
+  "Runic.Application.Views.Wpf": { includes: ["buildTransitive/Runic.Application.Views.Wpf.props"] },
   // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
   // carry their help links (W300-004).
   "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets"] },
@@ -334,7 +333,8 @@ for (var attempt = 0; attempt < 100 && !published; attempt++)
 if (!published) throw new Exception("The packaged generated publication failed.");
 Console.WriteLine("Packaged Window/View test host passed.");`
       : strategy.canaryType
-        ? `#pragma warning disable RUNICWPF001\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
+        // Without a suppression: the canary types are stable, so using one compiles as is.
+        ? `Console.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : `Console.WriteLine(System.Reflection.Assembly.Load("${assemblyName}").GetName().Name);`,
     );
     if (viewTestConsumer)

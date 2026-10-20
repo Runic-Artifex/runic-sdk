@@ -1,7 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Markup;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
@@ -25,10 +26,15 @@ namespace Runic.Application.Views.Wpf;
 /// </para>
 /// <para>
 /// The host borrows the model, services and model context: it never creates or disposes a ViewModel, a DI scope or a
-/// navigation entry. It manages its own <see cref="Decorator.Child"/>; set the fallback as its content instead.
+/// navigation entry. It manages its own <see cref="Decorator.Child"/>: setting <c>Child</c> is not supported; set the
+/// fallback as its content instead. Derive from the host only to style it.
+/// </para>
+/// <para>
+/// Screen readers see the web View as a pane that contains the page's document. Set
+/// <see cref="AutomationProperties.NameProperty">AutomationProperties.Name</see> (and <c>HelpText</c>) on the host to
+/// name that pane; the host passes them to its <see cref="RunicWebView"/>.
 /// </para>
 /// </remarks>
-[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 [ContentProperty(nameof(Fallback))]
 public class RunicViewHost : Decorator
 {
@@ -188,14 +194,16 @@ public class RunicViewHost : Decorator
     }
 
     /// <summary>Closes the presentation and opens a fresh session for the same model, and returns when it has settled.</summary>
+    /// <param name="cancellationToken">Stops the wait; the reload goes on, as <see cref="WaitForPresentationAsync"/> describes.</param>
     /// <remarks>Also retries after a failure. The model, its state and its navigation entry stay.</remarks>
-    public Task ReloadAsync()
+    public Task ReloadAsync(CancellationToken cancellationToken = default)
     {
         Request();
-        return WaitForPresentationAsync();
+        return WaitForPresentationAsync(cancellationToken);
     }
 
     /// <summary>Returns when no presentation change is pending: the presentation is open, failed, or closed and released.</summary>
+    /// <param name="cancellationToken">Stops the wait without cancelling the presentation change.</param>
     public async Task WaitForPresentationAsync(CancellationToken cancellationToken = default)
     {
         Task settled;
@@ -230,6 +238,9 @@ public class RunicViewHost : Decorator
             Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), StartPage),
         };
         var control = new RunicWebView();
+        // The pane that UI Automation clients such as Narrator announce takes the host's accessible name.
+        control.SetBinding(AutomationProperties.NameProperty, new Binding { Source = this, Path = new PropertyPath(AutomationProperties.NameProperty) });
+        control.SetBinding(AutomationProperties.HelpTextProperty, new Binding { Source = this, Path = new PropertyPath(AutomationProperties.HelpTextProperty) });
         lifecycle.Own(() =>
         {
             // Last: the session and host have released the presentation before the HwndHost leaves the tree.
@@ -262,7 +273,7 @@ public class RunicViewHost : Decorator
             return view.DisposeAsync();
         });
         _view = view;
-        await view.OpenAsync(cancellationToken: cancellationToken);
+        await view.OpenAsync(cancellationToken);
     }
 
     private void ShowFallback(PresentationLifecycle lifecycle, Exception error)
