@@ -9,8 +9,7 @@ Desktop owns only the HTTP response lifetime.
 dotnet add package Runic.Assets.Desktop --prerelease
 ```
 
-Attach an `IAssetSnapshotSource`, such as an embedded archive, to a Desktop
-surface:
+Attach an `IAssetSource`, such as an embedded archive, to a Desktop surface:
 
 ```csharp
 using System.Reflection;
@@ -34,3 +33,11 @@ Pass `AssetRoutingOptions` to `ToDesktopContentHandler` to disable the root or
 the fallback. Unknown and invalid paths otherwise return `404`. Runic Desktop
 answers methods other than `GET` and `HEAD` with `405`, and it decodes `%2F` in
 request paths before the handler resolves them.
+
+Responses carry the manifest's entity tag and cache policy, `Accept-Ranges` and
+`X-Content-Type-Options: nosniff`. A `text/*` media type without a charset is
+sent with `; charset=utf-8`, as `Runic.Assets.AspNetCore` sends it, so one
+archive gets the same `Content-Type` on both hosts.
+
+For a Runic Views application, which ships its frontend in `www/` instead, see
+[Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder).

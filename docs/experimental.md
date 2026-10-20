@@ -9,6 +9,14 @@ your project accepts changes to that API before it is supported.
 | ID | API family | Packages |
 |---|---|---|
 | [`RUNICWPF001`](#RUNICWPF001) | WPF child web presentation | `Runic.Application.Views.Wpf` |
+| [`RUNICASSETS001`](#RUNICASSETS001) | Linux development-directory asset source | `Runic.Assets` |
+
+An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
+that names no other diagnostics numbers its experimental families from `001`,
+such as `RUNICASSETS001`. A prefix that already names compiler or build
+diagnostics numbers them from `100`, so the two never share a number: the D-Bus
+source generator reports `RUNICDBUS001` to `RUNICDBUS012`, and an experimental
+D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today.
 
 ## Suppressing a diagnostic
 
@@ -53,3 +61,19 @@ existing WPF visual tree, and its lifecycle API is still being shaped by the
 [hybrid WPF example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-hybrid-editor/README.md).
 No stabilization criteria are published yet; removing `RUNICWPF001` is a
 maintainer decision.
+
+<a id="RUNICASSETS001"></a>
+
+## RUNICASSETS001
+
+**Covers:** the Linux development-directory source of `Runic.Assets`:
+`DevelopmentDirectoryAssetSource`, `IAssetSourceChangeNotifier`, `IAssetWatch`,
+`AssetWatchOptions` and `AssetSourceChangedEventArgs`.
+
+**Status:** experimental since 0.9.0-preview.1. The source refreshes a local
+directory for a development inner loop, but no Runic host or tool uses it yet:
+`dotnet runic dev` serves the frontend from its development server. Its shape,
+such as the synchronous `Refresh`, the two ways to stop a watch and the
+Linux-only name, may change once a host consumes it. It graduates when a Runic
+host uses it. Embedded and archive sources (`EmbeddedAssetSource`,
+`AssetArchiveSource`) are stable.

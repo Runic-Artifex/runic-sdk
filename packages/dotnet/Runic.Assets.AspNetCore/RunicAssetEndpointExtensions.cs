@@ -26,7 +26,7 @@ public static class RunicAssetEndpointExtensions
     /// </summary>
     public static IEndpointConventionBuilder MapRunicAssetSource(
         this IEndpointRouteBuilder endpoints,
-        IAssetSnapshotSource source,
+        IAssetSource source,
         string routePrefix = "",
         AssetRoutingOptions? routing = null)
     {
@@ -53,24 +53,28 @@ public static class RunicAssetEndpointExtensions
                         return;
                     }
 
-                    await WriteAssetAsync(context, source, descriptor).ConfigureAwait(false);
+                    await context.WriteAssetAsync(source, descriptor).ConfigureAwait(false);
                 })
             .WithDisplayName("Runic assets " + pattern.RawText)
             // After application endpoints (order 0 and conventional routes), before MapFallback (int.MaxValue).
             .WithOrder(int.MaxValue - 1);
     }
 
-    /// <summary>Writes one declared asset with its manifest-owned HTTP metadata.</summary>
+    /// <summary>
+    /// Writes one declared asset with its manifest-owned HTTP metadata: ETag, Cache-Control,
+    /// conditional and range requests, and a <c>text/*</c> media type with <c>; charset=utf-8</c>.
+    /// Use it in a custom endpoint: <c>await context.WriteAssetAsync(source, descriptor)</c>.
+    /// </summary>
     public static async Task WriteAssetAsync(
-        HttpContext context,
-        IAssetSnapshotSource source,
+        this HttpContext context,
+        IAssetSource source,
         AssetDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(descriptor);
 
-        await using AssetReadSnapshot snapshot = await source.OpenSnapshotAsync(
+        await using AssetReadSnapshot snapshot = await source.OpenAsync(
             descriptor.RelativePath,
             context.RequestAborted).ConfigureAwait(false);
         AssetDescriptor current = snapshot.Descriptor;
@@ -287,7 +291,7 @@ public static class RunicAssetEndpointExtensions
         }
     }
 
-    private sealed class ResolvableAssetConstraint(IAssetSnapshotSource source, AssetRoutingOptions? routing)
+    private sealed class ResolvableAssetConstraint(IAssetSource source, AssetRoutingOptions? routing)
         : IRouteConstraint
     {
         public bool Match(

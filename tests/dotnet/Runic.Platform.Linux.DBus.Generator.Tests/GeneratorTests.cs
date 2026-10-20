@@ -72,10 +72,50 @@ internal sealed class GeneratorTests
             new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
         Expect("RUNICDBUS011", ("A.xml", "<node><interface name=\"a.b\"><property name=\"P\" type=\"s\" access=\"sometimes\"/></interface></node>",
             new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
-        Expect("RUNICDBUS011", ("A.xml", "<node><interface name=\"a.b\"><method name=\"Do\"/></interface><interface name=\"c.d\"><method name=\"Do\"/></interface></node>",
-            new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N" }));
         var descriptor = Run([("A.xml", Interface, new() { ["RunicDBusMode"] = "Handler", ["Namespace"] = "N" })]).Diagnostics[0].Descriptor;
         Check(descriptor.HelpLinkUri.EndsWith("docs/diagnostics.md#runicdbus001", StringComparison.Ordinal), $"help link: {descriptor.HelpLinkUri}");
+    }
+
+    [Test, DisplayName("a generated member that would hide, overload or duplicate another reports RUNICDBUS012")]
+    public void NameCollisions()
+    {
+        static string Node(string members, string name = "a.Thing") => $"<node><interface name=\"{name}\">{members}</interface></node>";
+        // Proxy members that take a DBusProxy member's name, or another generated member's.
+        foreach (var members in new[]
+        {
+            "<method name=\"Call\"/>",                                                  // CallAsync
+            "<method name=\"GetProperty\"/>",                                           // GetPropertyAsync
+            "<signal name=\"Signal\"/>",                                                // WatchSignalAsync
+            "<signal name=\"PropertyChanges\"/>",                                       // ReadPropertyChanges
+            "<signal name=\"Properties\"/>",                                            // WatchPropertiesAsync
+            "<property name=\"Properties\" type=\"s\" access=\"read\"/>",               // GetPropertiesAsync
+            "<property name=\"Invalidated\" type=\"s\" access=\"read\"/>",              // ThingProperties.Invalidated
+            "<method name=\"GetName\"/><property name=\"Name\" type=\"s\" access=\"read\"/>", // GetNameAsync twice
+            "<method name=\"ToString\"/><method name=\"to_string\"/>",                    // ToStringAsync twice
+        })
+            Expect("RUNICDBUS012", ("A.xml", Node(members), new() { ["RunicDBusMode"] = "Proxy", ["Namespace"] = "N" }));
+        // Service members that take a DBusObject member's name, or another generated member's.
+        foreach (var members in new[]
+        {
+            "<property name=\"Path\" type=\"o\" access=\"read\"/>",                     // DBusObject.Path
+            "<signal name=\"Signal\"/>",                                                // EmitSignal
+            "<method name=\"HandleMethod\"/>",                                          // HandleMethodAsync
+            "<property name=\"ThingInterface\" type=\"s\" access=\"read\"/>",           // the interface constant
+            "<property name=\"GetType\" type=\"s\" access=\"read\"/>",                  // object.GetType
+        })
+            Expect("RUNICDBUS012", ("A.xml", Node(members), new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS012", ("A.xml", "<node><interface name=\"a.b\"><method name=\"Do\"/></interface><interface name=\"c.d\"><method name=\"Do\"/></interface></node>",
+            new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N" }));
+        Expect("RUNICDBUS012", ("A.xml", "<node><interface name=\"a.Same\"/><interface name=\"b.Same\"/></node>",
+            new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N" }));
+
+        // Names that only resemble inherited members still generate, and the output no longer hides warnings.
+        var (output, diagnostics, sources) = Run([("A.xml", Node("<method name=\"Calls\"/><signal name=\"Signals\"/><property name=\"Paths\" type=\"ao\" access=\"read\"/>"),
+            new() { ["RunicDBusMode"] = "Proxy,Service", ["Namespace"] = "N" })]);
+        Check(diagnostics.IsEmpty, $"generator diagnostics: {string.Join("; ", diagnostics)}");
+        Check(output.GetDiagnostics().All(static d => d.Severity < DiagnosticSeverity.Warning), "the near-miss names compile cleanly");
+        Check(sources.All(static s => !s.SourceText.ToString().Contains("CS0108", StringComparison.Ordinal) && !s.SourceText.ToString().Contains("CS0114", StringComparison.Ordinal)),
+            "generated code does not suppress member hiding warnings");
     }
 
     private static void Expect(string id, params (string Name, string Text, Dictionary<string, string> Metadata)[] files)

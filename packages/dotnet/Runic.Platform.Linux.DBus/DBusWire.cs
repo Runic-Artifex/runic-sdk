@@ -12,7 +12,7 @@ internal static class DBusWire
     {
         if (values.IsDefaultOrEmpty) return "";
         var signature = string.Concat(values.Select(static value =>
-            value.IsEmpty ? throw new ArgumentException("An argument is the default DBusValue, which holds nothing.") : value.Signature.Value));
+            value.IsDefault ? throw new ArgumentException("An argument is the default DBusValue, which holds nothing.") : value.Signature.Value));
         if (signature.Length > 255) throw new ArgumentException("The arguments' signature exceeds 255 characters.");
         return signature;
     }

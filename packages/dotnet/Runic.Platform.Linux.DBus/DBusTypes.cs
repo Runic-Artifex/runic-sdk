@@ -188,21 +188,49 @@ public sealed record DBusMethodCall(string? Destination, DBusObjectPath Path, st
 }
 
 /// <summary>A received signal.</summary>
-/// <remarks>Signals compare by content: their origin, names and arguments, which compare as <see cref="DBusValue"/> does.</remarks>
-/// <param name="Sender">The unique bus name of the connection that emitted it.</param>
-/// <param name="Path">The object that emitted it.</param>
-/// <param name="Interface">The signal's interface.</param>
-/// <param name="Member">The signal's name.</param>
-/// <param name="Arguments">The signal's arguments.</param>
-public sealed record DBusSignal(string? Sender, DBusObjectPath Path, string Interface, string Member, ImmutableArray<DBusValue> Arguments)
+/// <remarks>The connection creates signals. They compare by content: their origin, names and arguments, which compare as
+/// <see cref="DBusValue"/> does.</remarks>
+public sealed class DBusSignal : IEquatable<DBusSignal>
 {
+    internal DBusSignal(string? sender, DBusObjectPath path, string @interface, string member, ImmutableArray<DBusValue> arguments)
+    {
+        Sender = sender;
+        Path = path;
+        Interface = @interface;
+        Member = member;
+        Arguments = arguments.IsDefault ? [] : arguments;
+    }
+
+    /// <summary>The unique bus name of the connection that emitted it.</summary>
+    public string? Sender { get; }
+    /// <summary>The object that emitted it.</summary>
+    public DBusObjectPath Path { get; }
+    /// <summary>The signal's interface.</summary>
+    public string Interface { get; }
+    /// <summary>The signal's name.</summary>
+    public string Member { get; }
+    /// <summary>The signal's arguments.</summary>
+    public ImmutableArray<DBusValue> Arguments { get; }
+
     /// <summary>Compares two signals by content.</summary>
     public bool Equals(DBusSignal? other) =>
         ReferenceEquals(this, other) || other is not null && Sender == other.Sender && Path == other.Path && Interface == other.Interface
             && Member == other.Member && DBusContent.SequenceEqual(Arguments, other.Arguments);
 
     /// <inheritdoc />
+    public override bool Equals(object? obj) => Equals(obj as DBusSignal);
+
+    /// <inheritdoc />
     public override int GetHashCode() => HashCode.Combine(Sender, Path, Interface, Member, DBusContent.SequenceHash(Arguments));
+
+    /// <inheritdoc />
+    public override string ToString() => $"{Interface}.{Member} from {Sender ?? "(no sender)"} at {Path} ({Arguments.Length} arguments)";
+
+    /// <summary>Compares two signals by content.</summary>
+    public static bool operator ==(DBusSignal? left, DBusSignal? right) => left is null ? right is null : left.Equals(right);
+
+    /// <summary>Compares two signals by content.</summary>
+    public static bool operator !=(DBusSignal? left, DBusSignal? right) => !(left == right);
 }
 
 /// <summary>Which signals a subscription receives. Every set field must match.</summary>
@@ -223,20 +251,43 @@ public sealed record DBusSignalFilter
 }
 
 /// <summary>Properties of one interface that changed, from <c>org.freedesktop.DBus.Properties.PropertiesChanged</c>.</summary>
-/// <remarks>Changes compare by content: the same interface, the same changed names with equal values, and the same
-/// invalidated names in the same order.</remarks>
-/// <param name="Interface">The interface whose properties changed.</param>
-/// <param name="Changed">The new values, unwrapped from their variants.</param>
-/// <param name="Invalidated">Properties that changed without their new value; read them again if needed.</param>
-public sealed record DBusPropertyChanges(string Interface, ImmutableDictionary<string, DBusValue> Changed, ImmutableArray<string> Invalidated)
+/// <remarks><see cref="DBusProxy.ReadPropertyChanges"/> creates them. Changes compare by content: the same interface, the
+/// same changed names with equal values, and the same invalidated names in the same order.</remarks>
+public sealed class DBusPropertyChanges : IEquatable<DBusPropertyChanges>
 {
+    internal DBusPropertyChanges(string @interface, ImmutableDictionary<string, DBusValue> changed, ImmutableArray<string> invalidated)
+    {
+        Interface = @interface;
+        Changed = changed;
+        Invalidated = invalidated.IsDefault ? [] : invalidated;
+    }
+
+    /// <summary>The interface whose properties changed.</summary>
+    public string Interface { get; }
+    /// <summary>The new values, unwrapped from their variants.</summary>
+    public ImmutableDictionary<string, DBusValue> Changed { get; }
+    /// <summary>Properties that changed without their new value; read them again if needed.</summary>
+    public ImmutableArray<string> Invalidated { get; }
+
     /// <summary>Compares two sets of changes by content.</summary>
     public bool Equals(DBusPropertyChanges? other) =>
         ReferenceEquals(this, other) || other is not null && Interface == other.Interface && DBusContent.DictionaryEqual(Changed, other.Changed)
             && DBusContent.SequenceEqual(Invalidated, other.Invalidated);
 
     /// <inheritdoc />
+    public override bool Equals(object? obj) => Equals(obj as DBusPropertyChanges);
+
+    /// <inheritdoc />
     public override int GetHashCode() => HashCode.Combine(Interface, DBusContent.DictionaryHash(Changed), DBusContent.SequenceHash(Invalidated));
+
+    /// <inheritdoc />
+    public override string ToString() => $"{Interface}: {Changed.Count} changed, {Invalidated.Length} invalidated";
+
+    /// <summary>Compares two sets of changes by content.</summary>
+    public static bool operator ==(DBusPropertyChanges? left, DBusPropertyChanges? right) => left is null ? right is null : left.Equals(right);
+
+    /// <summary>Compares two sets of changes by content.</summary>
+    public static bool operator !=(DBusPropertyChanges? left, DBusPropertyChanges? right) => !(left == right);
 }
 
 // Content equality for the collections the message records carry; default arrays equal empty ones.

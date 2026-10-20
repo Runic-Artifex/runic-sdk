@@ -37,6 +37,33 @@ internal sealed class AssetsTests
         return Task.CompletedTask;
     }
 
+    [Test, DisplayName("one source interface opens snapshots; the development-directory family is experimental")]
+    public void PublicShape()
+    {
+        Assembly assets = typeof(IAssetSource).Assembly;
+        SequenceEqual(
+            new[] { "OpenAsync", "ValidateAsync", "get_Manifest" },
+            typeof(IAssetSource).GetMethods().Select(static method => method.Name).Order(StringComparer.Ordinal));
+        Equal(0, typeof(IAssetSource).GetInterfaces().Length);
+        Equal(typeof(System.Threading.Tasks.ValueTask<AssetReadSnapshot>), typeof(IAssetSource).GetMethod("OpenAsync")!.ReturnType);
+        True(assets.GetType("Runic.Assets.IAssetSnapshotSource") is null && assets.GetType("Runic.Assets.IAssetManifestProvider") is null);
+        foreach (Type source in new[] { typeof(AssetArchiveSource), typeof(EmbeddedAssetSource), typeof(DevelopmentDirectoryAssetSource) })
+            True(source.GetMethod("OpenReadAsync") is null && source.GetMethod("OpenSnapshotAsync") is null);
+        True(typeof(AssetArchiveInspection).GetMethod("ToDeterministicReport") is null);
+
+        var experimental = assets.GetExportedTypes()
+            .Where(static type => type.GetCustomAttribute<System.Diagnostics.CodeAnalysis.ExperimentalAttribute>() is not null)
+            .ToDictionary(static type => type.Name, static type => type.GetCustomAttribute<System.Diagnostics.CodeAnalysis.ExperimentalAttribute>()!);
+        SequenceEqual(
+            new[] { "AssetSourceChangedEventArgs", "AssetWatchOptions", "DevelopmentDirectoryAssetSource", "IAssetSourceChangeNotifier", "IAssetWatch" },
+            experimental.Keys.Order(StringComparer.Ordinal));
+        foreach (var attribute in experimental.Values)
+        {
+            Equal("RUNICASSETS001", attribute.DiagnosticId);
+            True(attribute.UrlFormat?.EndsWith("docs/experimental.md#{0}", StringComparison.Ordinal) == true);
+        }
+    }
+
     [Test, DisplayName("lookups return false for invalid paths")]
     public Task InvalidLookups()
     {
@@ -142,11 +169,11 @@ internal sealed class AssetsTests
             source.Manifest.Assets.Select(static asset => (asset.RelativePath, asset.Sha256)),
             repeatedSource.Manifest.Assets.Select(static asset => (asset.RelativePath, asset.Sha256)));
 
-        await using Stream content = await source.OpenReadAsync("index.html").ConfigureAwait(false);
+        await using Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
         using var reader = new StreamReader(content, Encoding.UTF8);
         True((await reader.ReadToEndAsync().ConfigureAwait(false)).Contains("Asset boundary", StringComparison.Ordinal));
         await ThrowsAsync<FileNotFoundException>(
-            async () => await source.OpenReadAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
+            async () => await source.OpenAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
     }
 
     [Test, DisplayName("development documents replace only a bounded immutable entry")]
@@ -158,13 +185,13 @@ internal sealed class AssetsTests
         var source = original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "dev.html"));
         directory.Write("dev.html", "changed after loading");
         Equal(AssetCacheMode.NoStore, source.Manifest.EntryPoint.CacheMode);
-        await using var entry = await source.OpenSnapshotAsync("index.html");
+        await using var entry = await source.OpenAsync("index.html");
         using var reader = new StreamReader(entry.Content);
         Equal("<html>Vite entry</html>", await reader.ReadToEndAsync());
         Equal(original.Manifest.Assets.Count, source.Manifest.Assets.Count);
-        await using var css = await source.OpenSnapshotAsync("assets/app.css");
+        await using var css = await source.OpenAsync("assets/app.css");
         True(css.Descriptor.MediaType == "text/css");
-        await ThrowsAsync<FileNotFoundException>(async () => await source.OpenReadAsync("dev.html"));
+        await ThrowsAsync<FileNotFoundException>(async () => await source.OpenAsync("dev.html"));
         Throws<ArgumentException>(() => original.WithDevelopmentDocument("relative.html"));
         directory.Write("large.html", new string('x', 1024 * 1024 + 1));
         Throws<InvalidDataException>(() => original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "large.html")));
@@ -324,9 +351,7 @@ internal sealed class AssetsTests
         AssetDescriptor descriptor = source.Manifest.EntryPoint;
         var context = new DefaultHttpContext();
         context.Response.Body = new MemoryStream();
-        await RunicAssetEndpointExtensions
-            .WriteAssetAsync(context, source, descriptor)
-            .ConfigureAwait(false);
+        await context.WriteAssetAsync(source, descriptor).ConfigureAwait(false);
 
         Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         Equal("text/html; charset=utf-8", context.Response.ContentType);
@@ -543,7 +568,7 @@ internal sealed class AssetsTests
         Equal(2, first.Assets.Count);
         Equal(3, second.Assets.Count);
         await source.ValidateAsync().ConfigureAwait(false);
-        await using Stream content = await source.OpenReadAsync("index.html").ConfigureAwait(false);
+        await using Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
         using var reader = new StreamReader(content);
         Equal("two", await reader.ReadToEndAsync().ConfigureAwait(false));
     }
@@ -554,7 +579,7 @@ internal sealed class AssetsTests
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
         using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        await using Stream snapshot = await source.OpenReadAsync("index.html").ConfigureAwait(false);
+        await using Stream snapshot = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
         directory.Write("index.html", "two");
         using (var reader = new StreamReader(snapshot, leaveOpen: true))
         {
@@ -562,9 +587,9 @@ internal sealed class AssetsTests
         }
 
         await ThrowsAsync<InvalidDataException>(
-            async () => await source.OpenReadAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
+            async () => await source.OpenAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
         source.Refresh();
-        await using Stream refreshed = await source.OpenReadAsync("index.html").ConfigureAwait(false);
+        await using Stream refreshed = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
         using var refreshedReader = new StreamReader(refreshed);
         Equal("two", await refreshedReader.ReadToEndAsync().ConfigureAwait(false));
     }
@@ -731,7 +756,7 @@ internal sealed class AssetsTests
         source.Refresh();
         Equal(2, calls);
         True(concurrentRefreshCompleted);
-        await using Stream content = await source.OpenReadAsync("index.html").ConfigureAwait(false);
+        await using Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
         using var reader = new StreamReader(content);
         Equal("three", await reader.ReadToEndAsync().ConfigureAwait(false));
 
@@ -824,7 +849,7 @@ internal sealed class AssetsTests
             string replacement = Path.Combine(directory.Path, "replacement.html");
             File.WriteAllText(replacement, "safe");
             File.Move(replacement, index, overwrite: true);
-            await using (Stream content = await source.OpenReadAsync("index.html").ConfigureAwait(false))
+            await using (Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content)
             using (var reader = new StreamReader(content))
             {
                 Equal("safe", await reader.ReadToEndAsync().ConfigureAwait(false));
@@ -833,7 +858,7 @@ internal sealed class AssetsTests
             File.Delete(index);
             File.CreateSymbolicLink(index, outside);
             await ThrowsAsync<InvalidDataException>(
-                async () => await source.OpenReadAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
+                async () => await source.OpenAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
             File.Delete(index);
             File.WriteAllText(index, "safe");
         }
@@ -885,7 +910,7 @@ internal sealed class AssetsTests
         await ThrowsAsync<OperationCanceledException>(
             async () => await source.ValidateAsync(cancellation.Token).ConfigureAwait(false)).ConfigureAwait(false);
         await ThrowsAsync<OperationCanceledException>(
-            async () => await source.OpenReadAsync("index.html", cancellation.Token).ConfigureAwait(false)).ConfigureAwait(false);
+            async () => await source.OpenAsync("index.html", cancellation.Token).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
     [Test, DisplayName("shipping assembly stays framework neutral")]
@@ -902,7 +927,7 @@ internal sealed class AssetsTests
 
     private static async Task<string> ReadTextAsync(DevelopmentDirectoryAssetSource source, string path)
     {
-        await using Stream content = await source.OpenReadAsync(path).ConfigureAwait(false);
+        await using Stream content = (await source.OpenAsync(path).ConfigureAwait(false)).Content;
         using var reader = new StreamReader(content);
         return await reader.ReadToEndAsync().ConfigureAwait(false);
     }
@@ -998,10 +1023,10 @@ internal sealed class AssetsTests
         public ValueTask ValidateAsync(CancellationToken cancellationToken = default) =>
             ValueTask.FromException(new IOException("Test failure."));
 
-        public ValueTask<Stream> OpenReadAsync(
+        public ValueTask<AssetReadSnapshot> OpenAsync(
             string relativePath,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromException<Stream>(new IOException("Test failure."));
+            ValueTask.FromException<AssetReadSnapshot>(new IOException("Test failure."));
     }
 
     private sealed class MutationAfterValidationSource : IAssetSource
@@ -1044,17 +1069,17 @@ internal sealed class AssetsTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<Stream> OpenReadAsync(
+        public ValueTask<AssetReadSnapshot> OpenAsync(
             string relativePath,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!Manifest.TryGetAsset(relativePath, out _))
+            if (!Manifest.TryGetAsset(relativePath, out AssetDescriptor? descriptor))
             {
                 throw new FileNotFoundException("Missing test asset.", relativePath);
             }
 
-            return ValueTask.FromResult<Stream>(new SwitchingReadStream(_validated, _mutated));
+            return ValueTask.FromResult(new AssetReadSnapshot(descriptor, new SwitchingReadStream(_validated, _mutated)));
         }
     }
 

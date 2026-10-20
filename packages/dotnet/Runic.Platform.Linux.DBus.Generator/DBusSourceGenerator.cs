@@ -69,6 +69,10 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
                     string source = DBusEmitter.Emit(unit, version);
                     output.AddSource($"{unit.Namespace}.{System.IO.Path.GetFileNameWithoutExtension(unit.FileName)}.{unit.Mode}.g.cs", SourceText.From(source, Encoding.UTF8));
                 }
+                catch (DBusNameCollisionException error)
+                {
+                    output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.NameCollision, Location.None, unit.FileName, error.Message));
+                }
                 catch (DBusGenerationException error)
                 {
                     output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidMember, Location.None, unit.FileName, error.Message));
@@ -211,6 +215,9 @@ internal sealed class GenerationUnit(string fileName, string ns, bool service, b
 
 internal sealed class DBusGenerationException(string message) : Exception(message);
 
+// A generated member would take the name of an inherited or another generated member (RUNICDBUS012).
+internal sealed class DBusNameCollisionException(string message) : Exception(message);
+
 internal static class DBusDiagnostics
 {
     private const string Category = "Runic.Platform.Linux.DBus";
@@ -233,6 +240,7 @@ internal static class DBusDiagnostics
     public static readonly DiagnosticDescriptor DuplicateTypeName = Error("RUNICDBUS010", "Duplicate generated type",
         "The type '{0}' would be generated more than once in namespace '{1}', from {2}; set RunicDBusClassName or another Namespace");
     public static readonly DiagnosticDescriptor InvalidMember = Error("RUNICDBUS011", "Invalid interface member", "'{0}': {1}");
+    public static readonly DiagnosticDescriptor NameCollision = Error("RUNICDBUS012", "Generated member name collision", "'{0}': {1}");
 
     private static DiagnosticDescriptor Error(string id, string title, string message) =>
         new(id, title, message, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: RunicReleaseLinks.Diagnostic(id));

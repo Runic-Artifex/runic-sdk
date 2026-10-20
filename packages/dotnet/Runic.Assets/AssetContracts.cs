@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.Assets.Internal;
 
 namespace Runic.Assets;
 
@@ -227,6 +228,7 @@ public sealed class AssetManifest
 }
 
 /// <summary>Publishes immutable manifest snapshots when a live asset source changes.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(AssetsExperimental.DevelopmentDirectoryId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IAssetSourceChangeNotifier
 {
     /// <summary>
@@ -237,6 +239,7 @@ public interface IAssetSourceChangeNotifier
 }
 
 /// <summary>Owns one event-driven development-directory refresh loop.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(AssetsExperimental.DevelopmentDirectoryId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IAssetWatch : IDisposable
 {
     /// <summary>Gets whether this watch still accepts filesystem change signals.</summary>
@@ -244,6 +247,7 @@ public interface IAssetWatch : IDisposable
 }
 
 /// <summary>Bounds filesystem event coalescing for a development asset source.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(AssetsExperimental.DevelopmentDirectoryId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class AssetWatchOptions
 {
     /// <summary>Gets the quiet period required before one coalesced directory refresh runs.</summary>
@@ -257,6 +261,7 @@ public sealed class AssetWatchOptions
 }
 
 /// <summary>Describes one atomically published asset-manifest replacement.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(AssetsExperimental.DevelopmentDirectoryId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class AssetSourceChangedEventArgs : EventArgs
 {
     /// <summary>Initializes a manifest replacement notification.</summary>
@@ -273,32 +278,22 @@ public sealed class AssetSourceChangedEventArgs : EventArgs
     public AssetManifest Current { get; }
 }
 
-/// <summary>Exposes the authoritative, immutable metadata for an asset provider.</summary>
-public interface IAssetManifestProvider
+/// <summary>
+/// Opens assets from one manifest-owned storage boundary. Each asset opens as an immutable
+/// descriptor-and-stream snapshot, so transports always describe the exact bytes they deliver.
+/// </summary>
+public interface IAssetSource
 {
     /// <summary>Gets the current immutable manifest with identity, digest, and cache metadata.</summary>
     AssetManifest Manifest { get; }
-}
 
-/// <summary>Opens assets from one manifest-owned storage boundary.</summary>
-public interface IAssetSource : IAssetManifestProvider
-{
     /// <summary>Validates metadata and backing content.</summary>
     ValueTask ValidateAsync(CancellationToken cancellationToken = default);
-    /// <summary>Opens one exact manifest path for reading.</summary>
-    ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default);
-}
 
-/// <summary>
-/// Opens one asset as an immutable descriptor-and-stream unit. Transports use this boundary so
-/// response metadata always describes the exact stream being delivered.
-/// </summary>
-public interface IAssetSnapshotSource : IAssetSource
-{
-    /// <summary>Opens one exact manifest asset and its matching immutable descriptor.</summary>
-    ValueTask<AssetReadSnapshot> OpenSnapshotAsync(
-        string relativePath,
-        CancellationToken cancellationToken = default);
+    /// <summary>Opens one exact manifest asset with its matching immutable descriptor.</summary>
+    /// <remarks>The caller owns the snapshot and disposes it, which disposes its content stream.</remarks>
+    /// <exception cref="FileNotFoundException">The manifest does not declare <paramref name="relativePath"/>.</exception>
+    ValueTask<AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Owns one descriptor and the verified content stream it describes.</summary>

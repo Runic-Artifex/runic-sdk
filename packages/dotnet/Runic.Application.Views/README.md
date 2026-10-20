@@ -1029,7 +1029,11 @@ the host adapters set) and the `RunicViews*` target names are not settings.
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
 
 `dotnet build` and `dotnet publish` copy the built frontend as loose files to
-`www/` next to the executable; they do not embed it. On macOS, an application
+`www/` next to the executable; they do not embed it. `Runic.Assets` is the
+separate pipeline that embeds a frontend in the assembly, for ASP.NET Core and
+non-Views Desktop applications, with its own `RunicAssetsDist` property; see
+[Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder)
+for serving an embedded archive from a Views application. On macOS, an application
 in an `.app` bundle without `www/` next to its executable reads the frontend
 from the bundle's `Contents/Resources/www`, where Apple expects resources
 (`RunicWindowOptions.ContentRoot` overrides both). `dotnet runic dev` sets

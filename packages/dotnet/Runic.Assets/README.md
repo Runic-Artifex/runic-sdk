@@ -3,8 +3,29 @@
 `Runic.Assets` gives a .NET application one portable, validated description of
 its static files. Embed a Vite build for NativeAOT-friendly deployment, use
 explicit assembly resources for a small bundle, or use a refreshable directory
-while developing—then attach the same `IAssetSnapshotSource` to the host
+while developing—then attach the same `IAssetSource` to the host
 adapter you choose.
+
+## Runic.Assets or the Views `www/` folder
+
+Runic has two ways to ship a frontend, and they do not share settings:
+
+- **Runic.Application.Views** applications build `RunicApplicationFrontendDirectory`
+  and copy its `dist/` as loose files to `www/` next to the executable; the
+  Views host serves that folder. This is the default for Runic Views apps, and
+  `dotnet runic dev` works with it.
+- **Runic.Assets** packs `RunicAssetsDist` into one validated archive and embeds
+  it in the assembly. Use it for ASP.NET Core and for Runic Desktop applications
+  without Views, or wherever a single-file or NativeAOT deployment must carry
+  its frontend inside the executable. `Runic.Assets.AspNetCore` and
+  `Runic.Assets.Desktop` serve it.
+
+A Views application can serve an embedded archive instead of `www/` by setting
+`RunicDesktopHost.SurfaceOptions` to a `DesktopSurfaceOptions` whose `Content`
+is `new DesktopContent.Handler(assets.ToDesktopContentHandler())`. The archive
+must then hold everything the build copies to `www/`, including the host's
+`runic-views.js` client. A build property that connects the two pipelines is
+planned for a later 1.x release.
 
 ## Install
 
@@ -83,7 +104,12 @@ var assets = new EmbeddedAssetSource(
     ]);
 ```
 
-Use `DevelopmentDirectoryAssetSource` only for the Linux development inner loop;
+Use `DevelopmentDirectoryAssetSource` only for the Linux development inner loop.
+It and its watch types (`IAssetSourceChangeNotifier`, `IAssetWatch`,
+`AssetWatchOptions` and `AssetSourceChangedEventArgs`) are
+[experimental](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICASSETS001)
+(`RUNICASSETS001`): no Runic host uses them yet, and their shape may change in a
+minor release. The source
 it requires Linux no-follow directory handles so root and ancestor replacement
 cannot redirect a published source. It refreshes local files and marks them
 `no-store`. Entries whose names are not valid asset paths (for example
@@ -97,12 +123,20 @@ previous/current manifest snapshots. Notifications are serialized and coalesced
 after refresh, subscriber failures are isolated, and disposal stops future
 refreshes. The watcher uses one fixed 8 KiB native event buffer and retries from
 the authoritative directory scan after overflow, with at most three retries per
-change burst. `IAssetSnapshotSource` is the transport boundary: its descriptor
-and stream are one owned snapshot, so response entity tags and range metadata
-describe exactly the bytes delivered. Reads materialize a verified temporary-file snapshot, so content that
+change burst. Reads materialize a verified temporary-file snapshot, so content that
 changes after publication is rejected rather than delivered under the old digest.
 Use an embedded source or an archive for a
 reproducible deployed bundle.
+
+## Sources
+
+Every source implements `IAssetSource`: its immutable `Manifest`,
+`ValidateAsync`, and `OpenAsync(relativePath)`, which returns an
+`AssetReadSnapshot`. The snapshot's `Descriptor` and `Content` stream are one
+owned unit, so response entity tags and range metadata describe exactly the
+bytes delivered; dispose the snapshot to close the stream. A custom source
+implements these three members. `OpenAsync` throws `FileNotFoundException` for a
+path the manifest does not declare.
 
 ## Guarantees and limits
 
@@ -118,11 +152,11 @@ connect origins. ASP.NET Core delivery supports RFC conditional requests and
 single byte ranges directly from this metadata. Archive reads validate declared content and can be bounded with
 `AssetArchiveReadOptions` when input is not trusted.
 
-`AssetArchive.Inspect` produces a deterministic report from the authoritative
-manifest. Readers accept only the current `runic.assets.archive/1` schema and
-reject incompatible archive versions.
+`AssetArchive.Inspect` returns an archive's schema version, its manifest and the
+SHA-256 digest of the canonical manifest bytes. Readers accept only the current
+`runic.assets.archive/1` schema and reject incompatible archive versions.
 
-For application integration, consume `IAssetManifestProvider.Manifest` directly
+For application integration, consume `IAssetSource.Manifest` directly
 for asset identity, SHA-256, entity tags, and cache metadata. Do not recreate a
 parallel manifest in a hosting adapter.
 

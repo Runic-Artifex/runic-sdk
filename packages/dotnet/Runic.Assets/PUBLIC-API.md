@@ -8,21 +8,22 @@ Namespace: `Runic.Assets`
 - `AssetDescriptor`
 - `AssetManifest`
 - `AssetRoutingOptions`
-- `IAssetManifestProvider`
 - `IAssetSource`
-- `IAssetSnapshotSource`
 - `AssetReadSnapshot`
-- `IAssetSourceChangeNotifier`
-- `IAssetWatch`
-- `AssetWatchOptions`
-- `AssetSourceChangedEventArgs`
 - `AssetArchive`
 - `AssetArchiveReadOptions`
 - `AssetArchiveSource`
 - `AssetArchiveInspection`
 - `EmbeddedAssetRegistration`
 - `EmbeddedAssetSource`
-- `DevelopmentDirectoryAssetSource` (Linux only)
+
+Experimental (`RUNICASSETS001`, see docs/experimental.md), Linux only:
+
+- `DevelopmentDirectoryAssetSource`
+- `IAssetSourceChangeNotifier`
+- `IAssetWatch`
+- `AssetWatchOptions`
+- `AssetSourceChangedEventArgs`
 
 Replacing the entry document with a development bootstrap is not public API:
 an application calling it in production would let an environment variable

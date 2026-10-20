@@ -14,10 +14,11 @@ public static class DesktopAssetExtensions
     /// <summary>
     /// Creates a Desktop content handler over the source's current immutable snapshots. Request
     /// paths resolve with <see cref="AssetManifest.TryResolveRequestPath"/>, the same rules the
-    /// ASP.NET Core adapter uses.
+    /// ASP.NET Core adapter uses, and responses carry the same headers: a <c>text/*</c> media type
+    /// without a charset is sent with <c>; charset=utf-8</c>.
     /// </summary>
     public static ContentHandler ToDesktopContentHandler(
-        this IAssetSnapshotSource source,
+        this IAssetSource source,
         AssetRoutingOptions? routing = null)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -29,7 +30,7 @@ public static class DesktopAssetExtensions
     }
 
     private static ContentResponse Handle(
-        IAssetSnapshotSource source,
+        IAssetSource source,
         ContentRequest request,
         AssetRoutingOptions? routing)
     {
@@ -42,10 +43,11 @@ public static class DesktopAssetExtensions
         try
         {
             AssetDescriptor current = descriptor;
+            string contentType = WithUtf8Charset(current.MediaType);
             IReadOnlyDictionary<string, string> headers = Headers(current);
             if (MatchesIfNoneMatch(Header(request, "If-None-Match"), current.EntityTag))
             {
-                return new ContentResponse(ReadOnlyMemory<byte>.Empty, current.MediaType, 304, headers);
+                return new ContentResponse(ReadOnlyMemory<byte>.Empty, contentType, 304, headers);
             }
 
             long start = 0;
@@ -57,7 +59,7 @@ public static class DesktopAssetExtensions
             {
                 return new ContentResponse(
                     ReadOnlyMemory<byte>.Empty,
-                    current.MediaType,
+                    contentType,
                     416,
                     With(headers, "Content-Range", $"bytes */{current.Length.ToString(CultureInfo.InvariantCulture)}"));
             }
@@ -79,7 +81,7 @@ public static class DesktopAssetExtensions
             {
                 return ContentResponse.Stream(
                     static _ => ValueTask.FromResult<Stream>(Stream.Null),
-                    current.MediaType,
+                    contentType,
                     hasRange ? 206 : 200,
                     length,
                     headers);
@@ -89,7 +91,7 @@ public static class DesktopAssetExtensions
             // so the snapshot is not opened before then.
             return ContentResponse.Stream(
                 token => OpenRangeAsync(source, current, start, length, token),
-                current.MediaType,
+                contentType,
                 hasRange ? 206 : 200,
                 length,
                 headers);
@@ -101,13 +103,13 @@ public static class DesktopAssetExtensions
     }
 
     private static async ValueTask<Stream> OpenRangeAsync(
-        IAssetSnapshotSource source,
+        IAssetSource source,
         AssetDescriptor described,
         long start,
         long length,
         CancellationToken cancellationToken)
     {
-        AssetReadSnapshot snapshot = await source.OpenSnapshotAsync(described.RelativePath, cancellationToken).ConfigureAwait(false);
+        AssetReadSnapshot snapshot = await source.OpenAsync(described.RelativePath, cancellationToken).ConfigureAwait(false);
         try
         {
             // The headers were already prepared from the manifest; never send other bytes under them.
@@ -123,6 +125,14 @@ public static class DesktopAssetExtensions
             throw;
         }
     }
+
+    // Web build output is UTF-8; without a charset a WebView may decode text/plain or text/css with a legacy code page.
+    // The same rule as the ASP.NET Core adapter, so one archive gets the same Content-Type on both hosts.
+    internal static string WithUtf8Charset(string mediaType) =>
+        mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+            && !mediaType.Contains("charset=", StringComparison.OrdinalIgnoreCase)
+            ? mediaType + "; charset=utf-8"
+            : mediaType;
 
     private static Dictionary<string, string> Headers(AssetDescriptor descriptor) =>
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

@@ -28,7 +28,8 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     public DBusSignature Signature => new(_signature ?? "", trusted: true);
 
     /// <summary>Whether this is the default value, which holds nothing.</summary>
-    public bool IsEmpty => _signature is null;
+    /// <remarks>An empty container, such as an <c>as</c> without items, is not the default value.</remarks>
+    public bool IsDefault => _signature is null;
 
     /// <summary>Creates a <c>y</c> value.</summary>
     public static DBusValue From(byte value) => new("y", value);
@@ -218,7 +219,7 @@ public readonly struct DBusValue : IEquatable<DBusValue>
         _signature == "ao" ? [.. GetItems().Select(static item => item.GetObjectPath())] : throw Mismatch("ao");
 
     /// <summary>Gets the bytes of an <c>ay</c> value.</summary>
-    public byte[] GetByteArray() => _signature == "ay" ? [.. GetItems().Select(static item => item.GetByte())] : throw Mismatch("ay");
+    public ImmutableArray<byte> GetByteArray() => _signature == "ay" ? [.. GetItems().Select(static item => item.GetByte())] : throw Mismatch("ay");
 
     /// <summary>Gets an <c>a{sv}</c> value as a dictionary of the values inside its variants.</summary>
     public ImmutableDictionary<string, DBusValue> GetVariantDictionary() => _signature == "a{sv}"
@@ -227,13 +228,13 @@ public readonly struct DBusValue : IEquatable<DBusValue>
 
     private T Get<T>(string signature) => _signature == signature ? (T)_value! : throw Mismatch(signature);
 
-    private InvalidOperationException Mismatch(string expected) => new(IsEmpty
+    private InvalidOperationException Mismatch(string expected) => new(IsDefault
         ? $"The default DBusValue holds no {expected} value."
         : $"A value of signature \"{_signature}\" is not {(expected.Contains(' ') ? expected : $"\"{expected}\"")}.");
 
     private static void RequireValue(DBusValue value, string parameter)
     {
-        if (value.IsEmpty) throw new ArgumentException("The default DBusValue holds nothing.", parameter);
+        if (value.IsDefault) throw new ArgumentException("The default DBusValue holds nothing.", parameter);
     }
 
     /// <inheritdoc />
