@@ -156,7 +156,7 @@ It returns `run(...args)`, `cancel()` and `reset()`, which never reject, and the
 `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`, `error`,
 `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and `cancelError`
 signals. A run that ends with a `cancelled` status sets `cancelled` and resolves to
-`undefined` without an `error`; `failed` and `timedOut` statuses are still `error`.
+`undefined` without an `error`; `failed` and `timed-out` statuses are still `error`.
 `pending` stays true after a Cancel response until the operation reaches its terminal
 status. Destroying the injection context settles run promises without cancelling
 accepted work. The options also take the controller's `cancel(operation)` and
@@ -238,7 +238,7 @@ registered handler's answer; see the [Testing guide](https://github.com/Runic-Ar
 
 `injectCollectionViewport(element, options)` follows a fixed-row-height scroll
 container and returns a signal with its
-[`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
+[`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
 range. Pass the container as a signal, such as a `viewChild`, and the options as
 a function or signal, then send the range to the ViewModel from an effect:
 

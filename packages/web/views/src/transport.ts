@@ -37,10 +37,8 @@ const missingBridgeMessage =
  * Rejects with an `unavailable` BridgeError when no host installed
  * `window.__runicBridge`, and with a `timeout` BridgeError when it did not connect in time.
  */
-export function waitForBridge(timeoutMilliseconds?: number): Promise<RunicBridgeClient>;
-export function waitForBridge(options?: WaitForBridgeOptions): Promise<RunicBridgeClient>;
-export async function waitForBridge(options: number | WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
-  const timeout = typeof options === "number" ? options : options.timeout ?? defaultTimeout;
+export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
+  const timeout = options.timeout ?? defaultTimeout;
   if (!Number.isFinite(timeout) || timeout < 0) throw new RangeError("The Bridge timeout must be a non-negative number of milliseconds.");
   const host = globalThis as BridgeHost;
   const deadline = Date.now() + timeout;

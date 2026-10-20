@@ -34,7 +34,7 @@ const program = Effect.gen(function* () {
   yield* Effect.forkScoped(Stream.runForEach(states(editor), state => Effect.log(state.title)));
   yield* command(() => editor.setTitle("Draft"));
   // Interrupting this Effect, or its timeout, cancels the save in .NET.
-  yield* operation(id => editor.startSaveWithRequestId(id), {
+  yield* operation(id => editor.startSave({ requestId: id }), {
     requestId: crypto.randomUUID(),
     retry: Schedule.exponential("200 millis").pipe(Schedule.take(3)),
     timeout: "10 seconds",
@@ -54,8 +54,8 @@ const program = Effect.gen(function* () {
 | `command(() => client.method(...))` | `Effect<A, ViewError>` | Runs a command, setter, `can…` query or checked write. A command that declares a failure succeeds with its value and adds `ViewDomainFailure<F>`. |
 | `operation(start, options?)` | `Effect<Result, ViewOperationError>` | Starts a `start<Command>` operation and waits for its terminal status; `Result` is `void` for a command without one. A declared failure adds `ViewDomainFailure<F>`. |
 | `catchCase(effect, handlers)` | `Effect<A \| …, E \| …, R \| …>` | Handles every `$case` of a declared `[RunicUnion]` failure in the error channel; a missing case is a type error. |
-| `viewportChanges(controller)` | `Stream<CollectionViewport>` | The rows a `createCollectionViewportController` requests, as a stream. |
-| `followViewport(controller, request)` | `Effect<void, E, R>` | Sends each new row range to .NET and interrupts the request for a range the user scrolled past. |
+| `viewportChanges(controller)` (`/experimental`) | `Stream<CollectionViewport>` | The rows a `createCollectionViewportController` requests, as a stream. |
+| `followViewport(controller, request)` (`/experimental`) | `Effect<void, E, R>` | Sends each new row range to .NET and interrupts the request for a range the user scrolled past. |
 | `createEffectAction(program, { runFork? })` | `EffectAction` | A latest-wins runner with `status`, `pending`, `value`, `error` and `cause`, for any UI framework. |
 | `fromBridgeError(error)` | `ViewError` | Maps a `BridgeError` from plain code. |
 
@@ -74,10 +74,10 @@ select them. Each keeps the original `BridgeError` as `cause` and its `route`.
 | `ViewUnavailable` | `unavailable` | No host installed `window.__runicBridge`, for example a page served by plain Vite. |
 | `ViewDisconnected` | `disconnected` | The Bridge is not connected to .NET: the transport closed or the host ended. |
 | `ViewReleased` | `released` | The Bridge is connected, but this View was released: the client was disposed, or .NET released the View, for example because navigation replaced it. |
-| `ViewBridgeTimeout` | `timeout` | A Bridge exists but did not connect in time. |
+| `ViewTimeout` | `timeout` | A Bridge exists but did not connect in time. |
 | `ViewRejected` | `rejected` | .NET refused the call. |
 | `ViewCancelled` | `cancelled` | .NET cancelled the call. |
-| `ViewCommandFailed` | `failed` | The handler threw or the reply was invalid. `detail` has the .NET exception type, message and stack in development. |
+| `ViewFailed` | `failed` | The handler threw or the reply was invalid. `detail` has the .NET exception type, message and stack in development. |
 
 `ViewError` is the union of these. Operations add four more, together
 `ViewOperationError`:
@@ -87,7 +87,7 @@ select them. Each keeps the original `BridgeError` as `cause` and its `route`.
 | `ViewOperationFailed` | The operation ended as `failed`, or succeeded without a deliverable result. Has `status` and `detail`. |
 | `ViewOperationCancelled` | The operation ended as `cancelled`. |
 | `ViewOperationTimedOut` | The `timeout` option passed; `cancellation` says how .NET answered the cancellation request. |
-| `ViewOperationUncertain` | The client could not observe whether .NET admitted or finished the operation, or .NET no longer knows its outcome. |
+| `ViewOperationUncertain` | The client could not observe whether .NET admitted or finished the operation, or .NET no longer knows its outcome. Has `status` when a terminal status (`expired`, `unknown`) said so. |
 
 ### Declared failures
 
@@ -127,7 +127,7 @@ A declared failure is a terminal outcome, so `operation`'s `retry` never retries
 - `retry` is accepted only together with `requestId`. Every attempt starts the
   operation with that ID, and .NET answers a repeated start with the operation
   it already runs, so the command runs at most once. Only `ViewDisconnected`,
-  `ViewBridgeTimeout` and `ViewOperationUncertain` are retried (a `ViewReleased`
+  `ViewTimeout` and `ViewOperationUncertain` are retried (a `ViewReleased`
   View cannot answer a retry), and `while`
   can narrow that further; a failed or cancelled operation is not retried. The
   operation keeps running between attempts, so the next attempt observes it.

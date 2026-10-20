@@ -284,7 +284,8 @@ of the same major without changes by its author. That includes:
   for example with a default arm, and a TypeScript exhaustive `never` check over
   it can stop compiling. A closed set, such as `DesktopFileOperation`, gains
   values only in a major release. Removing, renaming or renumbering a value is
-  breaking for both.
+  breaking for both. Multi-word wire values (Bridge protocol tokens and npm string
+  unions) are kebab-case, such as `domain-failed` and `timed-out`.
 - **NativeAOT and trimming:** a library marked `IsAotCompatible` reporting new
   trim or AOT warnings for code that was clean.
 - **Diagnostic IDs** of every family below: reusing an ID for another meaning, or
@@ -340,7 +341,9 @@ of the same major without changes by its author. That includes:
   stable within a major. Log message text is not a contract.
 - **npm packages:** removing or renaming an export, `exports` entry or TypeScript
   type; narrowing a peer dependency range; changing the generated client shape or
-  `runic-views.js` behaviour. Widening a peer range is not breaking.
+  `runic-views.js` behaviour. Widening a peer range is not breaking. The
+  `./experimental` subpaths, and the `./generated*` and `./bindings` entries of
+  `@runic-artifex/views` (see Package tiers), are excepted.
 - **Platforms:** dropping a supported RID, host or OS version before .NET drops it.
 - **Third-party types in the public API:** moving to a dependency version that
   changes a type Runic exposes (see [Dependencies](#dependencies)).
@@ -482,7 +485,12 @@ requirement, not a consumer one.
   Runic.Platform.Linux.DBus emits and calls. The generated output itself (file
   names, private members, formatting) is not a contract; the generated public API
   (the composition class and its `AddRunicViews()`/`AddRunicBridges()`, and the
-  generated TypeScript client shape) is.
+  generated TypeScript client shape) is. On npm, the `./generated`,
+  `./generated/wire` and `./generated/mock` entries of `@runic-artifex/views`
+  follow the same rule for generated modules, and its `./bindings` entry is
+  versioned with the framework adapters, which depend on the exact same release.
+  `@runic-artifex/views` reports a .NET `Runic.Application.Views` of another
+  release as a diagnostic (`code: "version"`).
 - **Experimental APIs in stable packages:** an unfinished API is marked
   `[Experimental]` with one diagnostic ID per API family, listed with its status
   in [`docs/experimental.md`](../../docs/experimental.md). Every use is a compile
@@ -494,7 +502,9 @@ requirement, not a consumer one.
   child web presentation), planned to graduate before 1.0, `RUNICASSETS001`
   (Linux development-directory asset source), `RUNICDESK100` (custom Desktop
   window host providers) and `RUNICDESK101` (the low-level Desktop presentation
-  transport).
+  transport). An npm package exports its experimental APIs only from its
+  `./experimental` subpath, which may change in a minor release; graduation
+  moves an export to the root entry.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each stable release on a
   prerelease version and may change in any release. `RunicCsWebUiPackageVersion`

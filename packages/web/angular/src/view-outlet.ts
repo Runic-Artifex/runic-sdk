@@ -1,11 +1,11 @@
 import { Component, computed, effect, input, signal, untracked, viewChild, ViewContainerRef, type InputSignal, type Type } from "@angular/core";
-import type { ViewReference } from "@runic-artifex/views";
+import type { PageReference } from "@runic-artifex/views";
 
 /**
  * A build-known map checks each generated reference against its component input. A nullable
  * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
  */
-export type ViewRegistry<R extends ViewReference | null | undefined> = {
+export type ViewRegistry<R extends PageReference | null | undefined> = {
   readonly [K in NonNullable<R>["kind"]]: Type<{ readonly page: InputSignal<Extract<NonNullable<R>, { readonly kind: K }>> }>;
 };
 
@@ -19,7 +19,7 @@ const outletTemplate = `
  * The element keeps Angular's prefix convention: `<runic-view-outlet [content]="…" [registry]="…" />`.
  */
 @Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
-export class ViewOutlet<R extends ViewReference = ViewReference> {
+export class ViewOutlet<R extends PageReference = PageReference> {
   readonly content = input<R | null | undefined>();
   readonly registry = input.required<ViewRegistry<R>>();
   readonly error = signal<string | undefined>(undefined);
@@ -59,4 +59,4 @@ export class ViewOutlet<R extends ViewReference = ViewReference> {
  * @deprecated Import `ViewOutlet` instead; this alias is removed in the next preview.
  */
 @Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
-export class RunicViewOutlet<R extends ViewReference = ViewReference> extends ViewOutlet<R> {}
+export class RunicViewOutlet<R extends PageReference = PageReference> extends ViewOutlet<R> {}

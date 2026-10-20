@@ -1,3 +1,4 @@
+import type { ViewSource } from "@runic-artifex/views";
 import * as React from "react";
 import { Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import {
   retrySuspenseView, useCollectionViewport, useCommand, useOperation, useSuspenseView, useView, ViewOutlet,
-  type CollectionViewportHandle, type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry, type ViewSource,
+  type CollectionViewportHandle, type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
 
 // React 18.3.0, the lowest supported React, exports act only as unstable_act.
@@ -546,7 +547,7 @@ function fakeOperation(requestId: string) {
     async outcome() {
       const status = await terminal;
       if (status.kind === "succeeded") return bridgeSuccess(status.result as number);
-      throw new BridgeError(status.kind === "cancelled" ? "cancelled" : status.kind === "timedOut" ? "timeout" : "failed", status.kind);
+      throw new BridgeError(status.kind === "cancelled" ? "cancelled" : status.kind === "timed-out" ? "timeout" : "failed", status.kind);
     },
   };
   return { operation, finish, cancels: () => cancels };
@@ -579,7 +580,7 @@ describe("useOperation", () => {
 
     for (const [status, kind] of [
       [{ contract: "test", requestId: "next", kind: "failed", error: { kind: "failed", message: "boom" } }, "failed"],
-      [{ contract: "test", requestId: "next", kind: "timedOut", cancellation: "cancellation-requested" }, "timeout"],
+      [{ contract: "test", requestId: "next", kind: "timed-out", cancellation: "cancellation-requested" }, "timeout"],
     ] as const) {
       current = fakeOperation("next");
       await act(async () => { result = handle!.run(); });

@@ -69,10 +69,9 @@ export async function runToolkitGeneratedClient(
       && view.snapshot.optionalDocumentId === null,
       "Generated Toolkit direct command clients did not hydrate their C# replies.");
 
-    const stringOperation = await view.startAsyncStringWithRequestId(fixture.asyncString.requestId, "client async");
-    const dtoOperation = await view.startAsyncDtoWithRequestId(fixture.asyncDto.requestId,
-      { documentId: "document-1", delta: 5 });
-    const nullableOperation = await view.startAsyncOptionalWithRequestId(fixture.asyncNullable.requestId, null);
+    const stringOperation = await view.startAsyncString("client async", { requestId: fixture.asyncString.requestId });
+    const dtoOperation = await view.startAsyncDto({ documentId: "document-1", delta: 5 }, { requestId: fixture.asyncDto.requestId });
+    const nullableOperation = await view.startAsyncOptional(null, { requestId: fixture.asyncNullable.requestId });
     const [stringCompletion, dtoCompletion, nullableCompletion] = await Promise.all([
       stringOperation.completion, dtoOperation.completion, nullableOperation.completion,
     ]);

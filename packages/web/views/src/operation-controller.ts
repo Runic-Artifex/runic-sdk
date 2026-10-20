@@ -1,5 +1,5 @@
 import { emitErrorDiagnostic } from "./diagnostics.js";
-import { BridgeError, BridgeOperationUncertainError } from "./errors.js";
+import { BridgeError, uncertainOperation } from "./errors.js";
 import type { BridgeOutcome } from "./outcome.js";
 import type { BridgeOperation, BridgeOperationCancelResult, BridgeOperationStatus } from "./operations.js";
 
@@ -15,7 +15,7 @@ export interface OperationState<TResult, TFailure = never> {
   readonly status: BridgeOperationStatus<TResult, TFailure> | undefined;
   readonly outcome: BridgeOutcome<TResult, TFailure> | undefined;
   readonly failure: TFailure | undefined;
-  /** An unexpected failure, including a `failed` or `timedOut` status. Never a `cancelled` status. */
+  /** An unexpected failure, including a `failed` or `timed-out` status. Never a `cancelled` status. */
   readonly error: unknown;
   /**
    * The latest run ended with a `cancelled` status, whoever requested it. This is a
@@ -308,9 +308,9 @@ export function createLatestOperationController<TResult = void, TFailure = never
       if (!observed(intent)) return;
       const status = await operation.wait();
       if (!observed(intent)) return;
-      if (status.kind === "running" || status.kind === "unknown" || status.kind === "expired" || status.kind === "timedOut")
-        throw new BridgeOperationUncertainError(status.contract, operation.requestId,
-          "The previous operation's completion could not establish admission for the next selection.", { cause: status });
+      if (status.kind === "running" || status.kind === "unknown" || status.kind === "expired" || status.kind === "timed-out")
+        throw uncertainOperation(status.contract, operation.requestId,
+          "The previous operation's completion could not establish admission for the next selection.", status);
       await intent.value.waitForCompletion?.(operation, status);
       boundaryObserved = true;
       if (!observed(intent)) return;

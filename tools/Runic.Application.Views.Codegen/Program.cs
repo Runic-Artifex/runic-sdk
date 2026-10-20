@@ -1100,11 +1100,15 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     foreach (var property in checkedProperties)
     {
-        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
+        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property)
+            ?? $"Writes `{property.ReflectedType?.Name}.{property.Name}` with an acknowledged field write, which reports whether .NET committed it.");
         ts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: {Ref("FieldWriteOptions")}<{TsPropertyType(property)}>): Promise<{Ref("FieldWriteReceipt")}<{TsPropertyType(property)}>>;");
     }
     if (needsCheckedWriter)
+    {
+        ts.AppendLine("  /** The value and version of a checked field that a `write…` call is based on. */");
         ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>;");
+    }
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
@@ -1119,11 +1123,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var plan = commandPlans[command];
         var operationName = command.Name[..^"Command".Length];
-        var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
-        var suffix = plan.HasArgument ? $", {input}" : "";
-        ts.AppendLine($"  start{operationName}({input}): Promise<{shortName}{operationName}Operation>;");
-        ts.AppendLine($"  start{operationName}WithRequestId(requestId: string{suffix}): Promise<{shortName}{operationName}Operation>;");
-        ts.AppendLine($"  recover{operationName}WithRequestId(requestId: string): Promise<{shortName}{operationName}Operation>;");
+        var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}, " : "";
+        ts.AppendLine($"  /**");
+        ts.AppendLine($"   * Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;");
+        ts.AppendLine($"   * the default is a random id. A start with a request id that .NET already admitted returns that operation.");
+        ts.AppendLine($"   */");
+        ts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;");
+        ts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
+        ts.AppendLine($"  recover{operationName}(requestId: string): Promise<{shortName}{operationName}Operation>;");
     }
     ts.AppendLine("}");
     ts.AppendLine();
@@ -1325,6 +1332,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (needsCheckedWriter) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt")]);
     if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type " + Import("BridgeOutcome"));
     if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type " + Import("BridgeOperation"));
+    if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
     var runtimeImports = new List<string> { Import("connectView"), Import("viewReferences") };

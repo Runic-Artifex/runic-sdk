@@ -19,8 +19,19 @@ vi.mock("@runic-artifex/views", async importOriginal => {
   return {
     ...actual,
     createViewController: tracked("view", actual.createViewController),
-    createCollectionViewportController: tracked("viewport", actual.createCollectionViewportController),
     createCommandController: tracked("command", actual.createCommandController),
+  };
+});
+vi.mock("@runic-artifex/views/experimental", async importOriginal => {
+  const actual = await importOriginal<typeof import("@runic-artifex/views/experimental")>();
+  return {
+    ...actual,
+    createCollectionViewportController: ((...args: Parameters<typeof actual.createCollectionViewportController>) => {
+      const controller = actual.createCollectionViewportController(...args);
+      const dispose = controller.dispose.bind(controller);
+      controller.dispose = () => { disposed.push("viewport"); dispose(); };
+      return controller;
+    }) as typeof actual.createCollectionViewportController,
   };
 });
 

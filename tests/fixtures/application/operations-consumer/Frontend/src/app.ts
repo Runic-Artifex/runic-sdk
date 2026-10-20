@@ -1,6 +1,7 @@
 import { mount, unmount } from "svelte";
-import { createLatestOperationController, createOperationController, BridgeError, BridgeOperationUncertainError,
+import { createOperationController, BridgeError, BridgeOperationUncertainError,
   type BridgeOperation } from "@runic-artifex/views";
+import { createLatestOperationController } from "@runic-artifex/views/experimental";
 import type { OperationHandle } from "@runic-artifex/svelte/views";
 import OperationFeedback from "./OperationFeedback.svelte";
 import { connectOperations } from "./generated/operations";
@@ -153,7 +154,7 @@ async function journeys(): Promise<string[]> {
 
   // The real generated recovery API cannot establish admission for an unknown
   // request. The queue must stop until the application explicitly replaces it.
-  await latest.run({ start: () => client.recoverReadWithRequestId("never-accepted-package-consumer") });
+  await latest.run({ start: () => client.recoverRead("never-accepted-package-consumer") });
   require(latest.current.blocked && latest.current.error instanceof BridgeOperationUncertainError,
     "Unknown admission did not block the latest-selection policy.");
   const acceptedBeforeBlocked = client.snapshot.readAccepted.length;
