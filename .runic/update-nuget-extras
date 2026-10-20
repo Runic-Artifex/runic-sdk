@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Pin the NuGet packages a restore downloads beyond the committed lock files.
+
+PackageDownload items (Windows targeting packs, package-validation baselines,
+NativeAOT ILCompiler and runtime packs) are not recorded in packages.lock.json.
+This restores the CI slice once with network access into an empty packages
+folder, then writes every package that no lock file names, with the SHA-512 of
+the downloaded .nupkg, to hashes/nuget-extras.json.
+
+Usage: .runic/update-nuget-extras [<rev>]   (default: HEAD; run from a clean commit)
+"""
+import base64, glob, json, os, re, shutil, subprocess, sys, tempfile
+
+sdk = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+rev = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(["git", "-C", sdk, "rev-parse", "HEAD"], check=True, text=True, capture_output=True).stdout.strip()
+
+# Projects restored outside RunicSdk.Core.slnx by the managed jobs (eng/ci/plan.mjs applicationFixtures).
+fixtures = [
+    ("tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj", []),
+    ("tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj", []),
+    ("tests/fixtures/application/reactiveui25-aot/ReactiveUi25AotProof.csproj", ["-p:PublishAot=true"]),
+]
+
+work = tempfile.mkdtemp(prefix="runic-nuget-extras-")
+try:
+    tree = os.path.join(work, "source")
+    subprocess.run(["git", "clone", "-q", "--shared", "--no-checkout", sdk, tree], check=True)
+    subprocess.run(["git", "-C", tree, "checkout", "-q", rev], check=True)
+    packages = os.path.join(work, "nuget")
+    restores = [["dotnet", "restore", "RunicSdk.Core.slnx", "--locked-mode"]] + [
+        ["dotnet", "restore", path, *extra] for path, extra in fixtures]
+    script = " && ".join(" ".join(command) for command in restores)
+    env = {**os.environ, "CI": "true"}
+    subprocess.run(["nix", "develop", f"git+file://{sdk}?rev={rev}", "-c", "bash", "-c",
+                    f"export NUGET_PACKAGES={packages} CONFIGURATION=Release; {script}"],
+                   cwd=tree, check=True, env=env)
+    locked = set()
+    for lock in glob.glob(os.path.join(tree, "**", "packages*.lock.json"), recursive=True):
+        if "/tests/fixtures/nix/" in lock:
+            continue
+        for frameworks in json.load(open(lock)).get("dependencies", {}).values():
+            for name, entry in frameworks.items():
+                if "resolved" in entry:
+                    locked.add((name.lower(), entry["resolved"].lower()))
+    extras = []
+    for sha in sorted(glob.glob(os.path.join(packages, "*", "*", "*.nupkg.sha512"))):
+        version_dir = os.path.dirname(sha)
+        pid, version = os.path.basename(os.path.dirname(version_dir)), os.path.basename(version_dir)
+        if (pid, version) in locked:
+            continue
+        nuspec = glob.glob(os.path.join(version_dir, "*.nuspec"))
+        name = re.search(r"<id>([^<]+)</id>", open(nuspec[0]).read()).group(1) if nuspec else pid
+        extras.append({"pname": name, "version": version, "sha512": open(sha).read().strip()})
+    out = os.path.join(sdk, ".runic", "nuget-extras.json")
+    with open(out, "w") as f:
+        json.dump(extras, f, indent=1)
+        f.write("\n")
+    print(f"{len(extras)} packages beyond the lock files -> {out}")
+finally:
+    shutil.rmtree(work, ignore_errors=True)
