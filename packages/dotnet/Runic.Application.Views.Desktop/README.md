@@ -63,7 +63,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   size. For other surface or window options, create
   `new RunicDesktopHost(provider, desktop) { SurfaceOptions = ..., WindowOptions = ... }`
   inside `DesktopEventLoop.Run`. `RunicDesktopHost.DefaultWindowOptions` opens
-  the embedded WebView and falls back to an installed browser.
+  the embedded WebView and falls back to an installed browser. To serve a
+  frontend embedded with `Runic.Assets` instead of `www/`, set `SurfaceOptions`
+  to `new DesktopSurfaceOptions { Content = new DesktopContent.Handler(assets.ToDesktopContentHandler()) }`
+  from `Runic.Assets.Desktop`; see
+  [Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder).
 - `RunicDesktopHost.Resources` serves application files that are not part of
   the frontend build, such as icons from a cache, from each Window's own
   address. It is called with each Window as it opens, after its ViewModel is

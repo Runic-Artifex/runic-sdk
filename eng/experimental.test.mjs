@@ -25,7 +25,7 @@ test("docs/experimental.md has an entry for every experimental diagnostic ID", (
     ...[...text.matchAll(/const string \w*Id = "(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
     ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
   ]));
-  assert.deepEqual([...ids].sort(), ["RUNICWPF001"]);
+  assert.deepEqual([...ids].sort(), ["RUNICASSETS001", "RUNICWPF001"]);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.
     assert.ok(docs.includes(`<a id="${id}"></a>`), `docs/experimental.md has no anchor for ${id}`);

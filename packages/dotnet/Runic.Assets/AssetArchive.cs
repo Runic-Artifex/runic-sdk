@@ -54,10 +54,10 @@ public static class AssetArchive
                     : CompressionLevel.SmallestSize);
             contentEntry.LastWriteTime = StableTimestamp;
             await using Stream output = contentEntry.Open();
-            await using Stream input = await source
-                .OpenReadAsync(descriptor.RelativePath, cancellationToken)
+            await using AssetReadSnapshot input = await source
+                .OpenAsync(descriptor.RelativePath, cancellationToken)
                 .ConfigureAwait(false);
-            await CopyAndVerifyAsync(input, output, descriptor, cancellationToken).ConfigureAwait(false);
+            await CopyAndVerifyAsync(input.Content, output, descriptor, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -505,18 +505,18 @@ public static class AssetArchive
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<Stream> OpenReadAsync(
+        public ValueTask<AssetReadSnapshot> OpenAsync(
             string relativePath,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             string path = AssetPath.Normalize(relativePath);
-            if (!Manifest.TryGetAsset(path, out _))
+            if (!Manifest.TryGetAsset(path, out AssetDescriptor? descriptor))
             {
                 throw new FileNotFoundException("The requested asset is not declared by the archive manifest.", path);
             }
 
-            return ValueTask.FromResult<Stream>(OpenFile(path));
+            return ValueTask.FromResult(new AssetReadSnapshot(descriptor, OpenFile(path)));
         }
 
         public void Dispose() => _root.Dispose();
@@ -606,18 +606,18 @@ public static class AssetArchive
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<Stream> OpenReadAsync(
+        public ValueTask<AssetReadSnapshot> OpenAsync(
             string relativePath,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             string path = AssetPath.Normalize(relativePath);
-            if (!Manifest.TryGetAsset(path, out _))
+            if (!Manifest.TryGetAsset(path, out AssetDescriptor? descriptor))
             {
                 throw new FileNotFoundException("The requested asset is not declared by the archive manifest.", path);
             }
 
-            return ValueTask.FromResult<Stream>(new MemoryStream(_contents[path], writable: false));
+            return ValueTask.FromResult(new AssetReadSnapshot(descriptor, new MemoryStream(_contents[path], writable: false)));
         }
 
         private static Dictionary<string, byte[]> Scan(
@@ -714,8 +714,8 @@ public sealed class AssetArchiveInspection
     /// <summary>Gets the SHA-256 digest of the archive's canonical manifest bytes.</summary>
     public string ManifestSha256 { get; }
 
-    /// <summary>Writes a line-oriented report with deterministic field and asset ordering.</summary>
-    public string ToDeterministicReport()
+    // A line-oriented report with deterministic field and asset ordering, for tests. Not a versioned format.
+    internal string ToDeterministicReport()
     {
         var report = new StringBuilder();
         report.Append("archiveVersion=").Append(ArchiveVersion).Append('\n');
@@ -755,7 +755,7 @@ public sealed class AssetArchiveReadOptions
 }
 
 /// <summary>An immutable in-memory source loaded from a Runic Assets archive.</summary>
-public sealed class AssetArchiveSource : IAssetSnapshotSource
+public sealed class AssetArchiveSource : IAssetSource
 {
     private readonly IReadOnlyDictionary<string, byte[]> _content;
 
@@ -782,19 +782,7 @@ public sealed class AssetArchiveSource : IAssetSnapshotSource
     }
 
     /// <inheritdoc />
-    public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
-    {
-        ValueTask<AssetReadSnapshot> snapshot = OpenSnapshotAsync(relativePath, cancellationToken);
-        if (snapshot.IsCompletedSuccessfully)
-        {
-            return ValueTask.FromResult(snapshot.Result.Content);
-        }
-
-        return OpenStreamAsync(snapshot);
-    }
-
-    /// <inheritdoc />
-    public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(
+    public ValueTask<AssetReadSnapshot> OpenAsync(
         string relativePath,
         CancellationToken cancellationToken = default)
     {
@@ -814,7 +802,4 @@ public sealed class AssetArchiveSource : IAssetSnapshotSource
             descriptor!,
             new MemoryStream(content, writable: false)));
     }
-
-    private static async ValueTask<Stream> OpenStreamAsync(ValueTask<AssetReadSnapshot> snapshot) =>
-        (await snapshot.ConfigureAwait(false)).Content;
 }

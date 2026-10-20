@@ -1,1 +1,19 @@
 #nullable enable
+*REMOVED*Runic.Platform.Linux.DBus.DBusPropertyChanges.Changed.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusPropertyChanges.<Clone>$() -> Runic.Platform.Linux.DBus.DBusPropertyChanges!
+*REMOVED*Runic.Platform.Linux.DBus.DBusPropertyChanges.DBusPropertyChanges(string! Interface, System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>! Changed, System.Collections.Immutable.ImmutableArray<string!> Invalidated) -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusPropertyChanges.Deconstruct(out string! Interface, out System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>! Changed, out System.Collections.Immutable.ImmutableArray<string!> Invalidated) -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusPropertyChanges.Interface.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusPropertyChanges.Invalidated.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.Arguments.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.<Clone>$() -> Runic.Platform.Linux.DBus.DBusSignal!
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.DBusSignal(string? Sender, Runic.Platform.Linux.DBus.DBusObjectPath Path, string! Interface, string! Member, System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue> Arguments) -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.Deconstruct(out string? Sender, out Runic.Platform.Linux.DBus.DBusObjectPath Path, out string! Interface, out string! Member, out System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue> Arguments) -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.Interface.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.Member.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.Path.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusSignal.Sender.init -> void
+*REMOVED*Runic.Platform.Linux.DBus.DBusValue.GetByteArray() -> byte[]!
+*REMOVED*Runic.Platform.Linux.DBus.DBusValue.IsEmpty.get -> bool
+Runic.Platform.Linux.DBus.DBusValue.GetByteArray() -> System.Collections.Immutable.ImmutableArray<byte>
+Runic.Platform.Linux.DBus.DBusValue.IsDefault.get -> bool

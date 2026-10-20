@@ -48,6 +48,8 @@ basic values (`From(42)` is an `i`, `From(42u)` a `u`, `From("text")` an `s`), a
 build containers. Read a value with the getter for its type, such as `GetInt32()`,
 `GetItems()` or `GetVariantDictionary()`; another getter throws
 `InvalidOperationException`. Values compare by signature and content.
+`IsDefault` is true only for `default(DBusValue)`, which holds nothing; an empty
+container such as an `as` without items is not the default.
 
 | D-Bus | Create | Read |
 | --- | --- | --- |
@@ -83,7 +85,9 @@ await foreach (var signal in changes.WithCancellation(cancellationToken))
 
 Disposing a subscription closes the file descriptors of signals it received but
 nobody read. `DBusSignal`, `DBusPropertyChanges` and `DBusMethodCall` compare by
-content, like the values they carry.
+content, like the values they carry. The connection creates signals and
+`DBusProxy.ReadPropertyChanges` creates property changes, so neither has a public
+constructor; a `DBusMethodCall` is a request you create.
 
 `WatchPropertiesAsync` and `WatchSignalAsync` are shorter forms that subscribe when
 enumeration starts. `DBusConnection.WatchNameOwnerAsync(name)` reports a bus name's
@@ -188,6 +192,11 @@ C# property; setting it emits `PropertiesChanged` as the interface's
 calls `OnSet<Property>Async`, which sets it by default. Each signal becomes
 `Emit<Signal>(arguments)`. The class answers introspection with the file's
 interfaces and checks each call's signature.
+
+A generated member never hides or overloads an inherited one. When a D-Bus name
+would produce a member that `DBusProxy`, `DBusObject` or another generated member
+already uses, such as a method `Call` (`CallAsync`) or a signal `Properties`
+(`WatchPropertiesAsync`), the generator reports `RUNICDBUS012` instead.
 
 D-Bus types map to C# as follows: `y b n q i u x t d s` to `byte`, `bool`,
 `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `double` and `string`; `o`

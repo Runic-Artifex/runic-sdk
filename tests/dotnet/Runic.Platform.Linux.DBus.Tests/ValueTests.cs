@@ -19,8 +19,9 @@ internal sealed class ValueTests
         Check(variant.Signature.Value == "v" && variant.GetVariant().GetInt32() == 5, "variant");
         var strings = DBusValue.StringArray(["a", "b"]);
         Check(strings.Signature.Value == "as" && strings.GetStringArray().SequenceEqual(["a", "b"]) && strings.GetItems().Length == 2, "as");
-        Check(DBusValue.ByteArray([1, 2]).GetByteArray().SequenceEqual(new byte[] { 1, 2 }) && DBusValue.ObjectPathArray(["/x"]).GetObjectPathArray()[0].Value == "/x",
-            "ay and ao");
+        // GetByteArray returns an immutable array, as generated code does for ay.
+        ImmutableArray<byte> bytes = DBusValue.ByteArray([1, 2]).GetByteArray();
+        Check(bytes.SequenceEqual(new byte[] { 1, 2 }) && DBusValue.ObjectPathArray(["/x"]).GetObjectPathArray()[0].Value == "/x", "ay and ao");
         var properties = DBusValue.VariantDictionary([KeyValuePair.Create("Volume", DBusValue.From(0.5)), KeyValuePair.Create("Name", DBusValue.From("x"))]);
         Check(properties.Signature.Value == "a{sv}" && properties.GetVariantDictionary()["Volume"].GetDouble() == 0.5, "a{sv}");
         var structure = DBusValue.Struct(DBusValue.From("a"), DBusValue.From(1), DBusValue.StringArray([]));
@@ -29,7 +30,8 @@ internal sealed class ValueTests
         Check(nested.Signature.Value == "a(si)", "array of struct");
         var dictionary = DBusValue.Dictionary("o", "a{sv}", [KeyValuePair.Create(DBusValue.From(new DBusObjectPath("/d")), properties)]);
         Check(dictionary.Signature.Value == "a{oa{sv}}" && dictionary.GetEntries()[0].Value == properties, "dictionary of dictionaries");
-        Check(default(DBusValue).IsEmpty && default(DBusValue).Signature.Value == "", "default");
+        Check(default(DBusValue).IsDefault && default(DBusValue).Signature.Value == "", "default");
+        Check(!DBusValue.StringArray([]).IsDefault && !DBusValue.Array("i", []).IsDefault, "an empty container is not the default value");
     }
 
     [Test, DisplayName("values compare by signature and content, and format for logs")]
@@ -59,20 +61,35 @@ internal sealed class ValueTests
     {
         static DBusSignal Signal(string text) => new(":1.2", "/a", "org.example.I", "M", [DBusValue.From(text), DBusValue.StringArray(["x"])]);
         Check(Signal("t") == Signal("t") && Signal("t").GetHashCode() == Signal("t").GetHashCode(), "equal signals");
-        Check(Signal("t") != Signal("u") && Signal("t") != Signal("t") with { Member = "N" }, "different signals");
+        Check(Signal("t") != Signal("u") && Signal("t") != new DBusSignal(":1.2", "/a", "org.example.I", "N", Signal("t").Arguments), "different signals");
         Check(new DBusSignal(null, "/", "org.example.I", "M", default) == new DBusSignal(null, "/", "org.example.I", "M", []), "default arguments equal empty ones");
+        Check(new DBusSignal(null, "/", "org.example.I", "M", default).Arguments.IsEmpty, "default arguments read as empty");
+        Check(Equals(Signal("t"), Signal("t")) && !Signal("t").Equals(null) && Signal("t") != null, "object equality and null");
 
         static DBusPropertyChanges Changes(params string[] invalidated) => new("org.example.I",
             ImmutableDictionary<string, DBusValue>.Empty.Add("A", DBusValue.From(1)).Add("B", DBusValue.Variant(DBusValue.From("b"))), [.. invalidated]);
         Check(Changes("C") == Changes("C") && Changes("C").GetHashCode() == Changes("C").GetHashCode(), "equal changes");
         var reordered = new DBusPropertyChanges("org.example.I", ImmutableDictionary<string, DBusValue>.Empty.Add("B", DBusValue.Variant(DBusValue.From("b"))).Add("A", DBusValue.From(1)), ["C"]);
         Check(reordered == Changes("C") && reordered.GetHashCode() == Changes("C").GetHashCode(), "entry order does not matter");
-        Check(Changes("C") != Changes("D") && Changes("C") != Changes("C") with { Changed = ImmutableDictionary<string, DBusValue>.Empty.Add("A", DBusValue.From(2)) },
+        Check(Changes("C") != Changes("D") && Changes("C") != new DBusPropertyChanges("org.example.I", ImmutableDictionary<string, DBusValue>.Empty.Add("A", DBusValue.From(2)), ["C"]),
             "different changes");
+        Check(Equals(Changes("C"), Changes("C")) && new DBusPropertyChanges("org.example.I", ImmutableDictionary<string, DBusValue>.Empty, default).Invalidated.IsEmpty,
+            "object equality; default invalidated names read as empty");
 
         static DBusMethodCall Call(int value) => new("org.example.S", "/a", "org.example.I", "M") { Arguments = [DBusValue.From(value)] };
         Check(Call(1) == Call(1) && Call(1).GetHashCode() == Call(1).GetHashCode(), "equal calls");
         Check(Call(1) != Call(2) && Call(1) != Call(1) with { Options = DBusCallOptions.NoAutoStart }, "different calls");
+    }
+
+    [Test, DisplayName("only the connection creates signals and property changes, and they cannot be copied with changes")]
+    public void MessageShapes()
+    {
+        foreach (var type in new[] { typeof(DBusSignal), typeof(DBusPropertyChanges) })
+        {
+            Check(type.IsSealed && type.GetConstructors().Length == 0, $"{type.Name} has no public constructor");
+            Check(type.GetMethod("<Clone>$") is null && type.GetMethod("Deconstruct") is null, $"{type.Name} is not a record");
+            Check(type.GetProperties().All(static property => property.SetMethod is null), $"{type.Name} has get-only properties");
+        }
     }
 
     [Test, DisplayName("values refuse what D-Bus cannot carry")]

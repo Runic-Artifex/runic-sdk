@@ -73,7 +73,8 @@ internal sealed class AssetsDesktopTests
             ("app.js", "script", false),
             ("assets/logo.svg", "logo", false),
             ("docs/guide", "guide", false),
-            ("my file.txt", "spaced", false));
+            ("my file.txt", "spaced", false),
+            ("assets/app.css", "style", false));
         var exact = new AssetRoutingOptions
         {
             ServeEntryPointAtRoot = false,
@@ -97,6 +98,7 @@ internal sealed class AssetsDesktopTests
             ("/settings/", null, null, null),
             ("/bad:name", null, null, null),
             ("/my%20file.txt", "spaced", "spaced", "spaced"),
+            ("/assets/app.css", "style", "style", "style"),
         ];
 
         foreach ((AssetRoutingOptions? routing, int column) in new (AssetRoutingOptions?, int)[]
@@ -127,6 +129,10 @@ internal sealed class AssetsDesktopTests
                     {
                         Equal(expected, desktop.Body, $"Desktop GET {label}");
                         Equal(expected, aspNet.Body, $"ASP.NET Core GET {label}");
+                        // One archive gets one Content-Type on both hosts; text types say UTF-8.
+                        Equal(aspNet.ContentType, desktop.ContentType, $"Content-Type {label}");
+                        Equal(desktop.ContentType!.StartsWith("text/", StringComparison.Ordinal), desktop.ContentType.EndsWith("; charset=utf-8", StringComparison.Ordinal),
+                            $"text charset {label}: {desktop.ContentType}");
                     }
 
                     var desktopHead = await SendAsync(client, HttpMethod.Head, surface.Url, testCase.Path).ConfigureAwait(false);
@@ -162,7 +168,7 @@ internal sealed class AssetsDesktopTests
     }
 
     private static async Task<WebApplication> StartAspNetCoreAsync(
-        IAssetSnapshotSource source,
+        IAssetSource source,
         string prefix,
         AssetRoutingOptions? routing)
     {
@@ -175,7 +181,7 @@ internal sealed class AssetsDesktopTests
         return app;
     }
 
-    private static async Task<(HttpStatusCode Status, string Body)> SendAsync(
+    private static async Task<(HttpStatusCode Status, string Body, string? ContentType)> SendAsync(
         HttpClient client,
         HttpMethod method,
         Uri baseUrl,
@@ -183,7 +189,7 @@ internal sealed class AssetsDesktopTests
     {
         using var request = new HttpRequestMessage(method, new Uri(baseUrl.AbsoluteUri + path.TrimStart('/')));
         using HttpResponseMessage response = await client.SendAsync(request).ConfigureAwait(false);
-        return (response.StatusCode, await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+        return (response.StatusCode, await response.Content.ReadAsStringAsync().ConfigureAwait(false), response.Content.Headers.ContentType?.ToString());
     }
 
     private static void Equal<T>(T expected, T actual, string? context = null)
@@ -193,7 +199,7 @@ internal sealed class AssetsDesktopTests
     }
 }
 
-internal sealed class RoutingSource : IAssetSnapshotSource
+internal sealed class RoutingSource : IAssetSource
 {
     private readonly Dictionary<string, byte[]> _contents = new(StringComparer.Ordinal);
 
@@ -217,9 +223,7 @@ internal sealed class RoutingSource : IAssetSnapshotSource
 
     public AssetManifest Manifest { get; }
     public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult<Stream>(new MemoryStream(_contents[relativePath], writable: false));
-    public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(string relativePath, CancellationToken cancellationToken = default)
+    public ValueTask<AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         Manifest.TryGetAsset(relativePath, out AssetDescriptor? descriptor);
         return ValueTask.FromResult(new AssetReadSnapshot(
@@ -228,7 +232,7 @@ internal sealed class RoutingSource : IAssetSnapshotSource
     }
 }
 
-internal sealed class MemorySource : IAssetSnapshotSource
+internal sealed class MemorySource : IAssetSource
 {
     private readonly byte[] _content;
 
@@ -246,9 +250,7 @@ internal sealed class MemorySource : IAssetSnapshotSource
     internal int Disposed;
     internal bool ReplaceContent { get; set; }
     public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult<Stream>(new MemoryStream(_content, writable: false));
-    public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(
+    public ValueTask<AssetReadSnapshot> OpenAsync(
         string relativePath,
         CancellationToken cancellationToken = default)
     {

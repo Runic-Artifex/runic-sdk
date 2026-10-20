@@ -74,15 +74,30 @@ app.MapRunicAssetSource(assets, routing: new AssetRoutingOptions
 });
 ```
 
-The adapter accepts an `IAssetSnapshotSource`, which opens each asset's
-descriptor and stream together. `AssetArchiveSource`, `EmbeddedAssetSource` and
-`DevelopmentDirectoryAssetSource` implement it.
+The adapter accepts any `IAssetSource`, which opens each asset's descriptor and
+stream together: `AssetArchiveSource`, `EmbeddedAssetSource`,
+`DevelopmentDirectoryAssetSource` or your own.
+
+To serve an asset from your own endpoint, resolve it and call the
+`HttpContext` extension `WriteAssetAsync`, which writes the same headers and
+handles conditional and range requests:
+
+```csharp
+app.MapGet("/download/{name}", async (HttpContext context, string name) =>
+{
+    if (assets.Manifest.TryGetAsset("downloads/" + name, out AssetDescriptor? asset))
+        await context.WriteAssetAsync(assets, asset);
+    else
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+});
+```
 
 ## HTTP behavior
 
 Responses preserve the manifest-owned content type, length, cache-control
 value, and strong `ETag`, and include `X-Content-Type-Options: nosniff`. `text/*`
-content types without a charset are sent as UTF-8. `HEAD` returns the same
+content types without a charset are sent with `; charset=utf-8`, as the Desktop
+adapter sends them, so one archive gets the same `Content-Type` on both hosts. `HEAD` returns the same
 headers without a body.
 Matching `If-None-Match` values receive `304 Not Modified`. Unknown and invalid
 paths that the routing options do not send to the entry point return `404`; the

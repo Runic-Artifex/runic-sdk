@@ -15,7 +15,7 @@ internal static class DevelopmentDocumentAssets
     // Replaces only the entry document with the CLI's bounded development bootstrap. Without the environment
     // variable, returns the original source. The local development CLI supplies RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT.
     // This never adds a disk root or an HTTP proxy to the asset boundary.
-    internal static IAssetSnapshotSource WithDevelopmentDocument(this IAssetSnapshotSource source)
+    internal static IAssetSource WithDevelopmentDocument(this IAssetSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
         string? path = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT");
@@ -24,7 +24,7 @@ internal static class DevelopmentDocumentAssets
 
     // Reads one explicit development HTML file as an immutable entry snapshot. Other assets retain their original
     // manifest and storage boundary.
-    internal static IAssetSnapshotSource WithDevelopmentDocument(this IAssetSnapshotSource source, string path)
+    internal static IAssetSource WithDevelopmentDocument(this IAssetSource source, string path)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -43,13 +43,13 @@ internal static class DevelopmentDocumentAssets
         return new DocumentSource(source, content.ToArray());
     }
 
-    private sealed class DocumentSource : IAssetSnapshotSource
+    private sealed class DocumentSource : IAssetSource
     {
-        private readonly IAssetSnapshotSource _source;
+        private readonly IAssetSource _source;
         private readonly byte[] _content;
         private readonly AssetDescriptor _entry;
 
-        internal DocumentSource(IAssetSnapshotSource source, byte[] content)
+        internal DocumentSource(IAssetSource source, byte[] content)
         {
             _source = source;
             _content = content;
@@ -60,19 +60,12 @@ internal static class DevelopmentDocumentAssets
 
         public AssetManifest Manifest { get; }
         public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => _source.ValidateAsync(cancellationToken);
-        public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return AssetPath.Normalize(relativePath) == _entry.RelativePath
-                ? ValueTask.FromResult<Stream>(new MemoryStream(_content, writable: false))
-                : _source.OpenReadAsync(relativePath, cancellationToken);
-        }
-        public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(string relativePath, CancellationToken cancellationToken = default)
+        public ValueTask<AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return AssetPath.Normalize(relativePath) == _entry.RelativePath
                 ? ValueTask.FromResult(new AssetReadSnapshot(_entry, new MemoryStream(_content, writable: false)))
-                : _source.OpenSnapshotAsync(relativePath, cancellationToken);
+                : _source.OpenAsync(relativePath, cancellationToken);
         }
     }
 }

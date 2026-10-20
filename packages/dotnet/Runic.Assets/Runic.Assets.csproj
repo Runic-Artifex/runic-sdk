@@ -10,6 +10,12 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
+    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <!-- Its own namespace: Runic.Assets.Packer sees this assembly's internals and has its own RunicReleaseLinks. -->
+    <RunicReleaseLinksNamespace>Runic.Assets.Internal</RunicReleaseLinksNamespace>
+    <!-- The development-directory family (RUNICASSETS001) is experimental for consumers, not inside the package. -->
+    <NoWarn>$(NoWarn);RUNICASSETS001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1034,11 +1034,37 @@ two interfaces that both end in `.Player`.
 
 An interface member cannot be generated: a method, signal or property name that
 is not a D-Bus member name, an argument or property type that is not one
-complete D-Bus type, a property `access` other than `read`, `write` or
-`readwrite`, or two interfaces of one service file that would generate the same
-member. The message names the member.
+complete D-Bus type, or a property `access` other than `read`, `write` or
+`readwrite`. The message names the member.
 
-**Fix:** correct the XML, or put interfaces whose members collide in separate files.
+**Fix:** correct the XML.
+
+### RUNICDBUS012
+
+A generated member would take the name of another member of its class, so one
+would hide, overload or duplicate the other. The message names the class, the
+member and the D-Bus method, property or signal it was generated for. The
+generator reports this instead of generating:
+
+- a member with the name of a `DBusProxy` or `DBusObject` member, such as
+  `CallAsync` for a method `Call`, `WatchSignalAsync` for a signal `Signal`,
+  `Path` for a service property `Path` or `EmitSignal` for a service signal
+  `Signal`;
+- a member with the name of an `object` member or of the class itself;
+- a member that another generated member already uses, such as
+  `GetPropertiesAsync` for a property `Properties`, `WatchPropertiesAsync` for a
+  signal `Properties`, `InterfaceName` in a proxy, or the same name from two
+  interfaces of one service file, including two interfaces that end in the same
+  name.
+
+Before 0.9, the service-file duplicates were reported as RUNICDBUS011, and the
+other collisions compiled with the inherited member silently hidden.
+
+**Fix:** put interfaces whose members collide in separate files, or set
+`RunicDBusClassName`. A D-Bus member whose name collides with an inherited member
+cannot be generated; call it with `DBusProxy.CallAsync`, `GetPropertyAsync` or
+`WatchSignalAsync`, or answer it in a `DBusObject` you write yourself, and leave it
+out of the XML the generator reads.
 
 ## Privileged actions on Windows
 

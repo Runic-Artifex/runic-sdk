@@ -394,8 +394,11 @@ requirement, not a consumer one.
   in [`docs/experimental.md`](../../docs/experimental.md). Every use is a compile
   error until the project suppresses the ID, and the API may change or be removed
   in a minor release. An experimental type does not appear in a stable API's
-  signature. Graduation removes the attribute. Today's only family,
-  `RUNICWPF001` (WPF child web presentation), is planned to graduate before 1.0.
+  signature. Graduation removes the attribute. IDs follow the numbering in
+  `docs/experimental.md` (from `100` where the prefix already names
+  diagnostics, such as `RUNICDBUS100`). Today's families are `RUNICWPF001` (WPF
+  child web presentation), planned to graduate before 1.0, and `RUNICASSETS001`
+  (Linux development-directory asset source).
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each stable release on a
   prerelease version and may change in any release. `RunicCsWebUiPackageVersion`

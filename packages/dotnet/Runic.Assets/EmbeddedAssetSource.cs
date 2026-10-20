@@ -19,7 +19,7 @@ public sealed record EmbeddedAssetRegistration(
 /// Reads explicitly registered manifest resources without extraction, filesystem access,
 /// dynamic code generation, or dependency injection.
 /// </summary>
-public sealed class EmbeddedAssetSource : IAssetSnapshotSource
+public sealed class EmbeddedAssetSource : IAssetSource
 {
     private readonly Assembly _assembly;
     private readonly Dictionary<string, string> _resources;
@@ -71,19 +71,7 @@ public sealed class EmbeddedAssetSource : IAssetSnapshotSource
     }
 
     /// <inheritdoc />
-    public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
-    {
-        ValueTask<AssetReadSnapshot> snapshot = OpenSnapshotAsync(relativePath, cancellationToken);
-        if (snapshot.IsCompletedSuccessfully)
-        {
-            return ValueTask.FromResult(snapshot.Result.Content);
-        }
-
-        return OpenStreamAsync(snapshot);
-    }
-
-    /// <inheritdoc />
-    public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(
+    public ValueTask<AssetReadSnapshot> OpenAsync(
         string relativePath,
         CancellationToken cancellationToken = default)
     {
@@ -110,9 +98,6 @@ public sealed class EmbeddedAssetSource : IAssetSnapshotSource
 
         throw new FileNotFoundException("The requested asset is not declared by the manifest.", path);
     }
-
-    private static async ValueTask<Stream> OpenStreamAsync(ValueTask<AssetReadSnapshot> snapshot) =>
-        (await snapshot.ConfigureAwait(false)).Content;
 
     private Stream OpenResource(string resourceName) =>
         _assembly.GetManifestResourceStream(resourceName)

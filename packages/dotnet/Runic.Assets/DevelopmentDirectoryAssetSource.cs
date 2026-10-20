@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.Assets.Internal;
 
 namespace Runic.Assets;
 
@@ -11,8 +12,9 @@ namespace Runic.Assets;
 /// Exposes a refreshable Linux development directory pinned to one no-follow root handle.
 /// Every refresh publishes an immutable manifest from that same root identity.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.Experimental(AssetsExperimental.DevelopmentDirectoryId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAssetSourceChangeNotifier, IDisposable
+public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSourceChangeNotifier, IDisposable
 {
     private readonly string _root;
     private readonly string _entryPoint;
@@ -177,19 +179,7 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
     }
 
     /// <inheritdoc />
-    public ValueTask<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default)
-    {
-        ValueTask<AssetReadSnapshot> snapshot = OpenSnapshotAsync(relativePath, cancellationToken);
-        if (snapshot.IsCompletedSuccessfully)
-        {
-            return ValueTask.FromResult(snapshot.Result.Content);
-        }
-
-        return OpenStreamAsync(snapshot);
-    }
-
-    /// <inheritdoc />
-    public ValueTask<AssetReadSnapshot> OpenSnapshotAsync(
+    public ValueTask<AssetReadSnapshot> OpenAsync(
         string relativePath,
         CancellationToken cancellationToken = default)
     {
@@ -218,9 +208,6 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSnapshotSource, IAss
                 OpenSnapshot(input, descriptor!, cancellationToken)));
         }
     }
-
-    private static async ValueTask<Stream> OpenStreamAsync(ValueTask<AssetReadSnapshot> snapshot) =>
-        (await snapshot.ConfigureAwait(false)).Content;
 
     private AssetManifest Scan(CancellationToken cancellationToken, out IReadOnlyList<string> skippedEntries)
     {
