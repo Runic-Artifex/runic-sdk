@@ -35,7 +35,7 @@ namespace Runic.Navigation.Wpf;
 public class NavigationDialogHost : FrameworkElement
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>
-    public static readonly DependencyProperty RegionProperty = DependencyProperty.Register(nameof(Region), typeof(INavigationRegion),
+    public static readonly DependencyProperty RegionProperty = DependencyProperty.Register(nameof(Region), typeof(NavigationRegion),
         typeof(NavigationDialogHost), new PropertyMetadata(null, static (d, _) => ((NavigationDialogHost)d).OnRegionChanged()));
 
     /// <summary>Identifies the <see cref="ViewLocator"/> dependency property.</summary>
@@ -58,8 +58,8 @@ public class NavigationDialogHost : FrameworkElement
     private readonly PropertyChangedEventHandler _regionChanged;
     private readonly List<DialogWindow> _windows = [];
     private readonly Dictionary<nint, DialogModalityTable.Hold> _disabled = [];
-    private INavigationRegion? _attached;
-    private INavigationRegion? _lastRegion;
+    private NavigationRegion? _attached;
+    private NavigationRegion? _lastRegion;
     private Window? _owner;
     private bool _noOwnerLogged;
     private bool _ownerClosed;
@@ -77,9 +77,9 @@ public class NavigationDialogHost : FrameworkElement
     }
 
     /// <summary>Gets or sets the dialog region.</summary>
-    public INavigationRegion? Region
+    public NavigationRegion? Region
     {
-        get => (INavigationRegion?)GetValue(RegionProperty);
+        get => (NavigationRegion?)GetValue(RegionProperty);
         set => SetValue(RegionProperty, value);
     }
 
@@ -195,7 +195,7 @@ public class NavigationDialogHost : FrameworkElement
 
     private void OnRegionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(INavigationRegion.CurrentEntry) or nameof(INavigationRegion.History) or null or "")
+        if (e.PropertyName is nameof(NavigationRegion.CurrentEntry) or nameof(NavigationRegion.History) or null or "")
             ScheduleReconcile();
     }
 
@@ -213,7 +213,7 @@ public class NavigationDialogHost : FrameworkElement
         if (region is null || !IsLoaded || _ownerClosed || _owner is not { } owner || PresentationSource.FromVisual(owner) is null)
             return;
         // Read the stack again, by entry ID, now.
-        List<INavigationEntry> stack = [.. region.History];
+        List<NavigationEntry> stack = [.. region.History];
         if (region.CurrentEntry is { } current) stack.Add(current);
         var keep = 0;
         while (keep < _windows.Count && keep < stack.Count && _windows[keep].Id == stack[keep].Id) keep++;
@@ -250,7 +250,7 @@ public class NavigationDialogHost : FrameworkElement
         }
     }
 
-    private bool Open(INavigationRegion region, INavigationEntry entry, NavigationEntryId[] stack)
+    private bool Open(NavigationRegion region, NavigationEntry entry, NavigationEntryId[] stack)
     {
         var owner = _windows.Count > 0 ? _windows[^1].Window : _owner!;
         var window = new Window();
@@ -351,7 +351,7 @@ public class NavigationDialogHost : FrameworkElement
         if (region is not null) ClearOnce(region);
     }
 
-    private static void ClearOnce(INavigationRegion region)
+    private static void ClearOnce(NavigationRegion region)
     {
         if (region.CurrentEntry is not { } current) return;
         try { _ = region.ClearAsync(new NavigationRequestOptions(current.Id) { Admission = NavigationAdmission.Supersede }).AsTask(); }

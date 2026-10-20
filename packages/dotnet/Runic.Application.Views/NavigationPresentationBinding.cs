@@ -18,14 +18,14 @@ internal static class NavigationPresentationBinding
 
     // A Bridge slot presents Current. It binds the window session and republishes
     // when Current changes. Disposing the subscription leaves the binding in place.
-    public static IDisposable Observe(INavigationRegion region, WindowContentSession? session, Action changed)
+    public static IDisposable Observe(NavigationRegion region, WindowContentSession? session, Action changed)
     {
         ArgumentNullException.ThrowIfNull(region);
         ArgumentNullException.ThrowIfNull(changed);
         if (session is not null) Bind(region.Navigator, session);
         PropertyChangedEventHandler handler = (_, args) =>
         {
-            if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(INavigationRegion.Current)) changed();
+            if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(NavigationRegion.Current)) changed();
         };
         region.PropertyChanged += handler;
         return new Subscription(region, handler);
@@ -113,7 +113,7 @@ internal static class NavigationPresentationBinding
         }
     }
 
-    private sealed class Subscription(INavigationRegion region, PropertyChangedEventHandler handler) : IDisposable
+    private sealed class Subscription(NavigationRegion region, PropertyChangedEventHandler handler) : IDisposable
     {
         private int _disposed;
 

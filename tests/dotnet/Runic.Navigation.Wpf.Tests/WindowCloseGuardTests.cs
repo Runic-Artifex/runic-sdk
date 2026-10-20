@@ -290,7 +290,7 @@ internal sealed class WindowCloseGuardTests
         var closedWhenIdle = false;
         void CloseWhenIdle(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(INavigationRegion.IsTransitioning) || region.IsTransitioning || closedWhenIdle) return;
+            if (e.PropertyName != nameof(NavigationRegion.IsTransitioning) || region.IsTransitioning || closedWhenIdle) return;
             closedWhenIdle = true;
             window.Close();
         }
@@ -335,7 +335,7 @@ internal sealed class WindowCloseGuardTests
         return template;
     }
 
-    private static List<NavigationHost> HostsOf(DependencyObject root, INavigationRegion region)
+    private static List<NavigationHost> HostsOf(DependencyObject root, NavigationRegion region)
     {
         List<NavigationHost> hosts = [];
         Visit(root);
@@ -362,7 +362,7 @@ internal sealed class WindowCloseGuardTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakReference MountAndDiscard(Window window, INavigationRegion region)
+    private static WeakReference MountAndDiscard(Window window, NavigationRegion region)
     {
         var host = new NavigationHost { Region = region, GuardWindowClose = true };
         window.Content = host;
@@ -387,7 +387,7 @@ internal sealed class WindowCloseGuardTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakReference ShowAndClose(INavigationRegion region)
+    private static WeakReference ShowAndClose(NavigationRegion region)
     {
         var window = ShowWindow(new NavigationHost { Region = region, GuardWindowClose = true },
             window => window.Resources.Add(new DataTemplateKey(typeof(DocumentViewModel)), BorderTemplate()));

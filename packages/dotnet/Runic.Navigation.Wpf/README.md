@@ -18,7 +18,6 @@ is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 The package targets `net10.0-windows` and isn't trimmable, because WPF isn't.
 
 ```sh
-# Available from 0.7.0-preview.4.
 dotnet add package Runic.Navigation.Wpf --prerelease
 ```
 
@@ -479,7 +478,7 @@ The core serializes a region's guards: if a cancelled hook ignores its token,
 the next choice waits for that hook to finish.
 Vetoes, failures and cancellation restore the committed selection; a late
 superseded response cannot restore an older choice. A selection's request
-completes only after the new tab's activation hook (`INavigationActivated`),
+completes only after the new tab's arrival hook (`INavigationArrived`),
 such as a data load; reselecting the current tab meanwhile waits only until
 the pending request's commit is decided, not for that hook, and selecting
 another tab replaces the loading one, which cancels its hook. Programmatic navigation
@@ -541,12 +540,12 @@ a particular MVVM framework.
 
 - `InvokeAsync` on the UI thread runs the turn inline. From another thread it
   queues the turn on the dispatcher at the context's priority.
-- Guards, `InitializeAsync`, `ResumeAsync`, `OnActivatedAsync`, factories and
+- Guards, `InitializeAsync`, `ResumeAsync`, `OnArrivedAsync`, factories and
   owned disposal run on the UI thread, each in its own dispatcher operation, so
   they can change models and touch controls directly.
 - As an `IRunicModelPresentationYield`, the context waits for the dispatcher's
   `Loaded` priority, which runs after `Render`, before the navigator runs an
-  activation hook (`INavigationActivated`): the new page's view is laid out
+  arrival hook (`INavigationArrived`): the new page's view is laid out
   and rendered, with its loading state, before the hook starts loading.
 - A turn must not pump: no `ShowDialog`, `MessageBox` or `.Wait()` inside
   `InvokeAsync`, a commit's `PropertyChanged` handler or an `OnCommitted`
@@ -568,7 +567,7 @@ that wraps `DispatcherModelContext` must implement `IRunicModelHookScheduler`
 and `IRunicModelContextLifetime` and forward them. Otherwise hooks run on the
 thread pool instead of the UI thread, and the navigator learns about a shutdown
 only when a turn fails, so a request can wait behind a hook that ignores its
-cancellation. Forward `IRunicModelPresentationYield` too, or activation hooks
+cancellation. Forward `IRunicModelPresentationYield` too, or arrival hooks
 start before the new view is rendered:
 
 ```csharp
@@ -616,7 +615,7 @@ ReactiveUI apps need no extra package. A locator that asks ReactiveUI's
 ```csharp
 public sealed class ReactiveNavigationViewLocator : INavigationViewLocator
 {
-    public FrameworkElement? ResolveView(INavigationEntry entry)
+    public FrameworkElement? ResolveView(NavigationEntry entry)
     {
         if (ViewLocator.Current.ResolveView(entry.Content) is not { } view) return null;
         view.ViewModel = entry.Content;

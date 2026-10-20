@@ -28,7 +28,7 @@ internal sealed partial class NavigationTests
         var second = new RecordingRegionGuard("main-region-2", asked);
         var navigatorGuard = new RecordingRegionGuard("navigator", asked);
         using var childRegistration = parent.Child.AddDepartureGuard(child);
-        using var mainRegistration = ((INavigationRegion)main).AddDepartureGuard(mainGuard);
+        using var mainRegistration = ((NavigationRegion)main).AddDepartureGuard(mainGuard);
         using var secondRegistration = main.AddDepartureGuard(second);
         using var navigatorRegistration = fixture.Navigator.AddDepartureGuard(navigatorGuard);
         var detailId = parent.Child.CurrentEntry!.Id;
@@ -371,7 +371,7 @@ internal sealed partial class NavigationTests
         public Func<NavigationRegionDeparture, CancellationToken, ValueTask<bool>>? Hook { get; init; }
         public List<NavigationRegionDeparture> Departures { get; } = [];
 
-        public ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken)
+        public ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken)
         {
             lock (Departures) Departures.Add(departure);
             asked.Add($"{name} {departure.Kind} {departure.Operation}");
@@ -382,7 +382,7 @@ internal sealed partial class NavigationTests
 
     private sealed class ThrowingRegionGuard : INavigationRegionGuard
     {
-        public ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken) =>
+        public ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("region guard failed");
     }
 }

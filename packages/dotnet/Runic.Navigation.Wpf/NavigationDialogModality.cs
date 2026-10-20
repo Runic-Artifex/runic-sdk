@@ -1,6 +1,7 @@
 namespace Runic.Navigation.Wpf;
 
 /// <summary>What a <see cref="NavigationDialogHost"/> disables while its region has dialog windows.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum NavigationDialogModality
 {
     /// <summary>Every other visible, enabled top-level window of the UI thread, like <c>ShowDialog</c>: app-modal dialogs.</summary>

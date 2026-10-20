@@ -25,7 +25,7 @@ namespace Runic.Application.Views.ReactiveUI;
 /// a command's exceptions yourself: while it observes a command, the Bridge does not log that command's
 /// exceptions. Without any subscriber, ReactiveUI sends them to <c>RxState.DefaultExceptionHandler</c>.
 /// </remarks>
-public static class RunicReactiveExceptions
+public static class ReactiveBridgeExceptionExtensions
 {
     /// <summary>
     /// Subscribes to <paramref name="source"/>'s <c>ThrownExceptions</c>. A declared failure
@@ -173,7 +173,7 @@ internal sealed class BridgeCommandFailures
 
     private void OnNext(Exception error)
     {
-        if (RunicReactiveExceptions.IsReported(error) || ReceivedByCall.TryGetValue(error, out _)) return;
+        if (ReactiveBridgeExceptionExtensions.IsReported(error) || ReceivedByCall.TryGetValue(error, out _)) return;
         lock (_gate)
         {
             if (_calls > 0)

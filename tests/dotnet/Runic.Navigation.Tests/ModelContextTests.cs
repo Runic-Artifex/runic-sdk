@@ -79,7 +79,7 @@ internal sealed class ModelContextTests
     {
         var context = new RunicModelContext();
         var dropped = new List<Exception>();
-        context.UnhandledTurnException += dropped.Add;
+        context.UnhandledTurnException += (_, args) => dropped.Add(args.Exception);
         var queuedGate = new TaskCompletionSource();
         var lateGate = new TaskCompletionSource();
         (bool InTurn, bool HasContext)? queuedResumed = null, lateResumed = null;
@@ -122,7 +122,7 @@ internal sealed class ModelContextTests
     {
         await using var context = new RunicModelContext();
         var reported = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
-        context.UnhandledTurnException += error => reported.TrySetResult(error);
+        context.UnhandledTurnException += (_, args) => reported.TrySetResult(args.Exception);
 #pragma warning disable VSTHRD100 // The async void method is the case under test.
         static async void FailLater()
         {
@@ -164,7 +164,7 @@ internal sealed class ModelContextTests
             var acceptingAtClose = true;
             var closedAtRejection = false;
             using var registration = closed.Register(() => acceptingAtClose = context.TryPost(() => { }));
-            context.UnhandledTurnException += _ => closedAtRejection = closed.IsCancellationRequested;
+            context.UnhandledTurnException += (_, _) => closedAtRejection = closed.IsCancellationRequested;
             var queued = context.InvokeAsync(() => throw new InvalidOperationException("The queued turn ran.")).AsTask();
             Require(context.TryPost(() => throw new InvalidOperationException("The queued post ran.")), "The post was rejected early.");
             var disposal = context.DisposeAsync().AsTask();
@@ -186,7 +186,7 @@ internal sealed class ModelContextTests
     {
         await using var context = new RunicModelContext();
         var failures = new List<Exception>();
-        context.UnhandledTurnException += failures.Add;
+        context.UnhandledTurnException += (_, args) => failures.Add(args.Exception);
         using var registration = context.Closed.Register(() => throw new IOException("close callback"));
         await context.DisposeAsync();
         Require(failures is [IOException] && context.Closed.IsCancellationRequested && !context.TryPost(() => { }),
@@ -303,7 +303,7 @@ internal sealed class ModelContextTests
     {
         public bool IsExecuting { get; init; }
         public bool Disposed { get; private set; }
-        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException { add { } remove { } }
         public bool TryPost(Action turn) => false;
         public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -321,7 +321,7 @@ internal sealed class ModelContextTests
         using var started = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         var reported = new List<Exception>();
-        context.UnhandledTurnException += error => { lock (reported) reported.Add(error); };
+        context.UnhandledTurnException += (_, args) => { lock (reported) reported.Add(args.Exception); };
         Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The blocking turn was rejected.");
         Require(started.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
         var ran = false;
@@ -388,7 +388,7 @@ internal sealed class ModelContextTests
     {
         await using var context = new RunicModelContext();
         Exception? reported = null;
-        context.UnhandledTurnException += error => reported = error;
+        context.UnhandledTurnException += (_, args) => reported = args.Exception;
         Require(context.TryPost(() => throw new InvalidOperationException("expected")), "The failing turn was rejected.");
         var delivered = 0;
         Require(context.TryPost(() => delivered++), "The follow-up turn was rejected.");

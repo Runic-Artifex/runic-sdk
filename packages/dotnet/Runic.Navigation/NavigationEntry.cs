@@ -4,37 +4,17 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Runic.Navigation;
 
 /// <summary>
-/// The content-type-independent view of a <see cref="NavigationEntry{TContent}"/>, for hosts that present
-/// a region without knowing its content type. Only <see cref="NavigationEntry{TContent}"/> implements it.
+/// One entry of a navigation region, independent of the region's content type: its stable id, content, ownership and
+/// state. Hosts that present a region without knowing its content type use it; <see cref="NavigationEntry{TContent}"/>
+/// is the typed entry, and every entry is one.
 /// </summary>
-public interface INavigationEntry
+/// <remarks>
+/// Only the navigator creates entries, so the class can't be derived from outside Runic.Navigation, and members can be
+/// added to it in a minor release.
+/// </remarks>
+public abstract class NavigationEntry
 {
-    /// <summary>Gets the entry's id, unique within its navigator.</summary>
-    NavigationEntryId Id { get; }
-
-    /// <summary>Gets the entry's content.</summary>
-    object Content { get; }
-
-    /// <summary>Gets whether the navigator owns the content.</summary>
-    NavigationOwnership Ownership { get; }
-
-    /// <summary>Gets the entry's current state.</summary>
-    NavigationEntryState State { get; }
-
-    /// <summary>
-    /// Gets the entry's service provider: its own service scope when the navigator created one
-    /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>), otherwise the navigator's
-    /// <see cref="RunicNavigator.Services"/>, otherwise an empty provider. After an entry with its own scope retires,
-    /// resolving from it throws <see cref="ObjectDisposedException"/>.
-    /// </summary>
-    IServiceProvider Services { get; }
-}
-
-/// <summary>One entry of a navigation region: its stable id, content, ownership and state.</summary>
-/// <typeparam name="TContent">The region's content type.</typeparam>
-public sealed class NavigationEntry<TContent> : INavigationEntry where TContent : class
-{
-    internal NavigationEntry(NavigationEntryCore core) => Core = core;
+    private protected NavigationEntry(NavigationEntryCore core) => Core = core;
 
     internal NavigationEntryCore Core { get; }
 
@@ -42,9 +22,7 @@ public sealed class NavigationEntry<TContent> : INavigationEntry where TContent 
     public NavigationEntryId Id => Core.Id;
 
     /// <summary>Gets the entry's content.</summary>
-    public TContent Content => (TContent)Core.Content!;
-
-    object INavigationEntry.Content => Core.Content!;
+    public object Content => Core.Content!;
 
     /// <summary>Gets whether the navigator owns the content.</summary>
     public NavigationOwnership Ownership => Core.Ownership;
@@ -52,11 +30,26 @@ public sealed class NavigationEntry<TContent> : INavigationEntry where TContent 
     /// <summary>Gets the entry's current state.</summary>
     public NavigationEntryState State => Core.State;
 
-    /// <inheritdoc cref="INavigationEntry.Services" />
+    /// <summary>
+    /// Gets the entry's service provider: its own service scope when the navigator created one
+    /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>), otherwise the navigator's
+    /// <see cref="RunicNavigator.Services"/>, otherwise an empty provider. After an entry with its own scope retires,
+    /// resolving from it throws <see cref="ObjectDisposedException"/>.
+    /// </summary>
     public IServiceProvider Services => Core.Services;
 
     /// <inheritdoc />
     public override string ToString() => $"{Id.Value}:{Core.ContentTypeName} ({State})";
+}
+
+/// <summary>One entry of a navigation region: its stable id, content, ownership and state.</summary>
+/// <typeparam name="TContent">The region's content type.</typeparam>
+public sealed class NavigationEntry<TContent> : NavigationEntry where TContent : class
+{
+    internal NavigationEntry(NavigationEntryCore core) : base(core) { }
+
+    /// <summary>Gets the entry's content.</summary>
+    public new TContent Content => (TContent)Core.Content!;
 }
 
 /// <summary>
@@ -112,7 +105,7 @@ public sealed class NavigationEntryContext
     /// Gets the entry's service provider: its own service scope when the navigator created one
     /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>), otherwise the navigator's
     /// <see cref="RunicNavigator.Services"/>, otherwise an empty provider. It is the provider
-    /// <see cref="INavigationEntry.Services"/> returns. After an entry with its own scope retires, resolving from it
+    /// <see cref="NavigationEntry.Services"/> returns. After an entry with its own scope retires, resolving from it
     /// throws <see cref="ObjectDisposedException"/>.
     /// </summary>
     public IServiceProvider Services => _entry.Services;
@@ -245,12 +238,12 @@ internal sealed class NavigationEntryCore
     // The transition that pushes this pending entry; set at admission.
     public NavigationTransition? Transition { get; set; }
 
-    // The content's activation hook (INavigationActivated, or INavigationActivated<TInput> bound to the target's input),
+    // The content's arrival hook (INavigationArrived, or INavigationArrived<TInput> bound to the target's input),
     // or null. Set under the gate once the content exists, before the entry first commits.
-    public NavigationActivation? Activation { get; set; }
+    public NavigationArrivalHook? ArrivalHook { get; set; }
 
     // The running activation's own source, cancelled when the entry stops being current. Guarded by the navigator's gate.
-    public CancellationTokenSource? Arrival { get; set; }
+    public CancellationTokenSource? ArrivalSource { get; set; }
 
     // The entry's service scope (CreateEntryScopes), set under the gate together with the
     // created content and taken by retirement step 4.
@@ -274,7 +267,7 @@ internal sealed class NavigationEntryCore
     };
 
     // The cached view keeps the region's typed entry stable. An object view (from
-    // NavigationEntryContext or INavigationRegion) does not replace a typed one. Any thread may
+    // NavigationEntryContext or the non-generic NavigationRegion's requests) does not replace a typed one. Any thread may
     // read an entry first (#288), so the view is published once: concurrent first readers all
     // return the one that was stored.
     public NavigationEntry<T> View<T>() where T : class

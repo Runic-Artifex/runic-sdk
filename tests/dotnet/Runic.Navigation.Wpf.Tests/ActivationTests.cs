@@ -7,7 +7,7 @@ using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
-// W315-020 point 1 (#350): with DispatcherModelContext, an activation hook runs on the UI thread after the new view was
+// W315-020 point 1 (#350): with DispatcherModelContext, an arrival hook runs on the UI thread after the new view was
 // laid out and rendered; a tab selected during another tab's activation switches at once and cancels that activation.
 [TestExecutor<WpfDispatcherExecutor>]
 internal sealed class ActivationTests
@@ -33,8 +33,8 @@ internal sealed class ActivationTests
                 return Task.CompletedTask;
             };
             var result = Pump(region.PushAsync(NavigationTarget.Own<object>(page)));
-            Require(result is NavigationResult<object>.Committed { Activation: NavigationActivationState.Completed } && observed == "True,True,True",
-                $"The activation hook ran before the view was presented: {observed}; {result}.");
+            Require(result is NavigationResult<object>.Committed { Arrival: NavigationArrivalState.Completed } && observed == "True,True,True",
+                $"The arrival hook ran before the view was presented: {observed}; {result}.");
         }
         finally { window.Close(); }
     }
@@ -117,11 +117,11 @@ internal sealed class ActivationTests
         finally { Pump(model.DisposeAsync().AsTask(), "the model context's disposal"); }
     }
 
-    internal sealed class ActivatedViewModel(string name) : Page(name), INavigationActivated
+    internal sealed class ActivatedViewModel(string name) : Page(name), INavigationArrived
     {
         public Func<NavigationEntryContext, CancellationToken, Task>? Activate { get; set; }
 
-        public async ValueTask OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken)
+        public async ValueTask OnArrivedAsync(NavigationEntryContext entry, NavigationArrival arrival, CancellationToken cancellationToken)
         {
             if (Activate is { } activate) await activate(entry, cancellationToken);
         }

@@ -10,18 +10,11 @@ namespace Runic.Application.Views.ReactiveUI;
 #endif
 
 // Event IDs 1040-1043 and 1090-1099 belong to this package (1044-1049 are reserved for Runic.Navigation.ReactiveUI);
+// 1040 and 1041 belonged to the removed ReactiveRoutedRegion<T> and are not reused.
 // they continue the Views table and are documented in the Views README
 // (Logging and telemetry). The category is RunicViewsTelemetry.LogCategory.
 internal static partial class ReactiveLog
 {
-    [LoggerMessage(EventId = 1040, EventName = "RoutedRegionRouteIncompatible", Level = LogLevel.Error,
-        Message = "A routed region for {Region} received {Model}, which it cannot present; the region presents no content.")]
-    internal static partial void RouteIncompatible(ILogger logger, string region, string model);
-
-    [LoggerMessage(EventId = 1041, EventName = "RoutedRegionRouterFailed", Level = LogLevel.Error,
-        Message = "The router of a routed region for {Region} failed with {ErrorType}; the region keeps its last content.")]
-    internal static partial void RouterFailed(ILogger logger, Exception? exception, string region, string errorType);
-
     [LoggerMessage(EventId = 1042, EventName = "ReactiveCommandFailed", Level = LogLevel.Error,
         Message = "{Source} reported {ErrorType} on ThrownExceptions.")]
     internal static partial void CommandFailed(ILogger logger, Exception? exception, string source, string errorType);

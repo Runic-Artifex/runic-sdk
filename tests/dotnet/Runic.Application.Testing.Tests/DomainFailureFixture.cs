@@ -82,7 +82,7 @@ public sealed class FailureReactiveViewModel : ReactiveObject
     public FailureReactiveViewModel(IRunicModelContext modelContext)
     {
         ArgumentNullException.ThrowIfNull(modelContext);
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+        var scheduler = ReactiveSchedulers.For(modelContext);
         SaveCommand = ReactiveCommand.CreateFromTask<RxVoid, int>(async _ =>
         {
             await Task.Yield();

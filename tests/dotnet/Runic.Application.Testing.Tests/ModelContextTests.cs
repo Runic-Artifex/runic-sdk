@@ -66,7 +66,7 @@ public sealed class ModelContextTests
     {
         public bool IsExecuting => true;
         public bool Disposed { get; private set; }
-        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException { add { } remove { } }
         public bool TryPost(Action turn) => false;
         public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -171,7 +171,7 @@ public sealed class ModelContextTests
     public async Task ReactiveSchedulerDeliversOnTheModelContext()
     {
         await using var context = new RunicModelContext();
-        ISequencer scheduler = new RunicReactiveSchedulerProvider().For(context);
+        ISequencer scheduler = ReactiveSchedulers.For(context);
         var delivered = 0;
         scheduler.Schedule(() => Interlocked.Increment(ref delivered));
         await context.InvokeAsync(() => { }); // scheduled drain is ahead of this barrier
@@ -242,7 +242,7 @@ public sealed class ModelContextTests
                 ConnectionKey: "connection-b")).AsTask();
         await Task.Yield();
 
-        var scheduler = new RunicReactiveSchedulerProvider().For(context);
+        var scheduler = ReactiveSchedulers.For(context);
         using var drainStarted = new ManualResetEventSlim();
         using var releaseDrain = new ManualResetEventSlim();
         Require(context.TryPost(() =>
@@ -441,7 +441,7 @@ public sealed class ModelContextTests
         }
 
         public bool IsExecuting => Thread.CurrentThread == _thread;
-        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException { add { } remove { } }
 
         public bool TryPost(Action turn)
         {

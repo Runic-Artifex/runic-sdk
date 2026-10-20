@@ -29,7 +29,7 @@ public sealed class NavShellViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed class NavHomeViewModel : INavPageViewModel, INavigationDepartureGuard, INavigationActivated
+public sealed class NavHomeViewModel : INavPageViewModel, INavigationDepartureGuard, INavigationArrived
 {
     public string Title => "home";
 
@@ -41,7 +41,7 @@ public sealed class NavHomeViewModel : INavPageViewModel, INavigationDepartureGu
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
         Guard?.Invoke(cancellationToken) ?? ValueTask.FromResult(true);
 
-    ValueTask INavigationActivated.OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken) =>
+    ValueTask INavigationArrived.OnArrivedAsync(NavigationEntryContext entry, NavigationArrival arrival, CancellationToken cancellationToken) =>
         Activate?.Invoke() ?? ValueTask.CompletedTask;
 
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }

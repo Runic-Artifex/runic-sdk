@@ -11,7 +11,7 @@ namespace Runic.Application.Views.ReactiveUI;
 #endif
 
 /// <summary>Configures ReactiveUI's builder for Runic windows.</summary>
-public static class RunicReactiveUIBuilderExtensions
+public static class ReactiveUIBuilderExtensions
 {
     /// <summary>
     /// Makes ReactiveUI's main-thread scheduler the model-context scheduler that
@@ -31,6 +31,6 @@ public static class RunicReactiveUIBuilderExtensions
     public static IReactiveUIBuilder WithRunicModelContext(this IReactiveUIBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        return builder.WithMainThreadScheduler(RunicReactiveSchedulerProvider.BuilderScheduler());
+        return builder.WithMainThreadScheduler(ReactiveSchedulers.BuilderScheduler());
     }
 }

@@ -273,7 +273,7 @@ internal sealed class RunicWindowHostTests
         var services = Services(bridge: true).AddSingleton<ILoggerFactory>(log);
         services.AddRunicReactiveModelContext();
         await using var provider = services.BuildServiceProvider();
-        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
+        Require(ReactiveSchedulers.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
         await using (await new RecordingHost(provider).OpenWindowAsync<HostProbeWindow>())
             await OpenedWindowOffTurnViewModel.PushOutsideTurnAsync();
         Require(log.Entries.Count(static entry => entry.EventId.Id == 1043 && entry.Level == LogLevel.Warning

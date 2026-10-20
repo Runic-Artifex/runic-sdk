@@ -15,7 +15,7 @@ internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map,
     private readonly ConcurrentDictionary<Type, Type?> _resolved = new();
     private readonly ConcurrentDictionary<(Type View, Type Content), ObjectFactory> _factories = new();
 
-    public FrameworkElement? ResolveView(INavigationEntry entry)
+    public FrameworkElement? ResolveView(NavigationEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
         return ResolveView(entry.Content, entry.Services);

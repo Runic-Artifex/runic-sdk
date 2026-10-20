@@ -70,11 +70,13 @@ internal sealed class ContextTests
 
             // Posted turns: a throw goes to UnhandledTurnException, or to log 1080 without a handler.
             Exception? reported = null;
-            Action<Exception> handler = error => reported = error;
+            (object? Sender, bool Dropped) report = default;
+            EventHandler<RunicModelTurnExceptionEventArgs> handler = (sender, args) => (reported, report) = (args.Exception, (sender, args.Dropped));
             context.UnhandledTurnException += handler;
             Require(context.TryPost(() => throw new FormatException("posted")), "TryPost refused an open context.");
             PumpUntil(() => reported is not null, "the reported posted turn");
-            Require(reported is FormatException, $"The posted turn reported {reported}.");
+            Require(reported is FormatException && ReferenceEquals(report.Sender, context) && !report.Dropped,
+                $"The posted turn reported {reported} from {report.Sender}, dropped: {report.Dropped}.");
             context.UnhandledTurnException -= handler;
             Require(context.TryPost(() => throw new FormatException("posted")), "TryPost refused an open context.");
             PumpUntil(() => fixture.Logs.Count(1080) == 1, "log 1080");
@@ -156,14 +158,16 @@ internal sealed class ContextTests
             return Task.FromResult(1);
         }, CancellationToken.None);
         Exception? dropped = null;
-        context.UnhandledTurnException += error => dropped = error;
+        var droppedFlag = false;
+        context.UnhandledTurnException += (_, args) => (dropped, droppedFlag) = (args.Exception, args.Dropped);
         var posted = false;
         Require(context.TryPost(() => posted = true), "TryPost refused an open context.");
         context.Dispose();
         Drain();
         Require(closed.IsFaulted && closed.Exception!.InnerException is ObjectDisposedException && !closedRan,
             $"A hook pending at close gave {closed.Status}, ran: {closedRan}.");
-        Require(!posted && dropped is ObjectDisposedException, $"A posted turn pending at close ran: {posted}, reported {dropped}.");
+        Require(!posted && dropped is ObjectDisposedException && droppedFlag,
+            $"A posted turn pending at close ran: {posted}, reported {dropped}, dropped: {droppedFlag}.");
         Require(!context.IsExecuting && !context.TryPost(() => { }), "A closed context still accepts turns.");
         var late = context.InvokeAsync(() => 1).AsTask();
         Require(late.IsFaulted && late.Exception!.InnerException is ObjectDisposedException, "A closed context ran a turn.");

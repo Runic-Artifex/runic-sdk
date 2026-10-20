@@ -16,16 +16,16 @@ internal sealed class WindowCloseGuard
         typeof(WindowCloseGuard), typeof(WindowCloseGuard), new PropertyMetadata(null));
 
     // The guard that lists each region: one window per region.
-    private static readonly ConditionalWeakTable<INavigationRegion, WeakReference<WindowCloseGuard>> Owners = new();
+    private static readonly ConditionalWeakTable<NavigationRegion, WeakReference<WindowCloseGuard>> Owners = new();
 
     private static readonly NavigationRequestOptions SupersedeOptions = new() { Admission = NavigationAdmission.Supersede };
 
     private readonly Window _window;
     // In the order their hosts first loaded.
-    private readonly List<WeakReference<INavigationRegion>> _regions = [];
+    private readonly List<WeakReference<NavigationRegion>> _regions = [];
     private bool _checking;
     // The region the running check clears, and whether a close came after that clear stopped transitioning.
-    private INavigationRegion? _clearing;
+    private NavigationRegion? _clearing;
     private bool _closeAgain;
     private bool _approved;
     private bool _closed;
@@ -38,7 +38,7 @@ internal sealed class WindowCloseGuard
     }
 
     // Lists the region in the window, and takes it from the window that listed it before.
-    public static void Add(Window window, INavigationRegion region)
+    public static void Add(Window window, NavigationRegion region)
     {
         var guard = (WindowCloseGuard?)window.GetValue(GuardProperty);
         if (guard is null)
@@ -53,11 +53,11 @@ internal sealed class WindowCloseGuard
         }
         Owners.AddOrUpdate(region, new WeakReference<WindowCloseGuard>(guard));
         _ = guard.Regions(); // Drops the collected regions first, so the list doesn't grow with them.
-        guard._regions.Add(new WeakReference<INavigationRegion>(region));
+        guard._regions.Add(new WeakReference<NavigationRegion>(region));
     }
 
     // Removes the region from the window that lists it.
-    public static void Remove(INavigationRegion region)
+    public static void Remove(NavigationRegion region)
     {
         if (!Owners.TryGetValue(region, out var owner)) return;
         Owners.Remove(region);
@@ -65,20 +65,20 @@ internal sealed class WindowCloseGuard
     }
 
     // Whether the window lists the region; for tests.
-    internal static bool Lists(Window window, INavigationRegion region) =>
+    internal static bool Lists(Window window, NavigationRegion region) =>
         window.GetValue(GuardProperty) is WindowCloseGuard guard && guard.Regions().Contains(region);
 
     // The number of live regions the window lists; for tests.
     internal static int CountOf(Window window) => window.GetValue(GuardProperty) is WindowCloseGuard guard ? guard.Regions().Count : 0;
 
     // Whether any window lists the region; for tests.
-    internal static bool IsListed(INavigationRegion region) =>
+    internal static bool IsListed(NavigationRegion region) =>
         Owners.TryGetValue(region, out var owner) && owner.TryGetTarget(out var guard) && !guard._closed;
 
     // The live regions, in order; drops the collected ones.
-    private List<INavigationRegion> Regions()
+    private List<NavigationRegion> Regions()
     {
-        List<INavigationRegion> live = new(_regions.Count);
+        List<NavigationRegion> live = new(_regions.Count);
         _regions.RemoveAll(reference =>
         {
             if (!reference.TryGetTarget(out var region)) return true;
@@ -88,7 +88,7 @@ internal sealed class WindowCloseGuard
         return live;
     }
 
-    private void Forget(INavigationRegion region)
+    private void Forget(NavigationRegion region)
     {
         // A navigator, and so its regions, belongs to one UI thread; this is for a window of another thread all the same.
         if (!_window.Dispatcher.CheckAccess())
@@ -99,7 +99,7 @@ internal sealed class WindowCloseGuard
         _regions.RemoveAll(reference => !reference.TryGetTarget(out var listed) || ReferenceEquals(listed, region));
     }
 
-    private static bool HasEntries(INavigationRegion region) => region.CurrentEntry is not null || region.CanGoBack;
+    private static bool HasEntries(NavigationRegion region) => region.CurrentEntry is not null || region.CanGoBack;
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
@@ -122,7 +122,7 @@ internal sealed class WindowCloseGuard
 
     private async Task ClearThenCloseAsync()
     {
-        INavigationRegion? clearing = null;
+        NavigationRegion? clearing = null;
         try
         {
             if (PresentationSource.FromVisual(_window) is null) return;

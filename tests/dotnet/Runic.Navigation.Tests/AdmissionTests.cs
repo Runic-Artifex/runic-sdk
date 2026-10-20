@@ -20,7 +20,7 @@ internal sealed partial class NavigationTests
         var home = new Page("home");
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home), RejectWhileBusy);
         Require(region.Admission == NavigationAdmission.RejectWhileBusy && !region.IsBusy
-            && ((INavigationRegion)region).Admission == NavigationAdmission.RejectWhileBusy,
+            && ((NavigationRegion)region).Admission == NavigationAdmission.RejectWhileBusy,
             "The region did not take its admission policy.");
 
         // Guarding.
@@ -348,7 +348,7 @@ internal sealed partial class NavigationTests
         Require(!idle.IsCompleted && !navigatorIdle.IsCompleted && !back.IsCompleted, "WhenIdleAsync completed during retirement.");
         using (var cancel = new CancellationTokenSource())
         {
-            var cancelled = ((INavigationRegion)region).WhenIdleAsync(cancel.Token).AsTask();
+            var cancelled = ((NavigationRegion)region).WhenIdleAsync(cancel.Token).AsTask();
             cancel.Cancel();
             Require(await Throws<OperationCanceledException>(cancelled), "Cancelling WhenIdleAsync did not stop waiting.");
         }

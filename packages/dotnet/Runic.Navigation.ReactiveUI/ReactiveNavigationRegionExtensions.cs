@@ -28,13 +28,13 @@ namespace Runic.Navigation.ReactiveUI;
 /// An entry's lifetime is not ReactiveUI activation: a retained entry stays alive while it is not presented, and its View may
 /// deactivate and activate again when it returns.
 /// </remarks>
-public static class ReactiveNavigation
+public static class ReactiveNavigationRegionExtensions
 {
     /// <summary>
     /// Observes the region's <see cref="NavigationRegion{TContent}.Current"/> content. Each
     /// subscription receives the current value, or <see langword="null"/> when the region is empty,
     /// and then each different instance. Pushing the same borrowed instance again does not emit;
-    /// observe <see cref="WhenEntryChanged{TContent}"/> to see every entry.
+    /// observe <see cref="WhenCurrentEntryChanged{TContent}"/> to see every entry.
     /// </summary>
     /// <remarks>The sequence never completes; dispose the subscription to stop observing.</remarks>
     public static IObservable<TContent?> WhenCurrentChanged<TContent>(this NavigationRegion<TContent> region)
@@ -51,7 +51,7 @@ public static class ReactiveNavigation
     /// different entry, also when two entries present the same content.
     /// </summary>
     /// <remarks>The sequence never completes; dispose the subscription to stop observing.</remarks>
-    public static IObservable<NavigationEntry<TContent>?> WhenEntryChanged<TContent>(this NavigationRegion<TContent> region)
+    public static IObservable<NavigationEntry<TContent>?> WhenCurrentEntryChanged<TContent>(this NavigationRegion<TContent> region)
         where TContent : class
     {
         ArgumentNullException.ThrowIfNull(region);
@@ -88,7 +88,7 @@ public static class ReactiveNavigation
     }
 
     /// <summary>
-    /// Observes whether the region is busy (<see cref="NavigationRegion{TContent}.IsBusy"/>): a request of the region,
+    /// Observes whether the region is busy (<see cref="NavigationRegion.IsBusy"/>): a request of the region,
     /// including one started by another caller, has not completed. Each subscription receives the current value and then
     /// each different value observed when the region raises a change. Unlike <see cref="WhenIsTransitioningChanged{TContent}"/>,
     /// it stays <see langword="true"/> after the commit until the request's task completes.
@@ -105,9 +105,9 @@ public static class ReactiveNavigation
     /// <summary>
     /// Creates a command that goes back in <paramref name="region"/> and outputs the
     /// <see cref="NavigationResult{TContent}.Outcome"/>, a <see cref="NavigationOutcome"/> that a Runic View can
-    /// receive. It can execute while <see cref="NavigationRegion{TContent}.CanGoBack"/> is <see langword="true"/> and
-    /// <see cref="NavigationRegion{TContent}.IsTransitioning"/> is <see langword="false"/>, and, for a region that admits
-    /// requests with <see cref="NavigationAdmission.RejectWhileBusy"/>, while <see cref="NavigationRegion{TContent}.IsBusy"/>
+    /// receive. It can execute while <see cref="NavigationRegion.CanGoBack"/> is <see langword="true"/> and
+    /// <see cref="NavigationRegion.IsTransitioning"/> is <see langword="false"/>, and, for a region that admits
+    /// requests with <see cref="NavigationAdmission.RejectWhileBusy"/>, while <see cref="NavigationRegion.IsBusy"/>
     /// is <see langword="false"/>. <c>CanExecute</c> reflects this region only: a transition of an ancestor region does not
     /// disable it.
     /// </summary>
@@ -126,6 +126,11 @@ public static class ReactiveNavigation
     /// such as a page's command on its parent's region.
     /// </remarks>
     /// <param name="region">The region.</param>
+    /// <param name="canExecute">
+    /// An additional condition for the command, such as "not saving", combined with the region's condition: the command
+    /// can execute while both are <see langword="true"/>. <see langword="null"/> uses the region's condition alone. Until
+    /// it emits its first value, the command can't execute.
+    /// </param>
     /// <param name="outputScheduler">
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's
     /// main-thread scheduler, as any <c>ReactiveCommand</c> uses: in a Runic Views app,
@@ -133,17 +138,94 @@ public static class ReactiveNavigation
     /// the turn that executes the command, and in a WPF app it is the dispatcher.
     /// </param>
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateBackCommand<TContent>(
-        this NavigationRegion<TContent> region, FlavorScheduler? outputScheduler = null) where TContent : class
+        this NavigationRegion<TContent> region, IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
+        where TContent : class
     {
         ArgumentNullException.ThrowIfNull(region);
-        var canExecute = new RegionObservable<TContent, bool>(region,
+        IObservable<bool> canGoBack = new RegionObservable<TContent, bool>(region,
             static region => region.CanGoBack && !region.IsTransitioning
                 && !(region.Admission == NavigationAdmission.RejectWhileBusy && region.IsBusy),
             null, EqualityComparer<bool>.Default);
         return ReactiveCommand.CreateFromTask(
             // Resume where Back started, so the default scheduler is called from the same model context.
             async cancellationToken => (await region.BackAsync(cancellationToken: cancellationToken)).Outcome,
-            canExecute, outputScheduler);
+            canExecute is null ? canGoBack : new BothTrue(canGoBack, canExecute), outputScheduler);
+    }
+
+    // Emits whether both sources' latest values are true, once both have emitted, distinct until changed. It emits under
+    // its lock, like RegionObservable; an error of either source ends it, and completion keeps the last value.
+    private sealed class BothTrue(IObservable<bool> first, IObservable<bool> second) : IObservable<bool>
+    {
+        public IDisposable Subscribe(IObserver<bool> observer)
+        {
+            ArgumentNullException.ThrowIfNull(observer);
+            var state = new State(observer);
+            var subscriptions = new IDisposable?[2];
+            try
+            {
+                subscriptions[0] = first.Subscribe(new Side(state, 0));
+                subscriptions[1] = second.Subscribe(new Side(state, 1));
+            }
+            catch
+            {
+                subscriptions[0]?.Dispose();
+                throw;
+            }
+            return new Subscription(subscriptions, state);
+        }
+
+        private sealed class State(IObserver<bool> observer)
+        {
+            private readonly Lock _gate = new();
+            private readonly bool?[] _values = new bool?[2];
+            private bool? _last;
+            private bool _stopped;
+
+            public void Next(int side, bool value)
+            {
+                lock (_gate)
+                {
+                    if (_stopped) return;
+                    _values[side] = value;
+                    if (_values[0] is not { } left || _values[1] is not { } right) return;
+                    var both = left && right;
+                    if (_last == both) return;
+                    _last = both;
+                    observer.OnNext(both);
+                }
+            }
+
+            public void Error(Exception error)
+            {
+                lock (_gate)
+                {
+                    if (_stopped) return;
+                    _stopped = true;
+                    observer.OnError(error);
+                }
+            }
+
+            public void Stop()
+            {
+                lock (_gate) _stopped = true;
+            }
+        }
+
+        private sealed class Side(State state, int side) : IObserver<bool>
+        {
+            public void OnNext(bool value) => state.Next(side, value);
+            public void OnError(Exception error) => state.Error(error);
+            public void OnCompleted() { }
+        }
+
+        private sealed class Subscription(IDisposable?[] subscriptions, State state) : IDisposable
+        {
+            public void Dispose()
+            {
+                state.Stop();
+                foreach (var subscription in subscriptions) subscription?.Dispose();
+            }
+        }
     }
 
     private sealed class Same<T> : IEqualityComparer<T> where T : class?

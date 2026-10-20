@@ -28,7 +28,7 @@ namespace Runic.Navigation.Wpf;
 /// </para>
 /// <para>
 /// As an <see cref="IRunicModelPresentationYield"/>, it lets the dispatcher lay out and render the view of an entry that
-/// became current before the entry's activation hook (<see cref="INavigationActivated"/>) runs.
+/// became current before the entry's arrival hook (<see cref="INavigationArrived"/>) runs.
 /// </para>
 /// </remarks>
 public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime,
@@ -80,12 +80,17 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     public Dispatcher Dispatcher { get; }
 
     /// <inheritdoc />
-    public event Action<Exception>? UnhandledTurnException;
+    public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException;
 
     /// <summary>
     /// Gets whether the context is open and the caller is on its UI thread. All UI-thread code is serialized
     /// with the turns, so it counts as executing.
     /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="RunicModelContext.IsExecuting"/>, which is <see langword="true"/> only inside a turn, this is
+    /// <see langword="true"/> for any code on the UI thread, inside a turn or not, because the dispatcher is the turn
+    /// queue. It is <see langword="false"/> once the context closed.
+    /// </remarks>
     public bool IsExecuting => !Volatile.Read(ref _closed) && Dispatcher.CheckAccess();
 
     // The current turn nesting on the UI thread, for tests.
@@ -160,8 +165,11 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     /// </summary>
     /// <remarks>
     /// Dropped posted turns are reported synchronously, on the thread that closes the context, through
-    /// <see cref="UnhandledTurnException"/>, or logged as event 1084 without a handler. A hook still running keeps
-    /// running; once the dispatcher shuts down, its continuations run on the thread pool.
+    /// <see cref="UnhandledTurnException"/> (with <see cref="RunicModelTurnExceptionEventArgs.Dropped"/>), or logged as
+    /// event 1084 without a handler. A hook still running keeps running; once the dispatcher shuts down, its
+    /// continuations run on the thread pool. Unlike <see cref="RunicModelContext"/>, which has only
+    /// <see cref="RunicModelContext.DisposeAsync"/> and waits there for a running turn, this context closes synchronously:
+    /// the dispatcher, not the context, runs the turns.
     /// </remarks>
     public void Dispose() => Close();
 
@@ -261,7 +269,7 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         {
             try
             {
-                handler(error);
+                handler(this, new RunicModelTurnExceptionEventArgs(error, dropped));
                 return;
             }
             catch (Exception handlerError)

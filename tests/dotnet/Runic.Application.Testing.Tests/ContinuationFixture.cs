@@ -122,7 +122,7 @@ public sealed class ReactiveContinuationViewModel : ReactiveObject
     {
         ArgumentNullException.ThrowIfNull(modelContext);
         Probe = probe;
-        var scheduler = new RunicReactiveSchedulerProvider().For(modelContext);
+        var scheduler = ReactiveSchedulers.For(modelContext);
         RunCommand = ReactiveCommand.CreateFromTask<string>(label => Probe.RunAsync(label, value => Status = value),
             outputScheduler: scheduler);
         RunNextCommand = ReactiveCommand.CreateFromTask<string>(label => Probe.RunAsync(label, value => Status = value),

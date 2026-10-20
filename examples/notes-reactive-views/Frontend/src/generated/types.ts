@@ -13,14 +13,14 @@ export interface DiscardNoteRequest {
 export type DocumentPane = "Editor" | "Preview";
 
 /**
- * How the activation hooks of a committed transition ended (`Activation`).
+ * How the arrival hooks of a committed transition ended (`Arrival`).
  *
- * - `None`: No entry the commit made current has an activation hook.
- * - `Completed`: Every activation hook returned.
- * - `Failed`: An activation hook threw; the commit stands.
- * - `Cancelled`: An activation hook was cancelled, because its entry stopped being current or retired, or the navigator closed, or it was never started for that reason.
+ * - `None`: No entry the commit made current has an arrival hook.
+ * - `Completed`: Every arrival hook returned.
+ * - `Failed`: An arrival hook threw; the commit stands.
+ * - `Cancelled`: An arrival hook was cancelled, because its entry stopped being current or retired, or the navigator closed, or it was never started for that reason.
  */
-export type NavigationActivationState = "None" | "Completed" | "Failed" | "Cancelled";
+export type NavigationArrivalState = "None" | "Completed" | "Failed" | "Cancelled";
 
 /** A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command. */
 export interface NavigationOutcome {
@@ -28,8 +28,8 @@ export interface NavigationOutcome {
   readonly kind: NavigationOutcomeKind;
   /** Why the request was rejected, for `Rejected`; otherwise `null`. */
   readonly rejection: NavigationRejection | null;
-  /** Gets how the activation hooks (`INavigationActivated`) of the entries a `Committed` transition made current ended, so a page can show that their data failed to load; `None` for every other kind. Only the full navigation result carries the exception of a `Failed` hook. */
-  readonly activation: NavigationActivationState;
+  /** Gets how the arrival hooks (`INavigationArrived`) of the entries a `Committed` transition made current ended, so a page can show that their data failed to load; `None` for every other kind. Only the full navigation result carries the exception of a `Failed` hook. */
+  readonly arrival: NavigationArrivalState;
 }
 
 /**

@@ -142,7 +142,7 @@ namespace StandaloneConsumer
         public int Resumed { get; private set; }
         public bool Disposed { get; private set; }
 
-        public ValueTask ResumeAsync(NavigationResume resume, CancellationToken cancellationToken)
+        public ValueTask ResumeAsync(NavigationArrival resume, CancellationToken cancellationToken)
         {
             Resumed++;
             return ValueTask.CompletedTask;

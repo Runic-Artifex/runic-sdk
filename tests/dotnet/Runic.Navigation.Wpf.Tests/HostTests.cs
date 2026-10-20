@@ -417,11 +417,11 @@ internal sealed class HostTests
     {
         public bool Fail { get; set; }
 
-        public FrameworkElement? ResolveView(INavigationEntry entry) => Fail ? throw new InvalidOperationException("No view.") : null;
+        public FrameworkElement? ResolveView(NavigationEntry entry) => Fail ? throw new InvalidOperationException("No view.") : null;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakReference Mount(Window window, INavigationRegion region)
+    private static WeakReference Mount(Window window, NavigationRegion region)
     {
         var host = new NavigationHost { Region = region };
         window.Content = host;
@@ -436,7 +436,7 @@ internal sealed class HostTests
     {
         public bool TakeMapped { get; set; }
 
-        public FrameworkElement? ResolveView(INavigationEntry entry) =>
+        public FrameworkElement? ResolveView(NavigationEntry entry) =>
             entry.Content is HostFirstViewModel || (TakeMapped && entry.Content is MappedViewModel) ? new HostView() : null;
     }
 }

@@ -96,7 +96,7 @@ internal sealed class DialogTests
         var raised = false;
         scene.Region.PropertyChanged += (_, e) =>
         {
-            if (raised || e.PropertyName != nameof(INavigationRegion.CurrentEntry) || !ReferenceEquals(scene.Region.Current, dialog)) return;
+            if (raised || e.PropertyName != nameof(NavigationRegion.CurrentEntry) || !ReferenceEquals(scene.Region.Current, dialog)) return;
             raised = true;
             // Runs right after the commit turn, before the host's reconcile (Normal priority); the clear's commit turn,
             // at Send priority, is queued before this returns.

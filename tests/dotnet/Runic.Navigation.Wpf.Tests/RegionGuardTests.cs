@@ -99,6 +99,6 @@ internal sealed class RegionGuardTests
 
     private sealed class ScriptedGuard(Func<NavigationRegionDeparture, ValueTask<bool>> answer) : INavigationRegionGuard
     {
-        public ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken) => answer(departure);
+        public ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken) => answer(departure);
     }
 }

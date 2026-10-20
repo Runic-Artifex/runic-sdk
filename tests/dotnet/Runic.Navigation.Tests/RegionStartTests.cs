@@ -114,7 +114,7 @@ internal sealed partial class NavigationTests
             && rejected.Current is null, "Start was accepted after a rejected request.");
         var cleared = fixture.Navigator.CreateRegion<Page>(fixture.Root);
         await Wait(cleared.PushAsync(NavigationTarget.Borrow(new Page("gone"))));
-        await Wait(((INavigationRegion)cleared).ClearAsync());
+        await Wait(((NavigationRegion)cleared).ClearAsync());
         Require(cleared.Current is null && Catch(() => cleared.Start(NavigationTarget.Borrow(new Page("late")))) is InvalidOperationException,
             "Start was accepted on a region that was emptied by Clear.");
 
@@ -161,7 +161,7 @@ internal sealed partial class NavigationTests
 
         public List<string> Arrivals { get; } = [];
 
-        public void OnNavigatedTo(NavigationResume arrival) =>
+        public void OnNavigatedTo(NavigationArrival arrival) =>
             Arrivals.Add($"{arrival.Operation}:{region.Current}:{Environment.CurrentManagedThreadId == _thread}");
 
         public void OnNavigatedFrom(NavigationExit exit) { }

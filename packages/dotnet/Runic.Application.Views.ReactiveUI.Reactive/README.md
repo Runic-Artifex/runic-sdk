@@ -24,10 +24,9 @@ identities, so ViewModels and generated clients must be built for the selected
 pair. The package includes a build-time guard for a direct reference to both
 Runic adapters.
 
-`AddRunicReactiveModelContext()`, `IRunicReactiveSchedulerProvider` and
-`RunicReactiveSchedulerProvider` are in this package's
-`Runic.Application.Views.ReactiveUI.Reactive` namespace; they moved from
-`Runic.Navigation.ReactiveUI.Reactive` in W250. As in the default flavor,
+`AddRunicReactiveModelContext()`, `ReactiveSchedulers` and
+`IReactiveSchedulerProvider` are in this package's
+`Runic.Application.Views.ReactiveUI.Reactive` namespace. As in the default flavor,
 `AddRunicReactiveModelContext()` installs a model-context
 `RxSchedulers.MainThreadScheduler` when ReactiveUI's is still a System.Reactive
 default, so commands created without an `outputScheduler` deliver their results
@@ -51,7 +50,7 @@ SaveCommand = ReactiveCommand.Create(Save);
 ```
 
 For an explicit `IScheduler`, for example in an `ObserveOn`, inject it or call
-`RunicReactiveSchedulerProvider.For(context)`. Generated command and interaction
+`ReactiveSchedulers.For(context)`. Generated command and interaction
 contracts use this flavor's adapters, with the same typed data, operation
 results, cancellation, and browser interaction support as the default flavor.
 
@@ -66,7 +65,7 @@ normal `ReactiveUI.SourceGenerators` attributes with
 `ReactiveUI.Reactive.ReactiveObject`. There is no separate Reactive-flavor
 source-generator package.
 
-The navigation adapter (`WhenCurrentChanged`, `WhenEntryChanged` and
+The navigation adapter (`WhenCurrentChanged`, `WhenCurrentEntryChanged` and
 `CreateBackCommand()`) is in the separate
 `Runic.Navigation.ReactiveUI.Reactive` package, with `System.Reactive.Unit` as
 the back command's input. This package no longer references it; add it to

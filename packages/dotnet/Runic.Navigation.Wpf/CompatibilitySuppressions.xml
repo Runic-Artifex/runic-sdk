@@ -15,4 +15,46 @@
     <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.INavigationEntry)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Navigation.Wpf.NavigationDialogHost.get_Region</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Navigation.Wpf.NavigationHost.get_Region</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector,Runic.Navigation.INavigationRegion)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0006</DiagnosticId>
+    <Target>M:Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.NavigationEntry)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
 </Suppressions>

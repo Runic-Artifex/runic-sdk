@@ -92,13 +92,13 @@ internal sealed class PlainViewHostTests
     private sealed class EntryOnlyLocator : INavigationViewLocator
     {
         public int EntryCalls { get; private set; }
-        public FrameworkElement? ResolveView(INavigationEntry entry) { EntryCalls++; throw new InvalidOperationException("No plain entry exists."); }
+        public FrameworkElement? ResolveView(NavigationEntry entry) { EntryCalls++; throw new InvalidOperationException("No plain entry exists."); }
     }
 
     private sealed class PlainLocator : INavigationViewLocator
     {
         public bool Fail { get; set; }
-        public FrameworkElement? ResolveView(INavigationEntry entry) => throw new InvalidOperationException("No plain entry exists.");
+        public FrameworkElement? ResolveView(NavigationEntry entry) => throw new InvalidOperationException("No plain entry exists.");
         public FrameworkElement? ResolveView(object content, IServiceProvider services) =>
             Fail ? throw new InvalidOperationException("View construction failed.") : new TextBlock { Text = "explicit" };
     }

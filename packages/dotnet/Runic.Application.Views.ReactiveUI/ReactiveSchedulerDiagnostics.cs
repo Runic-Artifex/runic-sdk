@@ -91,5 +91,5 @@ internal static class ReactiveSchedulerReports
 // application's logger factory before they resolve a window's ViewModel.
 internal sealed class ReactiveSchedulerWindowObserver : IRunicWindowOpeningObserver
 {
-    public void OnWindowOpening(ILoggerFactory? loggerFactory) => RunicReactiveSchedulerProvider.OnWindowOpening(loggerFactory);
+    public void OnWindowOpening(ILoggerFactory? loggerFactory) => ReactiveSchedulers.OnWindowOpening(loggerFactory);
 }

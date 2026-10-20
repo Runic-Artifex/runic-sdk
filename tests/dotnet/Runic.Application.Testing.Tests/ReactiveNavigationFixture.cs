@@ -18,7 +18,7 @@ public sealed partial class ReactiveNavShellViewModel : ReactiveObject, IDisposa
     public ReactiveNavShellViewModel(RunicNavigator navigator, IRunicModelContext context, NavHomeViewModel home)
     {
         Main = navigator.CreateRegion<INavPageViewModel>(this, NavigationTarget.Borrow<INavPageViewModel>(home));
-        var scheduler = new RunicReactiveSchedulerProvider().For(context);
+        var scheduler = ReactiveSchedulers.For(context);
         _busyHelper = Main.WhenIsTransitioningChanged().ToProperty(this, model => model.Busy);
         OpenCommand = ReactiveCommand.CreateFromTask(async token =>
         {

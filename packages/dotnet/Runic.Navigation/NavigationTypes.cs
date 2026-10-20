@@ -16,19 +16,21 @@ public sealed record NavigationRegionOptions(NavigationChildRetention WhileParen
 }
 
 /// <summary>How a region admits a request while an earlier request of the region runs.</summary>
+/// <remarks>This set is open: a minor release may add modes, so handle unknown values, for example with a default arm.</remarks>
 public enum NavigationAdmission
 {
     /// <summary>A later request supersedes the earlier requests of the region that have not started committing.</summary>
     Supersede,
 
     /// <summary>
-    /// While the region is busy (<see cref="NavigationRegion{TContent}.IsBusy"/>), a request is rejected at admission
+    /// While the region is busy (<see cref="NavigationRegion.IsBusy"/>), a request is rejected at admission
     /// with <see cref="NavigationRejection.Busy"/>. A Back that can join a pending Back still joins it.
     /// </summary>
     RejectWhileBusy,
 }
 
 /// <summary>What a child region does while the entry that owns it is retained.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum NavigationChildRetention
 {
     /// <summary>The child region keeps its entries.</summary>
@@ -61,6 +63,7 @@ public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent
 public readonly record struct NavigationEntryId(long Value);
 
 /// <summary>The lifecycle state of a navigation entry.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum NavigationEntryState
 {
     /// <summary>The entry belongs to a transition that has not committed.</summary>
@@ -77,6 +80,7 @@ public enum NavigationEntryState
 }
 
 /// <summary>Whether the navigator owns an entry's content.</summary>
+/// <remarks>This set is open: a minor release may add ownership kinds, so handle unknown values, for example with a default arm.</remarks>
 public enum NavigationOwnership
 {
     /// <summary>The navigator forgets and disposes the content when the entry retires.</summary>
@@ -93,6 +97,7 @@ public enum NavigationOwnership
 }
 
 /// <summary>The operation that caused a departure, resume or result.</summary>
+/// <remarks>This set is open: a minor release may add operations, so handle unknown values, for example with a default arm.</remarks>
 public enum NavigationOperation
 {
     /// <summary>A new entry became current; the previous current entry was retained.</summary>
@@ -118,6 +123,7 @@ public enum NavigationOperation
 }
 
 /// <summary>Whether a departing entry is retained or retired.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum NavigationDepartureKind
 {
     /// <summary>
@@ -256,7 +262,7 @@ internal sealed class NavigationSettlementSource(NavigationTransitionId id)
 /// <see cref="NavigationOperation.Reset"/> for a new entry. An initial target of
 /// <see cref="RunicNavigator.CreateRegion{TContent}"/> arrives with <see cref="NavigationOperation.Reset"/>.
 /// </param>
-public sealed record NavigationResume(NavigationEntryId Entry, NavigationOperation Operation);
+public sealed record NavigationArrival(NavigationEntryId Entry, NavigationOperation Operation);
 
 /// <summary>Describes the current entry stopping being current (<see cref="INavigationAware.OnNavigatedFrom"/>).</summary>
 /// <param name="Entry">The entry that stops being current.</param>
@@ -296,6 +302,7 @@ public sealed class NavigationEntryStateChangedEventArgs : EventArgs
 }
 
 /// <summary>Why a navigation request was rejected.</summary>
+/// <remarks>This set is open: a minor release may add reasons, so handle unknown values, for example with a default arm.</remarks>
 public enum NavigationRejection
 {
     /// <summary>A departure guard returned <see langword="false"/>.</summary>
@@ -331,6 +338,7 @@ public enum NavigationRejection
 }
 
 /// <summary>The phase in which a transition failed.</summary>
+/// <remarks>This set is open: a minor release may add phases, so handle unknown values, for example with a default arm.</remarks>
 public enum NavigationPhase
 {
     /// <summary>A departure guard threw.</summary>
@@ -345,6 +353,7 @@ public enum NavigationPhase
 
 /// <summary>The outcome of a navigation request. Navigation outcomes are returned, never thrown.</summary>
 /// <typeparam name="TContent">The region's content type.</typeparam>
+/// <remarks>This set is closed: it gains cases only in a major release, so an exhaustive <c>switch</c> over the nested records is supported.</remarks>
 public abstract record NavigationResult<TContent> where TContent : class
 {
     private NavigationResult()
@@ -355,8 +364,8 @@ public abstract record NavigationResult<TContent> where TContent : class
     public bool IsCommitted => this is Committed;
 
     /// <summary>
-    /// Rethrows the error of a <see cref="Failed"/> outcome, or the <see cref="Committed.ActivationError"/> of a committed
-    /// one whose activation hook failed, with its original stack trace, and returns every other outcome unchanged.
+    /// Rethrows the error of a <see cref="Failed"/> outcome, or the <see cref="Committed.ArrivalError"/> of a committed
+    /// one whose arrival hook failed, with its original stack trace, and returns every other outcome unchanged.
     /// </summary>
     /// <remarks>
     /// A rejected or superseded transition is an expected outcome and does not throw. Combine it with
@@ -367,7 +376,7 @@ public abstract record NavigationResult<TContent> where TContent : class
     public NavigationResult<TContent> ThrowIfFailed()
     {
         if (this is Failed failed) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed.Error);
-        if (this is Committed { ActivationError: { } activation }) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(activation);
+        if (this is Committed { ArrivalError: { } activation }) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(activation);
         return this;
     }
 
@@ -375,23 +384,23 @@ public abstract record NavigationResult<TContent> where TContent : class
     /// <param name="Current">The region's current entry after the commit, or <see langword="null"/> when it is empty.</param>
     /// <param name="Retired">The entries whose retirement this transition performed.</param>
     /// <remarks>
-    /// The request completes after the departed entries retired and after the activation hooks
-    /// (<see cref="INavigationActivated"/>) of the entries the commit made current ran.
+    /// The request completes after the departed entries retired and after the arrival hooks
+    /// (<see cref="INavigationArrived"/>) of the entries the commit made current ran.
     /// </remarks>
     public sealed record Committed(NavigationEntry<TContent>? Current, IReadOnlyList<NavigationEntryId> Retired) : NavigationResult<TContent>
     {
         /// <summary>
-        /// Gets how the activation hooks of the entries this commit made current ended, or
-        /// <see cref="NavigationActivationState.None"/> when none of them implements <see cref="INavigationActivated"/> or
-        /// <see cref="INavigationActivated{TInput}"/>. The commit stands whatever it is.
+        /// Gets how the arrival hooks of the entries this commit made current ended, or
+        /// <see cref="NavigationArrivalState.None"/> when none of them implements <see cref="INavigationArrived"/> or
+        /// <see cref="INavigationArrived{TInput}"/>. The commit stands whatever it is.
         /// </summary>
-        public NavigationActivationState Activation { get; init; }
+        public NavigationArrivalState Arrival { get; init; }
 
         /// <summary>
-        /// Gets the exception of the first activation hook that failed when <see cref="Activation"/> is
-        /// <see cref="NavigationActivationState.Failed"/>; otherwise <see langword="null"/>.
+        /// Gets the exception of the first arrival hook that failed when <see cref="Arrival"/> is
+        /// <see cref="NavigationArrivalState.Failed"/>; otherwise <see langword="null"/>.
         /// </summary>
-        public Exception? ActivationError { get; init; }
+        public Exception? ArrivalError { get; init; }
     }
 
     /// <summary>The transition was rejected; history is unchanged.</summary>
@@ -413,7 +422,7 @@ public abstract record NavigationResult<TContent> where TContent : class
     /// <summary>Gets a summary of this result that a Runic View can receive.</summary>
     public NavigationOutcome Outcome => this switch
     {
-        Committed committed => new(NavigationOutcomeKind.Committed) { Activation = committed.Activation },
+        Committed committed => new(NavigationOutcomeKind.Committed) { Arrival = committed.Arrival },
         Rejected rejected => new(NavigationOutcomeKind.Rejected, rejected.Reason),
         Superseded => new(NavigationOutcomeKind.Superseded),
         _ => new(NavigationOutcomeKind.Failed),
@@ -422,6 +431,7 @@ public abstract record NavigationResult<TContent> where TContent : class
 
 /// <summary>How a <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/> request ended.</summary>
 /// <typeparam name="TResult">The result type.</typeparam>
+/// <remarks>This set is closed: it gains cases only in a major release, so an exhaustive <c>switch</c> over the nested records is supported.</remarks>
 public abstract record NavigationCompletion<TResult>
 {
     private NavigationCompletion()
@@ -512,7 +522,7 @@ public interface INavigationInitialize<in TInput> : INavigationInputInitialize, 
 
 /// <summary>
 /// The member-less base of the hooks that receive a target's typed input, <see cref="INavigationInitialize{TInput}"/> and
-/// <see cref="INavigationActivated{TInput}"/>, so the input targets accept content that implements either. Implement one of
+/// <see cref="INavigationArrived{TInput}"/>, so the input targets accept content that implements either. Implement one of
 /// those instead.
 /// </summary>
 /// <typeparam name="TInput">The input type.</typeparam>
@@ -522,20 +532,21 @@ public interface INavigationInput<in TInput>
 {
 }
 
-/// <summary>How the activation hooks of a committed transition ended (<see cref="NavigationResult{TContent}.Committed.Activation"/>).</summary>
-public enum NavigationActivationState
+/// <summary>How the arrival hooks of a committed transition ended (<see cref="NavigationResult{TContent}.Committed.Arrival"/>).</summary>
+/// <remarks>This set is open: a minor release may add states, so handle unknown values, for example with a default arm.</remarks>
+public enum NavigationArrivalState
 {
-    /// <summary>No entry the commit made current has an activation hook.</summary>
+    /// <summary>No entry the commit made current has an arrival hook.</summary>
     None,
 
-    /// <summary>Every activation hook returned.</summary>
+    /// <summary>Every arrival hook returned.</summary>
     Completed,
 
-    /// <summary>An activation hook threw; the commit stands.</summary>
+    /// <summary>An arrival hook threw; the commit stands.</summary>
     Failed,
 
     /// <summary>
-    /// An activation hook was cancelled, because its entry stopped being current or retired, or the navigator closed,
+    /// An arrival hook was cancelled, because its entry stopped being current or retired, or the navigator closed,
     /// or it was never started for that reason.
     /// </summary>
     Cancelled,
@@ -554,8 +565,8 @@ public enum NavigationActivationState
 /// It runs again each time a Back or BackTo resumes the entry, so it must be repeatable.
 /// </para>
 /// <para>
-/// A hook that throws is logged (event 1076) and gives <see cref="NavigationActivationState.Failed"/> with the exception in
-/// <see cref="NavigationResult{TContent}.Committed.ActivationError"/>; the entry stays current. Its token is cancelled when
+/// A hook that throws is logged (event 1076) and gives <see cref="NavigationArrivalState.Failed"/> with the exception in
+/// <see cref="NavigationResult{TContent}.Committed.ArrivalError"/>; the entry stays current. Its token is cancelled when
 /// the entry stops being current (a later commit retains or retires it), when it retires, and when the navigator closes;
 /// not when the caller's token is cancelled. Retirement doesn't wait for the hook, so check the token after each await.
 /// </para>
@@ -563,7 +574,7 @@ public enum NavigationActivationState
 /// The hook may navigate: a request from it is admitted, also into its own region (to redirect with Replace or give up
 /// with <see cref="NavigationEntryContext.BackAsync"/>) and into the regions its content owns, and a region that rejects
 /// requests while busy admits them. It must not await <see cref="RunicNavigator.WhenIdleAsync"/> or its region's
-/// <see cref="NavigationRegion{TContent}.WhenIdleAsync"/>, which wait for it.
+/// <see cref="NavigationRegion.WhenIdleAsync"/>, which wait for it.
 /// </para>
 /// <para>
 /// The content is already presented, so without a hook scheduler (for example <see cref="RunicModelContext"/>) the hook
@@ -573,29 +584,29 @@ public enum NavigationActivationState
 /// <see cref="NavigationRegion{TContent}.Start"/> returned; the region is busy until it ends.
 /// </para>
 /// </remarks>
-public interface INavigationActivated
+public interface INavigationArrived
 {
     /// <summary>Runs after the entry became current and was presented.</summary>
     /// <param name="entry">The entry that became current.</param>
     /// <param name="arrival">The entry and the operation that made it current, as <see cref="INavigationAware.OnNavigatedTo"/> received it.</param>
     /// <param name="cancellationToken">Cancelled when the entry stops being current, retires, or the navigator closes.</param>
-    ValueTask OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken);
+    ValueTask OnArrivedAsync(NavigationEntryContext entry, NavigationArrival arrival, CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// The activation hook of an entry created with typed input (<see cref="NavigationTarget.Create{T, TInput}(TInput)"/> and the
-/// region methods that wrap it), called with that input instead of <see cref="INavigationActivated"/>. It follows the rules
-/// of <see cref="INavigationActivated"/>.
+/// The arrival hook of an entry created with typed input (<see cref="NavigationTarget.Create{T, TInput}(TInput)"/> and the
+/// region methods that wrap it), called with that input instead of <see cref="INavigationArrived"/>. It follows the rules
+/// of <see cref="INavigationArrived"/>.
 /// </summary>
 /// <typeparam name="TInput">The input type.</typeparam>
-public interface INavigationActivated<in TInput> : INavigationInput<TInput>
+public interface INavigationArrived<in TInput> : INavigationInput<TInput>
 {
     /// <summary>Runs after the entry became current and was presented.</summary>
     /// <param name="entry">The entry that became current.</param>
     /// <param name="arrival">The entry and the operation that made it current.</param>
     /// <param name="input">The target's input.</param>
     /// <param name="cancellationToken">Cancelled when the entry stops being current, retires, or the navigator closes.</param>
-    ValueTask OnActivatedAsync(NavigationEntryContext entry, NavigationResume arrival, TInput input, CancellationToken cancellationToken);
+    ValueTask OnArrivedAsync(NavigationEntryContext entry, NavigationArrival arrival, TInput input, CancellationToken cancellationToken);
 }
 
 /// <summary>Runs when a retained entry becomes current again.</summary>
@@ -605,7 +616,7 @@ public interface INavigationResume
     /// <param name="resume">The resuming entry and operation.</param>
     /// <param name="cancellationToken">Cancelled when the transition is superseded, cancelled or closed.</param>
     [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "The parameter names the resumption it describes.")]
-    ValueTask ResumeAsync(NavigationResume resume, CancellationToken cancellationToken);
+    ValueTask ResumeAsync(NavigationArrival resume, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -640,7 +651,7 @@ public interface INavigationAware
     /// with <see cref="NavigationOperation.Reset"/> before it returns, on the caller's thread.
     /// </summary>
     /// <param name="arrival">The entry and the operation that made it current.</param>
-    void OnNavigatedTo(NavigationResume arrival);
+    void OnNavigatedTo(NavigationArrival arrival);
 
     /// <summary>
     /// Called when the entry stops being current: a push retains it, or a Back, BackTo, Replace, Reset or Clear
@@ -706,7 +717,7 @@ public static class NavigationTarget
     /// Each entry is its own entry: <see cref="INavigationInitialize"/> runs for each, and content that keeps the
     /// <see cref="NavigationEntryContext"/> it was constructed with still has its first entry's context after that entry
     /// retired; take the context in <see cref="INavigationInitialize.InitializeAsync"/> or
-    /// <see cref="INavigationActivated.OnActivatedAsync"/> instead. The entry scope of created content
+    /// <see cref="INavigationArrived.OnArrivedAsync"/> instead. The entry scope of created content
     /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>) lives until the content is disposed. Don't also
     /// <see cref="Borrow{T}"/> shared content: the borrowing entry can outlive its disposal.
     /// </para>
@@ -719,7 +730,7 @@ public static class NavigationTarget
 
     /// <summary>
     /// Creates owned content when the transition prepares. The factory receives the entry's
-    /// service provider (<see cref="INavigationEntry.Services"/>) to resolve constructor dependencies, which stay
+    /// service provider (<see cref="NavigationEntry.Services"/>) to resolve constructor dependencies, which stay
     /// container-owned; it must construct the content itself with <see langword="new"/>. To pass the content its
     /// entry's <see cref="NavigationEntryContext"/>, use <see cref="Create{T}(Func{IServiceProvider, NavigationEntryContext, T})"/>.
     /// </summary>
@@ -744,7 +755,7 @@ public static class NavigationTarget
     /// <summary>
     /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, T})"/> and passes it <paramref name="input"/>:
     /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> runs instead of <see cref="INavigationInitialize.InitializeAsync"/>,
-    /// and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/> instead of <see cref="INavigationActivated.OnActivatedAsync"/>,
+    /// and <see cref="INavigationArrived{TInput}.OnArrivedAsync"/> instead of <see cref="INavigationArrived.OnArrivedAsync"/>,
     /// for the hooks the content implements.
     /// </summary>
     public static INavigationTarget<T> Create<T, TInput>(Func<IServiceProvider, T> factory, TInput input)
@@ -768,7 +779,7 @@ public static class NavigationTarget
     /// <summary>
     /// Constructs owned content of type <typeparamref name="T"/> when the transition prepares, with
     /// <see cref="ActivatorUtilities.CreateInstance{T}(IServiceProvider, object[])"/>. Constructor parameters
-    /// are resolved from the entry's service provider (<see cref="INavigationEntry.Services"/>) and stay
+    /// are resolved from the entry's service provider (<see cref="NavigationEntry.Services"/>) and stay
     /// container-owned; a <see cref="NavigationEntryContext"/> parameter receives the new entry's context.
     /// <typeparamref name="T"/> itself is never resolved from the container. Mark a
     /// constructor with <see cref="ActivatorUtilitiesConstructorAttribute"/> to choose it.
@@ -781,12 +792,12 @@ public static class NavigationTarget
     /// <summary>
     /// Constructs owned content like <see cref="Create{T}()"/> and passes it <paramref name="input"/>, like
     /// <see cref="Create{T, TInput}(Func{IServiceProvider, T}, TInput)"/>: through
-    /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>,
+    /// <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationArrived{TInput}.OnArrivedAsync"/>,
     /// for the hooks the content implements.
     /// </summary>
     /// <typeparam name="T">The content type to construct.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to the content's typed initialize and activation hooks.</param>
+    /// <param name="input">The input passed to the content's typed initialize and arrival hooks.</param>
     public static INavigationTarget<T> Create<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T, TInput>(TInput input)
         where T : class, INavigationInput<TInput> =>
         new ActivatedInputNavigationTarget<T, TInput>(input);
@@ -816,8 +827,8 @@ internal abstract class NavigationTargetCore
     public virtual ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
 
-    // The content's typed activation hook (INavigationActivated<TInput>) bound to the input, or null.
-    public virtual NavigationActivation? ActivationWithInput(object content) => null;
+    // The content's typed arrival hook (INavigationArrived<TInput>) bound to the input, or null.
+    public virtual NavigationArrivalHook? ArrivalHookWithInput(object content) => null;
 
     // Throws when the content of an input target takes the input in no hook: it implements only the INavigationInput<TInput> marker.
     public virtual void ValidateInput(object content)
@@ -825,8 +836,8 @@ internal abstract class NavigationTargetCore
     }
 }
 
-// An entry's activation hook, bound to its content (and input).
-internal delegate ValueTask NavigationActivation(NavigationEntryContext entry, NavigationResume arrival, CancellationToken cancellationToken);
+// An entry's arrival hook, bound to its content (and input).
+internal delegate ValueTask NavigationArrivalHook(NavigationEntryContext entry, NavigationArrival arrival, CancellationToken cancellationToken);
 
 // The input targets: the content's typed hooks receive the input.
 internal abstract class InputNavigationTargetCore<TInput>(TInput input) : NavigationTargetCore
@@ -840,15 +851,15 @@ internal abstract class InputNavigationTargetCore<TInput>(TInput input) : Naviga
     public override ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
         ((INavigationInitialize<TInput>)content).InitializeAsync(entry, input, cancellationToken);
 
-    public override NavigationActivation? ActivationWithInput(object content) => content is INavigationActivated<TInput> activated
-        ? (entry, arrival, cancellationToken) => activated.OnActivatedAsync(entry, arrival, input, cancellationToken)
+    public override NavigationArrivalHook? ArrivalHookWithInput(object content) => content is INavigationArrived<TInput> activated
+        ? (entry, arrival, cancellationToken) => activated.OnArrivedAsync(entry, arrival, input, cancellationToken)
         : null;
 
     public override void ValidateInput(object content)
     {
-        if (content is not (INavigationInitialize<TInput> or INavigationActivated<TInput>))
+        if (content is not (INavigationInitialize<TInput> or INavigationArrived<TInput>))
             throw new ArgumentException(
-                $"{content.GetType().Name} takes the target's input in no hook: implement INavigationInitialize<{typeof(TInput).Name}> or INavigationActivated<{typeof(TInput).Name}>.");
+                $"{content.GetType().Name} takes the target's input in no hook: implement INavigationInitialize<{typeof(TInput).Name}> or INavigationArrived<{typeof(TInput).Name}>.");
     }
 }
 

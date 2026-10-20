@@ -35,7 +35,7 @@ internal sealed class NavigationAdapterTests
         var currents = new Recorder<NavigationPage?>();
         var entries = new Recorder<NavigationEntry<NavigationPage>?>();
         using var currentSubscription = region.WhenCurrentChanged().Subscribe(currents);
-        using (region.WhenEntryChanged().Subscribe(entries))
+        using (region.WhenCurrentEntryChanged().Subscribe(entries))
         {
             Require(currents.Values.SequenceEqual([home]) && entries.Values.Single() == region.CurrentEntry,
                 "A subscription did not receive the current content and entry first.");
@@ -48,11 +48,11 @@ internal sealed class NavigationAdapterTests
             Require(currents.Values.SequenceEqual([home, document, home]),
                 $"WhenCurrentChanged emitted {string.Join(", ", currents.Values.Select(page => page?.Name))}.");
             Require(entries.Values.Length == 4 && entries.Values.Distinct().Count() == 4 && entries.Values[^1] == region.CurrentEntry,
-                $"WhenEntryChanged emitted {entries.Values.Length} entries; expected one per entry.");
+                $"WhenCurrentEntryChanged emitted {entries.Values.Length} entries; expected one per entry.");
         }
         var entryCount = entries.Values.Length;
 
-        var back = region.CreateBackCommand(scheduler);
+        var back = region.CreateBackCommand(outputScheduler: scheduler);
         var outputs = new Recorder<NavigationOutcome>();
         using var outputSubscription = back.Subscribe(outputs);
         await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was disabled with history.");
@@ -133,7 +133,7 @@ internal sealed class NavigationAdapterTests
         var history = new Recorder<bool>();
         using var currentSubscription = region.WhenCurrentChanged().Subscribe(currents);
         using var historySubscription = region.WhenCanGoBackChanged().Subscribe(history);
-        var back = region.CreateBackCommand(scheduler);
+        var back = region.CreateBackCommand(outputScheduler: scheduler);
 
         var home = new NavigationPage("home");
         region.Start(NavigationTarget.Borrow(home));
@@ -218,8 +218,8 @@ internal sealed class NavigationAdapterTests
         using var busySubscription = strict.WhenIsBusyChanged().Subscribe(busy);
         Require(busy.Values.SequenceEqual([false]), "WhenIsBusyChanged did not emit its initial value synchronously.");
         var scheduler = ContextScheduler.For(context);
-        using var strictBack = strict.CreateBackCommand(scheduler);
-        using var lenientBack = lenient.CreateBackCommand(scheduler);
+        using var strictBack = strict.CreateBackCommand(outputScheduler: scheduler);
+        using var lenientBack = lenient.CreateBackCommand(outputScheduler: scheduler);
         // Every disposal the test holds is released when it ends, so a failed assertion can't hang the navigator's disposal.
         List<TaskCompletionSource> held = [];
 
@@ -299,7 +299,7 @@ internal sealed class NavigationAdapterTests
             return NavigationTarget.Own(new ConfirmPage());
         }, () => true, () => discards++).CanDepartAsync;
         await main.PushAsync(NavigationTarget.Own(document));
-        using var back = main.CreateBackCommand(ContextScheduler.For(outputContext));
+        using var back = main.CreateBackCommand(outputScheduler: ContextScheduler.For(outputContext));
         await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "Back was not enabled.");
         using var held = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -332,7 +332,7 @@ internal sealed class NavigationAdapterTests
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         var region = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new NavigationPage("home")));
-        var arrivals = new List<(NavigationResume Resume, bool InTurn)>();
+        var arrivals = new List<(NavigationArrival Resume, bool InTurn)>();
         var scopes = new List<DisposeProbe>();
         var exits = new Recorder<NavigationExit>();
         IDisposable? arrival = null;
@@ -354,7 +354,7 @@ internal sealed class NavigationAdapterTests
         }));
         var id = editor!.Entry.Id;
         Require(push is NavigationResult<object>.Committed && arrivals.Count == 1 && arrivals[0].InTurn
-            && arrivals[0].Resume == new NavigationResume(id, NavigationOperation.Push) && exits.Values.Length == 0,
+            && arrivals[0].Resume == new NavigationArrival(id, NavigationOperation.Push) && exits.Values.Length == 0,
             "WhenNavigatedTo did not run once, in the commit turn, when the push committed.");
 
         await region.PushAsync(NavigationTarget.Own(new NavigationPage("next")));
@@ -363,7 +363,7 @@ internal sealed class NavigationAdapterTests
             "Retaining the entry did not dispose its scope in the commit turn and emit a retained exit.");
 
         await region.BackAsync();
-        Require(arrivals.Count == 2 && arrivals[1].InTurn && arrivals[1].Resume == new NavigationResume(id, NavigationOperation.Back)
+        Require(arrivals.Count == 2 && arrivals[1].InTurn && arrivals[1].Resume == new NavigationArrival(id, NavigationOperation.Back)
             && scopes.Count == 2 && scopes[1].Disposed == 0,
             "Resuming the entry did not call WhenNavigatedTo with Back and a new scope.");
 
@@ -523,6 +523,65 @@ internal sealed class NavigationAdapterTests
         using (page.Entry.CreateCloseCommand(availability))
             Require(availability.Subscriptions == 0, "A command of a retired entry was not disposed at once.");
         GC.KeepAlive((dismissCommand, pickCommand, saveCommand));
+    }
+
+    // nrx-06: the back command takes an extra condition, combined with the region's by AND (W319-003 B4). The holders
+    // are named ...Extensions (D27 row g).
+    [Test, NotInParallel(Order = 9)]
+    public async Task BackCommandCanExecuteAsync()
+    {
+        Require(typeof(ReactiveNavigationRegionExtensions).Assembly.GetTypes().All(type => type.Name is not ("ReactiveNavigation" or "ReactiveNavigationEntry"))
+            && typeof(ReactiveNavigationEntryExtensions).IsAbstract && typeof(ReactiveNavigationEntryExtensions).IsSealed,
+            "The extension holders still use their old names.");
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var region = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(new NavigationPage("home")));
+        var notSaving = new Availability();
+        using var back = region.CreateBackCommand(notSaving, ContextScheduler.For(context));
+        Require(!ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command could execute before its condition emitted.");
+        notSaving.Set(true);
+        Require(!ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command could execute without history.");
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("document")));
+        await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command stayed disabled with history and its condition.");
+        notSaving.Set(false);
+        await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command ignored its condition.");
+        notSaving.Set(true);
+        await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command did not follow its condition back.");
+        var result = await ReactiveCommandExecution.Execute(back, UnitValue(), CancellationToken.None);
+        Require(result.Kind == NavigationOutcomeKind.Committed && region.Current is { Name: "home" }, $"The back command gave {result}.");
+        await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command stayed enabled without history.");
+        back.Dispose();
+        Require(notSaving.Observers == 0, "The disposed command still observes its condition.");
+    }
+
+    // An availability set by the test, which counts its observers.
+    private sealed class Availability : IObservable<bool>
+    {
+        private readonly Lock _gate = new();
+        private readonly List<IObserver<bool>> _observers = [];
+
+        public int Observers { get { lock (_gate) return _observers.Count; } }
+
+        public void Set(bool value)
+        {
+            IObserver<bool>[] observers;
+            lock (_gate) observers = [.. _observers];
+            foreach (var observer in observers) observer.OnNext(value);
+        }
+
+        public IDisposable Subscribe(IObserver<bool> observer)
+        {
+            lock (_gate) _observers.Add(observer);
+            return new Subscription(this, observer);
+        }
+
+        private sealed class Subscription(Availability owner, IObserver<bool> observer) : IDisposable
+        {
+            public void Dispose()
+            {
+                lock (owner._gate) owner._observers.Remove(observer);
+            }
+        }
     }
 
     // An availability that counts its live subscriptions.

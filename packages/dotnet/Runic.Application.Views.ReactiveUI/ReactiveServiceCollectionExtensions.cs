@@ -20,7 +20,7 @@ public static class ReactiveServiceCollectionExtensions
 {
     /// <summary>
     /// Adds a scoped model context, the scheduler provider and the scheduler of that context, and installs the
-    /// model-context main-thread scheduler (<see cref="RunicReactiveSchedulerProvider.InstallMainThreadScheduler"/>),
+    /// model-context main-thread scheduler (<see cref="ReactiveSchedulers.InstallMainThreadScheduler"/>),
     /// so ReactiveUI commands created without an output scheduler deliver their notifications on the model context
     /// that executes them. Existing application registrations are preserved. To opt out, set
     /// <c>RxSchedulers.MainThreadScheduler</c>, or call <c>WithMainThreadScheduler</c> on ReactiveUI's builder, before
@@ -35,7 +35,7 @@ public static class ReactiveServiceCollectionExtensions
     /// <see cref="RunicModelContextRegistry.Bind"/> call. A ViewModel bound to another context is rejected when
     /// presented. Dispose the service scope asynchronously to drain its owned context.
     /// An application that builds ReactiveUI with <c>RxAppBuilder</c> also calls
-    /// <see cref="RunicReactiveUIBuilderExtensions.WithRunicModelContext"/> there, so its <c>BuildApp()</c> keeps the
+    /// <see cref="ReactiveUIBuilderExtensions.WithRunicModelContext"/> there, so its <c>BuildApp()</c> keeps the
     /// scheduler. When a Runic Desktop, CS-WebUI or test-host window opens, the installed scheduler logs through the
     /// application's <see cref="Microsoft.Extensions.Logging.ILoggerFactory"/>, and a scheduler that was kept or that
     /// replaced it is logged as Views event 1090 or 1091.
@@ -44,11 +44,11 @@ public static class ReactiveServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddScoped<IRunicModelContext, RunicModelContext>();
-        services.TryAddSingleton<IRunicReactiveSchedulerProvider, RunicReactiveSchedulerProvider>();
-        services.TryAddTransient<ModelScheduler>(provider => provider.GetRequiredService<IRunicReactiveSchedulerProvider>()
+        services.TryAddSingleton<IReactiveSchedulerProvider>(ReactiveSchedulerProvider.Instance);
+        services.TryAddTransient<ModelScheduler>(provider => provider.GetRequiredService<IReactiveSchedulerProvider>()
             .For(provider.GetRequiredService<IRunicModelContext>()));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IRunicWindowOpeningObserver, ReactiveSchedulerWindowObserver>());
-        RunicReactiveSchedulerProvider.InstallMainThreadScheduler();
+        ReactiveSchedulers.InstallMainThreadScheduler();
         return services;
     }
 }

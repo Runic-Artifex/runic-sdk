@@ -4,81 +4,22 @@ using System.Diagnostics.CodeAnalysis;
 namespace Runic.Navigation;
 
 /// <summary>
-/// The content-type-independent view of a <see cref="NavigationRegion{TContent}"/>, for hosts that present
-/// a region without knowing its content type. Only <see cref="NavigationRegion{TContent}"/> implements it.
+/// One navigation region, independent of its content type, for hosts that present a region without knowing it.
+/// <see cref="NavigationRegion{TContent}"/> is the typed region, and every region is one.
 /// </summary>
 /// <remarks>
-/// <see cref="INotifyPropertyChanged.PropertyChanged"/> is the region's event, with the same property names.
-/// The entry in a <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/>,
-/// <see cref="ClearAsync"/> or <see cref="ReplaceBorrowedAsync"/> is a <see cref="NavigationEntry{TContent}"/>
-/// of <see cref="object"/>, a different
-/// instance from the typed entry in <see cref="CurrentEntry"/> and <see cref="History"/>. Compare entries by
-/// <see cref="INavigationEntry.Id"/>, not by reference.
+/// <para>
+/// <see cref="CurrentEntry"/> and <see cref="History"/> return the region's typed entries. The entry in a
+/// <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/>, <see cref="ClearAsync"/> or
+/// <see cref="ReplaceBorrowedAsync"/> is a <see cref="NavigationEntry{TContent}"/> of <see cref="object"/>, a different
+/// instance from the typed entry. Compare entries by <see cref="NavigationEntry.Id"/>, not by reference.
+/// </para>
+/// <para>
+/// Only <see cref="RunicNavigator.CreateRegion{TContent}"/> creates regions, so the class can't be derived from outside
+/// Runic.Navigation, and members can be added to it in a minor release.
+/// </para>
 /// </remarks>
-public interface INavigationRegion : INotifyPropertyChanged
-{
-    /// <summary>Gets the navigator that owns the region.</summary>
-    RunicNavigator Navigator { get; }
-
-    /// <summary>Gets the region's content type.</summary>
-    Type ContentType { get; }
-
-    /// <summary>Gets the current content, or <see langword="null"/> when the region is empty.</summary>
-    object? Current { get; }
-
-    /// <summary>Gets the current entry, or <see langword="null"/> when the region is empty.</summary>
-    INavigationEntry? CurrentEntry { get; }
-
-    /// <summary>Gets the retained entries below the current entry, from bottom to top.</summary>
-    IReadOnlyList<INavigationEntry> History { get; }
-
-    /// <summary>Gets whether a retained entry exists to go back to.</summary>
-    bool CanGoBack { get; }
-
-    /// <summary>Gets whether a transition of this region is in flight.</summary>
-    bool IsTransitioning { get; }
-
-    /// <inheritdoc cref="NavigationRegion{TContent}.IsBusy" />
-    bool IsBusy { get; }
-
-    /// <inheritdoc cref="NavigationRegion{TContent}.Admission" />
-    NavigationAdmission Admission { get; }
-
-    /// <inheritdoc cref="NavigationRegion{TContent}.WhenIdleAsync" />
-    ValueTask WhenIdleAsync(CancellationToken cancellationToken = default);
-
-    /// <inheritdoc cref="NavigationRegion{TContent}.AddDepartureGuard" />
-    IDisposable AddDepartureGuard(INavigationRegionGuard guard, NavigationRegionGuardOptions? options = null);
-
-    /// <summary>Retires the current entry and resumes the top retained entry.</summary>
-    /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
-    ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
-
-    /// <summary>Retires every entry. The region becomes empty.</summary>
-    /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
-    ValueTask<NavigationResult<object>> ClearAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Replaces the current entry with borrowed <paramref name="content"/>. For presentation adapters
-    /// that select existing models without knowing the region's generic content type.
-    /// </summary>
-    /// <remarks>The engine runs the same guards and lifetime rules as typed Replace. The caller retains ownership.</remarks>
-    /// <exception cref="ArgumentException">The content is not assignable to <see cref="ContentType"/>.</exception>
-    ValueTask<NavigationResult<object>> ReplaceBorrowedAsync(object content, NavigationRequestOptions? options = null,
-        CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// One navigation region: a stack of typed entries whose top is <see cref="Current"/>. State changes
-/// commit in one model turn and raise <see cref="PropertyChanged"/> inside that turn.
-/// </summary>
-/// <typeparam name="TContent">The content type presented by the region.</typeparam>
-/// <remarks>
-/// Operations throw only for argument errors and ownership violations; every navigation outcome is
-/// returned as a <see cref="NavigationResult{TContent}"/>. Called from inside a model turn, an
-/// operation is admitted without blocking and continues on the thread pool; do not block on it there.
-/// </remarks>
-public sealed class NavigationRegion<TContent> : INavigationRegion where TContent : class
+public abstract class NavigationRegion : INotifyPropertyChanged
 {
     private static readonly PropertyChangedEventArgs CurrentChanged = new(nameof(Current));
     private static readonly PropertyChangedEventArgs CurrentEntryChanged = new(nameof(CurrentEntry));
@@ -87,7 +28,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     private static readonly PropertyChangedEventArgs IsTransitioningChanged = new(nameof(IsTransitioning));
     private static readonly PropertyChangedEventArgs IsBusyChanged = new(nameof(IsBusy));
 
-    internal NavigationRegion(NavigationRegionCore core)
+    private protected NavigationRegion(NavigationRegionCore core)
     {
         Core = core;
         core.Raise = Raise;
@@ -96,35 +37,20 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
 
     internal NavigationRegionCore Core { get; }
 
-    ValueTask<NavigationResult<object>> INavigationRegion.ReplaceBorrowedAsync(object content,
-        NavigationRequestOptions? options, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(content);
-        if (content is not TContent typed)
-            throw new ArgumentException("The selected content is not assignable to the region's content type.", nameof(content));
-        return NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Replace,
-            Target(NavigationTarget.Borrow(typed)), null, options, cancellationToken));
-    }
-
     /// <summary>Gets the navigator that owns the region.</summary>
     public RunicNavigator Navigator => Core.Navigator;
 
-    Type INavigationRegion.ContentType => typeof(TContent);
-
-    object? INavigationRegion.Current => Current;
-
-    INavigationEntry? INavigationRegion.CurrentEntry => CurrentEntry;
-
-    IReadOnlyList<INavigationEntry> INavigationRegion.History => History;
+    /// <summary>Gets the region's content type.</summary>
+    public Type ContentType => ContentTypeCore;
 
     /// <summary>Gets the current content, or <see langword="null"/> when the region is empty.</summary>
-    public TContent? Current => (TContent?)Core.CurrentEntry?.Content;
+    public object? Current => Core.CurrentEntry?.Content;
 
     /// <summary>Gets the current entry, or <see langword="null"/> when the region is empty.</summary>
-    public NavigationEntry<TContent>? CurrentEntry => Core.CurrentEntry?.View<TContent>();
+    public NavigationEntry? CurrentEntry => CurrentEntryCore;
 
     /// <summary>Gets the retained entries below the current entry, from bottom to top.</summary>
-    public IReadOnlyList<NavigationEntry<TContent>> History => Core.History<TContent>();
+    public IReadOnlyList<NavigationEntry> History => HistoryCore;
 
     /// <summary>Gets whether a retained entry exists to go back to.</summary>
     public bool CanGoBack => Core.CanGoBack;
@@ -205,6 +131,98 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>Retires the current entry and resumes the top retained entry.</summary>
+    /// <remarks>Compare the result's entry with this region's entries by <see cref="NavigationEntry.Id"/>.</remarks>
+    public ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Back, null, null, options, cancellationToken));
+
+    /// <summary>Retires every entry. The region becomes empty.</summary>
+    /// <remarks>Compare the result's entry with this region's entries by <see cref="NavigationEntry.Id"/>.</remarks>
+    public ValueTask<NavigationResult<object>> ClearAsync(NavigationRequestOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Clear, null, null, options, cancellationToken));
+
+    /// <summary>
+    /// Replaces the current entry with borrowed <paramref name="content"/>. For presentation adapters that select
+    /// existing models without knowing the region's content type, such as Runic.Navigation.Wpf's
+    /// <c>NavigationSelector</c>; application code calls <see cref="NavigationRegion{TContent}.ReplaceAsync(INavigationTarget{TContent}, NavigationRequestOptions?, CancellationToken)"/>.
+    /// </summary>
+    /// <remarks>The engine runs the same guards and lifetime rules as typed Replace. The caller retains ownership.</remarks>
+    /// <exception cref="ArgumentException">The content is not assignable to <see cref="ContentType"/>.</exception>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public ValueTask<NavigationResult<object>> ReplaceBorrowedAsync(object content, NavigationRequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (!ContentType.IsInstanceOfType(content))
+            throw new ArgumentException("The selected content is not assignable to the region's content type.", nameof(content));
+        return NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Replace, BorrowTarget(content), null, options,
+            cancellationToken));
+    }
+
+    private protected abstract Type ContentTypeCore { get; }
+
+    private protected abstract NavigationEntry? CurrentEntryCore { get; }
+
+    private protected abstract IReadOnlyList<NavigationEntry> HistoryCore { get; }
+
+    // A Borrow target of content already checked against ContentType.
+    private protected abstract NavigationTargetCore BorrowTarget(object content);
+
+    private void Raise(NavigationRegionChanges changes)
+    {
+        if ((changes & NavigationRegionChanges.Current) != 0)
+        {
+            Raise(CurrentChanged);
+            Raise(CurrentEntryChanged);
+        }
+        if ((changes & NavigationRegionChanges.History) != 0) Raise(HistoryChanged);
+        if ((changes & NavigationRegionChanges.CanGoBack) != 0) Raise(CanGoBackChanged);
+        if ((changes & NavigationRegionChanges.Transitioning) != 0) Raise(IsTransitioningChanged);
+        if ((changes & NavigationRegionChanges.Busy) != 0) Raise(IsBusyChanged);
+    }
+
+    // D-13: one throwing handler must not skip the others or undo the commit.
+    private void Raise(PropertyChangedEventArgs args)
+    {
+        var handlers = PropertyChanged;
+        if (handlers is null) return;
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            try { ((PropertyChangedEventHandler)handler)(this, args); }
+            catch (Exception error)
+            {
+                NavigationLog.NavigationNotificationFailed(Core.Navigator.Logger, error, Core.ContentTypeName, Core.Id,
+                    args.PropertyName ?? string.Empty, NavigationTelemetry.ErrorType(error));
+            }
+        }
+    }
+}
+
+/// <summary>
+/// One navigation region: a stack of typed entries whose top is <see cref="Current"/>. State changes
+/// commit in one model turn and raise <see cref="NavigationRegion.PropertyChanged"/> inside that turn.
+/// </summary>
+/// <typeparam name="TContent">The content type presented by the region.</typeparam>
+/// <remarks>
+/// Operations throw only for argument errors and ownership violations; every navigation outcome is
+/// returned as a <see cref="NavigationResult{TContent}"/>. Called from inside a model turn, an
+/// operation is admitted without blocking and continues on the thread pool; do not block on it there.
+/// </remarks>
+public sealed class NavigationRegion<TContent> : NavigationRegion where TContent : class
+{
+    internal NavigationRegion(NavigationRegionCore core) : base(core) { }
+
+    /// <summary>Gets the current content, or <see langword="null"/> when the region is empty.</summary>
+    public new TContent? Current => (TContent?)Core.CurrentEntry?.Content;
+
+    /// <summary>Gets the current entry, or <see langword="null"/> when the region is empty.</summary>
+    public new NavigationEntry<TContent>? CurrentEntry => Core.CurrentEntry?.View<TContent>();
+
+    /// <summary>Gets the retained entries below the current entry, from bottom to top.</summary>
+    public new IReadOnlyList<NavigationEntry<TContent>> History => Core.History<TContent>();
+
     /// <summary>
     /// Commits the root entry of a region created without an initial target, synchronously, like the
     /// <c>initial</c> target of <see cref="RunicNavigator.CreateRegion{TContent}"/>. Call it once, where the root
@@ -220,7 +238,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// <para>
     /// Before the method returns, the entry's <see cref="NavigationEntryContext.StateChanged"/> and
     /// <see cref="INavigationAware.OnNavigatedTo"/> (with <see cref="NavigationOperation.Reset"/>), then the
-    /// region's <see cref="PropertyChanged"/>, run on the caller's thread. Call it before the region is shared
+    /// region's <see cref="NavigationRegion.PropertyChanged"/>, run on the caller's thread. Call it before the region is shared
     /// with other threads.
     /// </para>
     /// <para>
@@ -267,7 +285,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
         Core.Navigator.PushForResult<TContent, TResult>(Core, Target(target), options, cancellationToken);
 
     /// <summary>Retires the current entry and resumes the top retained entry.</summary>
-    public ValueTask<NavigationResult<TContent>> BackAsync(NavigationRequestOptions? options = null,
+    public new ValueTask<NavigationResult<TContent>> BackAsync(NavigationRequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
         Run(NavigationOperation.Back, null, null, options, cancellationToken);
 
@@ -303,7 +321,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>.</param>
+    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationArrived{TInput}.OnArrivedAsync"/>.</param>
     /// <param name="options">The request's options.</param>
     /// <param name="cancellationToken">Cancels the request before it commits.</param>
     public ValueTask<NavigationResult<TContent>> PushAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
@@ -340,7 +358,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>.</param>
+    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationArrived{TInput}.OnArrivedAsync"/>.</param>
     /// <param name="options">The request's options.</param>
     /// <param name="cancellationToken">Cancels the request before it commits.</param>
     public ValueTask<NavigationResult<TContent>> ReplaceAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
@@ -365,7 +383,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
     /// <typeparam name="TInput">The input type.</typeparam>
-    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationActivated{TInput}.OnActivatedAsync"/>.</param>
+    /// <param name="input">The input passed to the content's typed hooks: <see cref="INavigationInitialize{TInput}.InitializeAsync"/> and <see cref="INavigationArrived{TInput}.OnArrivedAsync"/>.</param>
     /// <param name="options">The request's options.</param>
     /// <param name="cancellationToken">Cancels the request before it commits.</param>
     public ValueTask<NavigationResult<TContent>> ResetAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
@@ -379,7 +397,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
         Run(NavigationOperation.ClearHistory, null, null, options, cancellationToken);
 
     /// <summary>Retires every entry. The region becomes empty.</summary>
-    public ValueTask<NavigationResult<TContent>> ClearAsync(NavigationRequestOptions? options = null,
+    public new ValueTask<NavigationResult<TContent>> ClearAsync(NavigationRequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
         Run(NavigationOperation.Clear, null, null, options, cancellationToken);
 
@@ -390,48 +408,19 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken) =>
         NavigationResults.MapAsync<TContent>(Core.Start(operation, target, backTo, options, cancellationToken));
 
-    ValueTask<NavigationResult<object>> INavigationRegion.BackAsync(NavigationRequestOptions? options,
-        CancellationToken cancellationToken) =>
-        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Back, null, null, options, cancellationToken));
+    private protected override Type ContentTypeCore => typeof(TContent);
 
-    ValueTask<NavigationResult<object>> INavigationRegion.ClearAsync(NavigationRequestOptions? options,
-        CancellationToken cancellationToken) =>
-        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Clear, null, null, options, cancellationToken));
+    private protected override NavigationEntry? CurrentEntryCore => CurrentEntry;
+
+    private protected override IReadOnlyList<NavigationEntry> HistoryCore => History;
+
+    private protected override NavigationTargetCore BorrowTarget(object content) => Target(NavigationTarget.Borrow((TContent)content));
 
     private static NavigationTargetCore Target(INavigationTarget<TContent> target)
     {
         ArgumentNullException.ThrowIfNull(target);
         return target as NavigationTargetCore
             ?? throw new ArgumentException("Navigation targets must be created with NavigationTarget.", nameof(target));
-    }
-
-    private void Raise(NavigationRegionChanges changes)
-    {
-        if ((changes & NavigationRegionChanges.Current) != 0)
-        {
-            Raise(CurrentChanged);
-            Raise(CurrentEntryChanged);
-        }
-        if ((changes & NavigationRegionChanges.History) != 0) Raise(HistoryChanged);
-        if ((changes & NavigationRegionChanges.CanGoBack) != 0) Raise(CanGoBackChanged);
-        if ((changes & NavigationRegionChanges.Transitioning) != 0) Raise(IsTransitioningChanged);
-        if ((changes & NavigationRegionChanges.Busy) != 0) Raise(IsBusyChanged);
-    }
-
-    // D-13: one throwing handler must not skip the others or undo the commit.
-    private void Raise(PropertyChangedEventArgs args)
-    {
-        var handlers = PropertyChanged;
-        if (handlers is null) return;
-        foreach (var handler in handlers.GetInvocationList())
-        {
-            try { ((PropertyChangedEventHandler)handler)(this, args); }
-            catch (Exception error)
-            {
-                NavigationLog.NavigationNotificationFailed(Core.Navigator.Logger, error, Core.ContentTypeName, Core.Id,
-                    args.PropertyName ?? string.Empty, NavigationTelemetry.ErrorType(error));
-            }
-        }
     }
 }
 
@@ -485,7 +474,7 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     // The region's guards (AddDepartureGuard), in registration order.
     public List<NavigationRegionGuardRegistration> Guards { get; } = [];
     // The public region of this core, set once by its constructor.
-    public INavigationRegion? Public { get; set; }
+    public NavigationRegion? Public { get; set; }
 
     public Action<NavigationRegionChanges>? Raise { get; set; }
 

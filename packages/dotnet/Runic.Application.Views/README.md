@@ -1680,18 +1680,18 @@ client receives it as a typed result:
 interface NavigationOutcome {
   readonly kind: "Committed" | "Rejected" | "Superseded" | "Failed";
   readonly rejection: NavigationRejection | null; // set for "Rejected"
-  readonly activation: "None" | "Completed" | "Failed" | "Cancelled"; // "None" unless "Committed"
+  readonly arrival: "None" | "Completed" | "Failed" | "Cancelled"; // "None" unless "Committed"
 }
 ```
 
-`activation` reports how the
-[activation hooks](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#after-the-commit-activation)
-(`INavigationActivated`) of the entry the commit made current ended. A
+`arrival` reports how the
+[arrival hooks](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#after-the-commit-arrival)
+(`INavigationArrived`) of the entry the commit made current ended. A
 `"Failed"` hook leaves the commit standing, so a page that went back or
 navigated can show that the destination's data did not load. Like a `"Failed"`
 kind, it carries no exception message, which can contain application data:
 the hook's exception is logged as event 1076, and code that needs it awaits the
-region's request in its own command and reads `Committed.ActivationError`.
+region's request in its own command and reads `Committed.ArrivalError`.
 
 ## Logging and telemetry
 
@@ -1745,8 +1745,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
-| 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
-| 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
+| 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
 | 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
 | 1043 | `ReactiveSchedulerOutsideModelTurn` | Warning | Work is scheduled on the model-context main-thread scheduler that `AddRunicReactiveModelContext()` installs, outside a model turn, so it runs on the scheduler it replaced. Logged once per ViewModel type found on the call stack, and once for work with no ViewModel there, such as a timer. Runic Desktop, CS-WebUI and `RunicWindowTestHost.Create` pass the application's logger factory when a window opens; before that, or without one, it goes to `Trace`. | `Source`, `Fallback` |
 | 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -1803,13 +1802,8 @@ uses `Runic.Application.Views.CsWebUi` and the factory of the Window's scope. Ev
 use `Runic.Desktop` and `DesktopHostOptions.LoggerFactory`, which `RunicDesktopHost.Run`
 and `RunicViewHost` fill from the application's services.
 
-Events 1040-1043, 1090 and 1091 come from `Runic.Application.Views.ReactiveUI` (and its `.Reactive`
-flavor) and also use `Runic.Application.Views`. Events 1040 and 1041 need the
-`ReactiveRoutedRegion<T>(router, loggerFactory)` constructor, which a
-ViewModel can call with an `ILoggerFactory` injected from DI, as
-`examples/notes-reactive-views` does. Without a factory, the region writes the
-same messages to `Trace` as described above. `Region` is the region's ViewModel
-type name `T`. The Bridge logs event 1042 through the Window's logger factory,
+Events 1042, 1043, 1090 and 1091 come from `Runic.Application.Views.ReactiveUI` (and its `.Reactive`
+flavor) and also use `Runic.Application.Views`. The Bridge logs event 1042 through the Window's logger factory,
 with the ViewModel type and command property, such as `EditorViewModel.SaveCommand`, as
 `Source`; an exception that a Bridge call received is logged as 1000 or 1004
 instead. `ObserveBridgeExceptions(logger)` replaces that logging for its command

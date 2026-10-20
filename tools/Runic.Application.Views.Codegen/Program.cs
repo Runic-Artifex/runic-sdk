@@ -656,8 +656,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // is the slot's wire and TypeScript nullability.
     string ContentAccess(PropertyInfo property) =>
         regionSlots.Contains(property) ? $"vm.{property.Name}?.Current" : $"vm.{property.Name}";
+    // DeclaredOnly: NavigationRegion<T>.Current hides the non-generic base's object-typed Current.
     bool IsNullableContent(PropertyInfo property) => (regionSlots.Contains(property)
-        ? nullability.Create(property.PropertyType.GetProperty("Current")!)
+        ? nullability.Create(property.PropertyType.GetProperty("Current", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)!)
         : nullability.Create(property)).ReadState == NullabilityState.Nullable;
     var contentBindings = contentProperties.Concat(contentCollections).ToArray();
     var fullType = $"global::{model.FullName}";

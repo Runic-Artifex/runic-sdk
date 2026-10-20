@@ -323,7 +323,7 @@ internal sealed class LeaveGuardRoutingTests
 
         public static async Task<GuardedShell> OpenAsync()
         {
-            Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
+            Require(ReactiveSchedulers.InstallMainThreadScheduler(),
                 "The model-context main-thread scheduler was not installed.");
             var services = new ServiceCollection();
             services.AddRunicNavigation();
