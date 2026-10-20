@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RunicDesktopPackageVersion Condition="'$(RunicDesktopPackageVersion)' == ''">$(RunicSdkVersion)</RunicDesktopPackageVersion>
+    <!-- Uses the experimental Desktop APIs (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

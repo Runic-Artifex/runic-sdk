@@ -26,7 +26,7 @@ Console.WriteLine("Clean Windows package consumer built from the Runic Desktop A
 if (args.Contains("--embedded-smoke", StringComparer.Ordinal))
 {
     await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, Hidden = true }, deadline.Token);
-    if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(15), cancellationToken: deadline.Token) != "Windows package consumer")
+    if (await surface.ExecuteJavaScriptAsync("return document.title;", deadline.Token) != "Windows package consumer")
         throw new InvalidOperationException("The packaged WebView2 consumer did not execute JavaScript.");
     await window.CloseAsync();
     Console.WriteLine("Packaged WebView2 loader and live JavaScript smoke passed.");

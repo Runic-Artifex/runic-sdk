@@ -184,8 +184,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// <remarks>
     /// The surface is the same in a native window, in a browser after a fallback and under
     /// <c>RUNIC_APPLICATION_SERVE_ONLY</c>. Its <see cref="DesktopSurface.ConnectionCount"/> and
-    /// <see cref="DesktopSurface.SubscribeConnectionEvents"/> tell when the last browser tab of a served Window
-    /// closed, and <see cref="DesktopSurface.Url"/> is its address. It is the
+    /// <see cref="DesktopSurface.SubscribeConnectionEvents"/>, experimental (<c>RUNICDESK101</c>), tell when the last
+    /// browser tab of a served Window closed, and <see cref="DesktopSurface.Url"/> is its address. It is the
     /// <see cref="DesktopBridgeWindow{TViewModel}.Surface"/> of <see cref="IRunicWindow.Host"/>, without naming the
     /// ViewModel type.
     /// </remarks>
@@ -421,8 +421,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private DesktopWindowOptions WindowOptionsFor(RunicWindowOptions options) => WindowOptions with
     {
-        Width = options.Width is { } width ? (uint)width : WindowOptions.Width,
-        Height = options.Height is { } height ? (uint)height : WindowOptions.Height,
+        Width = options.Width ?? WindowOptions.Width,
+        Height = options.Height ?? WindowOptions.Height,
     };
 
     // A guarded Window confirms user closes through ConfirmCloseAsync: first its own guard, then the one of

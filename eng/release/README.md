@@ -478,8 +478,10 @@ requirement, not a consumer one.
   signature. Graduation removes the attribute. IDs follow the numbering in
   `docs/experimental.md` (from `100` where the prefix already names
   diagnostics, such as `RUNICDBUS100`). Today's families are `RUNICWPF001` (WPF
-  child web presentation), planned to graduate before 1.0, and `RUNICASSETS001`
-  (Linux development-directory asset source).
+  child web presentation), planned to graduate before 1.0, `RUNICASSETS001`
+  (Linux development-directory asset source), `RUNICDESK100` (custom Desktop
+  window host providers) and `RUNICDESK101` (the low-level Desktop presentation
+  transport).
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each stable release on a
   prerelease version and may change in any release. `RunicCsWebUiPackageVersion`

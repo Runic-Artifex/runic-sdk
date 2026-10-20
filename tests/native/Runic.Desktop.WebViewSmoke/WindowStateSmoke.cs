@@ -6,8 +6,8 @@ using Runic.Desktop;
 internal static class WindowStateSmoke
 {
     // Small enough for xvfb-run's default 640x480 screen.
-    private const uint ResizedWidth = 420;
-    private const uint ResizedHeight = 300;
+    private const int ResizedWidth = 420;
+    private const int ResizedHeight = 300;
     private const int MovedX = 40;
     private const int MovedY = 60;
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(15);
@@ -111,7 +111,7 @@ internal static class WindowStateSmoke
     }
 
     // Device-independent sizes can round by a pixel at fractional scales.
-    private static bool Near(uint actual, uint expected) => Math.Abs((long)actual - expected) <= 2;
+    private static bool Near(int actual, int expected) => Math.Abs((long)actual - expected) <= 2;
 
     private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected) =>
         await TryWaitForAsync(window, condition, Deadline)

@@ -10,7 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);RUNICWPF001</NoWarn>
+    <NoWarn>$(NoWarn);RUNICWPF001;RUNICDESK100;RUNICDESK101</NoWarn>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
@@ -23,6 +23,7 @@
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj" />
     <!-- The portable cases, run here on the WPF dispatcher (AssemblyInfo.cs selects WpfDispatcherExecutor). -->
     <Compile Include="../Runic.Application.Views.Wpf.Tests/AssemblyInfo.cs" Link="AssemblyInfo.cs" />
+    <Compile Include="../../native/Runic.Desktop.WebViewSmoke/SurfaceScripts.cs" Link="SurfaceScripts.cs" />
     <Compile Include="../Runic.Application.Views.Wpf.Tests/Program.cs" Link="Program.cs" />
     <Compile Include="../Runic.Application.Views.Wpf.Tests/HostLifecycleTests.cs" Link="HostLifecycleTests.cs" />
   </ItemGroup>

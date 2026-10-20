@@ -462,8 +462,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             X = (int)Math.Round(frame.X),
             Y = (int)Math.Round(frame.Y),
-            Width = (uint)Math.Max(1, Math.Round(content.Width)),
-            Height = (uint)Math.Max(1, Math.Round(content.Height)),
+            Width = (int)Math.Max(1, Math.Round(content.Width)),
+            Height = (int)Math.Max(1, Math.Round(content.Height)),
         };
     }
 

@@ -150,7 +150,7 @@ public sealed class WindowStateTests
         await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
         var active = 0;
         var overlapped = false;
-        var seen = new List<uint>();
+        var seen = new List<int>();
         var last = Opened with { Width = 1000, Placement = Opened.Placement with { Width = 1000 } };
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         window.StateChanged += (_, args) =>
@@ -162,7 +162,7 @@ public sealed class WindowStateTests
             if (args.State == last) done.TrySetResult();
         };
         var native = factory.Hosts[0];
-        for (uint width = 801; width < 1000; width++)
+        for (int width = 801; width < 1000; width++)
         {
             native.Report(Opened with { Width = width, Placement = Opened.Placement with { Width = width } });
         }
@@ -172,7 +172,7 @@ public sealed class WindowStateTests
         lock (seen)
         {
             Assert.True(seen.Count < 200, $"{seen.Count} events for 200 changes");
-            Assert.Equal(1000u, seen[^1]);
+            Assert.Equal(1000, seen[^1]);
             Assert.Equal(seen.OrderBy(static width => width), seen);
         }
     }
@@ -189,7 +189,7 @@ public sealed class WindowStateTests
         window.StateChanged += (_, args) => { if (args.State.Width == 900) received.TrySetResult(args.State); };
         factory.Hosts[0].Report(Opened with { Width = 700 });
         factory.Hosts[0].Report(Opened with { Width = 900 });
-        Assert.Equal(900u, (await received.Task.WaitAsync(TimeSpan.FromSeconds(5))).Width);
+        Assert.Equal(900, (await received.Task.WaitAsync(TimeSpan.FromSeconds(5))).Width);
     }
 
     [Test]
@@ -207,7 +207,7 @@ public sealed class WindowStateTests
         factory.Hosts[1].Report(replacementState with { Height = 777 });
         await Task.Delay(100);
         Assert.Equal(Opened, first.State);
-        Assert.Equal(777u, second.State!.Height);
+        Assert.Equal(777, second.State!.Height);
         await first.DisposeAsync();
     }
 
@@ -236,22 +236,22 @@ public sealed class WindowStateTests
         {
             var options = factory.Hosts[0].Options!;
             Assert.Equal(placement, options.Placement);
-            Assert.Equal(1024u, options.Width);
-            Assert.Equal(700u, options.Height);
+            Assert.Equal(1024, options.Width);
+            Assert.Equal(700, options.Height);
             Assert.Equal(-3000, options.X);
             Assert.Equal(40, options.Y);
             Assert.False(options.Centered);
         }
 
-        // A damaged settings file still opens: no size keeps the options, one coordinate is no position.
+        // A damaged settings file still opens: no positive size keeps the options, one coordinate is no position.
         await using (await surface.OpenWindowAsync(new()
         {
             Browser = BrowserKind.Embedded, Width = 300, Height = 200, Centered = true,
-            Placement = new() { X = 12, Width = 0, Height = uint.MaxValue },
+            Placement = new() { X = 12, Width = -5, Height = int.MaxValue },
         }))
         {
             var options = factory.Hosts[1].Options!;
-            Assert.Equal(300u, options.Width);
+            Assert.Equal(300, options.Width);
             Assert.Equal(WindowPlacementClamp.MaximumDimension, options.Height);
             Assert.Null(options.X);
             Assert.Null(options.Y);
@@ -335,7 +335,7 @@ public sealed class WindowStateTests
         public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;

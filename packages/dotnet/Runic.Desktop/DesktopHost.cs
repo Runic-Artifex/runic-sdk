@@ -138,10 +138,7 @@ public sealed class DesktopHost : IAsyncDisposable
                 customHostAvailable,
                 ExecutablePath: null,
                 customHostAvailable ? factory.Capabilities : DesktopWindowCapabilities.None,
-                customHostAvailable ? null : diagnostics[0])
-            {
-                Diagnostics = diagnostics,
-            })
+                customHostAvailable ? [] : diagnostics))
             .ToArray();
         return availability with { Presentations = presentations };
     }
@@ -436,14 +433,14 @@ public sealed class DesktopHost : IAsyncDisposable
         IsAvailable: false,
         ExecutablePath: null,
         DesktopWindowCapabilities.None,
-        !DesktopWindowOptionValidation.IsLaunchable(browser)
+        [!DesktopWindowOptionValidation.IsLaunchable(browser)
             ? DesktopWindowOptionValidation.BrowserUnsupported(browser)
             : new DesktopDiagnostic(
             DesktopErrorCategory.Unavailable,
             "presentation-unavailable",
             $"No supported presentation was discovered for {browser}.",
             Retryable: false,
-            Remediation: "Install a supported browser or WebView runtime and run DesktopPlatform.GetAvailability()."));
+            Remediation: "Install a supported browser or WebView runtime and run DesktopPlatform.GetAvailability().")]);
 
     private static PresentationHostCore CreateCore(DesktopHostOptions options, int port) => new(
         new PresentationHostCoreOptions(

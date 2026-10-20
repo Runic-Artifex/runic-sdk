@@ -74,7 +74,9 @@ Tailwind page, as a list to a screen reader; add `role="list"` to it. See
 
 Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or
-lifecycle.
+lifecycle. The window host interfaces (`RUNICDESK100`) and the low-level
+presentation transport of `DesktopSurface` (`RUNICDESK101`) are
+[experimental](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md).
 
 Windows open in the embedded WebView unless `DesktopWindowOptions.Browser`
 selects an installed browser. Check a window request at startup, before doing
@@ -106,7 +108,7 @@ returns the same checks as typed results.
 The default `RequestedOnly` policy never changes presentation mode. Applications
 that deliberately prefer a WebView but can continue in a browser can select
 `DesktopPresentationPolicy.EmbeddedThenBrowser`; the resulting
-`DesktopWindow.FellBack` property and the diagnostic sink make that decision
+`DesktopWindow.IsFallback` property and the diagnostic sink make that decision
 observable. Camera and microphone access remains denied unless
 `DesktopPermissionGrant.MediaCapture` is explicitly selected for the window.
 WebView2, WebKitGTK and GTK4 windows grant it only to the presented origin;

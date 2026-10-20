@@ -40,6 +40,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// <see cref="SemaphoreSlim"/>. <see cref="PresentationEventKind.Disconnected"/> follows the completion
     /// of every invocation the connection accepted.
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public PresentationCapabilityRegistration RegisterCapability(
         string capability,
         PresentationCapabilityHandler handler)
@@ -81,6 +82,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// Every subscription receives every event, in subscription order. Subscribing does not change how the
     /// page navigates or reloads.
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public IDisposable SubscribeConnectionEvents(Action<PresentationInvocation> handler)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -96,6 +98,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// can disconnect before or after the reloaded page connects, so the count can drop to zero for a moment: to
     /// end serving when the last browser tab closes, wait a short time after it reaches zero and check again.
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int ConnectionCount => _engine.ConnectedSessionCount;
 
     /// <summary>Opens this surface in one installed browser or embedded WebView.</summary>
@@ -182,29 +185,38 @@ public sealed class DesktopSurface : IAsyncDisposable
     }
 
     /// <summary>Runs JavaScript in every authenticated presentation session.</summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
         _engine.RunJavaScriptAsync(script, cancellationToken);
 
     /// <summary>Runs JavaScript and returns its string result from an authenticated presentation session.</summary>
     /// <param name="script">The script; its <c>return</c> value is the result.</param>
-    /// <param name="timeout">How long to wait for the result; <see langword="null"/> or zero waits until cancellation.</param>
-    /// <param name="responseBufferSize">The largest result accepted, in UTF-8 bytes.</param>
-    /// <param name="cancellationToken">Cancels waiting for the result.</param>
+    /// <param name="cancellationToken">Cancels waiting for the result. To wait for a limited time, pass a token from a
+    /// <see cref="CancellationTokenSource"/> created with a delay.</param>
     /// <returns>The whole result.</returns>
-    /// <exception cref="DesktopException">The result is larger than <paramref name="responseBufferSize"/>
-    /// (<see cref="DesktopErrorCategory.LimitExceeded"/>, code <c>script-result-too-large</c>); it is not truncated.</exception>
-    public Task<string> ExecuteJavaScriptAsync(
-        string script,
-        TimeSpan? timeout = null,
-        int responseBufferSize = 4 * 1024,
-        CancellationToken cancellationToken = default) =>
-        _engine.ExecuteJavaScriptAsync(script, timeout, responseBufferSize, cancellationToken);
+    /// <remarks>
+    /// The script runs in one authenticated session. While several are connected, such as browser tabs of a served
+    /// surface, which one answers is not specified; <see cref="RunJavaScriptAsync"/> runs a script in all of them. A
+    /// result is never cut: one larger than 16 MiB of UTF-8 fails instead.
+    /// </remarks>
+    /// <exception cref="DesktopException">The result is larger than 16 MiB
+    /// (<see cref="DesktopErrorCategory.LimitExceeded"/>, code <c>script-result-too-large</c>).</exception>
+    /// <exception cref="InvalidOperationException">No authenticated session is connected, or the script failed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public Task<string> ExecuteJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
+        _engine.ExecuteJavaScriptAsync(script, timeout: null, MaximumScriptResultBytes, cancellationToken);
+
+    // The largest result ExecuteJavaScriptAsync returns, in UTF-8 bytes; documented on the method.
+    internal const int MaximumScriptResultBytes = 16 * 1024 * 1024;
 
     /// <summary>Navigates every authenticated presentation session.</summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public Task NavigateAsync(string url, CancellationToken cancellationToken = default) =>
         _engine.NavigateAsync(url, cancellationToken);
 
     /// <summary>Sends opaque bytes to every authenticated presentation session.</summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public Task SendAsync(
         string function,
         ReadOnlyMemory<byte> data,
@@ -335,13 +347,21 @@ public sealed class DesktopSurface : IAsyncDisposable
         }
     }
 
+    // The native window size of a DesktopWindowOptions value: a positive number of pixels.
+    private static uint WindowSize(int value, string name)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, name);
+        return (uint)value;
+    }
+
     private void ApplyWindowOptions(DesktopWindowOptions options)
     {
         _engine.ResetDesktopPresentationOptions();
-        _engine.SetSize(options.Width, options.Height);
+        _engine.SetSize(WindowSize(options.Width, nameof(options.Width)), WindowSize(options.Height, nameof(options.Height)));
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
         {
-            _engine.SetMinimumSize(minimumWidth, minimumHeight);
+            _engine.SetMinimumSize(WindowSize(minimumWidth, nameof(options.MinimumWidth)),
+                WindowSize(minimumHeight, nameof(options.MinimumHeight)));
         }
         if (options.X is { } x && options.Y is { } y)
         {
@@ -452,7 +472,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         var availability = _host.FindAvailability(browser);
         if (availability is null || !availability.IsAvailable)
         {
-            var diagnostic = availability?.Diagnostic ?? DesktopHost.Unavailable(browser).Diagnostic!;
+            var diagnostic = availability is { Diagnostics: [var first, ..] } ? first : DesktopHost.Unavailable(browser).Diagnostics[0];
             var correlationId = Guid.NewGuid().ToString("N");
             diagnostic = diagnostic with { CorrelationId = correlationId };
             _host.Report(diagnostic);
@@ -529,6 +549,11 @@ public sealed class DesktopSurface : IAsyncDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "AllowedPermissions contains an unsupported value.");
         }
+        if (options.Width <= 0 || options.Height <= 0 || options.MinimumWidth <= 0 || options.MinimumHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options),
+                "Width, Height, MinimumWidth and MinimumHeight must be positive numbers of pixels.");
+        }
     }
 
     private static WebUiBrowser ToCompatibilityBrowser(BrowserKind browser) => browser switch
@@ -590,7 +615,7 @@ public sealed class DesktopWindow : IAsyncDisposable
         _engine = engine;
         RequestedBrowser = requestedBrowser;
         Browser = browser;
-        FellBack = fellBack;
+        IsFallback = fellBack;
         if (browser == BrowserKind.Embedded)
         {
             // The window may have reported its state while it opened, before this object existed.
@@ -785,16 +810,32 @@ public sealed class DesktopWindow : IAsyncDisposable
     public BrowserKind Browser { get; }
 
     /// <summary>Gets whether the embedded WebView was unavailable and the browser fallback opened instead.</summary>
-    public bool FellBack { get; }
+    public bool IsFallback { get; }
 
     /// <summary>Gets whether this is the surface's current window and its browser process or embedded window is still open.</summary>
     public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _surface.IsCurrentWindow(this)
         && (Browser == BrowserKind.Embedded ? _engine.IsEmbeddedWindowOpen : _engine.IsShown);
 
     /// <summary>Gets the installed browser's process identifier, or zero for an embedded or closed window.</summary>
-    public ulong ProcessId => IsOpen ? _engine.BrowserProcessId : 0;
+    public int ProcessId => IsOpen ? (int)_engine.BrowserProcessId : 0;
 
     /// <summary>Gets the native top-level handle of an open embedded window, or zero for an installed browser or closed window.</summary>
+    /// <remarks>
+    /// <para>The handle kind depends on the window host:</para>
+    /// <list type="table">
+    /// <listheader><term>Host</term><description>Handle</description></listheader>
+    /// <item><term>Windows, WebView2</term><description>The top-level window's <c>HWND</c>.</description></item>
+    /// <item><term>macOS, WKWebView</term><description>An <c>NSWindow*</c>.</description></item>
+    /// <item><term>Linux, GTK 3 and WebKitGTK 4.1</term><description>A GTK 3 <c>GtkWindow*</c>.</description></item>
+    /// <item><term>Linux, GTK 4 (<c>Runic.Desktop.Gtk4</c>)</term><description>A GTK 4 <c>GtkWindow*</c>.</description></item>
+    /// <item><term>A custom window host</term><description>Whatever its <see cref="IDesktopWindowHost.NativeHandle"/> reports.</description></item>
+    /// </list>
+    /// <para>
+    /// Reading the value on another thread is for identity only, such as comparing windows. AppKit and GTK objects may be
+    /// used only on their UI thread: pass any call on the handle to <see cref="InvokeNativeAsync"/>, which runs it there
+    /// with the handle. The handle is invalid once the window closes.
+    /// </para>
+    /// </remarks>
     public nint NativeHandle => IsOpen ? _engine.NativeWindowHandle : 0;
 
     /// <summary>Whether this live embedded owner supports native-thread callbacks.</summary>
@@ -826,7 +867,11 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <summary>Activates the window and gives it keyboard focus.</summary>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window has been focused.</returns>
-    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Focus"/>.</remarks>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.Focus"/>. It also shows a window opened with
+    /// <see cref="DesktopWindowOptions.Hidden"/>: every built-in embedded host shows the window before it activates it,
+    /// and this is the way to reveal a hidden window.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
@@ -902,8 +947,13 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
-        RequireAndResize(width, height, cancellationToken);
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is not positive.</exception>
+    public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        return RequireAndResize((uint)width, (uint)height, cancellationToken);
+    }
 
     /// <summary>Moves the window to a screen position.</summary>
     /// <param name="x">The new horizontal position in pixels; negative values are left of the primary screen's origin.</param>

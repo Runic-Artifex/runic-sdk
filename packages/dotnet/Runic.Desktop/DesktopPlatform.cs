@@ -27,6 +27,12 @@ public static class DesktopPlatform
             : WebUiBrowserDiscovery.Find(ToCompatibilityBrowser(browser), browserFolder) is not null;
 
     /// <summary>Gets whether the operating system currently uses a high-contrast theme.</summary>
+    /// <remarks>
+    /// A synchronous probe of the current setting, which decides a window's initial theme when
+    /// <see cref="DesktopWindowOptions.HighContrast"/> is not set. To follow changes while the application runs,
+    /// observe <c>IDesktopSettings</c> from Runic.Platform (<c>ReadAsync</c> and <c>WatchAsync</c>, whose
+    /// <c>DesktopAppearance.HighContrast</c> reports the same setting).
+    /// </remarks>
     public static bool IsHighContrast => WebUiSystemTheme.IsHighContrast;
 
     /// <summary>Inspects installed browsers and embedded-WebView prerequisites without opening a window.</summary>
@@ -44,7 +50,7 @@ public static class DesktopPlatform
                 installation is not null,
                 installation?.ExecutablePath,
                 DesktopWindowCapabilities.None,
-                installation is null ? MissingBrowser(browser) : null));
+                installation is null ? [MissingBrowser(browser)] : []));
         }
 
         var embeddedDiagnostics = GetEmbeddedDiagnostics(linux);
@@ -61,10 +67,7 @@ public static class DesktopPlatform
                   DesktopWindowCapabilities.Resize |
                   DesktopWindowCapabilities.Move
                 : DesktopWindowCapabilities.None,
-            embeddedAvailable ? null : embeddedDiagnostics[0])
-        {
-            Diagnostics = embeddedDiagnostics,
-        });
+            embeddedDiagnostics));
         return new DesktopAvailabilityResult(GetPlatformName(), presentations);
     }
 
@@ -78,12 +81,12 @@ public static class DesktopPlatform
     private static LinuxEmbeddedBackendAvailability Inspect(LinuxEmbeddedBackend backend, string gtk, string webkit)
     {
         bool discovered = LinuxDesktopRuntime.IsLibraryAvailable(gtk) && LinuxDesktopRuntime.IsLibraryAvailable(webkit);
-        return new(backend, discovered, discovered ? null : Missing(
+        return new(backend, discovered, discovered ? [] : [Missing(
             backend == LinuxEmbeddedBackend.Gtk3WebKit41 ? "webkitgtk-runtime-missing" : "webkitgtk6-runtime-missing",
             $"The runtime libraries for {backend} were not discovered.",
             backend == LinuxEmbeddedBackend.Gtk3WebKit41
                 ? $"Install {gtk} and {webkit} (for example {Gtk3NativeLibraries.ExamplePackages}) in the native loader search path."
-                : $"Install GTK 4.12 or newer and WebKitGTK 6.0 ({gtk} and {webkit}, for example libgtk-4-1 and libwebkitgtk-6.0-4), and reference the Runic.Desktop.Gtk4 provider."));
+                : $"Install GTK 4.12 or newer and WebKitGTK 6.0 ({gtk} and {webkit}, for example libgtk-4-1 and libwebkitgtk-6.0-4), and reference the Runic.Desktop.Gtk4 provider.")]);
     }
 
     // Every missing embedded prerequisite, in the order a user can act on them. Linux reports each one

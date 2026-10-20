@@ -181,7 +181,8 @@ public sealed class DesktopEventLoopEntryPointTests
         // Test methods run on worker threads, never the process main thread.
         var error = Assert.Throws<InvalidOperationException>(() =>
             new Gtk4WindowHostFactory().RunEventLoop(static () => Task.FromResult(0)));
-        Assert.Contains("DesktopEventLoop.Run(options, application)", error.Message, StringComparison.Ordinal);
+        Assert.Contains("DesktopEventLoop.Run(options.WithGtk4(), application)", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Gtk4Application", error.Message, StringComparison.Ordinal);
         Assert.Empty(new Gtk4WindowHostFactory().PrepareEventLoop());
     }
 

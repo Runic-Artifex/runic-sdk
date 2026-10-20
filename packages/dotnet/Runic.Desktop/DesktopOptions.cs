@@ -77,6 +77,7 @@ public sealed record DesktopHostOptions
     public string? BrowserFolder { get; init; }
 
     /// <summary>Gets the embedded-window factory, or the platform default when omitted.</summary>
+    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public IDesktopWindowHostFactory? WindowHostFactory { get; init; }
 
     /// <summary>Gets whether opening a window waits for bridge authentication.</summary>
@@ -204,13 +205,23 @@ public enum BrowserKind
     /// <summary>Microsoft Edge.</summary>
     Edge,
 
-    /// <summary>Apple Safari. Runic Desktop cannot launch it as a presentation.</summary>
+    /// <summary>Apple Safari: detection only.</summary>
+    /// <remarks>
+    /// Not a presentation: Runic Desktop neither discovers nor launches it, and <see cref="DesktopPlatform.GetAvailability(string?)"/>
+    /// does not list it. Requesting it reports <c>browser-unsupported</c> naming this browser, so a configured value,
+    /// such as one read from settings, is recognized and reported precisely instead of being rejected as unknown.
+    /// </remarks>
     Safari,
 
     /// <summary>Chromium.</summary>
     Chromium,
 
-    /// <summary>Opera. Runic Desktop cannot launch it as a presentation.</summary>
+    /// <summary>Opera: detection only.</summary>
+    /// <remarks>
+    /// Not a presentation: Runic Desktop neither discovers nor launches it, and <see cref="DesktopPlatform.GetAvailability(string?)"/>
+    /// does not list it. Requesting it reports <c>browser-unsupported</c> naming this browser, so a configured value,
+    /// such as one read from settings, is recognized and reported precisely instead of being rejected as unknown.
+    /// </remarks>
     Opera,
 
     /// <summary>Brave.</summary>
@@ -342,18 +353,18 @@ public sealed record DesktopWindowOptions
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 
     /// <summary>Gets the initial window width in pixels. Defaults to 800.</summary>
-    public uint Width { get; init; } = 800;
+    public int Width { get; init; } = 800;
 
     /// <summary>Gets the initial window height in pixels. Defaults to 600.</summary>
-    public uint Height { get; init; } = 600;
+    public int Height { get; init; } = 600;
 
     /// <summary>Gets the minimum window width in pixels, or <see langword="null"/> for no minimum.</summary>
     /// <remarks>Applies only together with <see cref="MinimumHeight"/>, and only to embedded windows.</remarks>
-    public uint? MinimumWidth { get; init; }
+    public int? MinimumWidth { get; init; }
 
     /// <summary>Gets the minimum window height in pixels, or <see langword="null"/> for no minimum.</summary>
     /// <remarks>Applies only together with <see cref="MinimumWidth"/>, and only to embedded windows.</remarks>
-    public uint? MinimumHeight { get; init; }
+    public int? MinimumHeight { get; init; }
 
     /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
     /// <remarks>Applies only together with <see cref="Y"/>; <see cref="Centered"/> takes precedence. Firefox ignores it, and installed browsers ignore a negative position.
@@ -407,7 +418,10 @@ public sealed record DesktopWindowOptions
     public bool Transparent { get; init; }
 
     /// <summary>Gets whether the presentation opens without a visible window.</summary>
-    /// <remarks>Embedded windows are created hidden; installed browsers run headless.</remarks>
+    /// <remarks>
+    /// Embedded windows are created hidden; installed browsers run headless. <see cref="DesktopWindow.FocusAsync"/>
+    /// shows a hidden embedded window and gives it focus; <see cref="DesktopWindow"/> has no other show or hide member.
+    /// </remarks>
     public bool Hidden { get; init; }
 
     /// <summary>Gets whether the presentation opens in full-screen kiosk mode without window decorations.</summary>
@@ -459,8 +473,8 @@ public sealed record DesktopWindowOptions
         var hasPosition = placement.X is not null && placement.Y is not null;
         return this with
         {
-            Width = placement.Width == 0 ? Width : Math.Min(placement.Width, Internal.WindowPlacementClamp.MaximumDimension),
-            Height = placement.Height == 0 ? Height : Math.Min(placement.Height, Internal.WindowPlacementClamp.MaximumDimension),
+            Width = placement.Width <= 0 ? Width : Math.Min(placement.Width, Internal.WindowPlacementClamp.MaximumDimension),
+            Height = placement.Height <= 0 ? Height : Math.Min(placement.Height, Internal.WindowPlacementClamp.MaximumDimension),
             X = hasPosition ? placement.X : null,
             Y = hasPosition ? placement.Y : null,
             Centered = false,

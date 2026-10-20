@@ -1,6 +1,7 @@
 namespace Runic.Desktop;
 
 /// <summary>Creates platform-native embedded WebView presentations.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IDesktopWindowHostFactory
 {
     /// <summary>Gets whether the required platform runtime is available.</summary>
@@ -39,6 +40,7 @@ public interface IDesktopWindowHostFactory
 /// <see cref="RunEventLoop"/> instead of its own loop when <see cref="IDesktopWindowHostFactory.IsSupported"/> is
 /// <see langword="true"/>.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IDesktopEventLoopWindowHostFactory : IDesktopWindowHostFactory
 {
     /// <summary>Runs <paramref name="application"/> while the native toolkit owns the calling main thread.</summary>
@@ -59,6 +61,7 @@ public interface IDesktopEventLoopWindowHostFactory : IDesktopWindowHostFactory
 }
 
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
 {
     /// <summary>Gets whether <see cref="InvokeNativeAsync"/> can run work on the window's owning thread.</summary>
@@ -84,6 +87,7 @@ public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
 /// <see cref="DesktopWindowHostOptions.Placement"/> when opening. Use the units of the host's own
 /// <see cref="IDesktopWindowHost.MoveAsync"/> and <see cref="IDesktopWindowHost.ResizeAsync"/>.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IDesktopWindowStateHost : IDesktopWindowHost
 {
     /// <summary>Gets the window's current state, or <see langword="null"/> before the window has reported one.</summary>
@@ -99,6 +103,7 @@ public interface IDesktopWindowStateHost : IDesktopWindowHost
 /// Runic Desktop creates one host per opened window, calls its members from arbitrary threads, and disposes it
 /// after it closes. Implementations marshal native work to the thread that owns the window.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IDesktopWindowHost : IAsyncDisposable
 {
     /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
@@ -123,6 +128,10 @@ public interface IDesktopWindowHost : IAsyncDisposable
     bool IsOpen { get; }
 
     /// <summary>Gets the platform-native top-level window handle, or zero when the window is not open.</summary>
+    /// <remarks>
+    /// Report the handle kind of the toolkit, such as an <c>HWND</c> or a <c>GtkWindow*</c>, and document it for the
+    /// host's users; <see cref="DesktopWindow.NativeHandle"/> lists the built-in hosts' kinds.
+    /// </remarks>
     nint NativeHandle { get; }
 
     /// <summary>Creates and shows the native window and navigates its WebView to <paramref name="url"/>.</summary>
@@ -164,7 +173,7 @@ public interface IDesktopWindowHost : IAsyncDisposable
     /// <param name="height">The new height in pixels.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>A task that completes when the window has been resized.</returns>
-    ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default);
+    ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default);
 
     /// <summary>Moves the window to a screen position.</summary>
     /// <param name="x">The new horizontal position in pixels.</param>
@@ -203,22 +212,23 @@ public interface IDesktopWindowHost : IAsyncDisposable
 
 /// <summary>Describes the immutable initial state of an embedded window host.</summary>
 /// <remarks>Runic Desktop derives these values from <see cref="DesktopWindowOptions"/>.</remarks>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record DesktopWindowHostOptions
 {
     /// <summary>When set, suppress user close requests and invoke this callback. CloseAsync must bypass it.</summary>
     public Action? CloseRequested { get; init; }
 
     /// <summary>Gets the initial window width in pixels. Defaults to 800.</summary>
-    public uint Width { get; init; } = 800;
+    public int Width { get; init; } = 800;
 
     /// <summary>Gets the initial window height in pixels. Defaults to 600.</summary>
-    public uint Height { get; init; } = 600;
+    public int Height { get; init; } = 600;
 
     /// <summary>Gets the minimum window width in pixels, or <see langword="null"/> for no minimum.</summary>
-    public uint? MinimumWidth { get; init; }
+    public int? MinimumWidth { get; init; }
 
     /// <summary>Gets the minimum window height in pixels, or <see langword="null"/> for no minimum.</summary>
-    public uint? MinimumHeight { get; init; }
+    public int? MinimumHeight { get; init; }
 
     /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
     public int? X { get; init; }
@@ -265,8 +275,8 @@ public sealed record DesktopWindowHostOptions
     /// <summary>Gets the WebView profile or user-data directory, or <see langword="null"/> for the host's default.</summary>
     public string? ProfilePath { get; init; }
 
-    /// <summary>Gets additional WebView command-line arguments as one unsplit string, from <see cref="DesktopWindowOptions.BrowserArguments"/>.</summary>
-    public string? CustomArguments { get; init; }
+    /// <summary>Gets additional WebView command-line arguments as one unsplit string: <see cref="DesktopWindowOptions.BrowserArguments"/>.</summary>
+    public string? BrowserArguments { get; init; }
 
     /// <summary>Gets the sensitive permissions the host may grant, only to the origin of the presented URL.</summary>
     public DesktopPermissionGrant AllowedPermissions { get; init; }
@@ -282,7 +292,7 @@ public sealed record DesktopWindowHostOptions
     /// <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger (event 3010). The host may call it on any
     /// thread, including the window's own; a sink that throws is logged, not rethrown.
     /// </summary>
-    public Action<DesktopDiagnostic>? ReportDiagnostic { get; init; }
+    public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -339,10 +349,10 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         _host.OpenAsync(url, new DesktopWindowHostOptions
         {
             CloseRequested = options.CloseRequested,
-            Width = options.Width,
-            Height = options.Height,
-            MinimumWidth = options.MinimumWidth,
-            MinimumHeight = options.MinimumHeight,
+            Width = (int)options.Width,
+            Height = (int)options.Height,
+            MinimumWidth = (int?)options.MinimumWidth,
+            MinimumHeight = (int?)options.MinimumHeight,
             X = options.X,
             Y = options.Y,
             Centered = options.Centered,
@@ -355,10 +365,10 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             HighContrast = options.HighContrast,
             IconFile = options.IconFile,
             ProfilePath = options.ProfilePath,
-            CustomArguments = options.CustomParameters,
+            BrowserArguments = options.CustomParameters,
             AllowedPermissions = options.AllowedPermissions,
             DocumentStartScript = options.DocumentStartScript,
-            ReportDiagnostic = options.ReportDiagnostic,
+            DiagnosticSink = options.ReportDiagnostic,
         }, cancellationToken);
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>
@@ -377,7 +387,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         _host.ToggleMaximizedAsync(cancellationToken);
 
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
-        _host.ResizeAsync(width, height, cancellationToken);
+        _host.ResizeAsync(checked((int)width), checked((int)height), cancellationToken);
 
     public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default) =>
         _host.MoveAsync(x, y, cancellationToken);

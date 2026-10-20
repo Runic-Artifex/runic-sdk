@@ -15,7 +15,8 @@
     <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
     <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <NoWarn>$(NoWarn);RUNICWPF001</NoWarn>
+    <!-- The control implements Runic.Desktop's experimental window host SPI over its presentation transport. -->
+    <NoWarn>$(NoWarn);RUNICWPF001;RUNICDESK100;RUNICDESK101</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />

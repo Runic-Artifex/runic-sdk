@@ -19,11 +19,11 @@ public sealed record DesktopWindowPlacement
     /// <remarks>Applies only together with <see cref="X"/>.</remarks>
     public int? Y { get; init; }
 
-    /// <summary>Gets the width of the restored (not maximized) window, or zero for <see cref="DesktopWindowOptions.Width"/>.</summary>
-    public uint Width { get; init; }
+    /// <summary>Gets the width of the restored (not maximized) window, or zero (or less) for <see cref="DesktopWindowOptions.Width"/>.</summary>
+    public int Width { get; init; }
 
-    /// <summary>Gets the height of the restored (not maximized) window, or zero for <see cref="DesktopWindowOptions.Height"/>.</summary>
-    public uint Height { get; init; }
+    /// <summary>Gets the height of the restored (not maximized) window, or zero (or less) for <see cref="DesktopWindowOptions.Height"/>.</summary>
+    public int Height { get; init; }
 
     /// <summary>Gets whether the window was maximized; it then opens maximized and restores to the other values.</summary>
     public bool Maximized { get; init; }
@@ -66,10 +66,10 @@ public sealed record DesktopWindowState
     public int? Y { get; init; }
 
     /// <summary>Gets the current width; for a maximized or full-screen window, the maximized or full-screen width.</summary>
-    public uint Width { get; init; }
+    public int Width { get; init; }
 
     /// <summary>Gets the current height; for a maximized or full-screen window, the maximized or full-screen height.</summary>
-    public uint Height { get; init; }
+    public int Height { get; init; }
 
     /// <summary>Gets whether the window is maximized (zoomed on macOS).</summary>
     public bool IsMaximized { get; init; }
