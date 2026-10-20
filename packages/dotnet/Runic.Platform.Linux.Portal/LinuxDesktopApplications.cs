@@ -80,7 +80,7 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         catch (UnauthorizedAccessException) { return Failure<DesktopContentType>(13); }
         catch (FileNotFoundException) { return Failure<DesktopContentType>(2); }
         catch (DirectoryNotFoundException) { return Failure<DesktopContentType>(2); }
-        catch (IOException error) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, Errno(error)); }
+        catch (IOException error) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IOError, Errno(error)); }
         string? sniffed = mime.MatchContent(data);
         // As GLib does: content alone never makes a file a desktop entry, which a launcher would run.
         if (sniffed is not null && sniffed.Equals("application/x-desktop", StringComparison.OrdinalIgnoreCase) && !name.EndsWith(DesktopSuffix, StringComparison.Ordinal))
@@ -196,7 +196,7 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         catch (IOException error)
         {
             _application.Diagnose("mimeapps-write-failed", "The user's mimeapps.list could not be written.", "Check that XDG_CONFIG_HOME is writable.");
-            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, Errno(error));
+            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError, Errno(error));
         }
     }
 
@@ -234,18 +234,18 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         }
         string? directory = entry.WorkingDirectory;
         if (directory is not null && !Path.IsPathFullyQualified(directory)) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.InvalidData);
-        if (directory is not null && !Directory.Exists(directory)) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromErrno(2));
+        if (directory is not null && !Directory.Exists(directory)) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromErrno(2));
         cancellationToken.ThrowIfCancellationRequested();
         foreach (var command in commands)
         {
             if (command.IsEmpty || DesktopEntry.FindProgram(command[0], options.SearchPath) is not { } program)
-                return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromErrno(2));
+                return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromErrno(2));
             var start = new ProcessStartInfo(program) { UseShellExecute = false, WorkingDirectory = directory ?? "" };
             foreach (var argument in command.Skip(1)) start.ArgumentList.Add(argument);
             try { using var process = Process.Start(start); }
             catch (Win32Exception error)
             {
-                return new PlatformResult<PlatformUnit>.Failed(error.NativeErrorCode is 1 or 13 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                return new PlatformResult<PlatformUnit>.Failed(error.NativeErrorCode is 1 or 13 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                     PlatformDiagnostic.FromErrno(error.NativeErrorCode));
             }
         }
@@ -281,11 +281,11 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
             {
                 _application.Diagnose("desktop-application-activation-failed", $"D-Bus activation of {entry.Id} failed with {error.ErrorName}.",
                     "Check that the application's D-Bus service file is installed and that it implements org.freedesktop.Application.");
-                return new PlatformResult<PlatformUnit>.Failed(error.ErrorName == "org.freedesktop.DBus.Error.AccessDenied" ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                return new PlatformResult<PlatformUnit>.Failed(error.ErrorName == "org.freedesktop.DBus.Error.AccessDenied" ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                     new PlatformDiagnostic(error.ErrorName, 0));
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError); }
+            { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other); }
         }
     }
 
@@ -339,7 +339,7 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         }
         catch (UnauthorizedAccessException) { return new PlatformResult<DesktopIconData?>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromErrno(13)); }
         catch (FileNotFoundException) { return new PlatformResult<DesktopIconData?>.Success(null); }
-        catch (IOException error) { return new PlatformResult<DesktopIconData?>.Failed(PlatformFailureCode.IoError, Errno(error)); }
+        catch (IOException error) { return new PlatformResult<DesktopIconData?>.Failed(PlatformFailureCode.IOError, Errno(error)); }
     }
 
     private static string? MediaType(string path) =>
@@ -440,7 +440,13 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         && elements.All(static element => element.Length > 0 && !char.IsAsciiDigit(element[0]) && element.All(static c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-'));
 
     private static PlatformResult<T> Failure<T>(int errno) =>
-        new PlatformResult<T>.Failed(errno is 1 or 13 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, PlatformDiagnostic.FromErrno(errno));
+        new PlatformResult<T>.Failed(errno switch
+        {
+            1 or 13 => PlatformFailureCode.PermissionDenied,
+            // A missing file stays IOError, as IDesktopApplications.GetContentTypeAsync documents.
+            2 => PlatformFailureCode.IOError,
+            _ => PlatformFailureCode.Other,
+        }, PlatformDiagnostic.FromErrno(errno));
 
     // .NET reports most Unix errors with the errno in the HResult's low bits.
     internal static PlatformDiagnostic? Errno(IOException error) =>

@@ -4,7 +4,7 @@ using System.Text.Unicode;
 namespace Runic.Platform.Runtime;
 
 /// <summary>Shared argument checks and encoding for <see cref="IDesktopSecretStore"/> providers.</summary>
-public static class SecretStoreValidation
+internal static class SecretStoreValidation
 {
     /// <summary>The largest secret, in UTF-8 bytes, that every provider stores: the Credential Manager limit.</summary>
     public const int MaximumSecretBytes = 2560;

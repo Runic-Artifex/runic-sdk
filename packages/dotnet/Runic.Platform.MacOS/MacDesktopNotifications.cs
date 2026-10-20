@@ -164,7 +164,7 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
     {
         var diagnostic = ErrorDiagnostic(error);
         return new PlatformResult<PlatformUnit>.Failed(
-            diagnostic is { Domain: "UNErrorDomain", Code: 1 } ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, diagnostic);
+            diagnostic is { Domain: "UNErrorDomain", Code: 1 } ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other, diagnostic);
     }
     private static PlatformResult<PlatformUnit> Success() => new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private static PlatformResult<PlatformUnit> Failed(PlatformFailureCode code) => new PlatformResult<PlatformUnit>.Failed(code);

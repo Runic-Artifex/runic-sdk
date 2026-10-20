@@ -5,7 +5,7 @@ using Runic.Platform;
 namespace Runic.Platform.Runtime;
 
 /// <summary>Bounded, non-overlapping preference observation, including backend recovery.</summary>
-public abstract class DesktopSettingsSource : IDesktopSettings
+internal abstract class DesktopSettingsSource : IDesktopSettings
 {
     private readonly CancellationTokenSource _closed = new();
     private readonly object _gate = new();
@@ -91,7 +91,7 @@ public abstract class DesktopSettingsSource : IDesktopSettings
 }
 
 /// <summary>Shared input rules applied before native side effects.</summary>
-public static class DesktopServiceValidation
+internal static class DesktopServiceValidation
 {
     /// <summary>Validates and normalizes a trusted absolute local path.</summary>
     public static string FilePath(string path, DesktopFileOperation operation)
@@ -165,9 +165,9 @@ public static class DesktopServiceValidation
     {
         ArgumentNullException.ThrowIfNull(icon);
         if (icon.Images.IsDefault) throw new ArgumentException("Status icon images must be initialized.");
-        if (icon.ThemeName is { } name && (name.Length is 0 or > 128 || name.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_' and not '.')))
+        if (icon.IconName is { } name && (name.Length is 0 or > 128 || name.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_' and not '.')))
             throw new ArgumentException("Use an icon theme name of at most 128 ASCII letters, digits, dots, underscores or hyphens.");
-        if (icon.ThemeName is null && icon.Images.Length == 0) throw new ArgumentException("A status icon needs a theme name or an image.");
+        if (icon.IconName is null && icon.Images.Length == 0) throw new ArgumentException("A status icon needs an icon name or an image.");
         if (icon.Images.Length > 8) throw new ArgumentException("Supply at most eight status icon images.");
         foreach (var image in icon.Images)
         {

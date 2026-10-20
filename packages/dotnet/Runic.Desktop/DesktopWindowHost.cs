@@ -61,7 +61,7 @@ public interface IDesktopEventLoopWindowHostFactory : IDesktopWindowHostFactory
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
 public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
 {
-    /// <summary>Gets whether <see cref="DispatchNativeAsync"/> can run work on the window's owning thread.</summary>
+    /// <summary>Gets whether <see cref="InvokeNativeAsync"/> can run work on the window's owning thread.</summary>
     bool SupportsNativeDispatch { get; }
 
     /// <summary>Gets whether the caller is executing on the thread that owns the native window.</summary>
@@ -73,7 +73,7 @@ public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
     /// <param name="cancellationToken">Prevents the work from running if it has not started.</param>
     /// <returns>A task that completes after <paramref name="action"/> has run, with any exception it threw.</returns>
     /// <remarks>Cancellation must not interrupt a running callback; the returned task completes when it finishes.</remarks>
-    ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken);
+    ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken = default);
 }
 
 /// <summary>An optional native host that reports its window's bounds, maximized and full-screen state.</summary>
@@ -325,9 +325,9 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public DesktopWindowCapabilities Capabilities => _host.Capabilities;
     public bool SupportsNativeDispatch => _host is IDesktopNativeDispatchWindowHost { SupportsNativeDispatch: true };
     public bool CheckNativeAccess() => _host is IDesktopNativeDispatchWindowHost native && native.CheckNativeAccess();
-    public ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>
+    public ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken) =>
         _host is IDesktopNativeDispatchWindowHost native
-            ? native.DispatchNativeAsync(action, cancellationToken)
+            ? native.InvokeNativeAsync(action, cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This host does not expose native dispatch."));
 
     public nint NativeHandle => _host.NativeHandle;

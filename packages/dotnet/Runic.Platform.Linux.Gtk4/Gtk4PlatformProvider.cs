@@ -9,14 +9,14 @@ namespace Runic.Platform.Linux.Gtk4;
 public static class Gtk4PlatformProvider
 {
     /// <summary>Creates a GTK 4 clipboard that dispatches all native work through <paramref name="owner"/>.</summary>
-    public static ITextClipboard CreateTextClipboard(INativePickerOwner owner)
+    public static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new Gtk4TextClipboard(owner);
     }
 
     /// <summary>Creates a portal owner that exports GTK 4 X11 or Wayland parents on demand.</summary>
-    public static IPortalWindowOwner CreatePortalWindowOwner(INativePickerOwner owner)
+    public static IPortalWindowOwner CreatePortalWindowOwner(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new Gtk4PortalWindowOwner(owner);

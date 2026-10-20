@@ -7,7 +7,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // Opens a web or mail URI with the shell's URL association: the user's default browser or mail client.
-internal sealed class WindowsUriLauncher(INativePickerOwner owner)
+internal sealed class WindowsUriLauncher(INativeWindowOwner owner)
 {
     private const int ErrorAccessDenied = 5, ErrorNoAssociation = 1155, ErrorCancelled = 1223;
 
@@ -63,7 +63,7 @@ internal sealed class WindowsUriLauncher(INativePickerOwner owner)
                     ErrorNoAssociation => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
                     ErrorAccessDenied => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromWin32Error(error)),
                     ErrorCancelled => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed, PlatformDiagnostic.FromWin32Error(error)),
-                    _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(error)),
+                    _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, PlatformDiagnostic.FromWin32Error(error)),
                 };
             }
         }

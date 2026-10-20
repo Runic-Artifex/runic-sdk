@@ -11,18 +11,18 @@ public static class LinuxPlatformProvider
     /// <summary>Creates application-scoped desktop portal notifications.</summary>
     public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) => Portal.PortalPlatformProvider.CreateNotifications(applicationId, diagnosticSink);
     /// <summary>Creates owned file and URI handoffs for a GTK3 presentation.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
+    public static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return Portal.PortalPlatformProvider.CreateFileLauncher(new Gtk3PortalWindowOwner(owner)); }
 
     /// <summary>Creates dialogs bound to the verified GTK presentation owner.</summary>
-    public static IPickerBackend CreateFileDialogs(INativePickerOwner owner)
+    public static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return PortalPlatformProvider.CreateFileDialogs(new Gtk3PortalWindowOwner(owner));
     }
 
     /// <summary>Explicitly selects GTK-native dialogs for an unsandboxed compatibility application.</summary>
-    public static IPickerBackend CreateGtkNativeFileDialogs(INativePickerOwner owner)
+    public static IPickerBackend CreateGtkNativeFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (File.Exists("/.flatpak-info") || Environment.GetEnvironmentVariable("SNAP") is not null)
@@ -31,7 +31,7 @@ public static class LinuxPlatformProvider
     }
 
     /// <summary>Creates the GTK clipboard; dispose it before stopping the owner dispatcher.</summary>
-    public static LinuxTextClipboard CreateTextClipboard(INativePickerOwner owner)
+    public static LinuxTextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new LinuxTextClipboard(owner);

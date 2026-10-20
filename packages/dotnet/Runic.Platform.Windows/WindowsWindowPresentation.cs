@@ -14,7 +14,7 @@ internal static class WindowsWindowPresentation
     internal static readonly PlatformDiagnostic Flashed =
         new("SetForegroundWindow", 0, "Windows kept another window in the foreground; the taskbar button flashes instead.");
 
-    internal static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativePickerOwner owner, CancellationToken cancellationToken)
+    internal static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativeWindowOwner owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
         PlatformResult<PlatformUnit> result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);

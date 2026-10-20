@@ -36,7 +36,7 @@ internal sealed class UriLaunchTests
         {
             (0, static result => result is PlatformResult<PlatformUnit>.Success),
             (1, static result => result is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed }),
-            (2, static result => result is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }),
+            (2, static result => result is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }),
         })
         {
             var transport = new FakeTransport(new(code, []));

@@ -49,7 +49,7 @@ public interface IDesktopSecretStore
 | Locked, and the store cannot ask the user | `Failed(Locked)` | `Prompt` fails (no prompter), or `org.freedesktop.Secret.Error.IsLocked` after `Unlock` | — (no locked state) | `errSecInteractionNotAllowed` |
 | The user dismissed an unlock, access or create prompt | `Failed(UserDismissed)` | `Prompt.Completed` with `dismissed`; GNOME Keyring also completes a prompt it cannot show (no prompter, as in a headless session) this way | `ERROR_CANCELLED` | `errSecUserCanceled` |
 | Access refused | `Failed(PermissionDenied)` | `org.freedesktop.DBus.Error.AccessDenied` | `ERROR_ACCESS_DENIED` | `errSecAuthFailed`, `errSecReadOnly`, `errSecWrPerm`, `errSecMissingEntitlement` |
-| Other native errors | `Failed(IoError)` with the native code | D-Bus error name | Win32 code | `OSStatus` |
+| Other native errors | `Failed(Other)` with the native code | D-Bus error name | Win32 code | `OSStatus` |
 
 Diagnostics carry the native error name or code only: never the secret, the
 service or the account.

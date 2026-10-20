@@ -6,7 +6,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Linux;
 
 /// <summary>GTK clipboard with presentation-thread ownership and asynchronous transfer draining.</summary>
-public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : ITextClipboard, IAsyncDisposable
+public sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITextClipboard, IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Ownership? _ownership;
@@ -159,7 +159,7 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
                 }
             request.Result.TrySetResult(new PlatformResult<string?>.Success(null));
         }
-        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError)); }
+        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.Other)); }
         handle.Free();
     }
 
@@ -171,7 +171,7 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
         try
         {
             int length = DataLength(selection);
-            if (length < 0) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError)); return; }
+            if (length < 0) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.Other)); return; }
             if (length > (long)request.MaximumCharacters * 4)
             { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge)); return; }
             var bytes = new ReadOnlySpan<byte>((void*)Data(selection), length);
@@ -181,7 +181,7 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
             request.Result.TrySetResult(new PlatformResult<string?>.Success(utf8.GetString(bytes)));
         }
         catch (DecoderFallbackException) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.InvalidData)); }
-        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError)); }
+        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.Other)); }
         finally { handle.Free(); }
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

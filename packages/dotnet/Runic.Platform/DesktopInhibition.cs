@@ -1,6 +1,7 @@
 namespace Runic.Platform;
 
 /// <summary>Idle power transitions an explicit operation may ask the desktop to inhibit.</summary>
+/// <remarks>This set is open: a minor release may add effects, so handle unknown values.</remarks>
 [Flags]
 public enum DesktopInhibitionEffects
 {

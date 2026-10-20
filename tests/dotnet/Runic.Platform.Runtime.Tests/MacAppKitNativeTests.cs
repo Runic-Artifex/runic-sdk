@@ -38,12 +38,12 @@ internal sealed class MacAppKitNativeTests
             Menu =
             [
                 new DesktopMenuCommand("open", "Open window"),
-                new DesktopMenuCommand("daily", "Check daily") { Checked = true },
+                new DesktopMenuCommand("daily", "Check daily") { IsChecked = true },
                 new DesktopMenuSeparator(),
                 new DesktopMenuSubmenu("More",
                 [
                     new DesktopMenuCommand("attention", "Ask for attention"),
-                    new DesktopMenuCommand("disabled", "Unavailable") { Enabled = false },
+                    new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false },
                 ]),
                 new DesktopMenuCommand("quit", "Quit"),
             ],
@@ -90,7 +90,7 @@ internal sealed class MacAppKitNativeTests
         Require(attention is { HasImage: true, Template: false, Representations: 1, ToolTip: "Runic status item" }, $"Unexpected attention item {attention}.");
         Pass($"the attention state shows the colour attention image: {attention}");
 
-        Require(await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { ThemeName = "applications-system" }, "Runic"))
+        Require(await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { IconName = "applications-system" }, "Runic"))
             .AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The text item was not shown.");
         var text = await icon.InspectAsync();
         Require(text is { HasImage: false, Title: "Runic" }, $"Unexpected text item {text}.");
@@ -257,7 +257,7 @@ internal sealed class MacAppKitNativeTests
         }
     }
 
-    private static async Task<bool> WindowAsync(INativePickerOwner owner, Func<nint, bool> read)
+    private static async Task<bool> WindowAsync(INativeWindowOwner owner, Func<nint, bool> read)
     {
         bool value = false;
         await owner.InvokeAsync(handle => { using var pool = new Pool(); value = read(handle); });
@@ -287,14 +287,14 @@ internal sealed class MacAppKitNativeTests
 
     private static void Pass(string message) => Console.WriteLine("PASS " + message);
 
-    private sealed class WindowOwner(DesktopWindow window) : INativePickerOwner
+    private sealed class WindowOwner(DesktopWindow window) : INativeWindowOwner
     {
         public Guid Generation { get; } = Guid.NewGuid();
         public bool IsAvailable => window.IsOpen && window.NativeHandle != 0;
         public async ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default)
         {
             if (!IsAvailable) throw new OwnerClosedException();
-            await window.DispatchNativeAsync(action, cancellationToken);
+            await window.InvokeNativeAsync(action, cancellationToken);
         }
     }
 }

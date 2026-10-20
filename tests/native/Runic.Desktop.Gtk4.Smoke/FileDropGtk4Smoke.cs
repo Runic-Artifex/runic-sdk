@@ -41,7 +41,7 @@ internal static class FileDropGtk4Smoke
             var uriList = new Uri(file).AbsoluteUri + "\r\n" + new Uri(folder).AbsoluteUri + "\r\n";
             Gtk.Window? source = null;
             // GTK 4 cannot place windows: without a window manager both appear at the origin, the newer on top.
-            await window.DispatchNativeAsync(_ =>
+            await window.InvokeNativeAsync(_ =>
             {
                 source = Gtk.Window.New();
                 source.SetDefaultSize(120, 120);
@@ -69,7 +69,7 @@ internal static class FileDropGtk4Smoke
             }
             finally
             {
-                await window.DispatchNativeAsync(_ => source?.Destroy());
+                await window.InvokeNativeAsync(_ => source?.Destroy());
             }
         }
         finally

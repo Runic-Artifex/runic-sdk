@@ -88,9 +88,9 @@ internal sealed partial class MacThumbnails : IDesktopThumbnails
         try
         {
             destination = CGImageDestinationCreateWithData(data, String("public.png"), 1, 0);
-            if (destination == 0 || width <= 0 || height <= 0) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError);
+            if (destination == 0 || width <= 0 || height <= 0) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.Other);
             CGImageDestinationAddImage(destination, image, 0);
-            if (CGImageDestinationFinalize(destination) == 0) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError);
+            if (CGImageDestinationFinalize(destination) == 0) return new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.Other);
             nint length = CFDataGetLength(data);
             var png = new byte[length];
             Marshal.Copy(CFDataGetBytePtr(data), png, 0, png.Length);
@@ -110,7 +110,7 @@ internal sealed partial class MacThumbnails : IDesktopThumbnails
         ("QLThumbnailErrorDomain", 0 or 2 or 3 or 5) => new PlatformResult<DesktopThumbnail?>.Success(null),
         ("NSCocoaErrorDomain", 4 or 260) or ("NSPOSIXErrorDomain", 2 or 20) => new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.NotFound, diagnostic),
         ("NSCocoaErrorDomain", 257) or ("NSPOSIXErrorDomain", 1 or 13) => new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.PermissionDenied, diagnostic),
-        _ => new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.IoError, diagnostic),
+        _ => new PlatformResult<DesktopThumbnail?>.Failed(PlatformFailureCode.Other, diagnostic),
     };
 
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]

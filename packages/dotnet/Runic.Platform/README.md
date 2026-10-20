@@ -11,12 +11,27 @@ without a value return `PlatformResult<PlatformUnit>`. The type names carry the
 `Platform` prefix so they do not collide with `System.Reactive.Unit` and similar
 names when both namespaces are imported.
 
-Branch on the failure code. When a provider observed a native error, `Failed.Diagnostic`
+Branch on the failure code. The set of codes is open: a minor release may add one, so
+give a `switch` a default arm. `Unknown` (0) is only the default value and is never
+reported; `Other` is a failure no other code describes, such as an unclassified native
+error. When a provider observed a native error, the `Diagnostic` of `PlatformResult<T>.Failed`,
+`PickerResult<T>.Failed`, `FileCommitResult.NotCommitted` and `FileCommitResult.CommitUnknown`
 carries a `PlatformDiagnostic` with its domain (`HRESULT`, `Win32`, `errno`, an
 `NSError`/`GError` domain or a D-Bus error name), numeric code and, where the operating system's error table describes the code, its
 message. It is for logs and support, not display. Free-form text from native services
 (GError and D-Bus messages, NSError descriptions) is left out, so a diagnostic contains
 no paths.
+
+These services report what happens on the desktop as results and throw only for a
+caller mistake (`ArgumentException`), caller cancellation (`OperationCanceledException`)
+and use after disposal. Runic's administration APIs and the Desktop window host do the
+opposite and throw exceptions that keep the native error: they are called for one
+operation at a time, where a failure ends the operation, while a host capability is
+asked for by an application that must carry on when the desktop cannot help.
+
+The result unions `PlatformResult<T>`, `PickerResult<T>` and `FileCommitResult` are
+closed: they keep their cases for the major version. Each enum says in its
+documentation whether it is open or closed.
 
 `IFileDialogs.OpenDirectoryAsync(new OpenDirectoryOptions())` returns a
 `PickerResult<IDirectoryLease>` for one existing local directory. Keep the selected
@@ -30,23 +45,21 @@ Presentation close releases every lease the presentation still owns; on macOS th
 ends security-scoped access, and `LocalPath` throws once closing starts. Native
 owner closure alone does not release leases. When application work that uses a
 lease can outlive the window, such as recovery owned by an `AcceptedWorkScope`,
-drain that work before stopping the `PresentationLifetime`, or dispose the lease
-at the end of the work itself:
+drain that work before the window closes, or dispose the lease at the end of the
+work itself:
 
 ```csharp
-await acceptedWork.DisposeAsync(); // Work using lease.LocalPath has finished.
-await presentationLifetime.DisposeAsync(); // Releases remaining leases.
+await acceptedWork.DisposeAsync(); // Work using lease.LocalPath has finished; closing the window releases the rest.
 ```
 
 User dismissal returns `Dismissed`, caller cancellation throws
 `OperationCanceledException`, and presentation shutdown returns
 `Unavailable(OwnerClosed)`. The `platform.directories.open` capability reports
-availability when using `PresentationFiles`. Existing file-only implementations
-remain compatible and report directory selection unavailable. A custom
-`IPickerBackend` that implements `OpenDirectoryAsync` must also return `true` from
-`SupportsDirectorySelection`; `PresentationFiles` always calls the backend's method
-and throws `InvalidOperationException` if an undeclared backend returns a result
-other than `Unavailable`.
+whether the window's dialogs can select a directory. A file-dialog provider
+(`IPickerBackend` in Runic.Platform.Runtime) that implements `OpenDirectoryAsync`
+must also return `true` from `SupportsDirectorySelection`; the host always calls the
+provider's method and throws `InvalidOperationException` if an undeclared provider
+returns a result other than `Unavailable`.
 
 `PickerResult<T>.Selected` and `PlatformResult<T>.Success` deconstruct, so a
 caller can match and take the value in one pattern:
@@ -138,7 +151,7 @@ on.
 | --- | --- | --- |
 | Linux (GTK 3 and GTK 4, also in Flatpak and Snap) | The OpenURI desktop portal, as `PortalPlatformProvider.OpenUriAsync` | The portal may let the user choose an application; cancelling is `Failed(UserDismissed)` |
 | Windows | `ShellExecuteEx` with the URI and the shell's URL association (the user's default), with zone checks | Without a handler, for example no mail client, Windows 11 offers to find an application and reports success; older shells report `Unavailable(BackendUnavailable)` |
-| macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Failed(IoError)` with the `NSError` domain and code (macOS 26: `NSCocoaErrorDomain 256`) |
+| macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Failed(Other)` with the `NSError` domain and code (macOS 26: `NSCocoaErrorDomain 256`) |
 
 Success means the desktop accepted the URI, not that an application showed it.
 
@@ -151,7 +164,7 @@ registers `DesktopSettings.Unavailable(reason)`: reads return
 `Unavailable(reason)` and which never raises `Activated`.
 `IDesktopStatusIcon`, `IDesktopLoginStartup` and `IDesktopInhibition` are
 application singletons too; without a provider they are
-`DesktopStatusIcons.Unavailable(reason)`, `DesktopLoginStartup.Unavailable(reason)`
+`DesktopStatusIcon.Unavailable(reason)`, `DesktopLoginStartup.Unavailable(reason)`
 and `DesktopInhibition.Unavailable(reason)`. Unavailable inhibition supports no
 effects, still validates the effects and reason as a provider does, and returns
 `Unavailable(reason)` from every acquisition.
@@ -202,7 +215,7 @@ the provider:
 var launch = ApplicationLaunch.FromProcess(args);
 // After ApplicationInstance.ClaimAsync made this process the running instance; on macOS on the main thread,
 // before the first window.
-await using var opens = PlatformServices.CreateOpenRequests(new(["org.example.notes"]) { Files = true }, instance, launch);
+await using var opens = PlatformServices.CreateOpenRequests(new(["org.example.notes"]) { IncludeFiles = true }, instance, launch);
 opens.Opened += (_, request) => { /* worker thread: validate each URI, then dispatch to a window */ };
 ```
 
@@ -328,7 +341,8 @@ cancellation, items completed before stay done, and what the item in progress
 did is put back: its copies are removed, renamed entries move back, and an entry
 it replaced returns. The first error is `Failed` with `NotFound`,
 `PermissionDenied`, `Conflict` (a conflict without a handler), `UserDismissed`
-(a conflict answered `Cancel`) or `IoError`, such as for a full disk. Caller
+(a conflict answered `Cancel`), `IOError`, such as for a full disk, or `Other`
+for a native error no other code describes. Caller
 cancellation throws `OperationCanceledException`.
 
 ### What a transfer keeps

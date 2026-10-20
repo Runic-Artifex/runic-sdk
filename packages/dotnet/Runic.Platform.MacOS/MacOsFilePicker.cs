@@ -7,7 +7,7 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.MacOS;
 
-internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativeFilePicker, INativeDirectoryPicker
+internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static readonly Lazy<bool> Sandboxed = new(IsSandboxed);
@@ -16,16 +16,11 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
 
     public bool SupportsMultipleSelection => true;
 
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
-        (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
-
     public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         return SelectCoreAsync(request, false, cancellationToken);
     }
-
-    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) => SelectDirectoryAsync(null, cancellationToken);
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
     {
@@ -225,7 +220,7 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "_Block_copy")] private static partial nint BlockCopy(nint block);
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "_Block_release")] internal static partial void Release(nint block);
     }
-    private static ValueTask OnOwnerAsync(INativePickerOwner owner, Action<nint> action, CancellationToken cancellationToken = default) =>
+    private static ValueTask OnOwnerAsync(INativeWindowOwner owner, Action<nint> action, CancellationToken cancellationToken = default) =>
         owner.InvokeAsync(window => { using var pool = new AutoreleasePool(); action(window); }, cancellationToken);
 
     private sealed class AutoreleasePool : IDisposable

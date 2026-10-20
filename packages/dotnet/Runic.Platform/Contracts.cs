@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 namespace Runic.Platform;
 
 /// <summary>Why a capability cannot currently be used.</summary>
+/// <remarks>This set is open: a minor release may add reasons, so handle unknown values.</remarks>
 public enum PlatformUnavailableReason
 {
     /// <summary>No provider was explicitly registered.</summary>
@@ -18,29 +19,39 @@ public enum PlatformUnavailableReason
 }
 
 /// <summary>A classified operational failure, without exposing paths or native handles.</summary>
+/// <remarks>
+/// This set is open: a minor release may add codes, so handle unknown values, for example as <see cref="Other"/>.
+/// Zero is never a real failure: <see cref="Unknown"/> is only the default value, and no provider reports it.
+/// </remarks>
 public enum PlatformFailureCode
 {
+    /// <summary>No code; the default value. Runic never reports it.</summary>
+    Unknown = 0,
     /// <summary>The operation was denied access.</summary>
-    PermissionDenied,
+    PermissionDenied = 1,
     /// <summary>A conflicting operation or another process holds the resource.</summary>
-    ResourceBusy,
+    ResourceBusy = 2,
     /// <summary>The supplied or native data is invalid.</summary>
-    InvalidData,
+    InvalidData = 3,
     /// <summary>The content exceeds the requested limit.</summary>
-    TooLarge,
+    TooLarge = 4,
     /// <summary>An input/output operation failed.</summary>
-    IoError,
+    IOError = 5,
     /// <summary>The destination changed since acquisition.</summary>
-    Conflict,
+    Conflict = 6,
     /// <summary>The user dismissed a native interactive operation.</summary>
-    UserDismissed,
+    UserDismissed = 7,
     /// <summary>The store is locked and could not ask the user to unlock it.</summary>
-    Locked,
+    Locked = 8,
     /// <summary>The file or directory does not exist.</summary>
-    NotFound
+    NotFound = 9,
+    /// <summary>A failure that no other code describes, such as an unclassified native error; the
+    /// <see cref="PlatformDiagnostic"/> carries the native detail.</summary>
+    Other = 10
 }
 
-/// <summary>Ownership requirements for native dialogs. This preview supports owned dialogs only.</summary>
+/// <summary>Ownership requirements for native dialogs. Runic supports owned dialogs only; other values may be added.</summary>
+/// <remarks>This set is open: a minor release may add policies.</remarks>
 public enum OwnerPolicy
 {
     /// <summary>Require the verified owner of this presentation.</summary>
@@ -48,6 +59,7 @@ public enum OwnerPolicy
 }
 
 /// <summary>Required durability behavior for a save transaction.</summary>
+/// <remarks>This set is open: a minor release may add policies.</remarks>
 public enum FileWritePolicy
 {
     /// <summary>Stage beside the target and replace atomically; otherwise report unavailable before modifying it.</summary>
@@ -58,6 +70,8 @@ public enum FileWritePolicy
 public readonly record struct PlatformUnit;
 
 /// <summary>A service outcome. Cancellation is represented by an OperationCanceledException.</summary>
+/// <remarks>The set of cases is closed: <see cref="Success"/>, <see cref="Unavailable"/> and <see cref="Failed"/> are
+/// the only ones for this major version.</remarks>
 public abstract record PlatformResult<T>
 {
     private PlatformResult() { }
@@ -129,6 +143,8 @@ public sealed record PlatformDiagnostic(string Domain, long Code, string? Messag
 }
 
 /// <summary>A dialog outcome. User dismissal is distinct from cancellation, unavailability and failure.</summary>
+/// <remarks>The set of cases is closed: <see cref="Selected"/>, <see cref="Dismissed"/>, <see cref="Unavailable"/> and
+/// <see cref="Failed"/> are the only ones for this major version.</remarks>
 public abstract record PickerResult<T> where T : IAsyncDisposable
 {
     private PickerResult() { }
@@ -149,11 +165,14 @@ public abstract record PickerResult<T> where T : IAsyncDisposable
     /// <param name="Reason">The unavailability reason.</param>
     public sealed record Unavailable(PlatformUnavailableReason Reason) : PickerResult<T>;
     /// <summary>The dialog or acquisition failed.</summary>
-    /// <param name="Code">The classified failure.</param>
-    public sealed record Failed(PlatformFailureCode Code) : PickerResult<T>;
+    /// <param name="Code">The classified failure. Branch on this value.</param>
+    /// <param name="Diagnostic">Native error detail for logs and support, when the provider observed one.</param>
+    public sealed record Failed(PlatformFailureCode Code, PlatformDiagnostic? Diagnostic = null) : PickerResult<T>;
 }
 
 /// <summary>The observed outcome after an atomic replacement attempt. An uncertain commit must not be retried automatically.</summary>
+/// <remarks>The set of cases is closed: <see cref="Committed"/>, <see cref="NotCommitted"/> and <see cref="CommitUnknown"/>
+/// are the only ones for this major version.</remarks>
 public abstract record FileCommitResult
 {
     private FileCommitResult() { }
@@ -161,10 +180,12 @@ public abstract record FileCommitResult
     public sealed record Committed : FileCommitResult;
     /// <summary>The replacement did not occur.</summary>
     /// <param name="Code">The classified failure.</param>
-    public sealed record NotCommitted(PlatformFailureCode Code) : FileCommitResult;
+    /// <param name="Diagnostic">Native error detail for logs and support, when the provider observed one.</param>
+    public sealed record NotCommitted(PlatformFailureCode Code, PlatformDiagnostic? Diagnostic = null) : FileCommitResult;
     /// <summary>The replacement may have occurred; inspect the destination before deciding what to do.</summary>
     /// <param name="Code">The failure that prevented determining the outcome.</param>
-    public sealed record CommitUnknown(PlatformFailureCode Code) : FileCommitResult;
+    /// <param name="Diagnostic">Native error detail for logs and support, when the provider observed one.</param>
+    public sealed record CommitUnknown(PlatformFailureCode Code, PlatformDiagnostic? Diagnostic = null) : FileCommitResult;
 }
 
 /// <summary>A named file type a file dialog offers, such as "Images" for <c>png</c> and <c>jpg</c>.</summary>
@@ -289,7 +310,7 @@ internal static class FileDialogOptions
 /// <summary>Presentation-scoped selection of file access. Leases, streams and native access remain in C#.</summary>
 public interface IFileDialogs
 {
-    /// <summary>Selects directory access for C# filesystem operations. Older providers report unavailable.</summary>
+    /// <summary>Selects directory access for C# filesystem operations. A provider without directory selection reports unavailable.</summary>
     /// <remarks>
     /// The default implementation returns <see cref="PickerResult{T}.Unavailable"/> with
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. A provider that implements directory selection
@@ -378,16 +399,8 @@ public interface ITextClipboard
     ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Dispatches synchronous actions on the presentation's UI thread.</summary>
-public interface IUiDispatcher
-{
-    /// <summary>Whether the caller is on the UI thread.</summary>
-    bool CheckAccess();
-    /// <summary>Runs an action once while the presentation remains valid.</summary>
-    ValueTask InvokeAsync(Action action, CancellationToken cancellationToken = default);
-}
-
 /// <summary>One capability's current availability.</summary>
+/// <remarks>This set is closed: it gains cases only in a major release.</remarks>
 public abstract record CapabilityStatus
 {
     private CapabilityStatus() { }

@@ -216,7 +216,7 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
         (_, 13) or (0x0D or 0x05, _) => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.NotFound, Veto(result, veto)), // AlreadyRemoved, no such devnode
         (_, 8 or 10 or 11) or (0x28, _) => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), // cannot be removed
         (_, >= 1 and <= 7) or (0x17, _) => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy, Veto(result, veto)), // in use, CR_REMOVE_VETOED
-        _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, Veto(result, veto)),
+        _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, Veto(result, veto)),
     };
 
     private static PlatformDiagnostic Veto(uint result, int veto) => veto != 0 ? new("PNP_VETO_TYPE", veto) : new("CONFIGRET", result);
@@ -322,6 +322,6 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
     }
 
     private static PlatformResult<T> Failure<T>(int error) =>
-        new PlatformResult<T>.Failed(error == (int)WIN32_ERROR.ERROR_ACCESS_DENIED ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+        new PlatformResult<T>.Failed(error == (int)WIN32_ERROR.ERROR_ACCESS_DENIED ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
             PlatformDiagnostic.FromWin32Error(error));
 }

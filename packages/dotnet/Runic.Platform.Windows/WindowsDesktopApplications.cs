@@ -102,9 +102,9 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
             FileAttributes attributes;
             try { attributes = File.GetAttributes(path); }
             catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
-            { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(2)); }
+            { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromWin32Error(2)); }
             catch (UnauthorizedAccessException) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.PermissionDenied); }
-            catch (IOException error) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(error.HResult)); }
+            catch (IOException error) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromHResult(error.HResult)); }
             if ((attributes & FileAttributes.Directory) != 0) type = WindowsContentTypes.Folder();
             else if ((type = WindowsContentTypes.FromExtension(Path.GetExtension(path), classes)) is null)
             {
@@ -117,9 +117,9 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
                     read = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
                 }
                 catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
-                { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(2)); }
+                { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromWin32Error(2)); }
                 catch (UnauthorizedAccessException) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.PermissionDenied); }
-                catch (IOException error) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromHResult(error.HResult)); }
+                catch (IOException error) { return new PlatformResult<DesktopContentType>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromHResult(error.HResult)); }
                 string? mime = WindowsShellAssociations.Sniff(head.AsSpan(0, read));
                 type = WindowsContentTypes.FromMime(mime is not null && WindowsContentTypes.IsMime(mime) ? mime : WindowsContentTypes.Generic, classes);
             }
@@ -158,7 +158,7 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
             // Without items the application starts as the Start menu starts it.
             if (WindowsShellAssociations.FindEntry(WindowsShellAssociations.AppsFolder(), applicationId) is not { } found) return InvalidData<PlatformUnit>();
             return WindowsShellAssociations.StartAppsFolderEntry(found.ParsingName, out int status) ? Success(default(PlatformUnit))
-                : new PlatformResult<PlatformUnit>.Failed(status is 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                : new PlatformResult<PlatformUnit>.Failed(status is 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                     new PlatformDiagnostic("ShellExecute", status));
         }
         var groups = Group(items, Directory.Exists);
@@ -266,7 +266,7 @@ internal sealed unsafe class WindowsDesktopApplications(IWindowsClasses classes)
         unchecked((int)0x800704C7) => PlatformFailureCode.UserDismissed,
         // ERROR_NO_ASSOCIATION: the registration has no command for the file.
         unchecked((int)0x80070483) => PlatformFailureCode.InvalidData,
-        _ => PlatformFailureCode.IoError,
+        _ => PlatformFailureCode.Other,
     }, PlatformDiagnostic.FromHResult(hr));
 
     private static PlatformResult<T> Success<T>(T value) => new PlatformResult<T>.Success(value);

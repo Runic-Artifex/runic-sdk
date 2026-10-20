@@ -9,7 +9,7 @@ internal interface IWindowsClipboard
     PlatformResult<PlatformUnit> Write(nint owner, string text);
 }
 
-internal sealed class WindowsTextClipboard(INativePickerOwner owner, IWindowsClipboard native) : ITextClipboard
+internal sealed class WindowsTextClipboard(INativeWindowOwner owner, IWindowsClipboard native) : ITextClipboard
 {
     internal const int BusyAttempts = 10;
 

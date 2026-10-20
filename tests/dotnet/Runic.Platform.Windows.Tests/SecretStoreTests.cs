@@ -15,7 +15,7 @@ internal sealed class SecretStoreTests
         Check(WindowsSecretStore.Failure<bool>(1312) is PlatformResult<bool>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "no logon session");
         Check(WindowsSecretStore.Failure<bool>(5) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic: { Domain: "Win32", Code: 5 } }, "access denied");
         Check(WindowsSecretStore.Failure<bool>(1223) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.UserDismissed }, "cancelled");
-        Check(WindowsSecretStore.Failure<bool>(1783) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.IoError }, "other errors");
+        Check(WindowsSecretStore.Failure<bool>(1783) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.Other }, "other errors");
 #pragma warning restore CA1416
     }
 

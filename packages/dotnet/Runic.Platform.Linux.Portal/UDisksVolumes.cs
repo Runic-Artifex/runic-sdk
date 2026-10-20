@@ -300,7 +300,7 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
             "org.freedesktop.DBus.Error.ServiceUnknown" or "org.freedesktop.DBus.Error.NameHasNoOwner" or DBusException.Disconnected
                 or "org.freedesktop.DBus.Error.NoReply" or "org.freedesktop.DBus.Error.Spawn.ServiceNotFound" =>
                 new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
-            _ => new PlatformResult<T>.Failed(PlatformFailureCode.IoError, diagnostic),
+            _ => new PlatformResult<T>.Failed(PlatformFailureCode.Other, diagnostic),
         };
     }
 

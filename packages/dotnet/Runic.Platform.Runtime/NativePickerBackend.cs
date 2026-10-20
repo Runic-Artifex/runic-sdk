@@ -4,9 +4,6 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Runic.Platform.Runtime;
 
-/// <summary>The selected native backend cannot serve this environment.</summary>
-public sealed class NativeBackendUnavailableException : Exception;
-
 /// <summary>An acquired native selection, confined to C# provider infrastructure.</summary>
 /// <param name="Path">The acquired local path, never a bridge payload.</param>
 /// <param name="Access">Optional access grant transferred to the resulting lease.</param>
@@ -43,32 +40,20 @@ public sealed record NativeFileDialogRequest(bool Save, string? SuggestedName)
 /// <summary>Optional directory-selection support for a native file picker.</summary>
 public interface INativeDirectoryPicker
 {
-    /// <summary>Shows one owned directory dialog; null means dismissal. Acquired access transfers to the caller.</summary>
-    ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken);
-    /// <summary>Shows one owned directory dialog that opens in <paramref name="initialDirectory"/> where supported.</summary>
-    /// <remarks>The default implementation ignores the directory and calls <see cref="SelectDirectoryAsync(CancellationToken)"/>.</remarks>
-    ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken) =>
-        SelectDirectoryAsync(cancellationToken);
+    /// <summary>Shows one owned directory dialog that opens in <paramref name="initialDirectory"/> where supported;
+    /// null means dismissal. Acquired access transfers to the caller.</summary>
+    ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken);
 }
 /// <summary>A statically selected native picker which returns acquired access.</summary>
 public interface INativeFilePicker
 {
-    /// <summary>Shows one owned dialog; null means dismissal. Cancellation must release acquired access.</summary>
-    ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken);
     /// <summary>Shows one owned dialog for <paramref name="request"/>; null or an empty list means dismissal.</summary>
     /// <remarks>
     /// Cancellation must release acquired access. A picker that returns more than one selection must also return
-    /// <see langword="true"/> from <see cref="SupportsMultipleSelection"/>. The default implementation ignores the
-    /// filters and the initial directory, calls <see cref="SelectAsync(bool, string?, CancellationToken)"/>, and
-    /// throws <see cref="NativeBackendUnavailableException"/> for a multiple selection.
+    /// <see langword="true"/> from <see cref="SupportsMultipleSelection"/>; one that cannot show a dialog throws
+    /// <see cref="NativeBackendUnavailableException"/>.
     /// </remarks>
-    async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.AllowMultiple) throw new NativeBackendUnavailableException();
-        var selection = await SelectAsync(request.Save, request.SuggestedName, cancellationToken).ConfigureAwait(false);
-        return selection is null ? null : [selection];
-    }
+    ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken);
     /// <summary>Whether this environment's save selections permit sibling staging and replacement.</summary>
     bool SupportsAtomicReplace => true;
     /// <summary>Whether <see cref="SelectAsync(NativeFileDialogRequest, CancellationToken)"/> implements multiple selection.</summary>
@@ -76,7 +61,7 @@ public interface INativeFilePicker
 }
 
 /// <summary>Converts acquired native selections to safe, single-use file leases.</summary>
-public sealed partial class NativePickerBackend(INativePickerOwner owner, INativeFilePicker picker) : IPickerBackend
+public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativeFilePicker picker) : IPickerBackend
 {
     private readonly Guid _generation = owner.Generation;
 
@@ -123,9 +108,9 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
         catch (DllNotFoundException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         catch (EntryPointNotFoundException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         catch (NativeBackendUnavailableException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (UnauthorizedAccessException error) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
         catch (ArgumentException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData); }
-        catch (IOException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.IoError); }
+        catch (IOException error) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
         finally { if (selection?.Access is { } access) await access.DisposeAsync().ConfigureAwait(false); }
     }
 
@@ -140,7 +125,7 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
             PickerResult<ReadFileLeaseList>.Selected(var list) => new PickerResult<IReadFileLease>.Selected(list[0]),
             PickerResult<ReadFileLeaseList>.Dismissed => new PickerResult<IReadFileLease>.Dismissed(),
             PickerResult<ReadFileLeaseList>.Unavailable(var reason) => new PickerResult<IReadFileLease>.Unavailable(reason),
-            PickerResult<ReadFileLeaseList>.Failed(var code) => new PickerResult<IReadFileLease>.Failed(code),
+            PickerResult<ReadFileLeaseList>.Failed(var code, var diagnostic) => new PickerResult<IReadFileLease>.Failed(code, diagnostic),
             _ => throw new InvalidOperationException(),
         };
     }
@@ -158,7 +143,7 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
             PickerResult<ReadFileLeaseList>.Selected(var list) => new PickerResult<IReadFileLeaseList>.Selected(list),
             PickerResult<ReadFileLeaseList>.Dismissed => new PickerResult<IReadFileLeaseList>.Dismissed(),
             PickerResult<ReadFileLeaseList>.Unavailable(var reason) => new PickerResult<IReadFileLeaseList>.Unavailable(reason),
-            PickerResult<ReadFileLeaseList>.Failed(var code) => new PickerResult<IReadFileLeaseList>.Failed(code),
+            PickerResult<ReadFileLeaseList>.Failed(var code, var diagnostic) => new PickerResult<IReadFileLeaseList>.Failed(code, diagnostic),
             _ => throw new InvalidOperationException(),
         };
     }
@@ -192,8 +177,8 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
         catch (DllNotFoundException) { return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         catch (EntryPointNotFoundException) { return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         catch (NativeBackendUnavailableException) { return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException) { return new PickerResult<ReadFileLeaseList>.Failed(PlatformFailureCode.PermissionDenied); }
-        catch (IOException) { return new PickerResult<ReadFileLeaseList>.Failed(PlatformFailureCode.IoError); }
+        catch (UnauthorizedAccessException error) { return new PickerResult<ReadFileLeaseList>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
+        catch (IOException error) { return new PickerResult<ReadFileLeaseList>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
         finally
         {
             if (!transferred)
@@ -251,8 +236,8 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
         catch (DllNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         catch (EntryPointNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         catch (NativeBackendUnavailableException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.PermissionDenied); }
-        catch (IOException) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.IoError); }
+        catch (UnauthorizedAccessException error) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
+        catch (IOException error) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
     }
 
     // Opening a FIFO blocks until a writer appears, and special files may never end.

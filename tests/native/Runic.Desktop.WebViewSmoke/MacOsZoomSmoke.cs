@@ -164,7 +164,7 @@ internal static partial class MacOsZoomSmoke
 
     // Posts the key press and release to the application's queue, which the Desktop event loop sends, as the
     // window server delivers a key press.
-    private static ValueTask SendAsync(DesktopWindow window, ushort key, ulong flags) => window.DispatchNativeAsync(_ =>
+    private static ValueTask SendAsync(DesktopWindow window, ushort key, ulong flags) => window.InvokeNativeAsync(_ =>
     {
         var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
         try
@@ -182,7 +182,7 @@ internal static partial class MacOsZoomSmoke
     });
 
     // Prints the main menu, for a failure to explain.
-    private static ValueTask PrintMenuAsync(DesktopWindow window) => window.DispatchNativeAsync(_ =>
+    private static ValueTask PrintMenuAsync(DesktopWindow window) => window.InvokeNativeAsync(_ =>
     {
         var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
         try { Console.WriteLine($"ZOOM MENU {DescribeMenu(Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("mainMenu")), 0)}"); }
@@ -217,7 +217,7 @@ internal static partial class MacOsZoomSmoke
     private static async Task<NativeState> ReadNativeAsync(DesktopWindow window)
     {
         NativeState state = default;
-        await window.DispatchNativeAsync(handle =>
+        await window.InvokeNativeAsync(handle =>
         {
             var webView = Arg(Send(Send(handle, Sel("contentView")), Sel("subviews")), Sel("objectAtIndex:"), 0);
             var application = Send(Class("NSApplication"), Sel("sharedApplication"));

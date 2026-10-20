@@ -14,8 +14,9 @@ namespace Runic.Platform;
 /// exist is <see cref="PlatformFailureCode.NotFound"/>; access refused is <see cref="PlatformFailureCode.PermissionDenied"/>;
 /// a location without a usable trash, such as a network share or a volume that has none, is
 /// <see cref="PlatformResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>. The
-/// item is never deleted permanently instead: it stays where it was unless the result is a success. Other native
-/// errors are <see cref="PlatformFailureCode.IoError"/> with a diagnostic.
+/// item is never deleted permanently instead: it stays where it was unless the result is a success. A failed
+/// input/output operation, such as on a full disk, is <see cref="PlatformFailureCode.IOError"/>; other native errors
+/// are <see cref="PlatformFailureCode.Other"/> with a diagnostic.
 /// </para>
 /// </remarks>
 public interface IDesktopTrash

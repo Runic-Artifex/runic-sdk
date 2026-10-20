@@ -102,7 +102,7 @@ internal sealed class PkexecTests
             PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Code: 127 } => "denied",
             PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.UserDismissed, Diagnostic.Code: 126 } => "dismissed",
             PlatformResult<PrivilegedActionCompletion>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable } => "unavailable",
-            PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.IoError, Diagnostic: { Domain: "pkexec", Code: 127 } } => "failed",
+            PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.Other, Diagnostic: { Domain: "pkexec", Code: 127 } } => "failed",
             _ => result.ToString(),
         };
         Check(actual == expected, $"{decision}: {result}");
@@ -207,7 +207,7 @@ internal sealed class PkexecTests
             "only 127 is read as a pkexec refusal");
         Check(PkexecOutcome.Classify(127, "program output\nError executing command as another user: Not authorized\n") is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied },
             "the marker may follow other lines");
-        Check(PkexecOutcome.Classify(127, "  Error executing command as another user: Not authorized") is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.IoError },
+        Check(PkexecOutcome.Classify(127, "  Error executing command as another user: Not authorized") is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.Other },
             "markers start a line");
         Check(PkexecOutcome.Classify(127, "Error registering local authentication agent: x") is PlatformResult<PrivilegedActionCompletion>.Unavailable, "agent registration");
         Check(PkexecOutcome.Classify(127, "Error getting authority: x") is PlatformResult<PrivilegedActionCompletion>.Unavailable, "authority");

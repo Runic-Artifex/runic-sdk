@@ -57,7 +57,7 @@ internal sealed class SessionTests
         var jit = new FakeHost { Status = HelperStatus.NotNativeAot };
         Check(await Run(jit) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 4 }), "JIT helper");
         var silent = new FakeHost { ConnectHelper = false };
-        Check(await Run(silent) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, { Code: 7 }), "exited without connecting");
+        Check(await Run(silent) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, { Code: 7 }), "exited without connecting");
         var untrusted = new FakeHost { Check = ProgramCheck.Replaceable };
         Check(await Run(untrusted) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 3 }) && untrusted.Launches == 0, "untrusted, never prompted");
         var missing = new FakeHost { Check = ProgramCheck.Missing };

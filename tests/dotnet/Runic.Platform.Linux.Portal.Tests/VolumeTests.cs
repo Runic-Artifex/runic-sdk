@@ -72,7 +72,7 @@ internal sealed class VolumeTests
             ("org.freedesktop.UDisks2.Error.NotAuthorizedCanObtain", PlatformFailureCode.PermissionDenied),
             ("org.freedesktop.UDisks2.Error.NotAuthorized", PlatformFailureCode.PermissionDenied),
             ("org.freedesktop.UDisks2.Error.NotAuthorizedDismissed", PlatformFailureCode.UserDismissed),
-            ("org.freedesktop.UDisks2.Error.Failed", PlatformFailureCode.IoError),
+            ("org.freedesktop.UDisks2.Error.Failed", PlatformFailureCode.Other),
         })
         {
             fake.NextError = error;

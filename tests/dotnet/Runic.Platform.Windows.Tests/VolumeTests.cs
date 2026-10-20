@@ -61,9 +61,9 @@ internal sealed class VolumeTests
             && source.Ejected.Count == 2, "the system's disk and a drive that cannot be removed are not ejected");
         Check(await volumes.EjectAsync("\\\\?\\Volume{z}\\") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "eject of an unknown ID");
 
-        source.Listing = new PlatformResult<ImmutableArray<DesktopVolume>>.Failed(PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(21));
-        Check(await volumes.MountAsync("\\\\?\\Volume{b}\\") is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.IoError }, "a failed listing is forwarded");
-        Check(await volumes.EjectAsync("\\\\?\\Volume{b}\\") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "a failed listing is forwarded to eject");
+        source.Listing = new PlatformResult<ImmutableArray<DesktopVolume>>.Failed(PlatformFailureCode.IOError, PlatformDiagnostic.FromWin32Error(21));
+        Check(await volumes.MountAsync("\\\\?\\Volume{b}\\") is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.IOError }, "a failed listing is forwarded");
+        Check(await volumes.EjectAsync("\\\\?\\Volume{b}\\") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IOError }, "a failed listing is forwarded to eject");
 
         await Throws<ArgumentException>(() => volumes.MountAsync("").AsTask());
         await volumes.DisposeAsync();
@@ -138,7 +138,7 @@ internal sealed class VolumeTests
         Check(WindowsVolumeSource.EjectResult(0x17, 13) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "already removed");
         Check(WindowsVolumeSource.EjectResult(0x0D, 0) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "no such device");
         Check(WindowsVolumeSource.EjectResult(0x17, 10) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "not removable");
-        Check(WindowsVolumeSource.EjectResult(0x1F, 0) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError }, "other results");
+        Check(WindowsVolumeSource.EjectResult(0x1F, 0) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "other results");
         Check(WindowsVolumeSource.Strings("E:\\\0C:\\Mount\\\0\0ignored".AsSpan()) is ["E:\\", "C:\\Mount\\"], "a double-NUL-terminated list");
         Check(WindowsVolumeSource.Strings("\0\0".AsSpan()).IsEmpty, "an empty list");
 #pragma warning restore CA1416

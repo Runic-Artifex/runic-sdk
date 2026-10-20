@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace Runic.Platform.Runtime;
 
 /// <summary>Tracks clipboard work for one presentation and drains it during shutdown.</summary>
-public sealed class PresentationClipboard : ITextClipboard, IPlatformCapabilities
+internal sealed class PresentationClipboard : ITextClipboard, IPlatformCapabilities
 {
     private readonly PresentationLifetime lifetime;
     private readonly ITextClipboard? backend;

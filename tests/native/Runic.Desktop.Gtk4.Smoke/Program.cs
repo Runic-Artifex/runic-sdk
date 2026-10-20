@@ -381,7 +381,7 @@ static async Task ExerciseCancelledQueuedOpenAsync(Gtk4WindowHostFactory factory
     Console.WriteLine("GTK4 smoke: cancelling a queued window creation.");
     using var release = new ManualResetEventSlim();
     var blocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var busy = owner.DispatchNativeAsync(() =>
+    var busy = owner.InvokeNativeAsync(() =>
     {
         blocked.SetResult();
         release.Wait();
@@ -533,13 +533,13 @@ static async Task<DesktopWindowState> WaitForStateAsync(DesktopWindow window, Fu
     throw new TimeoutException($"The GTK 4 window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");
 }
 
-internal sealed class HostOwner(IDesktopNativeDispatchWindowHost host) : INativePickerOwner
+internal sealed class HostOwner(IDesktopNativeDispatchWindowHost host) : INativeWindowOwner
 {
     public Guid Generation { get; } = Guid.NewGuid();
     public bool IsAvailable => host.IsOpen && host.NativeHandle != 0;
 
     public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) =>
-        host.DispatchNativeAsync(() =>
+        host.InvokeNativeAsync(() =>
         {
             if (!IsAvailable)
             {

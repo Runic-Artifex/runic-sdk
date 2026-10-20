@@ -34,7 +34,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(static _ => DesktopSettings.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopNotifications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
-        services.TryAddSingleton(static _ => DesktopStatusIcons.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
+        services.TryAddSingleton(static _ => DesktopStatusIcon.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopInhibition.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));

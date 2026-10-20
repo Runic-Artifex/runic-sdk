@@ -133,12 +133,12 @@ internal static class MacLoginStartupModel
             ErrorLaunchDeniedByUser or ErrorAuthorizationFailure when serviceManagement => (PlatformFailureCode.PermissionDenied, ApprovalHint.Message),
             ErrorInvalidSignature when serviceManagement => (PlatformFailureCode.InvalidData,
                 "The application bundle's code signature is invalid; sign the bundle to register it as a login item."),
-            ErrorServiceUnavailable or ErrorInternalFailure when serviceManagement => (PlatformFailureCode.IoError, "ServiceManagement could not register the login item."),
-            _ => (PlatformFailureCode.IoError, null),
+            ErrorServiceUnavailable or ErrorInternalFailure when serviceManagement => (PlatformFailureCode.Other, "ServiceManagement could not register the login item."),
+            _ => (PlatformFailureCode.Other, null),
         };
         return new PlatformResult<PlatformUnit>.Failed(code, error.Message is null && hint is not null ? error with { Message = hint } : error);
     }
 
     private static PlatformResult<PlatformUnit> Unchanged(long status, string message) =>
-        new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, new PlatformDiagnostic("SMAppServiceStatus", status, message));
+        new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, new PlatformDiagnostic("SMAppServiceStatus", status, message));
 }

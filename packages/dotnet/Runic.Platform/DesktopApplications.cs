@@ -60,7 +60,7 @@ public sealed record DesktopApplicationInfo(string Id, string Name)
     public ImmutableArray<string> ContentTypes { get => _contentTypes; init => _contentTypes = value.IsDefault ? [] : value; }
     /// <summary>Whether the desktop hides the application from application lists, for example a handler that only opens
     /// what other applications pass it. A hidden application can still be a content type's handler.</summary>
-    public bool Hidden { get; init; }
+    public bool IsHidden { get; init; }
 }
 
 /// <summary>The image data of an icon.</summary>
@@ -89,8 +89,10 @@ public sealed record DesktopIconData(string MediaType, ImmutableArray<byte> Data
 /// <see cref="ContentType"/> is set.</remarks>
 public sealed record DesktopIconRequest
 {
-    /// <summary>The largest size and scale a request accepts.</summary>
-    public const int MaximumSize = 4096, MaximumScale = 16;
+    /// <summary>The largest size a request accepts, in pixels. A later release may raise it.</summary>
+    public static int MaximumSize => 4096;
+    /// <summary>The largest scale a request accepts. A later release may raise it.</summary>
+    public static int MaximumScale => 16;
     private readonly int _size = 1, _scale = 1;
 
     private DesktopIconRequest() { }
@@ -103,10 +105,10 @@ public sealed record DesktopIconRequest
     public string? ContentType { get; private init; }
     /// <summary>The nominal size in pixels at scale 1, 1 to <see cref="MaximumSize"/>.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The size is outside its range.</exception>
-    public int Size { get => _size; init => _size = value is >= 1 and <= MaximumSize ? value : throw new ArgumentOutOfRangeException(nameof(Size)); }
+    public int Size { get => _size; init => _size = value >= 1 && value <= MaximumSize ? value : throw new ArgumentOutOfRangeException(nameof(Size)); }
     /// <summary>The display scale the icon is for, 1 to <see cref="MaximumScale"/>; 2 asks for an icon designed for twice the pixel density.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The scale is outside its range.</exception>
-    public int Scale { get => _scale; init => _scale = value is >= 1 and <= MaximumScale ? value : throw new ArgumentOutOfRangeException(nameof(Scale)); }
+    public int Scale { get => _scale; init => _scale = value >= 1 && value <= MaximumScale ? value : throw new ArgumentOutOfRangeException(nameof(Scale)); }
 
     /// <summary>Requests the themed icon <paramref name="iconName"/>, such as <c>folder</c>.</summary>
     /// <exception cref="ArgumentException">The name is empty or contains NUL or a path separator.</exception>
@@ -129,6 +131,7 @@ public sealed record DesktopIconRequest
 }
 
 /// <summary>How <see cref="IDesktopApplications.GetContentTypeAsync"/> determines a file's type.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum DesktopContentDetection
 {
     /// <summary>From the name alone, without touching the file; it need not exist.</summary>
@@ -162,7 +165,7 @@ public interface IDesktopApplications
     /// <summary>Determines the content type of the file at <paramref name="path"/>.</summary>
     /// <remarks><see cref="DesktopContentDetection.NameOnly"/> never touches the file and returns the most generic type,
     /// <c>application/octet-stream</c> on Linux, for a name it does not recognize. With
-    /// <see cref="DesktopContentDetection.NameAndContent"/> a missing file is <see cref="PlatformFailureCode.IoError"/>
+    /// <see cref="DesktopContentDetection.NameAndContent"/> a missing file is <see cref="PlatformFailureCode.IOError"/>
     /// and an unreadable one <see cref="PlatformFailureCode.PermissionDenied"/>.</remarks>
     /// <exception cref="ArgumentException"><paramref name="path"/> is empty or contains NUL.</exception>
     ValueTask<PlatformResult<DesktopContentType>> GetContentTypeAsync(string path, DesktopContentDetection detection = DesktopContentDetection.NameAndContent,

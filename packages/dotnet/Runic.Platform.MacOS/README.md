@@ -50,7 +50,7 @@ label, and the title and tooltip as its help text.
   When every image is one shade of gray, such as a black or white glyph, the
   image is a template, which the menu bar tints for light and dark mode and
   for a highlighted item. Colour images are shown as they are. macOS has no
-  icon theme: an icon with only a `ThemeName` shows the title as text.
+  icon theme: an icon with only an `IconName` shows the title as text.
 - **Attention.** `NeedsAttention` shows the attention icon, when the state has
   one; macOS has no other attention state. `Passive` shows the item as
   `Active` does.
@@ -89,7 +89,7 @@ A process outside an application bundle, such as `dotnet run`, and macOS 12
 report `BackendUnavailable`. Registration needs a signed bundle; an invalid
 signature reports `InvalidData`, and other `SMAppService` errors keep their
 domain and code in the diagnostic. A call that succeeds without changing the
-login item's status reports that as an `IoError`.
+login item's status reports that as `Other`.
 
 ## Opening files and URLs
 
@@ -299,7 +299,8 @@ General, Login Items, which `OpenLoginItemsSettings` opens.
 | Authorization refused (`errAuthorizationDenied`, -60005), or the daemon's check failed | `Failed(PermissionDenied)` with the `OSStatus` |
 | No dialog possible (-60007); the daemon not registered, waiting for approval or not found; macOS before 14; an unbundled process or one not signed as `ApplicationRequirement` | `Unavailable(BackendUnavailable)` |
 | The program is missing or not trusted, the XPC service is not the daemon, or the daemon does not declare the action | `Failed(InvalidData)`; nothing runs |
-| The daemon could not start the program, or the connection broke | `Failed(IoError)` |
+| The daemon could not start the program, or sent a reply this version does not understand | `Failed(Other)` |
+| The connection to the daemon broke | `Failed(IOError)`; the program may have run |
 | The client process or all clients already run as many actions as the daemon allows | `Failed(ResourceBusy)` |
 | Cancelled before the program started | `OperationCanceledException` |
 

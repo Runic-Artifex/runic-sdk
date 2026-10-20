@@ -26,7 +26,7 @@ public sealed record DesktopOpenRequest(ImmutableArray<Uri> Items)
 public sealed record DesktopOpenOptions(ImmutableArray<string> UrlSchemes)
 {
     /// <summary>Whether the application registered file types, so that file paths and <c>file:</c> URIs are delivered.</summary>
-    public bool Files { get; init; }
+    public bool IncludeFiles { get; init; }
 }
 
 /// <summary>Requests to open files and URLs, from this launch, later launches and, on macOS, the system's open events.</summary>
@@ -60,10 +60,10 @@ public static class DesktopOpenRequests
     /// The files and URLs among a launch's arguments: the desktop passes them as arguments on Linux and Windows.
     /// </summary>
     /// <returns>The request, or <see langword="null"/> when no argument is a registered URL or, with
-    /// <see cref="DesktopOpenOptions.Files"/>, a file.</returns>
+    /// <see cref="DesktopOpenOptions.IncludeFiles"/>, a file.</returns>
     /// <remarks>
     /// An argument is a URL when it is an absolute URI with one of <see cref="DesktopOpenOptions.UrlSchemes"/>. With
-    /// <see cref="DesktopOpenOptions.Files"/>, an argument is a file when it is a <c>file:</c> URI, or a path of an
+    /// <see cref="DesktopOpenOptions.IncludeFiles"/>, an argument is a file when it is a <c>file:</c> URI, or a path of an
     /// existing file or directory that does not start with <c>-</c>; a relative path is resolved against the launch's
     /// working directory. Every other
     /// argument, such as an option, is ignored and stays with the application's own parser. A URL is never read as a
@@ -103,11 +103,11 @@ public static class DesktopOpenRequests
         {
             string scheme = argument[..colon];
             if (scheme.Equals("file", StringComparison.OrdinalIgnoreCase))
-                return options.Files && Uri.TryCreate(argument, UriKind.Absolute, out var file) && file.IsFile ? file : null;
+                return options.IncludeFiles && Uri.TryCreate(argument, UriKind.Absolute, out var file) && file.IsFile ? file : null;
             return options.UrlSchemes.Contains(scheme, StringComparer.OrdinalIgnoreCase)
                 && Uri.TryCreate(argument, UriKind.Absolute, out var url) ? url : null;
         }
-        if (!options.Files || argument.StartsWith('-')) return null;
+        if (!options.IncludeFiles || argument.StartsWith('-')) return null;
         try
         {
             string path = Path.GetFullPath(argument, Path.IsPathFullyQualified(workingDirectory) ? workingDirectory : Environment.CurrentDirectory);

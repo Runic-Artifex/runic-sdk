@@ -18,7 +18,7 @@ namespace Runic.Application.Views.Desktop;
 /// installed-browser presentation or a custom window host without a native handle.
 /// Create and dispose owner-bound services while the window is open.
 /// </remarks>
-public sealed class DesktopNativeOwner : INativePickerOwner
+public sealed class DesktopNativeOwner : INativeWindowOwner
 {
     /// <summary>Creates an owner for <paramref name="window"/>.</summary>
     /// <param name="window">The Desktop window whose native thread runs provider callbacks.</param>
@@ -55,7 +55,7 @@ public sealed class DesktopNativeOwner : INativePickerOwner
         int started = 0;
         try
         {
-            await Window.DispatchNativeAsync(handle =>
+            await Window.InvokeNativeAsync(handle =>
             {
                 // Check again on the native thread: the window may have closed while the work was queued.
                 if (!IsAvailable || handle == 0) throw new OwnerClosedException();

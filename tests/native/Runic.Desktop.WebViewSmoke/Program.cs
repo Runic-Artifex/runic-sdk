@@ -515,12 +515,12 @@ static string RestartedPage() =>
     <title>restarted</title></head><body></body></html>
     """;
 
-internal sealed class WindowPickerOwner(DesktopWindow window) : INativePickerOwner
+internal sealed class WindowPickerOwner(DesktopWindow window) : INativeWindowOwner
 {
     public Guid Generation { get; } = Guid.NewGuid();
     public bool IsAvailable => window.IsOpen && window.NativeHandle != 0 && window.SupportsNativeDispatch;
     public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) =>
-        window.DispatchNativeAsync(handle =>
+        window.InvokeNativeAsync(handle =>
         {
             if (!IsAvailable) throw new OwnerClosedException();
             action(handle);
@@ -638,16 +638,6 @@ internal static class SmokeSoak
             var transaction = (PlatformResult<IFileWriteTransaction>.Success)await save.Value.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace);
             var content = transaction.Value.Content;
             await content.WriteAsync(new byte[] { 9 });
-            Action? pending = null;
-            var dispatcher = new PresentationDispatcher(lifetime, () => false, action => pending = action);
-            using var cancel = new CancellationTokenSource();
-            var invoked = false;
-            var work = dispatcher.InvokeAsync(() => invoked = true, cancel.Token).AsTask();
-            cancel.Cancel();
-            try { await work; throw new InvalidOperationException("Queued operation ignored cancellation."); }
-            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
-            pending!();
-            if (invoked) throw new InvalidOperationException("Cancelled operation executed.");
             await lifetime.DisposeAsync(); // Deliberately forgotten leases and transaction must drain.
             if (readStream.CanRead || content.CanWrite || Directory.GetFiles(path).Length != 1 || await File.ReadAllTextAsync(savePath) != "original")
                 throw new InvalidOperationException("Scope teardown leaked stream/staging data or modified target.");

@@ -129,7 +129,7 @@ public sealed class WindowsPrivilegedActions : IDesktopPrivilegedActions
         try { pipe = _host.CreatePipe(pipeName); }
         catch (IOException e)
         {
-            return new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new("Win32", e.HResult & 0xFFFF, e.Message));
+            return new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IOError, new("Win32", e.HResult & 0xFFFF, e.Message));
         }
         return await new ElevationRun(_host, pipe, _options, request.Output).RunAsync(entry.Helper, commandLine, cancellationToken).ConfigureAwait(false);
     }
@@ -252,7 +252,7 @@ internal sealed class ElevationRun(IElevationHost host, IElevationPipe pipe, Win
             cancellationToken.ThrowIfCancellationRequested();
         }
         try { Send(stream, ElevationProtocol.Go); }
-        catch (IOException) { return ElevationOutcome.ProtocolFailure("The helper closed the connection before the action started."); }
+        catch (IOException) { return ElevationOutcome.ProtocolFailure("The helper closed the connection before the action started.", PlatformFailureCode.IOError); }
 
         // The action runs. Cancellation asks it to stop and, if configured, terminates it after a while; the result
         // reports how it ended either way.

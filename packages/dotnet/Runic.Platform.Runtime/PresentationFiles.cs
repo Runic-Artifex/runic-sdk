@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 namespace Runic.Platform.Runtime;
 
 /// <summary>Serializes owned selection and attaches every acquired lease to its presentation.</summary>
-public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBackend? backend = null)
+internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBackend? backend = null)
     : IFileDialogs, IPlatformCapabilities
 {
     /// <inheritdoc />

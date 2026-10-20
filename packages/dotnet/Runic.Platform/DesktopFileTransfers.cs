@@ -26,7 +26,8 @@ namespace Runic.Platform;
 /// source or destination, <see cref="PlatformFailureCode.PermissionDenied"/>,
 /// <see cref="PlatformFailureCode.Conflict"/> for a conflict without a <see cref="FileTransferRequest.ResolveConflict"/>
 /// handler, <see cref="PlatformFailureCode.UserDismissed"/> when the handler answers
-/// <see cref="FileConflictAction.Cancel"/>, and <see cref="PlatformFailureCode.IoError"/>, such as for a full disk.
+/// <see cref="FileConflictAction.Cancel"/>, <see cref="PlatformFailureCode.IOError"/>, such as for a full disk, and
+/// <see cref="PlatformFailureCode.Other"/> for a native error no other code describes.
 /// Items transferred before an error or cancellation stay transferred; the item in progress is left as it was.
 /// Caller cancellation throws <see cref="OperationCanceledException"/>.
 /// </para>
@@ -92,6 +93,7 @@ public sealed record FileTransferConflict(string SourcePath, string DestinationP
 public sealed record FileEntryInfo(bool IsDirectory, long Length, DateTimeOffset LastWriteTime);
 
 /// <summary>What to do about a conflict.</summary>
+/// <remarks>This set is closed: it gains values only in a major release.</remarks>
 public enum FileConflictAction
 {
     /// <summary>Leave the existing entry and do not transfer the source; a moved source stays where it is.</summary>

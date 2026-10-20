@@ -343,17 +343,17 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             case "Title": writer.WriteVariantString(state.Title); break;
             case "Status": writer.WriteVariantString(StatusName(state.Status)); break;
             case "WindowId": writer.WriteVariantInt32(0); break;
-            case "IconName": writer.WriteVariantString(state.Icon.ThemeName ?? ""); break;
+            case "IconName": writer.WriteVariantString(state.Icon.IconName ?? ""); break;
             case "IconPixmap": writer.WriteSignature("a(iiay)"); WritePixmaps(ref writer, state.Icon); break;
             case "OverlayIconName": writer.WriteVariantString(""); break;
             case "OverlayIconPixmap": writer.WriteSignature("a(iiay)"); WritePixmaps(ref writer, null); break;
-            case "AttentionIconName": writer.WriteVariantString(attention.ThemeName ?? ""); break;
+            case "AttentionIconName": writer.WriteVariantString(attention.IconName ?? ""); break;
             case "AttentionIconPixmap": writer.WriteSignature("a(iiay)"); WritePixmaps(ref writer, attention); break;
             case "AttentionMovieName": writer.WriteVariantString(""); break;
             case "ToolTip":
                 writer.WriteSignature("(sa(iiay)ss)");
                 writer.WriteStructureStart();
-                writer.WriteString(state.Icon.ThemeName ?? "");
+                writer.WriteString(state.Icon.IconName ?? "");
                 WritePixmaps(ref writer, state.Icon);
                 writer.WriteString(state.Title);
                 writer.WriteString(state.Tooltip ?? "");
@@ -572,7 +572,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         private void Choose(Menu menu, int id, string kind)
         {
             // Hosts also report "hovered", "opened" and "closed"; only a click chooses.
-            if (kind == "clicked" && menu.Nodes[id].Item is DesktopMenuCommand { Enabled: true } command)
+            if (kind == "clicked" && menu.Nodes[id].Item is DesktopMenuCommand { IsEnabled: true } command)
                 icon.Raise(DesktopStatusIconActivationKind.MenuItem, command.Id);
         }
 
@@ -704,8 +704,8 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             (null, "children-display") => true,
             (DesktopMenuSeparator, "type") => true,
             (DesktopMenuCommand, "label") or (DesktopMenuSubmenu, "label") => true,
-            (DesktopMenuCommand { Enabled: false }, "enabled") or (DesktopMenuSubmenu { Enabled: false }, "enabled") => true,
-            (DesktopMenuCommand { Checked: not null }, "toggle-type" or "toggle-state") => true,
+            (DesktopMenuCommand { IsEnabled: false }, "enabled") or (DesktopMenuSubmenu { IsEnabled: false }, "enabled") => true,
+            (DesktopMenuCommand { IsChecked: not null }, "toggle-type" or "toggle-state") => true,
             (DesktopMenuSubmenu, "children-display") => true,
             _ => false,
         };
@@ -717,10 +717,10 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 case "type": writer.WriteVariantString(node.Item is DesktopMenuSeparator ? "separator" : "standard"); return true;
                 // An underscore marks dbusmenu's access key; double it to show it literally.
                 case "label": writer.WriteVariantString(Label(node.Item).Replace("_", "__", StringComparison.Ordinal)); return true;
-                case "enabled": writer.WriteVariantBool(node.Item switch { DesktopMenuCommand c => c.Enabled, DesktopMenuSubmenu s => s.Enabled, _ => true }); return true;
+                case "enabled": writer.WriteVariantBool(node.Item switch { DesktopMenuCommand c => c.IsEnabled, DesktopMenuSubmenu s => s.IsEnabled, _ => true }); return true;
                 case "visible": writer.WriteVariantBool(true); return true;
-                case "toggle-type": writer.WriteVariantString(node.Item is DesktopMenuCommand { Checked: not null } ? "checkmark" : ""); return true;
-                case "toggle-state": writer.WriteVariantInt32(node.Item is DesktopMenuCommand { Checked: true } ? 1 : 0); return true;
+                case "toggle-type": writer.WriteVariantString(node.Item is DesktopMenuCommand { IsChecked: not null } ? "checkmark" : ""); return true;
+                case "toggle-state": writer.WriteVariantInt32(node.Item is DesktopMenuCommand { IsChecked: true } ? 1 : 0); return true;
                 case "children-display": writer.WriteVariantString(node.Item is null or DesktopMenuSubmenu ? "submenu" : ""); return true;
                 default: return false;
             }

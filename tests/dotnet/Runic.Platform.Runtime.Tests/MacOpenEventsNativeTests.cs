@@ -22,7 +22,7 @@ internal sealed partial class MacOpenEventsNativeTests
         IDesktopOpenRequests? opens = null;
         await MacOsMainQueue.InvokeAsync(() =>
         {
-            opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"]) { Files = true }, null, new ApplicationLaunch(["runic-test://from-arguments"], "/"));
+            opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"]) { IncludeFiles = true }, null, new ApplicationLaunch(["runic-test://from-arguments"], "/"));
             // As the first window does.
             MacAppKit.EnsureApplication();
         });
@@ -78,7 +78,7 @@ internal sealed partial class MacOpenEventsNativeTests
             IDesktopOpenRequests? opens = null;
             await MacOsMainQueue.InvokeAsync(() =>
             {
-                opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-open-probe"]) { Files = true });
+                opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-open-probe"]) { IncludeFiles = true });
                 MacAppKit.EnsureApplication();
             });
             await using (opens!)

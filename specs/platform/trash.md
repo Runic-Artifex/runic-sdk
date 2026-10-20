@@ -49,7 +49,8 @@ public interface IDesktopTrash
 | In use | `Failed(ResourceBusy)` | `EBUSY`, such as a mount point | Sharing and lock violations | `NSFileLockingError`, `EBUSY` |
 | No usable trash for the location | `Unavailable(BackendUnavailable)` | No usable home trash on the item's file system and no usable topdir trash; in a sandbox, no Trash portal or a symbolic link | The shell would delete permanently: a network share, a drive without a Recycle Bin, an item larger than the bin, a policy | `NSFeatureUnsupportedError`, such as on a network volume |
 | A directory that contains the trash | `Failed(InvalidData)` | `EINVAL` from the rename | — | — |
-| Other native errors | `Failed(IoError)` with the native code | `errno`; the portal's result 0 | `HRESULT` | `NSError` domain and code |
+| A failed input/output operation, such as a full disk | `Failed(IOError)` with the native code | `EIO`, `ENOSPC`, `EDQUOT` | `ERROR_HANDLE_DISK_FULL`, `ERROR_DISK_FULL`, `ERROR_WRITE_FAULT`, `ERROR_READ_FAULT`, `ERROR_CRC`, `ERROR_IO_DEVICE` | `NSFileWriteOutOfSpaceError`; `EIO`, `ENOSPC`, `EDQUOT` |
+| Other native errors | `Failed(Other)` with the native code | `errno`; the portal's result 0 | `HRESULT` | `NSError` domain and code |
 
 Diagnostics carry the native error domain and code only, never a path.
 

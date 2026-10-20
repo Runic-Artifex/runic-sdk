@@ -44,7 +44,7 @@ static int Helper(string[] args)
             Console.Error.WriteLine("helper stderr line");
             return exit;
         case "wait":
-            var stop = PolkitHelper.WatchStandardInput();
+            var stop = PolkitHelper.WatchCancellation();
             Log("waiting");
             Console.WriteLine("helper waiting");
             stop.WaitHandle.WaitOne();

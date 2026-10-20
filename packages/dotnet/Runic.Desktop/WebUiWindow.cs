@@ -168,9 +168,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal bool SupportsNativeDispatch => _embeddedHost?.SupportsNativeDispatch == true;
     internal bool CheckNativeAccess() => _embeddedHost?.CheckNativeAccess() == true;
-    internal ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken) =>
+    internal ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken) =>
         (_embeddedHost ?? throw new InvalidOperationException("No embedded native owner is available."))
-            .DispatchNativeAsync(action, cancellationToken);
+            .InvokeNativeAsync(action, cancellationToken);
 
     /// <summary>Gets the selected browser for this window, or <see cref="WebUiBrowser.NoBrowser"/>.</summary>
     public WebUiBrowser CurrentBrowser => _currentBrowser;

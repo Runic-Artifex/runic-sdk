@@ -28,7 +28,7 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return ValueTask.FromResult<PlatformResult<bool>>(new PlatformResult<bool>.Failed(PlatformFailureCode.IoError));
+            return ValueTask.FromResult<PlatformResult<bool>>(new PlatformResult<bool>.Failed(PlatformFailureCode.IOError));
         }
     }
 
@@ -67,7 +67,7 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError);
+            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError);
         }
     }
 
@@ -85,7 +85,7 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError);
+            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError);
         }
     }
 
@@ -216,7 +216,7 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
                 var response = await responses.Reader.ReadAsync(deadline.Token).ConfigureAwait(false);
                 if (response.Path != handle) continue;
                 if (response.Code != 0)
-                    return new PlatformResult<PlatformUnit>.Failed(response.Code == 1 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                    return new PlatformResult<PlatformUnit>.Failed(response.Code == 1 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                         PortalErrors.Response(response.Code));
                 // Granted background activity can still leave autostart off, for example by the user's choice.
                 if (response.Autostart != autostart) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied);

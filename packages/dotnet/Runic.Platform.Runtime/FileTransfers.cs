@@ -160,7 +160,7 @@ internal sealed class FileTransferEngine(TimeProvider? time = null, int blockSiz
         IOException io when OperatingSystem.IsWindows() => (FileTransferNative.CodeForWin32(io.HResult & 0xFFFF), PlatformDiagnostic.FromHResult(io.HResult)),
         // .NET reports the errno as the HResult of an IOException on Linux and macOS.
         IOException io when io.HResult is > 0 and < 4096 => (FileTransferNative.CodeForErrno(io.HResult), PlatformDiagnostic.FromErrno(io.HResult)),
-        _ => (PlatformFailureCode.IoError, null),
+        _ => (PlatformFailureCode.IOError, null),
     };
 
     // What one item did, so that it can be undone when the item cannot complete.
@@ -380,7 +380,7 @@ internal sealed class FileTransferEngine(TimeProvider? time = null, int blockSiz
             if (result.Status == FileTransferNative.RenameStatus.Done) return;
             throw result.Status == FileTransferNative.RenameStatus.Exists
                 ? new TransferFailedException(PlatformFailureCode.Conflict)
-                : new TransferFailedException(result.Status == FileTransferNative.RenameStatus.CrossDevice ? PlatformFailureCode.IoError : result.Code, result.Diagnostic);
+                : new TransferFailedException(result.Status == FileTransferNative.RenameStatus.CrossDevice ? PlatformFailureCode.Other : result.Code, result.Diagnostic);
         }
 
         private static void ApplyMetadata(Node source, string target)

@@ -55,7 +55,7 @@ internal static partial class FileDropSmoke
 
             var uris = new[] { new Uri(file).AbsoluteUri, new Uri(folder).AbsoluteUri };
             nint source = 0;
-            await window.DispatchNativeAsync(_ => source = DragSource.Create(uris, x: 10, y: 10, size: 150));
+            await window.InvokeNativeAsync(_ => source = DragSource.Create(uris, x: 10, y: 10, size: 150));
             try
             {
                 await Task.Delay(500);
@@ -71,7 +71,7 @@ internal static partial class FileDropSmoke
             }
             finally
             {
-                if (source != 0) await window.DispatchNativeAsync(_ => DragSource.Destroy(source));
+                if (source != 0) await window.InvokeNativeAsync(_ => DragSource.Destroy(source));
             }
         }
         finally

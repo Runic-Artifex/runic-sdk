@@ -61,7 +61,7 @@ internal static class RightToLeftSmoke
                 throw new InvalidOperationException($"The WebKitGTK 6 page did not follow the Arabic locale: {root.GetRawText()}.");
 
             string translated = "", locale = "", widgets = "", messages = "";
-            await window.DispatchNativeAsync(_ =>
+            await window.InvokeNativeAsync(_ =>
             {
                 messages = Marshal.PtrToStringUTF8(SetLocale(LcMessages, 0)) ?? "";
                 // GTK 3 takes its direction from this translation; reported to show GTK 4 does not need it.
@@ -76,7 +76,7 @@ internal static class RightToLeftSmoke
 
             // The guide's override, from the application's thread, for a UI language other than the process locale.
             await SetDirectionAsync(Gtk.TextDirection.Ltr);
-            await window.DispatchNativeAsync(_ => widgets = Gtk.Widget.GetDefaultDirection().ToString());
+            await window.InvokeNativeAsync(_ => widgets = Gtk.Widget.GetDefaultDirection().ToString());
             if (widgets != "Ltr")
                 throw new InvalidOperationException($"Setting GTK's default direction to Ltr left it {widgets}.");
             await SetDirectionAsync(Gtk.TextDirection.Rtl);

@@ -25,10 +25,6 @@
     <AdditionalFiles Include="Thumbnails/org.freedesktop.thumbnails.Thumbnailer1.xml" RunicDBusMode="Proxy" Namespace="Runic.Platform.Linux.Portal.Thumbnails" GenerateDBusTypes="false" />
     <None Remove="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json;UDisks/*.xml;Thumbnails/*.xml" />
     <None Include="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" Pack="true" PackagePath="protocol/" />
-    <!-- Secret encoding is internal to Runic.Platform.Runtime; compiling it here needs no InternalsVisibleTo across packages. -->
-    <Compile Include="../Runic.Platform.Runtime/SecretEncoding.cs" Link="Shared/SecretEncoding.cs" />
-    <!-- The URI launch policy of Runic.Platform, compiled here rather than shared through InternalsVisibleTo. -->
-    <Compile Include="../Runic.Platform/DesktopUriPolicy.cs" Link="Shared/DesktopUriPolicy.cs" />
     <InternalsVisibleTo Include="Runic.Platform.Linux.Portal.Tests" />
     <!-- Shipping packages pin each other exactly; GTK 3 shares document-portal classification. -->
     <InternalsVisibleTo Include="Runic.Platform.Linux" />

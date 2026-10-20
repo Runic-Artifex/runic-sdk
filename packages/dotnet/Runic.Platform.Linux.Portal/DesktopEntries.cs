@@ -60,7 +60,7 @@ internal sealed class DesktopEntry
         Description = Comment ?? GenericName,
         IconName = Icon,
         ContentTypes = [.. MimeTypes.Select(type => mime?.Unalias(type) ?? type).Distinct(StringComparer.OrdinalIgnoreCase)],
-        Hidden = !Shown(desktops),
+        IsHidden = !Shown(desktops),
     };
 
     /// <summary>The executable a program name or absolute path refers to, or null.</summary>

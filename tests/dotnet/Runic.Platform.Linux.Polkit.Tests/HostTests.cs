@@ -6,6 +6,13 @@ using static DeclarationTests;
 /// <summary>The real filesystem checks: only root may be able to replace the program pkexec runs.</summary>
 internal sealed class HostTests
 {
+    [Test, DisplayName("api: the helper's cancellation token has the same name as on Windows (W319-003 D27 k)")]
+    public void CancellationName()
+    {
+        Check(typeof(PolkitHelper).GetMethod(nameof(PolkitHelper.WatchCancellation))?.ReturnType == typeof(CancellationToken), "WatchCancellation");
+        Check(typeof(PolkitHelper).GetMethod("WatchStandardInput") is null, "the mechanism-named WatchStandardInput is gone");
+    }
+
     [Test, DisplayName("host: a root-owned program in root-owned directories is trusted")]
     public void TrustedProgram()
     {

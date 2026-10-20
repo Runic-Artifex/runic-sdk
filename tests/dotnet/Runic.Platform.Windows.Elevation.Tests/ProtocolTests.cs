@@ -246,7 +246,7 @@ internal sealed partial class ProtocolTests
         Check(ElevationOutcome.FromLaunchError(577) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, _), "unsigned where signatures are required");
         Check(ElevationOutcome.FromLaunchError(2) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 1 }), "missing");
         Check(ElevationOutcome.FromLaunchError(1058) is PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "Application Information service disabled");
-        Check(ElevationOutcome.FromLaunchError(1155) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, { Code: 1155 }), "anything else");
+        Check(ElevationOutcome.FromLaunchError(1155) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, { Code: 1155 }), "anything else");
         Check(ElevationOutcome.FromStatus(HelperStatus.NotElevated) is PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "UAC off");
         Check(ElevationOutcome.FromStatus(HelperStatus.Rejected) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 5 }), "rejected");
         Check(ElevationOutcome.FromStatus(HelperStatus.NotNativeAot) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 4 }), "JIT helper");

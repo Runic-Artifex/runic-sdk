@@ -1,2 +1,6 @@
 #nullable enable
 *REMOVED*static Runic.Desktop.DesktopPlatform.OpenUrl(string! url) -> void
+*REMOVED*Runic.Desktop.DesktopWindow.DispatchNativeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.IDesktopNativeDispatchWindowHost.DispatchNativeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.InvokeNativeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopNativeDispatchWindowHost.InvokeNativeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

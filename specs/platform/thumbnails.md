@@ -61,7 +61,7 @@ public static class DesktopThumbnails
 | No thumbnail | `Success(null)` | No valid entry and no thumbnailer, a thumbnailer `Error`, a matching `fail/` entry, a directory | Any other `GetImage` error, such as `WTS_E_FAILEDEXTRACTION` or `E_FAIL` | `QLThumbnailErrorDomain` 0, 2, 3 and 5 |
 | No such file | `Failed(NotFound)` | `ENOENT`, `ENOTDIR`, a dangling link | `0x80070002`, `0x80070003` | Checked before Quick Look; `NSFileNoSuchFileError`, `NSFileReadNoSuchFileError` |
 | Access refused | `Failed(PermissionDenied)` | `EACCES` on the way to the file | `E_ACCESSDENIED` | `EACCES`; `NSFileReadNoPermissionError` |
-| Other native errors | `Failed(IoError)` or `Failed(ResourceBusy)` | — | Out of memory, a WIC failure; sharing violations | Another `NSError` |
+| Other native errors | `Failed(Other)` or `Failed(ResourceBusy)` | — | Out of memory, a WIC failure; sharing violations | Another `NSError` |
 | No backend | `Unavailable(BackendUnavailable)` | — | COM or WIC unavailable | QuickLookThumbnailing cannot be loaded |
 
 Diagnostics carry the native error domain and code only, never a path.

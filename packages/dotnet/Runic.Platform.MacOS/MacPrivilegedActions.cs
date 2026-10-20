@@ -384,7 +384,7 @@ internal sealed unsafe class MacPrivilegedSystemHost : MacPrivilegedHost
             // Already registered, or not registered when unregistering: the status says what it is.
             if (!(diagnostic.Code is MacLoginStartupModel.ErrorAlreadyRegistered or MacLoginStartupModel.ErrorJobNotFound))
                 return new PlatformResult<MacPrivilegedDaemonStatus>.Failed(
-                    diagnostic.Code == MacLoginStartupModel.ErrorInvalidSignature ? PlatformFailureCode.InvalidData : PlatformFailureCode.IoError, diagnostic);
+                    diagnostic.Code == MacLoginStartupModel.ErrorInvalidSignature ? PlatformFailureCode.InvalidData : PlatformFailureCode.Other, diagnostic);
         }
         return new PlatformResult<MacPrivilegedDaemonStatus>.Success(MacPrivilegedOutcome.FromServiceStatus(Send(service, Sel("status"))));
     }

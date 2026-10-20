@@ -69,7 +69,7 @@ internal sealed class UriLauncherTests
     }
 
     // Counts dispatches; a refused URI must not reach it.
-    private sealed class CountingOwner : INativePickerOwner
+    private sealed class CountingOwner : INativeWindowOwner
     {
         internal int Dispatches;
         public Guid Generation { get; } = Guid.NewGuid();

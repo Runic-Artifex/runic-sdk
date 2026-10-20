@@ -141,6 +141,49 @@ direnv exec . dbus-run-session -- env GDK_BACKEND=x11 xvfb-run -a dotnet run --p
 It covers exact directory access, dismissal, caller cancellation and native owner
 closure. It does not automate a desktop backend's chooser UI.
 
+## Diagnostics
+
+`PortalApplication` passes each setup message to its diagnostic sink as a
+`PortalDiagnostic` with a `Code`, a `Message` and an optional `Remediation`, the
+same three fields as `RunicWindowDiagnostic` and `DesktopDiagnostic`. They are for
+logs only: the codes and text may change in any release, so branch on the
+services' results, not on these. A sink receives informational entries too, and is
+called on whichever thread the service is on; an exception it throws is ignored.
+
+| Code | Kind | Meaning |
+| --- | --- | --- |
+| `portal-identity-registered` | information | The portal connection registered the application ID. |
+| `portal-identity-registration-failed` | problem | The portal rejected the application ID; install a matching desktop entry. |
+| `portal-request-unavailable` | problem | A portal request could not be made. |
+| `portal-parent-unavailable` | problem | The window could not be exported as the portal dialog's parent. |
+| `portal-notification-request-accepted` | information | The portal accepted a notification; delivery is not confirmed. |
+| `portal-notification-action-received` | information | The desktop invoked a notification action. |
+| `portal-notification-owner-changed` | information | The notification portal was replaced; the service registers again. |
+| `portal-notification-identity-unspecified` | problem | Notifications without an application ID may lose actions or history. |
+| `portal-notification-permission-denied` | problem | The desktop refused notifications. |
+| `portal-notification-backend-unavailable` | problem | The notification portal is missing or failed. |
+| `status-icon-no-watcher` | problem | No StatusNotifierWatcher runs, so no status area shows the icon. |
+| `status-icon-no-host` | problem | The watcher has no status area showing icons. |
+| `status-icon-register-failed` | problem | Registering the icon failed; it registers again later. |
+| `status-icon-bus-unavailable` | problem | The session bus could not be reached. |
+| `status-icon-bus-lost` | information | The session bus connection ended; the icon registers again. |
+| `login-startup-identity-unspecified` | problem | Login startup outside a sandbox needs an application ID. |
+| `login-startup-foreign-entry` | problem | Another autostart entry uses the application's name. |
+| `login-startup-portal-unavailable` | problem | The Background portal is missing or failed. |
+| `secret-service-unavailable` | problem | No Secret Service answers on the session bus. |
+| `secret-service-plain-session` | information | The Secret Service offered only an unencrypted session. |
+| `trash-portal-unavailable` | problem | The Trash portal could not move the item. |
+| `desktop-applications-sandboxed` | information | Inside Flatpak or Snap the host's applications are out of reach. |
+| `desktop-application-unknown` | problem | No usable desktop entry has the requested ID. |
+| `desktop-application-not-associated` | problem | The application does not open the content type. |
+| `desktop-application-terminal` | problem | The application runs in a terminal, which the provider does not start. |
+| `desktop-application-exec-invalid` | problem | The desktop entry's `Exec` key cannot be parsed. |
+| `desktop-application-local-files-only` | problem | The application opens only local files. |
+| `desktop-application-activation-failed` | problem | D-Bus activation of the application failed. |
+| `mimeapps-write-failed` | problem | The user's `mimeapps.list` could not be written. |
+| `thumbnail-cache-unavailable` | information | The host's thumbnail cache is not visible inside the sandbox. |
+| `thumbnailer-access-denied` | problem | The sandbox does not allow talking to the thumbnailer. |
+
 ## Desktop services
 
 Application-scoped appearance and notification providers, and owned file opening,
@@ -161,7 +204,7 @@ AppIndicator extension provide that watcher.
 ```csharp
 await using var icon = portals.CreateStatusIcon();
 icon.Activated += (_, activation) => { /* worker thread: dispatch to the application */ };
-await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { ThemeName = "applications-system" }, "My app")
+await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { IconName = "applications-system" }, "My app")
 {
     Menu = [new DesktopMenuCommand("open", "Open window"), new DesktopMenuSeparator(), new DesktopMenuCommand("quit", "Quit")],
 });

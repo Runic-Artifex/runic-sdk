@@ -96,7 +96,7 @@ internal sealed class FileDialogOptionsTests
             // The second file disappeared after selection: nothing is returned and every access is released.
             picker.Released = 0;
             picker.Paths = [first, Path.Combine(directory, "missing.png"), second];
-            Check(await backend.OpenFilesAsync(new()) is PickerResult<IReadFileLeaseList>.Failed { Code: PlatformFailureCode.IoError } && picker.Released == 3,
+            Check(await backend.OpenFilesAsync(new()) is PickerResult<IReadFileLeaseList>.Failed { Code: PlatformFailureCode.IOError } && picker.Released == 3,
                 "a selection that cannot be opened releases every file");
             picker.Paths = [];
             Check(await backend.OpenFilesAsync(new()) is PickerResult<IReadFileLeaseList>.Dismissed, "an empty selection is a dismissal");
@@ -110,8 +110,8 @@ internal sealed class FileDialogOptionsTests
                 picker.OnSelect = null;
             }
 
-            // A picker written before multiple selection keeps working for one file and reports multiple selection unavailable.
-            var legacy = new NativePickerBackend(new TestOwner(), new LegacyPicker(first));
+            // A picker without multiple selection serves one file and reports multiple selection unavailable.
+            var legacy = new NativePickerBackend(new TestOwner(), new SingleFilePicker(first));
             Check(!legacy.SupportsMultipleSelection
                 && await legacy.OpenFilesAsync(new()) is PickerResult<IReadFileLeaseList>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
                 "legacy picker multiple selection");
@@ -139,7 +139,7 @@ internal sealed class FileDialogOptionsTests
 
             await using var legacyLifetime = new PresentationLifetime();
             legacyLifetime.AttachTestOwner();
-            var legacy = new PresentationFiles(legacyLifetime, new NativePickerBackend(new TestOwner(), new LegacyPicker(first)));
+            var legacy = new PresentationFiles(legacyLifetime, new NativePickerBackend(new TestOwner(), new SingleFilePicker(first)));
             Check(legacy.GetSnapshot().Statuses["platform.files.openMultiple"] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }
                 && await legacy.OpenFilesAsync(new()) is PickerResult<IReadFileLeaseList>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
                 "a backend without multiple selection");
@@ -186,7 +186,7 @@ internal sealed class FileDialogOptionsTests
         throw new InvalidOperationException($"Expected {typeof(T).Name}: {message}");
     }
 
-    private sealed class TestOwner : INativePickerOwner
+    private sealed class TestOwner : INativeWindowOwner
     {
         public Guid Generation { get; } = Guid.NewGuid();
         public bool IsAvailable => true;
@@ -202,8 +202,6 @@ internal sealed class FileDialogOptionsTests
         internal int Released;
         internal Action? OnSelect;
         public bool SupportsMultipleSelection => true;
-        public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("The backend used the single-file method.");
         public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
         {
             Request = request;
@@ -211,8 +209,6 @@ internal sealed class FileDialogOptionsTests
             return ValueTask.FromResult<IReadOnlyList<NativeFileSelection>?>(
                 [.. Paths.Select(path => new NativeFileSelection(path, new Access(this), AllowsSiblingReplacement: true))]);
         }
-        public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("The backend ignored the initial directory.");
         public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
         {
             DirectoryRequest = initialDirectory;
@@ -224,11 +220,11 @@ internal sealed class FileDialogOptionsTests
         }
     }
 
-    // A picker that implements only the original single-file method.
-    private sealed class LegacyPicker(string path) : INativeFilePicker
+    // A picker without multiple selection.
+    private sealed class SingleFilePicker(string path) : INativeFilePicker
     {
-        public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
-            ValueTask.FromResult<NativeFileSelection?>(new(path, null, true));
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IReadOnlyList<NativeFileSelection>?>([new(path, null, true)]);
     }
 
     private sealed class MinimalDialogs : IFileDialogs

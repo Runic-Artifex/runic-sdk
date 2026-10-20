@@ -3,7 +3,7 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.MacOS;
 
-internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITextClipboard
+internal sealed partial class MacOsTextClipboard(INativeWindowOwner owner) : ITextClipboard
 {
     public ValueTask<PlatformResult<string?>> ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken = default)
     {
@@ -121,7 +121,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
             if (status != 0) return Failed<PlatformUnit>(status);
             flavor = CreateString("public.utf8-plain-text");
             fixed (byte* pointer = bytes) data = CFDataCreate(0, pointer, bytes.Length);
-            if (data == 0) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError);
+            if (data == 0) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other);
             status = PasteboardClear(board);
             if (status != 0) return Failed<PlatformUnit>(status);
             status = PasteboardPutItemFlavor(board, 1, flavor, data, 0);
@@ -143,7 +143,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
         -25130 => PlatformFailureCode.ResourceBusy, // badPasteboardSyncErr
         -25131 or -25132 or -25133 => PlatformFailureCode.ResourceBusy, // item or advertised flavor disappeared
         -25135 => PlatformFailureCode.ResourceBusy, // ownership changed after clear
-        _ => PlatformFailureCode.IoError
+        _ => PlatformFailureCode.Other
     }, new PlatformDiagnostic("OSStatus", status));
     private static readonly System.Text.UTF8Encoding Utf8 = new(false, true);
     private static readonly System.Text.UnicodeEncoding Utf16 = new(false, false, true);

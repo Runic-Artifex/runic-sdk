@@ -20,7 +20,7 @@ internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner, Porta
         if (file.IsInvalid)
         {
             int errno = Marshal.GetLastPInvokeError();
-            return new PlatformResult<PlatformUnit>.Failed(errno is 1 or 13 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+            return new PlatformResult<PlatformUnit>.Failed(errno is 1 or 13 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                 PlatformDiagnostic.FromErrno(errno));
         }
         try

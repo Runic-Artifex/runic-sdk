@@ -46,7 +46,7 @@ internal static partial class MacOsMenuSmoke
         await window.FocusAsync();
         await Task.Delay(500);
         string? failure = null;
-        await window.DispatchNativeAsync(handle =>
+        await window.InvokeNativeAsync(handle =>
         {
             var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
             try { failure = Check(handle, windowTarget, applicationTarget); }

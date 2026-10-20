@@ -194,14 +194,14 @@ internal sealed class ClipboardTests
     private static void Check(bool value, string scenario) { if (!value) throw new InvalidOperationException(scenario); }
 }
 
-internal sealed class DisappearingOwner(Exception failure) : INativePickerOwner
+internal sealed class DisappearingOwner(Exception failure) : INativeWindowOwner
 {
     public Guid Generation { get; } = Guid.NewGuid();
     public bool IsAvailable => true;
     public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default) => ValueTask.FromException(failure);
 }
 
-internal sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
+internal sealed class GtkOwner : INativeWindowOwner, IAsyncDisposable
 {
     readonly ConcurrentQueue<(Action<nint>, TaskCompletionSource)> queue = new();
     readonly Thread thread;

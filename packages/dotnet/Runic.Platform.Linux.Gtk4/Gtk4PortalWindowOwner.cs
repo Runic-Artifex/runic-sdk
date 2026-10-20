@@ -9,7 +9,7 @@ namespace Runic.Platform.Linux.Gtk4;
 /// The supplied owner must dispatch GTK 4 window handles. This class keeps every GTK and
 /// GDK operation inside that owner's callback, so callers never observe a raw native handle.
 /// </remarks>
-public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IPortalWindowOwner
+public sealed partial class Gtk4PortalWindowOwner(INativeWindowOwner owner) : IPortalWindowOwner
 {
     /// <inheritdoc />
     public Guid Generation => owner.Generation;
@@ -204,14 +204,14 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
         private readonly CancellationTokenRegistration _cancellation;
         private GCHandle _handle;
 
-        internal WaylandExport(INativePickerOwner owner, CancellationToken cancellationToken)
+        internal WaylandExport(INativeWindowOwner owner, CancellationToken cancellationToken)
         {
             Owner = owner;
             _cancellation = cancellationToken.Register(static state => ((WaylandExport)state!).Cancel(), this);
         }
 
         internal TaskCompletionSource<PortalParentLease> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal INativePickerOwner Owner { get; }
+        internal INativeWindowOwner Owner { get; }
         private int _canceled;
         internal bool IsCancellationRequested => Volatile.Read(ref _canceled) != 0;
 
@@ -244,7 +244,7 @@ public sealed partial class Gtk4PortalWindowOwner(INativePickerOwner owner) : IP
         public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class WaylandPortalParentLease(INativePickerOwner owner, nint surface, string handle) : PortalParentLease
+    private sealed class WaylandPortalParentLease(INativeWindowOwner owner, nint surface, string handle) : PortalParentLease
     {
         private int _disposed;
 

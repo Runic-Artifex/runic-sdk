@@ -57,8 +57,9 @@ public sealed record DesktopThumbnail(ImmutableArray<byte> Png, int Width, int H
 /// <summary>Thumbnails for hosts and platforms that cannot provide them.</summary>
 public static class DesktopThumbnails
 {
-    /// <summary>The largest size a request accepts, in pixels: the freedesktop.org <c>xx-large</c> thumbnail.</summary>
-    public const int MaximumSize = 1024;
+    /// <summary>The largest size a request accepts, in pixels: the freedesktop.org <c>xx-large</c> thumbnail. A later
+    /// release may raise it.</summary>
+    public static int MaximumSize => 1024;
 
     /// <summary>Creates thumbnails that report every request unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>Requests validate their arguments as a provider does; otherwise nothing throws except caller cancellation.</remarks>

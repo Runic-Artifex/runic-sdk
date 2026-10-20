@@ -230,7 +230,7 @@ internal static class ElevationOutcome
         ErrorFileNotFound or ErrorPathNotFound => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, ProgramDiagnostic(ProgramCheck.Missing)),
         // The Application Information service, which shows the prompt, is disabled or missing.
         ErrorServiceDisabled or ErrorServiceDoesNotExist or ErrorServiceNotActive => new PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
-        _ => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new("Win32", error)),
+        _ => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, new("Win32", error)),
     };
 
     /// <summary>The result of a helper that connected and reported something other than <see cref="HelperStatus.Accepted"/>.</summary>
@@ -250,8 +250,10 @@ internal static class ElevationOutcome
         new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.PermissionDenied,
             new(Domain, 8, "The cancelled helper did not stop and could not be terminated; it may still be running."));
 
-    public static PlatformResult<PrivilegedActionCompletion> ProtocolFailure(string message) =>
-        new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(Domain, 7, message));
+    // A pipe that broke while sending is an I/O failure, as a broken connection to the macOS daemon is; anything else
+    // the helper did is unclassified.
+    public static PlatformResult<PrivilegedActionCompletion> ProtocolFailure(string message, PlatformFailureCode code = PlatformFailureCode.Other) =>
+        new PlatformResult<PrivilegedActionCompletion>.Failed(code, new(Domain, 7, message));
 
     public static PlatformDiagnostic ProgramDiagnostic(ProgramCheck check) => check switch
     {

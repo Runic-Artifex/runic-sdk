@@ -43,7 +43,7 @@ internal static class PkexecOutcome
         if (Find(diagnostic, UnavailableMarkers) is not null)
             return new PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         // Any other pkexec failure (a missing program, failing to change user) or a program that exited with 127.
-        return new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(Domain, Refused));
+        return new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, new(Domain, Refused));
     }
 
     private static string? Find(string diagnostic, string[] markers)

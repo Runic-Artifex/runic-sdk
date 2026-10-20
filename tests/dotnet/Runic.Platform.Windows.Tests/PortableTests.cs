@@ -64,7 +64,7 @@ internal sealed class PortableTests
         Check(await clipboard.WriteTextAsync("invalid\0text") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData });
         Check(native.Writes == 1);
         native.Reads = 0;
-        foreach (var code in new[] { PlatformFailureCode.PermissionDenied, PlatformFailureCode.ResourceBusy, PlatformFailureCode.IoError })
+        foreach (var code in new[] { PlatformFailureCode.PermissionDenied, PlatformFailureCode.ResourceBusy, PlatformFailureCode.IOError })
         {
             native.Failure = code;
             Check(await clipboard.ReadTextAsync(10) is PlatformResult<string?>.Failed failed && failed.Code == code);
@@ -95,7 +95,7 @@ internal sealed class PortableTests
     private static void Check(bool condition) { if (!condition) throw new InvalidOperationException("Clipboard conformance assertion failed"); }
 }
 
-internal sealed class Owner : INativePickerOwner
+internal sealed class Owner : INativeWindowOwner
 {
     public Guid Generation { get; set; } = Guid.NewGuid();
     public bool IsAvailable { get; set; } = true;

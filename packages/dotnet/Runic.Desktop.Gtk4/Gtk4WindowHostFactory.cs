@@ -579,7 +579,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("GTK 4 frameless move is not yet implemented."));
 
-    public ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken = default)
+    public ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
         if (!IsOpen)

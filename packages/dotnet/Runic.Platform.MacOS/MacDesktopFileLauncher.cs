@@ -3,7 +3,7 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 
 namespace Runic.Platform.MacOS;
 
-internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
+internal sealed class MacDesktopFileLauncher(INativeWindowOwner owner) : IDesktopFileLauncher
 {
     private readonly MacUriLauncher _uris = new(owner);
 
@@ -30,7 +30,7 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
                     var workspace = Send(Class("NSWorkspace"), Sel("sharedWorkspace"));
                     if (operation == DesktopFileOperation.Reveal)
                     { Arg(workspace, Sel("activateFileViewerSelectingURLs:"), Array(Url(path))); result.TrySetResult(Success()); }
-                    else result.TrySetResult(BoolArg(workspace, Sel("openURL:"), Url(path)) != 0 ? Success() : Failed(PlatformFailureCode.IoError));
+                    else result.TrySetResult(BoolArg(workspace, Sel("openURL:"), Url(path)) != 0 ? Success() : Failed(PlatformFailureCode.Other));
                     return;
                 }
                 panel = Send(Class("NSOpenPanel"), Sel("openPanel")); Send(panel, Sel("retain"));
@@ -53,7 +53,7 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
                         { result.TrySetResult(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)); return; }
                         applicationUrl = Send(panel, Sel("URL")); Send(applicationUrl, Sel("retain"));
                         var completion = MacDesktopBlock.Create((_, error) => result.TrySetResult(error == 0 ? Success()
-                            : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, ErrorDiagnostic(error))));
+                            : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, ErrorDiagnostic(error))));
                         try
                         {
                             var configuration = Send(Class("NSWorkspaceOpenConfiguration"), Sel("configuration"));

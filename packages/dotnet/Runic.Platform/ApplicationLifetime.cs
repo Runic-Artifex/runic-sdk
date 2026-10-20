@@ -55,6 +55,7 @@ public interface IApplicationInstance : IAsyncDisposable
 }
 
 /// <summary>The outcome of claiming the application's single instance.</summary>
+/// <remarks>This set is closed: it gains cases only in a major release.</remarks>
 public abstract record ApplicationInstanceClaim
 {
     private ApplicationInstanceClaim() { }
@@ -104,7 +105,8 @@ public interface IApplicationLaunchReply
     /// <remarks>
     /// Pass this token rather than <see cref="Cancelled"/> to work that should outlive the launching process, such as
     /// an operation a command line started over SSH: it is not cancelled when the connection drops. The default
-    /// implementation, for implementations written before it existed, returns <see cref="Cancelled"/>.
+    /// implementation returns <see cref="Cancelled"/>, for a reply that cannot tell the two apart; the replies Runic
+    /// creates implement it.
     /// </remarks>
     CancellationToken CancelRequested => Cancelled;
 
@@ -113,7 +115,8 @@ public interface IApplicationLaunchReply
     /// its reply, or cancelling a read), this instance ended, or a write here was cancelled. Writes then return false.
     /// </summary>
     /// <remarks>
-    /// The default implementation, for implementations written before it existed, returns <see cref="Cancelled"/>.
+    /// The default implementation returns <see cref="Cancelled"/>, for a reply that cannot tell the two apart; the
+    /// replies Runic creates implement it.
     /// </remarks>
     CancellationToken Disconnected => Cancelled;
 
@@ -159,13 +162,14 @@ public interface IForwardedLaunchReply : IAsyncDisposable
     /// Stops waiting and closes the connection, which cancels the launch in the running instance.
     /// </param>
     /// <returns>
-    /// The exit status; <see cref="PlatformFailureCode.IoError"/> when the running instance ended or the connection
+    /// The exit status; <see cref="PlatformFailureCode.IOError"/> when the running instance ended or the connection
     /// broke before it answered, and <see cref="PlatformFailureCode.InvalidData"/> for a malformed reply.
     /// </returns>
     ValueTask<PlatformResult<int>> WaitForExitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Asks the running instance to cancel the launch, raising <see cref="IApplicationLaunchReply.Cancelled"/>, and keeps
+    /// Asks the running instance to cancel the launch, cancelling <see cref="IApplicationLaunchReply.CancelRequested"/>
+    /// (and with it <see cref="IApplicationLaunchReply.Cancelled"/>), and keeps
     /// the connection: the running instance's last messages and exit status still arrive. Later calls do nothing.
     /// </summary>
     ValueTask CancelAsync();

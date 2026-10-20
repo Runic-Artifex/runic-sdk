@@ -1,1 +1,3 @@
 #nullable enable
+*REMOVED*Runic.Navigation.Wpf.DispatcherModelContext.RunHookAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! hook, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<T>!
+*REMOVED*Runic.Navigation.Wpf.DispatcherModelContext.YieldToPresentationAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask

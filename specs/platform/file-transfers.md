@@ -143,7 +143,8 @@ Undoing is best effort: an entry that cannot be removed or moved back stays.
 | A file in use (Windows sharing violations) | `Failed(ResourceBusy)` |
 | A conflict without a handler, or an entry that appeared while the transfer ran | `Failed(Conflict)` |
 | A conflict answered `Cancel` | `Failed(UserDismissed)` |
-| A full disk and other I/O errors | `Failed(IoError)` with the `errno` or `HRESULT` |
+| A full disk and other I/O errors | `Failed(IOError)` with the `errno` or `HRESULT` |
+| Other native errors | `Failed(Other)` with the `errno` or `HRESULT` |
 | Caller cancellation | `OperationCanceledException`, within one block |
 
 ## Out of scope for 1.0

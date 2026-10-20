@@ -1,7 +1,7 @@
 namespace Runic.Platform.Runtime;
 
 /// <summary>Owns one presentation generation, drains admitted operations and releases acquired resources.</summary>
-public sealed class PresentationLifetime : IAsyncDisposable
+internal sealed class PresentationLifetime : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _shutdown = new();

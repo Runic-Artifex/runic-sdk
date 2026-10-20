@@ -10,7 +10,7 @@ namespace Runic.Platform.Linux;
 // GTK owns X11/Wayland parent export and the portal request. Never substitute a
 // GtkWindow pointer for an XID or a Wayland portal token. No grant is revoked by
 // this provider: portal grants belong to the user's permission store, not us.
-internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativeFilePicker, INativeDirectoryPicker
+internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // Host paths stage beside the file; portal document views stage through the
@@ -19,9 +19,6 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
 
     public bool SupportsMultipleSelection => true;
 
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
-        (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
-
     public async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -29,8 +26,6 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
         if (!request.Save || selections is not [var selection]) return selections;
         return [selection with { Location = await Portal.DocumentPortalPaths.Session.ClassifyAsync(selection.Path, cancellationToken).ConfigureAwait(false) }];
     }
-
-    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) => SelectDirectoryAsync(null, cancellationToken);
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
     {

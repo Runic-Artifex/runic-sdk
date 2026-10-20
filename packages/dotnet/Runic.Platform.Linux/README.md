@@ -23,7 +23,7 @@ A session bus, GTK3, a display and the appropriate portal backend must be instal
 Read limits bound managed decoding and string allocation; GTK itself receives the
 native selection before reporting its byte length. No offered UTF8_STRING target
 returns null, while an offered empty target returns an empty string. A failed
-advertised transfer reports IoError. GTK does not expose a separate permission code
+advertised transfer reports Other. GTK does not expose a separate permission code
 for transfer refusal. Concurrent access reports ResourceBusy. A successful write
 means GTK acquired ownership; it does not promise clipboard-manager persistence
 when the application exits. Write cancellation is checked before acquisition and

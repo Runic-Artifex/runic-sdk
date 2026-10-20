@@ -84,7 +84,7 @@ internal sealed class Win32Clipboard : IWindowsClipboard
     {
         int error = Marshal.GetLastPInvokeError();
         return new PlatformResult<T>.Failed(
-            error == 5 ? PlatformFailureCode.PermissionDenied : busy ? PlatformFailureCode.ResourceBusy : PlatformFailureCode.IoError,
+            error == 5 ? PlatformFailureCode.PermissionDenied : busy ? PlatformFailureCode.ResourceBusy : PlatformFailureCode.Other,
             PlatformDiagnostic.FromWin32Error(error));
     }
 }

@@ -22,7 +22,7 @@ internal sealed class WindowsLoginStartup(string applicationId,
         }
         catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
-            return ValueTask.FromResult<PlatformResult<bool>>(new PlatformResult<bool>.Failed(PlatformFailureCode.IoError));
+            return ValueTask.FromResult<PlatformResult<bool>>(new PlatformResult<bool>.Failed(PlatformFailureCode.IOError));
         }
     }
 
@@ -48,7 +48,7 @@ internal sealed class WindowsLoginStartup(string applicationId,
         }
         catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
-            return Result(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError));
+            return Result(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError));
         }
     }
 
@@ -66,7 +66,7 @@ internal sealed class WindowsLoginStartup(string applicationId,
         }
         catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
         {
-            return Result(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError));
+            return Result(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IOError));
         }
     }
 

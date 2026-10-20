@@ -19,7 +19,7 @@ and this document lists what each platform needs.
 
 ```csharp
 public sealed record DesktopOpenRequest(ImmutableArray<Uri> Items) { public DesktopActivationContext? PlatformContext { get; init; } }
-public sealed record DesktopOpenOptions(ImmutableArray<string> UrlSchemes) { public bool Files { get; init; } }
+public sealed record DesktopOpenOptions(ImmutableArray<string> UrlSchemes) { public bool IncludeFiles { get; init; } }
 public interface IDesktopOpenRequests : IAsyncDisposable { event EventHandler<DesktopOpenRequest>? Opened; }
 public static class DesktopOpenRequests
 {
@@ -27,7 +27,7 @@ public static class DesktopOpenRequests
     public static DesktopOpenRequest? FromLaunch(ApplicationLaunch launch, DesktopOpenOptions options);
 }
 // Runic.Platform.Runtime
-public static IDesktopOpenRequests ApplicationInstance.CreateOpenRequests(IApplicationInstance? instance, ApplicationLaunch launch, DesktopOpenOptions options);
+public static IDesktopOpenRequests ApplicationInstance.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
 // Runic.Platform.MacOS
 public static IDesktopOpenRequests MacOSPlatformProvider.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
 // Runic.Application.Views.Desktop: the provider for the operating system
@@ -40,7 +40,7 @@ public static IDesktopOpenRequests PlatformServices.CreateOpenRequests(DesktopOp
   Requests that arrive before the first handler subscribes wait for it, as
   `IApplicationInstance.Launched` does.
 - `FromLaunch` takes an argument that is an absolute URI with a registered
-  scheme (compared without regard to case), and, with `Files`, a `file:` URI or
+  scheme (compared without regard to case), and, with `IncludeFiles`, a `file:` URI or
   the path of an existing file or directory that does not start with `-`, a
   relative path resolved against the launch's working directory. Every other
   argument stays with the application's own parser: options, their values, and

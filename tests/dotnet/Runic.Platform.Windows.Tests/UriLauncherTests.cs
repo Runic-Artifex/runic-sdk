@@ -74,7 +74,7 @@ internal sealed class UriLauncherTests
     }
 
     // Runs each dispatch on its own STA thread without a window, as a window's thread would.
-    private sealed class StaOwner : INativePickerOwner
+    private sealed class StaOwner : INativeWindowOwner
     {
         internal int Dispatches;
         public Guid Generation { get; } = Guid.NewGuid();

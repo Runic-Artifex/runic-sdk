@@ -97,7 +97,7 @@ internal sealed class DesktopServicesTests
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
-    private sealed class ClosedOwner : INativePickerOwner
+    private sealed class ClosedOwner : INativeWindowOwner
     {
         internal int Dispatches;
         public Guid Generation { get; } = Guid.NewGuid();

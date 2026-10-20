@@ -28,7 +28,7 @@ public interface IPickerBackend : IFileDialogs
 }
 
 /// <summary>A verified presentation owner. Native handles stay in C# and are usable only during dispatch.</summary>
-public interface INativePickerOwner
+public interface INativeWindowOwner
 {
     /// <summary>The verified presentation generation, shared with its lifetime.</summary>
     Guid Generation { get; }

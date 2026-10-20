@@ -10,7 +10,7 @@ using TUnit.Core;
 internal sealed class OpenRequestsTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private static readonly DesktopOpenOptions Notes = new(["org.example.notes", "notes"]) { Files = true };
+    private static readonly DesktopOpenOptions Notes = new(["org.example.notes", "notes"]) { IncludeFiles = true };
 
     [Test, DisplayName("OPEN: registered URLs and files are taken from the arguments, everything else is left alone")]
     public void ParsesArguments()
@@ -38,7 +38,7 @@ internal sealed class OpenRequestsTests
 
         Check(DesktopOpenRequests.FromLaunch(launch, new DesktopOpenOptions([])) is null, "nothing registered, nothing taken");
         Check(DesktopOpenRequests.FromLaunch(launch, new DesktopOpenOptions(["notes"])) is { Items.Length: 1 }, "without files, paths and file URIs are left alone");
-        Check(DesktopOpenRequests.FromLaunch(new ApplicationLaunch(["notes:x"], home), new DesktopOpenOptions([]) { Files = true }) is null,
+        Check(DesktopOpenRequests.FromLaunch(new ApplicationLaunch(["notes:x"], home), new DesktopOpenOptions([]) { IncludeFiles = true }) is null,
             "an argument that looks like a URL is never read as a path");
         Check(DesktopOpenRequests.FromLaunch(new ApplicationLaunch([Path.Combine(home, "report.txt"), home], "/"), Notes) is { Items: [{ IsFile: true }, { IsFile: true }] },
             "an absolute path, such as a Windows drive path, and a directory are files");
@@ -63,7 +63,7 @@ internal sealed class OpenRequestsTests
             await using var instance = ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)claim).Value).Instance;
             var launches = Channel.CreateUnbounded<ApplicationLaunch>();
             instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
-            var opens = ApplicationInstance.CreateOpenRequests(instance, new ApplicationLaunch(["notes:first"], "/"), Notes);
+            var opens = ApplicationInstance.CreateOpenRequests(Notes, instance, new ApplicationLaunch(["notes:first"], "/"));
 
             foreach (string argument in new[] { "--quiet", "notes:second", "notes:third" })
                 Check(await ApplicationInstance.ClaimAsync("org.example.Notes", new ApplicationLaunch([argument], "/"), directory, default)
@@ -200,7 +200,7 @@ internal sealed class OpenRequestsTests
         if (claim is not PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }) return 1;
         await using (instance)
         {
-            await using var opens = ApplicationInstance.CreateOpenRequests(instance, launch, new DesktopOpenOptions([scheme]) { Files = true });
+            await using var opens = ApplicationInstance.CreateOpenRequests(new DesktopOpenOptions([scheme]) { IncludeFiles = true }, instance, launch);
             opens.Opened += (_, request) => { foreach (var item in request.Items) Console.WriteLine(item.ToString()); };
             Console.WriteLine("ready");
             await Task.Delay(TimeSpan.FromSeconds(60));
