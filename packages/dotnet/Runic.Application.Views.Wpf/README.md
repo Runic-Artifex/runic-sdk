@@ -1,12 +1,13 @@
 # Runic.Application.Views.Wpf
 
-Experimental ([`RUNICWPF001`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICWPF001))
-optional WPF child presentation for a Runic web View.
+Optional WPF child presentation for a Runic web View.
 Targets .NET 10 and Windows. The containing WPF application owns its dispatcher,
-shell, navigation engine, ViewModels, services and native dialogs. Toolkit,
-ReactiveUI, or plain observable models can use the same presentation adapter.
-Suppress `RUNICWPF001` where you use it; the package suppresses it in the code
-that the WPF markup compiler generates for a named `RunicWebView`.
+shell, navigation engine, ViewModels and services. Toolkit, ReactiveUI, or plain
+observable models can use the same presentation adapter. The API is stable since
+0.9.0-preview.1; its former experimental ID `RUNICWPF001` is retired, so remove
+its suppressions. Only `RunicWebView.CreateWindowHostFactory()`, for the
+lower-level API, belongs to Runic Desktop's experimental custom window-host family
+[`RUNICDESK100`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK100).
 The XAML namespace is `https://runic-artifex.eu/xaml/views`, with the prefix `rv`.
 
 ## Host a web View in XAML
@@ -52,6 +53,15 @@ The host owns the hosting lifecycle:
   `ReloadAsync()` retries, and also reconnects an open View through a fresh
   session.
 
+Screen readers see the web View as a pane that holds the page's document; set
+`AutomationProperties.Name` (and `HelpText`) on the host to name that pane, for
+example `AutomationProperties.Name="Note editor"`. Tab and Shift+Tab move
+between the page's controls and the WPF controls around the host.
+
+`State` may gain values in a minor release; handle values you don't know. The
+host manages its own `Child`: put the fallback in its content instead, and
+derive from it only to style it.
+
 `ContentRoot` (default `www`) is the built frontend's directory relative to the
 application's base directory, and `StartPage` the page to open in it (default
 `index.html`), as `RunicWindowOptions.StartPage` is for a Runic Window. Set `SurfaceOptions` for anything else. `ModelContext` defaults
@@ -66,6 +76,8 @@ never creates or disposes a ViewModel, a scope or a navigation entry.
 
 `RunicViewHost` composes `RunicWebView`, `DesktopHost` and
 `CreateWpfViewAsync`. Use them directly only when you need another lifecycle.
+`CreateWindowHostFactory()` and `DesktopHostOptions.WindowHostFactory` are
+experimental (`RUNICDESK100`): suppress that ID where you compose them.
 The view and host live as long as the presentation, so keep them in fields and
 dispose them in this order when the control unloads, rather than with
 `await using` in the method that opens them:
@@ -148,8 +160,9 @@ shell instead; the WPF `Window` saves and restores its own placement with
 `StateChanged` events, and the child presentation reports no
 `DesktopWindow.State`. Files dropped on the child WebView do not reach the WPF
 shell's `Drop` event, which the WebView's window covers; the borrowed ViewModel
-receives them, with their paths, when it implements `IRunicFileDropTarget`. Browser fallback is not supported by
-`WpfBridgeView.OpenAsync`. Standard HWND airspace constraints apply; WPF overlays
+receives them, with their paths, when it implements `IRunicFileDropTarget`.
+`WpfBridgeView.OpenAsync` always opens the embedded WebView2: a child control has
+no browser fallback, and the WPF window owns the layout that window options set. Standard HWND airspace constraints apply; WPF overlays
 cannot draw over the child WebView. Tab enters the document's first or last tab
 stop. WebView2 moves that focus asynchronously: the document's focused element
 changes shortly after `TabInto` returns, not during the call. Tab on the
@@ -157,6 +170,28 @@ document's last tab stop and Shift+Tab on its first return focus to the next or
 previous WPF control, through WPF's own traversal (`MoveFocus`); when WPF has no
 control to move to, focus cycles inside the document. Native authentication, reload, focus, tab-in/tab-out and unload checks run on Windows;
 Linux can compile the Windows target and run the linked portable session checks.
+
+## Platform services for a WPF window
+
+A ViewModel shared with Runic Desktop takes `IWindowPlatformServices` (or its
+`FileDialogs`, `Clipboard` and `FileLauncher`), which `AddRunicPlatformServices()`
+binds to each Runic window. In WPF, create them for the window that owns the
+dialogs:
+
+```csharp
+// On the UI thread, before building the provider:
+var mainWindow = new MainWindow();
+services.AddSingleton(WpfPlatformServices.ForWindow(mainWindow));
+```
+
+Call `ForWindow` on the window's thread; the services themselves work from any
+thread and run their native calls on the window's dispatcher, so dialogs are
+modal to it. Until the window has a native handle (it is shown, or
+`WindowInteropHelper.EnsureHandle()` ran) every operation reports
+`OwnerUnavailable`, as for a window that closed before the call. When the window
+closes, the services wait for operations in progress, release the file access
+they acquired, and report `OwnerClosed`; they need no disposal. Each call
+creates services with their own lifetime.
 
 ## Bring the window forward for a second launch
 

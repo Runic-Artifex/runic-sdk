@@ -12,7 +12,6 @@ namespace Runic.Application.Views.Wpf;
 
 /// <summary>Presents a Desktop surface inside the application's existing WPF visual tree.</summary>
 /// <remarks>WPF owns placement, size, visibility, and the dispatcher. Insert the control before opening its surface.</remarks>
-[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 public sealed partial class RunicWebView : HwndHost
 {
     private PresentationHost? _presentation;
@@ -28,6 +27,11 @@ public sealed partial class RunicWebView : HwndHost
     }
 
     /// <summary>Creates a Desktop host factory that presents one surface at a time in this control.</summary>
+    /// <remarks>
+    /// For <see cref="DesktopHostOptions.WindowHostFactory"/>, as <see cref="RunicViewHost"/> uses it. It belongs to the
+    /// experimental custom window-host family <c>RUNICDESK100</c> of Runic.Desktop.
+    /// </remarks>
+    [Experimental("RUNICDESK100", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public IDesktopWindowHostFactory CreateWindowHostFactory() => new HostFactory(this);
 
     /// <inheritdoc />

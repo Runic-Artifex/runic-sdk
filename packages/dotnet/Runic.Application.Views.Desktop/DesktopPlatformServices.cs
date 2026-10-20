@@ -714,9 +714,17 @@ public static partial class DesktopPlatformServices
         MacWindowPresenter.PresentAsync(owner, cancellationToken);
 #endif
 
+    // Runic.Application.Views.Wpf binds the services of a WPF window, which has no DesktopNativeOwner, to the Windows provider.
+    [SupportedOSPlatform("windows")]
+    internal static IWindowPlatformServices CreateForWindowsOwner(INativeWindowOwner owner, out DesktopPlatformProvider provider)
+    {
+        provider = DesktopPlatformProvider.Windows;
+        return new BoundWindowPlatformServices(owner, CreateWindows(owner));
+    }
+
     [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static NativeServices CreateWindows(DesktopNativeOwner owner) => new(
+    private static NativeServices CreateWindows(INativeWindowOwner owner) => new(
         WindowsPlatformProvider.CreateFileDialogs(owner),
         WindowsPlatformProvider.CreateTextClipboard(owner),
         Optional(() => WindowsPlatformProvider.CreateFileLauncher(owner)));
@@ -762,7 +770,7 @@ public static partial class DesktopPlatformServices
         private readonly PresentationClipboard _clipboard;
         private readonly PresentationFileLauncher _launcher;
 
-        public BoundWindowPlatformServices(DesktopNativeOwner owner, NativeServices native)
+        public BoundWindowPlatformServices(INativeWindowOwner owner, NativeServices native)
         {
             _lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
             _files = new PresentationFiles(_lifetime, native.Dialogs);
@@ -838,6 +846,19 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             if (_disposal is not null) return;
             _bound = DesktopPlatformServices.Create(owner, out _provider);
             _window = owner.Window;
+            Volatile.Write(ref _current, _bound);
+        }
+    }
+
+    // A window of another Windows host, such as WPF, without a Desktop window to announce through.
+    [SupportedOSPlatform("windows")]
+    internal void BindWindows(INativeWindowOwner owner)
+    {
+        lock (_gate)
+        {
+            if (_bound is not null) throw new InvalidOperationException("The platform services are already bound to a window.");
+            if (_disposal is not null) return;
+            _bound = DesktopPlatformServices.CreateForWindowsOwner(owner, out _provider);
             Volatile.Write(ref _current, _bound);
         }
     }

@@ -12,7 +12,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <NoWarn>$(NoWarn);RUNICWPF001</NoWarn>
     <!-- The stand-in frontend has no dependencies to install. -->
     <RunicApplicationFrontendInstallEnabled>false</RunicApplicationFrontendInstallEnabled>
   </PropertyGroup>

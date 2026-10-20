@@ -7,7 +7,4 @@
        ProjectReference does not. Projects that reference Runic.Desktop set
        RunicImportDesktopTargets (checked by eng/desktop-targets.test.mjs). -->
   <Import Project="packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets" Condition="'$(RunicImportDesktopTargets)' == 'true'" />
-  <!-- Runic.Application.Views.Wpf suppresses its experimental diagnostic in XAML-generated
-       code (docs/experimental.md). The package's copy wins when it is restored. -->
-  <Import Project="packages/dotnet/Runic.Application.Views.Wpf/buildTransitive/Runic.Application.Views.Wpf.targets" Condition="'$(UseWPF)' == 'true' and '$(_RunicApplicationWpfTargetsImported)' != 'true'" />
 </Project>

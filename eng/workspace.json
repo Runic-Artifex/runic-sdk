@@ -266,7 +266,8 @@
         "tests/dotnet/Runic.Application.Views.Wpf.Tests",
         "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests",
         "examples/wpf-hybrid-editor",
-        "tests/fixtures/application/wpf-bridge-consumer"
+        "tests/fixtures/application/wpf-bridge-consumer",
+        "tests/native/wpf-ui-automation"
       ]
     },
     "views-effect": {

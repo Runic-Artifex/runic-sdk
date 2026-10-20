@@ -66,6 +66,7 @@ export const platformRules = [
   { platforms: ["win-x64"], paths: ["packages/dotnet/Runic.Navigation", "packages/dotnet/Runic.Navigation.Wpf", "tests/dotnet/Runic.Navigation.Wpf.Tests",
     "tests/fixtures/navigation/wpf-consumer", "packages/dotnet/Runic.Application.Views.Wpf", "tests/dotnet/Runic.Application.Views.Wpf.Tests",
     "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests", "tests/fixtures/application/wpf-bridge-consumer", "examples/wpf-*",
+    "tests/native/wpf-ui-automation",
     "tools/Runic.Application.Views.Codegen*", "tools/Runic.Application.Views.Dev", "examples/notes-reactive-views",
     "packages/dotnet/Runic.Platform.Administration.Windows", "tests/dotnet/Runic.Platform.Administration.Windows.Tests",
     "examples/dotnet/Runic.Administration.Console", "tools/Runic.Administration.Verify"] },

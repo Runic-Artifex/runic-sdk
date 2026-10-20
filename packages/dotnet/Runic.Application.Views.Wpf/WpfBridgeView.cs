@@ -10,7 +10,6 @@ using Runic.Navigation;
 namespace Runic.Application.Views.Wpf;
 
 /// <summary>Owns one child presentation and Bridge session while borrowing an application's existing model and services.</summary>
-[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView where TViewModel : class
 {
     private readonly object _gate = new();
@@ -47,12 +46,17 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     object IWpfBridgeView.ViewModel => ViewModel;
 
     /// <summary>Opens the child presentation after its RunicWebView enters the loaded WPF visual tree.</summary>
-    /// <remarks>Only the embedded presentation is accepted. Native window layout belongs to WPF.</remarks>
-    public async ValueTask OpenAsync(DesktopWindowOptions? options = null, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// The presentation is always the embedded WebView2, without a browser fallback: the WPF window owns the layout,
+    /// size and placement that window options would set.
+    /// </remarks>
+    public async ValueTask OpenAsync(CancellationToken cancellationToken = default)
     {
-        var configured = options ?? new DesktopWindowOptions { Browser = BrowserKind.Embedded };
-        if (configured.Browser != BrowserKind.Embedded || configured.PresentationPolicy != DesktopPresentationPolicy.RequestedOnly)
-            throw new ArgumentException("A WPF child view requires the embedded presentation without browser fallback.", nameof(options));
+        var configured = new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            PresentationPolicy = DesktopPresentationPolicy.RequestedOnly,
+        };
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_close is not null, this);
@@ -185,11 +189,10 @@ internal interface IWpfBridgeView : IAsyncDisposable
 {
     object ViewModel { get; }
     DesktopSurface Surface { get; }
-    ValueTask OpenAsync(DesktopWindowOptions? options = null, CancellationToken cancellationToken = default);
+    ValueTask OpenAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Creates child View sessions from the application's existing service provider.</summary>
-[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 public static class WpfBridgeViewExtensions
 {
     private static readonly MethodInfo CreateTypedMethod = typeof(WpfBridgeViewExtensions)

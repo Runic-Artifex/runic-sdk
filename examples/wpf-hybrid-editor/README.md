@@ -23,8 +23,7 @@ dotnet run --project examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj
 ```
 
 WPF runs on Windows. The projects also compile on Linux and macOS with Windows
-targeting enabled. The web host API is experimental; the
-example suppresses `RUNICWPF001` explicitly.
+targeting enabled.
 
 ## Reuse the editor in an existing app
 
