@@ -6,6 +6,7 @@ using Runic.Platform;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using TUnit.Core;
 
 // The native WPF checks, after the portable cases (WpfDispatcherExecutor runs them on the dispatcher).
@@ -102,7 +103,7 @@ internal sealed class NativeChecks
             // TabInto only requests the move: WebView2's MoveFocus has no completion, and the browser process
             // focuses the first element a few milliseconds later, unordered with scripts on the bridge socket.
             // The page waits for the focus to land instead of sampling activeElement once (#216).
-            var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe, TimeSpan.FromSeconds(15));
+            var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("editor"), TimeSpan.FromSeconds(15));
             Program.Check(focus.StartsWith("editor ", StringComparison.Ordinal), $"The child document could not focus its editor: {focus}.");
             window.Content = null;
             await attachment.Released.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -111,6 +112,103 @@ internal sealed class NativeChecks
             Console.WriteLine("Runic.Application.Views.Wpf native authentication/reload/unload checks passed.");
         }
         finally { window.Close(); }
+    }
+
+    // vwpf-01: Tab enters the document at its first or last tab stop and leaves it again, in both directions, to the
+    // surrounding WPF controls. The keys come through the DevTools protocol, which reaches the page without the
+    // window being in the foreground; WebView2 raises MoveFocusRequested for them as for a user's Tab.
+    [Test, NotInParallel("WpfSuite", Order = 16)]
+    public async Task TabEntersAndLeavesTheChildWebView()
+    {
+        using var child = new RunicWebView { Height = 200 };
+        var before = new Button { Content = "Before" };
+        var after = new Button { Content = "After" };
+        var panel = new StackPanel();
+        panel.Children.Add(before);
+        panel.Children.Add(child);
+        panel.Children.Add(after);
+        var window = new Window { Content = panel, Width = 600, Height = 400, Title = "Runic WPF tab traversal" };
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        child.Loaded += (_, _) => loaded.TrySetResult();
+        window.Show();
+        try
+        {
+            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var collection = new ServiceCollection();
+            collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => new Attachment());
+            await using var services = collection.BuildServiceProvider();
+            await using var host = await DesktopHost.StartAsync(new()
+            {
+                WindowHostFactory = child.CreateWindowHostFactory(),
+                ConnectionTimeout = TimeSpan.FromSeconds(20),
+            });
+            await using var view = await services.CreateWpfViewAsync(host, new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("<!doctype html><script src=\"webui.js\"></script>"
+                    + "<input id=\"first\" aria-label=\"First\"><input id=\"last\" aria-label=\"Last\">"),
+            }, new object());
+            await view.OpenAsync();
+            var controller = child.Controller ?? throw new InvalidOperationException("The child presentation has no WebView2 controller.");
+
+            // The script's result returns after the element has focus, so the key that follows cannot overtake it: the
+            // bridge socket and the DevTools protocol are not ordered with each other.
+            async Task FocusInPageAsync(string id)
+            {
+                var focused = await view.Surface.ExecuteJavaScriptAsync(
+                    $"document.getElementById('{id}').focus(); return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                Program.Check(focused == id, $"The document could not focus {id}: {focused}.");
+            }
+
+            async Task LeftToAsync(Button target)
+            {
+                try { await UntilAsync(() => FocusManager.GetFocusedElement(window) == target); }
+                catch (TimeoutException)
+                {
+                    var page = await view.Surface.ExecuteJavaScriptAsync("return document.activeElement?.id || '-';", TimeSpan.FromSeconds(15));
+                    throw new InvalidOperationException(
+                        $"Tab did not leave the document to {target.Content}: WPF focus is {FocusManager.GetFocusedElement(window)}, the page's is {page}.");
+                }
+            }
+
+            // In, forward: WPF's traversal from the preceding button enters the document's first tab stop.
+            before.Focus();
+            Program.Check(before.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)),
+                "WPF could not move focus from the preceding button into the child presentation.");
+            var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("first"), TimeSpan.FromSeconds(15));
+            Program.Check(focus.StartsWith("first ", StringComparison.Ordinal), $"Tab did not enter the document's first stop: {focus}.");
+
+            // Out, forward: Tab on the last stop moves WPF focus to the following button.
+            await FocusInPageAsync("last");
+            await TabAsync(controller, shift: false);
+            await LeftToAsync(after);
+
+            // In, backward: Shift+Tab from the following button enters the document's last tab stop.
+            Program.Check(after.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous)),
+                "WPF could not move focus from the following button into the child presentation.");
+            focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("last"), TimeSpan.FromSeconds(15));
+            Program.Check(focus.StartsWith("last ", StringComparison.Ordinal), $"Shift+Tab did not enter the document's last stop: {focus}.");
+
+            // Out, backward: Shift+Tab on the first stop moves WPF focus to the preceding button.
+            await FocusInPageAsync("first");
+            await TabAsync(controller, shift: true);
+            await LeftToAsync(before);
+            Console.WriteLine("Runic.Application.Views.Wpf tab-in/tab-out checks passed.");
+        }
+        finally { window.Close(); }
+
+        static async Task TabAsync(Runic.Desktop.Internal.WindowsWebView2Controller controller, bool shift)
+        {
+            // As a keyboard sends them: Shift down, Tab with the Shift modifier (8), Shift up.
+            var held = shift ? 8 : 0;
+            if (shift) await KeyAsync("rawKeyDown", "Shift", "ShiftLeft", 16);
+            await KeyAsync("rawKeyDown", "Tab", "Tab", 9);
+            await KeyAsync("keyUp", "Tab", "Tab", 9);
+            if (shift) await KeyAsync("keyUp", "Shift", "ShiftLeft", 16, modifiers: 0);
+
+            Task<string> KeyAsync(string type, string key, string code, int virtualKey, int? modifiers = null) =>
+                controller.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                    $$"""{"type":"{{type}}","modifiers":{{modifiers ?? held}},"key":"{{key}}","code":"{{code}}","windowsVirtualKeyCode":{{virtualKey}},"nativeVirtualKeyCode":{{virtualKey}}}""");
+        }
     }
 
     // RunicViewHost in XAML terms: Model bound to the DataContext, Services inherited from the window.
@@ -196,13 +294,13 @@ internal sealed class NativeChecks
         }
     }
 
-    // Resolves when the document's focused element is the editor, or after ten seconds, and reports the element
+    // Resolves when the document's focused element has the given id, or after ten seconds, and reports the element
     // it settled on, the element it found on arrival, the wait, and whether the page had OS focus. It polls
     // because Chromium does not raise focusin in a page without OS focus, while activeElement still moves.
-    private const string FocusProbe = """
+    private static string FocusProbe(string id) => $$"""
         const arrived = performance.now();
         const initial = document.activeElement?.id || "-";
-        while (document.activeElement?.id !== "editor" && performance.now() - arrived < 10000)
+        while (document.activeElement?.id !== "{{id}}" && performance.now() - arrived < 10000)
           await new Promise(resolve => setTimeout(resolve, 5));
         return `${document.activeElement?.id || "-"} initial=${initial} waitedMs=${Math.round(performance.now() - arrived)} hasFocus=${document.hasFocus()}`;
         """;
