@@ -84,7 +84,14 @@ internal sealed class ValueTests
     [Test, DisplayName("only the connection creates signals and property changes, and they cannot be copied with changes")]
     public void MessageShapes()
     {
-        foreach (var type in new[] { typeof(DBusSignal), typeof(DBusPropertyChanges) })
+        CheckShape(typeof(DBusSignal));
+        CheckShape(typeof(DBusPropertyChanges));
+
+        // The suite runs under NativeAOT, so the reflected members are kept through the annotation.
+        static void CheckShape([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+            System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors
+            | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods
+            | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties)] Type type)
         {
             Check(type.IsSealed && type.GetConstructors().Length == 0, $"{type.Name} has no public constructor");
             Check(type.GetMethod("<Clone>$") is null && type.GetMethod("Deconstruct") is null, $"{type.Name} is not a record");
