@@ -29,12 +29,12 @@ DesktopStatusIconState State() => new(icon, "Runic status icon smoke")
     Menu =
     [
         new DesktopMenuCommand("open", "Open window"),
-        new DesktopMenuCommand("daily", "Check daily") { Checked = daily },
+        new DesktopMenuCommand("daily", "Check daily") { IsChecked = daily },
         new DesktopMenuSeparator(),
         new DesktopMenuSubmenu("More",
         [
             new DesktopMenuCommand("attention", "Ask for attention"),
-            new DesktopMenuCommand("disabled", "Unavailable") { Enabled = false },
+            new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false },
         ]),
         new DesktopMenuCommand("quit", "Quit"),
     ],
