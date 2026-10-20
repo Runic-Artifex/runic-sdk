@@ -109,23 +109,105 @@ The 0.9 API review made the SCM, NetShare, domain-membership and DC-locator call
 asynchronous and added the `NotFound` error category. Windows CI (win-x64, JIT and
 NativeAOT) runs the read-only native checks against the new shapes, including a
 missing service reported as `NotFound` and pre-canceled calls that never start. The
-local write suites and the domain suite have not been rerun on the VMs since; the
-domain acceptance run (W319-009) covers the final shape.
+domain acceptance below (W319-009) reran the local write suites and the domain suite
+on the final 1.0 shape.
+
+## Domain acceptance (2026-10-20, W319-009)
+
+Fixture: a disposable Windows Server 2025 Standard (build 26100) domain controller
+`runic-dc1.runic.test`. It is the forest root of `runic.test` at functional level
+Windows2025, with the DNS role, GPMC and an Enterprise Root CA. The CA issued the
+DC's LDAPS/StartTLS certificate, and LDAP signing is required. Domain-related
+state was restored from a `virsh` snapshot. The client was the Windows 11 VM
+from the local acceptance above, joined to the domain, with RSAT GPMC, AD and
+DNS tools. Base DN `OU=RunicTests,DC=runic,DC=test` and the AD-integrated zone
+`runic-tests.test`. Identities:
+
+- `runic-delegate`: full control of the OU and the zone object, WMI DNS rights
+  and GPO creation. It is not an administrator.
+- `runic-restricted`: a Domain User with explicit denies on the OU and the zone.
+
+The verifier was built on the client with .NET SDK 10.0.401, as NativeAOT and as
+JIT.
+
+| Run | Identity and logon | Command | NativeAOT | JIT |
+| --- | --- | --- | --- | --- |
+| Domain writes | delegate, own logon (scheduled task) | `domain … --allow-changes` | 39 passed, 2 skipped (Basic binds need an explicit credential), exit 0 | same |
+| Domain writes | delegate, explicit `NetworkCredential` | `domain … --allow-changes --only ldap,dns --credential-stdin` | 33 passed, exit 0 | same |
+| Denied writes | restricted, own logon | `domain … --expect-denied` | 11 passed, 2 skipped, exit 0 | same |
+| Denied writes | restricted, explicit credential | `domain … --expect-denied --credential-stdin` | 13 passed, exit 0 | same |
+| Local writes | elevated | `local --allow-changes` | 19 passed, exit 0 | 18 passed; `services.lifecycle` fails with 1061 (JIT test-service limitation above) |
+| Local denied | non-elevated | `local --expect-denied --only services,tasks,firewall,shares` | 8 passed, exit 0 | same |
+
+Accepted on this fixture:
+
+- Directory/AD:
+  - Negotiate binds, signed and sealed, over TLS (636) and over StartTLS, with
+    the current identity or an explicit credential. Basic binds over TLS and
+    StartTLS with an explicit credential.
+  - A TLS connection to the DC's IP address, whose certificate names its DNS
+    name, is refused (`Unavailable`, LDAP 81).
+  - Paged search with page size 1.
+  - Ranged retrieval of a 3100-member group. A plain read returns
+    `member;range=0-1499`, and `ReadAllAttributeValuesAsync` and
+    `GetMembersAsync` return every member.
+  - User/group/computer/OU creation, membership, SPNs, a Unicode attribute,
+    rename, binary SID, password reset and change, account enablement and
+    deletion.
+  - `DiscoverControllerAsync` and `GetMembershipAsync` from the joined client.
+- DNS: all eight record types through WMI/DCOM with the caller's identity and with
+  an explicit `NetworkCredential`. Each type covers create, duplicate `Conflict`,
+  an explicit TTL or the server default, a TTL-only update, an in-place data
+  change, and deletion with repeated deletion reported as absent.
+- GPMC: create, disable, two backups with metadata enumeration, import, restore, an
+  XML report, permission read, grant, upgrade and removal with the other
+  trustees preserved, rename, clearing the WMI filter, links with order and
+  flags, blocked inheritance, link deletion and GPO deletion.
+- Denied access for the restricted identity. Each write failed with
+  `AccessDenied`, and a read-back showed no change:
+  - OU creation and a description change: LDAP 50;
+  - GPO creation and a GPO link on the base OU: `0x80070005`;
+  - DNS record creation: WMI `0x80041003`.
+
+Defects found and fixed in this run:
+
+- `WindowsDnsClient.UpdateAsync` deleted the record on a TTL-only update. The
+  MicrosoftDNS provider deletes a record when `Modify` receives its unchanged data.
+- SRV used the zone property `DomainName` instead of `SRVDomainName`.
+- Update and delete now read the result back. A provider that reports success
+  without applying the change, as `DeleteInstance` does for TXT text that
+  contains quotes, is reported as `NativeFailure`.
+
+Independent cleanup check after the runs, on the DC: `OU=RunicTests` had no
+children and an unchanged description and `gPLink`. The test zone held only
+SOA/NS, and only the two default GPOs existed. On the client, no `RunicVerify-*`
+service, task, task folder, firewall rule or share remained.
+
+Limits:
+
+- GPMC uses the calling thread's identity. Under a network-only logon
+  (`LOGON32_LOGON_NEW_CREDENTIALS`, as `runas /netonly` uses), GPO creation,
+  backup and links work, but report generation fails with `0x80072020`.
+  `Get-GPOReport` fails the same way with `0x80070005`. Run Group Policy
+  operations under the identity's own logon.
+- Directory reads return every value as `DirectoryValue.Binary` (runic-sdk #447).
+- Not covered: WMI filter associations other than clearing one, more than one
+  controller or site, cross-domain trusts, other Windows Server versions, and
+  remote DNS servers that are not domain controllers.
 
 ## Not natively accepted
 
-Local service, task, firewall and share writes are accepted above. Without AD,
-DNS or GPMC fixtures, the following remain **implemented but not natively
-accepted**:
+Local service, task, firewall and share writes, and the domain scenarios, are
+accepted above. The following remain **implemented but not natively accepted**:
 
 | Stage | Fixture work still required |
 | --- | --- |
 | Services/processes | Failure actions other than none; reboot actions; timeouts; per-service denied rights beyond SCM creation; remote SCM. |
 | Tasks/firewall | Preservation of unsupported XML/native settings; password principals; trigger executions; effective Group Policy restrictions; firewall protocol transitions. |
-| Directory/AD | Secure integrated/explicit authentication, certificate failures, paging and ranges, binary values, all mutation types, membership/SPNs/UAC concurrency and password change/reset restrictions. |
+| Directory/AD | Typed text reads (#447), all mutation types beyond those accepted above, membership/SPN/UAC concurrency, and password change/reset restrictions under a stricter policy. |
 | System/networks/shares | ACE order/inheritance retention beyond the tested descriptors; remote shares and remote denied rights. Broader hardware/OS comparisons and malformed/unsupported firmware data. |
-| DNS | DNS role provider, remote authentication, zones/AD integration, all eight record types and TTL/record-set changes, unsupported record reporting and denied access. |
-| GPMC | Installed component path, selected controller, GPO CRUD, backup/import/restore/report outcomes, links/order/inheritance, filtering/delegation and WMI-filter association. |
+| DNS | Non-DC DNS servers, file-backed zones, unsupported record reporting, TXT text that contains quotes (the provider cannot delete it), and sibling-record concurrency. |
+| GPMC | Real WMI-filter association, migration tables, multiple controllers, and report generation under a network-only logon (not supported by GPMC). |
 | Interop | Required domain-operation thread affinity, repeated server mutations and failure cleanup on the fixtures; other architectures not accepted. |
 
 Use snapshot-restorable Windows x64 VMs, a dedicated test domain/OU, a dedicated
