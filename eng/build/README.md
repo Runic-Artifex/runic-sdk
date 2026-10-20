@@ -70,9 +70,11 @@ It also keeps the other links that leave a package on the release tag:
   [docs/diagnostics.md](../../docs/diagnostics.md) (`RunicDiagnosticsCatalog`) at
   the tag, so a new diagnostic needs only its catalog entry.
 - `<RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>` packs a
-  `buildTransitive` props file that sets `RunicDiagnosticsHelpLinkBase` at the tag,
-  for `HelpLink="$(RunicDiagnosticsHelpLinkBase)<lowercase ID>"` on the package's
-  coded `Error` and `Warning` tasks.
+  `buildTransitive` props file that sets `_RunicDiagnosticsHelpLinkBase` at the tag,
+  for `HelpLink="$(_RunicDiagnosticsHelpLinkBase)<lowercase ID>"` on the package's
+  coded `Error` and `Warning` tasks. A package that ships its own `buildTransitive/<PackageId>.props`
+  sets `RunicDiagnosticsHelpLinksPropsName` to another file name and imports that
+  file from its props, as `Runic.Assets` does.
 
 `eng/diagnostics.test.mjs` fails when a reported ID has no catalog entry, a catalog
 entry is stale, or a reporting project does not link to the catalog.

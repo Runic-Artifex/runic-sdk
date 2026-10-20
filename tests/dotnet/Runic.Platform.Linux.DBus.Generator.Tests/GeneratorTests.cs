@@ -51,6 +51,22 @@ internal sealed class GeneratorTests
         Check(output.GetTypeByMetadataName("Example.Bus.Device") is { DeclaredAccessibility: Accessibility.Internal }, "the named, internal service");
     }
 
+    // W319-003 D18 g: RunicDBusNamespace, with Namespace as its former name until 2.0; the new name wins.
+    [Test, DisplayName("RunicDBusNamespace names the namespace, Namespace stays an alias, and the new name wins")]
+    public void RunicDBusNamespaceWithAlias()
+    {
+        var (output, diagnostics, _) = Run([
+            ("New.xml", Interface, new() { ["RunicDBusMode"] = "Service", ["RunicDBusNamespace"] = "Example.New", ["RunicDBusClassName"] = "NewDevice" }),
+            ("Former.xml", Interface, new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "Example.Former", ["RunicDBusClassName"] = "FormerDevice" }),
+            ("Both.xml", Interface, new() { ["RunicDBusMode"] = "Service", ["RunicDBusNamespace"] = "Example.Both", ["Namespace"] = "Example.Ignored", ["RunicDBusClassName"] = "BothDevice" }),
+        ]);
+        Check(diagnostics.IsEmpty, string.Join("; ", diagnostics));
+        Check(output.GetTypeByMetadataName("Example.New.NewDevice") is not null, "RunicDBusNamespace names the namespace");
+        Check(output.GetTypeByMetadataName("Example.Former.FormerDevice") is not null, "Namespace still names it");
+        Check(output.GetTypeByMetadataName("Example.Both.BothDevice") is not null && output.GetTypeByMetadataName("Example.Ignored.BothDevice") is null,
+            "RunicDBusNamespace wins over Namespace");
+    }
+
     [Test, DisplayName("each invalid input reports its RUNICDBUS diagnostic")]
     public void Diagnostics()
     {

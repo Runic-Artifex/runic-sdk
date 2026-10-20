@@ -45,6 +45,12 @@ if (existsSync("emits-dist")) {
   writeFileSync("dist/index.html", \`<script src="runic-views.js"></script><script type="module" src="./assets/\${asset}.js"></script>\`);
   writeFileSync(\`dist/assets/\${asset}.js\`, "export {};");
 }
+if (existsSync("emits-build")) {
+  // A frontend whose build writes to build/ instead of dist/.
+  rmSync("build", { recursive: true, force: true });
+  mkdirSync("build", { recursive: true });
+  writeFileSync("build/index.html", "<p>build</p>");
+}
 if (existsSync("build-fails")) { console.error("error during build:"); console.error("[vite]: Rollup failed to resolve import"); process.exit(1); }
 if (existsSync("build-reports")) { console.log("src/App.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'."); process.exit(2); }
 if (existsSync("build-warns")) console.log("src/App.ts(1,1): warning TS6133: 'unused' is declared but never read.");
@@ -262,14 +268,17 @@ test("svelte-check errors are logged at their file, line and column", () => {
   assert.doesNotMatch(result.output, /App\.svelte\(2,1\): warning/);
 });
 
-test("an old property name still applies and reports RUNICBRIDGE017 once", () => {
+// W319-003 D15, D17: the old names no longer apply; each fails the build once with RUNICBRIDGE017.
+test("an old property name no longer applies and fails with RUNICBRIDGE017", () => {
   const project = join(directory, "renamed");
   mkdirSync(project, { recursive: true });
   writeFileSync(join(project, "App.proj"), `<Project>
   <PropertyGroup>
     <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/client</RunicBridgeFrontendDir>
     <RunicBridgeBuildFrontend>false</RunicBridgeBuildFrontend>
-    <RunicApplicationFrontendBuildEnabled>true</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationId>org.example.app</RunicApplicationId>
+    <RunicApplicationName>App</RunicApplicationName>
+    <ApplicationTitle>App</ApplicationTitle>
     <Configuration>Debug</Configuration>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -280,16 +289,46 @@ test("an old property name still applies and reports RUNICBRIDGE017 once", () =>
     "-getProperty:RunicApplicationFrontendDirectory", "-getProperty:RunicApplicationFrontendBuildEnabled"], { cwd: project, encoding: "utf8" });
   assert.equal(evaluate.status, 0, evaluate.stdout + evaluate.stderr);
   const properties = JSON.parse(evaluate.stdout).Properties;
-  assert.equal(properties.RunicApplicationFrontendDirectory, join(project, "client"));
-  assert.equal(properties.RunicApplicationFrontendBuildEnabled, "false", "The old name wins over the new one.");
+  assert.equal(properties.RunicApplicationFrontendDirectory, `${project}/Frontend`, "The old frontend directory name is ignored.");
+  assert.equal(properties.RunicApplicationFrontendBuildEnabled, "", "The old build switch is ignored.");
   const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsReportRenamedProperties",
     "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
   const output = `${result.stdout}${result.stderr}`;
-  assert.equal(result.status, 0, output);
-  const warnings = [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE017:/.test(line)).map(line => line.trim()))];
-  assert.equal(warnings.length, 2, output);
-  assert.ok(warnings.some(line => /RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/.test(line)), output);
-  assert.ok(warnings.some(line => /RunicBridgeBuildFrontend is renamed to RunicApplicationFrontendBuildEnabled/.test(line)), output);
+  assert.notEqual(result.status, 0, output);
+  const reported = errors(output).filter(line => / error RUNICBRIDGE017:/.test(line));
+  assert.equal(reported.length, 3, output);
+  assert.ok(reported.some(line => /RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory\. The old name no longer applies/.test(line)), output);
+  assert.ok(reported.some(line => /RunicBridgeBuildFrontend is renamed to RunicApplicationFrontendBuildEnabled/.test(line)), output);
+  assert.ok(reported.some(line => /property RunicApplicationId is renamed to ApplicationId/.test(line)), output);
+  // RunicApplicationName is left alone next to ApplicationTitle, as a project may keep its own name.
+  assert.ok(!reported.some(line => /RunicApplicationName/.test(line)), output);
+});
+
+// W319-003 D16: build and publish copy the frontend's output directory to the web root that dev serves.
+test("build copies RunicApplicationFrontendOutputDirectory to RunicApplicationFrontendWebRoot", () => {
+  const app = fixture("output-directory", { name: "app", private: true });
+  writeFileSync(join(app.frontend, "emits-build"), "");
+  const output = join(app.project, "out") + "/";
+  const properties = ["RunicApplicationFrontendOutputDirectory=build", "RunicApplicationFrontendWebRoot=wwwroot/", `TargetDir=${output}`];
+  const result = build(app, { targets: "RunicViewsCollectFrontendInputs;RunicViewsCopyFrontend", properties });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(builds(result), 1);
+  assert.equal(readFileSync(join(output, "wwwroot/index.html"), "utf8"), "<p>build</p>");
+  assert.ok(!existsSync(join(output, "www")), "Nothing goes to www/.");
+  // Deleting a file the build left in build/ builds again, as for dist/.
+  rmSync(join(app.frontend, "build/index.html"));
+  assert.equal(builds(build(app, { targets: "RunicViewsCollectFrontendInputs", properties })), 1);
+
+  const evaluate = spawnSync("dotnet", ["msbuild", join(app.project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+    ...properties.map(property => `-p:${property}`), "-getProperty:_RunicApplicationFrontendWebRoot", "-getProperty:DefaultItemExcludes",
+    "-getItem:RuntimeHostConfigurationOption"], { cwd: app.project, encoding: "utf8" });
+  assert.equal(evaluate.status, 0, evaluate.stdout + evaluate.stderr);
+  const evaluated = JSON.parse(evaluate.stdout);
+  assert.equal(evaluated.Properties._RunicApplicationFrontendWebRoot, "wwwroot");
+  assert.ok(evaluated.Properties.DefaultItemExcludes.includes(`${app.frontend}/build/**`), evaluated.Properties.DefaultItemExcludes);
+  // The hosts serve the web root that the runtime configuration names.
+  assert.deepEqual(evaluated.Items.RuntimeHostConfigurationOption.map(option => [option.Identity, option.Value]),
+    [["Runic.Application.FrontendWebRoot", "wwwroot"]]);
 });
 
 const builds = result => result.commands.filter(command => command === "build").length;

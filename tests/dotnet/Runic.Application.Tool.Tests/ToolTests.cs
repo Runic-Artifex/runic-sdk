@@ -103,12 +103,12 @@ internal sealed class ToolTests
         Contains(properties, "RunicApplicationFrontendDirectory");
     }
 
-    [Test, DisplayName("dev reads the 0.7.0-preview.6 Window and frontend property names")]
-    public void EvaluationReadsRenamedProperties()
+    [Test, DisplayName("dev reads only the current property names and the build's output directory and web root")]
+    public void EvaluationReadsCurrentPropertiesOnly()
     {
-        // RUNICBRIDGE017 keeps the old names working for one preview; dev reads them too.
+        // W319-003 D15: the 0.7.0-preview.6 names fail the build with RUNICBRIDGE017; dev does not read them either.
         using var workspace = new TestWorkspace();
-        string project = workspace.Write("App.csproj", """
+        string former = workspace.Write("Former/App.csproj", """
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
                 <OutputType>Exe</OutputType>
@@ -118,12 +118,39 @@ internal sealed class ToolTests
               </PropertyGroup>
             </Project>
             """);
-        workspace.Write("Client/package.json", """{"packageManager":"npm@10.0.0"}""");
+        workspace.Write("Former/Client/package.json", """{"packageManager":"npm@10.0.0"}""");
+        var rejected = Throws<DevUsageException>(() => DevProjectConfiguration.EvaluateAsync(
+            "dotnet", former, "Debug", CancellationToken.None).GetAwaiter().GetResult());
+        Equal("RAPPDEV1005", rejected.Code);
+        string arguments = string.Join(" ", DevProjectConfiguration.CreateEvaluationArguments(former, "Debug"));
+        foreach (string removed in new[] { "RunicViewsWindowProject", "RunicBridgeFrontendDir", "RunicAssetsFrontendDirectory", "RunicAssetsDist",
+            "RunicApplicationFrontendPackageDirectory", "RunicApplicationFrontendViteDevServerEnabled", ",RunicApplicationFrontendCompiler" })
+        {
+            DoesNotContain(arguments, removed);
+        }
+
+        // D16: the output directory is relative to the frontend directory and the web root to the build output, as
+        // the Views targets define them for build and publish.
+        string current = workspace.Write("Current/App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
+                <RunicApplicationFrontendDirectory>Client</RunicApplicationFrontendDirectory>
+                <RunicApplicationFrontendOutputDirectory>build</RunicApplicationFrontendOutputDirectory>
+                <RunicApplicationFrontendWebRoot>wwwroot</RunicApplicationFrontendWebRoot>
+              </PropertyGroup>
+            </Project>
+            """);
+        workspace.Write("Current/Client/package.json", """{"packageManager":"npm@10.0.0"}""");
         DevProjectConfiguration configuration = DevProjectConfiguration.EvaluateAsync(
-            "dotnet", project, "Debug", CancellationToken.None).GetAwaiter().GetResult();
-        True(configuration.IsViewsWindowProject, "RunicViewsWindowProject still opts into the Window model.");
-        // A temporary directory can resolve through a symbolic link (macOS /var), so compare the folder.
+            "dotnet", current, "Debug", CancellationToken.None).GetAwaiter().GetResult();
+        // A temporary directory can resolve through a symbolic link (macOS /var), so compare the folders.
         Equal("Client", Path.GetFileName(configuration.WorkspaceRoot));
+        Equal(configuration.WorkspaceRoot, configuration.FrontendPackageDirectory);
+        Equal(Path.Combine(configuration.WorkspaceRoot, "build"), configuration.FrontendOutputDirectory);
+        Equal("wwwroot", Path.GetFileName(configuration.RuntimeWebRoot));
     }
 
     [Test, DisplayName("Views Window watch restarts the native process")]
@@ -1325,7 +1352,7 @@ internal sealed class ToolTests
         Equal(DoctorStatus.Warning, none.Status);
         Contains(none.Message, "references no Runic Views host");
         Contains(none.Remediation ?? string.Empty, "Runic.Application.Views.Wpf");
-        // An adapter that arrives through another package or project sets RunicApplicationHostAdapter.
+        // An adapter that arrives through another package or project sets _RunicApplicationHostAdapter.
         DoctorCheck indirect = Check(Inspect(wpf with { Hosts = [], ReferencesHostAdapter = true }, new FakeDoctorRuntime(authority.Toolchain)), "views-hosts");
         Equal(DoctorStatus.Warning, indirect.Status);
         Contains(indirect.Message, "A Runic Views host is referenced indirectly");
@@ -2359,10 +2386,10 @@ internal sealed class ToolTests
             throw new InvalidOperationException($"Expected [{string.Join(", ", expected)}], received [{string.Join(", ", actual)}].");
     }
 
-    private static void Throws<T>(Action action) where T : Exception
+    private static T Throws<T>(Action action) where T : Exception
     {
         try { action(); }
-        catch (T) { return; }
+        catch (T exception) { return exception; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 

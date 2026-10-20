@@ -316,7 +316,7 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
                                             ClassName="$(RunicPrivilegedActionsClassName)"
                                             ReservedNames="$(RunicPrivilegedActionsReservedNames)"
                                             ProjectFile="$(MSBuildProjectFullPath)"
-                                            HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+                                            HelpLinkBase="$(_RunicDiagnosticsHelpLinkBase)" />
   </Target>
 
   <!-- Writes the declarations after the platform targets in RunicPrivilegedActionsDependsOn succeeded. -->
@@ -326,20 +326,20 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
           Condition="'@(RunicPrivilegedAction)' != ''">
     <PropertyGroup>
       <!-- Set here, when the target runs: a project that imports this file in its body has no IntermediateOutputPath yet. -->
-      <RunicPrivilegedActionsIntermediateDirectory Condition="'$(RunicPrivilegedActionsIntermediateDirectory)' == ''">$(IntermediateOutputPath)runic-privileged/</RunicPrivilegedActionsIntermediateDirectory>
+      <_RunicPrivilegedActionsIntermediateDirectory Condition="'$(_RunicPrivilegedActionsIntermediateDirectory)' == ''">$(IntermediateOutputPath)runic-privileged/</_RunicPrivilegedActionsIntermediateDirectory>
     </PropertyGroup>
     <RunicWritePrivilegedActionDeclarations Actions="@(RunicPrivilegedAction)"
                                             Commands="@(RunicPrivilegedCommand)"
-                                            SourceFile="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs"
+                                            SourceFile="$(_RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs"
                                             Namespace="$(RunicPrivilegedActionsNamespace)"
                                             ClassName="$(RunicPrivilegedActionsClassName)"
                                             ReservedNames="$(RunicPrivilegedActionsReservedNames)"
                                             ProjectFile="$(MSBuildProjectFullPath)"
-                                            HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+                                            HelpLinkBase="$(_RunicDiagnosticsHelpLinkBase)" />
     <ItemGroup>
-      <Compile Remove="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
-      <Compile Include="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
-      <FileWrites Include="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
+      <Compile Remove="$(_RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
+      <Compile Include="$(_RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
+      <FileWrites Include="$(_RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
     </ItemGroup>
   </Target>
 </Project>

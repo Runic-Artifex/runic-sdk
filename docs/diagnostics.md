@@ -12,7 +12,8 @@ Each entry starts with what the ID means. **Fix** says what to change.
 
 - [Bridge code generator (`RUNICBRIDGE`)](#bridge-code-generator)
 - [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSIZE`, `RCLI`)](#dotnet-runic)
-- [Asset packer (`RAS`)](#asset-packer)
+- [Asset packer and Runic.Assets build (`RAS`)](#asset-packer)
+- [Runic Desktop build (`RUNICDESK`)](#runic-desktop-build)
 - [Runic.Create (`RCREATE`)](#runiccreate)
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
 - [D-Bus source generator (`RUNICDBUS`)](#d-bus-source-generator)
@@ -34,7 +35,7 @@ of the Runic.Application.Views guide links here.
 
 | ID | Severity | Reported by | Problem |
 | --- | --- | --- | --- |
-| [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator fails without reporting an error | Invalid generator invocation or build configuration, or an internal generator error |
+| [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator is missing or fails without reporting an error | Invalid generator invocation or build configuration, a missing generator, or an internal generator error |
 | [`RUNICBRIDGE002`](#runicbridge002) | Error | Generator | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish |
 | [`RUNICBRIDGE003`](#runicbridge003) | Error | Generator | A value type that is not a supported bridge value |
 | [`RUNICBRIDGE004`](#runicbridge004) | Error | Generator | Two generated names collide, or a command's client member is reserved in TypeScript |
@@ -50,20 +51,23 @@ of the Runic.Application.Views guide links here.
 | [`RUNICBRIDGE014`](#runicbridge014) | Error | Build targets | The frontend directory or its `package.json` is missing |
 | [`RUNICBRIDGE015`](#runicbridge015) | Warning | Build targets | A project declares Views, but generation is off |
 | [`RUNICBRIDGE016`](#runicbridge016) | Error | Build targets | The frontend install or build command failed without a located error |
-| [`RUNICBRIDGE017`](#runicbridge017) | Warning | Build targets | A build property or item uses its 0.7.0-preview.6 name |
+| [`RUNICBRIDGE017`](#runicbridge017) | Error | Build targets | A build property or item uses a former name |
 | [`RUNICBRIDGE018`](#runicbridge018) | Error | Build targets | A referenced assembly already declares the generated composition type |
 | [`RUNICBRIDGE019`](#runicbridge019) | Warning | Build targets | The build cannot tell which host's Views client to copy |
 | [`RUNICBRIDGE020`](#runicbridge020) | Warning | Generator | Types were skipped because an assembly they need could not be loaded |
 | [`RUNICBRIDGE021`](#runicbridge021) | Error | Build targets | The external `node_modules` could not be linked |
 | [`RUNICBRIDGE022`](#runicbridge022) | Error | Build targets | `NoBuild=true` finds no generated Bridge code to reuse |
+| [`RUNICBRIDGE023`](#runicbridge023) | Error | `Runic.Application.Views.ReactiveUI.Reactive` build targets | The application references both ReactiveUI flavors |
 
 ### RUNICBRIDGE001
 
-The generator invocation or build configuration is invalid, or the generator
-failed internally. An example is a malformed `RunicApplicationFrontendCompositionType`.
+The generator invocation or build configuration is invalid, the generator is
+missing from the `Runic.Application.Views` package, or the generator failed
+internally. An example is a malformed `RunicApplicationFrontendCompositionType`.
 
-**Fix:** correct the build property. Report an internal error with the
-ViewModel that triggers it.
+**Fix:** correct the build property. A missing generator means an incomplete
+restore: restore the project again. Report an internal error with the ViewModel
+that triggers it.
 
 ### RUNICBRIDGE002
 
@@ -254,20 +258,29 @@ check the package manager and lock file.
 
 ### RUNICBRIDGE017
 
-A warning from the `Runic.Application.Views` build targets. The project, one of
+An error from the `Runic.Application.Views` build targets. The project, one of
 its imports (such as `Directory.Build.props`) or the command line sets a build
-property or item by its name from 0.7.0-preview.6 or earlier. Since
-0.7.0-preview.7 every property of these targets starts with
-`RunicApplicationFrontend`. The old name still applies in this preview, and wins
-when both are set; the next preview removes it. The message names the new
-property. The
-[renamed-names table](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
-lists every rename.
+property or item by a former name, which no longer applies:
+
+- the `RunicBridge*` and `RunicViewsWindowProject` names of 0.7.0-preview.6 and
+  earlier; since 0.7.0-preview.7 every property of these targets starts with
+  `RunicApplicationFrontend`. The
+  [renamed-names table](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
+  lists every rename.
+- `RunicApplicationId` without `ApplicationId`, and `RunicApplicationName`
+  without `ApplicationTitle`, which the `runic-app` template of 0.8 and earlier
+  declared. The application's identity is MSBuild's `ApplicationId` and
+  `ApplicationTitle`, which the template sets since 0.9 and which
+  `Runic.Platform.MacOS` and `Runic.Platform.Linux.Polkit` read.
+
+Until 0.9 this was a warning and the old name still applied. The message names
+the new property.
 
 **Fix:** rename the property or item, for example
-`<RunicBridgeFrontendDir>` to `<RunicApplicationFrontendDirectory>`. A condition
-on `RunicBridgeBootstrap` reports nothing, but should read
-`RunicApplicationFrontendBootstrap` before the next preview.
+`<RunicBridgeFrontendDir>` to `<RunicApplicationFrontendDirectory>` or
+`<RunicApplicationId>` to `<ApplicationId>`. A condition on
+`RunicBridgeBootstrap` should read `RunicApplicationFrontendBootstrap`; the
+bootstrap pass no longer sets the old name.
 
 ### RUNICBRIDGE018
 
@@ -275,11 +288,11 @@ The `Runic.Application.Views` build targets report this error. A project
 declares Runic Views and generates its composition
 (`RunicApplicationFrontendCompositionType`), but a referenced assembly already
 declares a type of the same name. Both would define `AddRunicViews()`, so the
-call would be ambiguous (`CS0121`). It typically follows an upgrade from
-0.7.0-preview.6: the WPF adapter now generates in the application, whose default
-composition name is `<project name>.RunicBridgeComposition`, and the model
-project had used that name for its own composition. A project without Views of
-its own is not affected; its bootstrap build uses the referenced type.
+call would be ambiguous (`CS0121`). A typical case is a WPF application with a
+separate model project: the WPF adapter generates in the application, whose
+default composition name is `<project name>.RunicBridgeComposition`, and the
+model project uses that name for its own composition. A project without Views
+of its own is not affected; its bootstrap build uses the referenced type.
 
 **Fix:** set `RunicApplicationFrontendCompositionType` to another type name in
 one of the two projects, and call `AddRunicViews()` of each composition.
@@ -343,6 +356,17 @@ identifier) instead of running the generator. That code, or the composition that
 **Fix:** build the project first with the same `Configuration`,
 `TargetFramework`, `RuntimeIdentifier` and `PublishAot`, then publish with `--no-build`, or publish
 without `--no-build`.
+
+### RUNICBRIDGE023
+
+The `Runic.Application.Views.ReactiveUI.Reactive` build targets report this
+error. The project references `Runic.Application.Views.ReactiveUI.Reactive`,
+which uses ReactiveUI's System.Reactive flavor, together with
+`Runic.Application.Views.ReactiveUI` or `Runic.Navigation.ReactiveUI`, which use
+the ReactiveUI.Primitives flavor. An application uses one flavor.
+
+**Fix:** keep one flavor. With the System.Reactive flavor, replace
+`Runic.Navigation.ReactiveUI` with `Runic.Navigation.ReactiveUI.Reactive`.
 
 ## dotnet runic
 
@@ -545,9 +569,11 @@ diagnostic with this code for each such check.
 
 ## Asset packer
 
-`Runic.Assets.Packer`, which the Runic.Assets build runs, reports these codes.
-Human output writes the message and the link to standard error. See the
+`Runic.Assets.Packer`, which the Runic.Assets build runs, reports the
+`RAS1xxx` codes. Human output writes the message and the link to standard
+error. See the
 [packer guide](../tools/Runic.Assets.Packer/README.md#exit-codes-and-errors).
+The `Runic.Assets` build targets report the `RAS2xxx` codes.
 
 ### RAS1001
 
@@ -579,6 +605,60 @@ requires Linux. Exit code 1.
 **Fix:** pass `--trusted-generated-output` for output of the current build, as
 the MSBuild integration does. See
 [`--trusted-generated-output`](../tools/Runic.Assets.Packer/README.md#--trusted-generated-output).
+
+### RAS2001
+
+The `Runic.Assets` build targets report this error. The project sets both
+`RunicAssetsDist`, a directory the build packs, and `RunicAssetsEmbeddedArchive`,
+an archive packed before.
+
+**Fix:** set one of them.
+
+### RAS2002
+
+The directory that `RunicAssetsDist` names does not exist when the build packs
+it.
+
+**Fix:** build the web UI before compiling the project, or correct the path.
+
+### RAS2003
+
+The asset packer that `RunicAssetsPackerPath` names does not exist. By default
+it is `tools/net10.0/Runic.Assets.Packer.dll` in the `Runic.Assets` package.
+
+**Fix:** restore the project again, or correct `RunicAssetsPackerPath`.
+
+### RAS2004
+
+The archive that `RunicAssetsEmbeddedArchive` names does not exist.
+
+**Fix:** pack the archive first, or correct the path.
+
+### RAS2005
+
+The asset packer could not pack `RunicAssetsDist`. Its own `RAS1xxx` error is
+above in the build output.
+
+**Fix:** follow the packer error.
+
+## Runic Desktop build
+
+The `Runic.Desktop` build targets report these errors.
+
+### RUNICDESK001
+
+`RunicDesktopMinimalHost` has a value other than `true` or `false`.
+
+**Fix:** set it to `true` or `false`, or remove it for the default, `false`.
+
+### RUNICDESK002
+
+A Native AOT publish for `win-x64` or `win-arm64` links the WebView2 loader
+statically, but the restored `Microsoft.Web.WebView2` package has no
+`WebView2LoaderStatic.lib` for the runtime identifier.
+
+**Fix:** restore the project for the runtime identifier again, so the
+`Microsoft.Web.WebView2` native SDK assets are present.
 
 ## Runic.Create
 
@@ -629,6 +709,9 @@ The `Runic.Platform` build targets validate `RunicPrivilegedAction` and
 `RUNICPA015`) before any platform target reads
 them; the `Runic.Platform.Linux.Polkit` targets then report `RUNICPA010`,
 `RUNICPA012`, `RUNICPA013` and `RUNICPA014` before they write the Polkit policy.
+The `Runic.Platform.Linux.Polkit`, `Runic.Platform.MacOS` and
+`Runic.Platform.Windows.Elevation` targets report `RUNICPA108` for a renamed
+build name.
 The `PrivilegedActions` class is written only when none of them remains. See
 [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#declare-privileged-actions)
 and the [Polkit package guide](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md).
@@ -709,7 +792,7 @@ The pattern must be valid both alone and anchored as `^(?:pattern)\z`.
 
 ### RUNICPA010
 
-`AllowGui` is neither `true` nor `false`.
+`PolkitAllowGui` is neither `true` nor `false`.
 
 **Fix:** set `true` only when the program opens windows as root; pkexec then
 keeps `DISPLAY` and `XAUTHORITY`.
@@ -725,7 +808,7 @@ any name in `RunicPrivilegedActionsReservedNames`.
 
 ### RUNICPA012
 
-`AllowAny`, `AllowInactive` or `AllowActive` is not a Polkit authorization:
+`PolkitAllowAny`, `PolkitAllowInactive` or `PolkitAllowActive` is not a Polkit authorization:
 `no`, `yes`, `auth_self`, `auth_self_keep`, `auth_admin` or `auth_admin_keep`.
 
 **Fix:** use one of them, or remove the metadata to require an administrator's
@@ -733,7 +816,7 @@ password each time (`auth_admin`).
 
 ### RUNICPA013
 
-`Program`, `Description`, `Message`, `Verb` or `IconName` contains a line
+`Program`, `Description`, `Message`, `Verb` or `PolkitIconName` contains a line
 break, another control character, a character XML cannot carry (such as
 U+FFFE) or `]]>`. polkitd keeps only the last piece of text its XML parser
 reports, and the parser splits text at line breaks.
@@ -742,7 +825,7 @@ reports, and the parser splits text at line breaks.
 
 ### RUNICPA014
 
-A warning: `AllowAny`, `AllowInactive` or `AllowActive` is `yes`, `auth_self`
+A warning: `PolkitAllowAny`, `PolkitAllowInactive` or `PolkitAllowActive` is `yes`, `auth_self`
 or `auth_self_keep`. `yes` lets every matching subject run the program as root
 without authenticating. `auth_self` accepts the user's own password, which any
 process running as that user can effectively supply, so it does not stand
@@ -771,7 +854,7 @@ which then accepts as many arguments as its longest command.
 
 A `Runic.Platform.MacOS` daemon setting is missing or invalid: once
 `RunicMacPrivilegedDaemonLabel` is set, the label, `RunicMacBundleIdentifier`
-(by default `ApplicationId`, then `RunicApplicationId`)
+(by default `ApplicationId`)
 and `RunicMacPrivilegedDaemonIdentifier` must be reverse-DNS names,
 `RunicMacTeamIdentifier` the ten-character Team ID (the daemon's launch
 constraint names it), and `RunicMacPrivilegedDaemonProgram` the daemon
@@ -836,6 +919,24 @@ under its signature.
 
 **Fix:** publish the application with `PublishAot` set to `true`.
 
+### RUNICPA108
+
+The project still sets a privileged-action build name that has been renamed:
+the property `RunicPolkitPolicy` (now `RunicPolkitPolicyCopyEnabled`),
+`RunicMacLaunchDaemonPlist` (now `RunicMacLaunchDaemonPlistCopyEnabled`) or
+`RunicElevatedHelper` (now `RunicWindowsElevatedHelper`), or the metadata
+`AllowAny`, `AllowInactive`, `AllowActive`, `AllowGui` or `IconName` on a
+`RunicPrivilegedAction` item (now `PolkitAllowAny`, `PolkitAllowInactive`,
+`PolkitAllowActive`, `PolkitAllowGui` and `PolkitIconName`, like
+`WindowsProgram` and `MacProgram`). The old names are no longer applied; each
+one the project still sets is reported once, and the message names its
+replacement. Design-time builds do not report it.
+
+**Fix:** rename the property or metadata in the project file, its imports or the
+command line, for example `<RunicElevatedHelper>` to
+`<RunicWindowsElevatedHelper>` or `AllowActive="auth_admin_keep"` to
+`PolkitAllowActive="auth_admin_keep"`.
+
 ## D-Bus source generator
 
 `Runic.Platform.Linux.DBus` generates proxies and services from introspection XML
@@ -851,9 +952,10 @@ describes the metadata. Each error names the XML file; nothing is generated for 
 
 ### RUNICDBUS002
 
-The XML file has no `Namespace` metadata.
+The XML file has no `RunicDBusNamespace` metadata, nor its former name
+`Namespace`.
 
-**Fix:** add `Namespace="My.App.DBus"` to its `AdditionalFiles` item.
+**Fix:** add `RunicDBusNamespace="My.App.DBus"` to its `AdditionalFiles` item.
 
 ### RUNICDBUS003
 
@@ -946,7 +1048,7 @@ out of the XML the generator reads.
 
 The `Runic.Platform.Windows.Elevation` build targets report these errors for
 the `WindowsProgram` metadata of `RunicPrivilegedAction` items and for a helper
-project (`RunicElevatedHelper`). See the
+project (`RunicWindowsElevatedHelper`). See the
 [package guide](../packages/dotnet/Runic.Platform.Windows.Elevation/README.md).
 
 ### RUNICEL001

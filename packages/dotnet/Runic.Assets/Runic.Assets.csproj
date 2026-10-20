@@ -16,6 +16,10 @@
     <RunicReleaseLinksNamespace>Runic.Assets.Internal</RunicReleaseLinksNamespace>
     <!-- The development-directory family (RUNICASSETS001) is experimental for consumers, not inside the package. -->
     <NoWarn>$(NoWarn);RUNICASSETS001</NoWarn>
+    <!-- Packs the diagnostics help links (eng/build/release-links.targets) as buildTransitive/Runic.Assets.HelpLinks.props,
+         which buildTransitive/Runic.Assets.props imports. -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
+    <RunicDiagnosticsHelpLinksPropsName>Runic.Assets.HelpLinks.props</RunicDiagnosticsHelpLinksPropsName>
   </PropertyGroup>
 
   <ItemGroup>

@@ -26,18 +26,29 @@
       <_RunicAssetsDistArgument>$([MSBuild]::EnsureTrailingSlash('$(RunicAssetsDist)')).</_RunicAssetsDistArgument>
     </PropertyGroup>
 
-    <Error Condition="'$(RunicAssetsEmbeddedArchive)' != ''"
+    <Error Code="RAS2001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2001"
+           Condition="'$(RunicAssetsEmbeddedArchive)' != ''"
            Text="Set either RunicAssetsDist or RunicAssetsEmbeddedArchive, not both." />
-    <Error Condition="!Exists('$(RunicAssetsDist)')"
+    <Error Code="RAS2002" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2002"
+           Condition="!Exists('$(RunicAssetsDist)')"
            Text="The RunicAssetsDist directory '$(RunicAssetsDist)' does not exist. Build the web UI before compiling this project." />
-    <Error Condition="!Exists('$(RunicAssetsPackerPath)')"
-           Text="The Runic Assets packer '$(RunicAssetsPackerPath)' does not exist." />
+    <Error Code="RAS2003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2003"
+           Condition="!Exists('$(RunicAssetsPackerPath)')"
+           Text="The Runic Assets packer '$(RunicAssetsPackerPath)' does not exist. Restore the project again; the Runic.Assets package may be incomplete." />
 
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicAssetsGeneratedArchive)'))" />
     <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(_RunicAssetsDistArgument)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --trusted-generated-output"
-          Condition="'$(RunicAssetsDistExclude)' == ''" />
+          Condition="'$(RunicAssetsDistExclude)' == ''" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicAssetsPackerExitCode" />
+    </Exec>
     <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; &quot;$(_RunicAssetsDistArgument)&quot; &quot;$(_RunicAssetsGeneratedArchive)&quot; --entry-point &quot;$(RunicAssetsEntryPoint)&quot; --exclude &quot;$(RunicAssetsDistExclude)&quot; --trusted-generated-output"
-          Condition="'$(RunicAssetsDistExclude)' != ''" />
+          Condition="'$(RunicAssetsDistExclude)' != ''" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicAssetsPackerExitCode" />
+    </Exec>
+    <!-- The packer reports its RAS1xxx error above; this names the build step instead of MSB3073. -->
+    <Error Code="RAS2005" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2005"
+           Condition="'$(_RunicAssetsPackerExitCode)' != '' and '$(_RunicAssetsPackerExitCode)' != '0'"
+           Text="The Runic Assets packer could not pack '$(RunicAssetsDist)' and exited with code $(_RunicAssetsPackerExitCode). Its error is above." />
   </Target>
 
   <Target Name="RunicAssetsEmbedFileSystem"
@@ -48,9 +59,11 @@
       <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
     </PropertyGroup>
 
-    <Error Condition="'$(RunicAssetsDist)' != '' and '$(RunicAssetsEmbeddedArchive)' != ''"
+    <Error Code="RAS2001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2001"
+           Condition="'$(RunicAssetsDist)' != '' and '$(RunicAssetsEmbeddedArchive)' != ''"
            Text="Set either RunicAssetsDist or RunicAssetsEmbeddedArchive, not both." />
-    <Error Condition="'$(RunicAssetsEmbeddedArchive)' != '' and !Exists('$(RunicAssetsEmbeddedArchive)')"
+    <Error Code="RAS2004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2004"
+           Condition="'$(RunicAssetsEmbeddedArchive)' != '' and !Exists('$(RunicAssetsEmbeddedArchive)')"
            Text="The RunicAssetsEmbeddedArchive file '$(RunicAssetsEmbeddedArchive)' does not exist." />
 
     <ItemGroup>

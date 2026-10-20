@@ -64,7 +64,7 @@
           host = "__RUNIC_HOST__";
           inherit nativeAot;
           executables = [ "RunicWindowApp" ];
-          # The desktop entry and icon are named after RunicApplicationId in the project file.
+          # The desktop entry and icon are named after ApplicationId in the project file.
           desktopItems = [
             (pkgs.makeDesktopItem {
               name = "__RUNIC_APPLICATION_ID__";

@@ -4,7 +4,7 @@
 
     - RunicGenerateWindowsElevation adds PrivilegedActions.WindowsElevation, the WindowsElevationOptions with each
       action's WindowsProgram metadata, to the generated class.
-    - A project with RunicElevatedHelper=true is a helper: it gets a requireAdministrator manifest, and must be a
+    - A project with RunicWindowsElevatedHelper=true is a helper: it gets a requireAdministrator manifest, and must be a
       console executable published with NativeAOT.
 
     Packages get Runic.Platform's targets through the package dependency; a project in this repository imports both.
@@ -30,17 +30,27 @@
     The remaining NativeAOT knobs (gcServer, gcConservative, the stress log and the GC heap settings) change
     performance only; on Windows the runtime has no crash-dump settings (createdump is Unix-only).
   -->
-  <PropertyGroup Condition="'$(RunicElevatedHelper)' == 'true'">
+  <PropertyGroup Condition="'$(RunicWindowsElevatedHelper)' == 'true'">
     <ApplicationManifest Condition="'$(ApplicationManifest)' == ''">$(MSBuildThisFileDirectory)Runic.Platform.Windows.Elevation.manifest</ApplicationManifest>
     <IlcStandaloneGCSupport>false</IlcStandaloneGCSupport>
     <EventSourceSupport>false</EventSourceSupport>
     <InvariantGlobalization Condition="'$(InvariantGlobalization)' == ''">true</InvariantGlobalization>
   </PropertyGroup>
-  <ItemGroup Condition="'$(RunicElevatedHelper)' == 'true'">
+  <ItemGroup Condition="'$(RunicWindowsElevatedHelper)' == 'true'">
     <!-- Statically imported DLLs that are not KnownDLLs (version, bcrypt, iphlpapi...) load from System32 only, not
          from the helper's directory, before Initialize restricts the search (LOAD_LIBRARY_SEARCH_SYSTEM32). -->
     <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" Condition="$(RuntimeIdentifier.StartsWith('win'))" />
   </ItemGroup>
+
+  <!--
+    RUNICPA108: the former name RunicElevatedHelper is no longer applied, so a project that still sets it
+    fails with the new name. Design-time builds skip the check.
+  -->
+  <Target Name="_RunicWindowsElevationReportRenamedNames" BeforeTargets="PrepareForBuild;RunicValidatePrivilegedActions;RunicCheckElevatedHelper"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicElevatedHelper)' != ''">
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICPA108" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa108"
+           Text="The Runic build property RunicElevatedHelper is renamed to RunicWindowsElevatedHelper. Rename it in $(MSBuildProjectFile), its imports or the command line." />
+  </Target>
 
   <UsingTask TaskName="RunicWriteWindowsElevation" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
@@ -146,7 +156,7 @@ public sealed class RunicWriteWindowsElevation : Task
                                 Namespace="$(RunicPrivilegedActionsNamespace)"
                                 ClassName="$(RunicPrivilegedActionsClassName)"
                                 ProjectFile="$(MSBuildProjectFullPath)"
-                                HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+                                HelpLinkBase="$(_RunicDiagnosticsHelpLinkBase)" />
     <ItemGroup>
       <Compile Remove="$(_RunicPrivilegedWindowsSource)" />
       <Compile Include="$(_RunicPrivilegedWindowsSource)" />
@@ -161,35 +171,35 @@ public sealed class RunicWriteWindowsElevation : Task
     identifier, the builds that produce a deployable helper, fail without PublishAot; a portable development build
     is allowed, and ElevatedHelper.Match refuses to act on a JIT runtime.
   -->
-  <Target Name="RunicCheckElevatedHelper" BeforeTargets="CoreCompile" Condition="'$(RunicElevatedHelper)' == 'true'">
+  <Target Name="RunicCheckElevatedHelper" BeforeTargets="CoreCompile" Condition="'$(RunicWindowsElevatedHelper)' == 'true'">
     <PropertyGroup>
       <_RunicElevatedHelperManifestPath Condition="'$(ApplicationManifest)' != ''">$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(ApplicationManifest)'))</_RunicElevatedHelperManifestPath>
       <_RunicElevatedHelperManifest Condition="'$(_RunicElevatedHelperManifestPath)' != '' and Exists('$(_RunicElevatedHelperManifestPath)')">$([System.IO.File]::ReadAllText('$(_RunicElevatedHelperManifestPath)'))</_RunicElevatedHelperManifest>
     </PropertyGroup>
-    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL002" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel002" Condition="'$(PublishAot)' != 'true' and ('$(RuntimeIdentifier)' != '' or '$(_IsPublishing)' == 'true')"
-           Text="An elevated helper (RunicElevatedHelper) must set PublishAot to true: a JIT runtime started with elevation loads startup hooks and profilers from the user's environment." />
-    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL003" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel003" Condition="!$(_RunicElevatedHelperManifest.Contains('requireAdministrator'))"
-           Text="The manifest of an elevated helper (RunicElevatedHelper), '$(ApplicationManifest)', must request requireAdministrator. Remove ApplicationManifest to use the package's manifest." />
-    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL005" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel005" Condition="'$(InvariantGlobalization)' != 'true'"
-           Text="An elevated helper (RunicElevatedHelper) must use invariant globalization: with ICU, DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU in the user's environment would load a DLL into the elevated process." />
-    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL004" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel004" Condition="'$(OutputType)' != 'Exe'"
-           Text="An elevated helper (RunicElevatedHelper) must be a console executable (OutputType Exe), so that the tools it starts inherit the output it sends to the application." />
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL002" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel002" Condition="'$(PublishAot)' != 'true' and ('$(RuntimeIdentifier)' != '' or '$(_IsPublishing)' == 'true')"
+           Text="An elevated helper (RunicWindowsElevatedHelper) must set PublishAot to true: a JIT runtime started with elevation loads startup hooks and profilers from the user's environment." />
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL003" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel003" Condition="!$(_RunicElevatedHelperManifest.Contains('requireAdministrator'))"
+           Text="The manifest of an elevated helper (RunicWindowsElevatedHelper), '$(ApplicationManifest)', must request requireAdministrator. Remove ApplicationManifest to use the package's manifest." />
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL005" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel005" Condition="'$(InvariantGlobalization)' != 'true'"
+           Text="An elevated helper (RunicWindowsElevatedHelper) must use invariant globalization: with ICU, DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU in the user's environment would load a DLL into the elevated process." />
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL004" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel004" Condition="'$(OutputType)' != 'Exe'"
+           Text="An elevated helper (RunicWindowsElevatedHelper) must be a console executable (OutputType Exe), so that the tools it starts inherit the output it sends to the application." />
   </Target>
 
-  <Target Name="RunicCheckElevatedHelperPublish" BeforeTargets="PrepareForPublish" Condition="'$(RunicElevatedHelper)' == 'true'">
-    <Error Code="RUNICEL002" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel002" Condition="'$(PublishAot)' != 'true'"
-           Text="An elevated helper (RunicElevatedHelper) must be published with PublishAot set to true: a JIT runtime started with elevation loads startup hooks and profilers from the user's environment." />
-    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL005" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel005" Condition="'$(EventSourceSupport)' == 'true' or '$(IlcStandaloneGCSupport)' == 'true' or '$(InvariantGlobalization)' != 'true'"
-           Text="An elevated helper (RunicElevatedHelper) must keep EventSourceSupport and IlcStandaloneGCSupport off and InvariantGlobalization on (EventSourceSupport '$(EventSourceSupport)', IlcStandaloneGCSupport '$(IlcStandaloneGCSupport)', InvariantGlobalization '$(InvariantGlobalization)'): the NativeAOT runtime would otherwise read DOTNET_DiagnosticPorts, DOTNET_GCPath or an app-local ICU from the user's environment before Main." />
+  <Target Name="RunicCheckElevatedHelperPublish" BeforeTargets="PrepareForPublish" Condition="'$(RunicWindowsElevatedHelper)' == 'true'">
+    <Error Code="RUNICEL002" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel002" Condition="'$(PublishAot)' != 'true'"
+           Text="An elevated helper (RunicWindowsElevatedHelper) must be published with PublishAot set to true: a JIT runtime started with elevation loads startup hooks and profilers from the user's environment." />
+    <Error ContinueOnError="ErrorAndContinue" Code="RUNICEL005" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel005" Condition="'$(EventSourceSupport)' == 'true' or '$(IlcStandaloneGCSupport)' == 'true' or '$(InvariantGlobalization)' != 'true'"
+           Text="An elevated helper (RunicWindowsElevatedHelper) must keep EventSourceSupport and IlcStandaloneGCSupport off and InvariantGlobalization on (EventSourceSupport '$(EventSourceSupport)', IlcStandaloneGCSupport '$(IlcStandaloneGCSupport)', InvariantGlobalization '$(InvariantGlobalization)'): the NativeAOT runtime would otherwise read DOTNET_DiagnosticPorts, DOTNET_GCPath or an app-local ICU from the user's environment before Main." />
   </Target>
 
   <!-- The libraries the native link actually uses, whatever the properties said earlier. -->
-  <Target Name="RunicCheckElevatedHelperNative" BeforeTargets="LinkNative" Condition="'$(RunicElevatedHelper)' == 'true'">
+  <Target Name="RunicCheckElevatedHelperNative" BeforeTargets="LinkNative" Condition="'$(RunicWindowsElevatedHelper)' == 'true'">
     <PropertyGroup>
       <_RunicElevatedHelperNativeLibraries>@(NativeLibrary)</_RunicElevatedHelperNativeLibraries>
     </PropertyGroup>
-    <Error Code="RUNICEL005" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicel005"
+    <Error Code="RUNICEL005" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicel005"
            Condition="$(_RunicElevatedHelperNativeLibraries.Contains('eventpipe-enabled')) or $(_RunicElevatedHelperNativeLibraries.Contains('standalonegc-enabled')) or '$(InvariantGlobalization)' != 'true'"
-           Text="An elevated helper (RunicElevatedHelper) is being linked with EventPipe or the standalone GC, or without invariant globalization: the NativeAOT runtime would read DOTNET_DiagnosticPorts, DOTNET_GCPath or an app-local ICU from the user's environment before Main." />
+           Text="An elevated helper (RunicWindowsElevatedHelper) is being linked with EventPipe or the standalone GC, or without invariant globalization: the NativeAOT runtime would read DOTNET_DiagnosticPorts, DOTNET_GCPath or an app-local ICU from the user's environment before Main." />
   </Target>
 </Project>

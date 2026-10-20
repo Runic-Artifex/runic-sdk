@@ -4,27 +4,10 @@
 
   <!-- Every build property of these targets starts with RunicApplicationFrontend.
        The RunicBridge* and RunicViewsWindowProject names of 0.7.0-preview.6 and
-       earlier still apply in this preview and report RUNICBRIDGE017 with the new
-       name; the next preview removes them. An old name wins over the new one,
-       whose default a host adapter's props may already have set. -->
-  <PropertyGroup>
-    <RunicApplicationFrontendDirectory Condition="'$(RunicBridgeFrontendDir)' != ''">$(RunicBridgeFrontendDir)</RunicApplicationFrontendDirectory>
-    <RunicApplicationFrontendGeneratedDirectory Condition="'$(RunicBridgeTypescriptDir)' != ''">$(RunicBridgeTypescriptDir)</RunicApplicationFrontendGeneratedDirectory>
-    <RunicApplicationFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' != ''">$(RunicBridgeFrontendPackageManager)</RunicApplicationFrontendPackageManager>
-    <RunicApplicationFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' != ''">$(RunicBridgeFrontendBuildCommand)</RunicApplicationFrontendBuildCommand>
-    <RunicApplicationFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' != ''">$(RunicBridgeFrontendInstallCommand)</RunicApplicationFrontendInstallCommand>
-    <RunicApplicationFrontendInstallEnabled Condition="'$(RunicBridgeInstallFrontend)' != ''">$(RunicBridgeInstallFrontend)</RunicApplicationFrontendInstallEnabled>
-    <RunicApplicationFrontendBuildEnabled Condition="'$(RunicBridgeBuildFrontend)' != ''">$(RunicBridgeBuildFrontend)</RunicApplicationFrontendBuildEnabled>
-    <RunicApplicationFrontendCopyEnabled Condition="'$(RunicBridgeCopyFrontend)' != ''">$(RunicBridgeCopyFrontend)</RunicApplicationFrontendCopyEnabled>
-    <RunicApplicationFrontendGenerationEnabled Condition="'$(RunicBridgeBuildEnabled)' != ''">$(RunicBridgeBuildEnabled)</RunicApplicationFrontendGenerationEnabled>
-    <RunicApplicationFrontendCompositionType Condition="'$(RunicBridgeCompositionType)' != ''">$(RunicBridgeCompositionType)</RunicApplicationFrontendCompositionType>
-    <RunicApplicationFrontendModelAssembly Condition="'$(RunicBridgeModelAssembly)' != ''">$(RunicBridgeModelAssembly)</RunicApplicationFrontendModelAssembly>
-    <RunicApplicationFrontendReactiveUiFlavor Condition="'$(RunicBridgeReactiveUiFlavor)' != ''">$(RunicBridgeReactiveUiFlavor)</RunicApplicationFrontendReactiveUiFlavor>
-    <RunicApplicationFrontendDocumentationEnabled Condition="'$(RunicBridgeDocumentation)' != ''">$(RunicBridgeDocumentation)</RunicApplicationFrontendDocumentationEnabled>
-    <RunicApplicationFrontendWindowProject Condition="'$(RunicViewsWindowProject)' != ''">$(RunicViewsWindowProject)</RunicApplicationFrontendWindowProject>
-  </PropertyGroup>
+       earlier, and the runic-app template's RunicApplicationId and
+       RunicApplicationName of 0.8, are no longer applied: a project that still
+       sets one fails with RUNICBRIDGE017, which names the new property. -->
   <ItemGroup>
-    <RunicApplicationFrontendInput Include="@(RunicBridgeFrontendInput)" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendDir" NewName="RunicApplicationFrontendDirectory" Kind="property" Condition="'$(RunicBridgeFrontendDir)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeTypescriptDir" NewName="RunicApplicationFrontendGeneratedDirectory" Kind="property" Condition="'$(RunicBridgeTypescriptDir)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendPackageManager" NewName="RunicApplicationFrontendPackageManager" Kind="property" Condition="'$(RunicBridgeFrontendPackageManager)' != ''" />
@@ -40,16 +23,29 @@
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeDocumentation" NewName="RunicApplicationFrontendDocumentationEnabled" Kind="property" Condition="'$(RunicBridgeDocumentation)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicViewsWindowProject" NewName="RunicApplicationFrontendWindowProject" Kind="property" Condition="'$(RunicViewsWindowProject)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendInput" NewName="RunicApplicationFrontendInput" Kind="item" Condition="'@(RunicBridgeFrontendInput)' != ''" />
+    <!-- The application's identity is MSBuild's ApplicationId and ApplicationTitle, which Runic.Platform.MacOS and
+         Runic.Platform.Linux.Polkit read too. A project that keeps its own RunicApplicationId next to ApplicationId
+         is left alone. -->
+    <_RunicApplicationFrontendRenamedName Include="RunicApplicationId" NewName="ApplicationId" Kind="property" Condition="'$(RunicApplicationId)' != '' and '$(ApplicationId)' == ''" />
+    <_RunicApplicationFrontendRenamedName Include="RunicApplicationName" NewName="ApplicationTitle" Kind="property" Condition="'$(RunicApplicationName)' != '' and '$(ApplicationTitle)' == ''" />
   </ItemGroup>
   <PropertyGroup>
     <_RunicBridgeNoViewsMarker>RunicBridge.NoViews.marker</_RunicBridgeNoViewsMarker>
     <RunicApplicationFrontendDirectory Condition="'$(RunicApplicationFrontendDirectory)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendDirectory>
     <RunicApplicationFrontendGeneratedDirectory Condition="'$(RunicApplicationFrontendGeneratedDirectory)' == ''">$(RunicApplicationFrontendDirectory)/src/generated</RunicApplicationFrontendGeneratedDirectory>
+    <!-- The frontend build's output, which build and publish copy, and dotnet runic dev serves from too. A relative
+         path is relative to the frontend directory. -->
+    <RunicApplicationFrontendOutputDirectory Condition="'$(RunicApplicationFrontendOutputDirectory)' == ''">dist</RunicApplicationFrontendOutputDirectory>
+    <_RunicApplicationFrontendOutputPath>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendDirectory)', '$(RunicApplicationFrontendOutputDirectory)'))</_RunicApplicationFrontendOutputPath>
+    <!-- The directory below the build and publish output that the application serves. The hosts find it through the
+         Runic.Application.FrontendWebRoot runtime option when it is not www. -->
+    <RunicApplicationFrontendWebRoot Condition="'$(RunicApplicationFrontendWebRoot)' == ''">www</RunicApplicationFrontendWebRoot>
+    <_RunicApplicationFrontendWebRoot>$(RunicApplicationFrontendWebRoot.Replace('\', '/').Trim('/'))</_RunicApplicationFrontendWebRoot>
     <!-- A frontend inside the project folder would otherwise add its installed
          packages and build output to the default None, Content and Page items,
          which IDEs list and evaluation walks. Items are evaluated after all
          properties, so the SDK's default globs see this exclude. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(_RunicApplicationFrontendOutputPath)**</DefaultItemExcludes>
     <!-- WPF compiles a temporary copy of the project (<name>_<random>_wpftmp)
          to resolve local types in XAML. The copy imports these targets too,
          but must not generate or bootstrap again: it compiles the code that
@@ -59,6 +55,11 @@
          "origin: error CODE: text" form, as the generator, tsc and vue-tsc do. -->
     <_RunicBridgeCanonicalDiagnostic>(^|:)\s*(error|warning)\s+[A-Za-z]+\d+\s*:</_RunicBridgeCanonicalDiagnostic>
   </PropertyGroup>
+  <!-- The hosts serve www/ next to the application; another web root reaches them through the runtime
+       configuration (RunicWindowOptions.ContentRoot and RunicViewHost.ContentRoot still win). -->
+  <ItemGroup Condition="'$(_RunicApplicationFrontendWebRoot)' != 'www'">
+    <RuntimeHostConfigurationOption Include="Runic.Application.FrontendWebRoot" Value="$(_RunicApplicationFrontendWebRoot)" Trim="true" />
+  </ItemGroup>
 
   <!-- The generator and the frontend commands run with IgnoreExitCode, so a
        failure is not repeated as MSB3073 ("The command exited with code 1").
@@ -67,7 +68,7 @@
        logs the summary error only when the command failed without reporting
        one. It is compiled only when a command failed or
        reported a diagnostic. -->
-  <UsingTask TaskName="RunicBridgeReportCommandResult" TaskFactory="RoslynCodeTaskFactory"
+  <UsingTask TaskName="RunicViewsReportCommandResult" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
       <Lines ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
@@ -261,10 +262,10 @@
        bootstrap directories. -->
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <ProjectReference Update="@(ProjectReference)"
-                      GlobalPropertiesToRemove="%(GlobalPropertiesToRemove);RunicApplicationFrontendBootstrap;RunicBridgeBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath" />
+                      GlobalPropertiesToRemove="%(GlobalPropertiesToRemove);RunicApplicationFrontendBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath" />
   </ItemGroup>
 
-  <!-- RUNICBRIDGE017 once per renamed property or item that the project still sets.
+  <!-- RUNICBRIDGE017 fails the build once per renamed property or item that the project still sets.
        The bootstrap pass and WPF's temporary markup project see the same
        properties, so only the real build reports it. -->
   <!-- The files these targets keep between builds live in the project's
@@ -310,13 +311,14 @@
 
   <Target Name="RunicViewsReportRenamedProperties" BeforeTargets="PrepareForBuild"
           Condition="'@(_RunicApplicationFrontendRenamedName)' != '' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
-    <Warning Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge017"
-             Text="The Runic build %(_RunicApplicationFrontendRenamedName.Kind) %(_RunicApplicationFrontendRenamedName.Identity) is renamed to %(_RunicApplicationFrontendRenamedName.NewName). Rename it in $(MSBuildProjectFile), its imports or the command line; the old name still works in this preview and is removed in the next one." />
+    <!-- ErrorAndContinue reports every old name, not only the first. -->
+    <Error Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017" ContinueOnError="ErrorAndContinue"
+           Text="The Runic build %(_RunicApplicationFrontendRenamedName.Kind) %(_RunicApplicationFrontendRenamedName.Identity) is renamed to %(_RunicApplicationFrontendRenamedName.NewName). The old name no longer applies; rename it in $(MSBuildProjectFile), its imports or the command line." />
   </Target>
 
   <!-- Generation turns on for a project that references Runic.Application.Views
        directly, or that references a host adapter directly or transitively:
-       each adapter's props set RunicApplicationHostAdapter=true. -->
+       each adapter's props set _RunicApplicationHostAdapter=true. -->
   <Target Name="RunicViewsDetectBridgeUse" BeforeTargets="PrepareForBuild">
     <ItemGroup>
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
@@ -351,7 +353,7 @@
       <_RunicBridgeOptional Condition="'$(RunicApplicationFrontendGenerationEnabled)' == '' and ('$(RunicApplicationFrontendCompositionType)' == '' or '$(UseWPF)' == 'true') and '$(RunicApplicationFrontendModelAssembly)' == '' and '@(RunicApplicationFrontendInput)' == '' and !Exists('$(RunicApplicationFrontendDirectory)/package.json')">true</_RunicBridgeOptional>
       <_RunicBridgeDefaultedOff Condition="'$(RunicApplicationFrontendGenerationEnabled)' == ''">true</_RunicBridgeDefaultedOff>
       <RunicApplicationFrontendGenerationEnabled Condition="'$(RunicApplicationFrontendGenerationEnabled)' == '' and Exists('$(_RunicBridgeCodegenProject)')">true</RunicApplicationFrontendGenerationEnabled>
-      <RunicApplicationFrontendGenerationEnabled Condition="'$(RunicApplicationFrontendGenerationEnabled)' == '' and ('@(_RunicBridgeDirectPackage)' != '' or '$(RunicApplicationHostAdapter)' == 'true')">true</RunicApplicationFrontendGenerationEnabled>
+      <RunicApplicationFrontendGenerationEnabled Condition="'$(RunicApplicationFrontendGenerationEnabled)' == '' and ('@(_RunicBridgeDirectPackage)' != '' or '$(_RunicApplicationHostAdapter)' == 'true')">true</RunicApplicationFrontendGenerationEnabled>
       <RunicApplicationFrontendGenerationEnabled Condition="'$(RunicApplicationFrontendGenerationEnabled)' == ''">false</RunicApplicationFrontendGenerationEnabled>
       <_RunicBridgeDefaultedOff Condition="'$(RunicApplicationFrontendGenerationEnabled)' != 'false'"></_RunicBridgeDefaultedOff>
     </PropertyGroup>
@@ -370,7 +372,7 @@
         Condition="Exists('%(Compile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(Compile.FullPath)')), ':\s*(global::)?(Runic\.Application\.Views\.)?Runic(Window|View)\s*&lt;'))" />
     </ItemGroup>
     <Warning Code="RUNICBRIDGE015" Condition="'@(_RunicBridgeViewSource)' != ''"
-             File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge015"
+             File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge015"
              Text="$(AssemblyName) declares a Runic Window or View (@(_RunicBridgeViewSource->'%(Filename)%(Extension)', ', ')), but Bridge generation is off because the project references no host adapter (Runic.Application.Views.Desktop, Runic.Application.Views.CsWebUi or Runic.Application.Views.Wpf) and not Runic.Application.Views directly. No bridge, AddRunicViews() or TypeScript client is generated. Set RunicApplicationFrontendGenerationEnabled=true to generate them here, or false when another project generates them." />
   </Target>
 
@@ -480,14 +482,15 @@
          surface documentation-dependent analyzer warnings. Source generators
          still run. -->
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
-             Properties="RunicApplicationFrontendBootstrap=true;RunicBridgeBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(_RunicBridgeBootstrapOutputPath);IntermediateOutputPath=$(_RunicBridgeBootstrapIntermediateOutputPath)"
+             Properties="RunicApplicationFrontendBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(_RunicBridgeBootstrapOutputPath);IntermediateOutputPath=$(_RunicBridgeBootstrapIntermediateOutputPath)"
              Condition="'$(RunicApplicationFrontendModelAssembly)' == '' and '$(_RunicBridgeReuseGenerated)' != 'true'" />
     <PropertyGroup>
       <_RunicBridgeInputAssembly Condition="'$(RunicApplicationFrontendModelAssembly)' == ''">$(_RunicBridgeBootstrapOutputPath)$(AssemblyName).dll</_RunicBridgeInputAssembly>
       <_RunicBridgeInputAssembly Condition="'$(RunicApplicationFrontendModelAssembly)' != ''">$(RunicApplicationFrontendModelAssembly)</_RunicBridgeInputAssembly>
     </PropertyGroup>
-    <Error Condition="!Exists('$(_RunicBridgeCodegenDll)') and '$(_RunicBridgeReuseGenerated)' != 'true'"
-           Text="Runic Bridge code generator was not found at $(_RunicBridgeCodegenDll)." />
+    <Error Code="RUNICBRIDGE001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge001"
+           Condition="!Exists('$(_RunicBridgeCodegenDll)') and '$(_RunicBridgeReuseGenerated)' != 'true'"
+           Text="The Runic Bridge code generator was not found at $(_RunicBridgeCodegenDll). Restore the project again; the Runic.Application.Views package may be incomplete." />
     <PropertyGroup>
       <_RunicBridgeOptionalArgument Condition="'$(_RunicBridgeOptional)' == 'true'">--optional</_RunicBridgeOptionalArgument>
       <_RunicBridgeSkipped>false</_RunicBridgeSkipped>
@@ -506,7 +509,7 @@
     </PropertyGroup>
     <Delete Files="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" Condition="'$(_RunicBridgeReuseGenerated)' != 'true'" />
     <!-- The generator reports its diagnostics in canonical form. They are
-         logged once with their codes (see RunicBridgeReportCommandResult);
+         logged once with their codes (see RunicViewsReportCommandResult);
          a failure that reported none is RUNICBRIDGE001. -->
     <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
@@ -517,7 +520,7 @@
     <PropertyGroup>
       <_RunicBridgeCodegenDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeCodegenOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeCodegenDiagnostics>
     </PropertyGroup>
-    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeReuseGenerated)' != 'true' and ('$(_RunicBridgeCodegenExitCode)' != '0' or '$(_RunicBridgeCodegenDiagnostics)' == 'true')"
+    <RunicViewsReportCommandResult Condition="'$(_RunicBridgeReuseGenerated)' != 'true' and ('$(_RunicBridgeCodegenExitCode)' != '0' or '$(_RunicBridgeCodegenDiagnostics)' == 'true')"
         Lines="@(_RunicBridgeCodegenOutputLine)" ExitCode="$(_RunicBridgeCodegenExitCode)"
         FailureCode="RUNICBRIDGE001" FailureFile="$(MSBuildProjectFullPath)"
         FailureText="The Runic Bridge generator exited with code $(_RunicBridgeCodegenExitCode) without reporting an error while inspecting $(_RunicBridgeInputAssembly). Its output is above." />
@@ -527,7 +530,7 @@
     <ItemGroup Condition="'$(_RunicBridgeReuseGenerated)' == 'true' and '$(_RunicBridgeSkipped)' != 'true'">
       <_RunicBridgeGeneratedSource Include="$(_RunicBridgeGeneratedDir)*.Bridge.g.cs;$(_RunicBridgeGeneratedDir)*.View.g.cs" />
     </ItemGroup>
-    <Error Code="RUNICBRIDGE022" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge022"
+    <Error Code="RUNICBRIDGE022" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge022"
            Condition="'$(_RunicBridgeReuseGenerated)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and ('@(_RunicBridgeGeneratedSource)' == '' or ('$(RunicApplicationFrontendCompositionType)' != '' and !Exists('$(_RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs')))"
            Text="$(AssemblyName) is built with NoBuild=true, as by dotnet publish --no-build, but $([System.IO.Path]::GetFullPath('$(_RunicBridgeGeneratedDir)')) has no Runic Bridge code from an earlier build, and NoBuild does not run the generator. Build the project with the same Configuration, TargetFramework, RuntimeIdentifier and PublishAot first, or publish without --no-build." />
     <Message Importance="normal" Condition="'$(_RunicBridgeSkipped)' == 'true'"
@@ -542,7 +545,7 @@
       <_RunicBridgeCompositionDeclaredByMarker>$(_RunicBridgeBootstrapIntermediateOutputPath)RunicBridgeComposition.DeclaredBy.txt</_RunicBridgeCompositionDeclaredByMarker>
       <_RunicBridgeCompositionDeclaredBy Condition="'$(RunicApplicationFrontendModelAssembly)' == '' and Exists('$(_RunicBridgeCompositionDeclaredByMarker)')">$([System.IO.File]::ReadAllText('$(_RunicBridgeCompositionDeclaredByMarker)').Trim())</_RunicBridgeCompositionDeclaredBy>
     </PropertyGroup>
-    <Error Code="RUNICBRIDGE018" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge018"
+    <Error Code="RUNICBRIDGE018" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge018"
            Condition="'$(RunicApplicationFrontendCompositionType)' != '' and '$(_RunicBridgeSkipped)' != 'true' and '$(_RunicBridgeCompositionDeclaredBy)' != ''"
            Text="$(AssemblyName) declares Runic Views and generates the composition $(RunicApplicationFrontendCompositionType), but the referenced assembly $(_RunicBridgeCompositionDeclaredBy) already declares that type, so AddRunicViews() would be ambiguous. Set RunicApplicationFrontendCompositionType to another type name in $(MSBuildProjectFile) or in the project that builds $(_RunicBridgeCompositionDeclaredBy)." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeGeneratedDirRecord)'))" Condition="'$(UseWPF)' == 'true'" />
@@ -601,7 +604,7 @@
     <!-- Several hosts without a choice warn only when a copied page loads
          runic-views.js (RunicViewsMirrorFrontend): a page that loads a host's
          own client chooses its host at run time. -->
-    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge019"
+    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge019"
              Condition="'$(_RunicApplicationHostApplication)' == 'true' and '$(_RunicApplicationHostRequested)' != '' and '@(_RunicApplicationHostRequestedName)' == '' and '@(_RunicApplicationHostName)' != ''"
              Text="RunicApplicationHost is '$(_RunicApplicationHostRequested)', but $(AssemblyName) references no such Runic host, so the build copies no www/runic-views.js. Set it to one of the referenced hosts: @(_RunicApplicationHostName, ', ')." />
   </Target>
@@ -626,7 +629,7 @@
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
           DependsOnTargets="_RunicViewsIntermediatePaths;RunicViewsResolveHost"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'">
-    <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge014"
+    <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge014"
            Condition="!Exists('$(RunicApplicationFrontendDirectory)') or ('$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)' and !Exists('$(RunicApplicationFrontendDirectory)/package.json'))"
            Text="$(AssemblyName) declares Runic Views, but the frontend directory $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) has no package.json to build the generated client in $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendGeneratedDirectory)')). Create the frontend there, set RunicApplicationFrontendDirectory to your frontend package directory, or set RunicApplicationFrontendBuildEnabled=false when another tool builds it." />
     <!-- A target that ran before generation may still add the old item name;
@@ -634,13 +637,12 @@
     <ItemGroup>
       <_RunicBridgeDeclaredInputRename Include="@(_RunicApplicationFrontendRenamedName)" Condition="'%(Identity)' == 'RunicBridgeFrontendInput'" />
     </ItemGroup>
-    <Warning Code="RUNICBRIDGE017" Condition="'@(RunicBridgeFrontendInput)' != '' and '@(_RunicBridgeDeclaredInputRename)' == ''"
-             File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge017"
-             Text="The RunicBridgeFrontendInput item is renamed to RunicApplicationFrontendInput. Rename it in $(MSBuildProjectFile) or its imports; the old name still works in this preview and is removed in the next one." />
+    <Error Code="RUNICBRIDGE017" Condition="'@(RunicBridgeFrontendInput)' != '' and '@(_RunicBridgeDeclaredInputRename)' == ''"
+           File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017"
+           Text="The RunicBridgeFrontendInput item is renamed to RunicApplicationFrontendInput. The old name no longer applies; rename it in $(MSBuildProjectFile) or its imports." />
     <ItemGroup>
-      <RunicApplicationFrontendInput Include="@(RunicBridgeFrontendInput)" Exclude="@(RunicApplicationFrontendInput)" />
       <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendDirectory)/**/*"
-          Exclude="$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(RunicApplicationFrontendDirectory)/build/**;$(RunicApplicationFrontendDirectory)/bin/**;$(RunicApplicationFrontendDirectory)/obj/**;$(RunicApplicationFrontendDirectory)/.*/**" />
+          Exclude="$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(_RunicApplicationFrontendOutputPath)**;$(RunicApplicationFrontendDirectory)/build/**;$(RunicApplicationFrontendDirectory)/bin/**;$(RunicApplicationFrontendDirectory)/obj/**;$(RunicApplicationFrontendDirectory)/.*/**" />
       <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendGeneratedDirectory)/*.ts;$(MSBuildProjectFullPath)" />
       <!-- Registered on every build so IncrementalClean keeps them when the
            frontend target is skipped as up to date. -->
@@ -670,7 +672,7 @@
     </ReadLinesFromFile>
     <ItemGroup>
       <_RunicBridgeFrontendMissingOutput Include="@(_RunicBridgeFrontendRecordedOutput)"
-          Condition="!Exists('$(RunicApplicationFrontendDirectory)/%(Identity)')" />
+          Condition="!Exists('%(Identity)')" />
     </ItemGroup>
     <Delete Files="$(_RunicBridgeFrontendStamp)"
         Condition="Exists('$(_RunicBridgeFrontendStamp)') and (!Exists('$(_RunicBridgeFrontendOutputsFile)') or '@(_RunicBridgeFrontendMissingOutput)' != '')" />
@@ -710,7 +712,7 @@
        becomes a symbolic link (a junction on Windows) to that directory. An
        earlier link is replaced; a node_modules that is not a link is
        RUNICBRIDGE021 rather than replaced. -->
-  <UsingTask TaskName="RunicBridgeLinkNodeModules" TaskFactory="RoslynCodeTaskFactory"
+  <UsingTask TaskName="RunicViewsLinkNodeModules" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
       <Link ParameterType="System.String" Required="true" />
@@ -770,10 +772,10 @@
 
   <Target Name="RunicViewsLinkFrontendNodeModules" BeforeTargets="RunicViewsBuildFrontend"
           Condition="'$(RunicApplicationFrontendNodeModulesDirectory)' != '' and '$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
-    <RunicBridgeLinkNodeModules Link="$(RunicApplicationFrontendDirectory)/node_modules"
+    <RunicViewsLinkNodeModules Link="$(RunicApplicationFrontendDirectory)/node_modules"
                                 Target="$(RunicApplicationFrontendNodeModulesDirectory)"
                                 ProjectFile="$(MSBuildProjectFullPath)"
-                                HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge021" />
+                                HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge021" />
   </Target>
 
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend" DependsOnTargets="_RunicViewsIntermediatePaths"
@@ -789,12 +791,12 @@
     <PropertyGroup>
       <_RunicBridgeFrontendInstallDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendInstallOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendInstallDiagnostics>
     </PropertyGroup>
-    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeFrontendInstallExitCode)' != '0' or '$(_RunicBridgeFrontendInstallDiagnostics)' == 'true'"
+    <RunicViewsReportCommandResult Condition="'$(_RunicBridgeFrontendInstallExitCode)' != '0' or '$(_RunicBridgeFrontendInstallDiagnostics)' == 'true'"
         Lines="@(_RunicBridgeFrontendInstallOutputLine)" ExitCode="$(_RunicBridgeFrontendInstallExitCode)"
         WorkingDirectory="$(RunicApplicationFrontendDirectory)"
         FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
         FailureText="The frontend install '$(RunicApplicationFrontendInstallCommand)' in $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) exited with code $(_RunicBridgeFrontendInstallExitCode). Its output is above. Run 'dotnet runic doctor' to check the package manager and lock file." />
-    <Error Code="RUNICBRIDGE016" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge016"
+    <Error Code="RUNICBRIDGE016" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge016"
            Condition="'$(_RunicBridgeFrontendInstallExitCode)' == '0' and '$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(RunicApplicationFrontendDirectory)/node_modules')"
            Text="'$(RunicApplicationFrontendInstallCommand)' did not create $(RunicApplicationFrontendDirectory)/node_modules. Install the frontend dependencies with $(RunicApplicationFrontendPackageManager), or run 'dotnet runic doctor' to check the package manager and lock file." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeFrontendInstallStamp)'))" />
@@ -817,7 +819,7 @@
     <PropertyGroup>
       <_RunicBridgeFrontendBuildDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendBuildOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendBuildDiagnostics>
     </PropertyGroup>
-    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeFrontendBuildExitCode)' != '0' or '$(_RunicBridgeFrontendBuildDiagnostics)' == 'true'"
+    <RunicViewsReportCommandResult Condition="'$(_RunicBridgeFrontendBuildExitCode)' != '0' or '$(_RunicBridgeFrontendBuildDiagnostics)' == 'true'"
         Lines="@(_RunicBridgeFrontendBuildOutputLine)" ExitCode="$(_RunicBridgeFrontendBuildExitCode)"
         WorkingDirectory="$(RunicApplicationFrontendDirectory)"
         FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
@@ -825,12 +827,12 @@
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeFrontendStamp)'))"
              Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
     <ItemGroup Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'">
-      <_RunicBridgeFrontendBuiltFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
+      <_RunicBridgeFrontendBuiltFile Include="$(_RunicApplicationFrontendOutputPath)**/*" />
     </ItemGroup>
     <!-- An empty list still marks the stamp as current; a build that writes
-         no dist/ (another output folder) checks no files. -->
+         nothing to the output directory checks no files. -->
     <WriteLinesToFile File="$(_RunicBridgeFrontendOutputsFile)" Overwrite="true"
-        Lines="@(_RunicBridgeFrontendBuiltFile->'dist/%(RecursiveDir)%(Filename)%(Extension)')"
+        Lines="@(_RunicBridgeFrontendBuiltFile->'%(FullPath)')"
         Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
     <WriteLinesToFile File="$(_RunicBridgeFrontendStateFile)" Lines="$(_RunicBridgeFrontendBuildState)" Overwrite="true"
         Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
@@ -859,7 +861,7 @@
   <Target Name="RunicViewsGetFrontendFiles" DependsOnTargets="RunicViewsDetectBridgeUse;RunicViewsCollectReferencedFrontends"
           Returns="@(_RunicBridgeReferencedFrontendFile);@(_RunicBridgeOwnFrontendFile)">
     <ItemGroup Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
-      <_RunicBridgeFrontendDistFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
+      <_RunicBridgeFrontendDistFile Include="$(_RunicApplicationFrontendOutputPath)**/*" />
       <_RunicBridgeOwnFrontendFile Include="@(_RunicBridgeFrontendDistFile->'%(FullPath)')"
         RunicFrontendPath="%(_RunicBridgeFrontendDistFile.RecursiveDir)%(_RunicBridgeFrontendDistFile.Filename)%(_RunicBridgeFrontendDistFile.Extension)" />
     </ItemGroup>
@@ -869,10 +871,10 @@
           DependsOnTargets="RunicViewsCollectReferencedFrontends"
           Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">
     <ItemGroup>
-      <_RunicBridgeWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)www/%(RunicFrontendPath)')" />
+      <_RunicBridgeWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)$(_RunicApplicationFrontendWebRoot)/%(RunicFrontendPath)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgeReferencedFrontendFile)"
-          DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)www/%(RunicFrontendPath)')"
+          DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)$(_RunicApplicationFrontendWebRoot)/%(RunicFrontendPath)')"
           SkipUnchangedFiles="true" />
   </Target>
 
@@ -880,10 +882,10 @@
           DependsOnTargets="RunicViewsCollectReferencedFrontends"
           Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ItemGroup>
-      <_RunicBridgePublishedWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)www/%(RunicFrontendPath)')" />
+      <_RunicBridgePublishedWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)$(_RunicApplicationFrontendWebRoot)/%(RunicFrontendPath)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgeReferencedFrontendFile)"
-          DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)www/%(RunicFrontendPath)')"
+          DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)$(_RunicApplicationFrontendWebRoot)/%(RunicFrontendPath)')"
           SkipUnchangedFiles="true" />
   </Target>
 
@@ -893,11 +895,11 @@
           DependsOnTargets="RunicViewsDetectBridgeUse"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">
     <ItemGroup>
-      <_RunicBridgeFrontendFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
-      <_RunicBridgeWwwFile Include="@(_RunicBridgeFrontendFile->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')" />
+      <_RunicBridgeFrontendFile Include="$(_RunicApplicationFrontendOutputPath)**/*" />
+      <_RunicBridgeWwwFile Include="@(_RunicBridgeFrontendFile->'$(TargetDir)$(_RunicApplicationFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgeFrontendFile)"
-          DestinationFiles="@(_RunicBridgeFrontendFile->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(_RunicBridgeFrontendFile->'$(TargetDir)$(_RunicApplicationFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 
@@ -905,11 +907,11 @@
           DependsOnTargets="RunicViewsDetectBridgeUse"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ItemGroup>
-      <_RunicBridgePublishedFrontendFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
-      <_RunicBridgePublishedWwwFile Include="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)www/%(RecursiveDir)%(Filename)%(Extension)')" />
+      <_RunicBridgePublishedFrontendFile Include="$(_RunicApplicationFrontendOutputPath)**/*" />
+      <_RunicBridgePublishedWwwFile Include="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)$(_RunicApplicationFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgePublishedFrontendFile)"
-          DestinationFiles="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)www/%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)$(_RunicApplicationFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 
@@ -931,7 +933,7 @@
   <Target Name="RunicViewsMirrorFrontend" AfterTargets="Build" DependsOnTargets="RunicViewsWwwManifestDirectory;$(_RunicApplicationHostCopyTargets)"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
-      <_RunicBridgeWwwRoot>$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::GetFullPath('$(TargetDir)www'))'))</_RunicBridgeWwwRoot>
+      <_RunicBridgeWwwRoot>$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::GetFullPath('$(TargetDir)$(_RunicApplicationFrontendWebRoot)'))'))</_RunicBridgeWwwRoot>
       <_RunicBridgeWwwManifest>$(_RunicBridgeWwwManifestDirectory)runic-frontend-www.files</_RunicBridgeWwwManifest>
     </PropertyGroup>
     <!-- A page that loads runic-views.js needs a chosen host (RUNICBRIDGE019). -->
@@ -939,7 +941,7 @@
       <_RunicBridgeHostNeutralPage Include="@(_RunicBridgeWwwFile->'%(FullPath)')"
           Condition="'%(Extension)' == '.html' and Exists('%(FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(FullPath)')), '(^|[^\w.-])runic-views\.js'))" />
     </ItemGroup>
-    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge019"
+    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge019"
              Condition="'@(_RunicBridgeHostNeutralPage)' != ''"
              Text="$(AssemblyName) references more than one Runic host ($(_RunicApplicationHostNamesText)), and its page @(_RunicBridgeHostNeutralPage->'%(Filename)%(Extension)', ', ') loads runic-views.js, but the build copies no www/runic-views.js, so the page gets no Bridge. Set RunicApplicationHost in $(MSBuildProjectFile) or on the command line (-p:RunicApplicationHost=...) to the host the application runs on." />
     <!-- Each record line is "<last write time>|<path>". A recorded file is
@@ -970,7 +972,7 @@
   <Target Name="RunicViewsMirrorFrontendForPublish" AfterTargets="Publish" DependsOnTargets="RunicViewsWwwManifestDirectory;$(_RunicApplicationHostPublishCopyTargets)"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <PropertyGroup>
-      <_RunicBridgePublishedWwwRoot>$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::GetFullPath('$(PublishDir)www'))'))</_RunicBridgePublishedWwwRoot>
+      <_RunicBridgePublishedWwwRoot>$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::GetFullPath('$(PublishDir)$(_RunicApplicationFrontendWebRoot)'))'))</_RunicBridgePublishedWwwRoot>
       <_RunicBridgePublishedWwwManifest>$(_RunicBridgeWwwManifestDirectory)runic-frontend-publish.files</_RunicBridgePublishedWwwManifest>
     </PropertyGroup>
     <!-- Each record line is "<last write time>|<path>". A recorded file is

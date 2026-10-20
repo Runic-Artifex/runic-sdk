@@ -61,7 +61,7 @@ internal sealed record DoctorProjectConfiguration(
     internal bool StripSymbols { get; init; } = true;
 
     /// <summary>
-    /// RunicApplicationHostAdapter, which every adapter's build props set: true when a restored project gets a host
+    /// _RunicApplicationHostAdapter, which every adapter's build props set: true when a restored project gets a host
     /// adapter, also through another package or project.
     /// </summary>
     internal bool ReferencesHostAdapter { get; init; }
@@ -121,7 +121,7 @@ internal sealed record DoctorProjectConfiguration(
             DetectHost(references))
         {
             Hosts = DetectHosts(references),
-            ReferencesHostAdapter = IsTrue(Value("RunicApplicationHostAdapter")),
+            ReferencesHostAdapter = IsTrue(Value("_RunicApplicationHostAdapter")),
             RuntimeIdentifiers = Value("RuntimeIdentifiers"),
             PublishAot = IsTrue(Value("PublishAot")),
             SelfContained = IsTrue(Value("SelfContained")),
@@ -195,7 +195,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicApplicationHostAdapter",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,_RunicApplicationHostAdapter",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));

@@ -284,7 +284,7 @@ test('template lanes cover every framework once and run the creator check in one
   assert.equal(step?.name, 'Verify generated ${{ matrix.first }} template applications');
   assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.first }}');
   assert.equal(step?.env.RUNIC_TEMPLATE_CREATOR, "${{ matrix.creator || '0' }}");
-  // The vue step owns the desktop-gtk4 variant; its GTK 4 smoke needs the runtime installed first.
+  // The vue step owns the --linux-gtk 4 variant; its GTK 4 smoke needs the runtime installed first.
   assert.equal(step?.env.RUNIC_TEMPLATE_DESKTOP_SMOKE, "${{ matrix.desktop-smoke || '0' }}");
   // The second framework also runs after the first failed, without the creator and desktop smoke.
   assert.equal(second?.name, 'Verify generated ${{ matrix.second }} template applications');
@@ -297,12 +297,12 @@ test('template lanes cover every framework once and run the creator check in one
   const sandbox = steps.findIndex(item => item.run === 'eng/ci/permit-webkit-sandbox.sh');
   assert.ok(sandbox > install && sandbox < steps.indexOf(step));
   assert.equal(steps[sandbox].if, "matrix.desktop-smoke == '1'");
-  // Each lane verifies only the variants of its framework, so the desktop-gtk4 variants must belong to the
-  // smoke lane's framework, or their smoke would be skipped silently.
+  // Each lane verifies only the variants of its framework, so the --linux-gtk 4 (gtk4 flag) variants must belong to
+  // the smoke lane's framework, or their smoke would be skipped silently.
   const smokeFrameworks = strategy.matrix.include.filter(item => item['desktop-smoke'] === '1').map(item => item.first);
   const variants = [...readFileSync(resolve(root, 'tests/templates/Test-Templates.sh'), 'utf8')
-    .matchAll(/^\s*"(\w+) (\w+) desktop-gtk4 (\w+)( tests)?"$/gm)];
-  assert.ok(variants.length > 0, 'Test-Templates.sh has no desktop-gtk4 variant.');
+    .matchAll(/^\s*"(\w+) (\w+) desktop (\w+)( tests)? gtk4"$/gm)];
+  assert.ok(variants.length > 0, 'Test-Templates.sh has no --linux-gtk 4 variant.');
   for (const [, framework] of variants) assert.deepEqual(smokeFrameworks, [framework]);
 });
 

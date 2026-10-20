@@ -28,28 +28,21 @@ internal sealed record DevProjectConfiguration(
         "MSBuildProjectFullPath",
         "RunicApplicationFrontendWindowProject",
         "RunicApplicationFrontendDirectory",
-        // Names before 0.7.0-preview.7. The package's targets map them to the new ones
-        // (RUNICBRIDGE017), but an unrestored project has not imported those targets yet.
-        "RunicViewsWindowProject",
-        "RunicBridgeFrontendDir",
         "RunicApplicationFrontendGeneratedDirectory",
         "RunicApplicationFrontendBuildCommand",
-        "RunicAssetsDist",
-        "RunicAssetsFrontendDirectory",
-        "RunicApplicationFrontendCompilerEnabled",
-        "RunicApplicationFrontendPackageDirectory",
+        // The external frontend compiler integration has no documented contract yet, so its properties are internal.
+        "_RunicApplicationFrontendCompilerEnabled",
         "RunicApplicationFrontendOutputDirectory",
         "RunicApplicationFrontendWebRoot",
         "RunicApplicationFrontendDevWatchTarget",
-        "RunicApplicationFrontendViteDevServerEnabled",
         "RunicApplicationFrontendViteDevServerEntry",
         "RunicApplicationFrontendViteConfiguration",
         "RunicApplicationFrontendDevServerKind",
         "RunicApplicationFrontendDevServerDocument",
-        "RunicApplicationFrontendCompilerDiagnosticsPath",
-        "RunicApplicationFrontendCompilerHotReloadPath",
-        "RunicApplicationFrontendCompilerWatchPattern",
-        "RunicApplicationFrontendCompilerHotReloadTarget",
+        "_RunicApplicationFrontendCompilerDiagnosticsPath",
+        "_RunicApplicationFrontendCompilerHotReloadPath",
+        "_RunicApplicationFrontendCompilerWatchPattern",
+        "_RunicApplicationFrontendCompilerHotReloadTarget",
         "ProjectAssetsFile",
         "TargetDir",
     ];
@@ -121,7 +114,7 @@ internal sealed record DevProjectConfiguration(
 
         string evaluatedProject = Normalize(Value("MSBuildProjectFullPath"), projectDirectory);
         string evaluatedDirectory = Path.GetDirectoryName(evaluatedProject) ?? projectDirectory;
-        bool viewsWindow = Flag("RunicApplicationFrontendWindowProject") || Flag("RunicViewsWindowProject");
+        bool viewsWindow = Flag("RunicApplicationFrontendWindowProject");
         if (!viewsWindow)
         {
             throw new DevUsageException(
@@ -130,14 +123,6 @@ internal sealed record DevProjectConfiguration(
         }
 
         string frontend = NormalizeOptional(Value("RunicApplicationFrontendDirectory"), evaluatedDirectory);
-        if (frontend.Length == 0)
-        {
-            frontend = NormalizeOptional(Value("RunicBridgeFrontendDir"), evaluatedDirectory);
-        }
-        if (frontend.Length == 0)
-        {
-            frontend = NormalizeOptional(Value("RunicAssetsFrontendDirectory"), evaluatedDirectory);
-        }
         if (frontend.Length == 0)
         {
             string conventional = Path.Combine(evaluatedDirectory, "Frontend");
@@ -150,11 +135,9 @@ internal sealed record DevProjectConfiguration(
                 "The Runic Views Window project must define RunicApplicationFrontendDirectory with a package.json frontend.");
         }
 
-        string packageDirectory = NormalizeOptional(Value("RunicApplicationFrontendPackageDirectory"), frontend);
-        if (packageDirectory.Length == 0)
-        {
-            packageDirectory = frontend;
-        }
+        // The frontend directory is the package directory. The Views targets define the output directory and web root
+        // for build and publish too; an unrestored project has not imported them, so the defaults repeat here.
+        string packageDirectory = frontend;
         string outputDirectory = NormalizeOptional(Value("RunicApplicationFrontendOutputDirectory"), frontend);
         if (outputDirectory.Length == 0)
         {
@@ -169,7 +152,7 @@ internal sealed record DevProjectConfiguration(
         (string serverKind, bool viteEnabled, string viteEntry, string viteConfiguration) = InferDevelopmentServer(
             frontend,
             Value("RunicApplicationFrontendDevServerKind"),
-            Flag("RunicApplicationFrontendViteDevServerEnabled"),
+            false,
             Value("RunicApplicationFrontendViteDevServerEntry"),
             NormalizeOptional(Value("RunicApplicationFrontendViteConfiguration"), frontend));
 
@@ -177,7 +160,7 @@ internal sealed record DevProjectConfiguration(
             evaluatedProject,
             evaluatedDirectory,
             NodeEnabled: true,
-            FrontendCompilerEnabled: Flag("RunicApplicationFrontendCompilerEnabled"),
+            FrontendCompilerEnabled: Flag("_RunicApplicationFrontendCompilerEnabled"),
             WorkspaceRoot: frontend,
             Workspace: ".",
             FrontendPackageDirectory: packageDirectory,
@@ -189,14 +172,14 @@ internal sealed record DevProjectConfiguration(
             ViteDevServerEnabled: viteEnabled,
             ViteDevServerEntry: viteEntry,
             ViteConfigurationPath: viteConfiguration,
-            FrontendCompilerDiagnosticsPath: NormalizeOptional(Value("RunicApplicationFrontendCompilerDiagnosticsPath"), evaluatedDirectory),
-            FrontendCompilerHotReloadPath: NormalizeOptional(Value("RunicApplicationFrontendCompilerHotReloadPath"), evaluatedDirectory),
+            FrontendCompilerDiagnosticsPath: NormalizeOptional(Value("_RunicApplicationFrontendCompilerDiagnosticsPath"), evaluatedDirectory),
+            FrontendCompilerHotReloadPath: NormalizeOptional(Value("_RunicApplicationFrontendCompilerHotReloadPath"), evaluatedDirectory),
             TargetDirectory: targetDirectory)
         {
             IsViewsWindowProject = viewsWindow,
             ProjectAssetsFile = NormalizeOptional(Value("ProjectAssetsFile"), evaluatedDirectory),
-            FrontendCompilerWatchPattern = Value("RunicApplicationFrontendCompilerWatchPattern"),
-            FrontendCompilerHotReloadTarget = Value("RunicApplicationFrontendCompilerHotReloadTarget"),
+            FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),
+            FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
             DevelopmentServerDocument = Value("RunicApplicationFrontendDevServerDocument"),
         };

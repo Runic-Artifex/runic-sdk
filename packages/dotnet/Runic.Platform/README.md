@@ -609,7 +609,7 @@ argument must match the pattern at its position:
                          Verb="system"
                          Description="Change the system"
                          Message="Authentication is required to change the system."
-                         AllowActive="auth_admin_keep" />
+                         PolkitAllowActive="auth_admin_keep" />
   <RunicPrivilegedCommand Include="activate" Action="org.example.app.system"
                           Arguments="switch|boot;/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+-]+" />
   <RunicPrivilegedCommand Include="rollback" Action="org.example.app.system" />
@@ -635,8 +635,9 @@ macOS daemon) check the same positions; the program then switches on the
 command name. Invalid commands are build error `RUNICPA015`, and invalid
 command patterns `RUNICPA008`.
 
-Platform packages read further metadata of their own, such as Polkit's
-`IconName` and `AllowActive`; see their guides. Metadata no package reads is
+Platform packages read further metadata of their own, named after their
+platform, such as Polkit's `PolkitIconName` and `PolkitAllowActive`; see their
+guides. Metadata no package reads is
 ignored.
 
 Each build validates the items and writes `PrivilegedActions.g.cs` under
@@ -656,9 +657,16 @@ The class name and namespace defaults are set when the package's targets are
 evaluated, after the project file, so a project's own `RootNamespace` applies
 and platform targets can read the final values.
 
+Two targets are supported hooks: `RunicValidatePrivilegedActions`, which
+validates the items, and `RunicGeneratePrivilegedActions`, which writes the
+class. A project can run its own targets before or after them with
+`BeforeTargets` and `AfterTargets`. The names of the other privileged-action
+targets, in this package and in the platform packages, may change.
+
 A platform package extends the generation with a target that depends on
 `RunicValidatePrivilegedActions`, which validates the items once, and appends
 that target to `RunicPrivilegedActionsDependsOn`; `RunicGeneratePrivilegedActions`
 writes the class only after those targets succeeded. A platform package that
 generates its own part of the class uses a reserved property name, and adds any
-new one to `RunicPrivilegedActionsReservedNames`.
+new one to `RunicPrivilegedActionsReservedNames`. These two properties are the
+protocol between Runic.Platform and the platform packages.

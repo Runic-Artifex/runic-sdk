@@ -207,15 +207,18 @@ it these targets do nothing.
 </PropertyGroup>
 ```
 
+In the property names, "PrivilegedDaemon" names the daemon and "LaunchDaemon"
+its launchd property list.
+
 | Property | Meaning |
 | --- | --- |
 | `RunicMacPrivilegedDaemonLabel` | The launchd label, the XPC Mach service name and the property list's name. |
-| `RunicMacBundleIdentifier` | The application's bundle identifier and code-signing identifier. Default: `$(ApplicationId)`, then `$(RunicApplicationId)`, which a `runic-app` project declares. |
+| `RunicMacBundleIdentifier` | The application's bundle identifier and code-signing identifier. Default: `$(ApplicationId)`. |
 | `RunicMacTeamIdentifier` | The Team ID that signs the application, the daemon and bundled programs. |
 | `RunicMacPrivilegedDaemonProgram` | The daemon executable's path in the bundle. |
 | `RunicMacPrivilegedDaemonIdentifier` | The daemon's code-signing identifier. Default: the label. |
 | `RunicMacLaunchDaemonOutputPath` | Where the property list goes in the output and publish directories. Default: `Library/LaunchDaemons/`. |
-| `RunicMacLaunchDaemonPlist` | `false` in a second project that imports the same items, so only one copies the property list. |
+| `RunicMacLaunchDaemonPlistCopyEnabled` | Default `true`. `false` skips only the copy of the property list to the output and publish directories; it is still written under `obj/`. Set it in a second project that imports the same items, so only one copies the property list. |
 | `RunicMacPrivilegedDaemon` | `true` in the daemon's project, which must be NativeAOT (`RUNICPA106`). |
 | `RunicMacPrivilegedDevelopmentSigning` | `true` accepts development-signed code: the requirements drop the Developer ID marker, the daemon accepts a client with `get-task-allow` (any process of the same user can then take its task port) or a JIT, and `RUNICPA107` is off. For local development only; a daemon signed with Developer ID refuses to run with it. |
 
@@ -229,7 +232,9 @@ an absolute path; without it the daemon runs `Program`. `MacProgramIdentifier`
 is the program's code-signing identifier: a program whose path someone other
 than root can change runs only when it is signed with it, and a bundle program
 without one is a build error. Invalid settings are build errors `RUNICPA101` to
-`RUNICPA107`, described in the
+`RUNICPA107`. A project that still sets `RunicMacLaunchDaemonPlist`, the former
+name, fails with `RUNICPA108`; the old name no longer applies. They are
+described in the
 [diagnostics catalog](../../../docs/diagnostics.md#runicpa101).
 
 ### The daemon

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The manifest of a Runic elevated helper (RunicElevatedHelper=true): Windows asks for elevation however it is started. -->
+<!-- The manifest of a Runic elevated helper (RunicWindowsElevatedHelper=true): Windows asks for elevation however it is started. -->
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="Runic.ElevatedHelper" />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">

@@ -19,7 +19,7 @@
     <!-- The package's analyzer and props, as a project reference instead of the packed package. -->
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"
         UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
-    <AdditionalFiles Include="Interfaces/org.runic.Test.Media.xml" RunicDBusMode="Proxy,Service" Namespace="Runic.Platform.Linux.DBus.Tests.Generated" />
+    <AdditionalFiles Include="Interfaces/org.runic.Test.Media.xml" RunicDBusMode="Proxy,Service" RunicDBusNamespace="Runic.Platform.Linux.DBus.Tests.Generated" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Platform.Linux.DBus/buildTransitive/Runic.Platform.Linux.DBus.props" />
   <Import Project="../../../eng/build/application.targets" />

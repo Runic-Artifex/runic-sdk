@@ -182,3 +182,5 @@ with explicit Kestrel core and socket transport. A NativeAOT linker feature swit
 removes the default slim-builder path. Runic's surface, transport and admission
 behavior is retained; default configuration providers are omitted. Test any custom
 service assumptions. See the SDK's [size and tuning guide](https://docs.runic-artifex.eu/guides/desktop/size-and-tuning/).
+Any value other than `true` or `false` fails the build with
+[`RUNICDESK001`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk001).

@@ -18,12 +18,12 @@ internal sealed class PolicyGenerationTests
         using var project = new FixtureProject("""
             <RunicPrivilegedAction Include="org.example.app.activate" Program="/nix/store/abc-app/libexec/helper" Verb="activate"
                                    Description="Activate &quot;the&quot; system" Message="Authentication is required to change &lt;the system&gt; &amp; reboot."
-                                   IconName="system-software-update" AllowActive="auth_admin_keep" MaximumArguments="2"
+                                   PolkitIconName="system-software-update" PolkitAllowActive="auth_admin_keep" MaximumArguments="2"
                                    ArgumentPattern="switch|boot|/nix/store/[a-z0-9]{32}-nixos-system-[^/\\]+" />
             <RunicPrivilegedAction Include="org.example.app.collect-garbage" Program="/nix/store/abc-app/libexec/helper" Verb="gc"
-                                   Description="Collect garbage" Message="Authentication is required to collect garbage." AllowGui="true" />
+                                   Description="Collect garbage" Message="Authentication is required to collect garbage." PolkitAllowGui="true" />
             <RunicPrivilegedAction Include="org.example.tool" Program="/usr/libexec/tool" Verb="run" Name="Tool"
-                                   Description="Run the tool" Message="Authentication is required to run the tool." AllowAny="no" />
+                                   Description="Run the tool" Message="Authentication is required to run the tool." PolkitAllowAny="no" />
             """);
         var (exit, output) = await project.BuildAsync();
         Check(exit == 0, output);
@@ -77,7 +77,7 @@ internal sealed class PolicyGenerationTests
     {
         using var project = new FixtureProject("""
             <RunicPrivilegedAction Include="org.example.app.system" Program="/opt/app/helper" Verb="--privileged" Name="System"
-                                   Description="Change the system" Message="Authentication is required to change the system." AllowActive="auth_admin_keep" />
+                                   Description="Change the system" Message="Authentication is required to change the system." PolkitAllowActive="auth_admin_keep" />
             <RunicPrivilegedAction Include="org.example.app.plain" Program="/opt/app/helper" Verb="plain" MaximumArguments="1"
                                    Description="Plain" Message="m" />
             <RunicPrivilegedCommand Include="activate-output" Action="org.example.app.system" Arguments="switch|boot;/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+\x3B-]+" />
@@ -143,7 +143,7 @@ internal sealed class PolicyGenerationTests
     {
         using var project = new FixtureProject("""
             <RunicPrivilegedAction Include="org.example.tool" Program="/usr/libexec/tool" Description="Run the tool"
-                                   Message="Authentication is required to run the tool." AllowActive="yes" AllowInactive="auth_self_keep" />
+                                   Message="Authentication is required to run the tool." PolkitAllowActive="yes" PolkitAllowInactive="auth_self_keep" />
             """);
         var (exit, output) = await project.BuildAsync();
         Check(exit == 0, output);
@@ -218,10 +218,10 @@ internal sealed class PolicyGenerationTests
     public async Task RejectsInvalidPolicyValuesAsync()
     {
         using var project = new FixtureProject("""
-            <RunicPrivilegedAction Include="org.example.authorization" Program="/opt/c" Verb="authorization" Description="d" Message="m" AllowActive="sometimes" />
+            <RunicPrivilegedAction Include="org.example.authorization" Program="/opt/c" Verb="authorization" Description="d" Message="m" PolkitAllowActive="sometimes" />
             <RunicPrivilegedAction Include="org.example.newline" Program="/opt/d" Verb="newline" Description="d" Message="first&#10;second" />
             <RunicPrivilegedAction Include="org.example.xml" Program="/opt/k" Verb="xml" Description="d" Message="$(BadText)" />
-            <RunicPrivilegedAction Include="org.example.gui" Program="/opt/l" Verb="gui" Description="d" Message="m" AllowGui="maybe" />
+            <RunicPrivilegedAction Include="org.example.gui" Program="/opt/l" Verb="gui" Description="d" Message="m" PolkitAllowGui="maybe" />
             """);
         var (exit, output) = await project.BuildAsync("-p:BadText=not\uFFFEXML");
         Check(exit != 0, output);
@@ -229,6 +229,8 @@ internal sealed class PolicyGenerationTests
             Check(output.Contains(code, StringComparison.Ordinal), $"{code} in {output}");
         Check(output.Contains("'org.example.newline' has a line break", StringComparison.Ordinal), "a line break is RUNICPA013");
         Check(output.Contains("'org.example.xml' has a line break", StringComparison.Ordinal), "a character XML cannot carry is RUNICPA013, not a task exception");
+        Check(output.Contains("'org.example.gui' has PolkitAllowGui 'maybe'", StringComparison.Ordinal) && output.Contains("'org.example.authorization' has PolkitAllowActive 'sometimes'", StringComparison.Ordinal),
+            "the errors name the Polkit metadata");
         Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "neither the policy nor the declarations are written");
         Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
     }
@@ -266,6 +268,104 @@ internal sealed class PolicyGenerationTests
             && properties.Contains("\"RunicPrivilegedActionsNamespace\": \"Example.App\"", StringComparison.Ordinal), properties);
     }
 
+    // D18 f, d: the Polkit-only metadata carries the platform's prefix, like WindowsProgram and MacProgram, and the copy
+    // switch says what it switches. The former names are RUNICPA108 and no longer apply.
+    [Test, DisplayName("policy: the former names are RUNICPA108 and no longer apply")]
+    public async Task RenamedNamesAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.activate" Program="/opt/example/helper" Verb="activate" Description="Activate" Message="m"
+                                   AllowAny="no" AllowInactive="no" AllowActive="auth_admin_keep" AllowGui="true" IconName="system-software-update" />
+            <RunicPrivilegedAction Include="org.example.app.collect" Program="/opt/example/helper" Verb="collect" Description="Collect" Message="m" AllowActive="auth_admin_keep" />
+            """);
+        var (exit, output) = await project.BuildAsync("-p:RunicPolkitPolicy=false");
+        Check(exit != 0, output);
+        var lines = output.Split('\n').Where(l => l.Contains("error RUNICPA108", StringComparison.Ordinal)).Select(l => l.Trim()).Distinct().ToList();
+        foreach (var expected in new[]
+        {
+            "The Runic build property RunicPolkitPolicy is renamed to RunicPolkitPolicyCopyEnabled. Rename it in fixture.proj, its imports or the command line.",
+            "The RunicPrivilegedAction metadata AllowAny on 'org.example.app.activate' is renamed to PolkitAllowAny. Rename it in fixture.proj or its imports.",
+            "The RunicPrivilegedAction metadata AllowInactive on 'org.example.app.activate' is renamed to PolkitAllowInactive.",
+            "The RunicPrivilegedAction metadata AllowActive on 'org.example.app.activate' is renamed to PolkitAllowActive.",
+            "The RunicPrivilegedAction metadata AllowGui on 'org.example.app.activate' is renamed to PolkitAllowGui.",
+            "The RunicPrivilegedAction metadata IconName on 'org.example.app.activate' is renamed to PolkitIconName.",
+            "The RunicPrivilegedAction metadata AllowActive on 'org.example.app.collect' is renamed to PolkitAllowActive.",
+        })
+            Check(lines.Count(l => l.Contains(expected, StringComparison.Ordinal)) == 1, $"{expected} once in {output}");
+        Check(lines.Count == 7 && lines.All(l => l.StartsWith(project.File + " : error RUNICPA108", StringComparison.Ordinal)), $"one error per name, at the project: {output}");
+
+        // The old names do not reach the policy (the errors do not stop the other targets).
+        var action = (XmlElement)LoadPolicy(project.Policy).SelectSingleNode("/policyconfig/action")!;
+        Check(Text(action, "defaults/allow_any") == "auth_admin" && Text(action, "defaults/allow_inactive") == "auth_admin" && Text(action, "defaults/allow_active") == "auth_admin"
+            && action.SelectSingleNode("icon_name") is null && Annotation(action, "org.freedesktop.policykit.exec.allow_gui") is null, action.OuterXml);
+
+        (exit, output) = await project.BuildAsync("-p:RunicPolkitPolicy=false", "-p:DesignTimeBuild=true");
+        Check(exit == 0 && !output.Contains("RUNICPA108", StringComparison.Ordinal), $"design-time builds skip the check: {output}");
+    }
+
+    [Test, DisplayName("policy: RunicPolkitPolicyCopyEnabled=false skips only the copy to the output")]
+    public async Task CopyEnabledAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.activate" Program="/opt/example/helper" Verb="activate" Description="Activate" Message="m" />
+            """);
+        foreach (var (arguments, copied) in new[]
+        {
+            (Array.Empty<string>(), true),
+            (new[] { "-p:RunicPolkitPolicyCopyEnabled=false" }, false),
+            (new[] { "-p:RuntimeIdentifier=win-x64" }, false),
+            (new[] { "-p:RuntimeIdentifier=osx-arm64", "-p:RunicPolkitPolicyCopyEnabled=true" }, true),
+        })
+        {
+            if (File.Exists(project.Policy)) File.Delete(project.Policy);
+            var items = await project.BuildItemsAsync("None", arguments);
+            Check(File.Exists(project.Policy), $"the policy is written with {string.Join(' ', arguments)}");
+            Check(items.Contains("share/polkit-1/actions/org.example.app.policy", StringComparison.Ordinal) == copied, $"copied: {copied} with {string.Join(' ', arguments)}: {items}");
+        }
+    }
+
+    // D17: one identity property, MSBuild's ApplicationId.
+    [Test, DisplayName("policy: RunicPolkitPolicyName defaults to ApplicationId, then AssemblyName")]
+    public async Task PolicyNameDefaultsAsync()
+    {
+        foreach (var (properties, name) in new[]
+        {
+            ("<ApplicationId>org.example.Identity</ApplicationId>", "org.example.Identity"),
+            ("", "Fixture"),
+            ("<ApplicationId>org.example.Identity</ApplicationId><RunicPolkitPolicyName>org.example.Explicit</RunicPolkitPolicyName>", "org.example.Explicit"),
+        })
+        {
+            using var project = new FixtureProject("""
+                <RunicPrivilegedAction Include="org.example.app.activate" Program="/opt/example/helper" Verb="activate" Description="Activate" Message="m" />
+                """, properties, policyName: null);
+            var (exit, output) = await project.BuildAsync();
+            Check(exit == 0, output);
+            var policies = Directory.GetFiles(Path.GetDirectoryName(project.Policy)!, "*.policy").Select(Path.GetFileName).ToList();
+            Check(policies.SequenceEqual([name + ".policy"]), $"{properties}: {string.Join(", ", policies)}");
+        }
+    }
+
+    // D18 c: the intermediate directory is an internal knob.
+    [Test, DisplayName("declarations: the intermediate directory is _RunicPrivilegedActionsIntermediateDirectory")]
+    public async Task IntermediateDirectoryAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.activate" Program="/opt/example/helper" Verb="activate" Description="Activate" Message="m" />
+            """);
+        var (exit, output) = await project.BuildAsync("-p:RunicPrivilegedActionsIntermediateDirectory=public/");
+        Check(exit == 0 && File.Exists(project.Source) && !Directory.Exists(Path.Combine(project.Directory, "public")), $"the old name is not read: {output}");
+        (exit, output) = await project.BuildAsync("-p:_RunicPrivilegedActionsIntermediateDirectory=internal/");
+        Check(exit == 0 && File.Exists(Path.Combine(project.Directory, "internal", "PrivilegedActions.g.cs")), output);
+    }
+
+    private static XmlDocument LoadPolicy(string path)
+    {
+        var policy = new XmlDocument();
+        using var reader = XmlReader.Create(path, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
+        policy.Load(reader);
+        return policy;
+    }
+
     private static int Count(string text, string value)
     {
         var count = 0;
@@ -282,16 +382,16 @@ internal sealed class PolicyGenerationTests
     {
         private readonly string _directory = Path.Combine(Path.GetTempPath(), "runic-polkit-policy-" + Guid.NewGuid().ToString("N")[..8]);
 
-        public FixtureProject(string items, string extraProperties = "")
+        public FixtureProject(string items, string extraProperties = "", string? policyName = "org.example.app")
         {
-            Directory.CreateDirectory(_directory);
-            File.WriteAllText(Path.Combine(_directory, "fixture.proj"), $"""
+            System.IO.Directory.CreateDirectory(_directory);
+            System.IO.File.WriteAllText(Path.Combine(_directory, "fixture.proj"), $"""
                 <Project>
                   <PropertyGroup>
                     <AssemblyName>Fixture</AssemblyName>
                     <RootNamespace>Example.App</RootNamespace>
                     <IntermediateOutputPath>obj/</IntermediateOutputPath>
-                    <RunicPolkitPolicyName>org.example.app</RunicPolkitPolicyName>
+                    {(policyName is null ? "" : $"<RunicPolkitPolicyName>{policyName}</RunicPolkitPolicyName>")}
                     {extraProperties}
                   </PropertyGroup>
                   <ItemGroup>
@@ -303,12 +403,22 @@ internal sealed class PolicyGenerationTests
                 """);
         }
 
+        public string Directory => _directory;
+        public string File => Path.Combine(_directory, "fixture.proj");
         public string Policy => Path.Combine(_directory, "obj", "runic-privileged", "org.example.app.policy");
         public string Source => Path.Combine(_directory, "obj", "runic-privileged", "PrivilegedActions.g.cs");
 
         public async Task<string> EvaluateAsync(params string[] properties)
         {
             var (exit, output) = await RunAsync(["msbuild", "fixture.proj", "-nologo", .. properties.Select(p => $"-getProperty:{p}")]);
+            Check(exit == 0, output);
+            return output;
+        }
+
+        // The items after RunicGeneratePrivilegedActions ran.
+        public async Task<string> BuildItemsAsync(string item, params string[] extra)
+        {
+            var (exit, output) = await RunAsync(["msbuild", "fixture.proj", "-t:RunicGeneratePrivilegedActions", "-nologo", "-nodeReuse:false", $"-getItem:{item}", .. extra]);
             Check(exit == 0, output);
             return output;
         }
@@ -335,6 +445,6 @@ internal sealed class PolicyGenerationTests
             return (process.ExitCode, await stdout + await stderr);
         }
 
-        public void Dispose() => Directory.Delete(_directory, recursive: true);
+        public void Dispose() => System.IO.Directory.Delete(_directory, recursive: true);
     }
 }

@@ -68,9 +68,8 @@ It reads the project's direct package and project references, with the
 project's `TargetFramework`; like `dev`, it does not support a multi-targeted
 project (`RAPPDEV1005`). The `views-hosts` check names each host it found and
 the checks that cover it. It warns when the project references none, and says
-that a host is referenced indirectly when only the `RunicApplicationHostAdapter`
-property, which every adapter's build props set once the project is restored,
-shows an adapter. A project that references both
+that a host is referenced indirectly when only the build flag that every
+adapter's build props set once the project is restored shows an adapter. A project that references both
 `Runic.Application.Views.CsWebUi` and `Runic.Application.Views.Desktop` gets the
 CS-WebUI browser check and the Runic Desktop checks. `desktop-runtime` checks
 that this machine can open Runic Desktop's embedded window: `libgtk-3.so.0` and
@@ -322,13 +321,16 @@ The `size` payload names the report and repeats its totals:
 ## Project properties
 
 The tool reads these optional MSBuild properties. A generated project needs
-none of them; the defaults follow the frontend directory.
+none of them; the defaults follow the frontend directory. The first three are
+build properties of `Runic.Application.Views` too, so `dotnet build` and
+`dotnet publish` copy the same output directory to the same web root that `dev`
+serves (see its
+[build properties](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#build-properties)).
 
 | Property | Default |
 | --- | --- |
-| `RunicApplicationFrontendDirectory` | `Frontend` |
-| `RunicApplicationFrontendPackageDirectory` | the frontend directory |
-| `RunicApplicationFrontendOutputDirectory` | `<frontend>/dist` |
+| `RunicApplicationFrontendDirectory` | `Frontend`; the frontend's `package.json` directory |
+| `RunicApplicationFrontendOutputDirectory` | `dist`, relative to the frontend directory |
 | `RunicApplicationFrontendWebRoot` | `www`, relative to the build output |
 | `RunicApplicationFrontendDevServerKind` | `angular` with `angular.json`, `vite` with a `vite.config.*`, otherwise none |
 | `RunicApplicationFrontendViteDevServerEntry` | the first of `/src/main.ts`, `/src/main.tsx`, `/src/main.js`, `/src/main.jsx` |

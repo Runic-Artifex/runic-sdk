@@ -63,16 +63,16 @@ internal sealed class PrivilegedGenerationTests
         Check(exit == 0 && File.GetLastWriteTimeUtc(project.Plist) == written, "an unchanged property list is not rewritten");
     }
 
-    [Test, DisplayName("generation: the bundle identifier defaults to ApplicationId, then to the template's RunicApplicationId")]
+    // D17: one identity property, MSBuild's ApplicationId; RunicApplicationId is not read.
+    [Test, DisplayName("generation: the bundle identifier defaults to ApplicationId only")]
     public async Task BundleIdentifierDefaultsAsync()
     {
         string daemon = Properties.Replace("<RunicMacBundleIdentifier>org.example.app</RunicMacBundleIdentifier>", "", StringComparison.Ordinal);
         foreach (var (identity, expected) in new[]
         {
-            // A runic-app project declares only RunicApplicationId (msbuild-03).
-            ("<RunicApplicationId>org.example.Template</RunicApplicationId>", "org.example.Template"),
+            ("<ApplicationId>org.example.Sdk</ApplicationId>", "org.example.Sdk"),
             ("<ApplicationId>org.example.Sdk</ApplicationId><RunicApplicationId>org.example.Template</RunicApplicationId>", "org.example.Sdk"),
-            ("<RunicMacBundleIdentifier>org.example.Explicit</RunicMacBundleIdentifier><ApplicationId>org.example.Sdk</ApplicationId><RunicApplicationId>org.example.Template</RunicApplicationId>", "org.example.Explicit"),
+            ("<RunicMacBundleIdentifier>org.example.Explicit</RunicMacBundleIdentifier><ApplicationId>org.example.Sdk</ApplicationId>", "org.example.Explicit"),
         })
         {
             using var project = new FixtureProject(Items, daemon + identity);
@@ -82,12 +82,44 @@ internal sealed class PrivilegedGenerationTests
             Check(source.Contains($"\"org.example.app.privileged\", \"ABCDE12345\", \"{expected}\", \"org.example.app.privileged\"", StringComparison.Ordinal), identity + ": " + source);
         }
 
-        using (var project = new FixtureProject(Items, daemon))
+        foreach (var identity in new[] { "", "<RunicApplicationId>org.example.Template</RunicApplicationId>" })
         {
+            using var project = new FixtureProject(Items, daemon + identity);
             var (exit, output) = await project.BuildAsync();
-            Check(exit != 0 && output.Contains("RUNICPA101", StringComparison.Ordinal) && output.Contains("RunicApplicationId", StringComparison.Ordinal),
-                "no identity at all: " + output);
+            Check(exit != 0 && output.Contains("RUNICPA101", StringComparison.Ordinal) && output.Contains("It defaults to ApplicationId.", StringComparison.Ordinal)
+                && !output.Contains("org.example.Template", StringComparison.Ordinal), $"no ApplicationId ({identity}): {output}");
         }
+    }
+
+    // D18 d: the copy switch says what it switches; "LaunchDaemon" names only the launchd property list.
+    [Test, DisplayName("generation: RunicMacLaunchDaemonPlistCopyEnabled=false skips only the copy to the output")]
+    public async Task PlistCopyEnabledAsync()
+    {
+        using var project = new FixtureProject(Items, Properties);
+        foreach (var (arguments, copied) in new[]
+        {
+            (Array.Empty<string>(), true),
+            (new[] { "-p:RunicMacLaunchDaemonPlistCopyEnabled=false" }, false),
+        })
+        {
+            if (File.Exists(project.Plist)) File.Delete(project.Plist);
+            var (exit, output) = await project.BuildAsync([.. arguments, "-getItem:None"]);
+            Check(exit == 0 && File.Exists(project.Plist), $"the property list is written with {string.Join(' ', arguments)}: {output}");
+            Check(output.Contains("Library/LaunchDaemons/org.example.app.privileged.plist", StringComparison.Ordinal) == copied, $"copied: {copied} with {string.Join(' ', arguments)}: {output}");
+        }
+    }
+
+    [Test, DisplayName("generation: the former RunicMacLaunchDaemonPlist is RUNICPA108 and no longer applies")]
+    public async Task RenamedPlistPropertyAsync()
+    {
+        using var project = new FixtureProject(Items, Properties + "<RunicMacLaunchDaemonPlist>false</RunicMacLaunchDaemonPlist>");
+        var (exit, output) = await project.BuildAsync();
+        var errors = output.Split('\n').Where(l => l.Contains("error RUNICPA108", StringComparison.Ordinal)).Select(l => l.Trim()).Distinct().ToList();
+        Check(exit != 0 && errors.Count == 1 && errors[0].StartsWith(project.File + " : error RUNICPA108: The Runic build property RunicMacLaunchDaemonPlist is renamed to RunicMacLaunchDaemonPlistCopyEnabled. Rename it in fixture.proj, its imports or the command line.", StringComparison.Ordinal), output);
+
+        (exit, output) = await project.BuildAsync("-p:DesignTimeBuild=true", "-getItem:None");
+        Check(exit == 0 && !output.Contains("RUNICPA108", StringComparison.Ordinal), $"design-time builds skip the check: {output}");
+        Check(output.Contains("Library/LaunchDaemons/org.example.app.privileged.plist", StringComparison.Ordinal), $"the old name does not turn the copy off: {output}");
     }
 
     [Test, DisplayName("generation: nothing for macOS without RunicMacPrivilegedDaemonLabel")]
@@ -181,7 +213,7 @@ internal sealed class PrivilegedGenerationTests
         public FixtureProject(string items, string properties)
         {
             Directory.CreateDirectory(_directory);
-            File.WriteAllText(Path.Combine(_directory, "fixture.proj"), $"""
+            System.IO.File.WriteAllText(Path.Combine(_directory, "fixture.proj"), $"""
                 <Project>
                   <PropertyGroup>
                     <AssemblyName>Fixture</AssemblyName>
@@ -198,6 +230,7 @@ internal sealed class PrivilegedGenerationTests
                 """);
         }
 
+        public string File => Path.Combine(_directory, "fixture.proj");
         public string Plist => Path.Combine(_directory, "obj", "runic-privileged-macos", "org.example.app.privileged.plist");
         public string MacSource => Path.Combine(_directory, "obj", "runic-privileged-macos", "PrivilegedActions.MacOS.g.cs");
         public string SharedSource => Path.Combine(_directory, "obj", "runic-privileged", "PrivilegedActions.g.cs");

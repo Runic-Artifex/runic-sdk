@@ -16,7 +16,8 @@ namespace Runic.Platform.Linux.DBus.Generator;
 
 /// <summary>Generates typed proxies and services from D-Bus introspection XML in AdditionalFiles.</summary>
 /// <remarks>
-/// A file takes part when it has <c>RunicDBusMode</c> metadata (<c>Proxy</c> or <c>Service</c>) and a <c>Namespace</c>;
+/// A file takes part when it has <c>RunicDBusMode</c> metadata (<c>Proxy</c> or <c>Service</c>) and a
+/// <c>RunicDBusNamespace</c> (or its former name <c>Namespace</c>);
 /// other XML files, such as those of Tmds.DBus.Generator, are left alone.
 /// </remarks>
 [Generator(LanguageNames.CSharp)]
@@ -33,7 +34,9 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
                 var options = pair.Right.GetOptions(pair.Left);
                 options.TryGetValue("build_metadata.AdditionalFiles.RunicDBusMode", out string? mode);
                 if (string.IsNullOrEmpty(mode)) return null;
-                options.TryGetValue("build_metadata.AdditionalFiles.Namespace", out string? ns);
+                // RunicDBusNamespace wins; Namespace, its former name, stays an alias until 2.0.
+                if (!options.TryGetValue("build_metadata.AdditionalFiles.RunicDBusNamespace", out string? ns) || string.IsNullOrWhiteSpace(ns))
+                    options.TryGetValue("build_metadata.AdditionalFiles.Namespace", out ns);
                 options.TryGetValue("build_metadata.AdditionalFiles.RunicDBusVisibility", out string? visibility);
                 options.TryGetValue("build_metadata.AdditionalFiles.RunicDBusClassName", out string? className);
                 var text = pair.Left.GetText(cancellationToken)?.ToString();
@@ -225,7 +228,7 @@ internal static class DBusDiagnostics
     public static readonly DiagnosticDescriptor InvalidMode = Error("RUNICDBUS001", "Invalid D-Bus generation mode",
         "The RunicDBusMode of '{0}' is '{1}'; use Proxy or Service");
     public static readonly DiagnosticDescriptor MissingNamespace = Error("RUNICDBUS002", "Missing namespace",
-        "'{0}' has no Namespace metadata; set Namespace on its AdditionalFiles item");
+        "'{0}' has no RunicDBusNamespace metadata; set RunicDBusNamespace on its AdditionalFiles item");
     public static readonly DiagnosticDescriptor InvalidVisibility = Error("RUNICDBUS003", "Invalid visibility",
         "The RunicDBusVisibility of '{0}' is '{1}'; use internal or public");
     public static readonly DiagnosticDescriptor UnreadableFile = Error("RUNICDBUS004", "Unreadable file", "'{0}' could not be read");
@@ -238,7 +241,7 @@ internal static class DBusDiagnostics
     public static readonly DiagnosticDescriptor InvalidClassName = Error("RUNICDBUS009", "Invalid class name",
         "The RunicDBusClassName of '{0}' is '{1}', which is not an identifier or names a proxy for more than one interface");
     public static readonly DiagnosticDescriptor DuplicateTypeName = Error("RUNICDBUS010", "Duplicate generated type",
-        "The type '{0}' would be generated more than once in namespace '{1}', from {2}; set RunicDBusClassName or another Namespace");
+        "The type '{0}' would be generated more than once in namespace '{1}', from {2}; set RunicDBusClassName or another RunicDBusNamespace");
     public static readonly DiagnosticDescriptor InvalidMember = Error("RUNICDBUS011", "Invalid interface member", "'{0}': {1}");
     public static readonly DiagnosticDescriptor NameCollision = Error("RUNICDBUS012", "Generated member name collision", "'{0}': {1}");
 

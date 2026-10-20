@@ -118,25 +118,19 @@ try {
   const library = build("Split/Library/SplitLibrary.csproj");
   assert.equal(summary(library, "Warning"), 1, "Expected exactly one warning.");
   assert.ok(count(library, /warning RUNICBRIDGE015:.*PreviewView\.cs.*RunicApplicationFrontendGenerationEnabled=true/) > 0, "Expected RUNICBRIDGE015.");
-  // 5. The old property names still apply for one preview, each with RUNICBRIDGE017.
+  // 5. The 0.7.0-preview.6 property names no longer apply: each fails the build with RUNICBRIDGE017 (W319-003 D15).
   cpSync(join(directory, "Single"), join(directory, "Renamed"), { recursive: true, filter: source => !/[\\/](bin|obj|Frontend)$/.test(source) });
-  cpSync(join(directory, "Single/Frontend"), join(directory, "Renamed/Client"), { recursive: true, filter: source => !/[\\/](dist|generated)$/.test(source) });
   const renamedProject = join(directory, "Renamed/WpfSingle.csproj");
   const renamedSource = readFileSync(renamedProject, "utf8");
   const newInstall = "<RunicApplicationFrontendInstallEnabled>false</RunicApplicationFrontendInstallEnabled>";
   assert.ok(renamedSource.includes(newInstall), "WpfSingle.csproj no longer sets RunicApplicationFrontendInstallEnabled.");
   writeFileSync(renamedProject, renamedSource.replace(newInstall,
     "<RunicBridgeInstallFrontend>false</RunicBridgeInstallFrontend>" +
-    "<RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Client</RunicBridgeFrontendDir>" +
-    "<WarningsNotAsErrors>$(WarningsNotAsErrors);RUNICBRIDGE017</WarningsNotAsErrors>" +
-    "<MSBuildWarningsNotAsErrors>$(MSBuildWarningsNotAsErrors);RUNICBRIDGE017</MSBuildWarningsNotAsErrors>"));
-  const renamed = build("Renamed/WpfSingle.csproj");
-  assert.equal(summary(renamed, "Warning"), 2, "Expected one warning per old property name.");
-  assert.ok(count(renamed, /warning RUNICBRIDGE017:.*RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/) > 0, "Expected RUNICBRIDGE017 for RunicBridgeFrontendDir.");
-  assert.ok(count(renamed, /warning RUNICBRIDGE017:.*RunicBridgeInstallFrontend is renamed to RunicApplicationFrontendInstallEnabled/) > 0, "Expected RUNICBRIDGE017 for RunicBridgeInstallFrontend.");
-  exists("Renamed/Client/src/generated/editor.ts");
-  assert.ok(!existsSync(join(directory, "Renamed/Frontend")), "The old frontend directory name was ignored.");
-  exists("Renamed/bin/Release/net10.0-windows/www/index.html");
+    "<RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Client</RunicBridgeFrontendDir>"));
+  const renamed = build("Renamed/WpfSingle.csproj", { fail: true });
+  assert.ok(count(renamed, /error RUNICBRIDGE017:.*RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/) > 0, "Expected RUNICBRIDGE017 for RunicBridgeFrontendDir.");
+  assert.ok(count(renamed, /error RUNICBRIDGE017:.*RunicBridgeInstallFrontend is renamed to RunicApplicationFrontendInstallEnabled/) > 0, "Expected RUNICBRIDGE017 for RunicBridgeInstallFrontend.");
+  assert.ok(!existsSync(join(directory, "Renamed/Client")), "The old frontend directory name is not used.");
 
   // 6. A 0.7.0-preview.6 split app upgraded as is: the model generates its composition
   //    under the application's default name, SplitApp.RunicBridgeComposition. The

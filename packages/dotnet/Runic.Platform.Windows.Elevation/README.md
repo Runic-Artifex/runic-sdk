@@ -107,7 +107,7 @@ refused here too, and an image the application cannot read.
 ```xml
 <PropertyGroup>
   <OutputType>Exe</OutputType>
-  <RunicElevatedHelper>true</RunicElevatedHelper>
+  <RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper>
   <PublishAot>true</PublishAot>
 </PropertyGroup>
 <ItemGroup>
@@ -122,7 +122,7 @@ var cancellation = ElevatedHelper.WatchCancellation();
 // The program's own checks of the arguments, then the work.
 ```
 
-`RunicElevatedHelper` embeds a manifest with `requireAdministrator`, so the
+`RunicWindowsElevatedHelper` embeds a manifest with `requireAdministrator`, so the
 helper asks for elevation however it is started. Because the NativeAOT runtime
 reads its settings from the user's environment before `Main`, it also turns
 off the standalone GC (`DOTNET_GCPath` would load a DLL), EventSource and
@@ -148,6 +148,9 @@ or the native link (`RUNICEL005`). It requires:
   brings its own;
 - a console executable (`RUNICEL004`), so the tools it starts inherit its
   output.
+
+`RunicElevatedHelper`, the former name, no longer applies: a project that still
+sets it fails with `RUNICPA108`, which names `RunicWindowsElevatedHelper`.
 
 `ElevatedHelper.Match`:
 

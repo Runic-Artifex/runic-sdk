@@ -4,14 +4,12 @@
     "frontend": { "longName": "frontend", "shortName": "" },
     "packageManager": { "longName": "package-manager", "shortName": "" },
     "host": { "longName": "host", "shortName": "" },
+    "linuxGtk": { "longName": "linux-gtk", "shortName": "" },
     "viewModels": { "longName": "view-models", "shortName": "" },
     "tests": { "longName": "tests", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
     "packaging": { "longName": "packaging", "shortName": "" },
-    "applicationId": { "longName": "application-id", "shortName": "" },
-    "runicVersion": { "longName": "runic-version", "shortName": "", "isHidden": true },
-    "runicCsWebUiVersion": { "longName": "runic-cswebui-version", "shortName": "", "isHidden": true },
-    "runicNpmVersion": { "longName": "runic-npm-version", "shortName": "", "isHidden": true }
+    "applicationId": { "longName": "application-id", "shortName": "" }
   },
   "usageExamples": [
     "--frontend svelte --package-manager bun",
@@ -19,6 +17,6 @@
     "--tests",
     "--nix",
     "--application-id org.example.Notes",
-    "--host desktop-gtk4 --packaging"
+    "--host desktop --linux-gtk 4 --packaging"
   ]
 }

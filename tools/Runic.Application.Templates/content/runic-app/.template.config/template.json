@@ -108,22 +108,46 @@
       "type": "parameter",
       "datatype": "choice",
       "defaultValue": "desktop",
-      "replaces": "__RUNIC_HOST__",
       "displayName": "Window host",
       "description": "How the application presents its Window.",
       "choices": [
         { "choice": "desktop", "displayName": "Runic Desktop", "description": "Opens a native window with the embedded WebView, native file dialogs and the clipboard" },
-        { "choice": "desktop-gtk4", "displayName": "Runic Desktop with GTK 4", "description": "Runic Desktop on GTK 4, WebKitGTK 6 and portal pickers on Linux; the same as Runic Desktop elsewhere" },
         { "choice": "cswebui", "displayName": "CS-WebUI", "description": "Opens a browser window (an installed browser in app mode, then the platform WebView); best effort, without native dialogs or clipboard" }
+      ]
+    },
+    "linuxGtk": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "3",
+      "displayName": "Linux GTK version",
+      "description": "The GTK version Runic Desktop uses on Linux. Windows and macOS, and the CS-WebUI host, are the same with either.",
+      "choices": [
+        { "choice": "3", "displayName": "GTK 3", "description": "GTK 3 and WebKitGTK 4.1" },
+        { "choice": "4", "displayName": "GTK 4", "description": "GTK 4, WebKitGTK 6 and portal pickers" }
       ]
     },
     "desktopHost": {
       "type": "computed",
-      "value": "(host == 'desktop' || host == 'desktop-gtk4')"
+      "value": "(host == 'desktop')"
     },
     "gtk4": {
       "type": "computed",
-      "value": "(host == 'desktop-gtk4')"
+      "value": "(host == 'desktop' && linuxGtk == '4')"
+    },
+    "nixHost": {
+      "type": "generated",
+      "generator": "switch",
+      "replaces": "__RUNIC_HOST__",
+      "description": "The host name that the Runic SDK's Nix functions take: desktop, desktop-gtk4 or cswebui.",
+      "parameters": {
+        "evaluator": "C++",
+        "datatype": "string",
+        "cases": [
+          { "condition": "(host == 'cswebui')", "value": "cswebui" },
+          { "condition": "(linuxGtk == '4')", "value": "desktop-gtk4" },
+          { "value": "desktop" }
+        ]
+      }
     },
     "viewModels": {
       "type": "parameter",
@@ -212,25 +236,25 @@
       "description": "The application ID that the project file declares."
     },
     "runicVersion": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__RUNIC_NUGET_VERSION_DEFAULT__",
+      "type": "generated",
+      "generator": "constant",
+      "parameters": { "value": "__RUNIC_NUGET_VERSION_DEFAULT__" },
       "replaces": "__RUNIC_NUGET_VERSION__",
-      "description": "Version of the Runic NuGet packages and the dotnet-runic tool."
+      "description": "Version of the Runic NuGet packages and the dotnet-runic tool, stamped when the template is packed."
     },
     "runicCsWebUiVersion": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__RUNIC_CSWEBUI_NUGET_VERSION_DEFAULT__",
+      "type": "generated",
+      "generator": "constant",
+      "parameters": { "value": "__RUNIC_CSWEBUI_NUGET_VERSION_DEFAULT__" },
       "replaces": "__RUNIC_CSWEBUI_NUGET_VERSION__",
-      "description": "Version of the preview Runic.Application.Views.CsWebUi package, which ships on a prerelease version with each release."
+      "description": "Version of the preview Runic.Application.Views.CsWebUi package, which ships on a prerelease version with each release, stamped when the template is packed."
     },
     "runicNpmVersion": {
-      "type": "parameter",
-      "datatype": "text",
-      "defaultValue": "__RUNIC_NPM_VERSION_DEFAULT__",
+      "type": "generated",
+      "generator": "constant",
+      "parameters": { "value": "__RUNIC_NPM_VERSION_DEFAULT__" },
       "replaces": "__RUNIC_NPM_VERSION__",
-      "description": "Version of the Runic npm packages."
+      "description": "Version of the Runic npm packages, stamped when the template is packed."
     },
     "packageManagerDeclaration": {
       "type": "generated",

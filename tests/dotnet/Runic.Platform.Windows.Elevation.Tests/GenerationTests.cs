@@ -47,7 +47,7 @@ internal sealed class GenerationTests
     [Test, DisplayName("helper: NativeAOT for deployable builds, a requireAdministrator manifest and a console executable")]
     public async Task ChecksHelperAsync()
     {
-        using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Library</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><IlcStandaloneGCSupport>true</IlcStandaloneGCSupport><EventSourceSupport>true</EventSourceSupport>"))
+        using (var project = new FixtureProject("", "<RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper><OutputType>Library</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><IlcStandaloneGCSupport>true</IlcStandaloneGCSupport><EventSourceSupport>true</EventSourceSupport>"))
         {
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper");
             Check(exit != 0 && output.Contains("RUNICEL002", StringComparison.Ordinal) && output.Contains("RUNICEL004", StringComparison.Ordinal)
@@ -61,20 +61,20 @@ internal sealed class GenerationTests
             Check(manifest.EndsWith("Runic.Platform.Windows.Elevation.manifest", StringComparison.Ordinal), manifest);
             Check(File.ReadAllText(manifest).Contains("level=\"requireAdministrator\"", StringComparison.Ordinal), "the package's manifest requires administrator");
         }
-        using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot><ApplicationManifest>app.manifest</ApplicationManifest>"))
+        using (var project = new FixtureProject("", "<RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot><ApplicationManifest>app.manifest</ApplicationManifest>"))
         {
             File.WriteAllText(Path.Combine(project.Directory, "app.manifest"), """<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"><trustInfo><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" /></requestedPrivileges></security></trustInfo></assembly>""");
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper");
             Check(exit != 0 && output.Contains("RUNICEL003", StringComparison.Ordinal) && !output.Contains("RUNICEL002", StringComparison.Ordinal), $"an asInvoker manifest: {output}");
         }
-        using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType>"))
+        using (var project = new FixtureProject("", "<RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper><OutputType>Exe</OutputType>"))
         {
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper");
             Check(exit == 0, $"a portable development build: {output}");
             (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperPublish");
             Check(exit != 0 && output.Contains("RUNICEL002", StringComparison.Ordinal), $"publishing without NativeAOT: {output}");
         }
-        using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot><RuntimeIdentifier>win-x64</RuntimeIdentifier>"))
+        using (var project = new FixtureProject("", "<RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot><RuntimeIdentifier>win-x64</RuntimeIdentifier>"))
         {
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper;RunicCheckElevatedHelperPublish;RunicCheckElevatedHelperNative");
             Check(exit == 0, $"a NativeAOT helper: {output}");
@@ -92,16 +92,34 @@ internal sealed class GenerationTests
         foreach (var library in new[] { "eventpipe-enabled", "standalonegc-enabled" })
         {
             using var project = new FixtureProject($"""<NativeLibrary Include="sdk/{library}.lib" /><NativeLibrary Include="sdk/Runtime.WorkstationGC.lib" />""",
-                "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot>");
+                "<RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot>");
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperNative");
             Check(exit != 0 && output.Contains("RUNICEL005", StringComparison.Ordinal), $"{library}: {output}");
         }
         using (var project = new FixtureProject("""<NativeLibrary Include="sdk/eventpipe-disabled.lib" /><NativeLibrary Include="sdk/standalonegc-disabled.lib" />""",
-            "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot>"))
+            "<RunicWindowsElevatedHelper>true</RunicWindowsElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot>"))
         {
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperNative");
             Check(exit == 0, $"the disabled libraries: {output}");
         }
+    }
+
+    // D18 e: the helper switch names its platform. The former RunicElevatedHelper is RUNICPA108 and no longer applies.
+    [Test, DisplayName("helper: the former RunicElevatedHelper is RUNICPA108 and no longer applies")]
+    public async Task RenamedHelperPropertyAsync()
+    {
+        using var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Library</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier>");
+        foreach (var target in new[] { "-t:RunicCheckElevatedHelper", "-t:RunicValidatePrivilegedActions" })
+        {
+            var (exit, output) = await project.BuildAsync(target);
+            var errors = output.Split('\n').Where(l => l.Contains("error ", StringComparison.Ordinal)).Select(l => l.Trim()).Distinct().ToList();
+            Check(exit != 0 && errors.Count == 1 && errors[0].StartsWith(Path.Combine(project.Directory, "fixture.proj") + " : error RUNICPA108: The Runic build property RunicElevatedHelper is renamed to RunicWindowsElevatedHelper. Rename it in fixture.proj, its imports or the command line.", StringComparison.Ordinal),
+                $"{target}: only RUNICPA108, the helper checks do not run: {output}");
+        }
+        var pinned = await project.EvaluateAsync("ApplicationManifest", "IlcStandaloneGCSupport", "EventSourceSupport");
+        Check(!pinned.Contains("Runic.Platform.Windows.Elevation.manifest", StringComparison.Ordinal) && !pinned.Contains("false", StringComparison.Ordinal), $"no helper settings: {pinned}");
+        var (designExit, designOutput) = await project.BuildAsync("-t:RunicCheckElevatedHelper", "-p:DesignTimeBuild=true");
+        Check(designExit == 0 && !designOutput.Contains("RUNICPA108", StringComparison.Ordinal), $"design-time builds skip the check: {designOutput}");
     }
 
     private sealed class FixtureProject : IDisposable

@@ -506,7 +506,7 @@ jobs:
       fail-fast: false
       matrix:
         # The guided creator check is framework-independent; the react step runs it once.
-        # The vue step owns the desktop-gtk4 variant and opens it and the default
+        # The vue step owns the --linux-gtk 4 variant and opens it and the default
         # Runic Desktop project under Xvfb.
         include:
           - first: react
@@ -791,8 +791,8 @@ jobs:
           New-Item -ItemType Directory -Force $jit | Out-Null
           Copy-Item tests/native/Runic.Elevation.Smoke/bin/Release/net10.0/* $jit -Recurse
           # And a self-contained single-file JIT publish, with nothing beside it: only its image's bundle marker shows
-          # what it is. RunicElevatedHelper=false lets it publish without NativeAOT.
-          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:RunicElevatedHelper=false -o artifacts/elevation-singlefile
+          # what it is. RunicWindowsElevatedHelper=false lets it publish without NativeAOT.
+          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:RunicWindowsElevatedHelper=false -o artifacts/elevation-singlefile
           $singleFile = Join-Path $env:ProgramFiles 'Runic Elevation Smoke SingleFile'
           New-Item -ItemType Directory -Force $singleFile | Out-Null
           Copy-Item artifacts/elevation-singlefile/Runic.Elevation.Smoke.exe $singleFile

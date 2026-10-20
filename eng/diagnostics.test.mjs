@@ -111,7 +111,7 @@ test('MSBuild diagnostics of packages carry a help link', () => {
     if (!/\.(targets|props)$/.test(file)) continue;
     // Attributes are matched as quoted values, since message text may contain '>' (item transforms).
     for (const [task] of readFileSync(file, 'utf8').matchAll(/<(?:Error|Warning)\b(?:\s+[\w.]+="[^"]*")*\s*\/?>/g))
-      if (/\bCode="[^"]+"/.test(task) && !/HelpLink="\$\(RunicDiagnosticsHelpLinkBase\)[a-z0-9]+"/.test(task)) unlinked.push(`${relative(root, file)}: ${task}`);
+      if (/\bCode="[^"]+"/.test(task) && !/HelpLink="\$\(_RunicDiagnosticsHelpLinkBase\)[a-z0-9]+"/.test(task)) unlinked.push(`${relative(root, file)}: ${task}`);
   }
   expect(unlinked).toEqual([]);
 });
@@ -119,7 +119,7 @@ test('MSBuild diagnostics of packages carry a help link', () => {
 test('the catalog sits where the help links point', () => {
   const targets = readFileSync(join(root, 'eng/build/release-links.targets'), 'utf8');
   expect(targets).toContain('<RunicDiagnosticsCatalog Condition="\'$(RunicDiagnosticsCatalog)\' == \'\'">docs/diagnostics.md</RunicDiagnosticsCatalog>');
-  expect(targets).toContain('<RunicDiagnosticsHelpLinkBase>$(RunicReleaseSourceUrl)$(RunicDiagnosticsCatalog)#</RunicDiagnosticsHelpLinkBase>');
+  expect(targets).toContain('<_RunicDiagnosticsHelpLinkBase>$(RunicReleaseSourceUrl)$(RunicDiagnosticsCatalog)#</_RunicDiagnosticsHelpLinkBase>');
   expect(existsSync(join(root, 'docs/diagnostics.md'))).toBe(true);
 });
 

@@ -84,9 +84,10 @@ public sealed record RunicWindowOptions
     internal static RunicWindowOptions Default { get; } = new();
 
     /// <summary>
-    /// The directory of the built frontend. <see langword="null"/>, the default, is the <c>www</c> directory next to
-    /// the application (<see cref="AppContext.BaseDirectory"/>), where the Runic build places it. On macOS, an
-    /// application in a bundle without that directory uses <c>Contents/Resources/www</c>, where a bundle keeps it.
+    /// The directory of the built frontend. <see langword="null"/>, the default, is the web root next to the
+    /// application (<see cref="AppContext.BaseDirectory"/>), where the Runic build places it: <c>www</c>, or the
+    /// directory that the build property <c>RunicApplicationFrontendWebRoot</c> names. On macOS, an application in a
+    /// bundle without that directory uses <c>Contents/Resources/www</c> (or the web root), where a bundle keeps it.
     /// </summary>
     public string? ContentRoot { get; init; }
 
@@ -100,23 +101,34 @@ public sealed record RunicWindowOptions
     public int? Height { get; init; }
 
     /// <summary>
-    /// Gets <see cref="ContentRoot"/>, or the <c>www</c> directory next to the application. On macOS, when the
-    /// application runs from a bundle's <c>Contents/MacOS</c> and that directory does not exist, gets the bundle's
-    /// <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
+    /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
+    /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
+    /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
     /// </summary>
     public string ResolveContentRoot() =>
-        ContentRoot ?? DefaultContentRoot(AppContext.BaseDirectory, OperatingSystem.IsMacOS(), Directory.Exists);
+        ContentRoot ?? DefaultContentRoot(AppContext.BaseDirectory, OperatingSystem.IsMacOS(), Directory.Exists, DefaultWebRoot);
 
-    internal static string DefaultContentRoot(string baseDirectory, bool macOS, Func<string, bool> directoryExists)
+    /// <summary>
+    /// The runtime configuration option that the Runic build sets when <c>RunicApplicationFrontendWebRoot</c> names
+    /// another directory than <c>www</c>, so the application serves the directory the build copied the frontend to.
+    /// Runic.Application.Views.Wpf reads the same option.
+    /// </summary>
+    internal const string WebRootOption = "Runic.Application.FrontendWebRoot";
+
+    /// <summary>The web root that the build copied the frontend to, relative to the application.</summary>
+    internal static string DefaultWebRoot =>
+        AppContext.GetData(WebRootOption) is string { Length: > 0 } webRoot ? webRoot : "www";
+
+    internal static string DefaultContentRoot(string baseDirectory, bool macOS, Func<string, bool> directoryExists, string webRoot = "www")
     {
-        string beside = Path.Combine(baseDirectory, "www");
+        string beside = Path.Combine(baseDirectory, webRoot);
         if (!macOS || directoryExists(beside)) return beside;
         // AppContext.BaseDirectory ends with a separator: …/Name.app/Contents/MacOS/
         var macOSDirectory = new DirectoryInfo(Path.TrimEndingDirectorySeparator(baseDirectory));
         if (macOSDirectory.Name != "MacOS" || macOSDirectory.Parent is not { Name: "Contents" } contents
             || contents.Parent is not { } bundle || !bundle.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
             return beside;
-        string resources = Path.Combine(contents.FullName, "Resources", "www");
+        string resources = Path.Combine(contents.FullName, "Resources", webRoot);
         return directoryExists(resources) ? resources : beside;
     }
 

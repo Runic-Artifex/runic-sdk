@@ -64,19 +64,19 @@ export const packageLayouts = {
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i, /^ReactiveUI\.Reactive$/i],
   },
   "Runic.Application.Views.ReactiveUI.Reactive": {
-    includes: ["buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets"],
+    includes: ["buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.props", "buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets"],
     requires: ["Runic.Application.Views", "ReactiveUI.Reactive"],
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i],
   },
   // The props default RunicAssetsDistExclude before the project file, so a project can empty it.
-  "Runic.Assets": { includes: ["buildTransitive/Runic.Assets.props", "buildTransitive/Runic.Assets.targets"] },
+  "Runic.Assets": { includes: ["buildTransitive/Runic.Assets.props", "buildTransitive/Runic.Assets.HelpLinks.props", "buildTransitive/Runic.Assets.targets"] },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application.Views": {
     includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },
-  // Host adapters set RunicApplicationHostAdapter, which turns Bridge generation on
+  // Host adapters set _RunicApplicationHostAdapter, which turns Bridge generation on
   // in every project that references them, directly or transitively.
   "Runic.Application.Views.Desktop": { includes: ["buildTransitive/Runic.Application.Views.Desktop.props"] },
   "Runic.Application.Views.CsWebUi": { includes: ["buildTransitive/Runic.Application.Views.CsWebUi.props"] },

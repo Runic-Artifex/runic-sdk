@@ -1,6 +1,6 @@
 # The flatpak-builder manifest that package.mjs fills in from the project file (the fields in double braces). It installs the NativeAOT
 # publish folder that package.mjs prepares in flatpak-source; the GNOME runtime provides GTK 4 and WebKitGTK 6, so
-# the project uses the desktop-gtk4 host.
+# the project uses Runic Desktop on GTK 4 (--linux-gtk 4).
 app-id: {{ApplicationId}}
 runtime: org.gnome.Platform
 runtime-version: '50'

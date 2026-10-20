@@ -6,7 +6,7 @@
     <RunicReleaseTag Condition="'$(RunicReleaseTag)' == ''">v$(PackageVersion)</RunicReleaseTag>
     <RunicReleaseSourceUrl Condition="'$(RunicReleaseSourceUrl)' == ''">$(RepositoryUrl)/blob/$(RunicReleaseTag)/</RunicReleaseSourceUrl>
     <RunicDiagnosticsCatalog Condition="'$(RunicDiagnosticsCatalog)' == ''">docs/diagnostics.md</RunicDiagnosticsCatalog>
-    <RunicDiagnosticsHelpLinkBase>$(RunicReleaseSourceUrl)$(RunicDiagnosticsCatalog)#</RunicDiagnosticsHelpLinkBase>
+    <_RunicDiagnosticsHelpLinkBase>$(RunicReleaseSourceUrl)$(RunicDiagnosticsCatalog)#</_RunicDiagnosticsHelpLinkBase>
     <_RunicRepositoryRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</_RunicRepositoryRoot>
     <RunicExperimentalHelpLinkBase Condition="'$(RunicExperimentalHelpLinkBase)' == ''">$(RunicReleaseSourceUrl)docs/experimental.md#</RunicExperimentalHelpLinkBase>
     <RunicReleaseLinksNamespace Condition="'$(RunicReleaseLinksNamespace)' == ''">$(RootNamespace)</RunicReleaseLinksNamespace>
@@ -36,7 +36,7 @@ internal static class RunicReleaseLinks
     internal const string ExperimentalUrlFormat = "$(RunicExperimentalHelpLinkBase){0}"%3B
 
     /// &lt;summary&gt;The diagnostics catalog at the release tag, ending in the fragment separator.&lt;/summary&gt;
-    internal const string DiagnosticsHelpBase = "$(RunicDiagnosticsHelpLinkBase)"%3B
+    internal const string DiagnosticsHelpBase = "$(_RunicDiagnosticsHelpLinkBase)"%3B
 
     /// &lt;summary&gt;The catalog entry of a diagnostic ID: its lowercase heading anchor.&lt;/summary&gt;
     internal static string Diagnostic(string id) => DiagnosticsHelpBase + id.ToLowerInvariant()%3B
@@ -51,17 +51,18 @@ internal static class RunicReleaseLinks
   </Target>
 
   <!-- RunicPackDiagnosticsHelpLinks=true packs buildTransitive/$(PackageId).props,
-       which gives package consumers RunicDiagnosticsHelpLinkBase at this release,
+       which gives package consumers _RunicDiagnosticsHelpLinkBase at this release,
        for the HelpLink of the Error and Warning tasks in the package's targets:
-       HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge014". Repository
+       HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge014". Repository
        builds get the property from this file. -->
   <Target Name="RunicPackDiagnosticsHelpLinks" BeforeTargets="_GetPackageFiles" Condition="'$(RunicPackDiagnosticsHelpLinks)' == 'true'">
     <PropertyGroup>
-      <_RunicHelpLinksProps>$(IntermediateOutputPath)runic-help-links/$(PackageId).props</_RunicHelpLinksProps>
+      <!-- A package whose own buildTransitive/$(PackageId).props exists names another file and imports it there. -->
+      <_RunicHelpLinksProps>$(IntermediateOutputPath)runic-help-links/$([MSBuild]::ValueOrDefault('$(RunicDiagnosticsHelpLinksPropsName)', '$(PackageId).props'))</_RunicHelpLinksProps>
       <_RunicHelpLinksPropsText><![CDATA[<Project>
   <!-- Generated when $(PackageId) $(PackageVersion) was packed. -->
   <PropertyGroup>
-    <RunicDiagnosticsHelpLinkBase Condition="'%24(RunicDiagnosticsHelpLinkBase)' == ''">$(RunicDiagnosticsHelpLinkBase)</RunicDiagnosticsHelpLinkBase>
+    <_RunicDiagnosticsHelpLinkBase Condition="'%24(_RunicDiagnosticsHelpLinkBase)' == ''">$(_RunicDiagnosticsHelpLinkBase)</_RunicDiagnosticsHelpLinkBase>
   </PropertyGroup>
 </Project>]]></_RunicHelpLinksPropsText>
     </PropertyGroup>

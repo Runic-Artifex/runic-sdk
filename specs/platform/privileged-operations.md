@@ -64,7 +64,9 @@ in a target that depends on that validation:
 - Runic.Platform.Linux.Polkit writes the Polkit policy, copied to
   `share/polkit-1/actions/<RunicPolkitPolicyName>.policy` in the output and
   publish directories, for the package (W300-005) to install, and checks what
-  only the policy carries (`RUNICPA010`, `RUNICPA012` to `RUNICPA014`).
+  only the policy carries (`RUNICPA010`, `RUNICPA012` to `RUNICPA014`): the
+  metadata `PolkitAllowAny`, `PolkitAllowInactive`, `PolkitAllowActive`,
+  `PolkitAllowGui` and `PolkitIconName`.
 - The Windows and macOS packages read the same items. Their artifacts (a
   manifest, a launchd plist) come from the same declaration, and per-platform
   metadata (`WindowsProgram`, `MacProgram`) says where the helper is installed
@@ -103,7 +105,7 @@ positional rules, and the program switches on the command name.
 
 Declare the actions in one project. When the privileged program is a separate
 project, both import the same items and only one writes the policy
-(`RunicPolkitPolicy=false` in the other), so no action ID appears in two policy
+(`RunicPolkitPolicyCopyEnabled=false` in the other), so no action ID appears in two policy
 files.
 
 ### Contract
@@ -315,7 +317,7 @@ authorization for about five minutes for the same subject (the calling process
 or its session, depending on the polkit version), so a second run, or
 another action that is also `_keep`, does not prompt. That suits multi-step
 operations where a second prompt protects nothing, and nix-manager uses it for
-the active session today. It is opt-in per action (`AllowActive="auth_admin_keep"`).
+the active session today. It is opt-in per action (`PolkitAllowActive="auth_admin_keep"`).
 `yes` belongs in site rules (`/etc/polkit-1/rules.d`), not in a shipped policy,
 and `auth_self` and `auth_self_keep` accept the user's own password, which any
 process running as that user can effectively supply; the build warns about all
@@ -486,7 +488,7 @@ standalone GC (`DOTNET_GCPath`, `DOTNET_GCName`, loaded with `LoadLibrary`)
 when the image was linked with `IlcStandaloneGCSupport`, and EventPipe with
 the diagnostic server (`DOTNET_DiagnosticPorts` connects to an IPC peer that
 can set environment variables and start sessions; `DOTNET_EventPipeOutputPath`
-writes a file) when linked with `EventSourceSupport`. `RunicElevatedHelper`
+writes a file) when linked with `EventSourceSupport`. `RunicWindowsElevatedHelper`
 forces both off and turns on `InvariantGlobalization`, so ICU, which
 `DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU` could load from another directory,
 is never loaded. The invariant mode is compiled in as a constant; the
@@ -620,7 +622,7 @@ validated" policy.
 - The NativeAOT runtime reads performance settings (`gcServer`, heap limits,
   the stress log) from the user-writable environment; with the standalone GC
   and EventPipe pinned off, none loads code or writes files. A helper built
-  without `RunicElevatedHelper` gets none of these pins.
+  without `RunicWindowsElevatedHelper` gets none of these pins.
 - Tools the helper starts read the user's configuration (`cmd` `AutoRun`,
   PowerShell profiles, modules and execution policy) unless started with the
   options above.

@@ -10,8 +10,8 @@
     <OutputType Condition="$(RuntimeIdentifier.StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">WinExe</OutputType>
     <InvariantGlobalization>true</InvariantGlobalization>
     <!-- The template's identity properties, which package.mjs reads. The name has spaces, as a bundle name may. -->
-    <RunicApplicationId>org.runic.tests.PackagingProbe</RunicApplicationId>
-    <RunicApplicationName>Runic Packaging Probe</RunicApplicationName>
+    <ApplicationId>org.runic.tests.PackagingProbe</ApplicationId>
+    <ApplicationTitle>Runic Packaging Probe</ApplicationTitle>
     <Version>1.2.3</Version>
     <Description>Checks Runic application packages</Description>
     <PackageProjectUrl>https://github.com/Runic-Artifex/runic-sdk</PackageProjectUrl>
@@ -22,8 +22,8 @@
     <ApplicationIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <AssemblyMetadata Include="RunicApplicationId" Value="$(RunicApplicationId)" />
-    <AssemblyMetadata Include="RunicApplicationName" Value="$(RunicApplicationName)" />
+    <AssemblyMetadata Include="ApplicationId" Value="$(ApplicationId)" />
+    <AssemblyMetadata Include="ApplicationTitle" Value="$(ApplicationTitle)" />
     <Compile Include="../../../tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs" Link="ApplicationIdentity.cs" />
     <None Update="www/index.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
