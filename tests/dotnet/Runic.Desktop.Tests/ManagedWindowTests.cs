@@ -283,6 +283,21 @@ public sealed class ManagedWindowTests
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => failed);
         Assert.Contains("broken", exception.Message, StringComparison.Ordinal);
 
+        // A result larger than the response buffer fails whole instead of being cut, also inside a UTF-8 sequence.
+        var large = window.ExecuteJavaScriptAsync("return 'aé';", TimeSpan.FromSeconds(5), responseBufferSize: 2, cancellationToken: timeout.Token);
+        request = await ReceiveBinaryAsync(socket, timeout.Token);
+        id = BinaryPrimitives.ReadUInt16LittleEndian(request.AsSpan(5, 2));
+        await SendBinaryAsync(socket, CreatePacket(token, id, JavaScript, [0, .. "aé"u8.ToArray(), 0]), timeout.Token);
+        var tooLarge = await Assert.ThrowsAsync<DesktopException>(() => large);
+        Assert.Equal(DesktopErrorCategory.LimitExceeded, tooLarge.Category);
+        Assert.Equal("script-result-too-large", tooLarge.Code);
+
+        var exact = window.ExecuteJavaScriptAsync("return 'aé';", TimeSpan.FromSeconds(5), responseBufferSize: 3, cancellationToken: timeout.Token);
+        request = await ReceiveBinaryAsync(socket, timeout.Token);
+        id = BinaryPrimitives.ReadUInt16LittleEndian(request.AsSpan(5, 2));
+        await SendBinaryAsync(socket, CreatePacket(token, id, JavaScript, [0, .. "aé"u8.ToArray(), 0]), timeout.Token);
+        Assert.Equal("aé", await exact);
+
         var timedOut = window.ExecuteJavaScriptAsync("return never;", TimeSpan.FromMilliseconds(50));
         request = await ReceiveBinaryAsync(socket, timeout.Token);
         Assert.Equal("return never;", ReadNullTerminatedString(request, HeaderSize));

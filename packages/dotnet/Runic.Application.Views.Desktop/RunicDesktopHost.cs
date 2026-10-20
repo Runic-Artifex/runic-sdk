@@ -289,7 +289,14 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         try
         {
             var preflight = Desktop.GetPresentationPreflight(windowOptions);
-            return [.. preflight.Diagnostics.Concat(preflight.OptionDiagnostics)
+            // A browser fallback that is missing only from this machine stands in for an installed one: with it, the
+            // preferred presentation's findings, such as linux-embedded-backend-not-selected, would not be reported
+            // either, and serve-only needs no browser.
+            var presentation = preflight.Fallback is { } fallback &&
+                fallback.Diagnostics.All(static diagnostic => PresentationEnvironmentCodes.Contains(diagnostic.Code))
+                ? []
+                : preflight.Diagnostics;
+            return [.. presentation.Concat(preflight.OptionDiagnostics)
                 .Where(static diagnostic => !PresentationEnvironmentCodes.Contains(diagnostic.Code))
                 .Select(ToWindowDiagnostic)];
         }

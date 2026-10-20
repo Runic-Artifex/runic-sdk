@@ -186,6 +186,13 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.RunJavaScriptAsync(script, cancellationToken);
 
     /// <summary>Runs JavaScript and returns its string result from an authenticated presentation session.</summary>
+    /// <param name="script">The script; its <c>return</c> value is the result.</param>
+    /// <param name="timeout">How long to wait for the result; <see langword="null"/> or zero waits until cancellation.</param>
+    /// <param name="responseBufferSize">The largest result accepted, in UTF-8 bytes.</param>
+    /// <param name="cancellationToken">Cancels waiting for the result.</param>
+    /// <returns>The whole result.</returns>
+    /// <exception cref="DesktopException">The result is larger than <paramref name="responseBufferSize"/>
+    /// (<see cref="DesktopErrorCategory.LimitExceeded"/>, code <c>script-result-too-large</c>); it is not truncated.</exception>
     public Task<string> ExecuteJavaScriptAsync(
         string script,
         TimeSpan? timeout = null,

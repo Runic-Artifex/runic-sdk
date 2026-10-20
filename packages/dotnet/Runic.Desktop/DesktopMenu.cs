@@ -87,10 +87,14 @@ public enum DesktopShortcutModifiers
 /// <summary>A keyboard shortcut: a key and its modifiers, written as <c>Primary+Shift+S</c>.</summary>
 /// <remarks>
 /// <c>matchesShortcut</c> and <c>formatShortcut</c> in <c>@runic-artifex/views</c> read the same text with the same
-/// rule for the page, so a shortcut declared once works on the menu item and in the frontend.
+/// rule for the page, so a shortcut declared once works on the menu item and in the frontend. The default value is no
+/// shortcut: its <see cref="Key"/> is empty and it formats as empty text; a menu item without a shortcut uses
+/// <see langword="null"/>.
 /// </remarks>
 public readonly record struct DesktopShortcut
 {
+    private readonly string? _key;
+
     private static readonly string[] NamedKeys =
     [
         "Enter", "Escape", "Tab", "Space", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
@@ -108,14 +112,14 @@ public readonly record struct DesktopShortcut
     /// <exception cref="ArgumentException">The key is not one of the supported keys.</exception>
     public DesktopShortcut(string key, DesktopShortcutModifiers modifiers = DesktopShortcutModifiers.Primary)
     {
-        Key = NormalizeKey(key) ?? throw new ArgumentException($"'{key}' is not a supported shortcut key.", nameof(key));
+        _key = NormalizeKey(key) ?? throw new ArgumentException($"'{key}' is not a supported shortcut key.", nameof(key));
         if ((modifiers & ~(DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Shift | DesktopShortcutModifiers.Alt | DesktopShortcutModifiers.Control)) != 0)
             throw new ArgumentOutOfRangeException(nameof(modifiers));
         Modifiers = modifiers;
     }
 
-    /// <summary>Gets the normalized key.</summary>
-    public string Key { get; }
+    /// <summary>Gets the normalized key; empty for the default value.</summary>
+    public string Key => _key ?? string.Empty;
 
     /// <summary>Gets the modifiers.</summary>
     public DesktopShortcutModifiers Modifiers { get; }
@@ -155,7 +159,7 @@ public readonly record struct DesktopShortcut
     /// <summary>Gets the shortcut as text that <see cref="Parse"/> reads, such as <c>Primary+Shift+S</c>.</summary>
     public override string ToString()
     {
-        if (Key is null) return "";
+        if (_key is null) return "";
         var text = new StringBuilder();
         if ((Modifiers & DesktopShortcutModifiers.Primary) != 0) text.Append("Primary+");
         if ((Modifiers & DesktopShortcutModifiers.Control) != 0) text.Append("Control+");
@@ -171,7 +175,7 @@ public readonly record struct DesktopShortcut
     /// <param name="macOS">Whether to use the macOS symbols and order.</param>
     public string ToDisplayString(bool macOS)
     {
-        if (Key is null) return "";
+        if (_key is null) return "";
         var text = new StringBuilder();
         if (macOS)
         {

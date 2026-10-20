@@ -37,6 +37,9 @@ public sealed class DesktopShortcutTests
         Assert.Equal(DesktopShortcutModifiers.Primary, new DesktopShortcut("S").Modifiers);
         Assert.Throws<ArgumentException>(() => new DesktopShortcut("Hyper"));
         Assert.Throws<ArgumentOutOfRangeException>(() => new DesktopShortcut("S", (DesktopShortcutModifiers)64));
+        // The default value is no shortcut: an empty key that formats as empty text.
+        Assert.Equal(string.Empty, default(DesktopShortcut).Key);
+        Assert.Equal(string.Empty, default(DesktopShortcut).ToDisplayString(macOS: false));
         Assert.Equal("", default(DesktopShortcut).ToString());
     }
 
