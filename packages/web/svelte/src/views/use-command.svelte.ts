@@ -21,7 +21,10 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
 }
 
 /**
- * Tracks a command's pending state and failure as reactive properties. The
+ * Tracks a command's pending state and failure as reactive properties. Called
+ * during component initialization (or in `$effect.root`), owner destruction
+ * stops publishing state without cancelling a run in flight, whose promise
+ * still settles. The
  * command may close over reactive values:
  *
  * ```svelte
@@ -34,7 +37,14 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
 ): CommandHandle<TArgs, Awaited<TReturn>> {
   const controller = createCommandController(command);
   let current = $state.raw(controller.current);
-  controller.subscribe(() => { current = controller.current; });
+  const unsubscribe = controller.subscribe(() => { current = controller.current; });
+  // Registered before the first flush, so a destroyed owner never leaks the controller (see useOperation).
+  // Outside an owner, which useCommand has always allowed, there is nothing to release it with.
+  try {
+    $effect.pre(() => () => { unsubscribe(); controller.dispose(); });
+  } catch (error) {
+    if (!String((error as { message?: unknown } | undefined)?.message).includes("effect_orphan")) throw error;
+  }
   return {
     run: controller.run,
     get pending() { return current.pending; },

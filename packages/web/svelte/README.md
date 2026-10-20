@@ -101,7 +101,9 @@ and `failure`.
 failure, which `error` then holds until the next run. It never rejects, so
 handlers need no `try`/`catch`. One command can serve several buttons:
 `useCommand((name: "showWelcome" | "showCounter") => workspace.client?.[name]())`
-and `navigate.run("showWelcome")`.
+and `navigate.run("showWelcome")`. Called during component initialization, it
+stops publishing state when the component is destroyed, even before its first
+effect flush; a run in flight is not cancelled and its promise still settles.
 
 For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
 `BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed

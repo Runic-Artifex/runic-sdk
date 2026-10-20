@@ -26,7 +26,10 @@ export interface ViewHandle<TClient extends ViewClient> {
 export function useView<TClient extends ViewClient>(source: () => ViewSource<TClient>): ViewHandle<TClient> {
   const controller = createViewController<TClient>();
   let current = $state.raw(controller.current);
-  controller.subscribe(() => { current = controller.current; });
+  const unsubscribe = controller.subscribe(() => { current = controller.current; });
+  // A pre effect runs when it is created, so the teardown exists even if the
+  // owner is destroyed before its first flush (see useOperation).
+  $effect.pre(() => () => { unsubscribe(); controller.dispose(); });
   const identity = $derived(viewSourceIdentity(source()));
 
   $effect(() => {
@@ -36,7 +39,6 @@ export function useView<TClient extends ViewClient>(source: () => ViewSource<TCl
       current = controller.current;
     });
   });
-  $effect(() => () => controller.dispose());
 
   // A connected client is readable before the effect observes it, and a
   // changed reference does not show the previous one until the effect follows it.

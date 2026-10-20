@@ -34,6 +34,22 @@ import {
 
 export type { CollectionViewport, CollectionViewportOptions, ViewClient, ViewConnector, ViewReference, ViewSource } from "@runic-artifex/views";
 
+// Vue's bundler builds require bundlers to define process.env.NODE_ENV too.
+declare const process: { readonly env: { readonly NODE_ENV?: string } };
+
+// Ties a composable's controller to the current effect scope. Outside one (not
+// in setup() or effectScope().run()) nothing ever releases it, so development
+// builds say so.
+function releaseWithScope(composable: string, release: () => void): void {
+  if (getCurrentScope()) {
+    onScopeDispose(release);
+    return;
+  }
+  if (process.env.NODE_ENV !== "production")
+    console.warn(`${composable} was called outside an active effect scope, so nothing releases it: ` +
+      "call it in a component's setup() or inside effectScope().run(), and stop that scope to release it.");
+}
+
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
   readonly state: Readonly<Ref<TClient["snapshot"] | undefined>>;
@@ -51,7 +67,8 @@ export interface ViewHandle<TClient extends ViewClient> {
  * Connects a generated View reference while the current effect scope (for
  * example a component) is active and exposes its state as shallow refs. A
  * changed reference disposes the previous client; disposing the scope
- * disposes the current one.
+ * disposes the current one. Call it in `setup()` or `effectScope().run()`:
+ * outside an effect scope the client is never released (development builds warn).
  *
  * Pass a getter such as `() => props.page` to follow a prop. A reference is
  * identified by its `connect` function, so a getter returning a new
@@ -75,7 +92,7 @@ export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<Vie
     controller.setSource(toValue(source));
     sync();
   }, { immediate: true });
-  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  releaseWithScope("useView", () => controller.dispose());
   return { state, client, error, pending, retry: () => controller.retry() };
 }
 
@@ -139,7 +156,8 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
 /**
  * Tracks a command's pending state and failure. The result is a reactive
  * object, so templates read `increment.pending` directly; do not destructure
- * `pending`, `error` or `failure`.
+ * `pending`, `error` or `failure`. Call it in `setup()` or `effectScope().run()`
+ * (development builds warn otherwise).
  *
  * ```vue
  * const increment = useCommand(() => client.value?.increment());
@@ -159,7 +177,7 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
     writable.error = controller.current.error;
     writable.failure = controller.current.failure;
   });
-  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  releaseWithScope("useCommand", () => controller.dispose());
   return handle;
 }
 
@@ -170,7 +188,9 @@ export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFai
  * Tracks Start admission, pending work, cancellation and terminal feedback of a
  * generated `start<Command>()` operation. The result is a reactive object; do not
  * destructure its state. A run that ends `cancelled` sets `cancelled`, not `error`.
- * Scope disposal settles run promises without cancelling accepted work.
+ * Scope disposal settles run promises without cancelling accepted work. Call it in
+ * `setup()` or `effectScope().run()`: outside an effect scope it is never released
+ * (development builds warn).
  *
  * ```vue
  * const push = useOperation((remote: string) => client.value?.startPush(remote));
@@ -187,21 +207,27 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
     ...controller.current, run: controller.run, cancel: controller.cancel, reset: controller.reset,
   });
   controller.subscribe(() => { Object.assign(handle, controller.current); });
-  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  releaseWithScope("useOperation", () => controller.dispose());
   return handle;
 }
 
 export interface CollectionViewportHandle {
   /** The rows to request and the sizes to render. */
   readonly viewport: Readonly<Ref<CollectionViewport>>;
-  /** A function ref for the scroll container: `<div :ref="attach">`. */
+  /**
+   * A function ref for the scroll container, bound to a native element:
+   * `<div :ref="attach">`. A component instance or a non-HTML element detaches
+   * the viewport (development builds warn); bind a native element instead.
+   */
   attach(element: Element | ComponentPublicInstance | null): void;
 }
 
 /**
  * Follows a fixed-row-height scroll container and returns the rows to request
  * from .NET. Pass a getter such as `() => ({ totalCount: state.value?.totalCount ?? 0, rowHeight: 32 })`
- * and watch `viewport` to send `start` and `size` to the ViewModel.
+ * and watch `viewport` to send `start` and `size` to the ViewModel. Call it in
+ * `setup()` or `effectScope().run()`: outside an effect scope it is never
+ * released (development builds warn).
  */
 export function useCollectionViewport(options: MaybeRefOrGetter<CollectionViewportOptions>): CollectionViewportHandle {
   const controller = createCollectionViewportController(toValue(options));
@@ -213,11 +239,19 @@ export function useCollectionViewport(options: MaybeRefOrGetter<CollectionViewpo
   }, ([totalCount, rowHeight, overscan]) => {
     controller.update({ totalCount, rowHeight, ...(overscan === undefined ? {} : { overscan }) });
   });
-  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  releaseWithScope("useCollectionViewport", () => controller.dispose());
+  let warned = false;
   return {
     viewport,
     attach(element) {
-      controller.attach(typeof HTMLElement !== "undefined" && element instanceof HTMLElement ? element : null);
+      if (typeof HTMLElement === "undefined") return controller.attach(null);
+      const container = element instanceof HTMLElement ? element : null;
+      if (process.env.NODE_ENV !== "production" && element !== null && container === null && !warned) {
+        warned = true;
+        console.warn("useCollectionViewport's attach received a component instance or a non-HTML element, so the viewport " +
+          "is detached: bind `:ref=\"attach\"` to a native scroll container such as a <div>.");
+      }
+      controller.attach(container);
     },
   };
 }
