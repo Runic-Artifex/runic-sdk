@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, mkdirSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { resolve, dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, configuration } from "../run.mjs";
@@ -26,7 +27,9 @@ export function validateBuild(actual, expected) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const directory = resolve(root, "artifacts/ci-build");
-  const archive = resolve(directory, "build.tar.gz"), manifest = resolve(directory, "build.json");
+  // zstd on every core: gzip took about 100 s on the build job and 18 s in each job that restores it.
+  const archive = resolve(directory, "build.tar.zst"), manifest = resolve(directory, "build.json");
+  const zstd = { ...process.env, ZSTD_CLEVEL: "3", ZSTD_NBTHREADS: String(availableParallelism()) };
   const metadata = { schema: "runic.ci-build/1", revision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     source: sourceDigest(), directory: realpathSync(root), platform: process.platform, architecture: process.arch,
     configuration, sdk: execFileSync("dotnet", ["--version"], { cwd: root, encoding: "utf8" }).trim() };
@@ -34,12 +37,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     mkdirSync(directory, { recursive: true });
     const paths = buildPaths();
     if (!paths.length) throw new Error("Build outputs are missing.");
-    execFileSync("tar", ["-czf", archive, "--null", "-T", "-"], { cwd: root, input: paths.join("\0") + "\0", stdio: ["pipe", "inherit", "inherit"] });
+    execFileSync("tar", ["--zstd", "-cf", archive, "--null", "-T", "-"], { cwd: root, env: zstd, input: paths.join("\0") + "\0", stdio: ["pipe", "inherit", "inherit"] });
     writeFileSync(manifest, JSON.stringify({ ...metadata, sha256: createHash("sha256").update(readFileSync(archive)).digest("hex") }, null, 2));
   } else if (process.argv[2] === "restore") {
     const actual = JSON.parse(readFileSync(manifest, "utf8"));
     validateBuild(actual, metadata);
     if (actual.sha256 !== createHash("sha256").update(readFileSync(archive)).digest("hex")) throw new Error("Build archive checksum mismatch.");
-    execFileSync("tar", ["-xzf", archive], { cwd: root, stdio: "inherit" });
+    execFileSync("tar", ["--zstd", "-xf", archive], { cwd: root, env: zstd, stdio: "inherit" });
   } else throw new Error("Use create or restore.");
 }
