@@ -5,12 +5,12 @@ import type { CounterPageReference } from "../generated/counter.js";
 
 const props = defineProps<{ page: CounterPageReference }>();
 const { state, client, error: connection } = useView(() => props.page);
-const increment = useCommand(() => client.value?.increment());
+const { run: increment, pending: incrementing, error: incrementError } = useCommand(() => client.value?.increment());
 // Step has a public C# setter, so the client has setStep for v-model.
 // Count's setter is private: the page only reads it.
-const setStep = useCommand((value: number) => client.value?.setStep(value));
-const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep.run(value) });
-const error = computed(() => increment.error ?? setStep.error ?? connection.value);
+const { run: setStep, error: stepError } = useCommand((value: number) => client.value?.setStep(value));
+const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep(value) });
+const error = computed(() => incrementError.value ?? stepError.value ?? connection.value);
 </script>
 
 <template>
@@ -23,7 +23,7 @@ const error = computed(() => increment.error ?? setStep.error ?? connection.valu
         <option v-for="value in [1, 2, 5, 10]" :key="value" :value="value">{{ value }}</option>
       </select>
     </label>
-    <button :disabled="!client || increment.pending" @click="increment.run()">Increment</button>
+    <button :disabled="!client || incrementing" @click="increment()">Increment</button>
     <p v-if="error !== undefined" role="alert">{{ String(error) }}</p>
   </section>
 </template>

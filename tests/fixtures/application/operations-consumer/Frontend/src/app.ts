@@ -2,7 +2,7 @@ import { mount, unmount } from "svelte";
 import { createOperationController, BridgeError, BridgeOperationUncertainError,
   type BridgeOperation } from "@runic-artifex/views";
 import { createLatestOperationController } from "@runic-artifex/views/experimental";
-import type { OperationHandle } from "@runic-artifex/svelte/views";
+import type { OperationHandle } from "@runic-artifex/svelte";
 import OperationFeedback from "./OperationFeedback.svelte";
 import { connectOperations } from "./generated/operations";
 

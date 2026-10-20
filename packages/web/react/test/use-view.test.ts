@@ -5,9 +5,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import {
-  retrySuspenseView, useCollectionViewport, useCommand, useOperation, useSuspenseView, useView, ViewOutlet,
-  type CollectionViewportHandle, type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry,
+  useCommand, useOperation, useView, ViewOutlet,
+  type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
+import { retrySuspenseView, useCollectionViewport, useSuspenseView, type CollectionViewportHandle } from "../dist/experimental.js";
+import * as root_ from "../dist/index.js";
 
 // React 18.3.0, the lowest supported React, exports act only as unstable_act.
 const act: typeof React.act = React.act ?? (React as unknown as { unstable_act: typeof React.act }).unstable_act;
@@ -190,6 +192,31 @@ describe("interactions", () => {
     expect(await handler!({ itemName: "Groceries" }, { signal: new AbortController().signal })).toBe(true);
     await act(async () => root!.render(null));
     expect(page.handlers.size).toBe(0);
+  });
+});
+
+describe("useView options", () => {
+  test("release replaces dispose for a client the hook connected", async () => {
+    const reference = fakeReference();
+    const released: unknown[] = [];
+    function Releasing(): ReactNode {
+      useView(reference, { release: client => released.push(client) });
+      return null;
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(Releasing));
+    });
+    await act(async () => reference.resolveAll());
+    await act(async () => root?.unmount());
+    root = undefined;
+    expect(released).toEqual(reference.clients);
+    expect(reference.clients.every(client => client.disposed === 0)).toBe(true);
+  });
+
+  test("experimental hooks are only in @runic-artifex/react/experimental", () => {
+    for (const name of ["useSuspenseView", "retrySuspenseView", "useCollectionViewport"])
+      expect(name in root_).toBe(false);
   });
 });
 
@@ -552,6 +579,52 @@ function fakeOperation(requestId: string) {
   };
   return { operation, finish, cancels: () => cancels };
 }
+
+// D40 b: the hooks dispose their controllers on unmount, and StrictMode's simulated unmount keeps them working.
+describe("controller lifetime", () => {
+  test("useOperation disposes on unmount: an in-flight run settles and completion is not awaited", async () => {
+    let handle: OperationHandle<[], number> | undefined;
+    const current = fakeOperation("lifetime");
+    let completions = 0;
+    function Runner(): ReactNode {
+      handle = useOperation(() => current.operation, { waitForCompletion: () => { completions++; } });
+      return createElement("output", null, `${handle.pending}`);
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(StrictMode, null, createElement(Runner)));
+    });
+    let result: Promise<unknown> | undefined;
+    await act(async () => { result = handle!.run(); });
+    expect(text()).toBe("true");
+    await act(async () => root?.unmount());
+    root = undefined;
+    expect(await result).toBeUndefined();
+    current.finish({ contract: "test", requestId: "lifetime", kind: "succeeded", result: 1 });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(completions).toBe(0);
+    expect(current.cancels()).toBe(0);
+  });
+
+  test("useCommand keeps tracking runs after StrictMode's extra mount", async () => {
+    let handle: CommandHandle<[], number> | undefined;
+    let finish: ((value: number) => void) | undefined;
+    function Runner(): ReactNode {
+      handle = useCommand(() => new Promise<number>(resolve => { finish = resolve; }));
+      return createElement("output", null, `${handle.pending}`);
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(StrictMode, null, createElement(Runner)));
+    });
+    let result: Promise<number | undefined> | undefined;
+    await act(async () => { result = handle!.run(); });
+    expect(text()).toBe("true");
+    await act(async () => finish!(3));
+    expect(await result).toBe(3);
+    expect(text()).toBe("false");
+  });
+});
 
 describe("useOperation", () => {
   test("Cancel ends in a cancelled state without an error; failed and timed-out runs are errors", async () => {

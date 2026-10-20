@@ -88,8 +88,11 @@ import type { DocumentReference } from "./generated/document";
 const registry = { document: DocumentPage } satisfies ViewRegistry<DocumentReference>;
 
 // Add ViewOutlet to the parent's imports and bind:
-// <runic-view-outlet [content]="current()" [registry]="registry" />
+// <runic-view-outlet [content]="current()" [registry]="registry">Connecting…</runic-view-outlet>
 ```
+
+The outlet's projected content renders while there is no reference, like
+React's `fallback`, Vue's default slot and Svelte's `fallback` snippet.
 
 `ViewOutlet` is the outlet's name in every Runic frontend package (React, Vue,
 Svelte and Angular); its element keeps Angular's prefix convention,
@@ -234,9 +237,11 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## Collection viewports
+## Collection viewports (experimental)
 
-`injectCollectionViewport(element, options)` follows a fixed-row-height scroll
+`injectCollectionViewport(element, options)`, exported from
+`@runic-artifex/angular/experimental` like the `@runic-artifex/views/experimental`
+controller it wraps, follows a fixed-row-height scroll
 container and returns a signal with its
 [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
 range. Pass the container as a signal, such as a `viewChild`, and the options as

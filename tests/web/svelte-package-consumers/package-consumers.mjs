@@ -33,7 +33,7 @@ try {
   assert.ok(viewFiles.includes("package/dist/views/view-registry.d.ts"));
   const svelteManifest = JSON.parse((await execFile("tar", ["-xOf", svelte, "package/package.json"])).stdout);
   assert.equal(svelteManifest.name, "@runic-artifex/svelte");
-  assert.ok(Object.keys(svelteManifest.exports).includes("./views"));
+  assert.deepEqual(Object.keys(svelteManifest.exports), [".", "./experimental", "./package.json"]);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module" }), "utf8");
   await execFile("npm", [
     "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--legacy-peer-deps",
@@ -41,10 +41,10 @@ try {
   ], { cwd: root });
   await writeFile(join(root, "consumer.mjs"), [
     'import { runicSpaPageOptions } from "@runic-artifex/sveltekit/page-options";',
-    'import { preserveRunicHmrResource, disposeRunicHmrResource } from "@runic-artifex/vite-plugin-runic/client";',
-    'const resource = preserveRunicHmrResource("consumer", () => ({ disposed: false }));',
-    'await disposeRunicHmrResource("consumer", (value) => { value.disposed = true; });',
-    'if (!resource.disposed || runicSpaPageOptions.ssr !== false) throw new Error("package boundary failed");',
+    'import { createRequire } from "node:module";',
+    'const require = createRequire(import.meta.url);',
+    'for (const name of ["@runic-artifex/svelte", "@runic-artifex/sveltekit", "@runic-artifex/vite-plugin-runic"]) require.resolve(name + "/package.json");',
+    'if (runicSpaPageOptions.ssr !== false) throw new Error("package boundary failed");',
   ].join("\n"), "utf8");
   await execFile(process.execPath, ["consumer.mjs"], { cwd: root });
 } finally {

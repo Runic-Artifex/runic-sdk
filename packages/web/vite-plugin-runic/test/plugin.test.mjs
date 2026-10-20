@@ -15,7 +15,7 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   const plugin = runic({ devtools: false });
   plugin.configResolved({ command: "serve", mode: "development", root: process.cwd() });
   assert.equal(plugin.resolveId("virtual:runic/client"), "\0virtual:runic/client");
-  assert.match(plugin.load("\0virtual:runic/client"), /vite-plugin-runic\/client/);
+  assert.equal(plugin.load("\0virtual:runic/client"), 'import "@runic-artifex/vite-plugin-runic/client";');
 
   const handlers = new Map();
   const middleware = [];
@@ -27,8 +27,9 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
     middlewares: { use: (path, handler) => middleware.push([path, handler]) },
     httpServer: undefined,
   });
-  assert.equal(handlers.has("runic:state"), true);
+  assert.equal(handlers.has("runic:connection"), true);
   assert.equal(handlers.has("runic:diagnostic"), true);
+  assert.equal(handlers.has("runic:state"), false, "the page no longer reports a runtime state");
   assert.equal(middleware[0][0], "/__runic/state");
 });
 
@@ -229,15 +230,8 @@ test("runs the Vite, HMR, and SSR fixtures without browser-only state", async ()
       `http://127.0.0.1:${serverPort(server)}/@id/virtual:runic/client`,
     );
     assert.equal(virtual.status, 200);
-    assert.deepEqual(await executeVirtualReporter(await virtual.text()), [{
-      event: "runic:diagnostic",
-      data: {
-        source: "assets",
-        kind: "event",
-        label: "[redacted]",
-        detail: { status: "ready", message: "[redacted]" },
-      },
-    }]);
+    // The development client has no exports; the virtual module only loads it.
+    assert.match(await virtual.text(), /^import ".*vite-plugin-runic\/(dist\/)?client(\.js)?";?\s*$/m);
 
     assert.equal((await server.ssrLoadModule("/src/ssr-entry.js")).revision, 1);
     const changed = new Promise((resolve) => server.watcher.once("change", resolve));
@@ -317,7 +311,7 @@ test("official DevTools registers a live Runic dock under Bun", { timeout: 30_00
     const dock = context.docks.views.get("runic:overview");
     assert.equal(dock.type, "json-render");
     assert.ok(dock.view);
-    plugin.diagnostics.report({ source: "assets", kind: "event", label: "Bun dock updated" });
+    plugin.api.reportDiagnostic({ source: "assets", kind: "event", label: "Bun dock updated" });
     const shared = await context.rpc.sharedState.get("runic:state");
     assert.equal(shared.value().timeline.at(-1).label, "Bun dock updated");
     const copied = JSON.parse(await context.commands.execute("runic:copy-diagnostic-state"));
@@ -380,7 +374,7 @@ test("fails closed on hostile summaries and bounds a million-key detail object",
   detail.message = "vscode://private/customer/project";
   detail.errorMessage = "failed: ../private/customer.json";
   for (let index = 0; index < 1_000_000; index += 1) detail[`key${index}`] = index;
-  plugin.diagnostics.report({
+  plugin.api.reportDiagnostic({
     source: "assets",
     id: "Authorization: Bearer must-not-escape",
     timestamp: "file:///private/timestamp",
@@ -414,9 +408,9 @@ test("accepts view, asset, and translation summaries through one bounded timelin
     middlewares: { use: () => undefined },
     httpServer: undefined,
   });
-  plugin.diagnostics.report({ source: "views", kind: "connection", label: "Connected" });
-  plugin.diagnostics.report({ source: "assets", kind: "event", label: "Asset refreshed" });
-  plugin.diagnostics.report({
+  plugin.api.reportDiagnostic({ source: "views", kind: "connection", label: "Connected" });
+  plugin.api.reportDiagnostic({ source: "assets", kind: "event", label: "Asset refreshed" });
+  plugin.api.reportDiagnostic({
     source: "translations",
     kind: "error",
     label: "Catalog rejected",
@@ -443,13 +437,13 @@ test("keeps a bounded, credential-redacted failure only on error entries", () =>
     "System.InvalidOperationException: Disk full at /home/dev/notes.db",
     ...Array.from({ length: 200 }, (_, index) => `   at Notes.Save${index}() in /home/dev/Notes/Editor.cs:line ${index}`),
   ].join("\n");
-  plugin.diagnostics.report({
+  plugin.api.reportDiagnostic({
     source: "views",
     kind: "error",
     label: "editorSave failed",
     failure: { type: "System.InvalidOperationException", message: "Disk full. Authorization: Bearer must-not-escape", stack },
   });
-  plugin.diagnostics.report({
+  plugin.api.reportDiagnostic({
     source: "views",
     kind: "operation",
     label: "Save timed-out",
@@ -486,7 +480,7 @@ test("redacts credential values in failures and leaves failures out of the state
     ["sent Bearer tok", "sent Bearer [redacted]"],
   ];
   for (const [input, expected] of secrets) {
-    plugin.diagnostics.report({ source: "views", kind: "error", label: "editorSave failed",
+    plugin.api.reportDiagnostic({ source: "views", kind: "error", label: "editorSave failed",
       failure: { type: "System.Exception", message: input, stack: `System.Exception: ${input}\n   at Save()` } });
     const failure = latest.timeline.at(-1).failure;
     assert.equal(failure.message, expected, input);
@@ -526,7 +520,7 @@ test("injects the Views diagnostics client only while serving with DevTools enab
 
 test("forwards a Views BridgeError with its .NET detail to the timeline", async () => {
   const sent = await executeViewsForwarding();
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 3);
   assert.deepEqual(sent[0], {
     event: "runic:diagnostic",
     data: {
@@ -544,6 +538,24 @@ test("forwards a Views BridgeError with its .NET detail to the timeline", async 
   assert.equal(sent[1].data.label, "Bridge unavailable");
   assert.match(sent[1].data.failure.message, /window\.__runicBridge/);
   assert.match(sent[1].data.failure.message, /@runic-artifex\/views\/mock/);
+  // D40 a: the page's connection state reaches the dock without application code.
+  assert.deepEqual(sent[2], { event: "runic:connection", data: { state: "connected" } });
+});
+
+test("the dock shows the connection state the page forwards", () => {
+  const plugin = runic({ devtools: false });
+  const handlers = new Map();
+  let latest;
+  plugin.configureServer({
+    ws: { on: (event, handler) => handlers.set(event, handler), send: (message) => { latest = message.data; } },
+    middlewares: { use: () => undefined },
+    httpServer: undefined,
+  });
+  handlers.get("runic:connection")({ state: "reconnecting" });
+  assert.deepEqual(latest.connection, { state: "reconnecting" });
+  handlers.get("runic:connection")({ state: "closed" });
+  assert.deepEqual(latest.connection, { state: "unknown" }, "an unknown state is not shown as a Views state");
+  assert.equal("operations" in latest, false);
 });
 
 async function fixtureRoot() {
@@ -561,61 +573,6 @@ function serverPort(server) {
   return address.port;
 }
 
-async function executeVirtualReporter(virtualCode) {
-  const harness = String.raw`
-import { readFile } from "node:fs/promises";
-import { createContext, SourceTextModule } from "node:vm";
-
-const sent = [];
-const hot = {
-  data: {},
-  send(event, data) { sent.push({ event, data }); },
-  on() {},
-  prune() {},
-};
-const context = createContext({});
-const diagnostics = new SourceTextModule(await readFile("dist/diagnostics.js", "utf8"), {
-  context,
-  identifier: "diagnostics",
-});
-const client = new SourceTextModule(await readFile("dist/client.js", "utf8"), {
-  context,
-  identifier: "client",
-  initializeImportMeta(meta) { meta.hot = hot; },
-});
-const virtual = new SourceTextModule(Buffer.from(process.argv[1], "base64").toString("utf8"), {
-  context,
-  identifier: "virtual:runic/client",
-});
-await diagnostics.link(() => { throw new Error("diagnostics has no imports"); });
-await client.link((specifier) => specifier === "./diagnostics.js" ? diagnostics : Promise.reject(new Error(specifier)));
-await virtual.link((specifier) => specifier.endsWith("/dist/client.js") ? client : Promise.reject(new Error(specifier)));
-await virtual.evaluate();
-virtual.namespace.reportRunicDiagnostic({
-  source: "assets",
-  id: "Authorization: Bearer must-not-escape",
-  timestamp: "file:///private/timestamp",
-  kind: "event",
-  label: "Asset ./private/customer/project refreshed",
-  detail: {
-    status: "ready",
-    fileName: "customer.json",
-    message: "error: ../private/customer.json",
-    nested: { secret: "must-not-escape" },
-  },
-});
-process.stdout.write(JSON.stringify(sent));
-`;
-  const { stdout } = await execFile(process.execPath, [
-    "--experimental-vm-modules",
-    "--input-type=module",
-    "--eval",
-    harness,
-    Buffer.from(virtualCode).toString("base64"),
-  ], { cwd: process.cwd() });
-  return JSON.parse(stdout);
-}
-
 // Runs the built Views runtime and this package's client in one context, as
 // on a page, without either package depending on the other.
 async function executeViewsForwarding() {
@@ -626,6 +583,12 @@ import { createContext, SourceTextModule } from "node:vm";
 const sent = [];
 const hot = { data: {}, send(event, data) { sent.push({ event, data }); }, on() {}, prune() {} };
 const context = createContext({ setTimeout, clearTimeout });
+// A host Bridge that is connected, so the Views runtime publishes "connected" on its channel.
+context.__runicBridge = {
+  isConnected: () => true,
+  call: () => Promise.reject(new Error("not used")),
+  onConnectionChange(listener) { listener(true); return () => {}; },
+};
 const modules = new Map();
 async function load(path, identifier, meta) {
   const module = new SourceTextModule(await readFile(path, "utf8"), {
@@ -638,6 +601,7 @@ const views = "../views/dist/";
 const errors = await load(views + "errors.js", "views/errors");
 const diagnosticsModule = await load(views + "diagnostics.js", "views/diagnostics");
 const transport = await load(views + "transport.js", "views/transport");
+const connectionState = await load(views + "connection-state.js", "views/connection-state");
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
 const link = (from) => (specifier) => {
@@ -648,6 +612,7 @@ const link = (from) => (specifier) => {
 await errors.link(link("views"));
 await diagnosticsModule.link(link("views"));
 await transport.link(link("views"));
+await connectionState.link(link("views"));
 await pluginDiagnostics.link(link("plugin"));
 await client.link(link("plugin"));
 await client.evaluate();
@@ -661,7 +626,15 @@ diagnosticsModule.namespace.emitErrorDiagnostic(new BridgeError("failed", "Save 
     stack: "System.InvalidOperationException: Disk full.\n   at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12",
   },
 }));
+delete context.__runicBridge;
 await transport.namespace.waitForBridge({ timeout: 0 }).catch(() => undefined);
+context.__runicBridge = {
+  isConnected: () => true,
+  call: () => Promise.reject(new Error("not used")),
+  onConnectionChange(listener) { listener(true); return () => {}; },
+};
+await connectionState.evaluate();
+connectionState.namespace.publishConnectionState();
 process.stdout.write(JSON.stringify(sent));
 `;
   const { stdout } = await execFile(process.execPath, [

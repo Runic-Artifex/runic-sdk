@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { useView } from "@runic-artifex/svelte/views";
+  import { useView } from "@runic-artifex/svelte";
   import type { WelcomePageReference } from "../generated/welcome.js";
 
   let { page }: { page: WelcomePageReference } = $props();

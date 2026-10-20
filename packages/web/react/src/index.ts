@@ -21,17 +21,11 @@ import {
   type OperationState,
   type PageReference,
   type ViewClient,
-  type ViewConnector,
   type ViewController,
   type ViewControllerState,
   type ViewSource,
 } from "@runic-artifex/views";
 import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
-import {
-  createCollectionViewportController,
-  type CollectionViewport,
-  type CollectionViewportOptions,
-} from "@runic-artifex/views/experimental";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
@@ -108,6 +102,11 @@ function createViewStore<TClient extends ViewClient>(controller: ViewController<
   };
 }
 
+export interface UseViewOptions<TClient extends ViewClient> {
+  /** Releases a client this hook connected. Defaults to `client.dispose()`. */
+  readonly release?: (client: TClient) => void;
+}
+
 /**
  * Connects a generated View reference for the lifetime of the component and
  * renders its state through `useSyncExternalStore`. A changed reference
@@ -118,8 +117,12 @@ function createViewStore<TClient extends ViewClient>(controller: ViewController<
  * `{ connect: connectWorkspace }` does not reconnect. In development a
  * `connect` function recreated on every render logs a warning.
  */
-export function useView<TClient extends ViewClient>(source: ViewSource<TClient>): ViewHandle<TClient> {
-  const [controller] = useState(() => createViewController<TClient>());
+export function useView<TClient extends ViewClient>(source: ViewSource<TClient>, options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
+  const release = useRef(options.release);
+  useInsertionEffect(() => { release.current = options.release; });
+  const [controller] = useState(() => createViewController<TClient>({
+    release: client => { if (release.current) release.current(client); else client.dispose(); },
+  }));
   const [store] = useState(() => createViewStore(controller));
   const tracker = useRef<InlineConnectTracker>({ connect: undefined, text: "", times: [], warned: false });
   const identity = viewSourceIdentity(source);
@@ -142,105 +145,6 @@ export function useView<TClient extends ViewClient>(source: ViewSource<TClient>)
   if (viewSourceIdentity(current.source) !== identity)
     return { state: undefined, client: undefined, error: undefined, pending: source !== null && source !== undefined, retry };
   return { state: current.state, client: current.client, error: current.error, pending: current.pending, retry };
-}
-
-type SuspendedConnection = {
-  status: "pending" | "ready" | "failed";
-  promise: Promise<void>;
-  client?: ViewClient;
-  error?: unknown;
-  users: number;
-  timer?: ReturnType<typeof setTimeout>;
-};
-
-// Suspense discards the state of a component that never mounted, so pending
-// connections live here, keyed by connect function, until a component claims them.
-const suspended = new WeakMap<object, SuspendedConnection>();
-const unclaimedConnectionTimeout = 10_000;
-
-function releaseLater(key: object, entry: SuspendedConnection, delay: number): void {
-  clearTimeout(entry.timer);
-  entry.timer = setTimeout(() => {
-    if (entry.users !== 0 || suspended.get(key) !== entry) return;
-    suspended.delete(key);
-    entry.client?.dispose();
-  }, delay);
-}
-
-function suspendedConnection(connector: ViewConnector<ViewClient>): SuspendedConnection {
-  const key = connector.connect;
-  const existing = suspended.get(key);
-  if (existing) return existing;
-  const entry: SuspendedConnection = { status: "pending", promise: Promise.resolve(), users: 0 };
-  entry.promise = Promise.resolve().then(() => connector.connect()).then(client => {
-    entry.status = "ready";
-    entry.client = client;
-    // Release a connection whose render was abandoned before it mounted.
-    releaseLater(key, entry, unclaimedConnectionTimeout);
-  }, (error: unknown) => {
-    entry.status = "failed";
-    entry.error = error;
-    // Keep the failure for the error boundary; forget it later so a later render reconnects.
-    entry.timer = setTimeout(() => { if (suspended.get(key) === entry) suspended.delete(key); }, unclaimedConnectionTimeout);
-  });
-  suspended.set(key, entry);
-  return entry;
-}
-
-/**
- * Forgets a failed `useSuspenseView` connection, so the next render connects
- * again. Call it from an error boundary's reset before rendering the
- * component again. A connection that is pending or connected is unaffected.
- */
-export function retrySuspenseView(source: ViewConnector<ViewClient>): void {
-  const entry = suspended.get(source.connect);
-  if (entry?.status !== "failed") return;
-  clearTimeout(entry.timer);
-  suspended.delete(source.connect);
-}
-
-export interface SuspenseViewHandle<TClient extends ViewClient> {
-  /** The latest state. */
-  readonly state: TClient["snapshot"];
-  /** The connected client. */
-  readonly client: TClient;
-}
-
-/**
- * Suspends the component until a generated View reference connects, then
- * renders its state. A failed connection is thrown to the nearest error
- * boundary; call `retrySuspenseView(reference)` when resetting the boundary to
- * connect again. An unretried failure is forgotten after ten seconds.
- *
- * Components that pass a reference with the same `connect` function share one
- * client, which is disposed after the last of them unmounts. Pass a stable
- * function such as a generated page reference or `{ connect: connectWorkspace }`:
- * a function recreated on every render never resolves. An already connected
- * client is observed and left to its owner.
- */
-export function useSuspenseView<TClient extends ViewClient>(source: ViewConnector<TClient> | TClient): SuspenseViewHandle<TClient> {
-  const connector = isViewClient(source) ? undefined : source;
-  const entry = connector ? suspendedConnection(connector) : undefined;
-  const [, refresh] = useReducer((count: number) => count + 1, 0);
-  useEffect(() => {
-    if (!connector || !entry) return;
-    const key = connector.connect;
-    // The connection was released before this component committed: connect again.
-    if (suspended.get(key) !== entry) { refresh(); return; }
-    entry.users++;
-    clearTimeout(entry.timer);
-    return () => {
-      entry.users--;
-      if (entry.users === 0) releaseLater(key, entry, 0);
-    };
-  }, [entry]);
-  if (entry?.status === "pending") throw entry.promise;
-  if (entry?.status === "failed") throw entry.error;
-  const client = (entry ? entry.client : source) as TClient;
-  const subscribe = useCallback((onChange: () => void) => client.subscribe(() => onChange()), [client]);
-  const read = useCallback(() => client.snapshot as TClient["snapshot"], [client]);
-  const state = useSyncExternalStore(subscribe, read, read);
-  return { state, client };
 }
 
 /**
@@ -280,6 +184,31 @@ export function ViewOutlet<R extends PageReference>({ content, registry, fallbac
   return createElement(component, { key: referenceKey(content), page: content });
 }
 
+// A command or operation controller lives while its component is mounted: unmounting disposes it,
+// which stops its feedback and, for an operation, settles its pending run promises and stops
+// observing accepted work (it never cancels the work). StrictMode's simulated unmount, and a component that React shows again (`<Activity>`),
+// mount once more with a fresh controller, so feedback of runs started before the unmount ends.
+const disposedControllers = new WeakSet<object>();
+
+function useMountedController<T extends { dispose(): void }>(create: () => T): T {
+  const controller = useRef<T | null>(null);
+  if (controller.current === null) controller.current = create();
+  const [, remount] = useReducer((count: number) => count + 1, 0);
+  useEffect(() => {
+    if (disposedControllers.has(controller.current!)) {
+      controller.current = create();
+      remount();
+    }
+    const mounted = controller.current!;
+    return () => {
+      disposedControllers.add(mounted);
+      mounted.dispose();
+    };
+    // The controller reads the latest callbacks through refs, so it is created once per mount.
+  }, []);
+  return controller.current;
+}
+
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**
    * Runs the command. Resolves to its result, including a `BridgeOutcome` with a
@@ -302,7 +231,9 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
 
 /**
  * Tracks a command's pending state and failure for rendering. `run` always
- * calls the latest `command`, so it may close over the current client:
+ * calls the latest `command`, so it may close over the current client. Unmounting
+ * disposes the controller: `pending`, `error` and `failure` stop updating, while a
+ * run still in flight resolves as usual.
  *
  * ```tsx
  * const increment = useCommand(() => client?.increment());
@@ -314,7 +245,7 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
 ): CommandHandle<TArgs, Awaited<TReturn>> {
   const latest = useRef(command);
   useInsertionEffect(() => { latest.current = command; });
-  const [controller] = useState(() => createCommandController((...args: TArgs) => latest.current(...args)));
+  const controller = useMountedController(() => createCommandController((...args: TArgs) => latest.current(...args)));
   const read = useCallback(() => controller.current, [controller]);
   const { pending, error, failure } = useSyncExternalStore(controller.subscribe, read, read);
   return { run: controller.run, pending, error, failure, reset: controller.reset };
@@ -327,8 +258,9 @@ export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFai
  * Tracks Start admission, pending work, cancellation and terminal feedback of a
  * generated `start<Command>()` operation for rendering. `run` always calls the
  * latest `start` and options, so they may close over the current client. A run
- * that ends `cancelled` sets `cancelled`, not `error`. Unmounting stops rendering
- * feedback; it never cancels accepted work.
+ * that ends `cancelled` sets `cancelled`, not `error`. Unmounting disposes the
+ * controller: a run still in flight resolves to undefined and `waitForCompletion`
+ * is not called after it, but accepted work is never cancelled.
  *
  * ```tsx
  * const push = useOperation((remote: string) => client?.startPush(remote));
@@ -343,35 +275,11 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
 ): OperationHandle<TArgs, TResult, TFailure> {
   const latest = useRef({ start, options });
   useInsertionEffect(() => { latest.current = { start, options }; });
-  const [controller] = useState(() => createOperationController((...args: TArgs) => latest.current.start(...args), {
+  const controller = useMountedController(() => createOperationController((...args: TArgs) => latest.current.start(...args), {
     cancel: operation => latest.current.options.cancel ? latest.current.options.cancel(operation) : operation.cancel(),
     waitForCompletion: (operation, status) => latest.current.options.waitForCompletion?.(operation, status),
   }));
   const read = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, read, read);
   return { ...current, run: controller.run, cancel: controller.cancel, reset: controller.reset };
-}
-
-export interface CollectionViewportHandle {
-  /** The rows to request and the sizes to render. */
-  readonly viewport: CollectionViewport;
-  /** Attach to the scroll container: `<div ref={ref}>`. */
-  readonly ref: (element: HTMLElement | null) => void;
-}
-
-/**
- * Follows a fixed-row-height scroll container and returns the rows to request
- * from .NET. Send `viewport.start` and `viewport.size` to the ViewModel from an
- * effect; the hook only measures.
- */
-export function useCollectionViewport(options: CollectionViewportOptions): CollectionViewportHandle {
-  const [controller] = useState(() => createCollectionViewportController(options));
-  const { totalCount, rowHeight, overscan } = options;
-  useEffect(() => {
-    controller.update({ totalCount, rowHeight, ...(overscan === undefined ? {} : { overscan }) });
-  }, [controller, totalCount, rowHeight, overscan]);
-  const read = useCallback(() => controller.current, [controller]);
-  const viewport = useSyncExternalStore(controller.subscribe, read, read);
-  const ref = useCallback((element: HTMLElement | null) => controller.attach(element), [controller]);
-  return { viewport, ref };
 }

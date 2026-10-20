@@ -20,18 +20,23 @@ import type { CounterPageReference } from "./generated/counter.js";
 
 const props = defineProps<{ page: CounterPageReference }>();
 const { state, client, error } = useView(() => props.page);
-const increment = useCommand(() => client.value?.increment());
+const { run: increment, pending, error: incrementError } = useCommand(() => client.value?.increment());
 </script>
 
 <template>
-  <button :disabled="!client || increment.pending" @click="increment.run()">{{ state?.count ?? "…" }}</button>
-  <p v-if="(increment.error ?? error) !== undefined" role="alert">{{ String(increment.error ?? error) }}</p>
+  <button :disabled="!client || pending" @click="increment()">{{ state?.count ?? "…" }}</button>
+  <p v-if="(incrementError ?? error) !== undefined" role="alert">{{ String(incrementError ?? error) }}</p>
 </template>
 ```
 
-## `useView(source)`
+Every composable returns its state as shallow refs, so a handle can be
+destructured in `<script setup>` and its refs unwrap in the template.
 
-Returns shallow refs `{ state, client, error, pending }` and `retry()`:
+## `useView(source, options?)`
+
+Returns shallow refs `{ state, client, error, pending }` and `retry()`.
+`options.release(client)` replaces `client.dispose()` for a client the composable
+connected:
 
 - A generated page reference, or `{ connect: connect<Name> }` for a root
   ViewModel, is connected while the current effect scope (normally the
@@ -67,8 +72,8 @@ import type { CounterPageReference } from "./generated/counter.js";
 
 const props = defineProps<{ page: CounterPageReference }>();
 const { state, client } = useView(() => props.page);
-const setStep = useCommand((value: number) => client.value?.setStep(value));
-const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep.run(value) });
+const { run: setStep } = useCommand((value: number) => client.value?.setStep(value));
+const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep(value) });
 </script>
 
 <template>
@@ -108,15 +113,15 @@ prop accepts that reference.
 
 ## `useCommand(command)`
 
-Returns a reactive `{ run, pending, error, failure, reset }`. Read `increment.pending`,
-`increment.error` and `increment.failure` from the object rather than destructuring them.
+Returns `{ run, pending, error, failure, reset }`, with `pending`, `error` and
+`failure` as shallow refs.
 `run(...args)` resolves to the command's result, or to `undefined` after a
 failure, which `error` then holds until the next run. It never rejects, so
 handlers need no `try`/`catch`. One command can serve several buttons:
 
 ```ts
-const navigate = useCommand((name: "showWelcome" | "showCounter") => client.value?.[name]());
-// <button @click="navigate.run('showWelcome')">Welcome</button>
+const { run: navigate } = useCommand((name: "showWelcome" | "showCounter") => client.value?.[name]());
+// <button @click="navigate('showWelcome')">Welcome</button>
 ```
 
 For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
@@ -129,18 +134,19 @@ neither.
 
 Observes a generated `start<Command>()` operation through the framework-neutral
 [operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
-and returns a reactive object; read its state from the object rather than destructuring it:
+and returns each state field as a shallow ref, with `run`, `cancel` and `reset`:
 
 ```vue
 <script setup lang="ts">
-const push = useOperation((remote: string) => client.value?.startPush(remote));
+const { run: push, cancel, pending, cancellationRequested, cancelled, error } =
+  useOperation((remote: string) => client.value?.startPush(remote));
 </script>
 
 <template>
-  <button :disabled="!client || push.pending" @click="push.run('origin')">Push</button>
-  <button v-if="push.pending" :disabled="push.cancellationRequested" @click="push.cancel()">Cancel</button>
-  <p v-if="push.cancelled" role="status">Push cancelled.</p>
-  <p v-if="push.error !== undefined" role="alert">{{ String(push.error) }}</p>
+  <button :disabled="!client || pending" @click="push('origin')">Push</button>
+  <button v-if="pending" :disabled="cancellationRequested" @click="cancel()">Cancel</button>
+  <p v-if="cancelled" role="status">Push cancelled.</p>
+  <p v-if="error !== undefined" role="alert">{{ String(error) }}</p>
 </template>
 ```
 
@@ -218,7 +224,10 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## `useCollectionViewport(options)`
+## `useCollectionViewport(options)` (experimental)
+
+Exported from `@runic-artifex/vue/experimental`, like the
+`@runic-artifex/views/experimental` controller it wraps.
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
 `viewport` is a shallow ref with the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)

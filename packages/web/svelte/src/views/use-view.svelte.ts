@@ -24,8 +24,13 @@ export interface ViewHandle<TClient extends ViewClient> {
  * A reference is identified by its `connect` function, so a getter returning a
  * new `{ connect: connectShell }` object does not reconnect.
  */
-export function useView<TClient extends ViewClient>(source: () => ViewSource<TClient>): ViewHandle<TClient> {
-  const controller = createViewController<TClient>();
+export interface UseViewOptions<TClient extends ViewClient> {
+  /** Releases a client this helper connected. Defaults to `client.dispose()`. */
+  readonly release?: (client: TClient) => void;
+}
+
+export function useView<TClient extends ViewClient>(source: () => ViewSource<TClient>, options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
+  const controller = createViewController<TClient>(options.release ? { release: options.release } : {});
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // A pre effect runs when it is created, so the teardown exists even if the

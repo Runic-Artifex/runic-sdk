@@ -2,7 +2,9 @@
 
 import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, test, expectTypeOf } from "vitest";
-import { useCollectionViewport, useCommand, useView, type ViewRegistry } from "../src/views/index.js";
+import { useCommand, useView, type ViewRegistry } from "../src/views/index.js";
+import { useCollectionViewport } from "../src/experimental.js";
+import * as root from "../src/index.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
 import Counter from "./fixtures/Counter.svelte";
 import Outlet from "./fixtures/Outlet.svelte";
@@ -136,6 +138,10 @@ describe("useCommand", () => {
 });
 
 describe("useCollectionViewport", () => {
+  test("is only in @runic-artifex/svelte/experimental", () => {
+    expect("useCollectionViewport" in root).toBe(false);
+  });
+
   test("measures the attached container and follows the options getter", () => {
     let count = $state(100);
     let list!: ReturnType<typeof useCollectionViewport>;

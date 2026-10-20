@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { useOperation, type OperationHandle } from "@runic-artifex/svelte/views";
+  import { useOperation, type OperationHandle } from "@runic-artifex/svelte";
   import type { OperationsClient } from "./generated/operations";
 
   let { client, ready } = $props<{

@@ -1,48 +1,11 @@
-import {
-  sanitizeDiagnosticSummary,
-  type RunicDiagnosticEntry,
-  type RunicDiagnosticSource,
-} from "./diagnostics.js";
-
-export type {
-  RunicDiagnosticDetail,
-  RunicDiagnosticFailure,
-  RunicDiagnosticDetailValue,
-  RunicDiagnosticEntry,
-  RunicDiagnosticSource,
-  RunicTraceKind,
-} from "./diagnostics.js";
-
-export interface RunicRuntimeState {
-  readonly contract?: Readonly<{
-    identity?: string;
-    version?: string;
-    fingerprint?: string;
-  }>;
-  readonly connection?: Readonly<{
-    state?: "connecting" | "connected" | "disconnected" | "closed";
-    transport?: string;
-    sessionId?: string;
-    revision?: number;
-    sequence?: number;
-  }>;
-  readonly operations?: readonly Readonly<{
-    id: string;
-    state: string;
-    completed?: number;
-    total?: number;
-  }>[];
-}
-
-export interface RunicDiagnosticReporter {
-  readonly report: (entry: Omit<RunicDiagnosticEntry, "source">) => void;
-}
+// The development client that the plugin injects into served pages. It forwards the
+// diagnostics and connection state of `@runic-artifex/views` to the DevTools dock. It has
+// no exports: applications do not import it.
+import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 
 interface ViteHotContextLike {
   readonly data: Record<string, unknown>;
   send(event: string, data?: unknown): void;
-  on(event: string, callback: (data: unknown) => void): void;
-  prune(callback: () => void | Promise<void>): void;
 }
 
 interface ImportMetaWithHot extends ImportMeta {
@@ -50,57 +13,12 @@ interface ImportMetaWithHot extends ImportMeta {
 }
 
 const hot = (import.meta as ImportMetaWithHot).hot;
-const resourcesKey = "runic:resources";
 const diagnosticEvent = "runic:diagnostic";
-const resources = (hot?.data[resourcesKey] as Map<string, unknown> | undefined) ?? new Map<string, unknown>();
-if (hot) hot.data[resourcesKey] = resources;
-
-export function reportRunicState(state: RunicRuntimeState): void {
-  hot?.send("runic:state", state);
-}
-
-/**
- * Reports a display-safe summary from an authoritative Runic subsystem.
- * This intentionally accepts no subsystem state or artifact model.
- */
-export function reportRunicDiagnostic(entry: RunicDiagnosticEntry): void {
-  sendDiagnostic(entry);
-}
+const connectionEvent = "runic:connection";
 
 function sendDiagnostic(candidate: unknown): void {
   const summary = sanitizeDiagnosticSummary(candidate);
   if (summary) hot?.send(diagnosticEvent, summary);
-}
-
-export function createRunicDiagnosticReporter(
-  source: RunicDiagnosticSource,
-): RunicDiagnosticReporter {
-  return {
-    report: (entry) => reportRunicDiagnostic({ ...entry, source }),
-  };
-}
-
-export function preserveRunicHmrResource<T>(key: string, create: () => T): T {
-  if (resources.has(key)) return resources.get(key) as T;
-  const resource = create();
-  resources.set(key, resource);
-  return resource;
-}
-
-export async function disposeRunicHmrResource(
-  key: string,
-  dispose: (resource: unknown) => void | Promise<void> = defaultDispose,
-): Promise<void> {
-  const resource = resources.get(key);
-  if (resource === undefined) return;
-  resources.delete(key);
-  await dispose(resource);
-}
-
-async function defaultDispose(resource: unknown): Promise<void> {
-  if (typeof resource !== "object" || resource === null || !("dispose" in resource)) return;
-  const dispose = (resource as { dispose?: unknown }).dispose;
-  if (typeof dispose === "function") await dispose.call(resource);
 }
 
 // @runic-artifex/views publishes runtime failures on a page-wide listener set
@@ -159,8 +77,30 @@ function connectViewsDiagnostics(): void {
   hot.data[viewsListenerKey] = reportViewsDiagnostic;
 }
 
+// @runic-artifex/views publishes the page's connection state on this channel once a View
+// connects (specs/application, "Shared globals").
+const viewsConnectionKey = Symbol.for("runic.views.connection");
+const connectionListenerKey = "runic:connection-listener";
+
+interface ViewsConnectionChannel {
+  readonly listeners: Set<(state: string) => void>;
+  state?: string;
+}
+
+function reportConnection(state: string): void {
+  hot?.send(connectionEvent, { state });
+}
+
+function connectViewsConnection(): void {
+  if (!hot) return;
+  const host = globalThis as unknown as Record<symbol, ViewsConnectionChannel | undefined>;
+  const channel = host[viewsConnectionKey] ??= { listeners: new Set() };
+  const previous = hot.data[connectionListenerKey] as ((state: string) => void) | undefined;
+  if (previous) channel.listeners.delete(previous);
+  channel.listeners.add(reportConnection);
+  hot.data[connectionListenerKey] = reportConnection;
+  if (typeof channel.state === "string") reportConnection(channel.state);
+}
+
 connectViewsDiagnostics();
-hot?.on("runic:state", () => undefined);
-hot?.prune(async () => {
-  for (const key of [...resources.keys()]) await disposeRunicHmrResource(key);
-});
+connectViewsConnection();

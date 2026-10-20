@@ -26,7 +26,7 @@ try {
   run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--save-exact', '--no-audit', '--no-fund',
     '--registry=https://registry.npmjs.org', '--@runic-artifex:registry=https://registry.npmjs.org',
     `--cache=${process.env.npm_config_cache ?? resolve('.cache/npm')}`, `@runic-artifex/svelte@${VERSION}`]);
-  run('bun', ['-e', 'const { existsSync } = await import("node:fs"); if (!existsSync(import.meta.resolve("@runic-artifex/svelte/views").replace("file://", ""))) throw new Error("Views outlet export missing");']);
+  run('bun', ['-e', 'const { existsSync } = await import("node:fs"); if (!existsSync(import.meta.resolve("@runic-artifex/svelte").replace("file://", ""))) throw new Error("Views outlet export missing");']);
   console.log('Public .NET library, tool and npm Views outlet installation passed.');
 } finally {
   writeFileSync(join(logs, 'public-smoke.log'), log);

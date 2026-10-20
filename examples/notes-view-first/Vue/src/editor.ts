@@ -38,15 +38,15 @@ const Editor = defineComponent({
     return () => {
       const current = state.value;
       if (!current) return h("p", "Connecting…");
-      const issue = save.error ?? writeError.value;
-      const alert = save.failure !== undefined ? describeSaveFailure(save.failure) : issue !== undefined ? String(issue) : undefined;
+      const issue = save.error.value ?? writeError.value;
+      const alert = save.failure.value !== undefined ? describeSaveFailure(save.failure.value) : issue !== undefined ? String(issue) : undefined;
       return [
         h("h2", "Editor"),
         h("label", ["Title ", h("input", { ref: title,
           onChange: (event: Event) => { const value = (event.target as HTMLInputElement).value; writes.enqueue(() => props.editor.setTitle(value)); } })]),
         h("label", ["Body ", h("textarea", { ref: body,
           onChange: (event: Event) => { const value = (event.target as HTMLTextAreaElement).value; writes.enqueue(() => props.editor.setBody(value)); } })]),
-        h("button", { "data-save": "", disabled: !current.canSave || save.pending, onClick: () => void save.run() }, "Save"),
+        h("button", { "data-save": "", disabled: !current.canSave || save.pending.value, onClick: () => void save.run() }, "Save"),
         h("p", { "data-message": "", role: "status" }, `${current.isDirty ? "Unsaved changes. " : ""}${current.savedMessage}`),
         alert === undefined ? null : h("p", { role: "alert" }, alert),
       ];

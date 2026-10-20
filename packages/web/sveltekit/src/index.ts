@@ -5,23 +5,47 @@ import type { Adapter } from "@sveltejs/kit";
 
 export type RunicSvelteKitMode = "prerendered" | "spa";
 
-export interface RunicSvelteKitAdapterOptions {
-  readonly mode?: RunicSvelteKitMode;
-  /** Emits an entrypoint relocatable under a generated Runic Desktop surface namespace. */
+interface RunicSvelteKitSharedOptions {
+  /** Emits an entrypoint relocatable under a generated Runic Desktop surface namespace. Defaults to false. */
   readonly desktop?: boolean;
+  /** The output directory for pages and assets. Defaults to `build`. */
   readonly out?: string;
-  readonly fallback?: string;
-  /** Output-relative HTML file for a multi-page prerendered application. */
-  readonly entrypoint?: string;
+  /** Writes precompressed `.br` and `.gz` copies of the output. Defaults to false. */
   readonly precompress?: boolean;
+  /** Fails the build when a route is neither prerendered nor covered by a fallback. Defaults to true. */
   readonly strict?: boolean;
 }
+
+/** A prerendered application: every page is an HTML file. */
+export interface RunicSvelteKitPrerenderedOptions extends RunicSvelteKitSharedOptions {
+  readonly mode?: "prerendered";
+  /**
+   * The output-relative HTML file the host opens, for a multi-page application. Defaults to the
+   * page of `/`, or the only page.
+   */
+  readonly entrypoint?: string;
+  readonly fallback?: never;
+}
+
+/** A single-page application: one fallback HTML file renders every route in the browser. */
+export interface RunicSvelteKitSpaOptions extends RunicSvelteKitSharedOptions {
+  readonly mode: "spa";
+  /** The output-relative fallback HTML file, which is also the entrypoint. Defaults to `200.html`. */
+  readonly fallback?: string;
+  readonly entrypoint?: never;
+}
+
+/**
+ * Options of {@link runicAdapter}. The mode decides which fields apply, so a field the mode would
+ * ignore, such as `fallback` without `mode: "spa"`, does not type-check.
+ */
+export type RunicSvelteKitAdapterOptions = RunicSvelteKitPrerenderedOptions | RunicSvelteKitSpaOptions;
 
 export function runicAdapter(options: RunicSvelteKitAdapterOptions = {}): Adapter {
   const mode = options.mode ?? "prerendered";
   const desktop = options.desktop ?? false;
   const out = options.out ?? "build";
-  const fallback = mode === "spa" ? (options.fallback ?? "200.html") : undefined;
+  const fallback = options.mode === "spa" ? (options.fallback ?? "200.html") : undefined;
   const delegate = adapterStatic({
     pages: out,
     assets: out,
@@ -43,7 +67,7 @@ export function runicAdapter(options: RunicSvelteKitAdapterOptions = {}): Adapte
         .sort((left, right) => left.route.localeCompare(right.route));
       const entrypoint = mode === "spa"
         ? fallback!
-        : selectPrerenderedEntrypoint(pages, options.entrypoint);
+        : selectPrerenderedEntrypoint(pages, options.mode === "spa" ? undefined : options.entrypoint);
       await assertOutputFile(out, entrypoint);
       if (desktop) {
         await makeDesktopEntrypointRelocatable(
@@ -130,8 +154,3 @@ async function assertOutputFile(out: string, entrypoint: string): Promise<void> 
 function isOutputRelative(file: string): boolean {
   return file.length > 0 && !isAbsolute(file) && !file.split(/[\\/]/).includes("..");
 }
-
-export {
-  runicPrerenderedPageOptions,
-  runicSpaPageOptions,
-} from "./page-options.js";

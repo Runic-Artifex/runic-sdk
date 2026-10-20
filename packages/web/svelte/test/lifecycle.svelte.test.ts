@@ -2,7 +2,8 @@
 
 import { flushSync, mount, unmount } from "svelte";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { useCollectionViewport, useCommand, useView, type CommandHandle } from "../src/views/index.js";
+import { useCommand, useView, type CommandHandle } from "../src/views/index.js";
+import { useCollectionViewport } from "../src/experimental.js";
 import LifecycleOwner from "./fixtures/LifecycleOwner.svelte";
 
 // Records which framework-neutral controllers the helpers dispose.

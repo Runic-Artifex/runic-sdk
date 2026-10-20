@@ -3,6 +3,7 @@ import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, notConnectedError, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
+import { publishConnectionState } from "./connection-state.js";
 import { viewsVersion } from "./version.js";
 import * as bridgeWire from "./wire.js";
 // Interactions, operations and keyed collections are injected by the generated
@@ -357,6 +358,7 @@ async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
 
 async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
   const { route } = options;
+  publishConnectionState();
   const bridge = await waitForBridge(options.timeout === undefined ? {} : { timeout: options.timeout });
   const runtime = sharedRuntimeFor(bridge);
   const contractId = `${options.contract}:${route}`;

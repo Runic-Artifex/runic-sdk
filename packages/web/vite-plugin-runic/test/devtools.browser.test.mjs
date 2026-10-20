@@ -41,7 +41,7 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
     await page.locator('button[aria-label="Runic"]').waitFor({ state: "attached", timeout: 10_000 });
     context.docks.activate("runic:overview");
     await page.getByText("bun-browser-canary", { exact: true }).waitFor({ timeout: 10_000 });
-    plugin.diagnostics.report({ source: "assets", kind: "event", label: "Live Bun diagnostic" });
+    plugin.api.reportDiagnostic({ source: "assets", kind: "event", label: "Live Bun diagnostic" });
     await page.getByText("Live Bun diagnostic", { exact: true }).waitFor({ timeout: 10_000 });
 
     // The injected development client forwards a Views failure from the page.
@@ -55,6 +55,15 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
     });
     await page.getByText("System.InvalidOperationException", { exact: true }).waitFor({ timeout: 10_000 });
     await page.getByText(/at Notes\.Editor\.Save\(\) in \/src\/Notes\/Editor\.cs:line 12/).first().waitFor({ timeout: 10_000 });
+
+    // The page's connection, as @runic-artifex/views publishes it, reaches the dock (D40 a).
+    await page.waitForFunction(() => (globalThis[Symbol.for("runic.views.connection")]?.listeners.size ?? 0) > 0, null, { timeout: 10_000 });
+    await page.evaluate(() => {
+      const channel = globalThis[Symbol.for("runic.views.connection")];
+      channel.state = "reconnecting";
+      for (const listener of channel.listeners) listener("reconnecting");
+    });
+    await page.getByText("reconnecting", { exact: true }).waitFor({ timeout: 10_000 });
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

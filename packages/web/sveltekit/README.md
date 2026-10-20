@@ -1,7 +1,7 @@
 # `@runic-artifex/sveltekit`
 
 SvelteKit adapter for Runic Desktop applications. Application Views use the
-`@runic-artifex/svelte/views` export.
+`@runic-artifex/svelte` export.
 
 ```ts
 // vite.config.ts
@@ -19,13 +19,27 @@ their configuration through the `sveltekit()` Vite plugin, and Svelte 5.57.1 or
 later. The adapter emits a relocatable page. Use `mode: "spa"` with
 `router: { type: "hash" }` for a Desktop SPA.
 
+The options depend on the mode, and a field the mode would ignore does not
+type-check:
+
+| Option | Modes | Default | Meaning |
+| --- | --- | --- | --- |
+| `mode` | | `"prerendered"` | `"prerendered"`: every page is an HTML file. `"spa"`: one fallback file renders every route in the browser. |
+| `entrypoint` | prerendered | the page of `/`, or the only page | The output-relative HTML file the host opens, for a multi-page application. |
+| `fallback` | spa | `200.html` | The output-relative fallback file, which is also the entrypoint. |
+| `desktop` | both | `false` | Loads `runic-desktop.js` and makes the page relocatable under a Runic Desktop surface. |
+| `out` | both | `build` | The output directory. |
+| `precompress` | both | `false` | Writes `.br` and `.gz` copies. |
+| `strict` | both | `true` | Fails when a route is neither prerendered nor covered by a fallback. |
+
 `desktop: true` makes the page load `runic-desktop.js` and relocatable under a
 Runic Desktop surface. It is off by default: without it the adapter is
 `adapter-static` with Runic's entry-point checks, for a frontend that another
 host serves, such as CS-WebUI, or a plain browser build.
 
-The `@runic-artifex/sveltekit/page-options` entry point provides matching route
-options. Apply them in the root `+layout.ts`; a prerendered application exports
+The `@runic-artifex/sveltekit/page-options` entry point, which runs in the
+browser, provides matching route options; the root entry is Node-only and does
+not export them. Apply them in the root `+layout.ts`; a prerendered application exports
 `prerender`:
 
 ```ts

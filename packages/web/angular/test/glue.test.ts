@@ -3,7 +3,9 @@ import { Component, effect, Injector, NgZone, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
-import { injectCollectionViewport, injectCommand, injectOperation, injectView, RunicViewOutlet, ViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
+import { injectCommand, injectOperation, injectView, RunicViewOutlet, ViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
+import { injectCollectionViewport } from "../dist/esm/experimental.js";
+import * as root from "../dist/esm/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
 type Page =
@@ -45,6 +47,18 @@ Component({
   imports: [ViewOutlet],
   template: `<runic-view-outlet [content]="content()" [registry]="registry()" />`,
 })(Host);
+
+// angular-03: projected content is the fallback while there is no reference.
+class FallbackHost {
+  readonly content = signal<Page | undefined>(undefined);
+  readonly registry = registry;
+}
+Component({
+  selector: "test-fallback-host",
+  standalone: true,
+  imports: [ViewOutlet],
+  template: `<runic-view-outlet [content]="content()" [registry]="registry"><span class="fallback">Loading</span></runic-view-outlet>`,
+})(FallbackHost);
 
 // The deprecated name of 0.7.0-preview.6 and earlier still renders the same outlet.
 class LegacyHost {
@@ -103,6 +117,24 @@ describe("ViewOutlet", () => {
     fixture.componentInstance.registry.set({ counter: CounterPage } as unknown as ViewRegistry<Page>);
     fixture.detectChanges();
     expect(element.querySelector("[role=alert]")?.textContent).toBe("No web component is registered for welcome.");
+  });
+
+  test("renders projected content while there is no reference", () => {
+    const fixture = TestBed.createComponent(FallbackHost);
+    const element = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    expect(element.querySelector(".fallback")?.textContent).toBe("Loading");
+    fixture.componentInstance.content.set({ kind: "welcome", connect: async () => undefined });
+    fixture.detectChanges();
+    expect(element.querySelector(".fallback")).toBeNull();
+    expect(element.textContent?.trim()).toBe("welcome:welcome");
+    fixture.componentInstance.content.set(undefined);
+    fixture.detectChanges();
+    expect(element.querySelector(".fallback")?.textContent).toBe("Loading");
+  });
+
+  test("injectCollectionViewport is only in @runic-artifex/angular/experimental", () => {
+    expect("injectCollectionViewport" in root).toBe(false);
   });
 
   test("the deprecated RunicViewOutlet alias renders the same outlet", () => {
