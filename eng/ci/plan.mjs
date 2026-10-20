@@ -85,11 +85,12 @@ const owner = file => Object.entries(workspace.components)
 const everyPlatform = reason => ({ platforms: [...platforms], why: Object.fromEntries(platforms.map(platform => [platform, reason])) });
 
 // The Windows and macOS legs that the changed files need (eng/ci/platforms.mjs), with the first
-// file that needed each. Engineering-only files need none; unowned files that are not neutral need all.
+// file that needed each. Engineering-only files need none, and neither does Markdown: package READMEs
+// are packed, but no Windows or macOS leg reads them. Unowned files that are not neutral need all.
 export function affectedPlatforms(files) {
   if (files === null || files.length === 0) return everyPlatform("the changed files are unknown");
   const why = {};
-  for (const file of files.filter(file => !engineeringOnly(file) && !neutralPaths.some(path => matchesPath(file, path)))) {
+  for (const file of files.filter(file => !engineeringOnly(file) && !file.endsWith(".md") && !neutralPaths.some(path => matchesPath(file, path)))) {
     const rule = platformRules.find(rule => rule.paths.some(path => matchesPath(file, path)));
     for (const platform of rule ? rule.platforms : owner(file) ? [] : platforms) why[platform] ??= file;
   }

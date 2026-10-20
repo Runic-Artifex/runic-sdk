@@ -143,6 +143,7 @@ rule applies to each file:
 
 | Changed files | Legs |
 | --- | --- |
+| Markdown files (`*.md`), including package READMEs | Linux only |
 | `Runic.Desktop.Gtk4`, its smoke, `Runic.Platform.Linux*` and their tests, `eng/portals` | Linux only |
 | `Runic.Desktop`, its tests and fixtures, `Runic.Platform`, `Runic.Platform.Runtime` and its tests, the WebView smoke, the accessibility probe, `eng/build/desktop.props`, `eng/branding/desktop`, the template's packaging recipes, `ApplicationIdentity.cs` and icons, the packaging probe | all three |
 | `Runic.Application.Views`, `.Desktop` and `.CsWebUi`, `examples/first-window`, the CS-WebUI window probes, `Runic.Application.Testing.Tests` | win-x64, osx-arm64 |
