@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
-  everyLinuxJob, allPlatforms } from './plan.mjs';
+  everyLinuxJob, allPlatforms, affectsNix, nixPathFilter } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, platformRules, neutralPaths } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
@@ -153,10 +153,28 @@ test('the base checkout decides what is affected and this checkout enumerates su
   assert.match(cli([]), /^skip=\[\]$/m);
 });
 
+test("the nix decision follows nix.yml's pull request path filter, and older base planners plan it", () => {
+  const filter = nixPathFilter();
+  assert.ok(filter.includes('nix/**') && filter.at(-1) === '!**/*.md');
+  for (const file of ['nix/lib/default.nix', 'flake.lock', 'packages/dotnet/Runic.Assets/AssetPath.cs',
+    'tools/Runic.Application.Views.Codegen.Toolkit/Generator.cs', 'examples/Directory.Build.props', '.github/workflows/nix.yml'])
+    assert.equal(affectsNix([file]), true, file);
+  for (const file of ['nix/README.md', 'docs/README.md', 'packages/web/react/src/index.ts', 'examples/first-window/Program.cs'])
+    assert.equal(affectsNix([file]), false, file);
+  assert.equal(affectsNix(null), true);
+  assert.equal(affectsNix([]), true);
+  assert.equal(plan(['docs/README.md']).nix, false);
+  assert.equal(plan(['flake.nix']).nix, true);
+  // The base checkout's decision carries over; a base planner without one plans the checks.
+  assert.equal(planFor(parseAffected(JSON.stringify(affected(['docs/README.md'])))).nix, false);
+  assert.equal(planFor(parseAffected(JSON.stringify({ full: false, components: [] }))).nix, true);
+  assert.match(outputs(plan(['flake.nix'])), /^nix=true$/m);
+});
+
 test('plan outputs are single-line GitHub outputs', () => {
   const lines = outputs(plan(['docs/README.md'])).split('\n');
   assert.deepEqual(lines.map(line => line.split('=')[0]),
-    ['full', 'components', 'managed', 'web', 'frameworks', 'native', 'wpf', 'packaging', 'platforms', 'why', 'skip']);
+    ['full', 'components', 'managed', 'web', 'frameworks', 'native', 'wpf', 'packaging', 'platforms', 'why', 'skip', 'nix']);
   for (const line of lines) JSON.parse(line.slice(line.indexOf('=') + 1));
 });
 
@@ -412,7 +430,7 @@ test('a base planner without platforms plans every leg, and invalid platforms ar
   for (const older of [{ full: decided.full, components: decided.components },
     { ...decided, platforms: ['win-x64', 'linux-riscv64'] }, { ...decided, platforms: ['win-x64'], why: {} }]) {
     const parsed = parseAffected(JSON.stringify(older));
-    assert.deepEqual(parsed, { full: decided.full, components: decided.components });
+    assert.deepEqual(parsed, { full: decided.full, components: decided.components, ...('nix' in older ? { nix: older.nix } : {}) });
     const result = planFor(parsed);
     assert.deepEqual(result.platforms, platforms);
     assert.match(result.why, /the base planner plans no platforms/);

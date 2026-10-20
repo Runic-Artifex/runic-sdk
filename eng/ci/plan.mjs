@@ -96,6 +96,22 @@ export function affectedPlatforms(files) {
   return { platforms: platforms.filter(platform => why[platform]), why };
 }
 
+// The Nix packaging checks (.github/workflows/nix.yml: flake checks and the NixOS VM test) run
+// when a change matches that workflow's pull_request path filter, with GitHub's semantics: `*`
+// matches within a path segment, `**` across segments, and the last matching pattern decides,
+// so a later `!` pattern excludes. The filter stays the one source of truth.
+export function nixPathFilter(base = root) {
+  const text = readFileSync(resolve(base, ".github/workflows/nix.yml"), "utf8");
+  return Bun.YAML.parse(text).on.pull_request.paths;
+}
+const globPattern = pattern => new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+  .replace(/\*\*\/?/g, "\0").replace(/\*/g, "[^/]*").replace(/\0/g, ".*")}$`);
+export function affectsNix(files, filter = nixPathFilter()) {
+  if (files === null || files.length === 0) return true;
+  const rules = filter.map(pattern => pattern.startsWith("!") ? { include: false, match: globPattern(pattern.slice(1)) } : { include: true, match: globPattern(pattern) });
+  return files.some(file => rules.reduce((included, rule) => rule.match.test(file) ? rule.include : included, false));
+}
+
 // Which components and platforms a change affects, judged by this checkout's component map
 // and platform rules. `files` lists every path a pull request adds, changes, deletes or
 // renames (both names); `null` means unknown. An empty list is treated as unknown too, so a
@@ -103,7 +119,7 @@ export function affectedPlatforms(files) {
 // (see engineeringOnly in eng/run.mjs) affects every component.
 export function affected(files) {
   const full = files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
-  return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files), ...affectedPlatforms(files) };
+  return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files), ...affectedPlatforms(files), nix: affectsNix(files) };
 }
 
 // The legs of a platform-dependent job: those without a platform, and those whose platform is planned.
@@ -111,7 +127,7 @@ const legs = (list, planned) => list.filter(leg => !leg.platform || planned.incl
 
 // The jobs, suites and legs to run for the affected components and platforms, as defined by
 // this checkout. Without platforms (an older base planner) every leg runs.
-export function planFor({ full, components, platforms: planned = platforms, why = everyPlatform("the base planner plans no platforms").why }) {
+export function planFor({ full, components, platforms: planned = platforms, why = everyPlatform("the base planner plans no platforms").why, nix = true }) {
   const has = (...names) => names.some(name => components.includes(name));
   const managed = managedGroups.filter(group =>
     managedTests(root, "linux").some(test => test.group === group && (full || has(owner(test.path)))));
@@ -153,6 +169,8 @@ export function planFor({ full, components, platforms: planned = platforms, why 
     why: platforms.filter(platform => planned.includes(platform)).map(platform => `${platform}: ${why[platform]}`).join("; ")
       || "no Windows or macOS leg: the changed files need none",
     skip: skippableJobs.filter(job => !run[job]),
+    // Not a ci.yml job: whether the nix.yml checks are needed, for runners that also run those.
+    nix,
   };
 }
 
@@ -168,10 +186,11 @@ export function parseAffected(text) {
     if (typeof value?.full !== "boolean" || !Array.isArray(value.components) || !value.components.every(name => known.includes(name)))
       return null;
     const { full, components } = value;
+    const nix = typeof value.nix === "boolean" ? { nix: value.nix } : {};
     if (Array.isArray(value.platforms) && value.platforms.every(platform => platforms.includes(platform))
       && value.platforms.every(platform => typeof value.why?.[platform] === "string"))
-      return { full, components, platforms: value.platforms, why: value.why };
-    return { full, components };
+      return { full, components, platforms: value.platforms, why: value.why, ...nix };
+    return { full, components, ...nix };
   } catch {}
   return null;
 }
@@ -194,6 +213,7 @@ export function outputs(result) {
     `platforms=${JSON.stringify(result.platforms)}`,
     `why=${JSON.stringify(result.why)}`,
     `skip=${JSON.stringify(result.skip)}`,
+    `nix=${result.nix}`,
   ].join("\n");
 }
 
