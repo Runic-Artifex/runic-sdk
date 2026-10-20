@@ -97,9 +97,9 @@ ran. Managed groups build and run their test executables, and a single .NET test
 project runs with `dotnet run`. Package scripts own their web tests.
 
 GitHub CI includes package/template consumers and native checks on Linux x64,
-Windows x64 and macOS arm64. Pushes to `main` run every job. Pull requests run
-the jobs whose inputs changed, using component ownership in `eng/workspace.json`;
-see [affected-only pull requests](eng/ci/README.md#affected-only-pull-requests).
+Windows x64 and macOS arm64. Pull requests and pushes to `main` run the jobs whose
+inputs changed, using component ownership in `eng/workspace.json`, and the nightly run
+covers every job; see [affected-only pull requests](eng/ci/README.md#affected-only-pull-requests).
 Do not routinely duplicate the entire workflow locally. `bun run affected <base-ref>` helps select relevant components
 and consumers; include consumers when changing a shared contract.
 

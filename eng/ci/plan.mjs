@@ -176,8 +176,6 @@ export function parseAffected(text) {
   return null;
 }
 
-// Pushes to main run every Linux job, and the Windows and macOS legs their before..after diff needs.
-export const everyLinuxJob = input => ({ ...input, full: true, components: Object.keys(workspace.components) });
 // Scheduled and manual runs, and pull requests labelled ci:all-platforms, run every leg.
 export const allPlatforms = (input, reason) => ({ ...input, ...everyPlatform(reason) });
 
@@ -199,8 +197,7 @@ export function outputs(result) {
 
 // CI runs `--affected` with the base branch's planner on the pull request's (or push's)
 // NUL-separated changed files (stdin), then `--plan <result>` with this checkout to
-// enumerate suites and legs; `--all-linux` (pushes) plans every Linux job and
-// `--all-platforms <reason>` every leg. `--all <reason>` plans everything, as do no
+// enumerate suites and legs; `--all-platforms <reason>` plans every leg. `--all <reason>` plans everything, as do no
 // arguments. `--files <paths>` previews a plan locally with this checkout alone.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mode, ...rest] = process.argv.slice(2);
@@ -209,7 +206,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else {
     const option = name => rest.includes(name) ? rest[rest.indexOf(name) + 1] ?? "" : undefined;
     let input = mode === "--plan" ? parseAffected(rest[0] ?? "") : mode === "--files" ? affected(rest) : null;
-    if (input && rest.includes("--all-linux")) input = everyLinuxJob(input);
     if (input && option("--all-platforms") !== undefined) input = allPlatforms(input, option("--all-platforms") || "requested");
     const result = input ? planFor(input)
       : planFor(allPlatforms(affected(null), mode === "--all" ? rest[0] || "requested" : mode === "--plan" ? "the base planner gave no usable result" : "no diff to plan from"));

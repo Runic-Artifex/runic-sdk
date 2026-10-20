@@ -21,9 +21,9 @@ env:
   NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
 jobs:
   # Pull requests run the jobs whose inputs changed and the Windows and macOS legs those
-  # changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main run every Linux job
-  # and the legs their before..after diff needs; scheduled and manual runs, and pull requests
-  # labelled ci:all-platforms, run everything. Planned skips still report, and `verify`
+  # changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main plan the same way from
+  # their before..after diff; scheduled and manual runs, and pull requests labelled
+  # ci:all-platforms, run everything. Planned skips still report, and `verify`
   # accepts a skipped job only when this plan skipped it.
   plan:
     name: Plan affected jobs
@@ -79,7 +79,6 @@ jobs:
               options=(--all-platforms "label $LABEL")
             fi
           elif [[ "$GITHUB_EVENT_NAME" == push ]]; then
-            options=(--all-linux)
             if [[ "$BEFORE" =~ ^[0-9a-f]{40}$ && ! "$BEFORE" =~ ^0+$ ]] \
               && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$BEFORE" ]] || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"; }; then
               base=$BEFORE

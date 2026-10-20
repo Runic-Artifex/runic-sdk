@@ -128,9 +128,10 @@ narrow its own plan; changes to the planner or `eng/workspace.json` are unowned 
 everything. The pull request's checkout then enumerates the suites (`--plan`). Scheduled
 and manual runs, local `act` runs and an unavailable diff or base result plan every job.
 
-A pull request is planned against the base it was opened or last updated on. Every
-push to `main` runs every Linux job, so a change that only breaks in combination
-with newer `main` commits is caught there.
+A pull request is planned against the base it was opened or last updated on. A push
+to `main` plans the same way from the diff between the previous and the new head, so
+a change that only breaks in combination with other `main` commits outside that diff
+is caught by the nightly run of every job.
 
 ### Windows and macOS legs
 
@@ -164,8 +165,8 @@ Other runs choose legs this way:
   managed code that a Windows or macOS host calls. The plan reads the labels when it
   runs and the label does not start a run, so after adding it push again or use
   **Re-run all jobs**. If the labels cannot be read, every leg runs.
-- **Pushes to `main`** run every Linux job and the legs that the diff between the
-  previous and the new head needs. Without that diff (a new branch, a force push whose
+- **Pushes to `main`** run the jobs and legs that the diff between the previous and
+  the new head needs. Without that diff (a new branch, a force push whose
   old head cannot be fetched), every leg runs. Pushes queue rather than cancel each other.
 - **Nightly and manual runs** (`schedule`, `workflow_dispatch`) run everything. They have
   their own concurrency group, so a push cannot replace one that is waiting.

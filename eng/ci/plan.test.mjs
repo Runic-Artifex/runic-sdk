@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
-  everyLinuxJob, allPlatforms } from './plan.mjs';
+  allPlatforms } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, platformRules, neutralPaths } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
@@ -382,22 +382,21 @@ test('owned files without a rule, engineering-only and neutral files plan no Win
   }
 });
 
-test('pushes keep their platforms, and the label, schedules and manual runs plan every leg', () => {
+test('pushes plan like pull requests, and the label, schedules and manual runs plan every leg', () => {
   const decided = affected(['packages/dotnet/Runic.Platform.MacOS/MacOSPlatformProvider.cs']);
-  const push = planFor(everyLinuxJob(decided));
-  assert.equal(push.full, true);
-  assert.deepEqual(push.managed, managedGroups);
+  const push = planFor(decided);
+  assert.equal(push.full, false);
   assert.deepEqual(push.platforms, ['osx-arm64']);
   assert.deepEqual(push.native.include.map(leg => leg.rid), ['linux-x64', 'linux-arm64', 'osx-arm64']);
-  assert.deepEqual(push.skip, ['wpf']);
+  assert.ok(push.skip.includes('wpf'));
   const labelled = planFor(allPlatforms(decided, `label ${allPlatformsLabel}`));
   assert.deepEqual(labelled.platforms, platforms);
   assert.deepEqual(labelled.native.include, nativeLegs);
   assert.equal(labelled.why, platforms.map(platform => `${platform}: label ci:all-platforms`).join('; '));
   assert.equal(labelled.full, false, 'the label adds legs, not Linux jobs');
   const outputsOf = text => Object.fromEntries(text.trim().split('\n').map(line => [line.slice(0, line.indexOf('=')), JSON.parse(line.slice(line.indexOf('=') + 1))]));
-  const cliPush = outputsOf(cli(['--plan', JSON.stringify(decided), '--all-linux']));
-  assert.deepEqual([cliPush.full, cliPush.platforms, cliPush.skip], [true, ['osx-arm64'], ['wpf']]);
+  const cliPush = outputsOf(cli(['--plan', JSON.stringify(decided)]));
+  assert.deepEqual([cliPush.full, cliPush.platforms, cliPush.skip], [false, ['osx-arm64'], push.skip]);
   const cliLabel = outputsOf(cli(['--plan', JSON.stringify(decided), '--all-platforms', 'label ci:all-platforms']));
   assert.deepEqual([cliLabel.full, cliLabel.platforms, cliLabel.wpf], [false, platforms, { include: wpfLegs }]);
   const scheduled = outputsOf(cli(['--all', 'schedule run']));
@@ -433,7 +432,7 @@ test('the workflow plans platform legs, reads the label live and runs everything
   assert.equal(step.env.BEFORE, '${{ github.event.before }}');
   assert.match(step.run, /gh api "repos\/\$GITHUB_REPOSITORY\/issues\/\$PULL_REQUEST\/labels"/);
   assert.match(step.run, /options=\(--all-platforms "the pull request's labels could not be read"\)/);
-  assert.match(step.run, /options=\(--all-linux\)/);
+  assert.doesNotMatch(step.run, /--all-linux/, 'pushes plan from their diff');
   assert.match(step.run, /bun eng\/ci\/plan\.mjs --plan "\$affected" "\$\{options\[@\]\}"/);
   assert.match(step.run, /bun eng\/ci\/plan\.mjs --all "\$reason"/);
   // A label is read when the plan runs; adding one does not start a run by itself.
