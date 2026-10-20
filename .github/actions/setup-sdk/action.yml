@@ -12,6 +12,9 @@ inputs:
   node:
     description: Install real Node and npm/pnpm for compatibility checks
     default: "false"
+  package-managers:
+    description: With node, also install the pinned npm and pnpm (not needed to only run node)
+    default: "true"
   install:
     description: Install the Bun workspace dependencies
     default: "true"
@@ -33,11 +36,14 @@ runs:
       with:
         node-version-file: .node-version
     - name: Install compatibility package managers
-      if: inputs.node == 'true'
+      if: inputs.node == 'true' && inputs.package-managers == 'true'
       shell: bash
       run: npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
+    # Windows unpacks the many small files of the Bun cache slower than Bun downloads them: on
+    # windows-11-arm the restore and install took 40 s against 29 s for an install without it, and
+    # on windows-latest 23 s against 27 s.
     - uses: ./.github/actions/dependency-cache
-      if: inputs.install == 'true'
+      if: inputs.install == 'true' && runner.os != 'Windows'
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}

@@ -558,10 +558,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Only the Windows x64 View IDE check runs npm; the other legs only run node.
       - uses: ./.github/actions/setup-sdk
         with:
           nuget: native
           node: "true"
+          package-managers: ${{ matrix.rid == 'win-x64' }}
       - uses: ./.github/actions/install-browser
       # Generated Views clients import the workspace runtime from its build output.
       - name: Build the shared Views runtime
@@ -1134,10 +1136,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # package.mjs runs with node; nothing here runs npm or pnpm.
       - uses: ./.github/actions/setup-sdk
         with:
           nuget: packaging
           node: "true"
+          package-managers: "false"
           install: "false"
       # Windows installs only signed packages: a self-signed certificate whose subject is the probe's
       # RunicApplicationPublisher, trusted on this runner only, stands in for a code-signing certificate.
