@@ -182,8 +182,8 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| Announcements and `PlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Announcements and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
 | `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
@@ -208,14 +208,14 @@ with the application: its registered URL schemes, such as an OAuth callback, and
 its file types, at launch and while it runs. Linux and Windows start the
 application with them as arguments, which `ApplicationInstance` forwards to the
 running instance; macOS sends open events to the running application.
-`PlatformServices.CreateOpenRequests` in Runic.Application.Views.Desktop selects
+`DesktopPlatformServices.CreateOpenRequests` in Runic.Application.Views.Desktop selects
 the provider:
 
 ```csharp
 var launch = ApplicationLaunch.FromProcess(args);
 // After ApplicationInstance.ClaimAsync made this process the running instance; on macOS on the main thread,
 // before the first window.
-await using var opens = PlatformServices.CreateOpenRequests(new(["org.example.notes"]) { IncludeFiles = true }, instance, launch);
+await using var opens = DesktopPlatformServices.CreateOpenRequests(new(["org.example.notes"]) { IncludeFiles = true }, instance, launch);
 opens.Opened += (_, request) => { /* worker thread: validate each URI, then dispatch to a window */ };
 ```
 

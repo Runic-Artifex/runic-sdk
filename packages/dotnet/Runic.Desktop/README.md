@@ -542,7 +542,7 @@ fallback, reports no `Announcements` and `AnnounceAsync` throws
 WebView2 and WKWebView a live region in the page reaches the screen reader too,
 so send each message one way, or it is spoken twice. A custom `IDesktopWindowHost` that reports
 `Announcements` implements `AnnounceAsync`. Runic Windows announce with
-`PlatformServices.AnnounceAsync(window, message)` or, from a ViewModel,
+`DesktopPlatformServices.AnnounceAsync(window, message)` or, from a ViewModel,
 `DesktopWindowPlatformServices.AnnounceAsync(message)`
 ([Runic.Application.Views.Desktop](../Runic.Application.Views.Desktop/README.md)).
 

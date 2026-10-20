@@ -39,7 +39,8 @@
       "runic.application.views.wpf": {
         "type": "Project",
         "dependencies": {
-          "Runic.Application.Views.Desktop": "[0.8.0-preview.6, )"
+          "Runic.Application.Views.Desktop": "[0.8.0-preview.6, )",
+          "Runic.Navigation.Wpf": "[0.8.0-preview.6, )"
         }
       },
       "runic.desktop": {

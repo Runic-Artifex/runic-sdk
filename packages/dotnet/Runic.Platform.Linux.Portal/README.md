@@ -29,7 +29,7 @@ there the process carries its identity (the AppUserModelID or the bundle); the
 portals identify an application by the desktop ID it registers on each connection.
 
 File dialogs, file handoff and URI opening belong to a window. Runic.Application.Views.Desktop's
-`PlatformServices.ForWindow` and `services.AddRunicPlatformServices()` create them for
+`DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()` create them for
 each GTK 3 or GTK 4 window, parented to it, with desktop-inferred identity.
 `AddRunicPlatformServices(applicationId)` creates the notifications with the
 application ID, or desktop-inferred identity without one. Its inhibition comes from

@@ -1,6 +1,6 @@
 # Runic.Platform.MacOS
 
-The macOS provider of the Runic.Platform services for macOS arm64. `MacOSPlatformProvider` creates the application-scoped services, including the status icon and login startup, without a window; the services take no application ID because macOS identifies the application by its bundle. Every factory is annotated `[SupportedOSPlatform("macos")]` and throws `PlatformNotSupportedException` on another operating system; the privileged actions report unavailable instead, because generated code registers them everywhere. The window services (AppKit file dialogs, the clipboard and file handoff) belong to a window: Runic.Application.Views.Desktop's `PlatformServices.ForWindow` and `AddRunicPlatformServices()` create them for each window. Native handles and selected paths remain in C#.
+The macOS provider of the Runic.Platform services for macOS arm64. `MacOSPlatformProvider` creates the application-scoped services, including the status icon and login startup, without a window; the services take no application ID because macOS identifies the application by its bundle. Every factory is annotated `[SupportedOSPlatform("macos")]` and throws `PlatformNotSupportedException` on another operating system; the privileged actions report unavailable instead, because generated code registers them everywhere. The window services (AppKit file dialogs, the clipboard and file handoff) belong to a window: Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and `AddRunicPlatformServices()` create them for each window. Native handles and selected paths remain in C#.
 
 File panels are owned sheets. Filters restrict the panel to the union of their extensions through `UTType` content types (macOS 11 and later); AppKit shows no filter pop-up, so the user cannot switch between filters, and a save panel may add the first allowed extension to a name typed without one. `OpenFilesAsync` uses `allowsMultipleSelection`, with security-scoped access for each selected URL, and the initial folder sets `directoryURL`. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: atomic replacement reports unavailable before changing the target. Bookmarks and directories are outside this preview.
 
@@ -34,7 +34,7 @@ file access and the per-platform verification status.
 
 ## Status icon
 
-`MacOSPlatformProvider.CreateStatusIcon()`, `PlatformServices.CreateStatusIcon()` in `Runic.Application.Views.Desktop`, and
+`MacOSPlatformProvider.CreateStatusIcon()`, `DesktopPlatformServices.CreateStatusIcon()` in `Runic.Application.Views.Desktop`, and
 `AddRunicPlatformServices()`, create an `NSStatusItem` in the menu bar from
 `NSStatusBar.systemStatusBar`. It is created, changed and released on the main
 thread, with or without an open window, and needs no permission. Only the
@@ -77,7 +77,7 @@ application while it shows windows too:
 
 ## Login startup
 
-`MacOSPlatformProvider.CreateLoginStartup()` (and `PlatformServices.CreateLoginStartup()`) registers the application bundle as a
+`MacOSPlatformProvider.CreateLoginStartup()` (and `DesktopPlatformServices.CreateLoginStartup()`) registers the application bundle as a
 login item with `SMAppService.mainAppService` (macOS 13 and later), which
 System Settings lists under General, Login Items. `IsEnabledAsync` is true only
 while the item is enabled. A login item that waits for the user's approval, or
@@ -162,7 +162,7 @@ not used. See the [secret storage design](https://github.com/Runic-Artifex/runic
 
 ## Window presentation
 
-`PlatformServices.PresentAsync(owner)` orders a Desktop window front as the key
+`DesktopPlatformServices.PresentAsync(owner)` orders a Desktop window front as the key
 window on its main thread, also a hidden or minimized one, and asks to activate
 the application. On macOS 14 and later it first asks cooperatively
 (`activate`), which succeeds when the active application yields: a second launch

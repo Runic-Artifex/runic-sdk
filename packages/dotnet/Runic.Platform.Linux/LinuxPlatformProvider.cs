@@ -5,7 +5,7 @@ using Runic.Platform.Linux.Portal;
 namespace Runic.Platform.Linux;
 
 // The window services of a GTK 3 Desktop window. Internal: Runic.Application.Views.Desktop selects them through
-// PlatformServices; the application-scoped services are PortalApplication's.
+// DesktopPlatformServices; the application-scoped services are PortalApplication's.
 [SupportedOSPlatform("linux")]
 internal static class LinuxPlatformProvider
 {

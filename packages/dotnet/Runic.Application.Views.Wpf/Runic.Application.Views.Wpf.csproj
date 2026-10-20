@@ -20,6 +20,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+    <!-- RunicViewHost shares ViewHost's inherited Services property, so one provider reaches both hosts. -->
+    <ProjectReference Include="../Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj" />
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Tests" />
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Windows.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />

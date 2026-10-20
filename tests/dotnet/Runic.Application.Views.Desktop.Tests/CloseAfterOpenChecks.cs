@@ -68,7 +68,7 @@ internal sealed class CloseAfterOpenChecks
         try
         {
             await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<ProbeWindow>();
-            bool isOpen = ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Presentation.IsOpen;
+            bool isOpen = ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Window.IsOpen;
             if (!isOpen)
             {
                 // The application's own wait returns at once for a closed presentation.

@@ -5,7 +5,7 @@ namespace Runic.Application.Views.Desktop;
 
 /// <summary>Binds native platform services to one open embedded Desktop window.</summary>
 /// <remarks>
-/// <see cref="PlatformServices.ForWindow"/> and <c>services.AddRunicPlatformServices()</c> select the provider for the
+/// <see cref="DesktopPlatformServices.ForWindow"/> and <c>services.AddRunicPlatformServices()</c> select the provider for the
 /// running backend and create the window services with this owner. Pass it where an API asks for a window, such as
 /// <c>WindowsElevationOptions.Owner</c> for the UAC prompt.
 /// The owner belongs to the <see cref="DesktopWindow"/> it was created for: it becomes unavailable when that window

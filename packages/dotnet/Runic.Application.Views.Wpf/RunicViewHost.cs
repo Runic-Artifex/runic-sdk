@@ -6,14 +6,15 @@ using System.Windows.Markup;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
 using Runic.Navigation;
+using Runic.Navigation.Wpf;
 
 namespace Runic.Application.Views.Wpf;
 
 /// <summary>Presents an existing model through its generated Runic web View, inside the WPF visual tree.</summary>
 /// <remarks>
 /// <para>
-/// The host opens the web presentation when it is loaded with a <see cref="Model"/> and <see cref="Services"/>, and
-/// closes it when it is unloaded or the model is cleared. A change of model, services or content closes the current
+/// The host opens the web presentation when it is loaded with a <see cref="ViewModel"/> and <see cref="Services"/>, and
+/// closes it when it is unloaded or the ViewModel is cleared. A change of model, services or content closes the current
 /// presentation and opens a fresh one. Changes run one at a time; a newer change cancels an open in progress. Closing
 /// releases the Bridge session first, draining its accepted operations, then the Desktop host, then the native child.
 /// </para>
@@ -31,13 +32,18 @@ namespace Runic.Application.Views.Wpf;
 [ContentProperty(nameof(Fallback))]
 public class RunicViewHost : Decorator
 {
-    /// <summary>Identifies the <see cref="Model"/> dependency property.</summary>
-    public static readonly DependencyProperty ModelProperty = DependencyProperty.Register(nameof(Model), typeof(object),
+    /// <summary>Identifies the <see cref="ViewModel"/> dependency property.</summary>
+    public static readonly DependencyProperty ViewModelProperty = DependencyProperty.Register(nameof(ViewModel), typeof(object),
         typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
     /// <summary>Identifies the Services attached dependency property, which descendants inherit.</summary>
-    public static readonly DependencyProperty ServicesProperty = DependencyProperty.RegisterAttached("Services", typeof(IServiceProvider),
-        typeof(RunicViewHost), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.Inherits, Reopen));
+    /// <remarks>
+    /// It is <see cref="ViewHost.ServicesProperty"/> of <c>Runic.Navigation.Wpf</c>: one provider set on a window
+    /// with <see cref="SetServices"/> or <see cref="ViewHost.SetServices"/> reaches every <see cref="RunicViewHost"/>
+    /// and navigation <see cref="ViewHost"/> in it.
+    /// </remarks>
+    public static readonly DependencyProperty ServicesProperty = ViewHost.ServicesProperty.AddOwner(typeof(RunicViewHost),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.Inherits, Reopen));
 
     /// <summary>Identifies the <see cref="ModelContext"/> dependency property.</summary>
     public static readonly DependencyProperty ModelContextProperty = DependencyProperty.Register(nameof(ModelContext),
@@ -52,8 +58,8 @@ public class RunicViewHost : Decorator
     public static readonly DependencyProperty ContentRootProperty = DependencyProperty.Register(nameof(ContentRoot), typeof(string),
         typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
-    /// <summary>Identifies the <see cref="EntryPage"/> dependency property.</summary>
-    public static readonly DependencyProperty EntryPageProperty = DependencyProperty.Register(nameof(EntryPage), typeof(string),
+    /// <summary>Identifies the <see cref="StartPage"/> dependency property.</summary>
+    public static readonly DependencyProperty StartPageProperty = DependencyProperty.Register(nameof(StartPage), typeof(string),
         typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
     /// <summary>Identifies the <see cref="SurfaceOptions"/> dependency property.</summary>
@@ -96,12 +102,12 @@ public class RunicViewHost : Decorator
     /// <summary>Raised on the UI thread when <see cref="State"/> changes.</summary>
     public event EventHandler? StateChanged;
 
-    /// <summary>Gets or sets the existing model to present, usually <c>{Binding}</c>.</summary>
+    /// <summary>Gets or sets the existing ViewModel to present, usually <c>{Binding}</c>.</summary>
     /// <remarks>A generated Bridge must be registered for its class or a base class, through <c>AddRunicViews()</c>.</remarks>
-    public object? Model
+    public object? ViewModel
     {
-        get => GetValue(ModelProperty);
-        set => SetValue(ModelProperty, value);
+        get => GetValue(ViewModelProperty);
+        set => SetValue(ViewModelProperty, value);
     }
 
     /// <summary>Gets or sets the application's service provider, with the generated Bridges registered.</summary>
@@ -134,14 +140,17 @@ public class RunicViewHost : Decorator
         set => SetValue(ContentRootProperty, value);
     }
 
-    /// <summary>Gets or sets the page to open, relative to <see cref="ContentRoot"/>, or <see langword="null"/> for <c>index.html</c>.</summary>
-    public string? EntryPage
+    /// <summary>
+    /// Gets or sets the page to open, relative to <see cref="ContentRoot"/>, or <see langword="null"/> for
+    /// <c>index.html</c>; the same as <c>RunicWindowOptions.StartPage</c> of a Runic Window.
+    /// </summary>
+    public string? StartPage
     {
-        get => (string?)GetValue(EntryPageProperty);
-        set => SetValue(EntryPageProperty, value);
+        get => (string?)GetValue(StartPageProperty);
+        set => SetValue(StartPageProperty, value);
     }
 
-    /// <summary>Gets or sets the complete surface options; when set, <see cref="ContentRoot"/> and <see cref="EntryPage"/> are ignored.</summary>
+    /// <summary>Gets or sets the complete surface options; when set, <see cref="ContentRoot"/> and <see cref="StartPage"/> are ignored.</summary>
     public DesktopSurfaceOptions? SurfaceOptions
     {
         get => (DesktopSurfaceOptions?)GetValue(SurfaceOptionsProperty);
@@ -204,11 +213,11 @@ public class RunicViewHost : Decorator
         if (target is RunicViewHost { IsLoaded: true } host) host.Request();
     }
 
-    private void Request() => _ = _lifecycle.RequestAsync(() => IsLoaded && Model is not null, OpenAsync, ShowFallback);
+    private void Request() => _ = _lifecycle.RequestAsync(() => IsLoaded && ViewModel is not null, OpenAsync, ShowFallback);
 
     private async Task OpenAsync(PresentationLifecycle lifecycle, CancellationToken cancellationToken)
     {
-        var model = Model!;
+        var model = ViewModel!;
         // Only an open reads Services, which an application may dispose before the host unloads. This open, its
         // fallback and the releases until the next open log through the factory lent from it; once that is
         // disposed, they go to Trace.
@@ -218,7 +227,7 @@ public class RunicViewHost : Decorator
             "RunicViewHost has no Services. Set RunicViewHost.Services, on the host or its window, to the provider with AddRunicViews().");
         var surfaceOptions = SurfaceOptions ?? new DesktopSurfaceOptions
         {
-            Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), EntryPage),
+            Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), StartPage),
         };
         var control = new RunicWebView();
         lifecycle.Own(() =>

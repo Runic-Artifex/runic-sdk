@@ -21,7 +21,7 @@
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
-    <!-- PlatformServices selects one provider at run time; a provider loads native libraries only when used. -->
+    <!-- DesktopPlatformServices selects one provider at run time; a provider loads native libraries only when used. -->
     <ProjectReference Include="../Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />

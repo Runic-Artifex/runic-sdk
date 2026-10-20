@@ -23,12 +23,12 @@ internal sealed class WindowStateChecks
         await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
         var saved = new DesktopWindowPlacement { X = -2000, Y = 10, Width = 1280, Height = 800, Maximized = true };
         var asked = new List<IRunicWindow>();
-        var host = new RunicDesktopHost(provider, desktop)
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
         {
             SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
             WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
             Placement = window => { asked.Add(window); return saved; },
-        };
+        });
         var window = await host.OpenWindowAsync<FileWindow>(new RunicWindowOptions { Width = 300, Height = 200 });
         try
         {
@@ -36,12 +36,12 @@ internal sealed class WindowStateChecks
             var options = factory.Hosts[0].Options!;
             Require(options.Placement == saved && options.Width == 1280 && options.Height == 800 && options.X == -2000 && options.Y == 10,
                 $"The saved placement did not replace the Window's size and position: {options}.");
-            Require(PlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Success { Value: var state } && state == Opened,
+            Require(DesktopPlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Success { Value: var state } && state == Opened,
                 "The state of an open embedded Window was not reported.");
 
             var resized = Opened with { Width = 1100, Placement = Opened.Placement with { Width = 950 } };
             var changed = new TaskCompletionSource<DesktopWindowState>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var presentation = ((DesktopBridgeWindow<FileViewModel>)window.Host).Presentation;
+            var presentation = ((DesktopBridgeWindow<FileViewModel>)window.Host).Window;
             presentation.StateChanged += (_, args) => changed.TrySetResult(args.State);
             factory.Hosts[0].Report(resized);
             Require(await changed.Task.WaitAsync(TimeSpan.FromSeconds(5)) == resized, "StateChanged did not report the new state.");
@@ -49,7 +49,7 @@ internal sealed class WindowStateChecks
             await presentation.CloseAsync();
             await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
             // The save path: after WaitForCloseAsync, before the Window is disposed.
-            Require(PlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Success { Value: var last } && last == resized,
+            Require(DesktopPlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Success { Value: var last } && last == resized,
                 "The last state of a closed Window was not kept.");
         }
         finally
@@ -65,7 +65,7 @@ internal sealed class WindowStateChecks
         {
             await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
             await using var window = await TestWindows.EmbeddedHtml(provider, desktop).OpenWindowAsync<FileWindow>();
-            Require(PlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            Require(DesktopPlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
                 "An embedded window host without state did not report the backend unavailable.");
         }
 
@@ -73,12 +73,12 @@ internal sealed class WindowStateChecks
         await using (var provider = CreateProvider())
         {
             await using var window = await new ForeignHost(provider).OpenWindowAsync<FileWindow>();
-            Require(PlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            Require(DesktopPlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                 "A Window on another host did not report the owner unavailable.");
         }
 
         var unopened = false;
-        try { _ = PlatformServices.GetWindowState(new FileWindow()); }
+        try { _ = DesktopPlatformServices.GetWindowState(new FileWindow()); }
         catch (InvalidOperationException) { unopened = true; }
         Require(unopened, "The state of a Window that never opened did not throw.");
     }

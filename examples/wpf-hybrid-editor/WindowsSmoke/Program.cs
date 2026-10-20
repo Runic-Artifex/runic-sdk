@@ -58,7 +58,7 @@ internal static class Program
             var firstHost = await OpenedAsync(page, "first web mount");
             Console.WriteLine("Hybrid smoke: first embedded session opened");
             var first = firstHost.Surface!;
-            Check(ReferenceEquals(firstHost.Model, model) && ReferenceEquals(regions.Main.CurrentEntry, entry), "Presentation switch replaced model or entry.");
+            Check(ReferenceEquals(firstHost.ViewModel, model) && ReferenceEquals(regions.Main.CurrentEntry, entry), "Presentation switch replaced model or entry.");
             // The session connects before the View mounts its inputs, so the poll waits for them too.
             await UntilAsync("the web title input to show the native draft", async () => await first.ExecuteJavaScriptAsync("return document.querySelector('#title')?.value ?? '';") == "Native draft");
 
@@ -87,7 +87,7 @@ internal static class Program
             Check(secondHost.State == RunicViewHostState.Open, $"Reload did not reopen: {secondHost.Error}");
             Console.WriteLine("Hybrid smoke: reloaded embedded session");
             var reloaded = secondHost.Surface!;
-            Check(!ReferenceEquals(second, reloaded) && ReferenceEquals(secondHost.Model, model), "Reload did not preserve the same model in a fresh session.");
+            Check(!ReferenceEquals(second, reloaded) && ReferenceEquals(secondHost.ViewModel, model), "Reload did not preserve the same model in a fresh session.");
             await UntilAsync("the reloaded web body input to show the shared draft", async () => await reloaded.ExecuteJavaScriptAsync("return document.querySelector('#body')?.value ?? '';") == "One shared draft");
             Check(ReferenceEquals(regions.Main.CurrentEntry, entry), "Reload changed navigation entry.");
 

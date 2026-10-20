@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
+using Runic.Navigation.Wpf;
 using Runic.Platform;
 using System.Windows;
 using System.Windows.Controls;
@@ -229,7 +230,10 @@ internal sealed class NativeChecks
         var fallback = new TextBlock { Text = "Native editor" };
         var host = Host(fallback);
         var window = new Window { Content = host, Width = 600, Height = 400, Title = "RunicViewHost smoke", DataContext = model };
-        RunicViewHost.SetServices(window, services);
+        // RunicViewHost shares the inherited Services property of the navigation ViewHost: one provider serves both.
+        ViewHost.SetServices(window, services);
+        Program.Check(ReferenceEquals(RunicViewHost.ServicesProperty, ViewHost.ServicesProperty) && ReferenceEquals(host.Services, services),
+            "RunicViewHost did not share the Services property of ViewHost.");
         window.Show();
         try
         {
@@ -289,7 +293,7 @@ internal sealed class NativeChecks
         static RunicViewHost Host(object fallback)
         {
             var host = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), Fallback = fallback };
-            host.SetBinding(RunicViewHost.ModelProperty, new Binding());
+            host.SetBinding(RunicViewHost.ViewModelProperty, new Binding());
             return host;
         }
     }

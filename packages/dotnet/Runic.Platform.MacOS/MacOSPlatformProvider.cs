@@ -8,7 +8,7 @@ namespace Runic.Platform.MacOS;
 /// <remarks>
 /// Every factory throws <see cref="PlatformNotSupportedException"/> on another operating system. The services take no
 /// application ID: macOS identifies the application by its bundle. Window services (file dialogs, the clipboard and file
-/// handoff) belong to a window: Runic's hosts create them for each window, such as <c>PlatformServices.ForWindow</c> of
+/// handoff) belong to a window: Runic's hosts create them for each window, such as <c>DesktopPlatformServices.ForWindow</c> of
 /// Runic.Application.Views.Desktop. The privileged actions (<see cref="MacPrivilegedActions"/>) report unavailable instead,
 /// because generated code registers them on every platform.
 /// </remarks>

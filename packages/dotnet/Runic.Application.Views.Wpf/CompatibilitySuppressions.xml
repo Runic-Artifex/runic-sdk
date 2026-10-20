@@ -3,6 +3,55 @@
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:Runic.Application.Views.Wpf.RunicViewHost.EntryPageProperty</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:Runic.Application.Views.Wpf.RunicViewHost.ModelProperty</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>F:Runic.Application.Views.Wpf.RunicWebView.DiagnosticId</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Wpf.RunicViewHost.get_EntryPage</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Wpf.RunicViewHost.get_Model</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Wpf.RunicViewHost.set_EntryPage(System.String)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Wpf.RunicViewHost.set_Model(System.Object)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Application.Views.Wpf.WpfBridgeView`1.CloseAsync(System.TimeSpan,System.Threading.CancellationToken)</Target>
     <Left>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Left>
     <Right>lib/net10.0-windows7.0/Runic.Application.Views.Wpf.dll</Right>

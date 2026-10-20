@@ -50,6 +50,29 @@ internal sealed class PlainViewHostTests
         finally { window.Close(); Pump(provider.DisposeAsync().AsTask()); }
     }
 
+    [Test, DisplayName("plain view services inherited from the window"), NotInParallel("WpfSuite", Order = 62)]
+    public void ServicesSetOnTheWindowReachTheHost()
+    {
+        var dependency = new ViewDependency();
+        var provider = new ServiceCollection().AddSingleton(dependency)
+            .AddRunicWpfNavigation(options => options.MapView<PlainContent, PlainView>()).BuildServiceProvider();
+        var model = new PlainContent();
+        // The host sits inside another element; only the window carries the provider.
+        var host = new ViewHost { Content = model };
+        var window = ShowWindow(new Border { Child = host }, owner => ViewHost.SetServices(owner, provider));
+        try
+        {
+            Require(ReferenceEquals(host.Services, provider) && ReferenceEquals(ViewHost.GetServices(host), provider),
+                "The host did not inherit the window's provider.");
+            Require(Presenter(host).Content is PlainView { Dependency: var used } && used == dependency,
+                "The inherited provider did not locate the registered view.");
+            ViewHost.SetServices(window, null);
+            Drain();
+            Require(host.Services is null, "Clearing the window's provider left it on the host.");
+        }
+        finally { window.Close(); Pump(provider.DisposeAsync().AsTask()); }
+    }
+
     [Test, DisplayName("plain view location and failure"), NotInParallel("WpfSuite", Order = 28)]
     public void ExplicitLocationAndFailure()
     {

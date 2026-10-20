@@ -57,7 +57,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     public TViewModel ViewModel { get; }
 
     /// <summary>The underlying CS-WebUI window.</summary>
-    public WebUiWindow NativeWindow => _window;
+    public WebUiWindow Window => _window;
 
     // Shows the content with the application's presentation, WebUI's recommended presentation (an installed
     // browser in app mode, then the system default browser, then the platform WebView) or only in the WebView.

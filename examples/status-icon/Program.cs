@@ -85,7 +85,7 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
                 closed = window.WaitForCloseAsync().AsTask();
             }
             else if (window.Host is DesktopBridgeWindow<CounterViewModel> open)
-                await PlatformServices.PresentAsync(open.NativeOwner, context);
+                await DesktopPlatformServices.PresentAsync(open.NativeOwner, context);
         }
     }
     if (window is not null) await window.DisposeAsync();

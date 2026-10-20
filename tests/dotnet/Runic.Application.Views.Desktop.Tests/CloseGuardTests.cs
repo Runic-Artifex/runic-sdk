@@ -403,7 +403,7 @@ sealed class GuardFixture : IAsyncDisposable
     public IBridgeWindow Window { get; }
     // The Window itself, as application code holds it.
     public IRunicWindow Opened => _window;
-    public DesktopWindow Presentation => ((DesktopBridgeWindow<GuardedShellModel>)Window).Presentation;
+    public DesktopWindow Presentation => ((DesktopBridgeWindow<GuardedShellModel>)Window).Window;
     public DesktopSurface Surface => ((DesktopBridgeWindow<GuardedShellModel>)Window).Surface;
     // What the host reported to its DiagnosticSink.
     public ConcurrentQueue<DesktopDiagnostic> Diagnostics { get; }
@@ -436,11 +436,11 @@ sealed class GuardFixture : IAsyncDisposable
         });
         try
         {
-            var windows = new RunicDesktopHost(provider, host)
+            var windows = new RunicDesktopHost(provider, host, new RunicDesktopHostOptions
             {
                 SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
                 WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, ConfirmCloseAsync = confirmClose },
-            };
+            });
             var window = await windows.OpenWindowAsync<TWindow>();
             return new GuardFixture(provider, host, window, window.Host, window.ViewModel, script, logs, factory.Hosts.Single(), diagnostics);
         }

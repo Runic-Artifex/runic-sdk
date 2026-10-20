@@ -18,7 +18,7 @@ using Runic.Platform.Windows;
 
 namespace Runic.Application.Views.Desktop;
 
-/// <summary>The native provider that <see cref="PlatformServices"/> selects for a Desktop window.</summary>
+/// <summary>The native provider that <see cref="DesktopPlatformServices"/> selects for a Desktop window.</summary>
 public enum DesktopPlatformProvider
 {
     /// <summary>No provider: the window has no native owner, or the process runs no toolkit Runic recognizes.</summary>
@@ -40,7 +40,7 @@ public enum DesktopPlatformProvider
 /// <see cref="IWindowPlatformServices"/> or <see cref="IFileDialogs"/> in a ViewModel constructor. The explicit
 /// providers, such as <c>WindowsPlatformProvider</c>, remain available for custom composition.
 /// </remarks>
-public static partial class PlatformServices
+public static partial class DesktopPlatformServices
 {
     /// <summary>Gets the provider for the operating system and the Linux toolkit this process has started.</summary>
     /// <remarks>
@@ -572,6 +572,8 @@ public static partial class PlatformServices
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
     /// <see cref="PlatformUnavailableReason.OwnerClosed"/>.
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped as PlatformServices.PresentAsync; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopNativeOwner owner, DesktopActivationContext? context = null,
         CancellationToken cancellationToken = default)
     {
@@ -614,6 +616,8 @@ public static partial class PlatformServices
     /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
     // The overloads differ in their first parameter, which no call omits, so the optional ones cannot make a call
     // ambiguous or bind to the other overload.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped as PlatformServices.PresentAsync; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(IRunicWindow window, DesktopActivationContext? context = null,
         CancellationToken cancellationToken = default)
     {
@@ -815,7 +819,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     public DesktopPlatformProvider Provider { get { lock (_gate) return _provider; } }
 
     /// <summary>Gets whether the window has opened and the services are bound to it, including after it closes.</summary>
-    public bool IsBound { get { lock (_gate) return _bound is not null; } }
+    internal bool IsBound { get { lock (_gate) return _bound is not null; } }
 
     /// <inheritdoc />
     public IFileDialogs FileDialogs => this;
@@ -832,7 +836,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         {
             if (_bound is not null) throw new InvalidOperationException("The platform services are already bound to a window.");
             if (_disposal is not null) return;
-            _bound = PlatformServices.Create(owner, out _provider);
+            _bound = DesktopPlatformServices.Create(owner, out _provider);
             _window = owner.Window;
             Volatile.Write(ref _current, _bound);
         }
@@ -846,7 +850,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     /// <param name="priority">Whether the message waits for what the screen reader is saying, the default, or interrupts it.</param>
     /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
     /// <remarks>
-    /// Announces as <see cref="PlatformServices.AnnounceAsync(IRunicWindow, string, DesktopAnnouncementPriority, CancellationToken)"/>
+    /// Announces as <see cref="DesktopPlatformServices.AnnounceAsync(IRunicWindow, string, DesktopAnnouncementPriority, CancellationToken)"/>
     /// does, with the same results. Before the window opens it reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>,
     /// and after these services stop <see cref="PlatformUnavailableReason.OwnerClosed"/>.
     /// </remarks>
@@ -863,7 +867,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
                     new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed));
             window = _window;
         }
-        return PlatformServices.AnnounceAsync(window, message, priority, cancellationToken);
+        return DesktopPlatformServices.AnnounceAsync(window, message, priority, cancellationToken);
     }
 
     /// <summary>Stops the services: waits for platform operations, then releases file access the window still owns.</summary>
@@ -913,17 +917,17 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
     /// its constructor. The window services need the window's native owner: they bind to it when the window opens, using
-    /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. A window without a native owner,
+    /// <see cref="DesktopPlatformServices.CurrentProvider"/>, and stop when the window closes. A window without a native owner,
     /// such as an installed browser after an embedded-window fallback or a window served under
     /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, and any scope other than a window's, get window services that report
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
     /// The application services need no window, so they work the same with or without a native owner: they are
-    /// singletons created by <see cref="PlatformServices.CreateSettings"/>,
-    /// <see cref="PlatformServices.CreateNotifications(string?)"/>, <see cref="PlatformServices.CreateStatusIcon(string?)"/>,
-    /// <see cref="PlatformServices.CreateLoginStartup(string?)"/>, <see cref="PlatformServices.CreateInhibition(string?)"/>,
-    /// <see cref="PlatformServices.CreateSecretStore()"/>, <see cref="PlatformServices.CreateTrash()"/>,
-    /// <see cref="PlatformServices.CreateFileTransfers()"/>, <see cref="PlatformServices.CreateVolumes"/>, <see cref="PlatformServices.CreateApplications()"/>
-    /// and <see cref="PlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
+    /// singletons created by <see cref="DesktopPlatformServices.CreateSettings"/>,
+    /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,
+    /// <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
+    /// <see cref="DesktopPlatformServices.CreateSecretStore()"/>, <see cref="DesktopPlatformServices.CreateTrash()"/>,
+    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
+    /// and <see cref="DesktopPlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
     /// <see cref="AddRunicPlatformServices(IServiceCollection, string)"/> instead. Existing registrations of these
@@ -961,31 +965,31 @@ public static class DesktopPlatformServiceCollectionExtensions
         if (OperatingSystem.IsWindows() && (applicationId.Length > 128 || applicationId.Contains('\0')))
             throw new ArgumentException("Supply the AppUserModelID the application registers, at most 128 characters.", nameof(applicationId));
 #if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsLinux()) PlatformServices.ValidatePortalApplicationId(applicationId);
+        if (OperatingSystem.IsLinux()) DesktopPlatformServices.ValidatePortalApplicationId(applicationId);
 #endif
         return services.AddPlatformServices(applicationId);
     }
 
     private static IServiceCollection AddPlatformServices(this IServiceCollection services, string? applicationId)
     {
-        services.TryAddSingleton(static _ => PlatformServices.CreateSettings());
-        services.TryAddSingleton(provider => PlatformServices.CreateNotifications(applicationId,
+        services.TryAddSingleton(static _ => DesktopPlatformServices.CreateSettings());
+        services.TryAddSingleton(provider => DesktopPlatformServices.CreateNotifications(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(provider => PlatformServices.CreateLoginStartup(applicationId,
+        services.TryAddSingleton(provider => DesktopPlatformServices.CreateLoginStartup(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(provider => PlatformServices.CreateStatusIcon(applicationId,
+        services.TryAddSingleton(provider => DesktopPlatformServices.CreateStatusIcon(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(provider => PlatformServices.CreateInhibition(applicationId,
+        services.TryAddSingleton(provider => DesktopPlatformServices.CreateInhibition(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(static provider => PlatformServices.CreateSecretStore(
+        services.TryAddSingleton(static provider => DesktopPlatformServices.CreateSecretStore(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(static provider => PlatformServices.CreateTrash(
+        services.TryAddSingleton(static provider => DesktopPlatformServices.CreateTrash(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(static _ => PlatformServices.CreateFileTransfers());
-        services.TryAddSingleton(static _ => PlatformServices.CreateVolumes());
-        services.TryAddSingleton(static provider => PlatformServices.CreateApplications(
+        services.TryAddSingleton(static _ => DesktopPlatformServices.CreateFileTransfers());
+        services.TryAddSingleton(static _ => DesktopPlatformServices.CreateVolumes());
+        services.TryAddSingleton(static provider => DesktopPlatformServices.CreateApplications(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddSingleton(static provider => PlatformServices.CreateThumbnails(
+        services.TryAddSingleton(static provider => DesktopPlatformServices.CreateThumbnails(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
