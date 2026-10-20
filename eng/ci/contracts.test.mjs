@@ -335,6 +335,21 @@ test('remote actions are pinned to a commit with their release tag', () => {
     assert.match(`${item.action} ${item.comment}`, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, `${item.path}: ${item.action}`);
 });
 
+// The Blacksmith pilot moves only Linux legs, only in scheduled and manual runs, and only while the
+// repository variable is set; otherwise every leg keeps its GitHub-hosted runner.
+test('the Blacksmith pilot is limited to Linux legs of scheduled and manual runs', () => {
+  for (const id of ['native', 'native-musl']) {
+    const runsOn = workflow.jobs[id]['runs-on'];
+    assert.ok(runsOn.startsWith("${{ vars.BLACKSMITH_PILOT == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"), id);
+    assert.ok(runsOn.endsWith('|| matrix.os }}'), id);
+    for (const [, rid, label] of runsOn.matchAll(/matrix\.rid == '([\w-]+)' && '([\w-]+)'/g)) {
+      assert.match(rid, /^linux-/, id);
+      assert.match(label, /^blacksmith-4vcpu-ubuntu-2404(-arm)?$/, id);
+      assert.equal(label.endsWith('-arm'), rid.endsWith('arm64'), id);
+    }
+  }
+});
+
 // W240-005: the WPF hosts run in a Windows desktop session, then their packed consumer.
 test('the WPF lane runs the STA tests and the packed consumer on Windows', () => {
   const job = workflow.jobs.wpf;

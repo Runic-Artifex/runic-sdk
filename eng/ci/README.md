@@ -96,6 +96,18 @@ podman run --rm --init --userns=keep-id --user root --security-opt seccomp=uncon
 
 The container writes its build outputs into the checkout's `bin`, `obj` and `artifacts`.
 
+### Blacksmith pilot
+
+With the repository variable `BLACKSMITH_PILOT` set to `true`, scheduled and manual runs
+put the `linux-x64` and `linux-arm64` legs of `native` and the `linux-musl-x64` leg of
+`native-musl` on Blacksmith runners of the same size as GitHub's public-repository
+runners (4 vCPUs, 16 GB): `blacksmith-4vcpu-ubuntu-2404` and `-arm`. Pull requests and
+pushes to `main` keep GitHub-hosted runners, the job names do not change, and `verify`
+and the release gate treat these legs as before. Each nightly then pairs these legs with
+the same jobs of that day's `main` pushes on GitHub. The legs use about 52 of Blacksmith's
+x64 2-vCPU minutes per night (a 4-vCPU minute counts as 2, an ARM one as 1.25), about
+1,600 of the 3,000 free minutes a month. Unset the variable to end the pilot.
+
 ## Display scaling and appearance evidence
 
 The native job changes the runner's own display and preferences to check W315-017

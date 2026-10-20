@@ -550,7 +550,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.native) }}
-    runs-on: ${{ matrix.os }}
+    # Blacksmith pilot (eng/ci/README.md): with the repository variable BLACKSMITH_PILOT set to true,
+    # scheduled and manual runs put the Linux legs on Blacksmith runners of the same size.
+    runs-on: >-
+      ${{ vars.BLACKSMITH_PILOT == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && (matrix.rid == 'linux-x64' && 'blacksmith-4vcpu-ubuntu-2404' || matrix.rid == 'linux-arm64' && 'blacksmith-4vcpu-ubuntu-2404-arm')
+      || matrix.os }}
     timeout-minutes: 50
     env:
       RUNIC_SMOKE_TIMEOUT_SCALE: ${{ matrix.smoke-timeout-scale || '1' }}
@@ -1084,7 +1089,10 @@ jobs:
             rid: linux-musl-x64
           - os: ubuntu-24.04-arm
             rid: linux-musl-arm64
-    runs-on: ${{ matrix.os }}
+    # Blacksmith pilot, as for the native job.
+    runs-on: >-
+      ${{ vars.BLACKSMITH_PILOT == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && matrix.rid == 'linux-musl-x64' && 'blacksmith-4vcpu-ubuntu-2404' || matrix.os }}
     timeout-minutes: 50
     env:
       # Alpine 3.22, the oldest Alpine release that .NET 10 supports beyond November 2026.
