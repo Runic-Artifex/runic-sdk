@@ -9,9 +9,11 @@ using WebKit;
 
 namespace Runic.Desktop.Gtk4;
 
-/// <summary>Runs one GTK 4 and WebKitGTK 6 application on the Linux process main thread.</summary>
+// Runs one GTK 4 and WebKitGTK 6 application on the Linux process main thread. Applications start it through
+// DesktopEventLoop.Run(options.WithGtk4(), ...), which runs Gtk4WindowHostFactory.RunEventLoop; the native smoke
+// tests call Run directly.
 [SupportedOSPlatform("linux")]
-public static partial class Gtk4Application
+internal static partial class Gtk4Application
 {
     private static readonly object Gate = new();
     private static readonly HashSet<Gtk4WindowHost> Hosts = [];
@@ -163,7 +165,7 @@ public static partial class Gtk4Application
         {
             if (_state != 1)
             {
-                throw new InvalidOperationException("GTK 4 is stopping; open windows only inside Gtk4Application.Run.");
+                throw new InvalidOperationException("GTK 4 is stopping; open windows only inside DesktopEventLoop.Run(options.WithGtk4(), application).");
             }
             Hosts.Add(host);
         }
@@ -222,7 +224,13 @@ public static partial class Gtk4Application
 }
 
 /// <summary>Creates explicitly selected GTK 4 and WebKitGTK 6 window hosts.</summary>
+/// <remarks>
+/// Select it with <see cref="Gtk4DesktopHostOptionsExtensions.WithGtk4(DesktopHostOptions)"/>, which needs no
+/// suppression. The class itself belongs to the experimental custom window host family, like
+/// <see cref="DesktopHostOptions.WindowHostFactory"/>.
+/// </remarks>
 [SupportedOSPlatform("linux")]
+[System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK100", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDesktopEventLoopWindowHostFactory
 {
     private readonly string? _applicationId;
@@ -243,7 +251,7 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
     }
 
     /// <inheritdoc />
-    /// <remarks>Runs the GTK 4 application lifetime of <see cref="Gtk4Application"/> with <see cref="ApplicationId"/>.</remarks>
+    /// <remarks>Runs the one GTK 4 application lifetime of the process with <see cref="ApplicationId"/>.</remarks>
     public int RunEventLoop(Func<Task<int>> application)
     {
         ArgumentNullException.ThrowIfNull(application);
@@ -251,7 +259,7 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
         {
             throw new PlatformNotSupportedException("GTK 4 and WebKitGTK 6 are available only on Linux.");
         }
-        return Gtk4Application.RunCore(application, ApplicationId, "DesktopEventLoop.Run(options, application)");
+        return Gtk4Application.RunCore(application, ApplicationId, "DesktopEventLoop.Run(options.WithGtk4(), application)");
     }
 
     /// <inheritdoc />
@@ -324,7 +332,7 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
         }
         if (!Gtk4Application.IsRunning)
         {
-            throw new InvalidOperationException("Start GTK 4 through Gtk4Application.Run before creating a Gtk4WindowHostFactory window host.");
+            throw new InvalidOperationException("Start GTK 4 through DesktopEventLoop.Run(options.WithGtk4(), application) before creating a Gtk4WindowHostFactory window host.");
         }
 
         return new Gtk4WindowHost();
@@ -450,7 +458,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (!Gtk4Application.IsRunning)
         {
-            throw new InvalidOperationException("Open GTK 4 windows inside Gtk4Application.Run.");
+            throw new InvalidOperationException("Open GTK 4 windows inside DesktopEventLoop.Run(options.WithGtk4(), application).");
         }
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(options);
@@ -557,8 +565,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             }
         }, cancellationToken));
 
-    public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
-        new(Gtk4Dispatcher.Instance.InvokeAsync(() => GetWindow().SetDefaultSize(checked((int)width), checked((int)height)), cancellationToken));
+    public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        return new(Gtk4Dispatcher.Instance.InvokeAsync(() => GetWindow().SetDefaultSize(width, height), cancellationToken));
+    }
 
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("GTK 4 cannot position top-level windows on native Wayland."));
@@ -627,8 +639,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             webView = WebView.NewWithProperties(
                 [new GObject.ConstructArgument("web-context", contextValue)]);
             window.Title = "Runic Desktop";
-            var width = checked((int)options.Width);
-            var height = checked((int)options.Height);
+            var width = options.Width;
+            var height = options.Height;
             if (options.Placement is not null)
             {
                 // GTK 4 cannot tell where the compositor will show the window: fit the restored size to the largest
@@ -641,7 +653,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             if (options.MinimumWidth is not null || options.MinimumHeight is not null)
             {
                 webView.SetSizeRequest(
-                    options.MinimumWidth is { } minimumWidth ? checked((int)minimumWidth) : -1,
+                    options.MinimumWidth is { } minimumWidth ? minimumWidth : -1,
                     options.MinimumHeight is { } minimumHeight ? checked((int)minimumHeight) : -1);
             }
             if (options.DocumentStartScript is { } documentStartScript)
@@ -810,7 +822,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 "Set HighContrast to false; when it is unset, the system high-contrast setting applies."));
         if (!string.IsNullOrWhiteSpace(options.ProfilePath))
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.ProfilePath), "GTK 4 WebKit profile persistence is not implemented."));
-        if (!string.IsNullOrWhiteSpace(options.CustomArguments))
+        if (!string.IsNullOrWhiteSpace(options.BrowserArguments))
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.BrowserArguments), "GTK 4 WebKit custom arguments are not supported."));
         if (!string.IsNullOrWhiteSpace(options.IconFile))
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.IconFile), "GTK 4 window icon files are not implemented."));
@@ -933,7 +945,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             view.Reload();
         }
-        _options?.ReportDiagnostic?.Invoke(diagnostic);
+        _options?.DiagnosticSink?.Invoke(diagnostic);
     }
 
     // Connected through GObject, not a GirCore event: a GirCore signal handler that has run keeps the view from being
@@ -1066,12 +1078,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         var fullScreen = window.IsFullscreen();
         var width = window.GetWidth();
         var height = window.GetHeight();
-        var restoredWidth = (uint)Math.Max(1, defaultWidth > 0 ? defaultWidth : width);
-        var restoredHeight = (uint)Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
+        var restoredWidth = Math.Max(1, defaultWidth > 0 ? defaultWidth : width);
+        var restoredHeight = Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
         var state = new DesktopWindowState
         {
-            Width = width > 0 ? (uint)width : restoredWidth,
-            Height = height > 0 ? (uint)height : restoredHeight,
+            Width = width > 0 ? width : restoredWidth,
+            Height = height > 0 ? height : restoredHeight,
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
             Placement = new DesktopWindowPlacement { Width = restoredWidth, Height = restoredHeight, Maximized = maximized },
@@ -1336,7 +1348,7 @@ internal sealed class Gtk4Dispatcher
         cancellationToken.ThrowIfCancellationRequested();
         if (!Gtk4Application.IsRunning || _context is null)
         {
-            throw new InvalidOperationException("Start GTK 4 through Gtk4Application.Run before opening a window.");
+            throw new InvalidOperationException("Start GTK 4 through DesktopEventLoop.Run(options.WithGtk4(), application) before opening a window.");
         }
         Interlocked.Increment(ref _leases);
         return Task.CompletedTask;

@@ -1,42 +1,38 @@
 namespace Runic.Desktop;
 
 /// <summary>Describes whether one concrete presentation host can be used by the current process.</summary>
+/// <param name="Browser">The presentation: an installed browser or <see cref="BrowserKind.Embedded"/>.</param>
+/// <param name="IsAvailable">Whether the presentation can open.</param>
+/// <param name="ExecutablePath">The browser executable, or <see langword="null"/> for the embedded WebView or a missing browser.</param>
+/// <param name="Capabilities">The window operations the presentation supports.</param>
+/// <param name="Diagnostics">Every missing prerequisite of an unavailable presentation; empty when it is available.</param>
 public sealed record DesktopPresentationAvailability(
     BrowserKind Browser,
     bool IsAvailable,
     string? ExecutablePath,
     DesktopWindowCapabilities Capabilities,
-    DesktopDiagnostic? Diagnostic)
+    IReadOnlyList<DesktopDiagnostic> Diagnostics)
 {
-    private readonly DesktopDiagnostic[] _diagnostics = Diagnostic is null ? [] : [Diagnostic];
+    private readonly DesktopDiagnostic[] _diagnostics = Copy(Diagnostics);
 
-    /// <summary>Gets the first missing prerequisite of an unavailable presentation, or <see langword="null"/>.</summary>
+    /// <summary>Gets every missing prerequisite of an unavailable presentation, in the order a user can act on them.</summary>
     /// <remarks>
-    /// Always the first entry of <see cref="Diagnostics"/>. Setting it, including through a <see langword="with"/>
-    /// expression, replaces <see cref="Diagnostics"/> with this diagnostic alone, or with none.
-    /// </remarks>
-    public DesktopDiagnostic? Diagnostic
-    {
-        get => _diagnostics.Length == 0 ? null : _diagnostics[0];
-        init => _diagnostics = value is null ? [] : [value];
-    }
-
-    /// <summary>Gets every missing prerequisite of an unavailable presentation, not only the first.</summary>
-    /// <remarks>
-    /// For example, a GTK4 selection without its provider reports the provider and each missing native library.
-    /// <see cref="Diagnostic"/> is the first entry; setting this list after it replaces it.
+    /// For example, a GTK4 selection without its provider reports the provider and each missing native library. The
+    /// list is empty when the presentation is available.
     /// </remarks>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics
     {
         // A read-only view: callers cannot cast it back to the array and change the record.
         get => Array.AsReadOnly(_diagnostics);
-        init
-        {
-            ArgumentNullException.ThrowIfNull(value);
-            DesktopDiagnostic[] diagnostics = [.. value];
-            if (Array.IndexOf(diagnostics, null) >= 0) throw new ArgumentException("Diagnostics cannot contain null.", nameof(value));
-            _diagnostics = diagnostics;
-        }
+        init => _diagnostics = Copy(value);
+    }
+
+    private static DesktopDiagnostic[] Copy(IReadOnlyList<DesktopDiagnostic> value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        DesktopDiagnostic[] diagnostics = [.. value];
+        if (Array.IndexOf(diagnostics, null) >= 0) throw new ArgumentException("Diagnostics cannot contain null.", nameof(value));
+        return diagnostics;
     }
 
     /// <summary>Compares every member, and the diagnostics by value and order.</summary>
@@ -78,14 +74,9 @@ public sealed record DesktopPresentationPreflight(
     /// <summary>Gets whether opening the request would use its declared fallback.</summary>
     public bool WouldFallBack => !Preferred.IsAvailable && Fallback?.IsAvailable == true;
 
-    /// <summary>Gets the safe actionable diagnostic when no declared presentation path is available.</summary>
-    public DesktopDiagnostic? Diagnostic => IsAvailable
-        ? null
-        : Preferred.Diagnostic ?? Fallback?.Diagnostic;
-
     /// <summary>
     /// Gets every missing prerequisite of the preferred presentation and its declared fallback when no declared
-    /// presentation path is available. <see cref="Diagnostic"/> is the first entry.
+    /// presentation path is available, the preferred presentation's first; empty when one is available.
     /// </summary>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics => IsAvailable
         ? []
@@ -140,8 +131,11 @@ public sealed record DesktopAvailabilityResult(
 }
 
 /// <summary>Reports native library discovery for one Linux toolkit without loading it.</summary>
+/// <param name="Backend">The toolkit.</param>
+/// <param name="LibrariesDiscovered">Whether its GTK and WebKitGTK libraries are in the native loader search path.</param>
+/// <param name="Diagnostics">What is missing; empty when the libraries were discovered.</param>
 /// <remarks>Library discovery is not proof of a compatible ABI, graphical session, or registered provider.</remarks>
 public sealed record LinuxEmbeddedBackendAvailability(
     LinuxEmbeddedBackend Backend,
     bool LibrariesDiscovered,
-    DesktopDiagnostic? Diagnostic);
+    IReadOnlyList<DesktopDiagnostic> Diagnostics);

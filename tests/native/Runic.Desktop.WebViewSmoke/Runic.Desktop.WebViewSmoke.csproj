@@ -4,6 +4,8 @@
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
+    <!-- Uses the experimental Desktop APIs (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK100;RUNICDESK101</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

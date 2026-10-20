@@ -45,6 +45,7 @@ public sealed class DesktopFileDropEventArgs : EventArgs
 /// paths from the platform's drag and drop, never from the page, and keep the page's own drop events working. Runic
 /// Desktop passes each drop to <see cref="DesktopWindow.FilesDropped"/>.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IDesktopFileDropWindowHost : IDesktopWindowHost
 {
     /// <summary>Occurs once for each drop of files onto the window, on any thread.</summary>

@@ -7,11 +7,13 @@
     <Title>Runic Desktop</Title>
     <Description>A managed .NET runtime for web-powered desktop applications.</Description>
     <PackageTags>runic-artifex;dotnet;managed;kestrel;desktop;webview</PackageTags>
-    <NoWarn>$(NoWarn);CA1720</NoWarn>
+    <!-- The package uses its own experimental families (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);CA1720;RUNICDESK100;RUNICDESK101</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- Packs buildTransitive/$(PackageId).props with the diagnostics help links (eng/build/release-links.targets). -->
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
   </PropertyGroup>
 
   <ItemGroup>

@@ -228,6 +228,25 @@ public sealed class ConfigurationValidationTests
     }
 
     [Test]
+    [Arguments(0, 600, null)]
+    [Arguments(-1, 600, null)]
+    [Arguments(800, -600, null)]
+    [Arguments(800, 600, -1)]
+    public async Task ValidationReportsANonPositiveWindowSize(int width, int height, int? minimum)
+    {
+        await using var host = await DesktopHost.StartAsync();
+
+        var validation = host.Validate(new DesktopWindowOptions
+        {
+            Width = width, Height = height, MinimumWidth = minimum, MinimumHeight = minimum,
+        });
+
+        var error = Assert.Single(validation.Errors);
+        Assert.Equal("window-option-invalid", error.Code);
+        Assert.Contains("must be positive", error.Message, StringComparison.Ordinal);
+    }
+
+    [Test]
     public async Task CloseConfirmationInABrowserIsACodedDiagnostic()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -336,7 +355,7 @@ public sealed class ConfigurationValidationTests
                 AllowedPermissions = DesktopPermissionGrant.MediaCapture,
             });
 
-            Assert.True(window.FellBack);
+            Assert.True(window.IsFallback);
             var withheld = Assert.Single(diagnostics, static item => item.Code == "permission-grant-withheld");
             Assert.False(string.IsNullOrEmpty(withheld.CorrelationId));
             var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -387,7 +406,7 @@ public sealed class ConfigurationValidationTests
                 ConfirmCloseAsync = static _ => ValueTask.FromResult(false),
             });
 
-            Assert.True(window.FellBack);
+            Assert.True(window.IsFallback);
             var unavailable = Assert.Single(diagnostics, static item => item.Code == "close-confirmation-unavailable");
             Assert.Equal(DesktopDiagnosticSeverity.Warning, unavailable.Severity);
             Assert.False(string.IsNullOrEmpty(unavailable.CorrelationId));
@@ -423,7 +442,7 @@ public sealed class ConfigurationValidationTests
         // Windows applies the profile; Linux reports the missing toolkit through availability instead.
         if (OperatingSystem.IsLinux())
         {
-            Assert.Equal("linux-embedded-backend-not-selected", preflight.Diagnostic?.Code);
+            Assert.Equal("linux-embedded-backend-not-selected", preflight.Diagnostics[0].Code);
         }
         Assert.DoesNotContain(preflight.OptionDiagnostics, static item => item.Message.Contains("WebKitGTK", StringComparison.Ordinal));
     }

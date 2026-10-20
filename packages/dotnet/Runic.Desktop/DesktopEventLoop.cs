@@ -117,8 +117,21 @@ public static class DesktopEventLoop
         }
     }
 
-    /// <summary>Call from the synchronous process entry point. The loop stays alive through
-    /// application shutdown and asynchronous native release. Other platforms simply join the task.</summary>
+    /// <summary>Runs <paramref name="application"/> on the platform's main-thread loop, without a <see cref="DesktopHost"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// The low-level loop for a process that uses native platform services but starts no Desktop host, such as a
+    /// tool that shows a status icon or calls AppKit APIs on macOS. Call it from the synchronous process entry point.
+    /// On macOS it pumps the AppKit main thread until <paramref name="application"/> completes and through
+    /// asynchronous native release; other platforms join the task.
+    /// </para>
+    /// <para>
+    /// An application that opens windows uses
+    /// <see cref="Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> instead: it validates the options, runs a
+    /// window host's own loop such as GTK 4, handles Ctrl+C and SIGTERM, disposes the host and returns the exit code.
+    /// This overload does none of that.
+    /// </para>
+    /// </remarks>
     /// <exception cref="InvalidOperationException">A Desktop event loop is already running in this process.</exception>
     public static void Run(Func<Task> application)
     {

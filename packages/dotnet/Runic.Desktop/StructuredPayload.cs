@@ -4,7 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace Runic.Desktop;
 
 /// <summary>Contains a schema-identified, strictly validated UTF-8 JSON payload.</summary>
-public sealed class StructuredPayload
+internal sealed class StructuredPayload
 {
     private StructuredPayload(string schemaId, ReadOnlyMemory<byte> utf8Json)
     {

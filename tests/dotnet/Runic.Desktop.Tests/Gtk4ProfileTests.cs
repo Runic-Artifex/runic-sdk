@@ -60,7 +60,6 @@ public sealed class Gtk4ProfileTests
 
         Assert.False(embedded.IsAvailable);
         Assert.Equal(["gtk4-runtime-missing", "webkitgtk6-runtime-missing"], embedded.Diagnostics.Select(static item => item.Code));
-        Assert.Same(embedded.Diagnostics[0], embedded.Diagnostic);
     }
 
     [Test]
@@ -91,7 +90,7 @@ public sealed class Gtk4ProfileTests
         Assert.Equal(expected, validation.Errors.Select(static item => item.Code));
         Assert.Contains("WithGtk4()", validation.Errors[0].Remediation, StringComparison.Ordinal);
         Assert.Equal(expected, embedded.Diagnostics.Select(static item => item.Code));
-        Assert.Equal("gtk4-provider-missing", embedded.Diagnostic?.Code);
+        Assert.Equal("gtk4-provider-missing", embedded.Diagnostics[0].Code);
     }
 
     [Test]
@@ -135,7 +134,7 @@ public sealed class Gtk4ProfileTests
         var validation = host.Validate(new() { Browser = BrowserKind.Embedded });
 
         Assert.Equal(reported, embedded.Diagnostics);
-        Assert.Equal("first-missing", preflight.Diagnostic?.Code);
+        Assert.Equal("first-missing", preflight.Diagnostics[0].Code);
         Assert.Equal(reported, preflight.Diagnostics);
         Assert.Equal(["first-missing", "second-missing"], validation.Errors.Select(static item => item.Code));
         Assert.Contains(reported[1], host.GetAvailability().Diagnostics);
@@ -152,21 +151,20 @@ public sealed class Gtk4ProfileTests
     }
 
     [Test]
-    public void PresentationDiagnosticsDefaultToTheSingleDiagnostic()
+    public void PresentationDiagnosticsAreTheListGiven()
     {
         var diagnostic = new DesktopDiagnostic(DesktopErrorCategory.Unavailable, "missing", "Missing.", Retryable: false);
 
-        Assert.Equal([diagnostic], new DesktopPresentationAvailability(BrowserKind.Chrome, false, null, DesktopWindowCapabilities.None, diagnostic).Diagnostics);
-        Assert.Empty(new DesktopPresentationAvailability(BrowserKind.Chrome, true, "/bin/chrome", DesktopWindowCapabilities.None, null).Diagnostics);
+        Assert.Equal([diagnostic], new DesktopPresentationAvailability(BrowserKind.Chrome, false, null, DesktopWindowCapabilities.None, [diagnostic]).Diagnostics);
+        Assert.Empty(new DesktopPresentationAvailability(BrowserKind.Chrome, true, "/bin/chrome", DesktopWindowCapabilities.None, []).Diagnostics);
+        Assert.Throws<ArgumentNullException>(() => new DesktopPresentationAvailability(BrowserKind.Chrome, true, null, DesktopWindowCapabilities.None, null!));
     }
 
     [Test]
     public void PresentationAvailabilityComparesDiagnosticsByValue()
     {
-        DesktopPresentationAvailability Create() => new(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, Missing("first"))
-        {
-            Diagnostics = [Missing("first"), Missing("second")],
-        };
+        DesktopPresentationAvailability Create() =>
+            new(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, [Missing("first"), Missing("second")]);
 
         var left = Create();
         var right = Create();
@@ -187,29 +185,25 @@ public sealed class Gtk4ProfileTests
     }
 
     [Test]
-    public void PresentationDiagnosticIsAlwaysTheFirstOfDiagnostics()
+    public void PresentationDiagnosticsAreAReadOnlyCopy()
     {
-        var availability = new DesktopPresentationAvailability(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, Missing("first"))
-        {
-            Diagnostics = [Missing("first"), Missing("second")],
-        };
+        List<DesktopDiagnostic> given = [Missing("first"), Missing("second")];
+        var availability = new DesktopPresentationAvailability(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, given);
+        given.Add(Missing("later"));
 
-        var replaced = availability with { Diagnostic = Missing("other") };
-        var cleared = availability with { Diagnostic = null };
         var relisted = availability with { Diagnostics = [Missing("third")] };
+        var cleared = availability with { Diagnostics = [] };
 
-        Assert.Equal([Missing("other")], replaced.Diagnostics);
-        Assert.Same(replaced.Diagnostics[0], replaced.Diagnostic);
-        Assert.Empty(cleared.Diagnostics);
-        Assert.Null(cleared.Diagnostic);
-        Assert.Equal(Missing("third"), relisted.Diagnostic);
         Assert.Equal(["first", "second"], availability.Diagnostics.Select(static item => item.Code));
+        Assert.Equal([Missing("third")], relisted.Diagnostics);
+        Assert.Empty(cleared.Diagnostics);
         Assert.Throws<ArgumentException>(() => availability with { Diagnostics = [null!] });
+        Assert.Throws<ArgumentNullException>(() => availability with { Diagnostics = null! });
 
         // The list is a read-only view; the record's storage cannot be reached through it.
         Assert.IsNotType<DesktopDiagnostic[]>(availability.Diagnostics);
         Assert.Throws<NotSupportedException>(() => ((IList<DesktopDiagnostic>)availability.Diagnostics)[0] = Missing("changed"));
-        Assert.Equal("first", availability.Diagnostic!.Code);
+        Assert.Equal("first", availability.Diagnostics[0].Code);
     }
 
     private static DesktopDiagnostic Missing(string code) => new(DesktopErrorCategory.Unavailable, code, "Missing.", Retryable: false);

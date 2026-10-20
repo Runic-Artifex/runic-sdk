@@ -4,6 +4,7 @@ using System.Text;
 namespace Runic.Desktop;
 
 /// <summary>Identifies a low-level presentation event delivered to a registered capability.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum PresentationEventKind
 {
     /// <summary>A presentation session disconnected from the surface.</summary>
@@ -23,6 +24,7 @@ public enum PresentationEventKind
 }
 
 /// <summary>Handles one presentation capability invocation.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public delegate ValueTask<PresentationResult> PresentationCapabilityHandler(
     PresentationInvocation invocation,
     CancellationToken cancellationToken);
@@ -33,6 +35,7 @@ public delegate ValueTask<PresentationResult> PresentationCapabilityHandler(
 /// reading arguments and the session operations on this object throw <see cref="ObjectDisposedException"/>;
 /// keep <see cref="Session"/> to address the session later.
 /// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class PresentationInvocation
 {
     private readonly WebUiEvent _event;
@@ -158,6 +161,7 @@ public sealed class PresentationInvocation
 }
 
 /// <summary>Represents one authenticated presentation transport session.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class PresentationSession
 {
     private readonly WebUiWindow _engine;
@@ -194,6 +198,7 @@ public sealed class PresentationSession
 }
 
 /// <summary>Represents a primitive result returned to a presentation caller.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public readonly struct PresentationResult
 {
     private readonly WebUiResult _value;
@@ -243,6 +248,7 @@ public readonly struct PresentationResult
 }
 
 /// <summary>Owns one capability registration until disposed.</summary>
+[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class PresentationCapabilityRegistration : IDisposable
 {
     private WebUiBinding? _binding;

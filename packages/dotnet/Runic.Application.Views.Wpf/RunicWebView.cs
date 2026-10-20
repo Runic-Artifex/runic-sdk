@@ -131,7 +131,7 @@ public sealed partial class RunicWebView : HwndHost
                 initializing = await WindowsWebView2Controller.CreateAsync(view._child, new WebUiEmbeddedHostOptions
                 {
                     ProfilePath = options.ProfilePath,
-                    CustomParameters = options.CustomArguments,
+                    CustomParameters = options.BrowserArguments,
                 });
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
@@ -207,7 +207,7 @@ public sealed partial class RunicWebView : HwndHost
         }
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => Unsupported();
-        public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => Unsupported();
+        public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => Unsupported();

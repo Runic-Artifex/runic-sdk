@@ -9,6 +9,8 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- Uses the experimental Desktop APIs (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK100;RUNICDESK101</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- The tests construct generated-code support types directly. -->

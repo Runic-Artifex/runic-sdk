@@ -82,7 +82,8 @@ and release the body exactly once. Multiple surfaces share one listener by
 default, while `UseIsolatedListener` is available for policy boundaries.
 
 Installed browsers and the built-in WebView2, WKWebView, and WebKitGTK adapters
-remain replaceable through `IDesktopWindowHostFactory`. A host reporting
+remain replaceable through `IDesktopWindowHostFactory`, an experimental API
+(`RUNICDESK100`, see [Experimental APIs](#experimental-apis)). A host reporting
 `SupportsDocumentStartScript` must run `DesktopWindowHostOptions.DocumentStartScript`
 in every frame before page scripts; the surface then withholds session
 credentials from its fetchable bootstrap scripts. The internal
@@ -101,9 +102,8 @@ concerns, a `Remediation`, and a `Severity`. Errors make the request fail when i
 opens; warnings mean the presentation ignores or narrows an option.
 `ThrowIfInvalid()` throws a `DesktopConfigurationException` listing every error,
 and each diagnostic is logged through `DesktopHostOptions.LoggerFactory`.
-`GetPresentationPreflight` returns the same checks as `Diagnostics` (its first
-entry is `Diagnostic`) and `OptionDiagnostics` for applications that present them
-themselves. An unavailable presentation reports every missing prerequisite at
+`GetPresentationPreflight` returns the same checks as `Diagnostics` and
+`OptionDiagnostics` for applications that present them themselves. An unavailable presentation reports every missing prerequisite at
 once: a GTK4 selection without its provider, for example, lists
 `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing` and
 `graphical-session-missing` together. A custom `IDesktopWindowHostFactory` can do
@@ -112,8 +112,8 @@ the same by overriding `GetAvailabilityDiagnostics()`.
 | Code | Severity | Reported when |
 | --- | --- | --- |
 | `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
-| `browser-unsupported` | Error | `Browser` is Safari or Opera, which Runic Desktop cannot launch. |
-| `window-option-invalid` | Error | An option has an undefined value. |
+| `browser-unsupported` | Error | `Browser` is Safari or Opera. These values are detection-only: Runic Desktop neither discovers nor launches them. |
+| `window-option-invalid` | Error | An option has an undefined value, or a size that is not a positive number of pixels. |
 | `close-confirmation-unavailable` | Error or Warning | `ConfirmCloseAsync` is set for an explicitly selected browser (Error; opening throws a `DesktopException` with this code), or an `EmbeddedThenBrowser` fallback opens without close confirmation (Warning). |
 | `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |
 | `window-option-incomplete` | Warning | Only one of `X`/`Y` or `MinimumWidth`/`MinimumHeight` is set. |
@@ -180,6 +180,32 @@ pickers and clipboard, register the matching GTK platform provider and the
 [portal service](../Runic.Platform.Linux.Portal/README.md). Runic.Application.Views.Desktop
 selects the provider for the running backend from `services.AddRunicPlatformServices()`.
 
+## Showing a window and its native handle
+
+`DesktopWindowOptions.Hidden` opens an embedded window without showing it, and
+an installed browser headless. `DesktopWindow.FocusAsync` shows a hidden embedded
+window and gives it focus; `DesktopWindow` has no other show or hide member.
+
+`DesktopWindow.NativeHandle` is the top-level window of an open embedded window,
+or zero for an installed browser or a closed window. Its kind depends on the
+window host:
+
+| Window host | `NativeHandle` |
+| --- | --- |
+| Windows, WebView2 | `HWND` |
+| macOS, WKWebView | `NSWindow*` |
+| Linux, GTK 3 and WebKitGTK 4.1 | GTK 3 `GtkWindow*` |
+| Linux, GTK 4 (`Runic.Desktop.Gtk4`) | GTK 4 `GtkWindow*` |
+| Custom window host | What its `IDesktopWindowHost.NativeHandle` reports |
+
+Read on another thread, the value is for identity only, such as comparing
+windows: AppKit and GTK objects may be used only on their UI thread. Pass any
+call on the handle to `InvokeNativeAsync`, which runs it there with the handle.
+
+`DesktopPlatform.IsHighContrast` reads the current high-contrast setting once,
+which decides a window's initial theme when `DesktopWindowOptions.HighContrast`
+is not set. To follow changes, observe `IDesktopSettings` from Runic.Platform.
+
 ## Window state and restore
 
 An embedded window whose `Capabilities` include `DesktopWindowCapabilities.State`
@@ -214,8 +240,8 @@ monitor that is no longer connected, the window moves to the work area it
 overlaps most, or else to the nearest one, and shrinks to fit it. A window that
 spanned two monitors moves onto the one that held most of it. A placement
 without a position keeps the platform's position and is only shrunk. A damaged
-placement never fails the open: a zero size keeps `Width` and `Height`, a lone
-coordinate is ignored and a size above 65535 is reduced. Full-screen is
+placement never fails the open: a size of zero or less keeps `Width` and
+`Height`, a lone coordinate is ignored and a size above 65535 is reduced. Full-screen is
 reported but not restored; open with `Kiosk` for that.
 
 The values use the units `MoveAsync` and `ResizeAsync` take on each platform,
@@ -338,6 +364,10 @@ instead of navigating it; its drop reports no paths and raises no event.
 Dragging files out of a window is not supported yet.
 
 ## Callback concurrency and ordering
+
+The capabilities, connection events and scripts of this section are the
+low-level presentation transport, an experimental API (`RUNICDESK101`, see
+[Experimental APIs](#experimental-apis)); Runic Windows and Views use it for you.
 
 Each browser connection admits one callback or event at a time, but an
 asynchronous callback holds that turn only until its handler first awaits an
@@ -575,7 +605,7 @@ again: the diagnostic is then an error, and the window stays blank until it is
 reopened. A process the application ended itself is reported without a reload.
 Look for the crash of `WebKitWebProcess` in the system journal, for example
 with `coredumpctl`. A custom `IDesktopWindowHost` reports such events through
-`DesktopWindowHostOptions.ReportDiagnostic`.
+`DesktopWindowHostOptions.DiagnosticSink`.
 
 ## Keyboard and zoom in embedded windows
 
@@ -664,6 +694,33 @@ The menu titles are English. CI checks Command and A, C and V between two text
 fields, and Command and Q through a close guard, on the macOS runner. On macOS, Tab reaches
 buttons and links only with Keyboard Navigation turned on in the system settings,
 as in Safari.
+
+## MSBuild properties
+
+| Property | Default | Effect |
+| --- | --- | --- |
+| `RunicDesktopMinimalHost` | `false` | `true` builds each surface's listener from an empty ASP.NET Core builder with Kestrel core and sockets only, and NativeAOT trims the default builder path; see the [size and tuning guide](https://docs.runic-artifex.eu/guides/desktop/size-and-tuning/). Any value other than `true` or `false` fails the build with [`RUNICDESK001`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk001). |
+
+## Experimental APIs
+
+Two API families of this package are experimental: using them is a compile
+error until the project suppresses their ID, and they may change in a minor
+release. Applications that open windows through `DesktopHost`, select GTK 4 with
+`WithGtk4()` or use Runic Windows and Views need neither.
+
+| ID | Family |
+| --- | --- |
+| `RUNICDESK100` | Custom window hosts: `IDesktopWindowHostFactory`, `IDesktopWindowHost` and its optional interfaces, `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`, `LinuxDesktopRuntime.ClaimBackend` and `IsLibraryAvailable` |
+| `RUNICDESK101` | The low-level presentation transport of `DesktopSurface`: `RegisterCapability`, `SubscribeConnectionEvents`, `ConnectionCount`, `RunJavaScriptAsync`, `ExecuteJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types |
+
+See [Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md)
+for their status and how to suppress an ID.
+
+`ExecuteJavaScriptAsync(script, cancellationToken)` returns the script's result
+from one connected session and never cuts it: a result larger than 16 MiB of
+UTF-8 fails with `DesktopException` (`LimitExceeded`, code
+`script-result-too-large`). Bound the wait with the token, for example from a
+`CancellationTokenSource` created with a delay.
 
 ## Security notes
 

@@ -49,7 +49,7 @@ public sealed class DesktopApiTests
         await using var host = await DesktopHost.StartAsync();
         var availability = host.GetPresentationPreflight(new() { Browser = BrowserKind.Embedded });
         Assert.False(availability.IsAvailable);
-        Assert.Equal("linux-embedded-backend-not-selected", availability.Diagnostic?.Code);
+        Assert.Equal("linux-embedded-backend-not-selected", availability.Diagnostics[0].Code);
         await using var surface = await host.CreateSurfaceAsync();
         var error = await Assert.ThrowsAsync<DesktopException>(async () => await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded }));
         Assert.Equal("linux-embedded-backend-not-selected", error.Code);
@@ -60,7 +60,7 @@ public sealed class DesktopApiTests
     {
         if (!OperatingSystem.IsLinux()) return;
         await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 } });
-        Assert.Equal("gtk4-provider-missing", host.GetPresentationPreflight(new() { Browser = BrowserKind.Embedded }).Diagnostic?.Code);
+        Assert.Equal("gtk4-provider-missing", host.GetPresentationPreflight(new() { Browser = BrowserKind.Embedded }).Diagnostics[0].Code);
     }
 
     [Test]
@@ -391,7 +391,7 @@ public sealed class DesktopApiTests
         });
 
         Assert.Equal(DesktopPermissionGrant.MediaCapture, factory.Host?.Options?.AllowedPermissions);
-        Assert.False(window.FellBack);
+        Assert.False(window.IsFallback);
         Assert.Equal(BrowserKind.Embedded, window.Browser);
         Assert.Equal(BrowserKind.Embedded, window.RequestedBrowser);
     }
@@ -458,7 +458,7 @@ public sealed class DesktopApiTests
         Assert.Equal(DesktopPresentationPolicy.RequestedOnly, requestedOnly.PresentationPolicy);
         Assert.False(requestedOnly.IsAvailable);
         Assert.Equal(DesktopWindowCapabilities.None, requestedOnly.Preferred.Capabilities);
-        Assert.Equal("custom-window-host-unavailable", requestedOnly.Diagnostic?.Code);
+        Assert.Equal("custom-window-host-unavailable", requestedOnly.Diagnostics[0].Code);
         Assert.Equal(DesktopPresentationPolicy.EmbeddedThenBrowser, explicitFallback.PresentationPolicy);
         Assert.NotNull(explicitFallback.Fallback);
         Assert.Equal(
@@ -509,7 +509,7 @@ public sealed class DesktopApiTests
                 PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
             });
 
-            Assert.True(window.FellBack);
+            Assert.True(window.IsFallback);
             Assert.Equal(BrowserKind.Chrome, window.RequestedBrowser);
             Assert.Equal(BrowserKind.Chrome, window.Browser);
             Assert.Contains(diagnostics, static item => item.Code == "embedded-presentation-fallback");
@@ -649,7 +649,7 @@ public sealed class DesktopApiTests
     }
 
     // #313: an embedded window reports its own events, such as a crashed WebKitGTK web process, through
-    // DesktopWindowHostOptions.ReportDiagnostic to the sink and the Desktop logger (event 3010), and a failing sink
+    // DesktopWindowHostOptions.DiagnosticSink to the sink and the Desktop logger (event 3010), and a failing sink
     // does not reach the window.
     [Test]
     public async Task EmbeddedWindowDiagnosticsReachTheSinkAndTheLog()
@@ -671,7 +671,7 @@ public sealed class DesktopApiTests
         });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<p>page</p>") });
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-        var report = factory.Host?.Options?.ReportDiagnostic;
+        var report = factory.Host?.Options?.DiagnosticSink;
         Assert.NotNull(report);
 
         var crashed = new DesktopDiagnostic(DesktopErrorCategory.OperationFailed, "web-process-terminated",
@@ -1011,6 +1011,43 @@ public sealed class DesktopApiTests
 
         Assert.Equal(RequestCancellationReason.SurfaceClosing, observedRequest?.CancellationReason);
         await stream.Disposed.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Test]
+    public async Task ExecuteJavaScriptReturnsTheWholeResultAndStopsWithItsToken()
+    {
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync();
+        using var client = new HttpClient();
+        var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
+        var token = ExtractUnsigned(bridge, "const TOKEN = ");
+        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var socket = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
+        async Task<ushort> ReceiveScriptAsync(string script)
+        {
+            while (true)
+            {
+                var packet = await ReceivePacketAsync(socket, timeout.Token);
+                if (packet[7] != 0xFE) continue;
+                Assert.Equal(script, Encoding.UTF8.GetString(packet[PacketHeaderSize..]).TrimEnd('\0'));
+                return BinaryPrimitives.ReadUInt16LittleEndian(packet.AsSpan(5, 2));
+            }
+        }
+
+        // A result larger than the former 4 KiB default response buffer is returned whole.
+        var expected = new string('x', 10_000);
+        var large = surface.ExecuteJavaScriptAsync("return large;", timeout.Token);
+        var id = await ReceiveScriptAsync("return large;");
+        await SendPacketAsync(socket, CreatePacket(token, id, 0xFE, [0, .. Encoding.UTF8.GetBytes(expected), 0]), timeout.Token);
+        Assert.Equal(expected, await large);
+
+        // The token, not a separate timeout, ends the wait.
+        using var stop = new CancellationTokenSource();
+        var pending = surface.ExecuteJavaScriptAsync("return never;", stop.Token);
+        _ = await ReceiveScriptAsync("return never;");
+        await stop.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
     }
 
     private sealed class RequestMarker
@@ -1470,7 +1507,7 @@ public sealed class DesktopApiTests
         public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
+        public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
         public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default)
         {

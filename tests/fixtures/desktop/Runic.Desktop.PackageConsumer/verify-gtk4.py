@@ -45,21 +45,24 @@ Console.WriteLine("PASS base Desktop package without GTK4");
             program = '''using Runic.Desktop;
 using Runic.Desktop.Gtk4;
 if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException();
+// The public GTK 4 path: WithGtk4() and DesktopEventLoop.Run, without the experimental window host API.
+// The page has no Bridge script, so the window does not wait for one to connect.
+var options = new DesktopHostOptions { WaitForConnection = false }.WithGtk4();
 if (args.Contains("--missing-runtime"))
 {
-    if (new Gtk4WindowHostFactory().IsSupported) throw new Exception("GTK4 runtime is still visible; missing-runtime check is invalid.");
-    try { Gtk4Application.Run(() => Task.FromResult(0)); }
-    catch (PlatformNotSupportedException e) when (e.Message.Contains("GTK 4.12") && e.Message.Contains("WebKitGTK 6"))
-    { Console.WriteLine("PASS actionable missing-native-runtime diagnostic"); return 0; }
-    throw new Exception("Missing runtime was not diagnosed.");
+    return DesktopEventLoop.Run(options, host =>
+    {
+        var embedded = host.GetAvailability().Presentations.Single(static item => item.Browser == BrowserKind.Embedded);
+        if (embedded.IsAvailable || !embedded.Diagnostics.Any(static item => item.Code == "gtk4-runtime-missing"))
+            throw new Exception("Missing runtime was not diagnosed.");
+        Console.WriteLine("PASS actionable missing-native-runtime diagnostic");
+        return Task.FromResult(0);
+    });
 }
-return Gtk4Application.Run(async () =>
+return DesktopEventLoop.Run(options, async host =>
 {
-    if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException();
-    var factory = new Gtk4WindowHostFactory();
-    if (!factory.IsSupported) throw new Exception("GTK4 provider unavailable");
-    await using var window = factory.Create();
-    await window.OpenAsync(new Uri("about:blank"), new DesktopWindowHostOptions { Width = 640, Height = 480 });
+    await using var surface = await host.CreateSurfaceAsync(new() { Content = new DesktopContent.Html("<title>GTK4</title>") });
+    await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, Width = 640, Height = 480 });
     if (!window.IsOpen || window.NativeHandle == 0) throw new Exception("Native window missing");
     await window.CloseAsync();
     if (window.IsOpen) throw new Exception("Native window did not close");

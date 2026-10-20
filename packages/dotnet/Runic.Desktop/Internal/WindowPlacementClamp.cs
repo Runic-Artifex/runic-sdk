@@ -29,7 +29,7 @@ internal readonly record struct ScreenRect(int X, int Y, int Width, int Height)
 internal static class WindowPlacementClamp
 {
     // The largest size a placement may ask for before a host clamps it; no monitor is larger.
-    internal const uint MaximumDimension = 65_535;
+    internal const int MaximumDimension = 65_535;
 
     // The work area the window overlaps most, or the nearest one when it overlaps none. Then the window shrinks to fit
     // it and moves fully inside it. A window already inside one work area stays where it is.

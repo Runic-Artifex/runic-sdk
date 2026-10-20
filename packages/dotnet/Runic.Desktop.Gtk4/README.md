@@ -24,7 +24,7 @@ return DesktopEventLoop.Run(new DesktopHostOptions().WithGtk4(), async host =>
 ```
 
 `DesktopEventLoop.Run(options, application)` picks the loop for the platform
-and the host. On Linux with `WithGtk4()` it runs `Gtk4Application.Run`. On
+and the host. On Linux with `WithGtk4()` it runs the GTK 4 application lifetime. On
 macOS it runs the AppKit loop. On Windows and Linux GTK 3 it waits for the work.
 The same `Main` therefore works on every platform. It validates the options and
 builds the host before GTK starts, so an options error does not use up the one
@@ -34,12 +34,19 @@ not start GTK. Instead it reports the reasons, including
 `gtk4-display-unavailable`, to `DiagnosticSink` and the Desktop logger. The host
 still runs, so a browser fallback can open. The host is disposed before the loop
 ends. Only one Desktop event loop runs per process; a nested call throws.
-`WithGtk4(applicationId)` validates the reverse-DNS ID on every OS. `Gtk4Application.Run` remains available for applications that start
-hosts themselves.
+`WithGtk4(applicationId)` validates the reverse-DNS ID on every OS. This is the
+only entry point: the former `Gtk4Application.Run`, which skipped the option
+validation, browser fallback, signal handling and host disposal, is internal
+since 0.9.0-preview.1. An application that started hosts itself inside it calls
+`DesktopEventLoop.Run(new DesktopHostOptions().WithGtk4(), ...)` and creates them
+in the callback.
 
 `WithGtk4()` applies the GTK 4 profile in one step: it selects
 `LinuxEmbeddedBackend.Gtk4WebKit6` and sets `WindowHostFactory` to a
-`Gtk4WindowHostFactory`, so the two cannot disagree. On Windows and macOS it
+`Gtk4WindowHostFactory`, so the two cannot disagree. The factory class belongs
+to the experimental custom window host family (`RUNICDESK100`, see
+[Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md));
+`WithGtk4()` needs no suppression. On Windows and macOS it
 keeps the platform's own embedded host. It throws `ArgumentException` when the
 options already carry another factory. When the profile cannot run,
 `DesktopHost.Validate` and `GetAvailability` list every missing library
@@ -47,8 +54,8 @@ options already carry another factory. When the profile cannot run,
 first. `dotnet runic doctor` adds a `gtk4-profile` check that also names a
 missing `Runic.Application.Views.Desktop`, which creates the GTK 4 window services.
 
-Pass an installed application identity with `WithGtk4("org.example.MyApp")`
-or `Gtk4Application.Run(callback, "org.example.MyApp")`. Inside Flatpak the runner automatically uses `FLATPAK_ID`;
+Pass an installed application identity with `WithGtk4("org.example.MyApp")`.
+Inside Flatpak the runner automatically uses `FLATPAK_ID`;
 an explicit ID must match it. Outside Flatpak the existing overload retains its
 default identity.
 

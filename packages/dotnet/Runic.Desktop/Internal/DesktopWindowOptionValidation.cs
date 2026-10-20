@@ -251,7 +251,7 @@ internal static class DesktopWindowOptionValidation
         HighContrast = options.HighContrast ?? WebUiSystemTheme.IsHighContrast,
         IconFile = options.IconFile,
         ProfilePath = options.ProfilePath,
-        CustomArguments = options.BrowserArguments,
+        BrowserArguments = options.BrowserArguments,
         AllowedPermissions = options.AllowedPermissions,
     };
 

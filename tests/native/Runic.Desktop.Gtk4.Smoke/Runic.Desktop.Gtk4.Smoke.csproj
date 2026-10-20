@@ -4,11 +4,14 @@
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
+    <!-- Uses the experimental Desktop APIs (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK100;RUNICDESK101</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/KeyboardSmoke.cs" Link="KeyboardSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/XTestPointer.cs" Link="XTestPointer.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/SurfaceScripts.cs" Link="SurfaceScripts.cs" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />

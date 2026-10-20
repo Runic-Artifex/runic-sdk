@@ -337,7 +337,7 @@ generated typed mocks of `@runic-artifex/views/mock`; see its
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 To drive the whole application in a browser, use `RunicServeOnlyApplication`
 (below); to run script in the embedded Runic Desktop View from an in-process
-test, use `DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync`. See the
+test, use `DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync` (experimental, `RUNICDESK101`). See the
 [Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 section.
 

@@ -15,7 +15,7 @@ public sealed class WindowGenerationTests
         await using var second = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
         var replacement = factory.Hosts[1];
         Assert.Equal(DesktopWindowCapabilities.None, first.Capabilities);
-        Assert.Equal(0UL, first.ProcessId);
+        Assert.Equal(0, first.ProcessId);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => first.FocusAsync().AsTask());
         await Assert.ThrowsAsync<ObjectDisposedException>(() => first.MinimizeAsync().AsTask());
         await Assert.ThrowsAsync<ObjectDisposedException>(() => first.ToggleMaximizedAsync().AsTask());
@@ -24,6 +24,19 @@ public sealed class WindowGenerationTests
         Assert.Equal(0, replacement.Mutations);
         await second.FocusAsync();
         Assert.Equal(1, replacement.Mutations);
+    }
+
+    [Test]
+    public async Task ResizeRejectsANonPositiveSizeBeforeTheWindowHost()
+    {
+        var factory = new Factory();
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => window.ResizeAsync(0, 30).AsTask());
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => window.ResizeAsync(20, -30).AsTask());
+        Assert.Equal(0, factory.Hosts[0].Mutations);
     }
 
     [Test]
@@ -80,7 +93,7 @@ public sealed class WindowGenerationTests
             Assert.False(options.Centered);
             Assert.False(options.HighContrast);
             Assert.Null(options.IconFile);
-            Assert.Null(options.CustomArguments);
+            Assert.Null(options.BrowserArguments);
             Assert.NotEqual(factory.Hosts[0].Options!.ProfilePath, options.ProfilePath);
         }
         finally { File.Delete(icon); }
@@ -145,7 +158,7 @@ public sealed class WindowGenerationTests
         public ValueTask FocusAsync(CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => MutateAsync();
-        public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => MutateAsync();
+        public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;

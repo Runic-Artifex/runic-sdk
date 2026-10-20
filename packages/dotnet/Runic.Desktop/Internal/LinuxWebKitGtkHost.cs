@@ -242,8 +242,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             {
                 X = isWayland ? null : x,
                 Y = isWayland ? null : y,
-                Width = (uint)width,
-                Height = (uint)height,
+                Width = width,
+                Height = height,
             };
         }
         Api.GtkWindowSetDefaultSize(_window, width, height);
@@ -353,7 +353,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             (var positionX, var positionY) = Api.GtkWindowGetPosition(_window);
             (x, y) = (positionX, positionY);
         }
-        var current = new DesktopWindowPlacement { X = x, Y = y, Width = (uint)Math.Max(1, width), Height = (uint)Math.Max(1, height) };
+        var current = new DesktopWindowPlacement { X = x, Y = y, Width = Math.Max(1, width), Height = Math.Max(1, height) };
         if (!maximized && !fullScreen && !tiled)
         {
             _normal = current;

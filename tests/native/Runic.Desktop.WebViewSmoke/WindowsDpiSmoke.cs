@@ -13,8 +13,8 @@ internal static partial class WindowsDpiSmoke
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
     // Small enough to fit the 1080-pixel work area at 175 %, where Windows would shrink a taller suggested rectangle.
-    private const uint Width = 640;
-    private const uint Height = 400;
+    private const int Width = 640;
+    private const int Height = 400;
 
     internal static async Task RunAsync(DesktopHostOptions hostOptions)
     {
@@ -48,7 +48,7 @@ internal static partial class WindowsDpiSmoke
         }
     }
 
-    private sealed record Sample(uint Dpi, int ClientWidth, int ClientHeight, uint StateWidth, double PixelRatio, double InnerWidth);
+    private sealed record Sample(uint Dpi, int ClientWidth, int ClientHeight, int StateWidth, double PixelRatio, double InnerWidth);
 
     // Waits until the window reports the DPI, then checks its sizes against the 100 % baseline.
     private static async Task<Sample> ExpectAsync(DesktopSurface surface, DesktopWindow window, uint dpi, Sample? baseline)
