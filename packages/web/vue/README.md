@@ -11,7 +11,7 @@ bun add @runic-artifex/vue@preview @runic-artifex/views@preview
 ```
 
 Previews are published under the `preview` dist-tag. Install the versions that
-match your Runic SDK packages. Vue 3.5 or later is supported.
+match your Runic SDK packages. Vue 3.5.30 or a later 3.x release is supported.
 
 ```vue
 <script setup lang="ts">
@@ -151,6 +151,72 @@ run that ends with a `cancelled` status sets `cancelled` and resolves to `undefi
 without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
 stays true after a Cancel response until the operation reaches its terminal status.
 Disposing the effect scope settles run promises without cancelling accepted work.
+
+## Errors
+
+The `error` of `useView` and of a command or operation handle is typed
+`unknown`: it holds whatever the connection or the call rejected with. A Bridge
+failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
+`instanceof` before reading `kind`, `route` or `detail`:
+
+```ts
+import { BridgeError } from "@runic-artifex/views";
+
+const offline = error.value instanceof BridgeError && error.value.kind === "disconnected";
+```
+
+`instanceof` holds for errors from every copy of the package on the page.
+[Errors and diagnostics](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#errors-and-diagnostics)
+lists the kinds. Any other value, such as an exception that your own connect
+function or command callback throws, arrives unchanged.
+
+The composables run in the browser or webview that a Runic host serves.
+`useView` connects during `setup()`, which also runs in a server render: render
+the components that use it on the client only.
+
+## Interactions
+
+A ReactiveUI `Interaction<TInput, TOutput>` on the ViewModel, such as the
+question of a `ReactiveLeaveConfirmation.WithInteraction` leave guard, is
+`client.interactions.<name>` on the generated client. Register the page's answer
+in `watchEffect`: `handle((prompt, { signal }) => …)` returns the function that
+removes it, so pass that to `onCleanup`, and Vue removes the handler when the
+client changes or the component unmounts:
+
+```vue
+<script setup lang="ts">
+import { watchEffect } from "vue";
+import { useView } from "@runic-artifex/vue";
+import type { EditPageReference } from "./generated/edit.js";
+
+const props = defineProps<{ page: EditPageReference }>();
+const { client } = useView(() => props.page);
+watchEffect(onCleanup => {
+  const remove = client.value?.interactions.confirmDiscard.handle(
+    async (prompt, { signal }) => confirmDialog(`Discard the changes to ${prompt.itemName}?`, signal),
+  );
+  if (remove) onCleanup(remove);
+});
+</script>
+```
+
+`prompt` and the answer are typed from the ViewModel's interaction. The handler
+may return the answer or a promise of it; `confirmDialog` stands for the
+application's own dialog.
+
+- The page is asked for a departure that its own window starts: its Close, the
+  shell's Back in the same window, or a guarded window close.
+- `signal` aborts when .NET no longer needs the answer, for example when the
+  departure is superseded or the window closes. Close the dialog then; a late
+  answer is ignored.
+- The handler exists only after the client connected and the effect ran. A
+  departure before that is answered by the ViewModel's .NET fallback handler, or
+  fails closed without one.
+
+The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+has the .NET side and which View answers which departure. In a frontend test,
+the generated mock's `interactions.<name>.request(input)` resolves with the
+registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
 ## `useCollectionViewport(options)`
 

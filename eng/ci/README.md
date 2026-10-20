@@ -183,7 +183,9 @@ Other runs choose legs this way:
 - Managed groups and web packages run when a component owning one of their suites
   is affected. The `managed` job runs each planned group, and the `web` job each planned
   web package, as its own named step; a step also runs after another one failed, so one
-  run reports every failure. The `web` job's Svelte checks and npm framework consumers
+  run reports every failure. When React, Vue, Svelte or views-effect is planned, the
+  `web` job also runs their tests at the lowest framework version each peer range
+  accepts (`tests/web/lowest-peers`). The `web` job's Svelte checks and npm framework consumers
   follow `svelte`; `views` follows `examples`; package consumers and templates run for
   any affected component.
   Native jobs follow `desktop`, `platform`, `application`, `examples` and

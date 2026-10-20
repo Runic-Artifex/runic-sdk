@@ -11,6 +11,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="ReactiveUI" />
+    <!-- Direct references bound every package whose types the public API exposes (eng/release/README.md). -->
+    <PackageReference Include="ReactiveUI.Core" />
+    <PackageReference Include="ReactiveUI.Binding" />
+    <PackageReference Include="ReactiveUI.Primitives" />
     <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />

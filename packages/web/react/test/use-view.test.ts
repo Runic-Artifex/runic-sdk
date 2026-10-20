@@ -1,4 +1,5 @@
-import { act, Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
+import * as React from "react";
+import { Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
@@ -6,6 +7,9 @@ import {
   retrySuspenseView, useCollectionViewport, useCommand, useOperation, useSuspenseView, useView, ViewOutlet,
   type CollectionViewportHandle, type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry, type ViewSource,
 } from "../dist/index.js";
+
+// React 18.3.0, the lowest supported React, exports act only as unstable_act.
+const act: typeof React.act = React.act ?? (React as unknown as { unstable_act: typeof React.act }).unstable_act;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -12,6 +12,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
+    <!-- Direct references bound every package whose types the public API exposes (eng/release/README.md). -->
+    <PackageReference Include="ReactiveUI.Binding" />
+    <PackageReference Include="ReactiveUI.Disposables" />
+    <PackageReference Include="ReactiveUI.Primitives" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>

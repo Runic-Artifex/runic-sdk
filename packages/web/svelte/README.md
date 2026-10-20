@@ -14,7 +14,8 @@ bun add @runic-artifex/svelte@preview @runic-artifex/views@preview
 ```
 
 Previews are published under the `preview` dist-tag. Install the versions that
-match your Runic SDK packages.
+match your Runic SDK packages. Svelte 5.57.1 or a later 5.x release is supported,
+the same floor as SvelteKit 3 and `@runic-artifex/sveltekit`.
 
 ```svelte
 <script lang="ts">
@@ -177,6 +178,64 @@ detaches it without cancellation and permits fresh admission. The application mu
 establish that replacement boundary and own the old work's drain. Lost terminal
 observation blocks further Starts instead of retrying blindly, with its reason in
 `current.error`; ordinary Cancel does not clear this block.
+
+## Errors
+
+The `error` of `useView` and of a command or operation helper is typed
+`unknown`: it holds whatever the connection or the call rejected with. A Bridge
+failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
+`instanceof` before reading `kind`, `route` or `detail`:
+
+```ts
+import { BridgeError } from "@runic-artifex/views";
+
+const offline = view.error instanceof BridgeError && view.error.kind === "disconnected";
+```
+
+`instanceof` holds for errors from every copy of the package on the page.
+[Errors and diagnostics](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#errors-and-diagnostics)
+lists the kinds. Any other value, such as an exception that your own connect
+function or command callback throws, arrives unchanged.
+
+## Interactions
+
+A ReactiveUI `Interaction<TInput, TOutput>` on the ViewModel, such as the
+question of a `ReactiveLeaveConfirmation.WithInteraction` leave guard, is
+`client.interactions.<name>` on the generated client. Register the page's answer
+in `$effect`: `handle((prompt, { signal }) => …)` returns the function that
+removes it, so return that from the effect, and Svelte removes the handler when
+the client changes or the component is destroyed:
+
+```svelte
+<script lang="ts">
+  import { useView } from "@runic-artifex/svelte/views";
+  import type { EditPageReference } from "./generated/edit.js";
+
+  let { page }: { page: EditPageReference } = $props();
+  const view = useView(() => page);
+  $effect(() => view.client?.interactions.confirmDiscard.handle(
+    async (prompt, { signal }) => confirmDialog(`Discard the changes to ${prompt.itemName}?`, signal),
+  ));
+</script>
+```
+
+`prompt` and the answer are typed from the ViewModel's interaction. The handler
+may return the answer or a promise of it; `confirmDialog` stands for the
+application's own dialog.
+
+- The page is asked for a departure that its own window starts: its Close, the
+  shell's Back in the same window, or a guarded window close.
+- `signal` aborts when .NET no longer needs the answer, for example when the
+  departure is superseded or the window closes. Close the dialog then; a late
+  answer is ignored.
+- The handler exists only after the client connected and the effect ran. A
+  departure before that is answered by the ViewModel's .NET fallback handler, or
+  fails closed without one.
+
+The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+has the .NET side and which View answers which departure. In a frontend test,
+the generated mock's `interactions.<name>.request(input)` resolves with the
+registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
 ## `useCollectionViewport(options)`
 

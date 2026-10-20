@@ -65,6 +65,24 @@ admitted, an undecodable call and a handler that threw. No Views route replies
 with an empty string, so a client reports an empty reply as an invalid response
 (`failed`).
 
+### Shared globals
+
+One page can load several copies of `@runic-artifex/views`, for example from two
+bundles, and `@runic-artifex/vite-plugin-runic/client` reads its diagnostics.
+They find each other through `__runicBridge` and through these registered symbols
+(`Symbol.for`), so the keys and their shapes are part of the protocol. A release
+may add a key; renaming one or changing its shape is breaking.
+
+| Key | Set on | Contract |
+| --- | --- | --- |
+| `runic.views.generated-client-runtime` | `globalThis` | The page's runtime of generated clients: routes, operations and the mount session for the current `__runicBridge`. |
+| `runic.views.diagnostics` | `globalThis` | A `Set` of listener functions. Each is called with a `BridgeDiagnostic`: `kind` (`error` or `operation`), `code`, `message`, and optionally `route`, `detail`, `member`, `requestId` and, for local observers only, `error`. `code` is an open set; a listener ignores codes and fields it does not know. |
+| `runic.views.diagnosticReported` | An error | `true` once a diagnostic reported the error, so each error is reported once. |
+| `runic.views.unavailableReported` | `globalThis` | `true` once the page reported that it has no `__runicBridge`. |
+| `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |
+| `runic.bridgeOutcome` | An outcome | A non-enumerable `true` that `isBridgeOutcome` checks. |
+| `runic.views.mockFailure` | An error | The declared failure of an error from `mockFailure()` (`@runic-artifex/views/mock`). |
+
 ## Routes
 
 A bridge's route prefix is its root ViewModel's camel-cased short name (for

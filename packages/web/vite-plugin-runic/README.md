@@ -22,6 +22,15 @@ provide bounded diagnostics and HMR resource ownership helpers. The optional
 `@vitejs/devtools` peer enables the Runic dock; register `DevTools()` in your
 Vite configuration when selecting `devtools: true`.
 
+`devtools` takes `true`, `false` or `"auto"`. `"auto"` is the default and the
+same as omitting the option: the development client is injected while serving,
+and the Runic dock appears when `DevTools()` is registered. `true` also requires
+`DevTools()`: serving without it fails with
+[`RUNICP007`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicp007).
+`false` turns off both the dock and the development client.
+`maxTimelineEntries` sets how many timeline entries the dock keeps: 200 by
+default, rounded down and limited to 1 to 500.
+
 While serving, the plugin adds `virtual:runic/client` to `index.html`. It
 forwards `@runic-artifex/views` failures to the timeline: the failed route, the
 error kind and, for errors, a failure with the exception type, message and

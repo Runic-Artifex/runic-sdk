@@ -39,5 +39,15 @@ Responses carry the manifest's entity tag and cache policy, `Accept-Ranges` and
 sent with `; charset=utf-8`, as `Runic.Assets.AspNetCore` sends it, so one
 archive gets the same `Content-Type` on both hosts.
 
+An unexpected exception while the adapter prepares a response, after the path
+resolved and before the body starts, becomes an empty `500`; the adapter does
+not log it. A malformed `Range` header is ignored, and an unsatisfiable one
+answers `416`. The asset itself is opened
+only when Runic Desktop reads the body, through the response's stream factory.
+A failure there, such as a source that cannot open the asset or content that no
+longer matches the manifest entry's length and entity tag
+(`InvalidDataException`), is thrown from that factory and handled by Runic
+Desktop like any other failing content stream.
+
 For a Runic Views application, which ships its frontend in `www/` instead, see
 [Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder).

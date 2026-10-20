@@ -250,3 +250,30 @@ test("the ReactiveUI navigation adapters ship without Runic.Application.Views", 
     assert.doesNotMatch(project, /Runic\.Application/, name);
   }
 });
+
+// eng/release/README.md, "Third-party dependencies": every third-party package whose types a shipped
+// API exposes is bounded to its tested major, and the ReactiveUI adapters reference each one directly.
+test("exposed third-party packages are bounded to their tested major and referenced directly", () => {
+  const props = readFileSync(resolve(root, "Directory.Packages.props"), "utf8");
+  const versionOf = name => props.match(new RegExp(`<PackageVersion Include="${name.replaceAll(".", "\\.")}" Version="([^"]+)"`))?.[1];
+  const exposed = {
+    "Runic.Application.Views.ReactiveUI": ["ReactiveUI", "ReactiveUI.Core", "ReactiveUI.Binding", "ReactiveUI.Primitives"],
+    "Runic.Application.Views.ReactiveUI.Reactive": ["ReactiveUI.Reactive", "ReactiveUI.Core", "ReactiveUI.Binding.Reactive", "System.Reactive"],
+    "Runic.Navigation.ReactiveUI": ["ReactiveUI", "ReactiveUI.Binding", "ReactiveUI.Disposables", "ReactiveUI.Primitives"],
+    "Runic.Navigation.ReactiveUI.Reactive": ["ReactiveUI.Reactive", "ReactiveUI.Binding.Reactive", "ReactiveUI.Primitives.Reactive", "System.Reactive"],
+    "Runic.Application.Views.CsWebUi": ["CsWebUi"],
+    "Runic.Application.Testing": ["Microsoft.Extensions.TimeProvider.Testing"],
+  };
+  for (const [project, packages] of Object.entries(exposed)) {
+    const file = readFileSync(resolve(root, `packages/dotnet/${project}/${project}.csproj`), "utf8");
+    for (const name of packages) {
+      assert.match(file, new RegExp(`<PackageReference Include="${name.replaceAll(".", "\\.")}" />`), `${project} references ${name}`);
+      const range = versionOf(name);
+      const match = /^\[(\d+)\.[^,\]]+, (\d+)\)$/.exec(range ?? "");
+      assert.ok(match, `${name} has a bounded range in Directory.Packages.props, not ${range}`);
+      assert.equal(Number(match[2]), Number(match[1]) + 1, `${name} is bounded to its major: ${range}`);
+    }
+  }
+  const effect = json("packages/web/views-effect/package.json").peerDependencies.effect;
+  assert.match(effect, /^\^\d+\./, "views-effect bounds effect to its major");
+});

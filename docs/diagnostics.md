@@ -1,8 +1,9 @@
 # Diagnostics
 
 Every diagnostic ID that a Runic SDK package reports has an entry here, except
-the experimental API ID (`RUNICWPF001`), which
-[Experimental APIs](experimental.md) describes. Build errors, `dotnet runic`
+the experimental API IDs, which [Experimental APIs](experimental.md) describes.
+The [release policy](../eng/release/README.md#what-counts-as-breaking) lists the
+families and what may change in them. Build errors, `dotnet runic`
 failures, the asset packer and Runic.Create link to their entry at the release
 tag of the package that reported them, so the text matches the version you use.
 Change the tag in the address to read another release.
@@ -15,6 +16,8 @@ Each entry starts with what the ID means. **Fix** says what to change.
 - [Runic.Create (`RCREATE`)](#runiccreate)
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
 - [D-Bus source generator (`RUNICDBUS`)](#d-bus-source-generator)
+- [Privileged actions on Windows (`RUNICEL`)](#privileged-actions-on-windows)
+- [Vite plugin (`RUNICP`)](#vite-plugin)
 
 ## Bridge code generator
 
@@ -994,3 +997,18 @@ or write `DOTNET_EventPipeOutputPath`, the standalone GC would load
 
 **Fix:** remove the setting; the package turns them off and invariant
 globalization on for helpers.
+
+## Vite plugin
+
+`@runic-artifex/vite-plugin-runic` reports these errors when Vite resolves its
+configuration. Numbers below `007` are not assigned. See the
+[plugin guide](../packages/web/vite-plugin-runic/README.md).
+
+### RUNICP007
+
+`runic({ devtools: true })` is served without the Vite DevTools plugin: the
+plugins array has no `DevTools()` from `@vitejs/devtools`.
+
+**Fix:** install `@vitejs/devtools` and add `DevTools()` to the plugins, or
+leave `devtools` at its default, `"auto"`, which shows the Runic dock only when
+DevTools is registered.

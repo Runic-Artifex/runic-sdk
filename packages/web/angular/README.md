@@ -11,7 +11,7 @@ bun add @runic-artifex/angular@preview @runic-artifex/views@preview
 ```
 
 Previews are published under the `preview` dist-tag. Install the versions that
-match your Runic SDK packages.
+match your Runic SDK packages. Angular 22 is supported.
 
 ## Connecting a View
 
@@ -101,9 +101,11 @@ The outlet is generic over the reference union it receives, so the registry
 must have a component for every kind whose `page` input accepts that reference.
 It remounts the component when the logical View reference changes, and creates
 it outside its own signal tracking. A component's `page` input receives that
-reference; `injectView(this.page)` owns its connection and cleanup. Missing
-kinds render an alert. The generated TypeScript client can also be used
-directly without Angular.
+reference; `injectView(this.page)` owns its connection and cleanup. Declare
+`page` as a required signal input, `input.required<DocumentReference>()`: a
+decorator `@Input() page` or an optional `input<DocumentReference>()` does not
+satisfy `ViewRegistry`. Missing kinds render an alert. The generated TypeScript
+client can also be used directly without Angular.
 
 ## Commands
 
@@ -160,6 +162,77 @@ status. Destroying the injection context settles run promises without cancelling
 accepted work. The options also take the controller's `cancel(operation)` and
 `waitForCompletion(operation, status)` callbacks, and `injector` outside an injection
 context.
+
+## Errors
+
+The `error()` signal of `injectView` and of a command or operation is typed
+`unknown`: it holds whatever the connection or the call rejected with. A Bridge
+failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
+`instanceof` before reading `kind`, `route` or `detail`:
+
+```ts
+import { BridgeError } from "@runic-artifex/views";
+
+const error = this.view.error();
+const offline = error instanceof BridgeError && error.kind === "disconnected";
+```
+
+`instanceof` holds for errors from every copy of the package on the page.
+[Errors and diagnostics](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#errors-and-diagnostics)
+lists the kinds. Any other value, such as an exception that your own connect
+function or command callback throws, arrives unchanged.
+
+The signals run in the browser or webview that a Runic host serves. `injectView`
+connects in an effect, which Angular also runs in a server render: render the
+components that use it on the client only.
+
+## Interactions
+
+A ReactiveUI `Interaction<TInput, TOutput>` on the ViewModel, such as the
+question of a `ReactiveLeaveConfirmation.WithInteraction` leave guard, is
+`client.interactions.<name>` on the generated client. Register the page's answer
+in an `effect`: `handle((prompt, { signal }) => …)` returns the function that
+removes it, so pass that to `onCleanup`, and Angular removes the handler when
+the client changes or the component is destroyed:
+
+```ts
+import { Component, effect, input } from "@angular/core";
+import { injectView } from "@runic-artifex/angular";
+import type { EditPageReference } from "./generated/edit";
+
+@Component({ selector: "edit-page", template: `…` })
+export class EditPage {
+  readonly page = input.required<EditPageReference>();
+  readonly view = injectView(this.page);
+
+  constructor() {
+    effect(onCleanup => {
+      const remove = this.view.client()?.interactions.confirmDiscard.handle(
+        async (prompt, { signal }) => confirmDialog(`Discard the changes to ${prompt.itemName}?`, signal),
+      );
+      if (remove) onCleanup(remove);
+    });
+  }
+}
+```
+
+`prompt` and the answer are typed from the ViewModel's interaction. The handler
+may return the answer or a promise of it; `confirmDialog` stands for the
+application's own dialog.
+
+- The page is asked for a departure that its own window starts: its Close, the
+  shell's Back in the same window, or a guarded window close.
+- `signal` aborts when .NET no longer needs the answer, for example when the
+  departure is superseded or the window closes. Close the dialog then; a late
+  answer is ignored.
+- The handler exists only after the client connected and the effect ran. A
+  departure before that is answered by the ViewModel's .NET fallback handler, or
+  fails closed without one.
+
+The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+has the .NET side and which View answers which departure. In a frontend test,
+the generated mock's `interactions.<name>.request(input)` resolves with the
+registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
 ## Collection viewports
 
