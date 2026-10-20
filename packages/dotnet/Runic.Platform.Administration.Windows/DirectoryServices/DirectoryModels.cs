@@ -43,12 +43,15 @@ public enum DirectorySearchScope
     Subtree
 }
 /// <summary>A typed LDAP attribute value.</summary>
+/// <remarks>Reads choose the type from the attribute's schema syntax. Writes send <see cref="Text"/> as UTF-8 and
+/// <see cref="Binary"/> unchanged.</remarks>
 public abstract record DirectoryValue
 {
     private DirectoryValue() { }
-    /// <summary>A directory text value.</summary>
+    /// <summary>A value of a string, number, boolean, time or distinguished-name syntax, decoded from UTF-8.</summary>
     public sealed record Text(string Value) : DirectoryValue;
-    /// <summary>A directory binary value, including GUIDs and SIDs.</summary>
+    /// <summary>A value of an octet-string (including GUIDs), SID or security-descriptor syntax, or of an attribute
+    /// that the schema does not define.</summary>
     public sealed record Binary(ImmutableArray<byte> Value) : DirectoryValue;
 }
 /// <summary>An immutable directory object; attribute names compare without case.</summary>

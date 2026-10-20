@@ -155,6 +155,23 @@ internal sealed class ApiShapeTests
             "GPMC local time must keep this computer's offset.");
     }
 
+    // Reads are typed by schema syntax (#447): string syntaxes are text; octet string, SID, security
+    // descriptor and unknown syntaxes are binary.
+    [Test]
+    public void DirectorySchemaSyntaxSelectsTheValueType()
+    {
+        foreach (var (syntax, om) in new[] { ("2.5.5.1", 127), ("2.5.5.2", 6), ("2.5.5.3", 27), ("2.5.5.4", 20), ("2.5.5.5", 22), ("2.5.5.6", 18),
+            ("2.5.5.7", 127), ("2.5.5.8", 1), ("2.5.5.9", 2), ("2.5.5.9", 10), ("2.5.5.11", 23), ("2.5.5.11", 24), ("2.5.5.12", 64), ("2.5.5.13", 127),
+            ("2.5.5.14", 127), ("2.5.5.16", 65) })
+            Check(!WindowsDirectoryClient.IsBinarySyntax(syntax, om), $"Syntax {syntax}/{om} must be text.");
+        foreach (var (syntax, om) in new[] { ("2.5.5.10", 4), ("2.5.5.10", 127), ("2.5.5.15", 66), ("2.5.5.17", 4), ("2.5.5.99", 64), ("", 0) })
+            Check(WindowsDirectoryClient.IsBinarySyntax(syntax, om), $"Syntax {syntax}/{om} must be binary.");
+        Check(WindowsDirectoryClient.ReadValue("Grüße"u8.ToArray(), binary: false) == new DirectoryValue.Text("Grüße"), "UTF-8 text was not decoded.");
+        Check(WindowsDirectoryClient.ReadValue([0x01, 0xff], binary: true) is DirectoryValue.Binary { Value: [0x01, 0xff] }, "Binary bytes changed.");
+        try { _ = WindowsDirectoryClient.ReadValue([0xff, 0xfe], binary: false); throw new InvalidOperationException("Invalid UTF-8 text accepted."); }
+        catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.InvalidData, "Invalid UTF-8 text must be InvalidData."); }
+    }
+
     [Test]
     public void DirectoryTextReadsAreTyped()
     {
