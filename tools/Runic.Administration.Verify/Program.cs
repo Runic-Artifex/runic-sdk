@@ -1,3 +1,4 @@
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -84,6 +85,7 @@ internal static class VerifierApplication
         [
             "Runic.AdminVerify domain --server dc1.example.test --domain example.test",
             "Runic.AdminVerify domain --server dc1.example.test --domain example.test --base-dn \"OU=RunicTests,DC=example,DC=test\" --dns-zone example.test --allow-changes",
+            "Runic.AdminVerify domain --server dc1.example.test --domain example.test --base-dn \"OU=RunicTests,DC=example,DC=test\" --dns-zone example.test --expect-denied --credential-stdin",
         ])]
     [CommandResult("runic.administration.verify/1", typeof(VerifierJsonContext))]
     internal static Task<CommandOutcome<VerificationSummary>> Domain(
@@ -95,6 +97,8 @@ internal static class VerifierApplication
         [Option("--dns-server", ValueName = "HOST", Description = "DNS server, when separate from the controller.")] string? dnsServer = null,
         [Option("--dns-zone", ValueName = "ZONE", Description = "Existing test zone for DNS record checks; no zone is created.")] string? dnsZone = null,
         [Option("--allow-changes", Description = "Create and delete owned directory objects, GPOs and DNS records.")] bool allowChanges = false,
+        [Option("--expect-denied", Description = "Attempt owned LDAP, DNS and GPO writes below --base-dn and in --dns-zone with a restricted identity, and require each to be denied.")] bool expectDenied = false,
+        [Option("--credential-stdin", Description = "Read a user name (DOMAIN\\user or UPN) and a password as two lines from standard input. LDAP and DNS receive them as explicit credentials; GPMC runs under a network-only logon with them.")] bool credentialStdin = false,
         [Option("--only", ValueName = "CAPABILITIES", Description = "Comma-separated subset: ldap, gpo, dns.")] string? only = null,
         [Option("--out", ValueName = "DIRECTORY", Description = "Parent directory for the run's report folder (default ./runic-results).")] string? output = null)
     {
@@ -102,9 +106,17 @@ internal static class VerifierApplication
             return Usage("RAV1001", "Invalid --only selection for the domain suite.");
         if (Blank(server) || Blank(domain) || Blank(baseDn) || Blank(dnsServer) || Blank(dnsZone) || Blank(output))
             return Usage("RAV1003", "Option values must not be empty.");
-        if (allowChanges && baseDn is null)
+        if (allowChanges && expectDenied)
+            return Usage("RAV1002", "Choose either --allow-changes or --expect-denied.");
+        if ((allowChanges || expectDenied) && baseDn is null)
             return Usage("RAV1005", "Domain writes require an explicit existing --base-dn.");
-        return RunAsync(context, new Options("domain", allowChanges, false, FullPath(output), server, domain, baseDn, dnsServer, dnsZone, selected), cancellationToken);
+        // An interactive console would echo the password, so the credential must be piped in.
+        if (credentialStdin && !Console.IsInputRedirected)
+            return Usage("RAV1009", "--credential-stdin reads from redirected standard input only; pipe the user name and password in so that the console never echoes them.");
+        var credential = credentialStdin ? ReadCredential() : null;
+        if (credentialStdin && credential is null)
+            return Usage("RAV1008", "--credential-stdin needs a user name line and a non-empty password line on standard input.");
+        return RunAsync(context, new Options("domain", allowChanges, expectDenied, FullPath(output), server, domain, baseDn, dnsServer, dnsZone, selected) { Credential = credential }, cancellationToken);
     }
 
     private static async Task<CommandOutcome<VerificationSummary>> RunAsync(CommandExecutionContext context, Options options, CancellationToken token)
@@ -116,8 +128,9 @@ internal static class VerifierApplication
         var report = new RunReport(options, Write);
         Write($"Run {report.Id}; reports: {report.Folder}");
         Write("Windows capabilities use generated bindings; LDAP uses System.DirectoryServices.Protocols.");
+        if (options.Credential is { } identity) Write("Domain identity: " + (identity.Domain.Length == 0 ? identity.UserName : identity.Domain + "\\" + identity.UserName) + " (explicit credential).");
         Write(options.Changes ? "Administrative fixture writes ENABLED."
-            : options.ExpectDenied ? "Non-elevated write attempts ENABLED; each must be denied."
+            : options.ExpectDenied ? (options.Suite == "domain" ? "Restricted-identity write attempts ENABLED; each must be denied." : "Non-elevated write attempts ENABLED; each must be denied.")
             : "Administrative inspection only.");
         try
         {
@@ -143,6 +156,16 @@ internal static class VerifierApplication
         if (only is null) return [];
         var selected = only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
         return selected.Count == 0 || selected.Any(value => !capabilities.Contains(value, StringComparer.Ordinal)) ? null : selected;
+    }
+    // The password stays in memory only; it is never echoed, logged or written to the report.
+    // Only the user name appears in the progress output.
+    private static NetworkCredential? ReadCredential()
+    {
+        var user = Console.In.ReadLine()?.Trim();
+        var password = Console.In.ReadLine();
+        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password)) return null;
+        var separator = user.IndexOf('\\', StringComparison.Ordinal);
+        return separator > 0 ? new NetworkCredential(user[(separator + 1)..], password, user[..separator]) : new NetworkCredential(user, password);
     }
     private static bool Blank(string? value) => value is not null && string.IsNullOrWhiteSpace(value);
     private static string FullPath(string? output) => Path.GetFullPath(output ?? "runic-results");
@@ -187,6 +210,8 @@ internal static class VerifierApplication
 internal sealed record Options(string Suite, bool Changes, bool ExpectDenied, string Output, string? Server, string? Domain,
     string? BaseDn, string? DnsServer, string? DnsZone, HashSet<string> Only)
 {
+    /// <summary>Explicit domain identity from --credential-stdin; null uses the process identity.</summary>
+    internal NetworkCredential? Credential { get; init; }
     internal bool Includes(string capability) => Only.Count == 0 || Only.Contains(capability);
 }
 
