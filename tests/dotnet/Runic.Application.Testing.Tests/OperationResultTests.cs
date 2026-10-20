@@ -164,7 +164,7 @@ internal sealed class OperationResultTests
 
     private static void AssertMemberBoundRecoveryRoutes()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var router = new BridgeOperationRouter(transport, "member-bound-router");
         var request = new BridgeOperationRequest("same-result-contract", "Save", "same-result-id", "same-result-input");
         var admitted = router.Accept(request, () => true,

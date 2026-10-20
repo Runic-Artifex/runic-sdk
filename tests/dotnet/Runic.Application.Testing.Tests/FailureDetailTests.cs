@@ -31,7 +31,7 @@ internal sealed class FailureDetailTests
     [Test]
     public void TheWindowOptionDecidesAndDefaultsToTheEnvironment()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using (var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = true }))
             Require(session.IncludesFailureDetail, "The explicit opt-in was ignored.");
         using (var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false }))
@@ -43,8 +43,8 @@ internal sealed class FailureDetailTests
     [Test]
     public void TwoWindowsInOneProcessKeepTheirOwnSetting()
     {
-        using var productionTransport = new InMemoryViewTransport();
-        using var developmentTransport = new InMemoryViewTransport();
+        using var productionTransport = new InMemoryBridgeTransport();
+        using var developmentTransport = new InMemoryBridgeTransport();
         using var production = new WindowContentSession(productionTransport, new WindowContentSessionOptions { IncludeFailureDetail = false });
         using var development = new WindowContentSession(developmentTransport, new WindowContentSessionOptions { IncludeFailureDetail = true });
         using var productionBridge = new FailingBridge(productionTransport, new Model(), production);
@@ -60,7 +60,7 @@ internal sealed class FailureDetailTests
     [Test]
     public void ProductionKeepsTheBoundedMessage()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false });
         using var bridge = new FailingBridge(transport, new Model(), session);
         foreach (var route in new[] { "failingThrow", "failingSetValue" })
@@ -81,7 +81,7 @@ internal sealed class FailureDetailTests
     [Test]
     public void DevelopmentAddsTheExceptionDetail()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = true });
         using var bridge = new FailingBridge(transport, new Model(), session);
         using var reply = JsonDocument.Parse(transport.Call("failingThrow"));

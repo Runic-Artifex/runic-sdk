@@ -172,7 +172,7 @@ internal sealed class TextDeltaConformanceTests
     {
         private readonly object _gate = new();
         private readonly List<string> _frames = [];
-        public InMemoryViewTransport Inner { get; } = new();
+        public InMemoryBridgeTransport Inner { get; } = new();
         public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
         public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
             Inner.BindAsync(name, handler);

@@ -33,9 +33,9 @@ internal sealed class ServiceHostTests
             "The host did not derive its route or use the fake clock.");
         Require(RunicModelContextRegistry.Shared.TryGet(shell, out var bound) && ReferenceEquals(bound, context),
             "The host did not give the window the scope's model context.");
-        (await host.Root.ExecuteAsync(vm => vm.OpenCommand)).EnsureOk();
+        (await host.Root.ExecuteAsync(vm => vm.OpenCommand)).ThrowIfFailed();
         var page = host.Root.View<ContextPageViewModel>(vm => vm.Main);
-        (await page.ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
+        (await page.ExecuteAsync(vm => vm.IncrementCommand)).ThrowIfFailed();
         Require(page.Snapshot().Read(vm => vm.Count) == 1, "A command on the scope's model context did not run.");
         shell.Main?.Dispose();
     }

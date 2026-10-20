@@ -15,17 +15,17 @@ namespace Runic.Application.Testing;
 /// <example>
 /// <code>
 /// var editor = host.Root.View&lt;DocumentViewModel&gt;(vm => vm.Main).View&lt;EditorViewModel&gt;(vm => vm.CurrentPane);
-/// editor.Set(vm => vm.Title, "Groceries").EnsureOk();
-/// (await editor.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
+/// editor.Set(vm => vm.Title, "Groceries").ThrowIfFailed();
+/// (await editor.ExecuteAsync(vm => vm.SaveCommand)).ThrowIfFailed();
 /// </code>
 /// </example>
 public sealed class RunicViewDriver<TModel> where TModel : class
 {
     private readonly RunicPublicationLog _publications;
-    private readonly InMemoryViewTransport _transport;
+    private readonly InMemoryBridgeTransport _transport;
     private readonly Func<string> _nextId;
 
-    internal RunicViewDriver(RunicPublicationLog publications, InMemoryViewTransport transport, string route,
+    internal RunicViewDriver(RunicPublicationLog publications, InMemoryBridgeTransport transport, string route,
         PageReference? reference, Func<string> nextId)
     {
         _publications = publications;
@@ -46,7 +46,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     {
         var route = $"{Route}Snapshot";
         var reply = new RunicCallReply<TModel>(route, _transport.Call(route));
-        return reply.EnsureOk().State ?? throw new InvalidOperationException($"{route} returned no state.");
+        return reply.ThrowIfFailed().State ?? throw new InvalidOperationException($"{route} returned no state.");
     }
 
     /// <summary>
@@ -59,7 +59,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     {
         var member = RunicMembers.Property(property);
         var type = member.PropertyType;
-        ViewTestArguments arguments =
+        BridgeTestArguments arguments =
             type == typeof(int) ? new(Int64Value: (int)(object)value!)
             : type == typeof(bool) ? new(BooleanValue: (bool)(object)value!)
             : type == typeof(string) && !IsNullable(member) ? new(StringValue: (string)(object)value!)
@@ -88,11 +88,11 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="command">The command property, such as <c>vm => vm.SaveCommand</c>.</param>
     /// <param name="argumentJson">The command input as wire JSON, for a command with an argument.</param>
     /// <param name="cancellationToken">Cancels an awaited command, as a closed client connection does.</param>
-    public async ValueTask<RunicCallReply<TModel>> ExecuteAsync(Expression<Func<TModel, object?>> command, string? argumentJson = null,
+    public async Task<RunicCallReply<TModel>> ExecuteAsync(Expression<Func<TModel, object?>> command, string? argumentJson = null,
         CancellationToken cancellationToken = default)
     {
         var route = $"{Route}{RunicMembers.CommandName(RunicMembers.Property(command))}";
-        var arguments = argumentJson is null ? new ViewTestArguments() : new ViewTestArguments(StringValue: argumentJson);
+        var arguments = argumentJson is null ? new BridgeTestArguments() : new BridgeTestArguments(StringValue: argumentJson);
         var json = _transport.IsAsync(route)
             ? await _transport.CallAsync(route, arguments, cancellationToken).ConfigureAwait(false)
             : _transport.Call(route, arguments);
@@ -190,9 +190,20 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         return reply == "ok" ? token : throw new InvalidOperationException($"{Route}Mount returned '{reply}'.");
     }
 
-    /// <summary>Releases a browser presentation.</summary>
-    public string Unmount(string token, string? clientKey = null, string? connectionKey = null) =>
-        _transport.Call($"{Route}Unmount", new(StringValue: token, ClientKey: clientKey, ConnectionKey: connectionKey));
+    /// <summary>Releases a browser presentation, as a frontend outlet does when it unmounts this View.</summary>
+    /// <param name="token">The token <see cref="Mount"/> returned.</param>
+    /// <param name="clientKey">The client identity the View was mounted with.</param>
+    /// <param name="connectionKey">The connection identity the View was mounted with.</param>
+    /// <exception cref="InvalidOperationException">
+    /// The route did not release it, for example because another client mounted it (<c>ignored</c>) or the window
+    /// closed (<c>disconnected</c>). The message names the reply.
+    /// </exception>
+    public void Unmount(string token, string? clientKey = null, string? connectionKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(token);
+        var reply = _transport.Call($"{Route}Unmount", new(StringValue: token, ClientKey: clientKey, ConnectionKey: connectionKey));
+        if (reply != "ok") throw new InvalidOperationException($"{Route}Unmount returned '{reply}'.");
+    }
 
     /// <summary>Returns and removes the frames pushed to this route so far.</summary>
     public IReadOnlyList<RunicViewPublication> TakePublications() => _publications.Take(Route);
@@ -201,7 +212,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="timeout">Real time to wait; defaults to the host's publication timeout.</param>
     /// <param name="cancellationToken">Stops waiting.</param>
     /// <exception cref="TimeoutException">Nothing was pushed in time.</exception>
-    public ValueTask<RunicViewPublication> NextPublicationAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
+    public Task<RunicViewPublication> NextPublicationAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
         _publications.NextAsync(Route, timeout, cancellationToken);
 
     /// <summary>

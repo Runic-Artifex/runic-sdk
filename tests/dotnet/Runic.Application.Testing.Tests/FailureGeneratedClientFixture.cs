@@ -14,8 +14,8 @@ internal static class FailureGeneratedClientFixture
     internal static async Task<FailureGeneratedClientTranscript> CreateAsync()
     {
         var model = new FailureToolkitViewModel();
-        using var host = new RunicWindowTestHost<FailureToolkitViewModel>(model, "failureToolkit",
-            (transport, content, vm) => new FailureToolkitBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<FailureToolkitViewModel>(model,
+            (transport, content, vm) => new FailureToolkitBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "failureToolkit", ViewLocator = new TestViewLocator() });
         var snapshot = host.Transport.Call("failureToolkitSnapshot");
         var saveReply = host.Transport.Call("failureToolkitSave");
         const string reserveRequest = "5";

@@ -32,11 +32,11 @@ public sealed class WorkspaceWindowTests : IAsyncDisposable
     [Test]
     public async Task The_counter_counts_each_increment()
     {
-        (await _window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).EnsureOk();
+        (await _window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).ThrowIfFailed();
         var counter = _window.Root.View<CounterViewModel>(vm => vm.Main);
 
-        (await counter.ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
-        (await counter.ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
+        (await counter.ExecuteAsync(vm => vm.IncrementCommand)).ThrowIfFailed();
+        (await counter.ExecuteAsync(vm => vm.IncrementCommand)).ThrowIfFailed();
 
         await Assert.That(counter.Snapshot().Read(vm => vm.Count)).IsEqualTo(2);
     }
@@ -44,12 +44,12 @@ public sealed class WorkspaceWindowTests : IAsyncDisposable
     [Test]
     public async Task The_counter_keeps_its_count_when_the_welcome_page_returns()
     {
-        (await _window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).EnsureOk();
-        (await _window.Root.View<CounterViewModel>(vm => vm.Main).ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
+        (await _window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).ThrowIfFailed();
+        (await _window.Root.View<CounterViewModel>(vm => vm.Main).ExecuteAsync(vm => vm.IncrementCommand)).ThrowIfFailed();
 
-        (await _window.Root.ExecuteAsync(vm => vm.ShowWelcomeCommand)).EnsureOk();
+        (await _window.Root.ExecuteAsync(vm => vm.ShowWelcomeCommand)).ThrowIfFailed();
         _ = _window.Root.View<WelcomeViewModel>(vm => vm.Main);
-        (await _window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).EnsureOk();
+        (await _window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).ThrowIfFailed();
 
         await Assert.That(_window.Root.View<CounterViewModel>(vm => vm.Main).Snapshot().Read(vm => vm.Count)).IsEqualTo(1);
     }

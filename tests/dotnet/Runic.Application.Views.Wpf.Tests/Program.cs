@@ -47,7 +47,7 @@ internal sealed class Program
         var probe = new BorrowedService();
         await using var context = new RunicModelContext();
         using var existingLease = RunicModelContextRegistry.Shared.Bind(context, model);
-        using var calls = new InMemoryViewTransport();
+        using var calls = new InMemoryBridgeTransport();
         var collection = new ServiceCollection();
         collection.AddSingleton(probe);
         collection.AddSingleton<Func<IBridgeTransport, WindowContentSession, Model, IDisposable>>(

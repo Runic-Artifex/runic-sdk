@@ -168,9 +168,9 @@ and the tests use them. Tests read state by ViewModel member, set properties and
 run commands:
 
 ```csharp
-(await window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).EnsureOk();
+(await window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).ThrowIfFailed();
 var counter = window.Root.View<CounterViewModel>(vm => vm.Main);
-(await counter.ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
+(await counter.ExecuteAsync(vm => vm.IncrementCommand)).ThrowIfFailed();
 await Assert.That(counter.Snapshot().Read(vm => vm.Count)).IsEqualTo(1);
 ```
 

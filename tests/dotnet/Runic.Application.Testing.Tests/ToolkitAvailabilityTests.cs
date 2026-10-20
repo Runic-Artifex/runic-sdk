@@ -11,9 +11,9 @@ internal sealed class ToolkitAvailabilityTests
     public void ACanExecutePropertyIsTheCommandsAvailability()
     {
         var model = new ToolkitAvailabilityViewModel();
-        using var host = new RunicWindowTestHost<ToolkitAvailabilityViewModel>(model, "toolkitAvailability",
-            (transport, content, vm) => new ToolkitAvailabilityBridge(transport, vm, content: content), new TestViewLocator());
-        using (var idle = host.Snapshot())
+        using var host = new RunicWindowTestHost<ToolkitAvailabilityViewModel>(model,
+            (transport, content, vm) => new ToolkitAvailabilityBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "toolkitAvailability", ViewLocator = new TestViewLocator() });
+        using (var idle = host.RawSnapshot())
         {
             var state = idle.RootElement.GetProperty("state");
             Require(!state.GetProperty("canCreate").GetBoolean() && !state.GetProperty("canArchive").GetBoolean(),
@@ -27,7 +27,7 @@ internal sealed class ToolkitAvailabilityTests
 
         // Without NotifyCanExecuteChangedFor: the snapshot asks the command.
         model.Target = "folder";
-        using (var ready = host.Snapshot())
+        using (var ready = host.RawSnapshot())
             Require(ready.RootElement.GetProperty("state").GetProperty("canCreate").GetBoolean(),
                 "canCreate did not follow its property.");
         using (var created = JsonDocument.Parse(host.Transport.Call("toolkitAvailabilityCreate")))

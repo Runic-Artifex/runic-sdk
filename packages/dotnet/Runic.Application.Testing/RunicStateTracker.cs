@@ -64,7 +64,7 @@ public sealed class RunicStateTracker<TModel> where TModel : class
     /// <param name="timeout">Real time to wait; defaults to the host's publication timeout.</param>
     /// <param name="cancellationToken">Stops waiting.</param>
     /// <exception cref="TimeoutException">The condition did not hold in time.</exception>
-    public async ValueTask<RunicViewState<TModel>> WaitUntilAsync(Func<RunicViewState<TModel>, bool> predicate,
+    public async Task<RunicViewState<TModel>> WaitUntilAsync(Func<RunicViewState<TModel>, bool> predicate,
         TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(predicate);
@@ -158,17 +158,18 @@ public sealed class RunicStateTracker<TModel> where TModel : class
         if (state[change.Field] is not JsonArray rows)
             throw Invalid(frame, $"the tracked state has no collection '{change.Field}'");
         var count = change.Keys.Count;
+        var kind = change.Kind.ToString().ToLowerInvariant();
         if (count == 0 || change.Keys.Any(string.IsNullOrEmpty))
-            throw Invalid(frame, $"a {change.Kind} of {change.Field} names no keys or an empty key");
+            throw Invalid(frame, $"a {kind} of {change.Field} names no keys or an empty key");
         void RequireIndex(int index, int limit, string what)
         {
             if (index < 0 || index > limit)
-                throw Invalid(frame, $"a {change.Kind} of {change.Field} has {what} {index}, outside 0 to {limit} for {rows.Count} rows");
+                throw Invalid(frame, $"a {kind} of {change.Field} has {what} {index}, outside 0 to {limit} for {rows.Count} rows");
         }
         void RequireItems(int expected)
         {
             if (change.Items.Count != expected)
-                throw Invalid(frame, $"a {change.Kind} of {change.Field} has {change.Items.Count} items for {count} keys; it needs {expected}");
+                throw Invalid(frame, $"a {kind} of {change.Field} has {change.Items.Count} items for {count} keys; it needs {expected}");
         }
         void RequireKeys(int start)
         {
@@ -177,13 +178,13 @@ public sealed class RunicStateTracker<TModel> where TModel : class
             {
                 var actual = KeyOf(rows[start + offset], key);
                 if (actual != change.Keys[offset])
-                    throw Invalid(frame, $"a {change.Kind} of {change.Field} expects key '{change.Keys[offset]}' at row {start + offset}, but the tracked row has '{actual}'");
+                    throw Invalid(frame, $"a {kind} of {change.Field} expects key '{change.Keys[offset]}' at row {start + offset}, but the tracked row has '{actual}'");
             }
         }
         var items = change.Items.Select(item => JsonNode.Parse(item.GetRawText())).ToArray();
         switch (change.Kind)
         {
-            case "add":
+            case RunicCollectionChangeKind.Add:
                 RequireIndex(change.Index, rows.Count, "index");
                 RequireItems(count);
                 for (var offset = 0; offset < count; offset++)
@@ -191,19 +192,19 @@ public sealed class RunicStateTracker<TModel> where TModel : class
                         throw Invalid(frame, $"an added {change.Field} row has key '{KeyOf(items[offset], key)}', but the change names '{change.Keys[offset]}'");
                 for (var offset = 0; offset < count; offset++) rows.Insert(change.Index + offset, items[offset]);
                 break;
-            case "remove":
+            case RunicCollectionChangeKind.Remove:
                 RequireItems(0);
                 RequireKeys(change.Index);
                 for (var removed = 0; removed < count; removed++) rows.RemoveAt(change.Index);
                 break;
-            case "replace":
+            case RunicCollectionChangeKind.Replace:
                 RequireItems(count);
                 if (change.OldIndex != change.Index)
                     throw Invalid(frame, $"a replace of {change.Field} has index {change.Index} but oldIndex {change.OldIndex}");
                 RequireKeys(change.Index);
                 for (var offset = 0; offset < count; offset++) rows[change.Index + offset] = items[offset];
                 break;
-            case "move":
+            case RunicCollectionChangeKind.Move:
                 RequireItems(0);
                 RequireKeys(change.OldIndex);
                 var moved = Enumerable.Range(0, count).Select(_ =>

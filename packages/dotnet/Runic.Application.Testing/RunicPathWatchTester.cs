@@ -56,14 +56,17 @@ public sealed class RunicPathWatchTester
     /// are delivered.
     /// </summary>
     /// <param name="timeout">How long to wait in real time; null waits 10 seconds.</param>
+    /// <param name="cancellationToken">Stops waiting.</param>
     /// <exception cref="TimeoutException">No change was reported in time.</exception>
-    public async Task<RunicPathChange> NextChangeAsync(TimeSpan? timeout = null)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task<RunicPathChange> NextChangeAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         var limit = timeout ?? DefaultTimeout;
         var step = Options.Debounce > TimeSpan.Zero ? Options.Debounce : TimeSpan.FromMilliseconds(1);
         var started = TimeProvider.System.GetTimestamp();
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Task arrived;
             lock (_gate)
             {
@@ -73,7 +76,7 @@ public sealed class RunicPathWatchTester
             if (TimeProvider.System.GetElapsedTime(started) > limit)
                 throw new TimeoutException($"No path change was reported within {limit.TotalSeconds:0.#} s.");
             Time.Advance(step);
-            await Task.WhenAny(arrived, Task.Delay(20)).ConfigureAwait(false);
+            await Task.WhenAny(arrived, Task.Delay(20, cancellationToken)).ConfigureAwait(false);
         }
     }
 
@@ -82,7 +85,9 @@ public sealed class RunicPathWatchTester
     /// and returns the changes reported meanwhile; use it to assert that nothing (more) is reported.
     /// </summary>
     /// <param name="quiet">The real time to wait; null waits 300 ms.</param>
-    public async Task<IReadOnlyList<RunicPathChange>> DrainAsync(TimeSpan? quiet = null)
+    /// <param name="cancellationToken">Stops waiting; the changes reported meanwhile stay queued.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task<IReadOnlyList<RunicPathChange>> DrainAsync(TimeSpan? quiet = null, CancellationToken cancellationToken = default)
     {
         var limit = quiet ?? TimeSpan.FromMilliseconds(300);
         var step = Options.Debounce > TimeSpan.Zero ? Options.Debounce : TimeSpan.FromMilliseconds(1);
@@ -90,7 +95,7 @@ public sealed class RunicPathWatchTester
         while (TimeProvider.System.GetElapsedTime(started) < limit)
         {
             Time.Advance(step);
-            await Task.Delay(20).ConfigureAwait(false);
+            await Task.Delay(20, cancellationToken).ConfigureAwait(false);
         }
         lock (_gate)
         {
@@ -108,8 +113,10 @@ public sealed class RunicPathWatchTester
     /// <param name="path">The path a target was created with, compared as a full path.</param>
     /// <param name="timeout">How long to wait in real time; null waits 10 seconds.</param>
     /// <exception cref="InvalidOperationException">No active watcher has a target with this path.</exception>
+    /// <param name="cancellationToken">Stops waiting for the change.</param>
     /// <exception cref="TimeoutException">The change was not reported in time.</exception>
-    public Task<RunicPathChange> TriggerAsync(string path, TimeSpan? timeout = null)
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public Task<RunicPathChange> TriggerAsync(string path, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         RunicPathWatcher[] watchers;
@@ -118,7 +125,7 @@ public sealed class RunicPathWatchTester
         foreach (var watcher in watchers) signalled |= watcher.Signal(path);
         if (!signalled)
             throw new InvalidOperationException($"No active watcher started with these options watches {path}.");
-        return NextChangeAsync(timeout);
+        return NextChangeAsync(timeout, cancellationToken);
     }
 
     private sealed class Observer(RunicPathWatchTester owner) : IRunicPathWatchObserver

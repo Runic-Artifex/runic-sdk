@@ -93,7 +93,7 @@ internal sealed class ConformanceTests
     [Test, NotInParallel(Order = 2)]
     public async Task InteractionSemanticsAsync()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport);
         var model = new ConformanceInteractionModel();
         const string route = "conformance";
@@ -144,7 +144,7 @@ internal sealed class ConformanceTests
     [Test, NotInParallel(Order = 3)]
     public async Task NavigationInteractionSemanticsAsync()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport);
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });

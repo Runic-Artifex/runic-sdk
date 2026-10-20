@@ -17,9 +17,9 @@ internal sealed class TypedReactiveTests
         await using var context = new RunicModelContext();
         var model = new TypedReactiveViewModel(context);
         using var contextLease = RunicModelContextRegistry.Shared.Bind(context, model);
-        using var host = new RunicWindowTestHost<TypedReactiveViewModel>(model, "typedReactive",
+        using var host = new RunicWindowTestHost<TypedReactiveViewModel>(model,
             (transport, content, vm) => new TypedReactiveBridge(transport, vm, content: content),
-            new TestViewLocator());
+            new RunicWindowTestHostOptions { RootRoute = "typedReactive", ViewLocator = new TestViewLocator() });
 
         const string requestId = "typed-save-1";
         var payload = Payload(requestId, "first body");

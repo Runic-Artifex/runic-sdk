@@ -11,7 +11,7 @@ internal sealed class CollectionDeltaTests
     public async Task CollectionChangesPublishOrderedDeltasAsync()
     {
         var model = new CollectionDeltaViewModel();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var bridge = new CollectionDeltaBridge(transport, model, "rows");
         using var baseline = JsonDocument.Parse(transport.Call("rowsSnapshot"));
         Require(baseline.RootElement.GetProperty("state").GetProperty("rows").GetArrayLength() == 0, "Initial collection snapshot is missing.");
@@ -22,7 +22,7 @@ internal sealed class CollectionDeltaTests
         Require(added.RootElement.GetProperty("baseRevision").GetInt64() == 0 && added.RootElement.GetProperty("revision").GetInt64() == 100,
             "A batch lost its revision baseline.");
         Require(added.RootElement.GetProperty("changes").GetArrayLength() == 100, "A batch dropped collection edits.");
-        Require(transport.DrainPublications().Count == 0, "A generated collection had duplicate graph and legacy subscriptions.");
+        Require(transport.TakePublications().Count == 0, "A generated collection had duplicate graph and legacy subscriptions.");
 
         using (BridgeSnapshotBatch.Begin(model))
         {
@@ -46,7 +46,7 @@ internal sealed class CollectionDeltaTests
         Require(reset.RootElement.GetProperty("rows").GetArrayLength() == 0, "A reset did not send its recovery snapshot.");
 
         var mutable = new MutableCollectionViewModel();
-        using var mutableTransport = new InMemoryViewTransport();
+        using var mutableTransport = new InMemoryBridgeTransport();
         using var mutableBridge = new MutableCollectionBridge(mutableTransport, mutable, "mutable");
         mutable.Rows[0].Label = "updated";
         using var rowUpdate = await NextAsync(mutableTransport);
@@ -83,7 +83,7 @@ internal sealed class CollectionDeltaTests
                 var initial = new KeyedCollectionViewModel();
                 initial.Items.Add(new("a", "one"));
                 initial.Items.Add(row);
-                using var initialTransport = new InMemoryViewTransport();
+                using var initialTransport = new InMemoryBridgeTransport();
                 using var initialSession = new WindowContentSession(initialTransport, development);
                 using var initialBridge = new KeyedCollectionBridge(initialTransport, initial, "keyed", content: initialSession);
                 RequireFailedRead(initialTransport, "keyedSnapshot", "KeyedCollectionViewModel.rows: " + problem + Rule);
@@ -91,7 +91,7 @@ internal sealed class CollectionDeltaTests
 
             var model = new KeyedCollectionViewModel();
             model.Items.Add(new("a", "one"));
-            using var transport = new InMemoryViewTransport();
+            using var transport = new InMemoryBridgeTransport();
             using var session = new WindowContentSession(transport, development);
             using var bridge = new KeyedCollectionBridge(transport, model, "keyed", content: session);
             using (JsonDocument.Parse(transport.Call("keyedSnapshot"))) { }
@@ -134,7 +134,7 @@ internal sealed class CollectionDeltaTests
             model.Items.Insert(0, new("x", "shift"));
             model.Items.Insert(0, new("y", "shift"));
             await Task.Delay(200);
-            Require(transport.DrainPublications().Count == 0, "Shifted rows reported the same duplicate key again.");
+            Require(transport.TakePublications().Count == 0, "Shifted rows reported the same duplicate key again.");
             model.Items.RemoveAt(2);
             using (var recovered = await NextAsync(transport))
                 Require(recovered.RootElement.GetProperty("rows").GetArrayLength() == 4, "The route did not recover after shifted rows.");
@@ -145,12 +145,12 @@ internal sealed class CollectionDeltaTests
                     .StartsWith("The call ran, but the updated state could not be sent: KeyedCollectionViewModel.rows: ", StringComparison.Ordinal),
                     $"A command reply did not say that the command ran: {reply.RootElement.GetRawText()}");
             Require(model.Items.Count == 5, "The command did not run.");
-            transport.DrainPublications();
+            transport.TakePublications();
 
             // A key changed in place: the baseline follows it, so a later valid key is
             // not a false duplicate and a real duplicate is not missed.
             var mutable = new MutableKeyedViewModel();
-            using var mutableTransport = new InMemoryViewTransport();
+            using var mutableTransport = new InMemoryBridgeTransport();
             using var mutableSession = new WindowContentSession(mutableTransport, development);
             using var mutableBridge = new MutableKeyedBridge(mutableTransport, mutable, "mutableKeyed", content: mutableSession);
             using (JsonDocument.Parse(mutableTransport.Call("mutableKeyedSnapshot"))) { }
@@ -169,7 +169,7 @@ internal sealed class CollectionDeltaTests
                 Require(fixedKey.RootElement.GetProperty("rows").GetArrayLength() == 3, "A key fixed in place did not publish a full state.");
 
             var validated = new ValidatedCollectionViewModel();
-            using var validatedTransport = new InMemoryViewTransport();
+            using var validatedTransport = new InMemoryBridgeTransport();
             // Without a window, a Bridge's replies follow the environment, which is not Development here.
             using var validatedBridge = new ValidatedCollectionBridge(validatedTransport, validated, "validated");
             validated.Items.Add(new("a", "one"));
@@ -178,14 +178,14 @@ internal sealed class CollectionDeltaTests
             var notices = 0;
             for (var waited = 0; waited < 2000 && notices == 0; waited += 10)
             {
-                notices += validatedTransport.DrainPublications().Count(publication => publication.StateJson.Contains("__runicFailure", StringComparison.Ordinal));
+                notices += validatedTransport.TakePublications().Count(publication => publication.Json.Contains("__runicFailure", StringComparison.Ordinal));
                 await Task.Delay(10);
             }
             Require(notices == 1, "A validation model did not report its duplicate key.");
         }
     }
 
-    private static void RequireFailedRead(InMemoryViewTransport transport, string route, string? detail)
+    private static void RequireFailedRead(InMemoryBridgeTransport transport, string route, string? detail)
     {
         using var reply = JsonDocument.Parse(transport.Call(route));
         var root = reply.RootElement;
@@ -197,16 +197,16 @@ internal sealed class CollectionDeltaTests
             $"{route} did not fail with \"{detail}\": {root.GetRawText()}");
     }
 
-    private static async Task<JsonDocument> NextAsync(InMemoryViewTransport transport)
+    private static async Task<JsonDocument> NextAsync(InMemoryBridgeTransport transport)
     {
         var timeout = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < timeout)
         {
-            var publications = transport.DrainPublications();
+            var publications = transport.TakePublications();
             if (publications.Count > 0)
             {
                 Require(publications.Count == 1, "A changeset emitted more than one frame.");
-                return JsonDocument.Parse(publications[0].StateJson);
+                return JsonDocument.Parse(publications[0].Json);
             }
             await Task.Delay(5);
         }

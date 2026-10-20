@@ -83,7 +83,7 @@ internal sealed class ModelContextPresentationTests
     [Test]
     public async Task HandBuiltSessionBindsTheBridgedModel()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ViewLocator = new ContextPageViewLocator() });
         var context = session.ModelContext!;
         var scheduler = ReactiveSchedulers.For(context);

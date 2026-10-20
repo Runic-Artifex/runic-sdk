@@ -349,7 +349,7 @@ internal sealed class RunicWindowHostTests
                     throw new InvalidOperationException("The Window's DataContext was not assigned before the host opened it.");
                 OpenStarted.TrySetResult();
                 if (BlockOpen) await Task.Delay(Timeout.Infinite, cancellationToken);
-                var transport = new InMemoryViewTransport();
+                var transport = new InMemoryBridgeTransport();
                 var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = opening.ViewModel });
                 var attached = opening.AttachBridge(transport, content);
                 var window = new RecordingWindow(opening.Scope, attached, content, transport);
@@ -365,7 +365,7 @@ internal sealed class RunicWindowHostTests
     }
 
     private sealed class RecordingWindow(AsyncServiceScope scope, IDisposable attached, WindowContentSession content,
-        InMemoryViewTransport transport) : IBridgeWindow
+        InMemoryBridgeTransport transport) : IBridgeWindow
     {
         private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool CloseStarted { get; private set; }

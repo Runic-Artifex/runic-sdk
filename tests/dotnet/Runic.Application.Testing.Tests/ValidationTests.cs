@@ -116,9 +116,9 @@ internal sealed class ValidationTests
         model.Items[0].SetErrors(nameof(ValidationItem.Name), "Item label required");
         model.Lookup["primary"].SetErrors(nameof(ValidationItem.Name), "Primary label required");
 
-        using var host = new RunicWindowTestHost<ValidationViewModel>(model, "validation",
-            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());
-        using var snapshot = host.Snapshot();
+        using var host = new RunicWindowTestHost<ValidationViewModel>(model,
+            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "validation", ViewLocator = new TestViewLocator() });
+        using var snapshot = host.RawSnapshot();
         var validation = snapshot.RootElement.GetProperty("state").GetProperty("validation");
         Require(validation.GetProperty("hasErrors").GetBoolean(), "Generated state omitted structured validation.");
         var errors = validation.GetProperty("errors");
@@ -130,11 +130,11 @@ internal sealed class ValidationTests
         Require(HasError(errors, ["lookup", "primary", "label"], "Primary label required"),
             "Generated dictionary validation path was incorrect.");
 
-        _ = host.Transport.DrainPublications();
+        _ = host.Transport.TakePublications();
         model.Server.SetErrors(nameof(ValidationErrorsOnly.Detail), "Server returned an error");
         Require(await PublishedAsync(host.Transport, publication =>
         {
-            using var state = JsonDocument.Parse(publication.StateJson);
+            using var state = JsonDocument.Parse(publication.Json);
             return HasError(state.RootElement.GetProperty("validation").GetProperty("errors"),
                 ["server", "detail"], "Server returned an error");
         }), "An errors-only nested object did not publish its validation change.");
@@ -160,12 +160,12 @@ internal sealed class ValidationTests
         return true;
     });
 
-    private static async Task<bool> PublishedAsync(InMemoryViewTransport transport, Func<ViewTestPublication, bool> predicate)
+    private static async Task<bool> PublishedAsync(InMemoryBridgeTransport transport, Func<RunicViewPublication, bool> predicate)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
-            if (transport.DrainPublications().Any(predicate)) return true;
+            if (transport.TakePublications().Any(predicate)) return true;
             await Task.Delay(10);
         }
         return false;

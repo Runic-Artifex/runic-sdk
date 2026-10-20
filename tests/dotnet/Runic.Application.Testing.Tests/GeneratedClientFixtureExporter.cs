@@ -25,8 +25,8 @@ internal static class GeneratedClientFixtureExporter
         validationModel.SetErrors(null, new RunicValidationMessage("Entity failure", "entity", "error"));
         validationModel.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new RunicValidationMessage("Invalid postal code", "postal"));
         validationModel.Items[0].SetErrors(nameof(ValidationItem.Name), "Missing label");
-        using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel, "validation",
-            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());
+        using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel,
+            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "validation", ViewLocator = new TestViewLocator() });
         var fixture = new GeneratedClientFixture(dataShape, typedReactive, toolkitTyped, validationHost.Transport.Call("validationSnapshot"),
             CreateDtoListTranscript(), await CreateDtoInteractionTranscriptAsync(), await FailureGeneratedClientFixture.CreateAsync());
 
@@ -36,8 +36,8 @@ internal static class GeneratedClientFixtureExporter
     private static DataShapeTranscript CreateDataShapeTranscript()
     {
         var model = new DataShapeViewModel();
-        using var host = new RunicWindowTestHost<DataShapeViewModel>(model, "dataShape",
-            (transport, content, vm) => new DataShapeBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<DataShapeViewModel>(model,
+            (transport, content, vm) => new DataShapeBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "dataShape", ViewLocator = new TestViewLocator() });
 
         var snapshot = host.Transport.Call("dataShapeSnapshot");
         const string duration = "-1.02:03:04.5000007";
@@ -93,8 +93,8 @@ internal static class GeneratedClientFixtureExporter
     private static DtoListTranscript CreateDtoListTranscript()
     {
         var model = new DtoListViewModel();
-        using var host = new RunicWindowTestHost<DtoListViewModel>(model, "dtoList",
-            (transport, content, vm) => new DtoListBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<DtoListViewModel>(model,
+            (transport, content, vm) => new DtoListBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "dtoList", ViewLocator = new TestViewLocator() });
         var snapshot = host.Transport.Call("dtoListSnapshot");
         var setRequest = JsonSerializer.Serialize(new[] { new DtoListEntry("set", 2) }, Json);
         var setReply = Ok(host.Transport.Call("dtoListSetEntries", new(StringValue: setRequest)));
@@ -126,8 +126,13 @@ internal static class GeneratedClientFixtureExporter
     private static async Task<DtoInteractionTranscript> CreateDtoInteractionTranscriptAsync()
     {
         using var model = new DtoInteractionViewModel();
-        using var host = new RunicWindowTestHost<DtoInteractionViewModel>(model, "dtoInteraction",
-            (transport, content, vm) => new DtoInteractionBridge(transport, vm, content: content), new TestViewLocator());
+        // The exported request carries its deadline as wall-clock time, which the TypeScript client compares with
+        // its own clock, so this window keeps the system clock.
+        using var host = new RunicWindowTestHost<DtoInteractionViewModel>(model,
+            (transport, content, vm) => new DtoInteractionBridge(transport, vm, content: content), new RunicWindowTestHostOptions
+            {
+                RootRoute = "dtoInteraction", ViewLocator = new TestViewLocator(), TimeProvider = TimeProvider.System,
+            });
         const string route = "dtoInteraction", presentation = "dto:interaction", client = "dto-client", connection = "dto-connection";
         var contract = $"{BridgeContractShape.Compute(typeof(DtoInteractionViewModel))}:interaction:ChooseEntry";
         var snapshot = host.Transport.Call(route + "Snapshot");
@@ -169,8 +174,8 @@ internal static class GeneratedClientFixtureExporter
         await using var context = new RunicModelContext();
         var model = new TypedReactiveViewModel(context);
         using var contextLease = RunicModelContextRegistry.Shared.Bind(context, model);
-        using var host = new RunicWindowTestHost<TypedReactiveViewModel>(model, "typedReactive",
-            (transport, content, vm) => new TypedReactiveBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<TypedReactiveViewModel>(model,
+            (transport, content, vm) => new TypedReactiveBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "typedReactive", ViewLocator = new TestViewLocator() });
 
         var snapshot = host.Transport.Call("typedReactiveSnapshot");
         const string requestId = "generated-client-last-result";

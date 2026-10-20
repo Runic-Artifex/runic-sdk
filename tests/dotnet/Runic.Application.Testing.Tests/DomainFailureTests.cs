@@ -34,7 +34,7 @@ internal sealed partial class DomainFailureTests
         // Sync plain ICommand: only a synchronous throw from Execute is seen.
         var sync = await host.Root.ExecuteAsync(vm => vm.SaveCommand);
         RequireDomainReply(sync.Json, "Save", """{"$case":"titleRequired"}""");
-        Require(sync is { Ok: false, ErrorKind: "domain-failed", State: not null } && sync.Failure?.GetProperty("$case").GetString() == "titleRequired",
+        Require(sync is { Succeeded: false, ErrorKind: "domain-failed", State: not null } && sync.Failure?.GetProperty("$case").GetString() == "titleRequired",
             $"RunicCallReply did not expose the failure: {sync}");
 
         host.ViewModel.NextFailure = () => new RunicFailureException(new TitleTaken("Todo"));
@@ -59,20 +59,20 @@ internal sealed partial class DomainFailureTests
         host.ViewModel.NextFailure = () => new RunicFailureException(new TitleTaken("Todo"));
         var operation = host.Root.Start(vm => vm.SubmitCommand, requestId: "submit-1");
         var status = await operation.WaitAsync();
-        Require(status.Kind == "domain-failed" && status.ErrorMessage is null
+        Require(status.Kind == RunicOperationStatusKind.DomainFailed && status.ErrorMessage is null
             && status.Failure?.GetRawText() == """{"$case":"titleTaken","existingTitle":"Todo"}""",
             $"The operation did not end domain-failed with its failure: {status.Json}");
         using (var json = JsonDocument.Parse(status.Json))
             Require(!json.RootElement.TryGetProperty("error", out _) && !json.RootElement.TryGetProperty("detail", out _)
                 && !json.RootElement.TryGetProperty("stream", out _), $"A domain-failed status carried more than its failure: {status.Json}");
         // Recovery and a repeated start observe the same terminal status.
-        Require(operation.Status().Json == status.Json, "Status() differed from the waited terminal status.");
+        Require(operation.GetStatus().Json == status.Json, "GetStatus() differed from the waited terminal status.");
         var repeated = host.Root.Start(vm => vm.SubmitCommand, requestId: "submit-1");
         using (var admission = JsonDocument.Parse(repeated.AdmissionJson))
-            Require(repeated.Admission == "duplicate" && admission.RootElement.GetProperty("status").GetString() == "domain-failed"
+            Require(repeated.Admission == RunicOperationAdmissionKind.Duplicate && admission.RootElement.GetProperty("status").GetString() == "domain-failed"
                 && admission.RootElement.GetProperty("terminal").GetProperty("failure").GetProperty("$case").GetString() == "titleTaken",
                 $"A repeated start did not return the domain-failed terminal: {repeated.AdmissionJson}");
-        Require(operation.Cancel() == "not-running", "A domain-failed operation was still cancellable.");
+        Require(operation.Cancel() == RunicOperationCancelKind.NotRunning, "A domain-failed operation was still cancellable.");
         var entry = logs.Entries.SingleOrDefault(item => item.EventId.Id == 1007)
             ?? throw new InvalidOperationException($"No BridgeOperationDomainFailed entry was logged: {Describe(logs)}");
         Require(entry.Level == LogLevel.Debug && entry.Exception is RunicFailureException && entry.State["Member"] as string == "Submit",
@@ -89,7 +89,7 @@ internal sealed partial class DomainFailureTests
     public void KeyFailureKeepsTheDomainFailure(bool development)
     {
         var model = new EditorModel();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = development });
         using var bridge = new EditorBridge(transport, model, content: session, keyed: true);
         model.Rows = ["a", "a"];
@@ -116,7 +116,7 @@ internal sealed partial class DomainFailureTests
             "A multi-inner aggregate was not logged as a failed command.");
         host.ViewModel.NextFailure = () => new AggregateException(new RunicFailureException(new TitleTaken("Todo")));
         var operation = await host.Root.Start(vm => vm.SubmitCommand, requestId: "aggregate").WaitAsync();
-        Require(operation.Kind == "domain-failed" && operation.Failure?.GetProperty("existingTitle").GetString() == "Todo",
+        Require(operation.Kind == RunicOperationStatusKind.DomainFailed && operation.Failure?.GetProperty("existingTitle").GetString() == "Todo",
             $"An operation's single-inner aggregate was not unwrapped: {operation.Json}");
     }
 
@@ -156,7 +156,7 @@ internal sealed partial class DomainFailureTests
 
         host.ViewModel.NextFailure = () => new RunicFailureException(new Unrelated("x"));
         var status = await host.Root.Start(vm => vm.SubmitCommand, requestId: "undeclared").WaitAsync();
-        Require(status is { Kind: "failed", Failure: null, ErrorMessage: "The operation failed." },
+        Require(status is { Kind: RunicOperationStatusKind.Failed, Failure: null, ErrorMessage: "The operation failed." },
             $"An undeclared operation failure was not failed: {status.Json}");
         Require(logs.Entries.Count(entry => entry.EventId.Id == 1008) == cases.Length + 1 && !logs.Entries.Any(entry => entry.EventId.Id == 1004),
             $"The operation fallback was not logged once as 1008: {Describe(logs)}");
@@ -173,9 +173,9 @@ internal sealed partial class DomainFailureTests
     {
         using var host = Host(new EditorModel(), out _);
         var operation = host.Root.Start(vm => vm.RaceCommand, requestId: "race");
-        Require(operation.Cancel() == "cancellation-requested", "The race operation was not running.");
+        Require(operation.Cancel() == RunicOperationCancelKind.CancellationRequested, "The race operation was not running.");
         var status = await operation.WaitAsync();
-        Require(status.Kind == "domain-failed" && status.Failure?.GetProperty("$case").GetString() == "titleTaken",
+        Require(status.Kind == RunicOperationStatusKind.DomainFailed && status.Failure?.GetProperty("$case").GetString() == "titleTaken",
             $"A failure thrown during cancellation was not domain-failed: {status.Json}");
     }
 
@@ -186,7 +186,7 @@ internal sealed partial class DomainFailureTests
         var operation = host.Root.Start(vm => vm.PublishCommand, requestId: "stream");
         var status = await operation.WaitAsync();
         using (var json = JsonDocument.Parse(status.Json))
-            Require(status.Kind == "domain-failed" && json.RootElement.GetProperty("stream").GetBoolean()
+            Require(status.Kind == RunicOperationStatusKind.DomainFailed && json.RootElement.GetProperty("stream").GetBoolean()
                 && status.Failure?.GetProperty("$case").GetString() == "titleRequired",
                 $"A stream operation did not end domain-failed with stream: true: {status.Json}");
         var page = host.Transport.Call("__runicOperationStream", new(StringValue: JsonSerializer.Serialize(new

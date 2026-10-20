@@ -15,8 +15,8 @@ internal sealed class DomainFailureCodegenTests
     public async Task ToolkitCommandsAsync()
     {
         var model = new FailureToolkitViewModel();
-        using var host = new RunicWindowTestHost<FailureToolkitViewModel>(model, "failureToolkit",
-            (transport, content, vm) => new FailureToolkitBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<FailureToolkitViewModel>(model,
+            (transport, content, vm) => new FailureToolkitBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "failureToolkit", ViewLocator = new TestViewLocator() });
         var driver = host.Root;
 
         // Sync RelayCommand, declared on its [RelayCommand] method: a [RunicUnion] failure.
@@ -24,26 +24,26 @@ internal sealed class DomainFailureCodegenTests
         model.Title = "taken";
         RequireFailure(await driver.ExecuteAsync(vm => vm.SaveCommand), """{"$case":"titleTaken","existingTitle":"Todo"}""");
         model.Title = "fresh";
-        (await driver.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
+        (await driver.ExecuteAsync(vm => vm.SaveCommand)).ThrowIfFailed();
         Require(model.Title == "saved", "The undeclared path of a declared command did not run.");
 
         // AsyncRelayCommand, awaited and as an operation: an enum failure.
         model.Title = "archived";
         RequireFailure(await driver.ExecuteAsync(vm => vm.PublishCommand), "\"Archived\"");
         var operation = await driver.Start(vm => vm.PublishCommand, requestId: "publish-1").WaitAsync();
-        Require(operation.Kind == "domain-failed" && operation.Failure?.GetRawText() == "\"Archived\"",
+        Require(operation.Kind == RunicOperationStatusKind.DomainFailed && operation.Failure?.GetRawText() == "\"Archived\"",
             $"The Toolkit operation did not end with its declared failure: {operation.Json}");
         model.Title = "ready";
         var published = await driver.Start(vm => vm.PublishCommand, requestId: "publish-2").WaitAsync();
-        Require(published.Kind == "succeeded" && model.Title == "published", $"The declared operation did not succeed: {published.Json}");
+        Require(published.Kind == RunicOperationStatusKind.Succeeded && model.Title == "published", $"The declared operation did not succeed: {published.Json}");
 
         // An undeclared operation has no failure codec and succeeds as before.
-        Require((await driver.Start(vm => vm.DiscardCommand, requestId: "discard-1").WaitAsync()).Kind == "succeeded",
+        Require((await driver.Start(vm => vm.DiscardCommand, requestId: "discard-1").WaitAsync()).Kind == RunicOperationStatusKind.Succeeded,
             "The undeclared operation did not succeed.");
 
         // Plain ICommand, declared on its property: a DTO failure.
         RequireFailure(await driver.ExecuteAsync(vm => vm.ReserveCommand, "5"), """{"limit":3,"requested":5}""");
-        (await driver.ExecuteAsync(vm => vm.ReserveCommand, "2")).EnsureOk();
+        (await driver.ExecuteAsync(vm => vm.ReserveCommand, "2")).ThrowIfFailed();
         Require(model.Title == "reserved 2", "The plain command did not run.");
 
         // The generated contract fingerprint matches the runtime's reflection of the declarations.
@@ -57,21 +57,21 @@ internal sealed class DomainFailureCodegenTests
         await using var context = new RunicModelContext();
         var model = new FailureReactiveViewModel(context);
         using var lease = RunicModelContextRegistry.Shared.Bind(context, model);
-        using var host = new RunicWindowTestHost<FailureReactiveViewModel>(model, "failureReactive",
-            (transport, content, vm) => new FailureReactiveBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<FailureReactiveViewModel>(model,
+            (transport, content, vm) => new FailureReactiveBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "failureReactive", ViewLocator = new TestViewLocator() });
         RequireFailure(await host.Root.ExecuteAsync(vm => vm.SaveCommand), """{"$case":"titleRequired"}""");
         var failed = await host.Root.Start(vm => vm.SaveCommand, requestId: "save-1").WaitAsync();
-        Require(failed.Kind == "domain-failed" && failed.Failure?.GetRawText() == """{"$case":"titleRequired"}""",
+        Require(failed.Kind == RunicOperationStatusKind.DomainFailed && failed.Failure?.GetRawText() == """{"$case":"titleRequired"}""",
             $"The ReactiveUI operation did not end with its declared failure: {failed.Json}");
         model.Title = "four";
         var saved = await host.Root.Start(vm => vm.SaveCommand, requestId: "save-2").WaitAsync();
-        Require(saved.Kind == "succeeded" && saved.Result?.GetInt32() == 4, $"The ReactiveUI operation did not succeed: {saved.Json}");
+        Require(saved.Kind == RunicOperationStatusKind.Succeeded && saved.Result?.GetInt32() == 4, $"The ReactiveUI operation did not succeed: {saved.Json}");
 
         // A stream command keeps the values it published before its declared failure.
         var import = host.Root.Start(vm => vm.ImportCommand, requestId: "import-1");
         var imported = await import.WaitAsync();
         using (var status = JsonDocument.Parse(imported.Json))
-            Require(imported.Kind == "domain-failed" && status.RootElement.GetProperty("stream").GetBoolean()
+            Require(imported.Kind == RunicOperationStatusKind.DomainFailed && status.RootElement.GetProperty("stream").GetBoolean()
                 && imported.Failure?.GetRawText() == """{"$case":"titleTaken","existingTitle":"Todo"}""",
                 $"The ReactiveUI stream did not end with its declared failure: {imported.Json}");
         using var page = JsonDocument.Parse(host.Transport.Call("__runicOperationStream", new(StringValue: JsonSerializer.Serialize(new
@@ -143,7 +143,7 @@ internal sealed class DomainFailureCodegenTests
     }
 
     private static void RequireFailure<T>(RunicCallReply<T> reply, string failure) where T : class =>
-        Require(reply is { Ok: false, ErrorKind: "domain-failed", State: not null } && reply.Failure?.GetRawText() == failure,
+        Require(reply is { Succeeded: false, ErrorKind: "domain-failed", State: not null } && reply.Failure?.GetRawText() == failure,
             $"{reply.Route} did not reply with its declared failure {failure}: {reply}");
 
     internal static string FindWorkspaceRoot()

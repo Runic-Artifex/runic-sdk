@@ -318,17 +318,17 @@ using PackageConsumer;
 var model = new ConsumerViewModel();
 var window = new ConsumerWindow { DataContext = model };
 if (!ReferenceEquals(window.DataContext, model)) throw new Exception("Window DataContext was lost.");
-using var host = new RunicWindowTestHost<ConsumerViewModel>(model, "consumer",
-    (transport, content, vm) => new ConsumerBridge(transport, vm, content: content));
-using var snapshot = host.Snapshot();
-if (snapshot.RootElement.GetProperty("state").GetProperty("value").GetInt32() != 7)
+using var host = new RunicWindowTestHost<ConsumerViewModel>(model,
+    (transport, content, vm) => new ConsumerBridge(transport, vm, content: content),
+    new RunicWindowTestHostOptions { RootRoute = "consumer" });
+if (host.Root.Snapshot().Json.GetProperty("value").GetInt32() != 7)
     throw new Exception("The packaged headless Window snapshot failed.");
 _ = host.Transport.Call("consumerSetValue", new(Int64Value: 8));
 if (model.Value != 8) throw new Exception("The packaged generated setter failed.");
 var published = false;
 for (var attempt = 0; attempt < 100 && !published; attempt++)
 {
-    published = host.Transport.DrainPublications().Count > 0;
+    published = host.Transport.TakePublications().Count > 0;
     if (!published) await Task.Delay(10);
 }
 if (!published) throw new Exception("The packaged generated publication failed.");

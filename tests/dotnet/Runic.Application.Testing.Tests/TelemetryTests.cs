@@ -31,7 +31,7 @@ internal sealed class TelemetryTests
         using var telemetry = new TelemetryCapture();
         var logs = new LogCapture();
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, LoggerFactory = logs, IncludeFailureDetail = development });
         using var bridge = new FailingBridge(transport, model, content);
 
@@ -79,7 +79,7 @@ internal sealed class TelemetryTests
         using var telemetry = new TelemetryCapture();
         var logs = new LogCapture();
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, LoggerFactory = logs });
         using var bridge = new FailingBridge(transport, model, content);
 
@@ -110,7 +110,7 @@ internal sealed class TelemetryTests
     {
         using var telemetry = new TelemetryCapture();
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, LoggerFactory = new LogCapture() });
         using var bridge = new FailingBridge(transport, model, content);
         _ = transport.Call("failingSetCount", new(Int64Value: 3));

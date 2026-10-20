@@ -44,6 +44,8 @@ internal sealed class ReactiveNavigationTests
             return (request, view, view.Mount(clientKey: client, connectionKey: connection));
         }
 
+        static string StatusOutcome(RunicOperationStatus status) =>
+            Outcome(status.Kind == RunicOperationStatusKind.Succeeded ? "succeeded" : status.Kind.ToString(), status.Result);
         static string Outcome(string kind, JsonElement? result) =>
             kind != "succeeded" ? kind
             : result!.Value.GetProperty("kind").GetString()!.ToLowerInvariant()
@@ -108,16 +110,16 @@ internal sealed class ReactiveNavigationTests
         // Save completes the request with the draft, without asking.
         var (saving, saveView, _) = await OpenAsync();
         saveView.Set(vm => vm.Draft, "saved draft");
-        var saveStatus = await saveView.Start(vm => vm.SaveCommand).WaitAsync().AsTask().WaitAsync(Timeout);
-        var saved = Outcome(saveStatus.Kind, saveStatus.Result);
+        var saveStatus = await saveView.Start(vm => vm.SaveCommand).WaitAsync().WaitAsync(Timeout);
+        var saved = StatusOutcome(saveStatus);
         Require(saved == "committed" && model.Main.Current == home
             && await saving.Completion.WaitAsync(Timeout) is NavigationCompletion<string>.Completed { Value: "saved draft" },
             $"The web Save command gave {saved}, not a completed request.");
 
         // Cancel dismisses a clean editor's request.
         var (cancelling, cancelView, _) = await OpenAsync();
-        var cancelStatus = await cancelView.Start(vm => vm.CancelCommand).WaitAsync().AsTask().WaitAsync(Timeout);
-        var cancelled = Outcome(cancelStatus.Kind, cancelStatus.Result);
+        var cancelStatus = await cancelView.Start(vm => vm.CancelCommand).WaitAsync().WaitAsync(Timeout);
+        var cancelled = StatusOutcome(cancelStatus);
         Require(cancelled == "committed" && model.Main.Current == home
             && await cancelling.Completion.WaitAsync(Timeout) is NavigationCompletion<string>.Dismissed,
             $"The web Cancel command gave {cancelled}, not a dismissed request.");

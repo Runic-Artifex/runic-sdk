@@ -15,7 +15,7 @@ public sealed class WindowCloseTests
     public async Task CloseWaitsForAnAwaitedCommand()
     {
         var model = new SlowModel();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CallAsync("slowSave").AsTask();
@@ -43,7 +43,7 @@ public sealed class WindowCloseTests
     public async Task DrainTokenStopsTheWaitOnly()
     {
         var model = new SlowModel();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CallAsync("slowSave").AsTask();
@@ -71,7 +71,7 @@ public sealed class WindowCloseTests
     public async Task CloseTimeoutCancelsRemainingAwaitedWork()
     {
         var model = new SlowModel();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CallAsync("slowSave").AsTask();

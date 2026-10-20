@@ -250,11 +250,12 @@ internal sealed partial class CodegenDiagnosticsTests
             public static string Run()
             {
                 using var model = new DisposableModel();
-                using var host = new Runic.Application.Testing.RunicWindowTestHost<JsonIgnoreViewModel>(model.Value, "jsonIgnore",
-                    (transport, content, vm) => new JsonIgnoreBridge(transport, vm, content: content));
-                using var initial = host.Snapshot();
+                using var host = new Runic.Application.Testing.RunicWindowTestHost<JsonIgnoreViewModel>(model.Value,
+                    (transport, content, vm) => new JsonIgnoreBridge(transport, vm, content: content),
+                    new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "jsonIgnore" });
+                using var initial = System.Text.Json.JsonDocument.Parse(host.Transport.Call($"{host.RootRoute}Snapshot"));
                 _ = host.Transport.Call("jsonIgnoreApply", new(StringValue: """{"plain":"updated","implicit":"hidden","explicit":"hidden","never":"included","whenNull":null,"whenDefault":0}"""));
-                using var updated = host.Snapshot();
+                using var updated = System.Text.Json.JsonDocument.Parse(host.Transport.Call($"{host.RootRoute}Snapshot"));
                 return System.Text.Json.JsonSerializer.Serialize(new { initial = initial.RootElement, updated = updated.RootElement });
             }
             private sealed class DisposableModel : System.IDisposable
@@ -307,9 +308,10 @@ internal sealed partial class CodegenDiagnosticsTests
             public static string Run()
             {
                 var model = new IndependentViewModel();
-                using var host = new Runic.Application.Testing.RunicWindowTestHost<IndependentViewModel>(model, "independent",
-                    (transport, content, vm) => new IndependentBridge(transport, vm, content: content));
-                using var snapshot = host.Snapshot();
+                using var host = new Runic.Application.Testing.RunicWindowTestHost<IndependentViewModel>(model,
+                    (transport, content, vm) => new IndependentBridge(transport, vm, content: content),
+                    new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "independent" });
+                using var snapshot = System.Text.Json.JsonDocument.Parse(host.Transport.Call($"{host.RootRoute}Snapshot"));
                 return snapshot.RootElement.GetRawText();
             }
         }
@@ -321,12 +323,14 @@ internal sealed partial class CodegenDiagnosticsTests
         {
             public static string Run()
             {
-                using var defaultHost = new Runic.Application.Testing.RunicWindowTestHost<SharedModels.MixedDefaultViewModel>(new(), "mixedDefault",
-                    (transport, content, vm) => new SharedModels.MixedDefaultBridge(transport, vm, content: content));
-                using var optedInHost = new Runic.Application.Testing.RunicWindowTestHost<MixedJsonIgnoreViewModel>(new(), "mixedJsonIgnore",
-                    (transport, content, vm) => new MixedJsonIgnoreBridge(transport, vm, content: content));
-                using var defaultState = defaultHost.Snapshot();
-                using var optedInState = optedInHost.Snapshot();
+                using var defaultHost = new Runic.Application.Testing.RunicWindowTestHost<SharedModels.MixedDefaultViewModel>(new(),
+                    (transport, content, vm) => new SharedModels.MixedDefaultBridge(transport, vm, content: content),
+                    new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "mixedDefault" });
+                using var optedInHost = new Runic.Application.Testing.RunicWindowTestHost<MixedJsonIgnoreViewModel>(new(),
+                    (transport, content, vm) => new MixedJsonIgnoreBridge(transport, vm, content: content),
+                    new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "mixedJsonIgnore" });
+                using var defaultState = System.Text.Json.JsonDocument.Parse(defaultHost.Transport.Call($"{defaultHost.RootRoute}Snapshot"));
+                using var optedInState = System.Text.Json.JsonDocument.Parse(optedInHost.Transport.Call($"{optedInHost.RootRoute}Snapshot"));
                 return System.Text.Json.JsonSerializer.Serialize(new { defaultState = defaultState.RootElement, optedInState = optedInState.RootElement });
             }
         }

@@ -135,7 +135,7 @@ public sealed class HostTransport : IBridgeTransport, IDisposable
     private TaskCompletionSource? _delivered;
     private string? _finalPrefix;
 
-    public InMemoryViewTransport Inner { get; } = new();
+    public InMemoryBridgeTransport Inner { get; } = new();
 
     public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
 

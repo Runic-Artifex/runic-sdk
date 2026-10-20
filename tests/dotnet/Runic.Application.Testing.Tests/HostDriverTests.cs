@@ -15,21 +15,21 @@ internal sealed class HostDriverTests
             (transport, content, vm) => new ScalarSetterBridge(transport, vm, content: content));
         var driver = host.Root;
         var id = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e");
-        driver.Set(vm => vm.Count, 3).EnsureOk();
-        driver.Set(vm => vm.Enabled, true).EnsureOk();
-        driver.Set(vm => vm.Name, "name").EnsureOk();
-        driver.Set(vm => vm.Note, null).EnsureOk();
+        driver.Set(vm => vm.Count, 3).ThrowIfFailed();
+        driver.Set(vm => vm.Enabled, true).ThrowIfFailed();
+        driver.Set(vm => vm.Name, "name").ThrowIfFailed();
+        driver.Set(vm => vm.Note, null).ThrowIfFailed();
         Require(model.Note is null, "A nullable string setter did not clear the value.");
-        driver.Set(vm => vm.Note, "\"quoted\"").EnsureOk();
-        driver.Set(vm => vm.Big, 9007199254740993L).EnsureOk();
-        driver.Set(vm => vm.Maybe, null).EnsureOk();
+        driver.Set(vm => vm.Note, "\"quoted\"").ThrowIfFailed();
+        driver.Set(vm => vm.Big, 9007199254740993L).ThrowIfFailed();
+        driver.Set(vm => vm.Maybe, null).ThrowIfFailed();
         Require(model.Maybe is null, "A nullable integer setter did not clear the value.");
-        driver.Set(vm => vm.Maybe, 5).EnsureOk();
-        driver.Set(vm => vm.Flag, null).EnsureOk();
-        driver.Set(vm => vm.Ratio, 0.5).EnsureOk();
-        driver.Set(vm => vm.Price, 12.50m).EnsureOk();
-        driver.Set(vm => vm.Id, id).EnsureOk();
-        var reply = driver.Set(vm => vm.Mode, ScalarMode.Fancy).EnsureOk();
+        driver.Set(vm => vm.Maybe, 5).ThrowIfFailed();
+        driver.Set(vm => vm.Flag, null).ThrowIfFailed();
+        driver.Set(vm => vm.Ratio, 0.5).ThrowIfFailed();
+        driver.Set(vm => vm.Price, 12.50m).ThrowIfFailed();
+        driver.Set(vm => vm.Id, id).ThrowIfFailed();
+        var reply = driver.Set(vm => vm.Mode, ScalarMode.Fancy).ThrowIfFailed();
         Require(model is { Count: 3, Enabled: true, Name: "name", Note: "\"quoted\"", Big: 9007199254740993L, Maybe: 5, Flag: null,
             Ratio: 0.5, Price: 12.50m, Mode: ScalarMode.Fancy } && model.Id == id, "A typed setter did not set its value.");
         var state = reply.State!;
@@ -44,7 +44,7 @@ internal sealed class HostDriverTests
             driver.Write(vm => vm.Big, -2L), driver.Write(vm => vm.Maybe, null), driver.Write(vm => vm.Flag, false),
             driver.Write(vm => vm.Price, 1m), driver.Write(vm => vm.Mode, ScalarMode.Plain),
         })
-            Require(receipt.Kind == "applied", $"A typed checked write was not applied: {receipt}");
+            Require(receipt.Kind == RunicFieldWriteReceiptKind.Applied, $"A typed checked write was not applied: {receipt}");
         Require(model is { Count: 4, Name: "written", Note: null, Big: -2L, Maybe: null, Flag: false, Price: 1m, Mode: ScalarMode.Plain },
             "A typed checked write did not set its value.");
     }
@@ -71,22 +71,28 @@ internal sealed class HostDriverTests
         Require(token == "test:mount1" && childModel.Title == "mounted", "The driver did not mount the View with a stable token.");
 
         var tracker = child.Track();
-        var reply = child.Set(vm => vm.Title, "edited").EnsureOk();
+        var reply = child.Set(vm => vm.Title, "edited").ThrowIfFailed();
         Require(childModel.Title == "edited" && reply.State!.Read(vm => vm.Title) == "edited", "The typed setter did not update the model.");
         await tracker.WaitUntilAsync(state => state.Read(vm => vm.Title) == "edited");
         tracker.Verify();
 
         var version = child.Snapshot().FieldVersion(vm => vm.Title);
         var applied = child.Write(vm => vm.Title, "written");
-        Require(applied.Kind == "applied" && applied.Version > version && childModel.Title == "written", $"The checked write did not apply: {applied}");
+        Require(applied.Kind == RunicFieldWriteReceiptKind.Applied && applied.Version > version && childModel.Title == "written", $"The checked write did not apply: {applied}");
         var stale = child.Write(vm => vm.Title, "stale", expectedVersion: version);
-        Require(stale.Kind == "conflict" && stale.Value?.GetString() == "written", $"A stale checked write did not conflict: {stale}");
+        Require(stale.Kind == RunicFieldWriteReceiptKind.Conflict && stale.Value?.GetString() == "written" && stale.ErrorMessage is { Length: > 0 }, $"A stale checked write did not conflict: {stale}");
 
-        (await host.Root.ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
+        (await host.Root.ExecuteAsync(vm => vm.IncrementCommand)).ThrowIfFailed();
         Require(model.Count == 1, "The typed command did not run.");
         var publication = await host.Root.NextPublicationAsync();
         Require(publication.Kind == RunicPublicationKind.State && publication.Route == "root", $"Unexpected root frame {publication}.");
-        Require(child.Unmount(token) == "ok", "The driver did not unmount the View.");
+        try
+        {
+            child.Unmount(token, clientKey: "another-client");
+            throw new InvalidOperationException("Another client's unmount was accepted.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("'ignored'", StringComparison.Ordinal)) { }
+        child.Unmount(token);
     }
 
     [Test]
@@ -100,21 +106,21 @@ internal sealed class HostDriverTests
         Require(driver.CanExecute(vm => vm.AddCommand, "3") && !driver.CanExecute(vm => vm.AddCommand, "30"),
             "Typed availability queries did not reach the command.");
         var rejected = await driver.ExecuteAsync(vm => vm.AddCommand, "30");
-        Require(!rejected.Ok && rejected.ErrorKind == "rejected", $"An unavailable command was not rejected: {rejected}");
-        (await driver.ExecuteAsync(vm => vm.AsyncIntCommand, "4")).EnsureOk();
+        Require(!rejected.Succeeded && rejected.ErrorKind == "rejected", $"An unavailable command was not rejected: {rejected}");
+        (await driver.ExecuteAsync(vm => vm.AsyncIntCommand, "4")).ThrowIfFailed();
         Require(model.Total == 4, "The awaited typed command did not run.");
 
         var operation = driver.Start(vm => vm.AsyncDtoCommand, """{"documentId":"document-1","delta":2}""");
-        Require(operation.Admission == "accepted" && operation.RequestId == "request1", $"The operation was not admitted: {operation.AdmissionJson}");
+        Require(operation.Admission == RunicOperationAdmissionKind.Accepted && operation.RequestId == "request1", $"The operation was not admitted: {operation.AdmissionJson}");
         var status = await operation.WaitAsync();
-        Require(status.Kind == "succeeded" && model.Total == 6, $"The operation did not succeed: {status.Json}");
+        Require(status.Kind == RunicOperationStatusKind.Succeeded && model.Total == 6, $"The operation did not succeed: {status.Json}");
         var duplicate = driver.Start(vm => vm.AsyncDtoCommand, """{"documentId":"document-1","delta":2}""", operation.RequestId);
-        Require(duplicate.Admission == "duplicate" && model.Total == 6, "A repeated request id ran twice.");
+        Require(duplicate.Admission == RunicOperationAdmissionKind.Duplicate && model.Total == 6, "A repeated request id ran twice.");
 
         var waiting = driver.Start(vm => vm.CancelCommand, "\"wait\"");
-        Require(waiting.Status().Kind == "running", "The waiting operation did not run.");
-        Require(waiting.Cancel() == "cancellation-requested", "The operation could not be cancelled.");
-        Require((await waiting.WaitAsync()).Kind == "cancelled" && model.CancelledCount == 1, "The operation did not end cancelled.");
+        Require(waiting.GetStatus().Kind == RunicOperationStatusKind.Running, "The waiting operation did not run.");
+        Require(waiting.Cancel() == RunicOperationCancelKind.CancellationRequested, "The operation could not be cancelled.");
+        Require((await waiting.WaitAsync()).Kind == RunicOperationStatusKind.Cancelled && model.CancelledCount == 1, "The operation did not end cancelled.");
     }
 
     [Test]
@@ -135,7 +141,7 @@ internal sealed class HostDriverTests
         var state = await tracker.WaitUntilAsync(state => state.Keys(vm => vm.Rows).SequenceEqual(["3", "1"]));
         Require(state["rows"][1].GetProperty("label").GetString() == "one", $"The replaced row was not applied: {state}");
         Require(tracker.Deltas >= 2 && tracker.FullStates == 0, $"Collection edits did not arrive as deltas ({tracker.Deltas}, {tracker.FullStates}).");
-        Require(tracker.Changes.Select(change => change.Kind).Distinct().Order().SequenceEqual(["add", "move", "remove", "replace"]),
+        Require(tracker.Changes.Select(change => change.Kind).Distinct().Order().SequenceEqual([RunicCollectionChangeKind.Add, RunicCollectionChangeKind.Remove, RunicCollectionChangeKind.Replace, RunicCollectionChangeKind.Move]),
             $"Unexpected changes: {string.Join(", ", tracker.Changes.Select(change => change.Kind))}");
         tracker.Verify();
 
@@ -153,13 +159,13 @@ internal sealed class HostDriverTests
             (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { TimeProvider = clock, CreateId = Sequence("page") });
         var waiting = host.Root.Start(vm => vm.CancelCommand, "\"wait\"");
-        var close = host.BeginCloseAsync(TimeSpan.FromSeconds(10)).AsTask();
+        var close = host.DrainAsync(TimeSpan.FromSeconds(10));
         Require(!close.IsCompleted, "The close finished before its timeout.");
         clock.Advance(TimeSpan.FromSeconds(10));
         var result = await close.WaitAsync(TimeSpan.FromSeconds(5));
         Require(!result.Drained && result.RemainingOperations == 1, "The close did not time out on the fake clock.");
         await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        Require((await waiting.WaitAsync()).Kind == "cancelled", "The timed-out operation was not cancelled.");
+        Require((await waiting.WaitAsync()).Kind == RunicOperationStatusKind.Cancelled, "The timed-out operation was not cancelled.");
     }
 
     private static Func<string> Sequence(string prefix)

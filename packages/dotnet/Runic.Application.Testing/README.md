@@ -44,15 +44,15 @@ Then drive the Window by ViewModel member, as the generated TypeScript client do
 
 ```csharp
 var sidebar = host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
-(await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).EnsureOk();
+(await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).ThrowIfFailed();
 var editor = host.Root.View<DocumentViewModel>(vm => vm.Main)
     .View<EditorViewModel>(vm => vm.CurrentPane);
-editor.Set(vm => vm.Title, "Groceries").EnsureOk();
+editor.Set(vm => vm.Title, "Groceries").ThrowIfFailed();
 
 var save = editor.Start(vm => vm.SaveCommand);
 Assert.True(editor.Snapshot().IsExecuting(vm => vm.SaveCommand));
 clock.Advance(TimeSpan.FromMilliseconds(250));   // storage waits on the injected clock
-Assert.Equal("succeeded", (await save.WaitAsync()).Kind);
+Assert.Equal(RunicOperationStatusKind.Succeeded, (await save.WaitAsync()).Kind);
 Assert.Equal("Saved Groceries", editor.Snapshot().Read(vm => vm.SavedMessage));
 ```
 
@@ -79,15 +79,13 @@ let the frontend build's up-to-date check skip unchanged frontends.
 
 ### Deterministic time and ids
 
-`RunicWindowTestHost.Create`, the constructor that takes
-`RunicWindowTestHostOptions` and the constructor that takes only the ViewModel and the
-bridge factory give the window a
+`RunicWindowTestHost.Create` and both constructors give the window a
 [`FakeTimeProvider`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.time.testing.faketimeprovider)
 from `Microsoft.Extensions.TimeProvider.Testing`, which this package depends on, unless
 options supply another `TimeProvider`. Its time passes only through `Advance` or
 `SetUtcNow`, which fire due timers, `CancellationTokenSource` timeouts and
 `Task.Delay(TimeSpan, TimeProvider)` in order; a timer due now fires at once. The
-window uses it for interaction deadlines and `BeginCloseAsync` timeouts; register
+window uses it for interaction deadlines and `DrainAsync` timeouts; register
 the same instance in the application's services for its own time. `host.Time`
 returns it.
 
@@ -99,7 +97,7 @@ Work that waits on the clock does not finish by itself:
   ```csharp
   var save = editor.ExecuteAsync(vm => vm.SaveCommand);
   clock.Advance(TimeSpan.FromMilliseconds(250));
-  (await save).EnsureOk();
+  (await save).ThrowIfFailed();
   ```
 
   `Start` returns at admission, so an operation can be inspected while it runs.
@@ -114,9 +112,7 @@ Content ids are `1`, `2`, ... in presentation order, so routes are `content1`,
 drivers issue mount tokens `test:mount1`, ... and operation request ids `request1`,
 ....
 
-Only the constructor that takes a root route
-(`new RunicWindowTestHost<T>(viewModel, rootRoute, attach, viewLocator, ...)`) keeps
-the system clock and random ids.
+For real time, set `TimeProvider = TimeProvider.System` in the options.
 
 ### File watchers
 
@@ -139,7 +135,8 @@ await watching.TriggerAsync("/run/current-system");
 - `NextChangeAsync` returns the next change not returned yet, once its callback
   has run. While none is reported, it advances `Time` one debounce interval at a
   time, so events that arrive from a real file system are delivered. It throws
-  `TimeoutException` after 10 seconds of real time.
+  `TimeoutException` after 10 seconds of real time. Each of the three waits also
+  takes a `CancellationToken`.
 - `TriggerAsync(path)` marks the targets with that path changed in every active
   watcher, whether or not they changed, and returns `NextChangeAsync`. It throws
   `InvalidOperationException` when no active watcher has such a target.
@@ -167,17 +164,26 @@ already have. A `RunicViewDriver<T>` has:
   `SetJson` with the wire JSON of a DTO, list or union.
 - `ExecuteAsync(vm => vm.SaveCommand, argumentJson)`, which waits for an
   asynchronous command, and `CanExecute(command, argumentJson)` for commands with
-  an argument. A reply has `Ok`, `ErrorKind`, `ErrorMessage` and `State`;
-  `EnsureOk()` throws for a failed call. A command's declared failure
-  (`[RunicFailure]`) replies with `ErrorKind` `domain-failed` and the encoded
-  failure as `Failure`, such as `{"$case":"titleRequired"}`.
-- `Start(command, argumentJson, requestId)` for a recoverable operation, with
-  `Status()`, `WaitAsync()` and `Cancel()`. A status has `Kind`, `Result`,
-  `ErrorMessage` and, for a `domain-failed` operation, `Failure`.
+  an argument. A reply has `Succeeded`, `ErrorKind`, `ErrorMessage` and `State`;
+  `ThrowIfFailed()` throws for a failed call, as `NavigationResult` does. A
+  command's declared failure (`[RunicFailure]`) replies with `ErrorKind`
+  `domain-failed` and the encoded failure as `Failure`, such as
+  `{"$case":"titleRequired"}`.
+- `Start(command, argumentJson, requestId)` for a recoverable operation. Its
+  `Admission` is a `RunicOperationAdmissionKind` (`Accepted`, `Duplicate`, ...).
+  It has `GetStatus()`, `WaitAsync()` and `Cancel()`, which returns a
+  `RunicOperationCancelKind` (`CancellationRequested`, `NotRunning`, ...). A status
+  has a `RunicOperationStatusKind` `Kind` (`Running`, `Succeeded`, `Failed`,
+  `DomainFailed`, `Cancelled`, `Expired`, or `Unknown` for a request the window
+  does not know), `Result`, `ErrorMessage` and, for a `DomainFailed` operation,
+  `Failure`.
 - `Write(vm => vm.Title, value, expectedVersion)` for a checked write. It uses the
   current value and version as the baseline unless `expectedVersion` is given, so a
-  stale version tests the `conflict` receipt.
-- `Mount()` and `Unmount(token)` acknowledge a browser presentation.
+  stale version tests the `Conflict` receipt. A receipt has a
+  `RunicFieldWriteReceiptKind` `Kind`, `ErrorMessage`, `Value` and `Version`.
+- `Mount()` and `Unmount(token)` acknowledge a browser presentation. Both throw
+  `InvalidOperationException` naming the route's reply unless it accepted the
+  call, for example when another client's keys unmount it (`ignored`).
 - `TakePublications()` and `NextPublicationAsync()` return this route's pushed
   frames in order: `State`, `Delta` with its `RunicCollectionChange`s, or
   `Failure`.
@@ -314,7 +320,7 @@ var tracker = host.Root.View<HomeViewModel>(vm => vm.Main).Track();
 library.Record("Groceries", "Milk, eggs");
 var state = await tracker.WaitUntilAsync(state => state.Keys(vm => vm.RecentNotes)[0] == "Groceries");
 Assert.Equal(0, tracker.FullStates);                       // only keyed changes were sent
-Assert.Contains(tracker.Changes, change => change.Kind == "move");
+Assert.Contains(tracker.Changes, change => change.Kind == RunicCollectionChangeKind.Move);
 tracker.Verify();                                          // the frames match a fresh snapshot
 ```
 
@@ -324,12 +330,19 @@ frames go to its tracker or to `TakePublications`, not both.
 
 ### Lower level
 
-`host.Transport` is the in-memory transport: `Call(...)` and `CallAsync(...)` invoke
-any route with `ViewTestArguments`, and `DrainPublications()` returns raw
-publications (drivers then miss them). `Mount`, `Unmount` and
-`Content.ReleaseConnection` test View lifetimes and client disconnects. Await
-`BeginCloseAsync` before disposing a host that has accepted background operations;
-with a fake clock, its timeout passes only when the clock advances.
+`host.Transport` is the `InMemoryBridgeTransport`, the `IBridgeTransport` the generated
+Bridges bind their routes on. `Call(...)` and `CallAsync(...)` invoke any route with
+`BridgeTestArguments` and return its raw reply, such as
+`host.Transport.Call($"{host.RootRoute}Snapshot")` for the snapshot envelope that
+`host.Root.Snapshot()` parses. `TakePublications()` returns the frames of every route
+as `RunicViewPublication`s, the type the drivers return; drivers and trackers then
+miss them. The verb is Take, as on the drivers, because the frames are removed;
+Drain names `DrainAsync`, which waits for accepted work. A driver's `Mount` and
+`Unmount` with client and connection keys and `Content.ReleaseConnection` test View
+lifetimes and client disconnects. Await `host.DrainAsync(timeout)` before disposing
+a host that has accepted background operations. It stops admission, as a closing
+window does. With a fake clock its timeout passes only when the clock advances, and
+its token stops only the wait.
 
 The host does not instantiate the application's native Window wrapper or run the
 generated TypeScript client or a rendering framework. Test the frontend with the
@@ -340,6 +353,26 @@ To drive the whole application in a browser, use `RunicServeOnlyApplication`
 test, use `DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync` (experimental, `RUNICDESK101`). See the
 [Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 section.
+
+### Compatibility
+
+- The enums say in their documentation whether they are closed or open.
+  `RunicCollectionChangeKind` and `RunicPublicationKind` are closed. The operation,
+  admission, cancellation and receipt kinds are open: a minor release may add a
+  value, so a `switch` over one needs a default arm. `ErrorKind` is a string because
+  BridgeError kinds are an open set that Runic.Application.Views owns.
+- The package has no test-framework types. Failures throw `InvalidOperationException`
+  or `TimeoutException`, so it works with TUnit, xUnit, NUnit and MSTest alike, as
+  `Runic.CommandLine.Testing` and ASP.NET Core's `WebApplicationFactory` do.
+- It uses internals of `Runic.Application.Views`, so it references that package at
+  exactly its own version. Keep both at the same version.
+- The constructors' `attach` parameter,
+  `Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>`, is the
+  factory the generated `AddRunicViews()` registers. It changes only together with
+  the generated code.
+- `RetainedContentModelCount()` counts every content model whose model-context lease
+  the window holds, not only navigation entries. It is a test-only view of window
+  internals, which `WindowContentSession` does not expose.
 
 ## The whole application in a browser
 
