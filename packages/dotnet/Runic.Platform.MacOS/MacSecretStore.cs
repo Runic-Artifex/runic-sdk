@@ -38,7 +38,7 @@ internal sealed partial class MacSecretStore : IDesktopSecretStore
     public async ValueTask<PlatformResult<PlatformUnit>> SetAsync(string service, string account, string secret, CancellationToken cancellationToken = default)
     {
         SecretStoreValidation.Validate(service, account);
-        byte[]? encoded = SecretStoreValidation.EncodeSecret(secret);
+        byte[]? encoded = SecretEncoding.Encode(secret);
         if (encoded is null) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.TooLarge);
         try
         {

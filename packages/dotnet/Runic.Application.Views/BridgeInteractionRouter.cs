@@ -1,16 +1,23 @@
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+
+// The ReactiveUI conformance fixtures enter interaction scopes and call the interaction routes as a browser would.
+[assembly: InternalsVisibleTo("Runic.Application.Views.ReactiveUI.Conformance.Tests")]
+[assembly: InternalsVisibleTo("Runic.Application.Views.ReactiveUI.Reactive.Conformance.Tests")]
 
 namespace Runic.Application.Views;
 
 /// <summary>
 /// The trusted origin of work which may ask a browser to handle an interaction.
-/// Generated bridges establish this scope around a command or operation, and a
-/// <see cref="RunicWindow{TViewModel}"/> around its close decision. It is
+/// The bridge runtime establishes this scope around a generated command or
+/// operation, with the browser identity its transport authenticated, and a
+/// <see cref="RunicWindow{TViewModel}"/> around its close decision. Application
+/// code reads it through <see cref="Current"/> but cannot enter one. It is
 /// deliberately absent for arbitrary background work, which must use a .NET
-/// handler or opt into an explicit scope.
+/// handler.
 /// </summary>
 public sealed class RunicInteractionInvocation
 {
@@ -53,21 +60,16 @@ public sealed class RunicInteractionInvocation
     // may ask the one presentation in this window that has mounted a handler for the interaction.
     internal bool IsWindowClose { get; }
 
-    /// <summary>
-    /// Enters a trusted bridge invocation. Callers must use identity supplied by
-    /// <see cref="IBridgeArguments"/>, never values supplied inside request JSON.
-    /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
-        Justification = "Published API called by generated bridges; reordering its optional parameters would break them.")]
-    public static IDisposable Enter(WindowContentSession session, string route, IBridgeArguments arguments,
-        CancellationToken cancellationToken = default, string? commandName = null) =>
-        Enter(session, route, arguments.ClientKey, arguments.ConnectionKey, cancellationToken, commandName);
+    // Enters a trusted bridge invocation. Only the bridge runtime enters one, with the identity its transport
+    // authenticated (IBridgeArguments), never values supplied inside request JSON: the client and connection keys select
+    // the browser presentation that answers, so application code must not be able to claim them (W319-003 Views-02).
+    internal static IDisposable Enter(WindowContentSession session, string route, IBridgeArguments arguments,
+        string? commandName = null, CancellationToken cancellationToken = default) =>
+        Enter(session, route, arguments.ClientKey, arguments.ConnectionKey, commandName, cancellationToken);
 
-    /// <summary>Enters an explicitly selected interaction scope.</summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
-        Justification = "Published API called by generated bridges; reordering its optional parameters would break them.")]
-    public static IDisposable Enter(WindowContentSession session, string route, string? clientKey,
-        string? connectionKey, CancellationToken cancellationToken = default, string? commandName = null)
+    // Enters an explicitly selected interaction scope; tests select the identity themselves.
+    internal static IDisposable Enter(WindowContentSession session, string route, string? clientKey,
+        string? connectionKey, string? commandName = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentException.ThrowIfNullOrWhiteSpace(route);
@@ -123,14 +125,15 @@ public sealed class RunicInteractionOutputException(string message, Exception in
 /// </summary>
 public sealed class BridgeInteractionRouter : IDisposable
 {
-    /// <summary>The route on which a mounted endpoint waits for interaction input.</summary>
-    public const string WaitRoute = "__runicInteractionWait";
-    /// <summary>The route on which an endpoint answers an interaction.</summary>
-    public const string ReplyRoute = "__runicInteractionReply";
-    /// <summary>The route on which an endpoint reports the interaction handlers it has mounted.</summary>
-    public const string ControlRoute = "__runicInteractionControl";
-    /// <summary>The route on which an endpoint waits for control events.</summary>
-    public const string ControlWaitRoute = "__runicInteractionControlWait";
+    // The wire routes of the interaction protocol, which the generated TypeScript client calls by name.
+    // The route on which a mounted endpoint waits for interaction input.
+    internal const string WaitRoute = "__runicInteractionWait";
+    // The route on which an endpoint answers an interaction.
+    internal const string ReplyRoute = "__runicInteractionReply";
+    // The route on which an endpoint reports the interaction handlers it has mounted.
+    internal const string ControlRoute = "__runicInteractionControl";
+    // The route on which an endpoint waits for control events.
+    internal const string ControlWaitRoute = "__runicInteractionControlWait";
     private const int MaximumPending = 32;
     private const int MaximumPendingPerPresentation = 8;
     private const int MaximumControlEvents = 32;

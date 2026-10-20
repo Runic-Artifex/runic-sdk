@@ -764,7 +764,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
-        _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, arguments, token, descriptor.Name);
+        _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, arguments, descriptor.Name, token);
 
     private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>
         descriptor.CanExecute?.Invoke(_vm, argument)

@@ -45,7 +45,7 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
     public ValueTask<PlatformResult<PlatformUnit>> SetAsync(string service, string account, string secret, CancellationToken cancellationToken = default)
     {
         SecretStoreValidation.Validate(service, account);
-        byte[]? encoded = SecretStoreValidation.EncodeSecret(secret);
+        byte[]? encoded = SecretEncoding.Encode(secret);
         if (encoded is null) return ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.TooLarge));
         if (cancellationToken.IsCancellationRequested) { CryptographicOperations.ZeroMemory(encoded); cancellationToken.ThrowIfCancellationRequested(); }
         return SetCoreAsync(service, account, encoded, cancellationToken);

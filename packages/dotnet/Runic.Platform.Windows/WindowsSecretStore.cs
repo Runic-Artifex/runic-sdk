@@ -46,7 +46,7 @@ internal sealed unsafe class WindowsSecretStore : IDesktopSecretStore
     public ValueTask<PlatformResult<PlatformUnit>> SetAsync(string service, string account, string secret, CancellationToken cancellationToken = default)
     {
         SecretStoreValidation.Validate(service, account);
-        byte[]? encoded = SecretStoreValidation.EncodeSecret(secret);
+        byte[]? encoded = SecretEncoding.Encode(secret);
         if (encoded is null) return Result<PlatformUnit>(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.TooLarge));
         try
         {

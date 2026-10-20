@@ -7,23 +7,24 @@ using System.Threading.Tasks;
 
 namespace Runic.Assets;
 
-/// <summary>Opt-in development entry documents shared by application hosts.</summary>
-public static class DevelopmentDocumentAssets
+// Development entry documents for development tooling only. Internal: called in production, the parameterless form
+// would let an environment variable replace the application's entry document (W319-003 assets-03). A host that needs
+// it gets an explicit development-only opt-in.
+internal static class DevelopmentDocumentAssets
 {
-    /// <summary>Replaces only the entry document with the CLI's bounded development
-    /// bootstrap. Without the environment variable, returns the original source.</summary>
-    /// <remarks>The local development CLI supplies RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT.
-    /// This never adds a disk root or an HTTP proxy to the asset boundary.</remarks>
-    public static IAssetSnapshotSource WithDevelopmentDocument(this IAssetSnapshotSource source)
+    // Replaces only the entry document with the CLI's bounded development bootstrap. Without the environment
+    // variable, returns the original source. The local development CLI supplies RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT.
+    // This never adds a disk root or an HTTP proxy to the asset boundary.
+    internal static IAssetSnapshotSource WithDevelopmentDocument(this IAssetSnapshotSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
         string? path = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT");
         return string.IsNullOrEmpty(path) ? source : WithDevelopmentDocument(source, path);
     }
 
-    /// <summary>Reads one explicit development HTML file as an immutable entry
-    /// snapshot. Other assets retain their original manifest and storage boundary.</summary>
-    public static IAssetSnapshotSource WithDevelopmentDocument(this IAssetSnapshotSource source, string path)
+    // Reads one explicit development HTML file as an immutable entry snapshot. Other assets retain their original
+    // manifest and storage boundary.
+    internal static IAssetSnapshotSource WithDevelopmentDocument(this IAssetSnapshotSource source, string path)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

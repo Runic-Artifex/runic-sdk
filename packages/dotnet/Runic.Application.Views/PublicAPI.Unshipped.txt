@@ -1,1 +1,7 @@
 #nullable enable
+*REMOVED*const Runic.Application.Views.BridgeInteractionRouter.ControlRoute = "__runicInteractionControl" -> string!
+*REMOVED*const Runic.Application.Views.BridgeInteractionRouter.ControlWaitRoute = "__runicInteractionControlWait" -> string!
+*REMOVED*const Runic.Application.Views.BridgeInteractionRouter.ReplyRoute = "__runicInteractionReply" -> string!
+*REMOVED*const Runic.Application.Views.BridgeInteractionRouter.WaitRoute = "__runicInteractionWait" -> string!
+*REMOVED*static Runic.Application.Views.RunicInteractionInvocation.Enter(Runic.Application.Views.WindowContentSession! session, string! route, Runic.Application.Views.IBridgeArguments! arguments, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), string? commandName = null) -> System.IDisposable!
+*REMOVED*static Runic.Application.Views.RunicInteractionInvocation.Enter(Runic.Application.Views.WindowContentSession! session, string! route, string? clientKey, string? connectionKey, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), string? commandName = null) -> System.IDisposable!
