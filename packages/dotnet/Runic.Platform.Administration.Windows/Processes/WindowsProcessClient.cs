@@ -10,10 +10,11 @@ namespace Runic.Platform.Administration.Windows.Processes;
 /// <param name="ProcessId">The process identifier, which Windows may later reuse.</param>
 /// <param name="ParentProcessId">The recorded parent identifier; its process may already have exited.</param>
 /// <param name="ExecutableName">The executable filename reported by Toolhelp, not a full path.</param>
-public sealed record ProcessSnapshot(uint ProcessId, uint ParentProcessId, string ExecutableName);
+public sealed record ProcessSnapshot(int ProcessId, int ParentProcessId, string ExecutableName);
 
 /// <summary>Read-only local process inspection. Instances retain no native resources.</summary>
-public sealed partial class WindowsProcessClient : IWindowsProcessClient
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Clients are instances like the other administration clients; the members were interface implementations before 0.9 and stay instance members.")]
+public sealed partial class WindowsProcessClient
 {
     /// <summary>Reads a local process snapshot. Failure is never represented as an empty snapshot.</summary>
     public unsafe ImmutableArray<ProcessSnapshot> Enumerate()
@@ -30,7 +31,7 @@ public sealed partial class WindowsProcessClient : IWindowsProcessClient
             var result = PInvoke.Process32FirstW(snapshot, &entry);
             while (result)
             {
-                rows.Add(new(entry.th32ProcessID, entry.th32ParentProcessID, entry.szExeFile.ToString()));
+                rows.Add(new(unchecked((int)entry.th32ProcessID), unchecked((int)entry.th32ParentProcessID), entry.szExeFile.ToString()));
                 result = PInvoke.Process32NextW(snapshot, &entry);
             }
             var error = Marshal.GetLastPInvokeError();
@@ -41,10 +42,19 @@ public sealed partial class WindowsProcessClient : IWindowsProcessClient
     }
 
     /// <summary>Finds a process in a new snapshot; null means it was absent at observation time.</summary>
-    public ProcessSnapshot? Find(uint processId) => Enumerate().FirstOrDefault(row => row.ProcessId == processId);
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="processId"/> is negative.</exception>
+    public ProcessSnapshot? Find(int processId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(processId);
+        return Enumerate().FirstOrDefault(row => row.ProcessId == processId);
+    }
 
     /// <summary>Returns immediate children observed in one snapshot.</summary>
-    public ImmutableArray<ProcessSnapshot> GetChildren(uint parentProcessId) =>
-        [.. Enumerate().Where(row => row.ParentProcessId == parentProcessId)];
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="parentProcessId"/> is negative.</exception>
+    public ImmutableArray<ProcessSnapshot> GetChildren(int parentProcessId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(parentProcessId);
+        return [.. Enumerate().Where(row => row.ParentProcessId == parentProcessId)];
+    }
 
 }

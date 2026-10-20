@@ -3,9 +3,9 @@ using Runic.Platform.Administration.Windows.Internal.Backends;
 namespace Runic.Platform.Administration.Windows.Firewall;
 
 /// <summary>Local Windows Firewall administration using generated native bindings and the caller's privileges.</summary>
-public sealed class WindowsFirewallClient : IWindowsFirewallClient
+public sealed class WindowsFirewallClient
 {
-    private readonly IWindowsFirewallClient _client;
+    private readonly IFirewallClient _client;
     /// <summary>Creates a local firewall client.</summary>
     public WindowsFirewallClient() => _client = GeneratedAdministrationClients.Firewall();
     /// <summary>Enumerates rules without treating duplicate native names as distinct persistent IDs.</summary>

@@ -11,7 +11,14 @@ public sealed partial class WindowsServiceClient
 {
     /// <summary>Creates a new own-process service. Supplemental configuration is applied afterward and is not transactional.</summary>
     /// <remarks>If a later step fails, the created service remains. Inspect its state before deciding how to recover. Password is never retained.</remarks>
-    public unsafe void Create(ServiceSpecification specification, string? password = null)
+    public Task CreateAsync(ServiceSpecification specification, string? password = null, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Create(specification, password), cancellationToken);
+
+    /// <summary>Updates only supplied fields. Password changes require an explicit AccountName. Native changes are not transactional.</summary>
+    public Task UpdateAsync(string name, ServiceUpdate update, string? password = null, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Update(name, update, password), cancellationToken);
+
+    private unsafe void Create(ServiceSpecification specification, string? password)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         ArgumentNullException.ThrowIfNull(specification);
@@ -44,8 +51,7 @@ public sealed partial class WindowsServiceClient
         }
     }
 
-    /// <summary>Updates only supplied fields. Password changes require an explicit AccountName. Native changes are not transactional.</summary>
-    public unsafe void Update(string name, ServiceUpdate update, string? password = null)
+    private unsafe void Update(string name, ServiceUpdate update, string? password)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         ArgumentNullException.ThrowIfNull(update);

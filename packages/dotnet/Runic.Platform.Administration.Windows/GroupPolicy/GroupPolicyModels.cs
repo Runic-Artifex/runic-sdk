@@ -10,14 +10,17 @@ public enum GroupPolicyReportFormat
     Html
 }
 /// <summary>A GPO identified by GUID, independently of its non-unique display name.</summary>
+/// <remarks>GPMC reports the times in the local time zone of the computer running this client; the offset is that zone's.</remarks>
 public sealed record GroupPolicySnapshot(Guid Id, string DisplayName, string DomainName, string DirectoryPath,
-    DateTime CreationTime, DateTime ModificationTime, bool UserEnabled, bool ComputerEnabled, string? WmiFilterPath);
+    DateTimeOffset CreationTime, DateTimeOffset ModificationTime, bool UserEnabled, bool ComputerEnabled, string? WmiFilterPath);
 /// <summary>A GPMC operation message with its native status identity.</summary>
 public sealed record GroupPolicyStatusMessage(int ErrorCode, int OperationCode, string Message, string ExtensionName, string SettingsName, string ObjectPath);
 /// <summary>A completed GPMC operation and its status messages.</summary>
-public sealed record GroupPolicyOperationResult<T>(T Value, ImmutableArray<GroupPolicyStatusMessage> Messages);
+/// <remarks>This is a success value; GPMC failures are thrown as <see cref="GroupPolicyOperationException"/>.</remarks>
+public sealed record GroupPolicyOperationOutcome<T>(T Value, ImmutableArray<GroupPolicyStatusMessage> Messages);
 /// <summary>A selected filesystem backup, without backup-selection heuristics.</summary>
-public sealed record GroupPolicyBackup(Guid BackupId, Guid GroupPolicyId, string DomainName, string DisplayName, DateTime Timestamp, string Comment, string Directory);
+/// <remarks>GPMC reports the timestamp in the local time zone of the computer running this client; the offset is that zone's.</remarks>
+public sealed record GroupPolicyBackup(Guid BackupId, Guid GroupPolicyId, string DomainName, string DisplayName, DateTimeOffset Timestamp, string Comment, string Directory);
 /// <summary>Import options for an explicitly selected backup and destination GPO.</summary>
 public sealed record GroupPolicyImportOptions(string? MigrationTablePath = null, bool RequireMigrationTableMappings = false);
 /// <summary>A direct GPO link. Order 1 is highest precedence.</summary>

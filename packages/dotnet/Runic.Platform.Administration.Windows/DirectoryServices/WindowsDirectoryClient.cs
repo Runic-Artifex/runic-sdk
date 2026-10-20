@@ -229,14 +229,18 @@ public sealed class WindowsDirectoryClient
         }, cancellationToken);
 
     private static WindowsAdministrationException Failure(string operation, int code, Exception error) =>
-        new(operation, code switch
-        {
-            49 or 50 => AdministrationErrorCategory.AccessDenied,
-            32 or 51 or 52 or 81 or 85 or 91 => AdministrationErrorCategory.Unavailable,
-            20 or 68 or 122 => AdministrationErrorCategory.Conflict,
-            17 or 18 or 19 or 21 or 34 or 65 => AdministrationErrorCategory.InvalidData,
-            _ => AdministrationErrorCategory.NativeFailure
-        }, NativeErrorDomain.Ldap, code, $"{operation} failed (LDAP: {code}).", error);
+        new(operation, Categorize(code), NativeErrorDomain.Ldap, code, $"{operation} failed (LDAP: {code}).", error);
+
+    internal static AdministrationErrorCategory Categorize(int ldapResult) => ldapResult switch
+    {
+        49 or 50 => AdministrationErrorCategory.AccessDenied,
+        // noSuchObject: the named entry does not exist.
+        32 => AdministrationErrorCategory.NotFound,
+        51 or 52 or 81 or 85 or 91 => AdministrationErrorCategory.Unavailable,
+        20 or 68 or 122 => AdministrationErrorCategory.Conflict,
+        17 or 18 or 19 or 21 or 34 or 65 => AdministrationErrorCategory.InvalidData,
+        _ => AdministrationErrorCategory.NativeFailure
+    };
 
     private static void ValidateAttributes(ImmutableArray<string> attributes)
     {

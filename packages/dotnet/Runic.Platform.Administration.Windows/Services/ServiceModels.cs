@@ -57,7 +57,14 @@ public sealed record ServiceFailurePolicy(TimeSpan? ResetPeriod, ImmutableArray<
     string RebootMessage = "", string Command = "", bool OnNonCrashFailures = false);
 
 /// <summary>Service state observed at a moment in time.</summary>
-public sealed record ServiceStatus(ServiceState State, uint ProcessId, uint AcceptedControls,
+/// <param name="State">The current state.</param>
+/// <param name="ProcessId">The hosting process ID, or 0 when the service is not running.</param>
+/// <param name="NativeAcceptedControls">The native SERVICE_ACCEPT_* flags.</param>
+/// <param name="Win32ExitCode">The native Win32 exit code.</param>
+/// <param name="ServiceSpecificExitCode">The service-specific exit code.</param>
+/// <param name="CheckPoint">The native progress check point.</param>
+/// <param name="WaitHint">The service's estimate for its pending operation.</param>
+public sealed record ServiceStatus(ServiceState State, int ProcessId, uint NativeAcceptedControls,
     uint Win32ExitCode, uint ServiceSpecificExitCode, uint CheckPoint, TimeSpan WaitHint);
 
 /// <summary>Service enumeration row; detailed configuration is retrieved separately.</summary>

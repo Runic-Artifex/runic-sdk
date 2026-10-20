@@ -23,28 +23,27 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
             var name = await client.GetOperatingSystemNameAsync(token);
             Require(name.Length != 0, "Empty OS name.");
             report.Resource("Observed OS: " + name);
-            _ = client.GetBiosInformation(); _ = new WindowsDomainClient().GetMembership();
+            _ = client.GetBiosInformation(); _ = await new WindowsDomainClient().GetMembershipAsync(token);
         }, token);
         if (options.Includes("processes")) await report.Check("processes.snapshot", () =>
         {
             var client = new WindowsProcessClient();
             Require(client.Enumerate().Any(p => p.ProcessId == Environment.ProcessId), "Current process absent.");
-            Require(client.Find(uint.MaxValue) is null, "Nonexistent process returned.");
+            Require(client.Find(int.MaxValue) is null, "Nonexistent process returned.");
             return Task.CompletedTask;
         }, token);
         if (options.Includes("networks")) await report.Check("networks.enumerate", async () => { _ = await new WindowsNetworkClient().EnumerateAsync(token); }, token);
         if (options.Includes("shortcuts")) await report.Check("shortcuts.roundtrip", Shortcuts, token);
         if (options.Includes("services"))
         {
-            await report.Check("services.inspect", () =>
+            await report.Check("services.inspect", async () =>
             {
                 var client = new WindowsServiceClient();
-                var rows = client.Enumerate();
+                var rows = await client.EnumerateAsync(token);
                 Require(rows.Length > 0, "Service enumeration unexpectedly empty.");
-                Require(client.Find(report.Prefix) is null, "Unique missing service was found.");
-                var service = client.Find("EventLog");
+                Require(await client.FindAsync(report.Prefix, token) is null, "Unique missing service was found.");
+                var service = await client.FindAsync("EventLog", token);
                 Require(service is not null && service.BinaryCommandLine.Length > 0, "EventLog configuration missing.");
-                return Task.CompletedTask;
             }, token);
             if (options.Changes) await report.Check("services.lifecycle", Services, token);
             else if (options.ExpectDenied) await report.Check("services.denied", ServicesDenied, token);
@@ -77,7 +76,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         }
         if (options.Includes("shares"))
         {
-            await report.Check("shares.inspect", () => { _ = new WindowsShareClient().Enumerate(); return Task.CompletedTask; }, token);
+            await report.Check("shares.inspect", async () => { _ = await new WindowsShareClient().EnumerateAsync(token); }, token);
             if (options.Changes) await report.Check("shares.explicit-security", Shares, token);
             else if (options.ExpectDenied) await report.Check("shares.denied", SharesDenied, token);
             else report.Skip("shares.explicit-security", "Requires --allow-changes.");
@@ -116,19 +115,19 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         try
         {
             var command = "\"" + Executable + "\" --service " + name;
-            client.Create(new(name, command, "LocalSystem") { Description = "Runic disposable verification service" });
+            await client.CreateAsync(new(name, command, "LocalSystem") { Description = "Runic disposable verification service" }, cancellationToken: token);
             created = true;
-            var service = client.Find(name) ?? throw new InvalidOperationException("Created service missing.");
+            var service = await client.FindAsync(name, token) ?? throw new InvalidOperationException("Created service missing.");
             Require(service.Status.State == ServiceState.Stopped && service.BinaryCommandLine == command, "New service state/configuration mismatch.");
-            await Conflict(() => { client.Create(new(name, command, "LocalSystem")); return Task.CompletedTask; });
-            client.Update(name, new() { Description = "updated", FailurePolicy = new(TimeSpan.FromDays(1), [new(ServiceFailureActionKind.None, TimeSpan.Zero)]) });
-            Require(client.Find(name)?.Description == "updated", "Service description update missing.");
-            client.Start(name);
+            await Conflict(() => client.CreateAsync(new(name, command, "LocalSystem"), cancellationToken: token));
+            await client.UpdateAsync(name, new() { Description = "updated", FailurePolicy = new(TimeSpan.FromDays(1), [new(ServiceFailureActionKind.None, TimeSpan.Zero)]) }, cancellationToken: token);
+            Require((await client.FindAsync(name, token))?.Description == "updated", "Service description update missing.");
+            await client.StartAsync(name, token);
             var running = await client.WaitForStateAsync(name, ServiceState.Running, TimeSpan.FromSeconds(30), token);
             Require(running.ProcessId != 0 && new WindowsProcessClient().Find(running.ProcessId) is not null, "Service process ID missing.");
-            client.Pause(name); await client.WaitForStateAsync(name, ServiceState.Paused, TimeSpan.FromSeconds(10), token);
-            client.Continue(name); await client.WaitForStateAsync(name, ServiceState.Running, TimeSpan.FromSeconds(10), token);
-            client.Stop(name); await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30), token);
+            await client.PauseAsync(name, token); await client.WaitForStateAsync(name, ServiceState.Paused, TimeSpan.FromSeconds(10), token);
+            await client.ContinueAsync(name, token); await client.WaitForStateAsync(name, ServiceState.Running, TimeSpan.FromSeconds(10), token);
+            await client.StopAsync(name, token); await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30), token);
         }
         finally
         {
@@ -137,28 +136,28 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
                 Exception? stopFailure = null;
                 try
                 {
-                    var state = client.FindStatus(name);
+                    var state = await client.FindStatusAsync(name);
                     if (state is not null && state.State != ServiceState.Stopped)
                     {
-                        if (state.State != ServiceState.StopPending) client.Stop(name);
+                        if (state.State != ServiceState.StopPending) await client.StopAsync(name);
                         await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30));
                     }
                 }
                 catch (Exception error) when (error is WindowsAdministrationException or TimeoutException) { stopFailure = error; }
                 // DeleteService also marks a running service; the SCM removes it once its process ends.
-                Require(client.Delete(name), "Created service unexpectedly absent before cleanup.");
+                Require(await client.DeleteAsync(name), "Created service unexpectedly absent before cleanup.");
                 if (stopFailure is not null)
                 {
                     report.Resource("  service stop failed during cleanup: " + stopFailure.Message);
-                    if (client.FindStatus(name) is { ProcessId: not 0 } running)
+                    if (await client.FindStatusAsync(name) is { ProcessId: not 0 } running)
                     {
                         // Only this verifier's own executable is ended; FixtureProcess checks the image path.
                         FixtureProcess.Terminate(running.ProcessId, Executable);
                         report.Resource("  ended the fixture service process " + running.ProcessId);
                     }
                 }
-                await Until(() => Task.FromResult(client.FindStatus(name) is null), TimeSpan.FromSeconds(30), default);
-                Require(!client.Delete(name), "Second service deletion did not report absence.");
+                await Until(async () => await client.FindStatusAsync(name) is null, TimeSpan.FromSeconds(30), default);
+                Require(!await client.DeleteAsync(name), "Second service deletion did not report absence.");
             });
         }
     }
@@ -254,30 +253,30 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         var spec = new ShareSpecification(name, path, Descriptor(initialSddl));
         try
         {
-            client.Create(spec); created = true;
-            var before = client.Find(name) ?? throw new InvalidOperationException("Created share missing.");
+            await client.CreateAsync(spec, token); created = true;
+            var before = await client.FindAsync(name, token) ?? throw new InvalidOperationException("Created share missing.");
             CheckDescriptor(before, initialSddl);
-            await Conflict(() => { client.Create(spec); return Task.CompletedTask; });
+            await Conflict(() => client.CreateAsync(spec, token));
             // A metadata-only update must preserve the stored descriptor.
-            client.Update(name, new() { Description = "updated" });
-            var after = client.Find(name) ?? throw new InvalidOperationException("Updated share missing.");
+            await client.UpdateAsync(name, new() { Description = "updated" }, token);
+            var after = await client.FindAsync(name, token) ?? throw new InvalidOperationException("Updated share missing.");
             Require(after.Description == "updated" && SameDescriptor(before.SecurityDescriptor, after.SecurityDescriptor),
                 "Metadata update changed stored security.");
             var changedSddl = "O:BAG:BAD:(A;;FA;;;BA)(A;;FW;;;BU)";
-            client.Update(name, new() { SecurityDescriptor = Descriptor(changedSddl) });
-            after = client.Find(name) ?? throw new InvalidOperationException("Share disappeared after security update.");
+            await client.UpdateAsync(name, new() { SecurityDescriptor = Descriptor(changedSddl) }, token);
+            after = await client.FindAsync(name, token) ?? throw new InvalidOperationException("Share disappeared after security update.");
             CheckDescriptor(after, changedSddl);
-            client.Update(name, new() { SecurityDescriptor = after.SecurityDescriptor });
-            var repeated = client.Find(name) ?? throw new InvalidOperationException("Share disappeared after repeated update.");
+            await client.UpdateAsync(name, new() { SecurityDescriptor = after.SecurityDescriptor }, token);
+            var repeated = await client.FindAsync(name, token) ?? throw new InvalidOperationException("Share disappeared after repeated update.");
             Require(SameDescriptor(after.SecurityDescriptor, repeated.SecurityDescriptor), "Repeated security update changed SID/ACE representation.");
         }
         finally
         {
-            if (created) await report.Check("cleanup.share-" + suffix, () =>
+            if (created) await report.Check("cleanup.share-" + suffix, async () =>
             {
-                Require(client.Delete(name), "Created share unexpectedly absent before cleanup.");
-                Require(!client.Delete(name), "Second share deletion did not report absence.");
-                Directory.Delete(path); return Task.CompletedTask;
+                Require(await client.DeleteAsync(name), "Created share unexpectedly absent before cleanup.");
+                Require(!await client.DeleteAsync(name), "Second share deletion did not report absence.");
+                Directory.Delete(path);
             });
             else if (Directory.Exists(path)) Directory.Delete(path);
         }
@@ -289,9 +288,9 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         var client = new WindowsServiceClient();
         var name = report.Prefix;
         report.Resource("Denied service attempt: " + name);
-        await Denied(() => { client.Create(new(name, "\"" + Executable + "\" --service " + name, "LocalSystem")); return Task.CompletedTask; },
-            () => { Require(client.Delete(name), "Unexpectedly created service was already absent."); return Task.CompletedTask; });
-        Require(client.FindStatus(name) is null, "Denied service creation left a service behind.");
+        await Denied(() => client.CreateAsync(new(name, "\"" + Executable + "\" --service " + name, "LocalSystem"), cancellationToken: token),
+            async () => Require(await client.DeleteAsync(name), "Unexpectedly created service was already absent."));
+        Require(await client.FindStatusAsync(name, token) is null, "Denied service creation left a service behind.");
     }
     private async Task TasksDenied()
     {
@@ -333,10 +332,10 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         report.Resource("Denied SMB share attempt: " + name + "; directory: " + path);
         try
         {
-            await Denied(() => { client.Create(new ShareSpecification(name, path, Descriptor("O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)"))); return Task.CompletedTask; },
-                () => { Require(client.Delete(name), "Unexpectedly created share was already absent."); return Task.CompletedTask; });
+            await Denied(() => client.CreateAsync(new ShareSpecification(name, path, Descriptor("O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)")), token),
+                async () => Require(await client.DeleteAsync(name), "Unexpectedly created share was already absent."));
             // Enumeration (level 1) needs no administrative rights, unlike reading a share's security.
-            Require(!client.Enumerate().Any(share => string.Equals(share.Name, name, StringComparison.OrdinalIgnoreCase)), "Denied share creation left a share behind.");
+            Require(!(await client.EnumerateAsync(token)).Any(share => string.Equals(share.Name, name, StringComparison.OrdinalIgnoreCase)), "Denied share creation left a share behind.");
         }
         finally { Directory.Delete(path); }
     }

@@ -103,6 +103,15 @@ not yet known. This is a defect in the verifier's test service, not in
 the service lifecycle with the NativeAOT verifier until the test service is
 fixed.
 
+## 0.9 API changes (W319-003)
+
+The 0.9 API review made the SCM, NetShare, domain-membership and DC-locator calls
+asynchronous and added the `NotFound` error category. Windows CI (win-x64, JIT and
+NativeAOT) runs the read-only native checks against the new shapes, including a
+missing service reported as `NotFound` and pre-canceled calls that never start. The
+local write suites and the domain suite have not been rerun on the VMs since; the
+domain acceptance run (W319-009) covers the final shape.
+
 ## Not natively accepted
 
 Local service, task, firewall and share writes are accepted above. Without AD,

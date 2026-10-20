@@ -1,18 +1,27 @@
 namespace Runic.Platform.Administration.Windows;
 
 /// <summary>Classification of an operational Windows administration failure.</summary>
+/// <remarks>
+/// This set is open: a minor release may add categories, so handle unknown values. Zero is never a real
+/// failure category; <see cref="Unknown"/> is only the default value and the package never reports it.
+/// <see cref="NativeFailure"/> is the category for native errors that no other category describes.
+/// </remarks>
 public enum AdministrationErrorCategory
 {
+    /// <summary>No category; the default value. Windows administration failures never report it.</summary>
+    Unknown = 0,
     /// <summary>Windows denied access.</summary>
-    AccessDenied,
-    /// <summary>The target or required component is unavailable.</summary>
-    Unavailable,
+    AccessDenied = 1,
+    /// <summary>The named target, such as a service, share, file, directory object, task or WMI instance, does not exist.</summary>
+    NotFound = 2,
+    /// <summary>The target machine, endpoint or a required component (such as GPMC or a WMI provider) is unavailable.</summary>
+    Unavailable = 3,
     /// <summary>The requested operation conflicts with current state.</summary>
-    Conflict,
+    Conflict = 4,
     /// <summary>Windows returned invalid or unsupported data.</summary>
-    InvalidData,
-    /// <summary>A native operation failed for another reason.</summary>
-    NativeFailure
+    InvalidData = 5,
+    /// <summary>A native operation failed for a reason no other category describes.</summary>
+    NativeFailure = 6
 }
 
 /// <summary>The domain defining a native error number.</summary>

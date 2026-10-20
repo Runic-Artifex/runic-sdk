@@ -35,7 +35,7 @@ using Runic.Platform.Administration.Windows.Services;
 using Runic.Platform.Administration.Windows.Processes;
 
 var services = new WindowsServiceClient(); // Or explicit remote machine.
-var service = services.Find("EventLog");
+var service = await services.FindAsync("EventLog");
 if (service is not null)
 {
     Console.WriteLine(service.BinaryCommandLine);
@@ -45,10 +45,10 @@ if (service is not null)
 }
 ~~~
 
-Create accepts ServiceSpecification, Update accepts ServiceUpdate. On a disposable
+CreateAsync accepts ServiceSpecification, UpdateAsync accepts ServiceUpdate. On a disposable
 fixture, provide a real disposable Windows service executable, then exercise
-Start/Stop/Pause/Continue only if that service supports them. WaitForStateAsync
-uses an explicit timeout. A normal console executable is not a valid service
+StartAsync/StopAsync/PauseAsync/ContinueAsync only if that service supports them. WaitForStateAsync
+uses an explicit timeout. A missing service is reported as `AdministrationErrorCategory.NotFound`. A normal console executable is not a valid service
 fixture. Deletion may mark a service for later removal while handles remain open.
 
 ## Scheduled tasks
@@ -128,9 +128,9 @@ using Runic.Platform.Administration.Windows.SystemInformation;
 using Runic.Platform.Administration.Windows.Networks;
 
 var domains = new WindowsDomainClient();
-Console.WriteLine(domains.GetMembership());
+Console.WriteLine(await domains.GetMembershipAsync());
 // Explicit discovery on a domain fixture:
-// Console.WriteLine(domains.DiscoverController("example.test"));
+// Console.WriteLine(await domains.DiscoverControllerAsync("example.test"));
 var system = new WindowsSystemInformationClient();
 Console.WriteLine(await system.GetOperatingSystemNameAsync());
 Console.WriteLine(system.GetOperatingSystem());
@@ -145,20 +145,20 @@ foreach (var network in await new WindowsNetworkClient().EnumerateAsync())
 using Runic.Platform.Administration.Windows.Shares;
 
 var shares = new WindowsShareClient("fileserver.example.test");
-foreach (var share in shares.Enumerate()) Console.WriteLine(share);
-var snapshot = shares.Find("FixtureShare");
+foreach (var share in await shares.EnumerateAsync()) Console.WriteLine(share);
+var snapshot = await shares.FindAsync("FixtureShare");
 if (snapshot is not null)
     Console.WriteLine($"{snapshot.Path}: stored security: {snapshot.SecurityDescriptor?.Length.ToString() ?? "absent"}");
 ~~~
 
-On a disposable server, Create accepts ShareSpecification, which requires an
-explicit self-relative share security descriptor. Update can replace
+On a disposable server, CreateAsync accepts ShareSpecification, which requires an
+explicit self-relative share security descriptor. UpdateAsync can replace
 description, maximum uses or the complete self-relative security descriptor.
 On reads, a null SecurityDescriptor means Windows returned no stored descriptor;
 it is not an empty (deny-all) DACL and does not describe filesystem permissions.
 On updates, null preserves each field. Decode present descriptors with RawSecurityDescriptor when needed; retain
 unknown ACEs, ordering and inheritance when editing. Delete removes the share,
-not its directory or files.
+not its directory or files (DeleteAsync).
 
 ## DNS
 
@@ -172,7 +172,18 @@ foreach (var record in await dns.EnumerateRecordsAsync("example.test"))
 ~~~
 
 Fixture writes use DnsRecordKey plus DnsRecordSpecification. The key includes
-zone, owner and typed record data. TTL is separate. Find/Update/Delete target a
+zone, owner and typed record data; A and AAAA data are `IPAddress` values, so
+equivalent spellings of one address are the same key. TTL is a separate
+`TimeSpan` in whole seconds; `TimeToLive = null` on a specification lets the
+server choose it.
+
+~~~csharp
+var key = new DnsRecordKey("example.test", "host.example.test",
+    new DnsRecordData.A(System.Net.IPAddress.Parse("198.51.100.10")));
+await dns.CreateAsync(new(key) { TimeToLive = TimeSpan.FromMinutes(5) });
+await dns.UpdateAsync(key, new() { TimeToLive = TimeSpan.FromMinutes(10) });
+~~~
+ Find/Update/Delete target a
 single record, preserving other records at that owner. Unsupported native types
 are exposed and rejected for typed writes. The DNS role and remote WMI access
 are prerequisites.
@@ -188,7 +199,7 @@ foreach (var gpo in await policies.EnumerateAsync()) Console.WriteLine(gpo);
 
 On the domain fixture, use GUID identities with BackupAsync, ImportAsync,
 RestoreAsync and GenerateReportAsync. Select the exact backup GUID/directory;
-the library does not choose one. Inspect result messages as well as the result.
+the library does not choose one. Inspect the outcome's messages as well as its value.
 Link and permission methods act on explicit scopes/trustees. Inherited/custom
 permissions remain visible; removal of a trustee is explicit. Missing GPMC is an
 Unavailable prerequisite failure, not an empty domain.

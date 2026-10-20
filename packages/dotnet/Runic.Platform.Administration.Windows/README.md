@@ -36,7 +36,7 @@ every server/version combination has been tested.
 | DirectoryServices / WindowsDomainClient | Domain membership/role and controller discovery | Local or explicit computer, native NetAPI access. |
 | DirectoryServices / WindowsDirectoryClient | RootDSE, paged searches, ranged values, typed attributes, create/modify/delete/rename/move | Explicit LDAP endpoint, caller or explicit credentials; delegated directory rights. Signed/sealed Negotiate, LDAPS or StartTLS. |
 | DirectoryServices / ActiveDirectoryClient | User/computer/group/OU creation; memberships, account enablement, password operations and SPNs | Explicit directory client; appropriate AD rights. Newly created user/computer accounts are disabled. No installation/domain naming policy. |
-| SystemInformation / WindowsSystemInformationClient | OS version/product/language, BIOS and computer/domain role | Local, normally read-only access; registry, version and SMBIOS APIs. |
+| SystemInformation / WindowsSystemInformationClient | OS version/product/language and BIOS | Local, normally read-only access; registry, version and SMBIOS APIs. Domain membership and role are on WindowsDomainClient. |
 | Networks / WindowsNetworkClient | Network identities, categories, connectivity and domain type | Local Network List Manager COM; read-only. |
 | Shares / WindowsShareClient | SMB enumeration, configuration, creation/update/deletion and self-relative security descriptors | Local or explicit server; NetShare permissions. Security reads/writes may require elevated rights. Filesystem ACLs are untouched. |
 | Dns / WindowsDnsClient | Zones/AD integration; A, AAAA, CNAME, PTR, MX, TXT, SRV and NS record operations | Explicit Windows DNS server; MicrosoftDNS WMI provider, DCOM/WMI access and DNS administration rights. No zone/server configuration writes. |
@@ -48,12 +48,38 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
 
 ## API semantics
 
+- Clients are concrete sealed classes without interfaces, like `ServiceController`
+  and `LdapConnection`. To substitute them in tests, wrap the members you use.
+- Operations that can reach another machine or block on I/O are
+  `…Async(…, CancellationToken)`: services, shares, domain membership and controller
+  discovery, tasks, DNS, LDAP/AD and Group Policy, as well as the local COM-based
+  firewall, network and shell-link clients. Local snapshot reads stay synchronous:
+  `WindowsProcessClient` and `GetOperatingSystem`/`GetBiosInformation`. SCM, NetAPI
+  and DC-locator calls run off the caller's thread. All async members return `Task`.
 - Find returns null only for native absence. Enumeration errors are failures, not
   successful empty lists. Read models use immutable collections; write specifications
   are separate and selected updates use null to preserve a setting.
+- Operational failures throw WindowsAdministrationException; this package does not
+  return `Runic.Platform.PlatformResult`. That is deliberate: like
+  `ServiceController`, `System.DirectoryServices.Protocols` and the CIM client, it
+  wraps multi-step, non-transactional native operations whose callers need the
+  native error identity. `PlatformResult` describes optional host capabilities, where
+  "unavailable" is a normal outcome. In this README, "Unavailable" always means
+  `AdministrationErrorCategory.Unavailable`.
 - WindowsAdministrationException retains operation, error category, native domain
   and numeric code. LDAP exceptions remain available as inner exceptions, including
   native diagnostic context. Do not log request models or credentials.
+- `AdministrationErrorCategory` is open: a minor release may add categories, so
+  handle unknown values. Its zero value, `Unknown`, is never reported.
+
+  | Category | Meaning | Examples |
+  | --- | --- | --- |
+  | AccessDenied | Windows denied access. | Win32 5, 1314, 1326; WMI access denied; LDAP 49, 50. |
+  | NotFound | The named target does not exist. | Win32 2, 3; a missing service (1060) or share (2310); a missing directory object (8240, LDAP 32); a missing WMI instance. |
+  | Unavailable | The machine, endpoint or a required component is unavailable. | Network path or RPC server unavailable (53, 64, 67, 1722, 1726); GPMC not installed; missing WMI namespace or class; LDAP server down. |
+  | Conflict | The operation conflicts with current state. | An existing object or share name; a running service; a changed LDAP assertion. |
+  | InvalidData | Windows returned, or rejected, invalid data. | Win32 13, 24, 87; invalid task XML; LDAP schema violations. |
+  | NativeFailure | Any other native error. | Codes no other category describes. |
 - Argument exceptions describe caller mistakes; PlatformNotSupportedException
   describes unsupported platforms. GPMC missing registration and missing WMI
   namespaces/classes are identifiable Unavailable failures.
@@ -68,6 +94,15 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
   COM security. WMI uses explicit per-proxy authentication and packet privacy.
   Native RPC/COM calls can outlive a cancellation request; LDAP timeouts and WMI
   query wait bounds are not universal hard deadlines.
+- Process IDs are `int`, as in `System.Diagnostics.Process`. Raw native numbers
+  carry a `Native` prefix (`NativeFlags`, `NativeAddressType`, `NativeAcceptedControls`,
+  `NativeRecordClass`); `FirewallRuleSpecification.Protocol` is the IANA protocol number.
+- Group Policy times (`GroupPolicySnapshot.CreationTime`/`ModificationTime`,
+  `GroupPolicyBackup.Timestamp`) are `DateTimeOffset` values in the local time zone of
+  the computer running the client, where GPMC runs. Task Scheduler times
+  (`ScheduledTaskSnapshot.LastRunTime`/`NextRunTime`) are `DateTime` wall-clock times
+  of the target machine with `Kind=Unspecified`; for a remote machine their offset is
+  not known.
 - GetOperatingSystem exposes RegistryProductName verbatim; Windows can retain a Windows 10 compatibility label on Windows 11. GetOperatingSystemNameAsync reads the display name from native Windows inventory.
 - Service BinaryCommandLine is the configured command line, not an executable path.
   Writes require a quoted executable path when the command line contains
@@ -80,14 +115,17 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
 - Firewall names can be ambiguous and have no public persistent GUID in this API.
   Use the returned identity for writes; changed/ambiguous identity fails. Updates
   retain unrelated native settings by editing the existing rule.
-- DNS keys include full record data, not just owner name. Updating one record does
+- DNS keys include full record data, not just owner name. A and AAAA addresses are
+  `IPAddress` values; TTLs are `TimeSpan` values in whole seconds, and a
+  specification's `TimeToLive = null` lets the server choose the TTL. Updating one record does
   not replace sibling records. Unsupported types are returned as Unsupported with
   native class and text; they cannot be written through the curated typed API.
   TXT data follows the DNS WMI provider's quoted textual representation.
 - Share security descriptors retain SID/ACE information and ordering as native
   self-relative bytes. They represent share permissions, never filesystem ACLs.
-- GPMC operation outcomes include its detailed status collection and checked overall
-  HRESULT. Import overwrites settings in an explicitly selected destination GPO;
+- GPMC operations return `GroupPolicyOperationOutcome<T>`, a success value with
+  GPMC's detailed status collection; a failed overall HRESULT throws
+  `GroupPolicyOperationException`. Import overwrites settings in an explicitly selected destination GPO;
   restore uses the backup's original identity. No backup-selection heuristics,
   migration orchestration or SYSVOL file-copy implementation is included.
 - Link reordering uses an LDAP assertion against the read gpLink value, preserving
@@ -118,9 +156,8 @@ dotnet restore examples/dotnet/Runic.Administration.Console --source ./artifacts
 dotnet run --project examples/dotnet/Runic.Administration.Console --no-restore -- system
 ~~~
 
-The API baseline records signatures, default parameters, enum values and init
-accessors; it is managed-only. Review intentional changes before running its
---write-baseline option. Native verification roots the entire administration
+`PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt` record the public API. Native
+verification roots the entire administration
 assembly so unexecuted public capabilities still receive AOT analysis. That
 analysis does not substitute for executing those capabilities on their fixtures.
 
@@ -180,11 +217,11 @@ including older backups, with IDs, display names, timestamps and comments. It ne
 local GPMC but no domain connection. The application selects a backup and passes its
 ID to `ImportAsync`; application naming and recency rules remain outside Runic.
 
-DNS creation retains its explicit 3600-second default. Set
-`DnsRecordSpecification.UseServerDefaultTimeToLive = true` to omit TTL and let the
+DNS creation retains its explicit one-hour default. Set
+`DnsRecordSpecification.TimeToLive = null` to omit TTL and let the
 Windows DNS provider select it, matching callers that previously omitted the optional
 [native TTL argument](https://learn.microsoft.com/en-us/windows/win32/dns/microsoftdns-cnametype-createinstancefrompropertydata).
-This option affects creation only; updates preserve the existing TTL unless changed.
+This affects creation only; updates preserve the existing TTL unless changed.
 
 NativeAOT checks cover backup cancellation and missing GPMC. Enumeration of populated
 backup directories and server-default DNS TTL require the disposable domain/DNS fixture;

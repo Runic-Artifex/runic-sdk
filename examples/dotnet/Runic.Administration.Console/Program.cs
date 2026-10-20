@@ -31,13 +31,13 @@ try
             foreach (var process in new WindowsProcessClient().Enumerate()) Console.WriteLine(process);
             break;
         case "services":
-            Console.WriteLine(new WindowsServiceClient().Find("EventLog"));
+            Console.WriteLine(await new WindowsServiceClient().FindAsync("EventLog"));
             break;
         case "networks":
             foreach (var network in await new WindowsNetworkClient().EnumerateAsync()) Console.WriteLine(network);
             break;
         case "shares":
-            foreach (var share in new WindowsShareClient(args.Length > 1 ? args[1] : null).Enumerate()) Console.WriteLine(share);
+            foreach (var share in await new WindowsShareClient(args.Length > 1 ? args[1] : null).EnumerateAsync()) Console.WriteLine(share);
             break;
         case "tasks":
             foreach (var task in await new WindowsTaskSchedulerClient().EnumerateAsync("\\")) Console.WriteLine($"{task.Path}: {task.State}; last result {task.LastTaskResult}");
@@ -49,7 +49,7 @@ try
             Console.WriteLine(await new WindowsShellLinkClient().FindAsync(args[1]));
             break;
         case "domain":
-            Console.WriteLine(new WindowsDomainClient().GetMembership());
+            Console.WriteLine(await new WindowsDomainClient().GetMembershipAsync());
             break;
         case "ldap" when args.Length == 2:
             var root = await new WindowsDirectoryClient(new(args[1])).ReadRootDseAsync(["defaultNamingContext", "dnsHostName"]);

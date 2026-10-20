@@ -7,7 +7,8 @@ using Runic.Platform.Administration.Windows.Internal;
 namespace Runic.Platform.Administration.Windows.Shortcuts;
 
 /// <summary>Local shell-link operations, executed on an owned COM apartment without a desktop owner.</summary>
-public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Clients are instances like the other administration clients; the members were interface implementations before 0.9 and stay instance members.")]
+public sealed class WindowsShellLinkClient
 {
     [System.Runtime.Versioning.SupportedOSPlatformGuard("windows6.1")]
     private static bool Supported => OperatingSystem.IsWindowsVersionAtLeast(6, 1);
@@ -222,6 +223,6 @@ public sealed class WindowsShellLinkClient : IWindowsShellLinkClient
             NativeError.Check(((IShellLinkW*)link.Pointer)->GetIconLocation(text, icon.Length, &index).Value, "Read shell-link icon");
         NativeError.Check(((IShellLinkW*)link.Pointer)->GetShowCmd(&show).Value, "Read shell-link show state");
         NativeError.Check(((IShellLinkW*)link.Pointer)->GetHotkey(&hotkey).Value, "Read shell-link hotkey");
-        return new(FromBuffer(path), GetText(link, TextField.Arguments), GetText(link, TextField.WorkingDirectory), GetText(link, TextField.Description), new(FromBuffer(icon), index), (int)show, hotkey);
+        return new(FromBuffer(path), GetText(link, TextField.Arguments), GetText(link, TextField.WorkingDirectory), GetText(link, TextField.Description), new(FromBuffer(icon), index), (ShellLinkShowState)(int)show, hotkey);
     }
 }

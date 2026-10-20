@@ -14,7 +14,7 @@ namespace Runic.Platform.Administration.Windows.Internal.Backends;
 
 /// <summary>Local Windows Firewall administration. Requires Windows x64; mutations use the caller's privileges.</summary>
 [System.Runtime.Versioning.SupportedOSPlatform("windows6.1")]
-internal sealed unsafe class CsWin32FirewallClient : IWindowsFirewallClient
+internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
 {
     /// <summary>Creates a local firewall client.</summary>
     internal CsWin32FirewallClient() => Automation.RequireX64();

@@ -4,6 +4,16 @@ using System.Collections.Immutable;
 
 namespace Runic.Platform.Administration.Windows.Internal.Backends;
 
+internal interface IFirewallClient
+{
+    Task<ImmutableArray<FirewallRuleSnapshot>> EnumerateAsync(CancellationToken cancellationToken);
+    Task<FirewallRuleSnapshot?> FindAsync(string name, CancellationToken cancellationToken);
+    Task<ImmutableArray<FirewallProfileSnapshot>> GetProfilesAsync(CancellationToken cancellationToken);
+    Task CreateAsync(FirewallRuleSpecification specification, CancellationToken cancellationToken);
+    Task UpdateAsync(FirewallRuleIdentity identity, FirewallRuleUpdate update, CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(FirewallRuleIdentity identity, CancellationToken cancellationToken);
+}
+
 internal interface IShareClient
 {
     ImmutableArray<ShareSummary> Enumerate();
@@ -15,17 +25,17 @@ internal interface IShareClient
 
 internal static class GeneratedAdministrationClients
 {
-    internal static IWindowsFirewallClient Firewall()
+    internal static IFirewallClient Firewall()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
             throw new PlatformNotSupportedException("Windows 7 or later is required.");
         return new CsWin32FirewallClient();
     }
 
-    internal static IShareClient Shares(string? server)
+    internal static IShareClient Shares(string? machineName)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
             throw new PlatformNotSupportedException("Windows 7 or later is required.");
-        return new CsWin32ShareClient(server);
+        return new CsWin32ShareClient(machineName);
     }
 }

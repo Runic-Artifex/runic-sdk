@@ -8,9 +8,9 @@ internal static unsafe partial class FixtureProcess
 {
     private const uint ProcessTerminate = 0x0001, ProcessQueryLimitedInformation = 0x1000, Synchronize = 0x00100000;
 
-    internal static void Terminate(uint processId, string expectedImage)
+    internal static void Terminate(int processId, string expectedImage)
     {
-        nint handle = OpenProcess(ProcessTerminate | ProcessQueryLimitedInformation | Synchronize, 0, processId);
+        nint handle = OpenProcess(ProcessTerminate | ProcessQueryLimitedInformation | Synchronize, 0, unchecked((uint)processId));
         if (handle == 0) throw new Win32Exception(Marshal.GetLastPInvokeError(), "Opening the fixture service process failed.");
         try
         {
