@@ -29,7 +29,7 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             await report.Check("ldap.inspect", async () =>
             {
                 var root = await directory.ReadRootDseAsync(["defaultNamingContext", "dnsHostName"], token);
-                Require(root is not null, "RootDSE absent.");
+                Require(root is not null && root.Attributes["dnsHostName"][0] is DirectoryValue.Text, "RootDSE absent or not read as text.");
                 if (options.BaseDn is not null)
                     Require(await directory.FindAsync(options.BaseDn, ["distinguishedName"], token) is not null, "Explicit base DN absent.");
             }, token);
@@ -142,7 +142,12 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             var snapshot = await directory.FindAsync(renamed, ["description", "objectSid"], token);
             Require(snapshot is not null && snapshot.Attributes["objectSid"][0] is DirectoryValue.Binary, "SID was not returned as binary.");
             report.Resource("Read value types: description " + snapshot!.Attributes["description"][0].GetType().Name + ", objectSid " + snapshot.Attributes["objectSid"][0].GetType().Name);
-            Require(Utf8(snapshot.Attributes["description"][0]) == "Grüße", "Unicode description did not roundtrip.");
+            Require(snapshot.Attributes["description"][0] == new DirectoryValue.Text("Grüße"), "The Unicode description was not read back as text.");
+            var typed = await directory.FindAsync(renamed, ["objectGUID", "whenCreated", "userAccountControl", "nTSecurityDescriptor", "distinguishedName"], token);
+            Require(typed!.Attributes["objectGUID"][0] is DirectoryValue.Binary && typed.Attributes["whenCreated"][0] is DirectoryValue.Text
+                && typed.Attributes["userAccountControl"][0] is DirectoryValue.Text && typed.Attributes["distinguishedName"][0] is DirectoryValue.Text
+                && (!typed.Attributes.TryGetValue("nTSecurityDescriptor", out var descriptor) || descriptor[0] is DirectoryValue.Binary),
+                "Read value types do not follow the schema syntaxes.");
             // Generated only in memory; never included in reports or command-line arguments.
             var password = "Rv!a9-" + Guid.NewGuid().ToString("N");
             await ad.ResetPasswordAsync(renamed, password, token);
@@ -333,6 +338,7 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             Require(returned.All(key => plain.Attributes[key].Length < count), "The server returned every value without ranging; the check cannot exercise ranges.");
             var values = await directory.ReadAllAttributeValuesAsync(groupDn, "member", token);
             report.Resource("Ranged member value types: " + string.Join(", ", values.GroupBy(value => value.GetType().Name).Select(group => group.Key + " " + group.Count())));
+            Require(values.All(value => value is DirectoryValue.Text), "Ranged member values were not read as text.");
             var actual = values.Select(Utf8).ToHashSet(StringComparer.OrdinalIgnoreCase);
             Require(values.Length == count && actual.SetEquals(members), "Ranged read returned " + values.Length + " values instead of the " + count + " written.");
             Require((await ad.GetMembersAsync(groupDn, token)).Length == count, "GetMembersAsync did not return every ranged member.");

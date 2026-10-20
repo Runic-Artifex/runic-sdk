@@ -155,6 +155,11 @@ Accepted on this fixture:
     rename, binary SID, password reset and change, account enablement and
     deletion.
   - `DiscoverControllerAsync` and `GetMembershipAsync` from the joined client.
+  - Schema-typed reads (#447), rerun the same day with the NativeAOT and JIT
+    LDAP suite, a full delegate run and a restricted denied run, all passing.
+    `description`, `whenCreated`, `userAccountControl`, `distinguishedName`,
+    `member` and RootDSE values are `Text`; `objectSid` and `objectGUID` are
+    `Binary`.
 - DNS: all eight record types through WMI/DCOM with the caller's identity and with
   an explicit `NetworkCredential`. Each type covers create, duplicate `Conflict`,
   an explicit TTL or the server default, a TTL-only update, an in-place data
@@ -190,7 +195,6 @@ Limits:
   backup and links work, but report generation fails with `0x80072020`.
   `Get-GPOReport` fails the same way with `0x80070005`. Run Group Policy
   operations under the identity's own logon.
-- Directory reads return every value as `DirectoryValue.Binary` (runic-sdk #447).
 - Not covered: WMI filter associations other than clearing one, more than one
   controller or site, cross-domain trusts, other Windows Server versions, and
   remote DNS servers that are not domain controllers.
@@ -204,7 +208,7 @@ accepted above. The following remain **implemented but not natively accepted**:
 | --- | --- |
 | Services/processes | Failure actions other than none; reboot actions; timeouts; per-service denied rights beyond SCM creation; remote SCM. |
 | Tasks/firewall | Preservation of unsupported XML/native settings; password principals; trigger executions; effective Group Policy restrictions; firewall protocol transitions. |
-| Directory/AD | Typed text reads (#447), all mutation types beyond those accepted above, membership/SPN/UAC concurrency, and password change/reset restrictions under a stricter policy. |
+| Directory/AD | All mutation types beyond those accepted above, membership/SPN/UAC concurrency, and password change/reset restrictions under a stricter policy. |
 | System/networks/shares | ACE order/inheritance retention beyond the tested descriptors; remote shares and remote denied rights. Broader hardware/OS comparisons and malformed/unsupported firmware data. |
 | DNS | Non-DC DNS servers, file-backed zones, unsupported record reporting, TXT text that contains quotes (the provider cannot delete it), and sibling-record concurrency. |
 | GPMC | Real WMI-filter association, migration tables, multiple controllers, and report generation under a network-only logon (not supported by GPMC). |

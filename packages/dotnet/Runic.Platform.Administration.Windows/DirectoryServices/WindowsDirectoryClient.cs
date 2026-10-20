@@ -1,16 +1,24 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.DirectoryServices.Protocols;
 using System.Net;
+using System.Text;
 using Runic.Platform.Administration.Windows.Internal;
 
 namespace Runic.Platform.Administration.Windows.DirectoryServices;
 
 /// <summary>Explicit LDAP operations with typed values and no ADSI runtime COM dependency.</summary>
-/// <remarks>Each operation owns its connection. Cross-operation transactions and automatic retries are not provided.</remarks>
+/// <remarks>Each operation owns its connection. Cross-operation transactions and automatic retries are not provided.
+/// Read values are typed by the attribute's schema syntax: string syntaxes are <see cref="DirectoryValue.Text"/>;
+/// octet-string, SID and security-descriptor syntaxes, and attributes the schema does not define, are
+/// <see cref="DirectoryValue.Binary"/>. RootDSE values are text. The client caches the syntaxes it has read.</remarks>
 public sealed class WindowsDirectoryClient
 {
     private readonly DirectoryConnectionOptions _options;
     private readonly NetworkCredential? _credential;
+    // lDAPDisplayName -> true when values are binary. Filled from the schema on first use of each attribute.
+    private readonly ConcurrentDictionary<string, bool> _binaryAttributes = new(StringComparer.OrdinalIgnoreCase);
+    private string? _schemaNamingContext;
 
     /// <summary>Creates a directory client. Explicit credentials are retained privately and never included in diagnostic models.</summary>
     public WindowsDirectoryClient(DirectoryConnectionOptions options, NetworkCredential? credential = null)
@@ -51,6 +59,8 @@ public sealed class WindowsDirectoryClient
     }
 
     /// <summary>Reads selected RootDSE attributes from the configured server.</summary>
+    /// <remarks>Every RootDSE value is returned as <see cref="DirectoryValue.Text"/> without a schema lookup: the schema's
+    /// location is itself a RootDSE attribute, and Active Directory defines RootDSE values as strings.</remarks>
     public Task<DirectoryObject?> ReadRootDseAsync(ImmutableArray<string> attributes, CancellationToken cancellationToken = default) =>
         FindAsync("", attributes, cancellationToken);
 
@@ -65,7 +75,9 @@ public sealed class WindowsDirectoryClient
             {
                 var response = (SearchResponse)connection.SendRequest(new SearchRequest(distinguishedName, "(objectClass=*)", SearchScope.Base, attributes.ToArray()));
                 if (response.Entries.Count == 0) return null;
-                return ReadObject(response.Entries[0]);
+                if (distinguishedName.Length == 0) return ReadObject(response.Entries[0], static _ => false);
+                ResolveSyntaxes(connection, response.Entries.Cast<SearchResultEntry>());
+                return ReadObject(response.Entries[0], IsBinary);
             }
             catch (DirectoryOperationException error) when (error.Response?.ResultCode == ResultCode.NoSuchObject) { return null; }
         }, "Find directory object", cancellationToken);
@@ -89,7 +101,8 @@ public sealed class WindowsDirectoryClient
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var response = (SearchResponse)connection.SendRequest(request);
-                foreach (SearchResultEntry entry in response.Entries) result.Add(ReadObject(entry));
+                ResolveSyntaxes(connection, response.Entries.Cast<SearchResultEntry>());
+                foreach (SearchResultEntry entry in response.Entries) result.Add(ReadObject(entry, IsBinary));
                 var responsePage = response.Controls.OfType<PageResultResponseControl>().SingleOrDefault();
                 if (responsePage is null) throw NativeError.Win32("Read LDAP paging response", 13);
                 page.Cookie = responsePage.Cookie;
@@ -114,7 +127,8 @@ public sealed class WindowsDirectoryClient
                 var response = (SearchResponse)connection.SendRequest(new SearchRequest(distinguishedName, "(objectClass=*)", SearchScope.Base,
                     $"{attributeName};range={offset}-*"));
                 if (response.Entries.Count == 0) throw NativeError.Win32("Read ranged directory attribute", 2);
-                var attributes = ReadObject(response.Entries[0]).Attributes;
+                ResolveSyntaxes(connection, response.Entries.Cast<SearchResultEntry>());
+                var attributes = ReadObject(response.Entries[0], IsBinary).Attributes;
                 if (attributes.TryGetValue(attributeName, out var complete)) { if (offset != 0) throw NativeError.Win32("Directory attribute changed during range retrieval", 183); result.AddRange(complete); break; }
                 var range = attributes.FirstOrDefault(pair => pair.Key.StartsWith(attributeName + ";range=", StringComparison.OrdinalIgnoreCase));
                 if (range.Key is null) { if (offset != 0) throw NativeError.Win32("Directory attribute disappeared during range retrieval", 183); break; }
@@ -260,19 +274,75 @@ public sealed class WindowsDirectoryClient
             }
     }
 
-    private static DirectoryObject ReadObject(SearchResultEntry entry)
+    private bool IsBinary(string attributeName) => _binaryAttributes.TryGetValue(attributeName, out var binary) ? binary : true;
+
+    // Reads attributeSyntax and oMSyntax for every returned attribute that is not cached yet. An attribute the
+    // schema does not define (or a server without a schema naming context) is treated as binary.
+    private void ResolveSyntaxes(LdapConnection connection, IEnumerable<SearchResultEntry> entries)
+    {
+        var missing = entries.SelectMany(entry => entry.Attributes.AttributeNames.Cast<string>()).Select(BaseAttributeName)
+            .Where(name => !_binaryAttributes.ContainsKey(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (missing.Length == 0) return;
+        var schema = _schemaNamingContext ??= ReadSchemaNamingContext(connection);
+        foreach (var chunk in missing.Chunk(64))
+        {
+            if (schema.Length != 0)
+            {
+                var filter = "(&(objectClass=attributeSchema)(|" + string.Concat(chunk.Select(name => "(lDAPDisplayName=" + DirectoryNames.EscapeFilterValue(name) + ")")) + "))";
+                var response = (SearchResponse)connection.SendRequest(new SearchRequest(schema, filter, SearchScope.OneLevel, "lDAPDisplayName", "attributeSyntax", "oMSyntax"));
+                foreach (SearchResultEntry entry in response.Entries)
+                {
+                    var name = SchemaText(entry, "lDAPDisplayName");
+                    var syntax = SchemaText(entry, "attributeSyntax");
+                    if (name is null || syntax is null) continue;
+                    _ = int.TryParse(SchemaText(entry, "oMSyntax"), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var omSyntax);
+                    _binaryAttributes[name] = IsBinarySyntax(syntax, omSyntax);
+                }
+            }
+            foreach (var name in chunk) _binaryAttributes.TryAdd(name, true);
+        }
+    }
+
+    private static string ReadSchemaNamingContext(LdapConnection connection)
+    {
+        var response = (SearchResponse)connection.SendRequest(new SearchRequest("", "(objectClass=*)", SearchScope.Base, "schemaNamingContext"));
+        return response.Entries.Count == 0 ? "" : SchemaText(response.Entries[0], "schemaNamingContext") ?? "";
+    }
+
+    private static string? SchemaText(SearchResultEntry entry, string name) =>
+        entry.Attributes.Contains(name) && entry.Attributes[name].Count > 0 ? entry.Attributes[name].GetValues(typeof(string))[0] as string : null;
+
+    // A ranged value arrives as "member;range=0-1499"; its syntax is that of "member".
+    private static string BaseAttributeName(string name) => name.IndexOf(';', StringComparison.Ordinal) is var index and >= 0 ? name[..index] : name;
+
+    /// <summary>Whether an Active Directory attribute syntax carries binary values (MS-ADTS 3.1.1.2.2.2).</summary>
+    /// <remarks>Octet string (2.5.5.10, including replica links), NT security descriptor (2.5.5.15) and SID (2.5.5.17)
+    /// are binary, as is an unknown syntax. The string, number, time, boolean and DN syntaxes are text.</remarks>
+    internal static bool IsBinarySyntax(string attributeSyntax, int omSyntax) => attributeSyntax switch
+    {
+        "2.5.5.10" or "2.5.5.15" or "2.5.5.17" => true,
+        "2.5.5.1" or "2.5.5.2" or "2.5.5.3" or "2.5.5.4" or "2.5.5.5" or "2.5.5.6" or "2.5.5.7" or "2.5.5.8"
+            or "2.5.5.9" or "2.5.5.11" or "2.5.5.12" or "2.5.5.13" or "2.5.5.14" or "2.5.5.16" => omSyntax is 4 or 66,
+        _ => true
+    };
+
+    /// <summary>Converts one raw LDAP value. Text syntaxes must be valid UTF-8.</summary>
+    internal static DirectoryValue ReadValue(byte[] raw, bool binary)
+    {
+        if (binary) return new DirectoryValue.Binary([.. raw]);
+        try { return new DirectoryValue.Text(new UTF8Encoding(false, true).GetString(raw)); }
+        catch (DecoderFallbackException) { throw NativeError.Win32("Read directory text value", 13); }
+    }
+
+    private static DirectoryObject ReadObject(SearchResultEntry entry, Func<string, bool> isBinary)
     {
         var attributes = ImmutableDictionary.CreateBuilder<string, ImmutableArray<DirectoryValue>>(StringComparer.OrdinalIgnoreCase);
         foreach (string name in entry.Attributes.AttributeNames)
         {
+            var binary = isBinary(BaseAttributeName(name));
             var values = ImmutableArray.CreateBuilder<DirectoryValue>();
-            foreach (var value in entry.Attributes[name])
-                values.Add(value switch
-                {
-                    string text => new DirectoryValue.Text(text),
-                    byte[] bytes => new DirectoryValue.Binary([.. bytes]),
-                    _ => throw NativeError.Win32("Read LDAP attribute type", 13)
-                });
+            // GetValues(byte[]) returns the raw values; the attribute's enumerator does not decode them either.
+            foreach (byte[] raw in entry.Attributes[name].GetValues(typeof(byte[]))) values.Add(ReadValue(raw, binary));
             attributes.Add(name, values.ToImmutable());
         }
         return new(entry.DistinguishedName, attributes.ToImmutable());
