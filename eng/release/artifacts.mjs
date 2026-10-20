@@ -5,7 +5,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { assertReleaseLinks } from './readme-links.mjs';
+import { packageVersion } from '../version.mjs';
 const workspaceAuthority = JSON.parse(readFileSync(new URL('../workspace.json', import.meta.url), 'utf8'));
+// The release-train version. A package may ship on its own version (eng/version.mjs packageVersion).
 export const VERSION = workspaceAuthority.version;
 export const REPOSITORY = 'Runic-Artifex/runic-sdk';
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -16,7 +18,7 @@ export function authority(workspace) {
     assert(workspaceAuthority[registry].length > 0, `Empty ${registry} authority`);
     assert.deepEqual(workspace[registry].map(p => p.name).sort(), workspaceAuthority[registry].map(p => p.name).sort(), `Inventory differs from current ${registry} authority`);
   }
-  const entries = ['nuget', 'npm'].flatMap(registry => workspace[registry].map(p => ({ registry, name: p.name })));
+  const entries = ['nuget', 'npm'].flatMap(registry => workspace[registry].map(p => ({ registry, name: p.name, version: packageVersion(workspace, p.name) })));
   assert.equal(new Set(entries.map(p => p.name)).size, entries.length, 'Duplicate inventory identity');
   return entries;
 }
@@ -33,8 +35,10 @@ export function dependencyOrder(packages) {
   }
   packages.forEach(visit); return result;
 }
+// `inventory` lists {registry, name, version}; a package without a version ships on VERSION.
 export function scan(directory, inventory, source) {
   const packages = [];
+  const expected = name => inventory.find(p => p.name === name)?.version ?? VERSION;
   assert.deepEqual(readdirSync(directory).sort(), ['npm', 'nuget'], 'Artifact directory must contain only npm/ and nuget/');
   for (const registry of ['nuget','npm']) {
     for (const file of readdirSync(resolve(directory, registry)).sort()) {
@@ -44,14 +48,14 @@ export function scan(directory, inventory, source) {
       const {readme, ...metadata} = inspect(path, registry);
       if (readme != null) assertReleaseLinks(readme, `${registry}/${file} README`);
       assert(inventory.some(p => p.registry === registry && p.name === metadata.name), `Unexpected package ${metadata.name}`);
-      assert.equal(metadata.version, VERSION, `Mixed version ${metadata.name}`);
+      assert.equal(metadata.version, expected(metadata.name), `Mixed version ${metadata.name}`);
       const repository = metadata.repository.replace(/^git\+/, '').replace(/\.git$/, '').replace(/\/$/, '');
       assert.equal(repository, `https://github.com/${REPOSITORY}`, `Obsolete repository ${metadata.name}`);
       assert.equal(metadata.source, source, `Missing/stale source revision ${metadata.name}`);
       for (const [name, range] of Object.entries(metadata.dependencies)) {
         assert(!/workspace:|file:|link:/.test(range), `Unpublishable dependency ${name}`);
         if (inventory.some(p => p.name === name)) {
-          const exact = registry === 'nuget' ? `[${VERSION}]` : VERSION;
+          const exact = registry === 'nuget' ? `[${expected(name)}]` : expected(name);
           assert.equal(range, exact, `Internal ${registry} dependency must pin candidate ${name}: ${range}; expected ${exact}`);
         }
       }

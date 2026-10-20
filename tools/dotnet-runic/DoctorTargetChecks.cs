@@ -39,7 +39,7 @@ internal sealed partial record DoctorTargetRid(string Value, string Os, string A
         if (!RidSyntax().IsMatch(value))
         {
             throw new DevUsageException(UsageCode,
-                "--rid must be a runtime identifier such as linux-x64, win-x64 or osx-arm64.");
+                "--runtime must be a runtime identifier such as linux-x64, win-x64 or osx-arm64.");
         }
         int separator = value.LastIndexOf('-');
         string os = value[..separator];

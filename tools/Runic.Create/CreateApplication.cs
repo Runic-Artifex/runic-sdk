@@ -77,7 +77,7 @@ internal static partial class CreateApplication
 
         if (request.DryRun)
         {
-            return Success(model, plan, created: false, DescribePlan(plan));
+            return Success(model, plan, directory, created: false, DescribePlan(plan));
         }
 
         await console.WriteAsync(new Markup(
@@ -100,7 +100,7 @@ internal static partial class CreateApplication
                 $"dotnet new {TemplateOptionModel.TemplateShortName} failed with exit code {create.ExitCode}.");
         }
 
-        return Success(model, plan, created: true, DescribeCreated(plan));
+        return Success(model, plan, directory, created: true, DescribeCreated(plan));
     }
 
     internal static bool TryResolveExplicit(
@@ -197,26 +197,20 @@ internal static partial class CreateApplication
         return string.Join('\n', lines);
     }
 
-    private static CommandOutcome<CreateResult> Success(TemplateOptionModel model, CreatePlan plan, bool created, string humanOutput) =>
-        CommandOutcome.Success(new CreateResult(
-            plan.Name,
-            plan.Directory,
-            plan.Version,
-            OptionValues(model, plan),
-            [plan.InstallCommand, plan.CreateCommand],
-            plan.CreatorCommand,
-            created)
-        {
-            HumanOutput = humanOutput,
-        });
+    private static CommandOutcome<CreateResult> Success(
+        TemplateOptionModel model, CreatePlan plan, string fullPath, bool created, string humanOutput) =>
+        CommandOutcome.Success(ResultOf(model, plan, fullPath, created) with { HumanOutput = humanOutput });
 
-    private static Dictionary<string, string> OptionValues(TemplateOptionModel model, CreatePlan plan)
-    {
-        var values = plan.Selections.ToDictionary(selection => selection.Option.LongName, selection => selection.Choice.Value, StringComparer.Ordinal);
-        foreach (TemplateToggle toggle in model.Toggles)
-            values[toggle.LongName] = plan.IsEnabled(toggle.LongName) ? "true" : "false";
-        return values;
-    }
+    internal static CreateResult ResultOf(TemplateOptionModel model, CreatePlan plan, string fullPath, bool created) => new(
+        plan.Name,
+        plan.Directory,
+        fullPath,
+        plan.Version,
+        plan.Selections.ToDictionary(selection => selection.Option.LongName, selection => selection.Choice.Value, StringComparer.Ordinal),
+        model.Toggles.ToDictionary(toggle => toggle.LongName, toggle => plan.IsEnabled(toggle.LongName), StringComparer.Ordinal),
+        [plan.InstallCommand, plan.CreateCommand],
+        plan.CreatorCommand,
+        created);
 
     // Human output ends with the code's catalog entry at this release's tag;
     // Runic.CommandLine writes it before the fault line and omits it from JSON.

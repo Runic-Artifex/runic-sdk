@@ -13,7 +13,8 @@ internal static class DevApplication
 {
     internal static async Task<int> RunAsync(
         DevOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<DevProjectConfiguration>? evaluated = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
@@ -24,6 +25,7 @@ internal static class DevApplication
             .ConfigureAwait(false);
         evaluation.Complete();
         WriteConfiguration(configuration, options);
+        evaluated?.Invoke(configuration);
         if (options.DryRun)
         {
             return Program.Success;
@@ -77,7 +79,9 @@ internal static class DevApplication
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
-            return Program.Success;
+            // Stopping dev with Ctrl+C is how it ends normally, but it is still a cancellation: 130, as every Runic
+            // tool reports it, after the frontend and application process trees have stopped.
+            return Program.Cancelled;
         }
         finally
         {
@@ -183,9 +187,9 @@ internal static class DevApplication
             // them can exit with 130 or 143 before the cancellation is seen.
             if (completed == cancellation || cancellationToken.IsCancellationRequested)
             {
-                if (completed != cancellation) return Program.Success;
+                if (completed != cancellation) return Program.Cancelled;
                 await cancellation.ConfigureAwait(false);
-                return Program.Success;
+                return Program.Cancelled;
             }
 
             if (completed == assetMonitor ||

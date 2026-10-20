@@ -711,19 +711,127 @@ internal sealed class ToolTests
         Equal(0, DetectAll("""{"Properties":{}}""").Length);
     }
 
-    [Test, DisplayName("runic.application.tool/1 keeps its PascalCase payload")]
-    public void ToolCommandPayloadKeepsItsContract()
+    [Test, DisplayName("dev and size payloads keep their camelCase contracts")]
+    public void ToolCommandPayloadsKeepTheirContracts()
     {
-        var result = new ToolCommandResult("support", 0, "Support preview");
-        // The command codec serializes through the context's Default instance since Runic.CommandLine
-        // 0.6.0-preview.3, and through its own options before; names must not depend on either.
-        foreach (JsonSerializerOptions? options in new[] { null, new JsonSerializerOptions(), new JsonSerializerOptions(JsonSerializerDefaults.Web) })
+        var dev = new DevCommandResult("/work/App.csproj", "/work/Frontend", "/work/Frontend/dist", "/work/bin/Debug/net10.0/www", "vite", true)
         {
-            ToolCommandJsonContext context = options is null ? ToolCommandJsonContext.Default : new ToolCommandJsonContext(options);
-            using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(result, context.ToolCommandResult));
-            SequenceEqual(["Command", "ExitCode", "Output"],
-                document.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
+            HumanOutput = "[dev] Project: /work/App.csproj",
+        };
+        var size = new SizeCommandResult("/work/runic-size.json", "linux-x64", 0, 1234, 567, new SizeCommandVerification("passed", 0));
+        // The command codec serializes through the context's Default instance or through its own options; names must not
+        // depend on either, and human output never reaches JSON.
+        foreach (Func<JsonSerializerOptions>? options in new Func<JsonSerializerOptions>?[] { null, () => new JsonSerializerOptions(), () => new JsonSerializerOptions(JsonSerializerDefaults.Web) })
+        {
+            DevCommandJsonContext devContext = options is null ? DevCommandJsonContext.Default : new DevCommandJsonContext(options());
+            Equal("""{"project":"/work/App.csproj","frontendDirectory":"/work/Frontend","frontendOutputDirectory":"/work/Frontend/dist","webRoot":"/work/bin/Debug/net10.0/www","developmentServer":"vite","dryRun":true}""",
+                JsonSerializer.Serialize(dev, devContext.DevCommandResult));
+            SizeCommandJsonContext sizeContext = options is null ? SizeCommandJsonContext.Default : new SizeCommandJsonContext(options());
+            Equal("""{"report":"/work/runic-size.json","runtime":"linux-x64","publishExitCode":0,"totalBytes":1234,"compressedBytes":567,"verification":{"status":"passed","exitCode":0}}""",
+                JsonSerializer.Serialize(size, sizeContext.SizeCommandResult));
         }
+        Equal("runic.application.tool.dev/1", DevCommandResult.PayloadType);
+        Equal("runic.application.tool.size/1", SizeCommandResult.PayloadType);
+        Equal("[dev] Project: /work/App.csproj", dev.ToString());
+    }
+
+    [Test, DisplayName("the runic.size/2 report keeps its schema")]
+    public void SizeReportKeepsItsSchema()
+    {
+        IReadOnlyList<SizeInstalledRuntime> runtimes = SizeApplication.ParseInstalledRuntimes(
+            "Microsoft.AspNetCore.App 10.0.1 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]\nMicrosoft.NETCore.App 10.0.1 [C:\\Program Files\\dotnet\\shared\\Microsoft.NETCore.App]\n\nunexpected line\n");
+        Equal(3, runtimes.Count);
+        Equal(new SizeInstalledRuntime("Microsoft.AspNetCore.App", "10.0.1", "/usr/share/dotnet/shared/Microsoft.AspNetCore.App"), runtimes[0]);
+        Equal(@"C:\Program Files\dotnet\shared\Microsoft.NETCore.App", runtimes[1].Directory);
+        Equal(new SizeInstalledRuntime("unexpected line", "", ""), runtimes[2]);
+
+        var report = new SizeReport(SizeReport.SchemaId, new DateTime(2026, 10, 20, 7, 15, 0, DateTimeKind.Utc), "/work/App.csproj", "linux-x64",
+            "10.0.401", "Linux", "X64", [runtimes[0]], "abc", false,
+            new Dictionary<string, string> { ["PublishAot"] = "true" }, new Dictionary<string, string> { ["Runic.Desktop/1.0.0"] = "package" },
+            "/work/run/publish", 0, "/work/run/publish.log", "/work/run/distribution.zip", 3, 2,
+            [new SizeFile("App", "main-executable", 3, "00")], new SizeVerification("not-run", null, null, []), ["note"]);
+        Equal("runic.size/2", report.Schema);
+        // The report file is indented; compare its content without whitespace.
+        using JsonDocument written = JsonDocument.Parse(JsonSerializer.Serialize(report, SizeJsonContext.Default.SizeReport));
+        string json = JsonSerializer.Serialize(written.RootElement);
+        Equal("""{"schema":"runic.size/2","createdAt":"2026-10-20T07:15:00Z","project":"/work/App.csproj","runtime":"linux-x64","sdk":"10.0.401","buildOperatingSystem":"Linux","buildArchitecture":"X64","installedRuntimes":[{"name":"Microsoft.AspNetCore.App","version":"10.0.1","directory":"/usr/share/dotnet/shared/Microsoft.AspNetCore.App"}],"sourceRevision":"abc","sourceDirty":false,"effectiveProperties":{"PublishAot":"true"},"libraries":{"Runic.Desktop/1.0.0":"package"},"publishDirectory":"/work/run/publish","publishExitCode":0,"publishLogPath":"/work/run/publish.log","archivePath":"/work/run/distribution.zip","totalBytes":3,"compressedBytes":2,"files":[{"path":"App","category":"main-executable","bytes":3,"sha256":"00"}],"verification":{"status":"not-run","exitCode":null,"executable":null,"arguments":[]},"notes":["note"]}""",
+            json);
+    }
+
+    [Test, DisplayName("--format selects the output and --output stays a hidden alias")]
+    public void FormatSelectsOutputWithHiddenAlias()
+    {
+        string missing = Path.Combine(Path.GetTempPath(), "runic-missing-" + Guid.NewGuid().ToString("N"), "App.csproj");
+        foreach (string[] selector in new[] { new[] { "--format", "json" }, ["--format=json"], ["--output", "json"], ["--output=json"] })
+        {
+            (int exitCode, string output) = RunCli(["doctor", .. selector, "--project", missing]);
+            Equal(2, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output);
+            Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        }
+        // The selector may also precede the command.
+        (int leadingExit, string leadingOutput) = RunCli("--output", "json", "doctor", "--project", missing);
+        Equal(2, leadingExit);
+        using (JsonDocument document = JsonDocument.Parse(leadingOutput))
+        {
+            Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        }
+        // Help names only --format.
+        (_, string help) = RunCli("doctor", "--help");
+        Contains(help, "--format");
+        DoesNotContain(help, "--output");
+        // Arguments after -- belong to the application.
+        SequenceEqual(["dev", "--format", "json", "--", "--output", "json"],
+            Runic.Tools.Shared.OutputSelectorAlias.Rewrite(["dev", "--output", "json", "--", "--output", "json"], "--output"));
+        string[] unchanged = ["dev", "--", "--output=json"];
+        True(ReferenceEquals(unchanged, Runic.Tools.Shared.OutputSelectorAlias.Rewrite(unchanged, "--output")), "Nothing to rewrite keeps the arguments.");
+    }
+
+    [Test, DisplayName("every Runic tool exit code follows one table")]
+    public void ExitCodesFollowTheRunicTable()
+    {
+        var policy = ToolExitCodePolicy.Instance;
+        Equal(0, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Success));
+        Equal(1, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.CommandFailure));
+        Equal(1, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Unavailable));
+        Equal(2, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Usage));
+        Equal(2, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Validation));
+        Equal(3, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.HostFailure));
+        Equal(130, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Cancelled));
+    }
+
+    [Test, DisplayName("support forwards to runic-translations support")]
+    public void SupportForwardsToTranslations()
+    {
+        True(SupportForwarding.TryParse(["support", "--mode", "collect", "--editor-diagnostics", "e.zip", "--destination", "s.json"], out SupportForwarding? collect), "support is recognized.");
+        SequenceEqual(["support", "collect", "--editor-diagnostics", "e.zip", "--destination", "s.json"], collect!.Arguments);
+        True(SupportForwarding.TryParse(["--format", "json", "support", "--editor-diagnostics=e.zip"], out SupportForwarding? preview), "support follows a leading --format.");
+        SequenceEqual(["support", "preview", "--format", "json", "--editor-diagnostics=e.zip"], preview!.Arguments);
+        True(SupportForwarding.TryParse(["support", "--mode=Remove", "--destination", "s.json", "--format", "json"], out SupportForwarding? remove), "--mode= selects the subcommand.");
+        SequenceEqual(["support", "remove", "--destination", "s.json", "--format", "json"], remove!.Arguments);
+        False(SupportForwarding.TryParse(["doctor", "support"], out _), "support must be the command.");
+        False(SupportForwarding.TryParse([], out _), "No arguments run dev.");
+
+        using var workspace = new TestWorkspace();
+        string nested = Path.Combine(workspace.Root, "app", "src");
+        Directory.CreateDirectory(nested);
+        Equal(null, SupportForwarding.ResolveTool(nested, _ => null, "dotnet"));
+        Equal(("/opt/runic-translations", 0),
+            SupportForwarding.ResolveTool(nested, name => name == "runic-translations" ? "/opt/runic-translations" : null, "dotnet") is { } global
+                ? (global.Executable, global.Prefix.Count) : default);
+        workspace.Write(Path.Combine(".config", "dotnet-tools.json"), """{"version":1,"isRoot":true,"tools":{"dotnet-runic-translations":{"version":"1.0.0","commands":["runic-translations"]}}}""");
+        var local = SupportForwarding.ResolveTool(nested, _ => null, "/usr/bin/dotnet");
+        Equal("/usr/bin/dotnet", local?.Executable);
+        // dotnet tool run passes options such as --help on only after --.
+        SequenceEqual(["tool", "run", "runic-translations", "--"], local!.Value.Prefix);
+
+        // Without the Translations tool, the hidden command names where support went.
+        var outcome = Runic.Application.Tool.Program.Support();
+        False(outcome.IsSuccess, "support without the Translations tool fails.");
+        Equal(Runic.CommandLine.CommandExitCategory.Unavailable, outcome.ExitCategory);
+        Equal("RAPPCLI1012", outcome.Fault!.Code);
+        Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
+        True(catalog.Commands.Single(command => command.Name == "support").Help.Hidden, "support is a hidden alias.");
     }
 
     [Test, DisplayName("doctor JSON payload lists every check")]
@@ -863,8 +971,8 @@ internal sealed class ToolTests
     {
         using var workspace = new TestWorkspace();
         string project = CreateCliDoctorProject(workspace);
-        Equal(1, RunCli("doctor", "--project", project, "--output", "json").ExitCode);
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never");
+        Equal(1, RunCli("doctor", "--project", project, "--format", "json").ExitCode);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never");
         Equal(0, exitCode);
         var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
@@ -886,7 +994,7 @@ internal sealed class ToolTests
     {
         using var workspace = new TestWorkspace();
         string project = CreateCliDoctorProject(workspace);
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "fail");
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "fail");
         Equal(1, exitCode);
         using (JsonDocument document = JsonDocument.Parse(output))
         {
@@ -896,6 +1004,11 @@ internal sealed class ToolTests
             JsonElement fault = root.GetProperty("fault");
             Equal("RAPPCLI1009", fault.GetProperty("code").GetString());
             Equal("fail", fault.GetProperty("details").GetProperty("lock-file").GetString());
+            // The checks travel in fault.data, so a JSON reader needs no second run with --fail-on never.
+            JsonElement data = fault.GetProperty("data");
+            Equal(DoctorCommandResult.PayloadType, data.GetProperty("type").GetString());
+            Equal("fail", data.GetProperty("payload").GetProperty("checks").EnumerateArray()
+                .Single(check => check.GetProperty("id").GetString() == "lock-file").GetProperty("status").GetString());
             JsonElement[] diagnostics = [.. root.GetProperty("diagnostics").EnumerateArray()];
             True(diagnostics.Any(diagnostic => diagnostic.GetProperty("severity").GetString() == "error" &&
                 diagnostic.GetProperty("messageKey").GetString() == "doctor.lock-file.failed"),
@@ -944,7 +1057,7 @@ internal sealed class ToolTests
     {
         foreach (string project in new[] { "/run/user/1000/runic-missing/App.csproj", @"C:\Users\someone\App\App.csproj" })
         {
-            (int exitCode, string output) = RunCli("doctor", "--output", "json", "--project", project);
+            (int exitCode, string output) = RunCli("doctor", "--format", "json", "--project", project);
             Equal(2, exitCode);
             using JsonDocument document = JsonDocument.Parse(output);
             JsonElement fault = document.RootElement.GetProperty("fault");
@@ -959,7 +1072,7 @@ internal sealed class ToolTests
 
         using var workspace = new TestWorkspace();
         string broken = workspace.Write("Broken.csproj", "<Project>not xml");
-        (int brokenExit, string brokenOutput) = RunCli("doctor", "--output", "json", "--project", broken);
+        (int brokenExit, string brokenOutput) = RunCli("doctor", "--format", "json", "--project", broken);
         Equal(2, brokenExit);
         using JsonDocument brokenDocument = JsonDocument.Parse(brokenOutput);
         JsonElement brokenFault = brokenDocument.RootElement.GetProperty("fault");
@@ -981,7 +1094,7 @@ internal sealed class ToolTests
         })
         {
             True(Runic.Application.Tool.Program.ContainsRootedPath(message), $"'{message}' contains a rooted path.");
-            var outcome = Runic.Application.Tool.Program.Failure<ToolCommandResult>(
+            var outcome = Runic.Application.Tool.Program.Failure<DevCommandResult>(
                 Runic.CommandLine.CommandExitCategory.Usage, "RAPPDEV1002", message);
             Equal("The command could not be completed. See the local detail above.", outcome.Fault!.Message);
             Contains(outcome.HumanOutput ?? string.Empty, message);
@@ -1046,7 +1159,7 @@ internal sealed class ToolTests
         }
     }
 
-    [Test, DisplayName("--rid/--runtime and --aot/--no-aot are spelled alike in every command")]
+    [Test, DisplayName("--runtime/--rid and --aot/--no-aot are spelled alike in every command")]
     public void RidAndAotOptionsMatchAcrossCommands()
     {
         Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
@@ -1058,6 +1171,8 @@ internal sealed class ToolTests
             if (spellings.Intersect(rid).Any())
             {
                 ridCommands++;
+                True(command.Options.Any(option => option.Name == "--runtime" && option.Aliases.Contains("--rid") && option.Aliases.Contains("-r")),
+                    $"{command.Name} names --runtime first, as dotnet publish does, with --rid and -r as aliases.");
                 foreach (string spelling in rid) True(spellings.Contains(spelling), $"{command.Name} needs {spelling}.");
             }
             if (spellings.Contains("--aot") || spellings.Contains("--no-aot"))
@@ -1076,19 +1191,19 @@ internal sealed class ToolTests
             ["doctor", "--runtime", "linux-x64", "--no-aot"],
         })
         {
-            (int exitCode, string output) = RunCli([.. arguments, "--project", missing, "--output", "json"]);
+            (int exitCode, string output) = RunCli([.. arguments, "--project", missing, "--format", "json"]);
             Equal(2, exitCode);
             using JsonDocument document = JsonDocument.Parse(output);
             Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
         }
         foreach (string command in new[] { "size", "doctor" })
         {
-            (int exitCode, string output) = RunCli(command, "-r", "linux-x64", "--aot", "--no-aot", "--project", missing, "--output", "json");
+            (int exitCode, string output) = RunCli(command, "-r", "linux-x64", "--aot", "--no-aot", "--project", missing, "--format", "json");
             Equal(2, exitCode);
             using JsonDocument document = JsonDocument.Parse(output);
             DoesNotContain(document.RootElement.GetProperty("fault").GetProperty("code").GetString() ?? "", "RAPPDEV1002");
         }
-        (int noAotExit, string noAotOutput) = RunCli("doctor", "--no-aot", "--project", missing, "--output", "json");
+        (int noAotExit, string noAotOutput) = RunCli("doctor", "--no-aot", "--project", missing, "--format", "json");
         Equal(2, noAotExit);
         using JsonDocument noAotWithoutRid = JsonDocument.Parse(noAotOutput);
         Equal("RAPPCLI1011", noAotWithoutRid.RootElement.GetProperty("fault").GetProperty("code").GetString());
@@ -1181,8 +1296,8 @@ internal sealed class ToolTests
         False(remote.Checks.Any(static check => check.Name == "desktop-runtime"), "A Windows machine probed Linux libraries.");
         DoctorCheck uncovered = Check(remote, "views-hosts");
         Equal(DoctorStatus.Warning, uncovered.Status);
-        Contains(uncovered.Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, which --rid linux-x64 cannot check from this Windows machine");
-        Contains(uncovered.Remediation ?? string.Empty, "'dotnet runic doctor --rid linux-x64' on a Linux machine");
+        Contains(uncovered.Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, which --runtime linux-x64 cannot check from this Windows machine");
+        Contains(uncovered.Remediation ?? string.Empty, "'dotnet runic doctor --runtime linux-x64' on a Linux machine");
         // The GTK 4 profile's libraries are probed the same way.
         DoctorReport gtk4Rid = InspectTarget(both with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] },
             "linux-x64", new FakeDoctorRuntime(authority.Toolchain));
@@ -1858,7 +1973,7 @@ internal sealed class ToolTests
     {
         using var workspace = new TestWorkspace();
         string project = CreateCliDoctorProject(workspace);
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--rid", "osx-arm64");
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never", "--rid", "osx-arm64");
         Equal(0, exitCode);
         var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
@@ -1868,17 +1983,17 @@ internal sealed class ToolTests
         Equal("pass", payload.Checks.Single(check => check.Id == "target-rid").Status);
         True(payload.Checks.Any(check => check.Id == "target-presentation"), "The target adds presentation checks.");
 
-        (int invalidExit, string invalidOutput) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "Linux_x64");
+        (int invalidExit, string invalidOutput) = RunCli("doctor", "--project", project, "--format", "json", "--rid", "Linux_x64");
         Equal(2, invalidExit);
         using JsonDocument invalid = JsonDocument.Parse(invalidOutput);
         Equal("RAPPCLI1011", invalid.RootElement.GetProperty("fault").GetProperty("code").GetString());
-        Equal(0, RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--runtime", "linux-x64").ExitCode);
-        (int aliasExit, string aliasOutput) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "-r", "win-x64");
+        Equal(0, RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never", "--runtime", "linux-x64").ExitCode);
+        (int aliasExit, string aliasOutput) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never", "-r", "win-x64");
         Equal(0, aliasExit);
         Equal("win-x64", Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(aliasOutput), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!.Target);
-        (int aotExit, string aotOutput) = RunCli("doctor", "--project", project, "--output", "json", "--aot");
+        (int aotExit, string aotOutput) = RunCli("doctor", "--project", project, "--format", "json", "--aot");
         Equal(2, aotExit);
         using JsonDocument aotWithoutRid = JsonDocument.Parse(aotOutput);
         Equal("RAPPCLI1011", aotWithoutRid.RootElement.GetProperty("fault").GetProperty("code").GetString());
@@ -1926,13 +2041,13 @@ internal sealed class ToolTests
         False(Evaluate("Release", "win-x64", aot: false).PublishAot, "--no-aot overrides a project PublishAot.");
 
         // Without -c, --rid evaluates Release like dotnet publish.
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--rid", "linux-x64");
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never", "--rid", "linux-x64");
         Equal(0, exitCode);
         DoctorCommandResult payload = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!;
         Contains(payload.Checks.Single(check => check.Id == "target-publish").Message, "self-contained");
-        (_, string debugOutput) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--rid", "linux-x64", "-c", "Debug");
+        (_, string debugOutput) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never", "--rid", "linux-x64", "-c", "Debug");
         Contains(Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(debugOutput), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!.Checks.Single(check => check.Id == "target-publish").Message,
@@ -2197,7 +2312,7 @@ internal sealed class ToolTests
             }
             True(tool.WaitForExit(TimeSpan.FromSeconds(30)), "doctor did not exit after SIGTERM.");
             string text = output.Result + error.Result;
-            Equal(Runic.Application.Tool.Program.InternalFailure, tool.ExitCode);
+            Equal(Runic.Application.Tool.Program.Cancelled, tool.ExitCode);
             Contains(text, "RCLI4000");
         }
         finally

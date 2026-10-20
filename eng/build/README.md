@@ -18,7 +18,9 @@ NuGet audit and trim/AOT analyzers for shipping projects. A shipping project set
 `Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible
 unless it sets `RunicTrimmable=false` (the test-only `Runic.Application.Testing` does);
 build-time tools such as BridgeCodegen leave it unset. Package versions come
-from `eng/Versions.props`. Desktop keeps its separate policy and sets
+from `eng/Versions.props`: `RunicSdkVersion`, and `RunicCsWebUiPackageVersion`
+for `Runic.Application.Views.CsWebUi`, which can differ (CONTRIBUTING.md,
+"Versions and toolchain pins"). Desktop keeps its separate policy and sets
 `IsAotCompatible` and `IsTrimmable` itself. Package consumers receive
 `Runic.Desktop.targets` through `buildTransitive`; repository projects that
 reference `Runic.Desktop` directly or transitively set

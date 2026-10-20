@@ -4,6 +4,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { packNpm } from "./release/pack-npm.mjs";
 import { authority, scan } from "./release/artifacts.mjs";
 import { stageAndPromote } from "./release/stage.mjs";
+import { packageVersion } from "./version.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,6 +88,20 @@ function build() {
   web("build", ["@runic-artifex/views"]);
 }
 export const packages = resolve(root, "artifacts/packages");
+// Each NuGet package packs at its own version (eng/version.mjs packageVersion).
+export function nugetPackArguments(workspace, p, { built, nuget, npm, selectedConfiguration = configuration }) {
+  return [
+    "pack",
+    p.project,
+    "-c",
+    selectedConfiguration,
+    ...(built ? ["--no-build"] : ["--no-restore"]),
+    "-o",
+    nuget,
+    `-p:PackageVersion=${packageVersion(workspace, p.name)}`,
+    ...(p.name.endsWith(".Templates") ? [`-p:RunicTemplateNpmDirectory=${npm}`] : []),
+  ];
+}
 function pack(built = false) {
   run("bun", ["eng/generate-shipping-projects.mjs", "--check"]);
   if (!built) build();
@@ -101,19 +116,8 @@ function pack(built = false) {
     // Template lock integrities must describe the final gitHead-stamped archives.
     for (const p of orderedPackages())
       packNpm(resolve(root, p.path), npm, revision);
-    for (const p of workspace.nuget) {
-      run("dotnet", [
-        "pack",
-        p.project,
-        "-c",
-        configuration,
-        ...(built ? ["--no-build"] : ["--no-restore"]),
-        "-o",
-        nuget,
-        `-p:PackageVersion=${workspace.version}`,
-        ...(p.name.endsWith(".Templates") ? [`-p:RunicTemplateNpmDirectory=${npm}`] : []),
-      ]);
-    }
+    for (const p of workspace.nuget)
+      run("dotnet", nugetPackArguments(workspace, p, { built, nuget, npm }));
     run("bun", ["eng/release/verify-template-locks.mjs", nuget, npm]);
     const count = scan(staging, authority(workspace), revision).length;
     console.log(`Staged ${count} packages; promoting to ${packages}.`);

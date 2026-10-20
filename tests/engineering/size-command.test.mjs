@@ -35,15 +35,30 @@ test("size preserves failed verification, publish failures and existing evidence
     assert.equal(failed.status, 1, failed.stdout + failed.stderr);
     const original = readFileSync(report, "utf8");
     const measured = JSON.parse(original);
+    assert.equal(measured.schema, "runic.size/2");
+    assert.match(measured.createdAt, /Z$/);
+    assert.ok(Array.isArray(measured.installedRuntimes) && measured.installedRuntimes.every(runtime => runtime.name && "version" in runtime));
+    assert.ok(existsSync(measured.publishLogPath));
     assert.equal(measured.publishExitCode, 0);
     assert.equal(measured.verification.status, "failed");
     assert.equal(measured.verification.exitCode, 7);
     assert.ok(existsSync(marker));
-    assert.ok(existsSync(measured.archive));
+    assert.ok(existsSync(measured.archivePath));
     assert.equal(measured.totalBytes, measured.files.reduce((sum, file) => sum + file.bytes, 0));
     assert.ok(measured.compressedBytes > 0);
     assert.ok(measured.buildOperatingSystem);
     assert.equal(invoke(report).status, 2, "Existing reports must be rejected");
+    // A failed verification still reports its runic.application.tool.size/1 payload, in fault.data.
+    const jsonReport = join(directory, "json-report.json");
+    const json = invoke(jsonReport, ["--format", "json"]);
+    assert.equal(json.status, 1, json.stderr);
+    const envelope = JSON.parse(json.stdout);
+    assert.equal(envelope.success, false);
+    assert.equal(envelope.fault.code, "RAPPCLI1000");
+    assert.equal(envelope.fault.data.type, "runic.application.tool.size/1");
+    assert.equal(envelope.fault.data.payload.report, jsonReport);
+    assert.equal(envelope.fault.data.payload.verification.status, "failed");
+    assert.equal(envelope.fault.data.payload.totalBytes, JSON.parse(readFileSync(jsonReport, "utf8")).totalBytes);
     assert.equal(readFileSync(report, "utf8"), original, "Prior evidence was changed");
     rmSync(marker);
     writeFileSync(code, '#error Deliberate publish failure');
@@ -79,7 +94,7 @@ test("size without --report writes a new report each run", { timeout: 180000 }, 
     for (const name of reports()) {
       assert.match(name, new RegExp(`^runic-size-${rid}-\\d{8}T\\d{6}Z(-\\d+)?\\.json$`));
       const report = JSON.parse(readFileSync(join(directory, name), "utf8"));
-      assert.ok(existsSync(report.archive) && report.archive.startsWith(join(directory, name.slice(0, -".json".length))), report.archive);
+      assert.ok(existsSync(report.archivePath) && report.archivePath.startsWith(join(directory, name.slice(0, -".json".length))), report.archivePath);
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
@@ -90,9 +105,9 @@ test("size reports a project MSBuild cannot evaluate as a command failure", { ti
   const directory = mkdtempSync(join(tmpdir(), "runic-size-evaluation-"));
   try {
     writeFileSync(join(directory, "Broken.csproj"), '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>');
-    const result = size(directory, ["--project", join(directory, "Broken.csproj"), "--runtime", rid, "--output", "json"]);
+    const result = size(directory, ["--project", join(directory, "Broken.csproj"), "--runtime", rid, "--format", "json"]);
     assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.match(result.stdout, /"code": ?"RTKSIZE1002"/);
+    assert.match(result.stdout, /"code": ?"RAPPSIZE1004"/);
     assert.deepEqual(readdirSync(directory), ["Broken.csproj"], "Nothing is written before the settings are known.");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

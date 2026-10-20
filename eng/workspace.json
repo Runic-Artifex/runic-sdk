@@ -94,6 +94,7 @@
     },
     {
       "name": "Runic.Application.Views.CsWebUi",
+      "version": "0.8.0-preview.6",
       "project": "packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj"
     },
     {

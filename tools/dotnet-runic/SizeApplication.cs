@@ -16,12 +16,23 @@ internal sealed record SizeOptions(string? Project, string Runtime,
     string Configuration, string Report, bool Aot, string Verify, IReadOnlyList<string> VerifyArguments);
 internal sealed record SizeFile(string Path, string Category, long Bytes, string Sha256);
 internal sealed record SizeVerification(string Status, int? ExitCode, string? Executable, IReadOnlyList<string> Arguments);
-internal sealed record SizeReport(string Schema, DateTimeOffset CreatedUtc, string Project, string Runtime,
-    string Sdk, string BuildOperatingSystem, string BuildArchitecture, string InstalledRuntimes, string? SourceRevision,
-    bool? SourceDirty, IReadOnlyDictionary<string, string> EffectiveProperties,
+internal sealed record SizeInstalledRuntime(string Name, string Version, string Directory);
+
+/// <summary>
+/// The <c>runic.size/2</c> report that <c>dotnet runic size</c> writes. README.md documents its schema; keep both in
+/// sync. Paths of files end in <c>Path</c>, directories in <c>Directory</c>; <c>createdAt</c> is UTC, ending in <c>Z</c>.
+/// </summary>
+internal sealed record SizeReport(string Schema, DateTime CreatedAt, string Project, string Runtime,
+    string Sdk, string BuildOperatingSystem, string BuildArchitecture, IReadOnlyList<SizeInstalledRuntime> InstalledRuntimes,
+    string? SourceRevision, bool? SourceDirty, IReadOnlyDictionary<string, string> EffectiveProperties,
     IReadOnlyDictionary<string, string> Libraries, string PublishDirectory, int PublishExitCode,
-    string PublishLog, string Archive, long TotalBytes, long CompressedBytes,
-    IReadOnlyList<SizeFile> Files, SizeVerification Verification, IReadOnlyList<string> Notes);
+    string PublishLogPath, string ArchivePath, long TotalBytes, long CompressedBytes,
+    IReadOnlyList<SizeFile> Files, SizeVerification Verification, IReadOnlyList<string> Notes)
+{
+    internal const string SchemaId = "runic.size/2";
+}
+
+internal sealed record SizeRun(int ExitCode, SizeCommandResult? Result);
 
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(SizeReport))]
@@ -35,12 +46,12 @@ internal static class SizeApplication
         "EventSourceSupport", "UseSystemResourceKeys", "HttpActivityPropagationSupport", "EnableUnsafeBinaryFormatterSerialization",
         "ProjectAssetsFile", "RuntimeFrameworkVersion", "TargetLatestRuntimePatch"];
 
-    internal static async Task<int> RunAsync(SizeOptions options, CancellationToken cancellationToken)
+    internal static async Task<SizeRun> RunAsync(SizeOptions options, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Runtime))
-            throw new DevUsageException("RTKSIZE1001", "Specify --runtime explicitly, for example linux-x64.");
+            throw new DevUsageException("RAPPSIZE1001", "Specify --runtime explicitly, for example linux-x64.");
         if (options.VerifyArguments.Count != 0 && string.IsNullOrWhiteSpace(options.Verify))
-            throw new DevUsageException("RTKSIZE1001", "--verify-argument requires --verify.");
+            throw new DevUsageException("RAPPSIZE1002", "--verify-argument requires --verify.");
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string workingDirectory = Path.GetDirectoryName(project)!;
         // An explicit --report never replaces earlier evidence. Without one, each run gets its own report name, so a
@@ -49,7 +60,7 @@ internal static class SizeApplication
             ? DefaultReportPath(Environment.CurrentDirectory, options.Runtime, DateTimeOffset.UtcNow)
             : Path.GetFullPath(options.Report);
         if (File.Exists(reportPath))
-            throw new DevUsageException("RTKSIZE1001", "The report already exists. Select a new --report path to preserve prior evidence.");
+            throw new DevUsageException("RAPPSIZE1003", "The report already exists. Select a new --report path to preserve prior evidence.");
         string dotnet = DevApplication.ResolveDotNetHost();
         var settings = new List<string> { $"-p:Configuration={options.Configuration}",
             $"-p:RuntimeIdentifier={options.Runtime}", $"-p:PublishAot={options.Aot.ToString().ToLowerInvariant()}",
@@ -61,7 +72,7 @@ internal static class SizeApplication
             CommandResult result = await Run(dotnet, ["msbuild", project, "-nologo", .. settings,
                 $"-getProperty:{string.Join(',', Properties)}"]);
             if (result.ExitCode != 0)
-                throw new DevDevelopmentException("RTKSIZE1002", "Could not evaluate publish settings: " + result.CombinedOutput);
+                throw new DevDevelopmentException("RAPPSIZE1004", "Could not evaluate publish settings: " + result.CombinedOutput);
             using var json = JsonDocument.Parse(result.StandardOutput);
             return json.RootElement.GetProperty("Properties").EnumerateObject()
                 .ToDictionary(p => p.Name, p => p.Value.GetString() ?? "", StringComparer.Ordinal);
@@ -75,7 +86,7 @@ internal static class SizeApplication
         string archive = Path.Combine(directory, "distribution.zip");
         string main = effective["AssemblyName"] + (options.Runtime.StartsWith("win-", StringComparison.Ordinal) ? ".exe" : "");
         string sdk = (await Run(dotnet, ["--version"])).StandardOutput.Trim();
-        string runtimes = (await Run(dotnet, ["--list-runtimes"])).StandardOutput.Trim();
+        IReadOnlyList<SizeInstalledRuntime> runtimes = ParseInstalledRuntimes((await Run(dotnet, ["--list-runtimes"])).StandardOutput);
         string? revision = null;
         bool? dirty = null;
         try
@@ -115,7 +126,7 @@ internal static class SizeApplication
             Console.Write(check.CombinedOutput);
             verification = new(check.ExitCode == 0 ? "passed" : "failed", check.ExitCode, options.Verify, arguments);
         }
-        var report = new SizeReport("runic.size/1", DateTimeOffset.UtcNow, project, options.Runtime,
+        var report = new SizeReport(SizeReport.SchemaId, DateTime.UtcNow, project, options.Runtime,
             sdk, RuntimeInformation.OSDescription, RuntimeInformation.ProcessArchitecture.ToString(), runtimes, revision, dirty, effective, libraries,
             publishDirectory, publish.ExitCode, logPath, archive, files.Sum(file => file.Bytes),
             new FileInfo(archive).Length, files, verification,
@@ -129,8 +140,25 @@ internal static class SizeApplication
             await JsonSerializer.SerializeAsync(output, report, SizeJsonContext.Default.SizeReport, cancellationToken);
         Console.WriteLine($"{files.Sum(file => file.Bytes):N0} bytes on disk; {new FileInfo(archive).Length:N0} ZIP bytes; verification {verification.Status}.");
         Console.WriteLine($"Report: {reportPath}");
-        return publish.ExitCode == 0 && verification.Status != "failed" ? Program.Success : Program.DevelopmentFailure;
+        var result = new SizeCommandResult(reportPath, options.Runtime, publish.ExitCode, report.TotalBytes, report.CompressedBytes,
+            new SizeCommandVerification(verification.Status, verification.ExitCode));
+        return new SizeRun(publish.ExitCode == 0 && verification.Status != "failed" ? Program.Success : Program.DevelopmentFailure, result);
     }
+
+    /// <summary>
+    /// Reads <c>dotnet --list-runtimes</c>, one <c>Name Version [Directory]</c> line per runtime. A line in another
+    /// shape is kept whole as the name, so nothing the SDK prints is lost.
+    /// </summary>
+    internal static IReadOnlyList<SizeInstalledRuntime> ParseInstalledRuntimes(string output) =>
+        output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(static line =>
+            {
+                string[] parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+                return parts is [string name, string version, string directory] && directory.StartsWith('[') && directory.EndsWith(']')
+                    ? new SizeInstalledRuntime(name, version, directory[1..^1])
+                    : new SizeInstalledRuntime(line, "", "");
+            })
+            .ToArray();
 
     /// <summary>
     /// The report a run without <c>--report</c> writes: <c>runic-size-&lt;runtime&gt;-&lt;UTC time&gt;.json</c> in

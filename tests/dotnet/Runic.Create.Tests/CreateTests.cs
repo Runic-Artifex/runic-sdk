@@ -130,27 +130,58 @@ internal sealed class CreateTests
         {
             (int exitCode, string output, string error) = Run("MyApp", flag, destination, "--yes", "--dry-run", "--format", "json");
             Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
-            Equal(destination, ResultProperty(output, "Directory"));
-            True(ResultProperty(output, "ReproduceCommand").Contains("--output ", StringComparison.Ordinal), output);
+            Equal(destination, ResultProperty(output, "directory"));
+            Equal(Path.GetFullPath(destination), ResultProperty(output, "fullPath"));
+            True(ResultProperty(output, "reproduceCommand").Contains("--output ", StringComparison.Ordinal), output);
             True(!Directory.Exists(destination), destination);
         }
     }
 
-    [Test, DisplayName("--directory remains a hidden alias of --output")]
-    public void DirectoryIsAFormerAlias()
+    // W319-003 D46: the hidden former name of --output and its conflict diagnostic RCREATE006 are gone.
+    [Test, DisplayName("--directory is no longer an option")]
+    public void DirectoryIsNotAnOption()
     {
         string destination = Path.Combine(Path.GetTempPath(), "runic-create-" + Guid.NewGuid().ToString("N"));
-        (int exitCode, string output, _) = Run("MyApp", "--directory", destination, "--yes", "--dry-run", "--format", "json");
-        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        Equal(destination, ResultProperty(output, "Directory"));
-
-        (exitCode, _, string error) = Run("MyApp", "--directory", destination, "-o", destination + "-other", "--yes", "--dry-run");
+        (int exitCode, _, string error) = Run("MyApp", "--directory", destination, "--yes", "--dry-run");
         Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        True(error.Contains("RCREATE006", StringComparison.Ordinal), error);
+        True(error.Contains("--directory", StringComparison.Ordinal) && !error.Contains("RCREATE006", StringComparison.Ordinal), error);
+        True(!Directory.Exists(destination), destination);
 
-        (_, string help, _) = Run("create", "--help");
+        (_, string help, _) = Run("--help");
         True(help.Contains("--output", StringComparison.Ordinal), help);
         True(!help.Contains("--directory", StringComparison.Ordinal), help);
+    }
+
+    // W319-003 create-04: the creator's grammar is its one command, so "create" is not a command spelling.
+    [Test, DisplayName("create is the root command, not a command spelling")]
+    public void CreateIsTheRootCommand()
+    {
+        (int exitCode, string output, string error) = Run("create", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        Equal("create", ResultProperty(output, "name"));
+        using (JsonDocument document = JsonDocument.Parse(output))
+            Equal("create", document.RootElement.GetProperty("command").GetString());
+
+        (exitCode, _, error) = Run("create", "MyApp", "--yes", "--dry-run");
+        Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(error.Length > 0, "two positionals are a usage error");
+
+        (exitCode, string help, _) = Run("--help");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(help.Contains("Create a Runic application.", StringComparison.Ordinal), help);
+        True(help.Contains("--frontend", StringComparison.Ordinal), help);
+    }
+
+    // W319-003 D13: 0 success, 1 the project could not be created, 2 usage or validation,
+    // 3 internal failure, 130 cancelled.
+    [Test, DisplayName("exit codes follow the Runic tool table")]
+    public void ExitCodesFollowTheToolTable()
+    {
+        string codes = string.Join(",", Enum.GetValues<CommandExitCategory>().Select(category =>
+            $"{category}={CreateExitCodePolicy.Instance.GetExitCode(category).ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+        Equal(
+            "Success=0,Usage=2,Validation=2,Cancelled=130,Unavailable=1,CommandFailure=1,HostFailure=3",
+            codes);
     }
 
     [Test, DisplayName("--format selects JSON output")]
@@ -158,26 +189,48 @@ internal sealed class CreateTests
     {
         (int exitCode, string output, _) = Run("MyApp", "--yes", "--dry-run", "--format", "json");
         Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        Equal("MyApp", ResultProperty(output, "Directory"));
+        Equal("MyApp", ResultProperty(output, "directory"));
     }
 
-    // runic.create/1 names its properties in PascalCase. Runic.CommandLine 0.6.0-preview.3 and later
+    // runic.create/2 names its properties in camelCase. Runic.CommandLine 0.6.0-preview.3 and later
     // serialize through the JSON context's options, so the names must not depend on them.
-    [Test, DisplayName("runic.create/1 keeps its PascalCase payload")]
+    [Test, DisplayName("runic.create/2 writes its camelCase payload")]
     public void JsonPayloadKeepsItsContract()
     {
         (int exitCode, string output, _) = Run("MyApp", "--yes", "--dry-run", "--format", "json");
         Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
         using JsonDocument document = JsonDocument.Parse(output);
         JsonElement root = document.RootElement;
-        Equal("runic.create/1", root.GetProperty("payloadType").GetString());
+        Equal("runic.create/2", root.GetProperty("payloadType").GetString());
         JsonElement payload = root.GetProperty("payload");
         Equal(
-            "Name,Directory,Version,Options,Commands,ReproduceCommand,Created",
+            "name,directory,fullPath,version,options,toggles,commands,reproduceCommand,created",
             string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
-        // Options is keyed by the template's option names, not by a naming policy.
-        string[] options = [.. payload.GetProperty("Options").EnumerateObject().Select(property => property.Name)];
-        True(Runic.Create.Program.OptionFlags.All(options.Contains), string.Join(",", options));
+        // Options and toggles are keyed by the template's option names, not by a naming policy.
+        Equal(string.Join(",", Runic.Create.Program.OptionFlags),
+            string.Join(",", payload.GetProperty("options").EnumerateObject().Select(property => property.Name)));
+        Equal("tests=False,nix=False,packaging=False",
+            string.Join(",", payload.GetProperty("toggles").EnumerateObject().Select(property => $"{property.Name}={property.Value.GetBoolean()}")));
+        Equal(Path.GetFullPath("MyApp"), payload.GetProperty("fullPath").GetString());
+        True(!payload.GetProperty("created").GetBoolean(), "a dry run creates nothing");
+    }
+
+    [Test, DisplayName("runic.create/2 serializes to the documented JSON text")]
+    public void JsonPayloadSnapshot()
+    {
+        TemplateOptionModel model = TemplateOptionModel.Load();
+        OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
+        CreatePlan plan = new("MyApp", "apps/MyApp", "1.0.0", defaults, null, [model.Toggles[0]]);
+        CreateResult result = CreateApplication.ResultOf(model, plan, "/work/apps/MyApp", created: true);
+        Equal(
+            "{\"name\":\"MyApp\",\"directory\":\"apps/MyApp\",\"fullPath\":\"/work/apps/MyApp\",\"version\":\"1.0.0\"," +
+            "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"view-models\":\"reactiveui\"}," +
+            "\"toggles\":{\"tests\":true,\"nix\":false,\"packaging\":false}," +
+            "\"commands\":[\"dotnet new install Runic.Application.Templates@1.0.0\"," +
+            "\"dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests\"]," +
+            "\"reproduceCommand\":\"dnx Runic.Create@1.0.0 -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests\"," +
+            "\"created\":true}",
+            JsonSerializer.Serialize(result, CreateJsonContext.Default.CreateResult));
     }
 
     // Runic.CommandLine 0.7 calls a console interactive when standard input and standard error are

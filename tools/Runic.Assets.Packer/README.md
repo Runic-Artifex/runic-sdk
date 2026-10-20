@@ -54,13 +54,13 @@ Runic.Assets.Packer [pack] <source-directory> <destination-archive> [options]
 | `--entry-point <path>` | Entry document relative to the source directory. Defaults to `index.html`. It must exist and must not be excluded. |
 | `--exclude <paths>` | Asset paths to omit, separated by semicolons. Repeat the option to add more. Paths use `/` and are relative to the source directory. |
 | `--trusted-generated-output` | Read the directory as output generated earlier in the same trusted build. See below. |
-| `--output human\|json` | Output format. JSON writes one `runic.commandline/1` result with the `runic.assets.pack-result/1` payload `{ "ArchiveLength": <bytes> }`. |
+| `--format human\|json` | Output format. JSON writes one `runic.commandline/1` result with the `runic.assets.pack-result/1` payload `{ "archiveLength": <bytes> }`. `--output` is a hidden former name of this option and is accepted until 2.0. |
 | `--help`, `--version` | Show help or the version. |
 
-With `--output json` a successful run writes one line such as:
+With `--format json` a successful run writes one line such as:
 
 ```json
-{"protocol":"runic.commandline/1","requestId":"35dfb3b13110479eb58ca54afd4a51fd","command":"pack","success":true,"exitCode":0,"payloadType":"runic.assets.pack-result/1","payload":{"ArchiveLength":437},"fault":null,"diagnostics":[]}
+{"protocol":"runic.commandline/1","requestId":"35dfb3b13110479eb58ca54afd4a51fd","command":"pack","success":true,"exitCode":0,"payloadType":"runic.assets.pack-result/1","payload":{"archiveLength":437},"fault":null,"diagnostics":[]}
 ```
 
 A failure sets `success` to `false`, `exitCode` to one of the exit codes below
@@ -70,6 +70,9 @@ directory, entry point or underlying reason. A value that looks like a home,
 path, or exception text is shown as `[redacted]`; other absolute paths, such as
 macOS `/var/folders/...` or `/srv/...`, are shown as they are. Human output
 prints the full message.
+
+The `runic.assets.pack-result/1` payload has one property, `archiveLength`, the
+size of the written archive in bytes.
 
 The archive is deterministic: the same files produce the same bytes, so it can
 be cached or compared with `cmp`.
@@ -97,10 +100,10 @@ a directory another user can write.
 | Exit code | Meaning |
 | --- | --- |
 | `0` | The archive was written. |
-| `2` | Invalid command line, such as a missing argument. |
-| `3` | The source directory does not exist (`RAS1001`). |
-| `4` | The entry point does not exist or was excluded (`RAS1002`). |
-| `5` | Packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`); also a cancelled run. |
+| `1` | The archive could not be packed: the entry point does not exist or was excluded (`RAS1002`), packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`). |
+| `2` | Usage or validation error: an invalid command line, such as a missing argument, or a source directory that does not exist (`RAS1001`). |
+| `3` | Internal failure. |
+| `130` | Cancelled. |
 
 Human output writes the result to standard output and the error message to
 standard error. A failed run leaves an existing destination archive unchanged.

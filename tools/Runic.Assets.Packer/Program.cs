@@ -9,15 +9,22 @@ using Runic.Assets;
 using Runic.Assets.Packer;
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
+using Runic.Tools.Shared;
 
 return await PackerApplication.RunAsync(args).ConfigureAwait(false);
 
 internal static class PackerApplication
 {
+    private const int FailureExitCode = 1;
     private const int UsageExitCode = 2;
-    private const int SourceDirectoryExitCode = 3;
-    private const int EntryPointExitCode = 4;
-    private const int OperationExitCode = 5;
+    private const int InternalExitCode = 3;
+    private const int CancelledExitCode = 130;
+
+    /// <summary>Selects human or JSON output, as for every Runic tool.</summary>
+    private const string FormatOptionName = "--format";
+
+    /// <summary>The selector's former spelling, a hidden alias until 2.0.</summary>
+    private const string FormerFormatOptionName = "--output";
 
     // Fault messages stay free of paths and exception text, so the JSON response
     // keeps the RAS code; Runic.CommandLine replaces a fault whose message looks
@@ -34,7 +41,10 @@ internal static class PackerApplication
         Console = new Runic.CommandLine.Spectre.SpectreCommandConsole(),
         ExitCodePolicy = PackerExitCodePolicy.Instance,
         OutcomeSink = PackerOutcomeSink.Instance,
-    }.RunAsync(args);
+        ParseSettings = new ParseSettings(
+            Environment.GetEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName),
+            transportOutputOptionName: FormatOptionName),
+    }.RunAsync(OutputSelectorAlias.Rewrite(args, FormerFormatOptionName));
 
     [Command("pack", Description = "Package a directory as a Runic asset archive.")]
     [DefaultCommand]
@@ -237,19 +247,18 @@ internal static class PackerApplication
         public int GetExitCode(CommandExitCategory category) => category switch
         {
             CommandExitCategory.Success => CommandExitCodes.Success,
-            CommandExitCategory.Usage => UsageExitCode,
-            CommandExitCategory.Validation => SourceDirectoryExitCode,
-            CommandExitCategory.Unavailable => EntryPointExitCode,
-            CommandExitCategory.CommandFailure or CommandExitCategory.Cancelled or CommandExitCategory.HostFailure => OperationExitCode,
-            _ => throw new ArgumentOutOfRangeException(nameof(category)),
+            CommandExitCategory.Usage or CommandExitCategory.Validation => UsageExitCode,
+            CommandExitCategory.Unavailable or CommandExitCategory.CommandFailure => FailureExitCode,
+            CommandExitCategory.Cancelled => CancelledExitCode,
+            _ => InternalExitCode,
         };
     }
 
 }
 
-// The runic.assets.pack-result/1 payload is { "ArchiveLength": <bytes> }; the name is spelled
+// The runic.assets.pack-result/1 payload is { "archiveLength": <bytes> }; the name is spelled
 // out so that the JSON context's options cannot rename it.
-internal sealed record PackerResult([property: JsonPropertyName("ArchiveLength")] long ArchiveLength);
+internal sealed record PackerResult([property: JsonPropertyName("archiveLength")] long ArchiveLength);
 
 [JsonSerializable(typeof(PackerResult))]
 internal sealed partial class PackerJsonContext : JsonSerializerContext;

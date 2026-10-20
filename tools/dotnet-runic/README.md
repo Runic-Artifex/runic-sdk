@@ -8,7 +8,7 @@ dotnet tool restore
 dotnet runic dev
 ```
 
-Both commands find the single `.csproj` in the current directory; pass
+All commands find the single `.csproj` in the current directory; pass
 `--project path/to/App.csproj` (`-p`) otherwise. `--configuration` (`-c`)
 selects the build configuration. `dotnet runic <command> --help` describes
 every option.
@@ -81,13 +81,13 @@ A project on the GTK 4 profile gets `gtk4-profile` instead. A project that
 references `Runic.Application.Views.Wpf` gets `wpf-runtime`, which warns on a
 machine other than Windows or without the WebView2 Runtime.
 
-With `--rid`, the target checks follow the project's primary host: CS-WebUI when
+With `--runtime`, the target checks follow the project's primary host: CS-WebUI when
 the project references it, then Runic Desktop, then WPF. `target-presentation`
 reports what that host needs. For the other hosts, doctor still runs
 `desktop-runtime`, `gtk4-profile`'s library check and `wpf-runtime` on this
 machine when the target has this machine's operating system, and `wpf-runtime`
 reports a target other than Windows from any machine. When no check can cover a
-host, for example Runic Desktop with `--rid linux-x64` on Windows,
+host, for example Runic Desktop with `--runtime linux-x64` on Windows,
 `views-hosts` warns and names the machine to run doctor on.
 
 These host checks warn; they never fail. `--fail-on fail`, the default, keeps
@@ -107,7 +107,7 @@ through `Runic.Platform.Linux`, once restored; and, on a Linux machine,
 Fedora, Arch, openSUSE and NixOS, read from `/etc/os-release`, and the library
 file names on other distributions. The check also warns when the project
 restores `Runic.Platform.Linux`: its GTK 3 portal parent loads `libgtk-3`, and a
-GTK 4 process must not load GTK 3. With `--rid`, `target-presentation` reports
+GTK 4 process must not load GTK 3. With `--runtime`, `target-presentation` reports
 the native libraries instead. A project on `Runic.Application.Views.Desktop` gets the
 platform providers from that package, and `services.AddRunicPlatformServices()`
 selects the GTK 4 one. For such a project the check lists only the native
@@ -122,11 +122,11 @@ there is no D-Bus session bus or no installed `xdg-desktop-portal` (the
 `org.freedesktop.portal.Desktop` D-Bus service in `XDG_DATA_HOME` or
 `XDG_DATA_DIRS`), because the file dialogs and the file launcher use the portal.
 For CS-WebUI it reports that the services return `OwnerUnavailable`. The check
-describes this machine, so `--rid` skips it.
+describes this machine, so `--runtime` skips it.
 
 ### Deployment checks for a target
 
-`dotnet runic doctor --rid <rid>` (also `--runtime` or `-r`) adds checks for
+`dotnet runic doctor --runtime <rid>` (also `--rid` or `-r`) adds checks for
 publishing to a runtime identifier. Doctor evaluates the project with the
 global properties of `dotnet publish -r <rid>` (`RuntimeIdentifier=<rid>` and
 `_IsPublishing=true`), and in Release unless you pass `-c`, so RID-, publish- and
@@ -135,7 +135,7 @@ configuration-conditioned `PublishAot`, `PublishSelfContained` and
 `dotnet publish` on its command line; `--aot`, `--no-aot` and
 `--self-contained` check a publish with `-p:PublishAot=true`,
 `-p:PublishAot=false` or `--self-contained true`. A malformed RID, or `--aot`,
-`--no-aot` or `--self-contained` without `--rid`, is a usage error
+`--no-aot` or `--self-contained` without `--runtime`, is a usage error
 (`RAPPCLI1011`, exit code 2).
 
 | Check | What it reports |
@@ -145,35 +145,35 @@ configuration-conditioned `PublishAot`, `PublishSelfContained` and
 | `target-publish` | Without Native AOT, says what target machines need: nothing for a self-contained publish, otherwise the .NET runtime, plus the ASP.NET Core runtime for Runic Desktop. With `PublishAot=true`, fails when the target is another operating system, because Native AOT does not cross operating systems. On the same operating system it checks the native toolchain: clang or gcc and, unless `StripSymbols` is `false`, objcopy on Linux, the Xcode command-line tools on macOS, and the Visual Studio C++ tools for the target architecture on Windows (through `vswhere`). A Linux target with another architecture or C library warns that it needs a sysroot. |
 | `target-presentation` | Names the native runtime that target machines need. Runic Desktop needs the WebView2 Runtime on Windows, GTK 3 and WebKitGTK 4.1 on Linux (GTK 4.12 or newer and WebKitGTK 6.0 when the project references `Runic.Desktop.Gtk4`), and WKWebView, which macOS includes. CS-WebUI needs an installed browser and falls back to the same platform WebView. When the target has the host's operating system, doctor also inspects this machine and warns when the runtime is missing. It reads the GTK 4 version through `pkg-config` when available. Doctor cannot inspect another operating system, so it reports those requirements as passing. |
 
-Run doctor with `--rid` on the machine or CI runner that publishes, and once for
+Run doctor with `--runtime` on the machine or CI runner that publishes, and once for
 each target:
 
 ```bash
-dotnet runic doctor --rid linux-x64 --fail-on fail
-dotnet runic doctor --rid win-x64 --aot --fail-on fail
+dotnet runic doctor --runtime linux-x64 --fail-on fail
+dotnet runic doctor --runtime win-x64 --aot --fail-on fail
 ```
 
 ### Doctor JSON output
 
-`dotnet runic doctor --output json` (or `RUNIC_COMMANDLINE_OUTPUT=json`) writes
-one `runic.commandline/1` envelope. A `runic.commandline/1` envelope carries a
-payload only when it succeeds. Errors that stop the inspection, such as a missing
-project, produce a failed envelope with a `fault` and no payload.
+`dotnet runic doctor --format json` (or `RUNIC_COMMANDLINE_OUTPUT=json`) writes
+one `runic.commandline/1` envelope, as described in [Output and exit
+codes](#output-and-exit-codes). Errors that stop the inspection, such as a
+missing project, produce a failed envelope with a `fault` and no payload.
 
 `--fail-on <never|fail|warn>` selects when doctor fails, with the same meaning in
 both output modes, and defaults to `fail` in both. When a check reaches the
-threshold, doctor exits with code 1. In JSON mode that is a failed envelope with
-no payload: the fault has code `RAPPCLI1009` and `details` mapping each
-non-passing check id to `fail` or `warn`, and the diagnostics mark the checks at
-the threshold as errors.
-
-A failing check therefore exits 1 in JSON mode too. To read every check from
-the payload even when some fail, pass `--fail-on never` and decide on
-`payload.healthy`:
+threshold, doctor exits with code 1. In JSON mode that is a failed envelope: the
+fault has code `RAPPCLI1009`, `details` mapping each non-passing check id to
+`fail` or `warn`, and `data` with the complete doctor payload
+(`fault.data.type` is `runic.application.tool.doctor/1`, `fault.data.payload`
+the payload below), and the diagnostics mark the checks at the threshold as
+errors. `--fail-on never` reports every completed inspection as a successful
+envelope instead, so you can decide on `payload.healthy`:
 
 ```bash
-dotnet runic doctor --output json > doctor.json
-dotnet runic doctor --output json --fail-on never | jq -e '.payload.healthy'
+dotnet runic doctor --format json > doctor.json
+jq '.fault.data.payload.checks[] | select(.status != "pass")' doctor.json
+dotnet runic doctor --format json --fail-on never | jq -e '.payload.healthy'
 ```
 
 The payload type is `runic.application.tool.doctor/1`:
@@ -186,8 +186,8 @@ The payload type is `runic.application.tool.doctor/1`:
   "required": ["project", "host", "target", "healthy", "summary", "checks"],
   "properties": {
     "project": { "type": "string", "description": "Absolute path of the inspected project file." },
-    "host": { "enum": ["cswebui", "desktop", "wpf", "unknown"], "description": "The primary Runic Views host, which the --rid checks follow: cswebui, then desktop, then wpf. wpf was added in 0.7.0-preview.9 for a project whose only host is WPF." },
-    "target": { "type": ["string", "null"], "description": "The --rid runtime identifier; null without --rid." },
+    "host": { "enum": ["cswebui", "desktop", "wpf", "unknown"], "description": "The primary Runic Views host, which the --runtime checks follow: cswebui, then desktop, then wpf. wpf was added in 0.7.0-preview.9 for a project whose only host is WPF." },
+    "target": { "type": ["string", "null"], "description": "The --runtime runtime identifier; null without --runtime." },
     "healthy": { "type": "boolean", "description": "False when any check has status fail." },
     "summary": {
       "type": "object",
@@ -229,9 +229,95 @@ complete list.
 Check identifiers are `dotnet-sdk`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `compatibility-set`, `frontend-dev-server`,
 `vite-config`, `vite-entry`, `browser`, `views-hosts`, `desktop-runtime`,
-`wpf-runtime`, `gtk4-profile` and `platform-services`. With `--rid`, the payload also lists
+`wpf-runtime`, `gtk4-profile` and `platform-services`. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
+
+## Output and exit codes
+
+Every command writes human-readable text unless you pass `--format json` (or set
+`RUNIC_COMMANDLINE_OUTPUT=json`); then standard output is one
+`runic.commandline/1` envelope, and the human text of `dev` and `size` goes to
+standard error. `--output json`, the spelling before 0.9, still works as a
+hidden alias until 2.0. The same `--format human|json` selects the output of
+`runic-create` and `runic-translations`.
+
+A successful envelope carries the command's payload. A failed one carries a
+`fault` with a code from the [diagnostics
+catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#dotnet-runic),
+and, for `doctor` and `size`, the payload in `fault.data` when the command got
+far enough to produce one. Human-readable output is not a contract; the
+payloads are, under these identifiers:
+
+| Command | Payload |
+| --- | --- |
+| `dev` | `runic.application.tool.dev/1` |
+| `size` | `runic.application.tool.size/1`; the report file is `runic.size/2` |
+| `doctor` | `runic.application.tool.doctor/1` |
+
+`runic.application.tool/1`, the payload of 0.8 and earlier, is gone: its
+`Command`, `ExitCode` and `Output` properties carried the human text.
+
+Every Runic tool (`dotnet runic`, `runic-create`, `runic-translations` and the
+asset packer) uses the same exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success. |
+| 1 | The command failed, or something it needs is unavailable, for example a failed build, a failing doctor check or a missing tool. |
+| 2 | Usage or validation: an unknown option, a missing project or an invalid value. |
+| 3 | An internal or host failure. Report it with the output. |
+| 130 | Cancelled, for example with Ctrl+C. Stopping `dev` with Ctrl+C also exits 130, after the Window and the frontend server have stopped. |
+
+A second Ctrl+C (or SIGQUIT, SIGTERM) while a command is still stopping forces
+the exit with 130 (131, 143).
+
+The `dev` payload describes the evaluated project. It is written when `dev`
+ends, so it is mainly useful with `--dry-run`:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "frontendDirectory", "frontendOutputDirectory", "webRoot", "developmentServer", "dryRun"],
+  "properties": {
+    "project": { "type": "string", "description": "Absolute path of the project file." },
+    "frontendDirectory": { "type": "string", "description": "Absolute path of the frontend package directory." },
+    "frontendOutputDirectory": { "type": "string", "description": "Absolute path of the frontend's build output." },
+    "webRoot": { "type": "string", "description": "Absolute path of the directory the Window serves." },
+    "developmentServer": { "enum": ["vite", "angular", null], "description": "The development server dev starts; null when the frontend is built instead." },
+    "dryRun": { "type": "boolean" }
+  }
+}
+```
+
+The `size` payload names the report and repeats its totals:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report", "runtime", "publishExitCode", "totalBytes", "compressedBytes", "verification"],
+  "properties": {
+    "report": { "type": "string", "description": "Absolute path of the runic.size/2 report." },
+    "runtime": { "type": "string" },
+    "publishExitCode": { "type": "integer" },
+    "totalBytes": { "type": "integer", "minimum": 0, "description": "Bytes of every published file." },
+    "compressedBytes": { "type": "integer", "minimum": 0, "description": "Bytes of the published files as one ZIP archive." },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "exitCode"],
+      "properties": {
+        "status": { "enum": ["not-run", "passed", "failed"] },
+        "exitCode": { "type": ["integer", "null"], "description": "The --verify executable's exit code; null when it did not run." }
+      }
+    }
+  }
+}
+```
 
 ## Project properties
 
@@ -291,23 +377,91 @@ dotnet runic size --runtime linux-x64 --report measurements/linux.json \
 # runs: node scripts/check-publish.mjs <publish directory> <publish directory>/App
 ```
 
-## Local support envelope
+The report's schema is `runic.size/2`. Paths are absolute; `files[].path` is
+relative to the publish directory. Values in `effectiveProperties` are the
+evaluated MSBuild properties, empty when unspecified:
 
-`support` only reads an explicitly selected Editor diagnostic ZIP. It can
-preview the selected collector and every omission, collect one unsigned local
-JSON envelope, or verify and remove that envelope. It never launches a product,
-scans a workspace, uploads data, opens a network transport, or configures
-telemetry.
-
-```bash
-dotnet runic support --mode preview --editor-diagnostics /path/to/editor-diagnostics.zip
-dotnet runic support --mode collect --editor-diagnostics /path/to/editor-diagnostics.zip --destination /path/to/support-envelope.json
-dotnet runic support --mode remove --destination /path/to/support-envelope.json
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "createdAt", "project", "runtime", "sdk", "buildOperatingSystem", "buildArchitecture", "installedRuntimes", "sourceRevision", "sourceDirty", "effectiveProperties", "libraries", "publishDirectory", "publishExitCode", "publishLogPath", "archivePath", "totalBytes", "compressedBytes", "files", "verification", "notes"],
+  "properties": {
+    "schema": { "const": "runic.size/2" },
+    "createdAt": { "type": "string", "format": "date-time", "description": "UTC, ending in Z." },
+    "project": { "type": "string" },
+    "runtime": { "type": "string" },
+    "sdk": { "type": "string", "description": "dotnet --version." },
+    "buildOperatingSystem": { "type": "string" },
+    "buildArchitecture": { "type": "string" },
+    "installedRuntimes": {
+      "type": "array",
+      "description": "dotnet --list-runtimes. A line in another shape is kept whole in name.",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "directory"],
+        "properties": { "name": { "type": "string" }, "version": { "type": "string" }, "directory": { "type": "string" } }
+      }
+    },
+    "sourceRevision": { "type": ["string", "null"], "description": "The Git commit of the project directory; null outside Git." },
+    "sourceDirty": { "type": ["boolean", "null"] },
+    "effectiveProperties": { "type": "object", "additionalProperties": { "type": "string" } },
+    "libraries": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Restored libraries by name/version, with their type, such as package or project." },
+    "publishDirectory": { "type": "string" },
+    "publishExitCode": { "type": "integer" },
+    "publishLogPath": { "type": "string" },
+    "archivePath": { "type": "string" },
+    "totalBytes": { "type": "integer", "minimum": 0 },
+    "compressedBytes": { "type": "integer", "minimum": 0 },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "category", "bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "category": { "type": "string", "description": "A heuristic, such as main-executable, native-dependency, debug-symbols or other-rid; new categories may appear." },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["status", "exitCode", "executable", "arguments"],
+      "properties": {
+        "status": { "enum": ["not-run", "passed", "failed"] },
+        "exitCode": { "type": ["integer", "null"] },
+        "executable": { "type": ["string", "null"] },
+        "arguments": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  }
+}
 ```
 
-The collector accepts only `runic.translations.editor-diagnostics/1` and
-rejects paths, source/translation/review text, sessions, cookies, and tokens.
-The resulting `runic.support-envelope/1` contains normalized
-application/workspace counts plus a fixed omission record.
+`runic.size/1`, the report of 0.8 and earlier, named `createdUtc`, `publishLog`
+and `archive`, and kept `installedRuntimes` as one string.
+
+A missing `--runtime` (`RAPPSIZE1001`), `--verify-argument` without `--verify`
+(`RAPPSIZE1002`) or an existing `--report` (`RAPPSIZE1003`) is a usage error,
+exit code 2. A project whose publish settings MSBuild cannot evaluate
+(`RAPPSIZE1004`), a failed publish or a failed verification exits 1.
+
+## Support envelopes
+
+The local support envelope of the Translations editor moved to the
+Translations tool in 0.9:
+
+```bash
+runic-translations support preview --editor-diagnostics /path/to/editor-diagnostics.zip
+```
+
+`dotnet runic support --mode preview|collect|remove`, its former spelling, is a
+hidden alias until 2.0. It forwards its arguments to `runic-translations
+support <mode>`, run from `PATH` or from a local tool manifest that lists
+`dotnet-runic-translations`, which then writes the output and decides the exit
+code. Without that tool it fails with `RAPPCLI1012`.
 
 Preview tool; [MIT licensed](https://github.com/Runic-Artifex/runic-sdk/blob/main/LICENSE).

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readToolchain } from "../../../eng/toolchain.mjs";
 import { readSupport, renderReadme } from "../../../eng/support.mjs";
+import { packageVersion } from "../../../eng/version.mjs";
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const target = fileURLToPath(new URL("runic.compatibility-set.json", import.meta.url));
@@ -19,7 +20,7 @@ const metadata = {
   releaseTrainVersion: workspace.version,
   toolchain: readToolchain(root),
   packages: ["nuget", "npm"].flatMap(ecosystem => workspace[ecosystem].map(packageEntry => ({
-    ecosystem, identity: packageEntry.name, version: workspace.version,
+    ecosystem, identity: packageEntry.name, version: packageVersion(workspace, packageEntry.name),
   }))),
   support,
 };

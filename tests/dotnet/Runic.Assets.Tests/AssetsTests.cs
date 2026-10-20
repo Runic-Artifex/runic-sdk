@@ -1144,15 +1144,16 @@ internal sealed class AssetsTests
         string archive = Path.Combine(directory.Path, "out.runic-assets");
         string missing = Path.Combine(directory.Path, "missing");
 
+        // The Runic tool exit codes: 2 usage or validation, 1 a failed command.
         (int exitCode, JsonElement fault) = await PackJsonAsync(missing, archive).ConfigureAwait(false);
-        Equal(3, exitCode);
+        Equal(2, exitCode);
         Equal("RAS1001", fault.GetProperty("code").GetString());
         Equal("The source directory does not exist.", fault.GetProperty("message").GetString());
         Equal(
             SanitizerRedacts(missing) ? "[redacted]" : missing,
             fault.GetProperty("details").GetProperty("sourceDirectory").GetString());
         (int humanExitCode, string _, string error) = await RunPackerAsync(missing, archive).ConfigureAwait(false);
-        Equal(3, humanExitCode);
+        Equal(2, humanExitCode);
         string[] errorLines = error.Trim().Split(Environment.NewLine);
         Equal($"Source directory '{missing}' does not exist.", errorLines[0]);
         // The message links to the code's catalog entry at the release tag.
@@ -1161,7 +1162,7 @@ internal sealed class AssetsTests
             && errorLines[1].EndsWith("/docs/diagnostics.md#ras1001", StringComparison.Ordinal));
 
         (exitCode, fault) = await PackJsonAsync(site, archive, "--entry-point", "missing.html", "--trusted-generated-output").ConfigureAwait(false);
-        Equal(4, exitCode);
+        Equal(1, exitCode);
         Equal("RAS1002", fault.GetProperty("code").GetString());
         True(!fault.GetProperty("message").GetString()!.Contains(directory.Path, StringComparison.Ordinal));
         Equal("missing.html", fault.GetProperty("details").GetProperty("entryPoint").GetString());
@@ -1174,7 +1175,7 @@ internal sealed class AssetsTests
 
         File.CreateSymbolicLink(Path.Combine(site, "linked.txt"), Path.Combine(site, "index.html"));
         (exitCode, fault) = await PackJsonAsync(site, archive, "--trusted-generated-output").ConfigureAwait(false);
-        Equal(5, exitCode);
+        Equal(1, exitCode);
         Equal("RAS1003", fault.GetProperty("code").GetString());
         Equal("The archive could not be packed.", fault.GetProperty("message").GetString());
         Equal(
@@ -1183,7 +1184,7 @@ internal sealed class AssetsTests
         True(!File.Exists(archive));
     }
 
-    // The documented success line: a runic.assets.pack-result/1 payload of { "ArchiveLength": <bytes> }.
+    // The documented success line: a runic.assets.pack-result/1 payload of { "archiveLength": <bytes> }.
     // Runic.CommandLine 0.6.0-preview.3 and later serialize through the JSON context's options,
     // so the payload name must not depend on them.
     [Test, DisplayName("packer JSON success keeps the runic.assets.pack-result/1 payload")]
@@ -1194,15 +1195,15 @@ internal sealed class AssetsTests
         string site = Path.Combine(directory.Path, "site");
         string archive = Path.Combine(directory.Path, "out.runic-assets");
 
-        (int exitCode, string output, string _) = await RunPackerAsync(site, archive, "--output", "json").ConfigureAwait(false);
+        (int exitCode, string output, string _) = await RunPackerAsync(site, archive, "--format", "json").ConfigureAwait(false);
         Equal(0, exitCode);
         using JsonDocument document = JsonDocument.Parse(output);
         JsonElement root = document.RootElement;
         True(root.GetProperty("success").GetBoolean());
         Equal("runic.assets.pack-result/1", root.GetProperty("payloadType").GetString());
         JsonElement payload = root.GetProperty("payload");
-        Equal("ArchiveLength", string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
-        Equal(new FileInfo(archive).Length, payload.GetProperty("ArchiveLength").GetInt64());
+        Equal("archiveLength", string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
+        Equal(new FileInfo(archive).Length, payload.GetProperty("archiveLength").GetInt64());
     }
 
     // Mirrors the technical-content rule of Runic.CommandLine's fault sanitizer.
@@ -1217,7 +1218,7 @@ internal sealed class AssetsTests
 
     private static async Task<(int ExitCode, JsonElement Fault)> PackJsonAsync(params string[] arguments)
     {
-        (int exitCode, string output, string _) = await RunPackerAsync([.. arguments, "--output", "json"]).ConfigureAwait(false);
+        (int exitCode, string output, string _) = await RunPackerAsync([.. arguments, "--format", "json"]).ConfigureAwait(false);
         using JsonDocument document = JsonDocument.Parse(output);
         JsonElement root = document.RootElement;
         True(!root.GetProperty("success").GetBoolean());

@@ -19,6 +19,15 @@ internal static partial class Program
     internal const int DevelopmentFailure = 1;
     internal const int UsageFailure = 2;
     internal const int InternalFailure = 3;
+    /// <summary>The command was cancelled, for example with Ctrl+C: 128 + SIGINT, as shells report it.</summary>
+    internal const int Cancelled = 130;
+
+    /// <summary>
+    /// Selects human or JSON output, as in every Runic tool. <c>--output</c> is its former spelling, a hidden alias
+    /// until 2.0 (<see cref="Runic.Tools.Shared.OutputSelectorAlias"/>).
+    /// </summary>
+    internal const string FormatOptionName = Runic.Tools.Shared.OutputSelectorAlias.Selector;
+    internal const string FormerFormatOptionName = "--output";
 
     private const string ProjectDescription =
         "The project file, or a directory with one .csproj. Defaults to the current directory.";
@@ -31,9 +40,21 @@ internal static partial class Program
     internal static async Task<int> RunAsync(string[] arguments, ICommandConsole? console = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
+        arguments = Runic.Tools.Shared.OutputSelectorAlias.Rewrite(arguments, FormerFormatOptionName);
+        if (SupportForwarding.TryParse(arguments, out SupportForwarding? forwarding) &&
+            SupportForwarding.ResolveTool(Environment.CurrentDirectory, SystemDoctorRuntime.Instance.FindExecutable, DevApplication.ResolveDotNetHost()) is { } translations)
+        {
+            return await forwarding!.RunAsync(translations, console ?? new SpectreCommandConsole()).ConfigureAwait(false);
+        }
         using ToolSignalCancellation signals = ToolSignalCancellation.Register();
         return await new CommandApp(GeneratedCommandCatalog.Create())
         {
+            ParseSettings = new ParseSettings(
+                Environment.GetEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName),
+                transportOutputOptionName: FormatOptionName)
+            {
+                GetEnvironmentVariable = Environment.GetEnvironmentVariable,
+            },
             // ToolSignalCancellation keeps Command Line's behavior but lets dev finish its cleanup.
             HandleCancelKeyPress = false,
             Name = "dotnet runic",
@@ -53,8 +74,8 @@ internal static partial class Program
     [Command("dev", Description = "Run the application with development watchers.",
         Examples = ["dotnet runic dev", "dotnet runic dev --project ./MyApp.csproj -- --app-argument"])]
     [DefaultCommand]
-    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
-    internal static Task<CommandOutcome<ToolCommandResult>> Dev(
+    [CommandResult(DevCommandResult.PayloadType, typeof(DevCommandJsonContext))]
+    internal static Task<CommandOutcome<DevCommandResult>> Dev(
         CommandExecutionContext context,
         [Option("--no-restore", Description = "Skip the .NET restore and the JavaScript package install. The build does not install missing frontend packages either.")] bool noRestore,
         [Option("--no-frontend-watch", Description = "Build the frontend once instead of starting its development server or watcher.")] bool noFrontendWatch,
@@ -65,24 +86,25 @@ internal static partial class Program
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug")
     {
-        return ExecuteAsync(context, "dev", async () =>
-        {
-            var options = new DevOptions(
-                string.IsNullOrWhiteSpace(project) ? null : project,
-                configuration,
-                !noRestore,
-                !noFrontendWatch,
-                !noDotNetWatch,
-                dryRun,
-                applicationArguments);
-            return await DevApplication.RunAsync(options, cancellationToken).ConfigureAwait(false);
-        }, stream: !dryRun);
+        var options = new DevOptions(
+            string.IsNullOrWhiteSpace(project) ? null : project,
+            configuration,
+            !noRestore,
+            !noFrontendWatch,
+            !noDotNetWatch,
+            dryRun,
+            applicationArguments);
+        DevCommandResult? result = null;
+        return ExecuteAsync(context, "dev",
+            async () => await DevApplication.RunAsync(options, cancellationToken,
+                evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false),
+            () => result, stream: !dryRun);
     }
 
     [Command("size", Description = "Measure a published application and write a size report.",
         Examples = ["dotnet runic size --runtime linux-x64 --report measurements/linux.json"])]
-    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
-    internal static Task<CommandOutcome<ToolCommandResult>> Size(
+    [CommandResult(SizeCommandResult.PayloadType, typeof(SizeCommandJsonContext))]
+    internal static Task<CommandOutcome<SizeCommandResult>> Size(
         CommandExecutionContext context,
         [Option("--aot", ConflictsWith = ["no-aot"], Description = "Publish with Native AOT, the default.")] bool aot,
         [Option("--no-aot", ConflictsWith = ["aot"], Description = "Publish without Native AOT.")] bool noAot,
@@ -92,24 +114,32 @@ internal static partial class Program
         [Option("--runtime", "--rid", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
         [Option("--report", Description = "The JSON report to write. The file must not exist yet. Default: runic-size-<runtime>-<UTC time>.json in the current directory.")] string report = "",
-        [Option("--verify", Description = "An executable to run after a successful publish, as a path or a command on PATH, such as node. It receives the --verify-argument values, then the publish directory and the published application's path. A nonzero exit code fails the command.")] string verify = "") =>
-        ExecuteAsync(context, "size", () => SizeApplication.RunAsync(new SizeOptions(
-            string.IsNullOrWhiteSpace(project) ? null : project, runtime,
-            configuration, report, aot || !noAot, verify, verifyArguments), cancellationToken), stream: true);
+        [Option("--verify", Description = "An executable to run after a successful publish, as a path or a command on PATH, such as node. It receives the --verify-argument values, then the publish directory and the published application's path. A nonzero exit code fails the command.")] string verify = "")
+    {
+        SizeCommandResult? result = null;
+        return ExecuteAsync(context, "size", async () =>
+        {
+            SizeRun run = await SizeApplication.RunAsync(new SizeOptions(
+                string.IsNullOrWhiteSpace(project) ? null : project, runtime,
+                configuration, report, aot || !noAot, verify, verifyArguments), cancellationToken).ConfigureAwait(false);
+            result = run.Result;
+            return run.ExitCode;
+        }, () => result, stream: true);
+    }
 
     [Command("doctor", Description = "Check the project and development environment.",
-        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --rid linux-x64 --aot", "dotnet runic doctor --output json"])]
+        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --runtime linux-x64 --aot", "dotnet runic doctor --format json"])]
     [CommandResult(DoctorCommandResult.PayloadType, typeof(DoctorCommandJsonContext))]
     internal static Task<CommandOutcome<DoctorCommandResult>> Doctor(
         CommandExecutionContext context,
-        [Option("--aot", ConflictsWith = ["no-aot"], Description = "With --rid, check a publish with -p:PublishAot=true.")] bool aot,
-        [Option("--no-aot", ConflictsWith = ["aot"], Description = "With --rid, check a publish with -p:PublishAot=false.")] bool noAot,
-        [Option("--self-contained", Description = "With --rid, check a publish with --self-contained true.")] bool selfContained,
+        [Option("--aot", ConflictsWith = ["no-aot"], Description = "With --runtime, check a publish with -p:PublishAot=true.")] bool aot,
+        [Option("--no-aot", ConflictsWith = ["aot"], Description = "With --runtime, check a publish with -p:PublishAot=false.")] bool noAot,
+        [Option("--self-contained", Description = "With --runtime, check a publish with --self-contained true.")] bool selfContained,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
-        [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --rid as dotnet publish does.")] string configuration = "",
+        [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --runtime as dotnet publish does.")] string configuration = "",
         [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail in both output modes.")] string failOn = "",
-        [Option("--rid", "--runtime", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
+        [Option("--runtime", "--rid", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
     {
         return ExecuteAsync<DoctorCommandResult>(context, stream: false, async output =>
         {
@@ -117,7 +147,7 @@ internal static partial class Program
             DoctorTargetRid? target = string.IsNullOrEmpty(rid) ? null : DoctorTargetRid.Parse(rid);
             if (target is null && (aot || noAot || selfContained))
             {
-                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot, --no-aot and --self-contained require --rid.");
+                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot, --no-aot and --self-contained require --runtime.");
             }
             string evaluated = configuration.Length != 0 ? configuration : target is null ? "Debug" : "Release";
             DoctorRun run = await DoctorApplication.InspectAsync(
@@ -130,44 +160,45 @@ internal static partial class Program
         });
     }
 
-    [Command("support", Description = "Preview, collect or remove a local support envelope built from an Editor diagnostic ZIP.",
-        Examples = ["dotnet runic support --mode preview --editor-diagnostics ./editor-diagnostics.zip"])]
-    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
-    internal static async Task<CommandOutcome<ToolCommandResult>> Support(
-        CancellationToken cancellationToken,
-        [Option("--mode", Description = "preview lists what would be collected, collect writes the envelope, and remove verifies and deletes it.")] string mode = "preview",
-        [Option("--editor-diagnostics", Description = "The Editor diagnostic ZIP to read. Required by preview and collect.")] string editorDiagnostics = "",
-        [Option("--destination", Description = "The support envelope JSON file. Required by collect and remove.")] string destination = "")
+    /// <summary>
+    /// The former <c>support</c> command, hidden. <see cref="RunAsync"/> forwards it to <c>runic-translations
+    /// support</c>; this command runs only when that tool is not installed.
+    /// </summary>
+    [Command(SupportForwarding.Command, Hidden = true, Description = "Moved to runic-translations support.")]
+    internal static CommandOutcome<CommandUnit> Support(
+        [Option("--mode", Hidden = true, Description = "Moved to runic-translations support.")] string mode = "",
+        [Option("--editor-diagnostics", Hidden = true, Description = "Moved to runic-translations support.")] string editorDiagnostics = "",
+        [Option("--destination", Hidden = true, Description = "Moved to runic-translations support.")] string destination = "")
     {
-        try
-        {
-            SupportCommandResult result = await SupportApplication.ExecuteAsync(
-                new SupportOptions(mode, string.IsNullOrWhiteSpace(editorDiagnostics) ? null : editorDiagnostics, string.IsNullOrWhiteSpace(destination) ? null : destination),
-                cancellationToken).ConfigureAwait(false);
-            return CommandOutcome.Success(new ToolCommandResult("support", Success, result.ToHumanOutput()));
-        }
-        catch (SupportUsageException exception)
-        {
-            return Failure(CommandExitCategory.Usage, exception.Code, exception.Message);
-        }
-        catch (IOException)
-        {
-            return Failure(CommandExitCategory.CommandFailure, "RAPPSUP025", "The local support envelope could not access a required file.");
-        }
+        _ = (mode, editorDiagnostics, destination);
+        return Failure<CommandUnit>(CommandExitCategory.Unavailable, SupportForwarding.MissingToolCode, SupportForwarding.MissingToolMessage);
     }
 
-    private static Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(CommandExecutionContext context, string command, Func<Task<int>> operation, bool stream = false) =>
-        ExecuteAsync<ToolCommandResult>(context, stream, async output =>
+    /// <summary>
+    /// Runs a command that reports an exit code, and its payload once known. A failure carries the payload in the
+    /// envelope's <c>fault.data</c> when the command produced one.
+    /// </summary>
+    private static Task<CommandOutcome<T>> ExecuteAsync<T>(
+        CommandExecutionContext context, string command, Func<Task<int>> operation, Func<T?> result, bool stream)
+        where T : class, IToolCommandResult<T> =>
+        ExecuteAsync<T>(context, stream, async output =>
         {
             int exitCode = await operation().ConfigureAwait(false);
-            return exitCode == Success
-                ? CommandOutcome.Success(new ToolCommandResult(command, exitCode, output.ToString().TrimEnd()))
-                : CommandOutcome.Failure<ToolCommandResult>(
-                    CommandExitCategory.CommandFailure,
-                    new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully."),
-                    diagnostics: [],
-                    humanOutput: WithHelpLink(BoundedHumanOutput(output), "RAPPCLI1000"));
+            T? payload = result();
+            if (exitCode == Success && payload is not null)
+                return CommandOutcome.Success(payload.WithHumanOutput(output.ToString().TrimEnd()));
+            if (exitCode == Cancelled)
+                return CommandOutcome.Failure<T>(CommandExitCategory.Cancelled, new CommandFault(CancelledCode, $"The {command} command was cancelled."));
+            var fault = new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully.");
+            string? human = WithHelpLink(BoundedHumanOutput(output), "RAPPCLI1000");
+            return payload is null
+                ? CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, fault, diagnostics: [], human)
+                : CommandOutcome.FailureWithData<T>(CommandExitCategory.CommandFailure, fault,
+                    CommandFailureData.Create(T.PayloadType, payload, T.JsonTypeInfo), diagnostics: [], human);
         });
+
+    /// <summary>The fault code of a cancelled command, the one Runic.CommandLine reports.</summary>
+    internal const string CancelledCode = "RCLI4000";
 
     private static async Task<CommandOutcome<T>> ExecuteAsync<T>(
         CommandExecutionContext context,
@@ -211,12 +242,6 @@ internal static partial class Program
             Console.SetError(originalError);
         }
     }
-
-    private static CommandOutcome<ToolCommandResult> Failure(
-        CommandExitCategory category,
-        string code,
-        string message,
-        string? humanOutput = null) => Failure<ToolCommandResult>(category, code, message, humanOutput);
 
     /// <summary>
     /// Backstop for fault messages: finds any rooted path token (a Unix path
@@ -281,16 +306,18 @@ internal static partial class Program
 
 }
 
-// The runic.application.tool/1 payload names its properties in PascalCase, spelled out so
-// that the JSON context's options cannot rename them.
-internal sealed record ToolCommandResult(
-    [property: JsonPropertyName("Command")] string Command,
-    [property: JsonPropertyName("ExitCode")] int ExitCode,
-    [property: JsonPropertyName("Output")] string? Output = null)
+/// <summary>A command payload that <see cref="Program"/> can also attach to a failed envelope's <c>fault.data</c>.</summary>
+internal interface IToolCommandResult<TSelf> where TSelf : class, IToolCommandResult<TSelf>
 {
-    public override string ToString() => Output ?? (ExitCode == 0 ? $"{Command}: complete" : $"{Command}: failed ({ExitCode})");
+    static abstract string PayloadType { get; }
+    static abstract JsonTypeInfo<TSelf> JsonTypeInfo { get; }
+    TSelf WithHumanOutput(string humanOutput);
 }
 
+/// <summary>
+/// The exit codes every Runic tool shares: 0 success, 1 the command failed or what it needs is unavailable,
+/// 2 usage or validation, 3 internal or host failure, 130 cancelled.
+/// </summary>
 internal sealed class ToolExitCodePolicy : IExitCodePolicy
 {
     internal static ToolExitCodePolicy Instance { get; } = new();
@@ -299,12 +326,10 @@ internal sealed class ToolExitCodePolicy : IExitCodePolicy
         CommandExitCategory.Success => Program.Success,
         CommandExitCategory.Usage or CommandExitCategory.Validation => Program.UsageFailure,
         CommandExitCategory.CommandFailure or CommandExitCategory.Unavailable => Program.DevelopmentFailure,
+        CommandExitCategory.Cancelled => Program.Cancelled,
         _ => Program.InternalFailure,
     };
 }
-
-[JsonSerializable(typeof(ToolCommandResult))]
-internal sealed partial class ToolCommandJsonContext : JsonSerializerContext;
 
 internal sealed class InvocationTextWriter(ICommandConsole console, bool standardError) : TextWriter
 {

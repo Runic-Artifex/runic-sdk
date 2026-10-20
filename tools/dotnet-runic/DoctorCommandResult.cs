@@ -122,12 +122,13 @@ internal enum DoctorFailOn
 internal static class DoctorOutcome
 {
     internal const string FaultCode = "RAPPCLI1009";
+    private const string PayloadTypeName = DoctorCommandResult.PayloadType;
 
     /// <summary>
     /// Empty selects the default, which fails on failing checks in both output
     /// modes so that CI reading only the exit code sees them. A failed
-    /// runic.commandline/1 envelope cannot carry the payload; <c>--fail-on never</c>
-    /// reports every completed inspection as a payload instead.
+    /// runic.commandline/1 envelope carries the payload in <c>fault.data</c>;
+    /// <c>--fail-on never</c> reports every completed inspection as a successful payload.
     /// </summary>
     internal static DoctorFailOn ParseFailOn(string value) =>
         value switch
@@ -156,9 +157,9 @@ internal static class DoctorOutcome
             _ => null,
         };
         bool failed = threshold is { } limit && run.Report.Checks.Any(check => check.Status >= limit);
+        DoctorCommandResult result = DoctorCommandResult.Create(run.Project, run.Report, report, run.Target);
         if (!failed)
         {
-            DoctorCommandResult result = DoctorCommandResult.Create(run.Project, run.Report, report, run.Target);
             return json
                 ? CommandOutcome.Success(result, DoctorCommandResult.CreateDiagnostics(run.Report, path))
                 : CommandOutcome.Success(result);
@@ -173,9 +174,11 @@ internal static class DoctorOutcome
             if (details.Count == maximumDetails) break;
             details.TryAdd(check.Name, DoctorCommandResult.StatusName(check.Status));
         }
-        return CommandOutcome.Failure<DoctorCommandResult>(
+        // A failed envelope has no payload, so the checks travel in fault.data and JSON readers need no second run.
+        return CommandOutcome.FailureWithData<DoctorCommandResult>(
             CommandExitCategory.CommandFailure,
             new CommandFault(FaultCode, "Doctor checks failed.", details),
+            CommandFailureData.Create(PayloadTypeName, result, DoctorCommandJsonContext.Default.DoctorCommandResult),
             json ? DoctorCommandResult.CreateDiagnostics(run.Report, path, threshold) : [],
             json ? null : Program.WithHelpLink(boundedHumanOutput, FaultCode));
     }

@@ -10,7 +10,7 @@ Change the tag in the address to read another release.
 Each entry starts with what the ID means. **Fix** says what to change.
 
 - [Bridge code generator (`RUNICBRIDGE`)](#bridge-code-generator)
-- [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSUP`, `RTKSIZE`, `RCLI`)](#dotnet-runic)
+- [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSIZE`, `RCLI`)](#dotnet-runic)
 - [Asset packer (`RAS`)](#asset-packer)
 - [Runic.Create (`RCREATE`)](#runiccreate)
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
@@ -347,9 +347,12 @@ without `--no-build`.
 `RCLI8101` and `RCLI8102`, which mark individual doctor checks. Human
 output prints the link to the entry above the fault line; JSON output carries
 the code in `fault.code`. Usage errors exit with code 2, other failures with
-code 1. An unexpected internal failure reports `RCLI5000`, exits with code 3
-and prints the exception to standard error; include it when you report the
-problem. See the [`dotnet runic` guide](../tools/dotnet-runic/README.md).
+code 1, and a cancelled command reports `RCLI4000` and exits with code 130. An
+unexpected internal failure reports `RCLI5000`, exits with code 3 and prints the
+exception to standard error; include it when you report the problem. See
+[Output and exit codes](../tools/dotnet-runic/README.md#output-and-exit-codes).
+`dotnet runic support` moved to `runic-translations support` in 0.9; its
+`RAPPSUP` codes are in the runic-translations-sdk catalog as `RTRSUP`.
 
 ### RAPPCLI1000
 
@@ -391,10 +394,21 @@ that did not pass to `fail` or `warn` in `fault.details`.
 ### RAPPCLI1011
 
 `doctor` target options are invalid: the runtime identifier is malformed, or
-`--aot` or `--self-contained` is used without `--rid`.
+`--aot`, `--no-aot` or `--self-contained` is used without `--runtime`.
 
 **Fix:** pass a runtime identifier such as `linux-x64`, `win-x64` or
-`osx-arm64` with `--rid`.
+`osx-arm64` with `--runtime`.
+
+### RAPPCLI1012
+
+`dotnet runic support`, the former name of `runic-translations support`, found
+no Translations tool to forward to: neither `runic-translations` on `PATH` nor
+a local tool manifest that lists `dotnet-runic-translations`.
+
+**Fix:** install the tool, for example with `dotnet tool install
+dotnet-runic-translations`, and run `runic-translations support
+preview|collect|remove`. See
+[Support envelopes](../tools/dotnet-runic/README.md#support-envelopes).
 
 ### RAPPDEV1002
 
@@ -472,184 +486,48 @@ development document names a file that is missing.
 
 **Fix:** check that `vite build` works in the frontend directory.
 
-### RAPPSUP001
+### RAPPSIZE1001
 
-`support` received a `--mode` other than `preview`, `collect` or `remove`.
+`size` needs a runtime identifier and got none. Exit code 2. Before 0.9 this was
+`RTKSIZE1001`.
 
-**Fix:** pass one of those modes.
-
-### RAPPSUP002
-
-`support --mode collect` has no `--destination`.
-
-**Fix:** pass the envelope file with `--destination`.
-
-### RAPPSUP003
-
-The `--destination` file of `collect` already exists.
-
-**Fix:** choose a new file, or remove the old envelope with `--mode remove`.
-
-### RAPPSUP004
-
-The support envelope would exceed its size limit.
-
-**Fix:** collect from a smaller Editor diagnostic ZIP.
-
-### RAPPSUP005
-
-`support --mode remove` was given a collector source such as
-`--editor-diagnostics`.
-
-**Fix:** pass only `--destination`.
-
-### RAPPSUP006
-
-`support --mode remove` has no `--destination`.
-
-**Fix:** pass the envelope file with `--destination`.
-
-### RAPPSUP007
-
-The `--destination` file of `remove` does not exist.
-
-**Fix:** pass the path of an envelope that `collect` wrote.
-
-### RAPPSUP008
-
-`preview` or `collect` has no collector.
-
-**Fix:** select the Editor collector with `--editor-diagnostics <zip>`.
-
-### RAPPSUP009
-
-The Editor collector source is not a `.zip` file.
-
-**Fix:** pass the diagnostic ZIP that the Editor exported.
-
-### RAPPSUP010
-
-The Editor diagnostic ZIP is missing or exceeds its size limit.
-
-**Fix:** export the diagnostics from the Editor again and pass that file.
-
-### RAPPSUP011
-
-The Editor diagnostic ZIP has an invalid number of entries.
-
-**Fix:** pass the ZIP exactly as the Editor exported it.
-
-### RAPPSUP012
-
-The Editor diagnostic ZIP does not contain a bounded `diagnostics.json`.
-
-**Fix:** pass the ZIP exactly as the Editor exported it.
-
-### RAPPSUP013
-
-The Editor diagnostic source is not a valid ZIP file.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP014
-
-The Editor diagnostic summary is not valid JSON.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP015
-
-The diagnostic summary uses a schema that this version of `dotnet runic` does
-not support.
-
-**Fix:** use a `dotnet runic` from the same release as the Editor.
-
-### RAPPSUP016
-
-The diagnostic groups in the summary are invalid or exceed their limit.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP017
-
-The `--destination` file of `remove` is not a support envelope created by
-`support --mode collect`.
-
-**Fix:** pass the envelope that `collect` wrote; `remove` deletes nothing else.
-
-### RAPPSUP018
-
-The diagnostic summary omits a required field.
-
-**Fix:** export the diagnostics from the Editor again, with the Editor and
-`dotnet runic` from the same release.
-
-### RAPPSUP019
-
-A text field of the diagnostic summary is not a string.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP020
-
-A count in the diagnostic summary is not a non-negative integer.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP021
-
-A flag in the diagnostic summary is not `true` or `false`.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP022
-
-A section of the diagnostic summary is not a JSON object.
-
-**Fix:** export the diagnostics from the Editor again.
-
-### RAPPSUP023
-
-The diagnostic summary contains fields that the envelope does not support.
-
-**Fix:** use a `dotnet runic` from the same release as the Editor.
-
-### RAPPSUP024
-
-The diagnostic summary contains a path or other sensitive text, which a
-support envelope must not include.
-
-**Fix:** export the diagnostics from the Editor again; it removes paths from
-the summary.
-
-### RAPPSUP025
-
-`support` could not read or write a required local file.
-
-**Fix:** check that the ZIP and the destination folder exist and that you can
-read and write them.
-
-### RTKSIZE1001
-
-`size` received invalid options: no `--runtime`, `--verify-argument` without
-`--verify`, or a `--report` path that already exists. The command exits with
-code 2.
-
-**Fix:** pass `--runtime`, for example `linux-x64`, add `--verify`, or choose a
-new report path; `size` does not overwrite earlier reports. See
+**Fix:** pass `--runtime`, for example `linux-x64`. See
 [Measure size](../tools/dotnet-runic/README.md#measure-size).
 
-### RTKSIZE1002
+### RAPPSIZE1002
+
+`size` got `--verify-argument` without `--verify`. Exit code 2. Before 0.9 this
+was `RTKSIZE1001`.
+
+**Fix:** name the executable that receives the arguments with `--verify`.
+
+### RAPPSIZE1003
+
+The `--report` file already exists; `size` never replaces earlier reports. Exit
+code 2. Before 0.9 this was `RTKSIZE1001`.
+
+**Fix:** choose a new report path, or omit `--report` for a new
+`runic-size-<runtime>-<UTC time>.json`.
+
+### RAPPSIZE1004
 
 `size` could not evaluate the project's publish settings with `dotnet msbuild`.
-The message includes the MSBuild output. This is a command failure, exit code 1,
-not an option error.
+The message includes the MSBuild output. This is a command failure, exit code 1.
+Before 0.9 this was `RTKSIZE1002`.
 
 **Fix:** check that the project restores and builds for the selected runtime.
 
+### RCLI4000
+
+The command was cancelled, for example with Ctrl+C, and exits with code 130.
+Stopping `dev` with Ctrl+C reports it too, after the Window and the frontend
+server have stopped.
+
+**Fix:** nothing to fix; run the command again to finish it.
+
 ### RCLI8101
 
-A doctor check failed. `doctor --output json` reports one diagnostic with this
+A doctor check failed. `doctor --format json` reports one diagnostic with this
 code for each failed check, named by its check id.
 
 **Fix:** follow the remediation of the check. See
@@ -657,7 +535,7 @@ code for each failed check, named by its check id.
 
 ### RCLI8102
 
-A doctor check passed with a warning. `doctor --output json` reports one
+A doctor check passed with a warning. `doctor --format json` reports one
 diagnostic with this code for each such check.
 
 **Fix:** follow the remediation of the check, or accept the warning.
@@ -670,7 +548,7 @@ Human output writes the message and the link to standard error. See the
 
 ### RAS1001
 
-The source directory does not exist. Exit code 3.
+The source directory does not exist. Exit code 2.
 
 **Fix:** build the frontend first, or point the archive at its output folder,
 such as Vite's `dist`.
@@ -678,7 +556,7 @@ such as Vite's `dist`.
 ### RAS1002
 
 The entry point does not exist in the source directory or was excluded. Exit
-code 4.
+code 1.
 
 **Fix:** pass the entry document with `--entry-point`, or remove it from the
 exclusions.
@@ -686,14 +564,14 @@ exclusions.
 ### RAS1003
 
 The archive could not be packed, for example because of an invalid asset path,
-a symbolic link or an I/O error. Exit code 5.
+a symbolic link or an I/O error. Exit code 1.
 
 **Fix:** correct the path or file that the message names.
 
 ### RAS1004
 
 The pinned directory mode, the default without `--trusted-generated-output`,
-requires Linux. Exit code 5.
+requires Linux. Exit code 1.
 
 **Fix:** pass `--trusted-generated-output` for output of the current build, as
 the MSBuild integration does. See
@@ -703,7 +581,9 @@ the MSBuild integration does. See
 
 `dnx Runic.Create` reports these codes as the fault of a failed run. Human
 output prints the link to the entry above the fault line; JSON output carries
-the code in `fault.code`. See the [Runic.Create guide](../tools/Runic.Create/README.md).
+the code in `fault.code`. Usage and validation errors exit with code 2, other
+failures with code 1, and a cancelled run with code 130. See the
+[Runic.Create guide](../tools/Runic.Create/README.md#exit-codes).
 
 ### RCREATE001
 
@@ -738,13 +618,6 @@ failed. Its output is printed before the fault.
 `dotnet new runic-app` failed. Its output is printed before the fault.
 
 **Fix:** correct the problem the template reports, then run the creator again.
-
-### RCREATE006
-
-`--output` (`-o`) and its former name `--directory` were both passed with
-different values.
-
-**Fix:** pass the destination once, with `--output`.
 
 ## Privileged actions
 

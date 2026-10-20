@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sha256, inspect, VERSION } from './artifacts.mjs';
+import { sha256, inspect } from './artifacts.mjs';
 // Retry transient registry responses within one bounded request budget. A long
 // Retry-After fails the budget instead of retrying earlier than the registry asks.
 export async function fetchRegistry(url, {waitForAvailability=false, fetchImpl=fetch,
@@ -29,16 +29,17 @@ export async function fetchRegistry(url, {waitForAvailability=false, fetchImpl=f
     await sleep(delay);
   }
 }
+// `p` is a candidate package; it carries the version it ships on.
 export async function registryMatches(p, options={}) {
   let url;
   if (p.registry === 'npm') {
-    const response = await fetchRegistry(`https://registry.npmjs.org/${encodeURIComponent(p.name)}/${VERSION}`,options);
+    const response = await fetchRegistry(`https://registry.npmjs.org/${encodeURIComponent(p.name)}/${p.version}`,options);
     if (response.status === 404) return false;
     assert(response.ok, `npm lookup failed: ${response.status}`);
-    const meta = await response.json(); assert.equal(meta.name,p.name); assert.equal(meta.version,VERSION);
+    const meta = await response.json(); assert.equal(meta.name,p.name); assert.equal(meta.version,p.version);
     url = meta.dist.tarball;
     assert.equal(new URL(url).hostname, 'registry.npmjs.org');
-  } else { const id=p.name.toLowerCase(); url=`https://api.nuget.org/v3-flatcontainer/${id}/${VERSION}/${id}.${VERSION}.nupkg`; }
+  } else { const id=p.name.toLowerCase(); const version=p.version.toLowerCase(); url=`https://api.nuget.org/v3-flatcontainer/${id}/${version}/${id}.${version}.nupkg`; }
   const response=await fetchRegistry(url,options);
   if (response.status===404 && p.registry==='nuget') return false;
   assert(response.ok, `Registry download failed: ${response.status}`);
