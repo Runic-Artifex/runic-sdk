@@ -284,7 +284,12 @@
          The hash of the build state that last built dist/ is shared by all
          of them: a build whose state differs from the one that built dist/
          rebuilds, as does a missing file. One install serves every
-         configuration and target framework, and dotnet clean keeps it. -->
+         configuration and target framework, and dotnet clean keeps it.
+       WPF's temporary markup project (see RunicViewsMarkupTemporaryCompile)
+       gets another IntermediateOutputPath: off Windows, WPF does not remove
+       the target framework before passing it on, so the copy appends it
+       again. The real project therefore records its generated directory
+       below BaseIntermediateOutputPath, which WPF passes unchanged. -->
   <Target Name="_RunicViewsIntermediatePaths">
     <PropertyGroup>
       <_RunicBridgeBaseIntermediateDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$([MSBuild]::ValueOrDefault('$(BaseIntermediateOutputPath)', 'obj'))'))</_RunicBridgeBaseIntermediateDirectory>
@@ -298,6 +303,8 @@
       <_RunicBridgeFrontendOutputsFile>$(_RunicBridgeConfigurationIntermediateDirectory)runic-bridge-frontend.outputs</_RunicBridgeFrontendOutputsFile>
       <_RunicBridgeFrontendStateFile>$(_RunicBridgeBaseIntermediateDirectory)runic-bridge-frontend.state</_RunicBridgeFrontendStateFile>
       <_RunicBridgeFrontendInstallStamp>$(_RunicBridgeBaseIntermediateDirectory)runic-bridge-frontend-install.stamp</_RunicBridgeFrontendInstallStamp>
+      <_RunicBridgeGeneratedDirRecord>$(_RunicBridgeBaseIntermediateDirectory)runic-bridge/$(AssemblyName)-$(Configuration)-$(TargetFramework)-$(RuntimeIdentifier).generated-directory</_RunicBridgeGeneratedDirRecord>
+      <_RunicBridgeGeneratedDir Condition="'$(_RunicBridgeMarkupTemporary)' == 'true' and Exists('$(_RunicBridgeGeneratedDirRecord)')">$([System.IO.File]::ReadAllText('$(_RunicBridgeGeneratedDirRecord)').Trim())</_RunicBridgeGeneratedDir>
     </PropertyGroup>
   </Target>
 
@@ -538,6 +545,9 @@
     <Error Code="RUNICBRIDGE018" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge018"
            Condition="'$(RunicApplicationFrontendCompositionType)' != '' and '$(_RunicBridgeSkipped)' != 'true' and '$(_RunicBridgeCompositionDeclaredBy)' != ''"
            Text="$(AssemblyName) declares Runic Views and generates the composition $(RunicApplicationFrontendCompositionType), but the referenced assembly $(_RunicBridgeCompositionDeclaredBy) already declares that type, so AddRunicViews() would be ambiguous. Set RunicApplicationFrontendCompositionType to another type name in $(MSBuildProjectFile) or in the project that builds $(_RunicBridgeCompositionDeclaredBy)." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeGeneratedDirRecord)'))" Condition="'$(UseWPF)' == 'true'" />
+    <WriteLinesToFile File="$(_RunicBridgeGeneratedDirRecord)" Lines="$(_RunicBridgeGeneratedDir)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Condition="'$(UseWPF)' == 'true'" />
     <ItemGroup>
       <Compile Include="$(_RunicBridgeGeneratedDir)*.Bridge.g.cs;$(_RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(_RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicApplicationFrontendCompositionType)' != '' and '$(_RunicBridgeSkipped)' != 'true'" />
