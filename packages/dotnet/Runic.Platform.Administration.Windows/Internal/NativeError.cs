@@ -11,18 +11,22 @@ internal static class NativeError
         Create(operation, NativeErrorDomain.HResult, code,
             (code & unchecked((int)0xffff0000)) == unchecked((int)0x80070000) ? code & 0xffff : code, inner);
 
+    internal static AdministrationErrorCategory Categorize(int normalized) => normalized switch
+    {
+        5 or 1314 or 1326 or unchecked((int)0x80041003) => AdministrationErrorCategory.AccessDenied,
+        // File, path, service, share (NERR_NetNameNotFound), directory object and WMI instance absence.
+        2 or 3 or 1060 or 2310 or 8240 or unchecked((int)0x80041002) => AdministrationErrorCategory.NotFound,
+        53 or 64 or 67 or 1722 or 1726 => AdministrationErrorCategory.Unavailable,
+        // NERR_DuplicateShare (lmerr.h): an existing SMB share name.
+        80 or 183 or 1056 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
+        13 or 24 or 87 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
+        unchecked((int)0x80040154) or unchecked((int)0x80041315) or unchecked((int)0x8004100E) or unchecked((int)0x80041010) => AdministrationErrorCategory.Unavailable,
+        _ => AdministrationErrorCategory.NativeFailure
+    };
+
     private static WindowsAdministrationException Create(string operation, NativeErrorDomain domain, int code, int normalized, Exception? inner = null)
     {
-        var category = normalized switch
-        {
-            5 or 1314 or 1326 or unchecked((int)0x80041003) => AdministrationErrorCategory.AccessDenied,
-            2 or 3 or 53 or 64 or 67 or 1060 or 1722 or 1726 => AdministrationErrorCategory.Unavailable,
-            // NERR_DuplicateShare (lmerr.h): an existing SMB share name.
-            80 or 183 or 1056 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
-            13 or 24 or 87 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
-            unchecked((int)0x80040154) or unchecked((int)0x80041315) or unchecked((int)0x8004100E) or unchecked((int)0x80041010) => AdministrationErrorCategory.Unavailable,
-            _ => AdministrationErrorCategory.NativeFailure
-        };
+        var category = Categorize(normalized);
         return new(operation, category, domain, code, $"{operation} failed ({domain}: 0x{code:X8}).", inner);
     }
 
@@ -37,6 +41,14 @@ internal static class NativeError
             throw new WindowsAdministrationException("Read native timestamp", AdministrationErrorCategory.InvalidData,
                 NativeErrorDomain.Win32, 13, "Windows returned an invalid timestamp.", error);
         }
+    }
+
+    /// <summary>Attaches the zone's offset to a wall-clock time. In a daylight-saving transition, an ambiguous or
+    /// invalid time takes the zone's standard offset, as TimeZoneInfo.GetUtcOffset reports it.</summary>
+    internal static DateTimeOffset LocalDate(DateTime value, TimeZoneInfo zone)
+    {
+        var unspecified = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+        return new DateTimeOffset(unspecified, zone.GetUtcOffset(unspecified));
     }
 
     internal static void Check(int hresult, string operation)

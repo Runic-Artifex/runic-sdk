@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Net;
 using Runic.Platform.Administration.Windows.DirectoryServices;
 using Runic.Platform.Administration.Windows.Dns;
 using Runic.Platform.Administration.Windows.GroupPolicy;
@@ -90,12 +91,12 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             var rows = await directory.SearchAsync(new(parent, "(objectClass=*)", DirectorySearchScope.OneLevel, ["distinguishedName", "objectClass"]) { PageSize = 1 }, token);
             Require(rows.Length == 3, "Paging did not return all three fixture objects.");
             await ad.AddMemberAsync(groupDn, userDn, token);
-            Require((await ad.GetMembersAsync(groupDn, token)).Any(value => Text(value).Equals(userDn, StringComparison.OrdinalIgnoreCase)), "Group membership missing.");
+            Require((await ad.GetMembersAsync(groupDn, token)).Any(value => value.Equals(userDn, StringComparison.OrdinalIgnoreCase)), "Group membership missing.");
             await ad.RemoveMemberAsync(groupDn, userDn, token);
             Require((await ad.GetMembersAsync(groupDn, token)).Length == 0, "Group member was not removed.");
             var spn = "runic-verify/" + report.Id + "." + options.Domain;
             await ad.AddServicePrincipalNamesAsync(computerDn, [spn], token);
-            Require((await ad.GetServicePrincipalNamesAsync(computerDn, token)).Any(value => Text(value) == spn), "SPN missing.");
+            Require((await ad.GetServicePrincipalNamesAsync(computerDn, token)).Any(value => value == spn), "SPN missing.");
             await ad.RemoveServicePrincipalNamesAsync(computerDn, [spn], token);
             await directory.ModifyAsync(userDn, [new("description", DirectoryModificationKind.Replace, [new DirectoryValue.Text("Grüße")])], token);
             var renamed = "CN=Renamed," + parent;
@@ -169,8 +170,8 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
     {
         var client = new WindowsDnsClient(options.DnsServer ?? options.Server!);
         var zone = options.DnsZone!;
-        var data = new DnsRecordData[] { new DnsRecordData.A("198.51.100.42"), new DnsRecordData.Aaaa("2001:db8::42"),
-            new DnsRecordData.CName("target." + zone), new DnsRecordData.ReverseLookup("target." + zone),
+        var data = new DnsRecordData[] { new DnsRecordData.A(IPAddress.Parse("198.51.100.42")), new DnsRecordData.Aaaa(IPAddress.Parse("2001:db8::42")),
+            new DnsRecordData.CName("target." + zone), new DnsRecordData.Ptr("target." + zone),
             new DnsRecordData.Mx(10, "mail." + zone), new DnsRecordData.Txt("\"Runic verification\""),
             new DnsRecordData.Srv(10, 20, 12345, "target." + zone), new DnsRecordData.Ns("ns." + zone) };
         for (var index = 0; index < data.Length; index++)
@@ -185,14 +186,14 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
                     Require(await client.FindZoneAsync(zone, token) is not null, "Requested fixture zone absent.");
                     Require((await client.EnumerateRecordsAsync(zone, key.OwnerName, token)).Length == 0, "Random fixture owner already exists.");
                     var serverDefaultTtl = key.Data is DnsRecordData.CName;
-                    await client.CreateAsync(new(key, 300) { UseServerDefaultTimeToLive = serverDefaultTtl }, token); created = true;
+                    await client.CreateAsync(new(key) { TimeToLive = serverDefaultTtl ? null : TimeSpan.FromSeconds(300) }, token); created = true;
                     var createdRecord = await client.FindAsync(key, token);
                     Require(createdRecord is not null, "DNS create/read mismatch.");
-                    if (serverDefaultTtl) report.Resource("Server-selected DNS TTL: " + createdRecord!.TimeToLiveSeconds);
-                    else Require(createdRecord!.TimeToLiveSeconds == 300, "Explicit DNS TTL mismatch.");
-                    await LocalChecks.Conflict(() => client.CreateAsync(new(key, 300), token));
-                    await client.UpdateAsync(key, new() { TimeToLiveSeconds = 600 }, token);
-                    Require((await client.FindAsync(key, token))?.TimeToLiveSeconds == 600, "DNS TTL update missing.");
+                    if (serverDefaultTtl) report.Resource("Server-selected DNS TTL: " + createdRecord!.TimeToLive);
+                    else Require(createdRecord!.TimeToLive == TimeSpan.FromSeconds(300), "Explicit DNS TTL mismatch.");
+                    await LocalChecks.Conflict(() => client.CreateAsync(new(key) { TimeToLive = TimeSpan.FromSeconds(300) }, token));
+                    await client.UpdateAsync(key, new() { TimeToLive = TimeSpan.FromSeconds(600) }, token);
+                    Require((await client.FindAsync(key, token))?.TimeToLive == TimeSpan.FromSeconds(600), "DNS TTL update missing.");
                 }
                 finally
                 {
@@ -205,10 +206,4 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             }, token);
         }
     }
-    private static string Text(DirectoryValue value) => value switch
-    {
-        DirectoryValue.Text text => text.Value,
-        DirectoryValue.Binary binary => System.Text.Encoding.UTF8.GetString(binary.Value.AsSpan()),
-        _ => throw new InvalidOperationException("Unexpected LDAP value.")
-    };
 }

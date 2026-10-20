@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Runic.Platform.Administration.Windows.Dns;
 
 /// <summary>DNS zone metadata read from a specific Windows DNS server.</summary>
@@ -7,14 +9,15 @@ public sealed record DnsZoneSnapshot(string Name, bool ActiveDirectoryIntegrated
 public abstract record DnsRecordData
 {
     private DnsRecordData() { }
-    /// <summary>IPv4 address record.</summary>
-    public sealed record A(string Address) : DnsRecordData;
-    /// <summary>IPv6 address record.</summary>
-    public sealed record Aaaa(string Address) : DnsRecordData;
+    /// <summary>IPv4 address record. Writes reject an address that is not IPv4.</summary>
+    public sealed record A(IPAddress Address) : DnsRecordData;
+    /// <summary>IPv6 address record. Writes reject an address that is not IPv6.</summary>
+    public sealed record Aaaa(IPAddress Address) : DnsRecordData;
     /// <summary>Canonical name record.</summary>
     public sealed record CName(string Target) : DnsRecordData;
-    /// <summary>Reverse lookup pointer.</summary>
-    public sealed record ReverseLookup(string Target) : DnsRecordData;
+    /// <summary>Pointer record, normally used for reverse lookup.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1720:Identifier contains type name", Justification = "PTR is the DNS record mnemonic, like A, Aaaa, CName and Mx.")]
+    public sealed record Ptr(string Target) : DnsRecordData;
     /// <summary>Mail exchange record.</summary>
     public sealed record Mx(ushort Preference, string Exchange) : DnsRecordData;
     /// <summary>DNS provider descriptive text, preserving its native quoted-string representation.</summary>
@@ -29,19 +32,23 @@ public abstract record DnsRecordData
 
 /// <summary>Record identity within the client's server. TTL is configuration, not record identity.</summary>
 public sealed record DnsRecordKey(string Zone, string OwnerName, DnsRecordData Data);
-/// <summary>A DNS record with its native class and TTL.</summary>
-public sealed record DnsRecordSnapshot(DnsRecordKey Key, uint TimeToLiveSeconds, uint RecordClass);
+/// <summary>A DNS record with its TTL and native record class.</summary>
+/// <param name="Key">The record identity.</param>
+/// <param name="TimeToLive">The TTL, in whole seconds.</param>
+/// <param name="NativeRecordClass">The native DNS class number; 1 is IN.</param>
+public sealed record DnsRecordSnapshot(DnsRecordKey Key, TimeSpan TimeToLive, uint NativeRecordClass);
 /// <summary>Creates a single record without replacing its record set.</summary>
-public sealed record DnsRecordSpecification(DnsRecordKey Key, uint TimeToLiveSeconds = 3600)
+public sealed record DnsRecordSpecification(DnsRecordKey Key)
 {
-    /// <summary>Omit TTL on creation so the DNS provider chooses it. When true, TimeToLiveSeconds is ignored.</summary>
-    public bool UseServerDefaultTimeToLive { get; init; }
+    /// <summary>The TTL for the new record, one hour by default. Null omits it so the DNS server chooses the TTL.</summary>
+    /// <remarks>Must be whole seconds from zero to <see cref="uint.MaxValue"/> seconds.</remarks>
+    public TimeSpan? TimeToLive { get; init; } = TimeSpan.FromHours(1);
 }
 /// <summary>Selected record edits. Data must retain the existing record type; null preserves a value.</summary>
 public sealed record DnsRecordUpdate
 {
-    /// <summary>Replacement TTL.</summary>
-    public uint? TimeToLiveSeconds { get; init; }
+    /// <summary>Replacement TTL in whole seconds, from zero to <see cref="uint.MaxValue"/> seconds; null preserves the existing TTL.</summary>
+    public TimeSpan? TimeToLive { get; init; }
     /// <summary>Replacement record data of the same type.</summary>
     public DnsRecordData? Data { get; init; }
 }

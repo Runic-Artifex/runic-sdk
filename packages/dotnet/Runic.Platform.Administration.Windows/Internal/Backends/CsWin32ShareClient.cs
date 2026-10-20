@@ -9,11 +9,11 @@ namespace Runic.Platform.Administration.Windows.Internal.Backends;
 internal sealed unsafe class CsWin32ShareClient : IShareClient
 {
     private readonly string? _server;
-    internal CsWin32ShareClient(string? server = null)
+    internal CsWin32ShareClient(string? machineName = null)
     {
         NativeError.Windows();
-        if (server is not null) NativeError.Text(server, nameof(server));
-        _server = server;
+        if (machineName is not null) NativeError.Text(machineName, nameof(machineName));
+        _server = machineName;
     }
     public ImmutableArray<ShareSummary> Enumerate()
     {

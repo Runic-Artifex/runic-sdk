@@ -15,8 +15,10 @@ public enum ShellLinkShowState
 public sealed record ShellLinkIcon(string Path, int Index = 0);
 
 /// <summary>The filesystem fields read from a shell link without resolving its target.</summary>
+/// <remarks>ShowState carries the stored native value unchanged; a link written by other tools can hold a value
+/// that is not a named <see cref="ShellLinkShowState"/> member.</remarks>
 public sealed record ShellLinkSnapshot(string TargetPath, string Arguments, string WorkingDirectory,
-    string Description, ShellLinkIcon Icon, int ShowState, ushort Hotkey);
+    string Description, ShellLinkIcon Icon, ShellLinkShowState ShowState, ushort Hotkey);
 
 /// <summary>A new shell link. TargetPath is required; no parent directory is created implicitly.</summary>
 public sealed record ShellLinkSpecification(string TargetPath)

@@ -24,20 +24,14 @@ public sealed record WindowsNetworkSnapshot(Guid Id, string Name, string Descrip
     public ImmutableArray<Guid> AdapterIds { get; init; } = [];
 }
 
-/// <summary>Read-only local Network List Manager access.</summary>
-public interface IWindowsNetworkClient
-{
-    /// <summary>Enumerates connected and disconnected network identities.</summary>
-    Task<ImmutableArray<WindowsNetworkSnapshot>> EnumerateAsync(CancellationToken cancellationToken = default);
-}
-
 /// <summary>Static native Network List Manager bindings, without the legacy interop assembly.</summary>
-public sealed class WindowsNetworkClient : IWindowsNetworkClient
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Clients are instances like the other administration clients; the members were interface implementations before 0.9 and stay instance members.")]
+public sealed class WindowsNetworkClient
 {
     /// <summary>Creates a local Windows x64 network client.</summary>
     public WindowsNetworkClient() => Automation.RequireX64();
 
-    /// <inheritdoc/>
+    /// <summary>Enumerates connected and disconnected network identities.</summary>
     public Task<ImmutableArray<WindowsNetworkSnapshot>> EnumerateAsync(CancellationToken cancellationToken = default) =>
         ComApartment.RunAsync(Enumerate, cancellationToken);
 

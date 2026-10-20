@@ -62,6 +62,7 @@ public sealed class WindowsDnsClient
     {
         ArgumentNullException.ThrowIfNull(specification);
         ValidateKey(specification.Key);
+        uint? timeToLive = specification.TimeToLive is { } ttl ? TimeToLiveSeconds(ttl, nameof(specification)) : null;
         return Execute(connection =>
         {
             if (Find(connection, specification.Key, cancellationToken) is not null) throw NativeError.Win32("Create DNS record", 183);
@@ -70,7 +71,7 @@ public sealed class WindowsDnsClient
             values.Add("ContainerName", specification.Key.Zone);
             values.Add("OwnerName", specification.Key.OwnerName);
             values.Add("RecordClass", 1u);
-            if (!specification.UseServerDefaultTimeToLive) values.Add("TTL", specification.TimeToLiveSeconds);
+            if (timeToLive is { } seconds) values.Add("TTL", seconds);
             cancellationToken.ThrowIfCancellationRequested();
             connection.Invoke(ClassName(specification.Key.Data), "CreateInstanceFromPropertyData", values);
             return true;
@@ -85,13 +86,14 @@ public sealed class WindowsDnsClient
         if (update.Data is not null && ClassName(key.Data) != ClassName(update.Data)) throw new ArgumentException("Record type cannot change in-place.", nameof(update));
         var replacement = update.Data ?? key.Data;
         _ = Values(replacement);
+        uint? timeToLive = update.TimeToLive is { } ttl ? TimeToLiveSeconds(ttl, nameof(update)) : null;
         return Execute(connection =>
         {
             var existing = Find(connection, key, cancellationToken) ?? throw NativeError.Win32("Update DNS record", 2);
             if (update.Data is not null && update.Data != key.Data && Find(connection, key with { Data = update.Data }, cancellationToken) is not null)
                 throw NativeError.Win32("Update DNS record", 183);
             var values = Values(replacement);
-            values.Add("TTL", update.TimeToLiveSeconds ?? existing.Snapshot.TimeToLiveSeconds);
+            values.Add("TTL", timeToLive ?? TimeToLiveSeconds(existing.Snapshot.TimeToLive, nameof(update)));
             cancellationToken.ThrowIfCancellationRequested();
             connection.Invoke(existing.Path, "Modify", values);
             return true;
@@ -133,7 +135,8 @@ public sealed class WindowsDnsClient
             var className = Text(row, "__CLASS");
             var path = Text(row, "__PATH");
             var data = ReadData(connection, className, path, Text(row, "TextRepresentation"));
-            return new NativeRecord(path, new(new(Text(row, "ContainerName"), Text(row, "OwnerName"), data), Number(row, "TTL"), Number(row, "RecordClass")));
+            return new NativeRecord(path, new(new(Text(row, "ContainerName"), Text(row, "OwnerName"), data),
+                TimeSpan.FromSeconds(Number(row, "TTL")), Number(row, "RecordClass")));
         }).ToImmutableArray();
     }
 
@@ -147,10 +150,10 @@ public sealed class WindowsDnsClient
 
     private static bool DataEquals(DnsRecordData left, DnsRecordData right) => (left, right) switch
     {
-        (DnsRecordData.A a, DnsRecordData.A b) => IPAddress.Parse(a.Address).Equals(IPAddress.Parse(b.Address)),
-        (DnsRecordData.Aaaa a, DnsRecordData.Aaaa b) => IPAddress.Parse(a.Address).Equals(IPAddress.Parse(b.Address)),
+        (DnsRecordData.A a, DnsRecordData.A b) => a.Address.Equals(b.Address),
+        (DnsRecordData.Aaaa a, DnsRecordData.Aaaa b) => a.Address.Equals(b.Address),
         (DnsRecordData.CName a, DnsRecordData.CName b) => DnsNameEquals(a.Target, b.Target),
-        (DnsRecordData.ReverseLookup a, DnsRecordData.ReverseLookup b) => DnsNameEquals(a.Target, b.Target),
+        (DnsRecordData.Ptr a, DnsRecordData.Ptr b) => DnsNameEquals(a.Target, b.Target),
         (DnsRecordData.Ns a, DnsRecordData.Ns b) => DnsNameEquals(a.Host, b.Host),
         (DnsRecordData.Mx a, DnsRecordData.Mx b) => a.Preference == b.Preference && DnsNameEquals(a.Exchange, b.Exchange),
         (DnsRecordData.Srv a, DnsRecordData.Srv b) => a.Priority == b.Priority && a.Weight == b.Weight && a.Port == b.Port && DnsNameEquals(a.Target, b.Target),
@@ -173,10 +176,10 @@ public sealed class WindowsDnsClient
         var values = connection.Read(path, fields);
         return nativeClass.ToUpperInvariant() switch
         {
-            "MICROSOFTDNS_ATYPE" => new DnsRecordData.A(Text(values, "IPAddress")),
-            "MICROSOFTDNS_AAAATYPE" => new DnsRecordData.Aaaa(Text(values, "IPv6Address")),
+            "MICROSOFTDNS_ATYPE" => new DnsRecordData.A(ReadAddress(values, "IPAddress", AddressFamily.InterNetwork)),
+            "MICROSOFTDNS_AAAATYPE" => new DnsRecordData.Aaaa(ReadAddress(values, "IPv6Address", AddressFamily.InterNetworkV6)),
             "MICROSOFTDNS_CNAMETYPE" => new DnsRecordData.CName(Text(values, "PrimaryName")),
-            "MICROSOFTDNS_PTRTYPE" => new DnsRecordData.ReverseLookup(Text(values, "PTRDomainName")),
+            "MICROSOFTDNS_PTRTYPE" => new DnsRecordData.Ptr(Text(values, "PTRDomainName")),
             "MICROSOFTDNS_MXTYPE" => new DnsRecordData.Mx(SmallNumber(values, "Preference"), Text(values, "MailExchange")),
             "MICROSOFTDNS_TXTTYPE" => new DnsRecordData.Txt(Text(values, "DescriptiveText")),
             "MICROSOFTDNS_SRVTYPE" => new DnsRecordData.Srv(SmallNumber(values, "Priority"), SmallNumber(values, "Weight"), SmallNumber(values, "Port"), Text(values, "DomainName")),
@@ -196,7 +199,7 @@ public sealed class WindowsDnsClient
     private static string ClassName(DnsRecordData data) => data switch
     {
         DnsRecordData.A => "MicrosoftDNS_AType", DnsRecordData.Aaaa => "MicrosoftDNS_AAAAType",
-        DnsRecordData.CName => "MicrosoftDNS_CNAMEType", DnsRecordData.ReverseLookup => "MicrosoftDNS_PTRType",
+        DnsRecordData.CName => "MicrosoftDNS_CNAMEType", DnsRecordData.Ptr => "MicrosoftDNS_PTRType",
         DnsRecordData.Mx => "MicrosoftDNS_MXType", DnsRecordData.Txt => "MicrosoftDNS_TXTType",
         DnsRecordData.Srv => "MicrosoftDNS_SRVType", DnsRecordData.Ns => "MicrosoftDNS_NSType",
         _ => throw new ArgumentException("This record type does not support mutation.", nameof(data))
@@ -211,7 +214,7 @@ public sealed class WindowsDnsClient
             DnsRecordData.A a => new() { ["IPAddress"] = Address(a.Address, AddressFamily.InterNetwork) },
             DnsRecordData.Aaaa a => new() { ["IPv6Address"] = Address(a.Address, AddressFamily.InterNetworkV6) },
             DnsRecordData.CName c => new() { ["PrimaryName"] = c.Target },
-            DnsRecordData.ReverseLookup p => new() { ["PTRDomainName"] = p.Target },
+            DnsRecordData.Ptr p => new() { ["PTRDomainName"] = p.Target },
             DnsRecordData.Mx m => new() { ["Preference"] = (uint)m.Preference, ["MailExchange"] = m.Exchange },
             DnsRecordData.Txt t => new() { ["DescriptiveText"] = t.DescriptiveText },
             DnsRecordData.Srv s => new() { ["Priority"] = (uint)s.Priority, ["Weight"] = (uint)s.Weight, ["Port"] = (uint)s.Port, ["DomainName"] = s.Target },
@@ -222,10 +225,22 @@ public sealed class WindowsDnsClient
         return result;
     }
 
-    private static string Address(string value, AddressFamily family)
+    internal static string Address(IPAddress? value, AddressFamily family)
     {
-        if (!IPAddress.TryParse(value, out var parsed) || parsed.AddressFamily != family) throw new ArgumentException("Address family does not match the record.", nameof(value));
-        return parsed.ToString();
+        if (value is null || value.AddressFamily != family) throw new ArgumentException("Address family does not match the record.", nameof(value));
+        return value.ToString();
+    }
+
+    private static IPAddress ReadAddress(ImmutableDictionary<string, object?> row, string name, AddressFamily family) =>
+        IPAddress.TryParse(Text(row, name), out var address) && address.AddressFamily == family
+            ? address : throw NativeError.Win32("Read DNS address", 13);
+
+    /// <summary>Converts a TTL to the provider's 32-bit whole-second value.</summary>
+    internal static uint TimeToLiveSeconds(TimeSpan value, string parameterName)
+    {
+        if (value < TimeSpan.Zero || value.Ticks % TimeSpan.TicksPerSecond != 0 || value.Ticks / TimeSpan.TicksPerSecond > uint.MaxValue)
+            throw new ArgumentOutOfRangeException(parameterName, value, "The DNS TTL must be whole seconds from zero to 4294967295 seconds.");
+        return (uint)(value.Ticks / TimeSpan.TicksPerSecond);
     }
 
     private static string Escape(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("'", "\\'", StringComparison.Ordinal);

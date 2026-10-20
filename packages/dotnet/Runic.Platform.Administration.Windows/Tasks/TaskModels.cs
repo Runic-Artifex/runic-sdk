@@ -43,8 +43,10 @@ public sealed record TaskExecutableAction(string Path, string Arguments = "", st
 public sealed record TaskPrincipal(string Identity, TaskLogonType LogonType, bool HighestPrivileges = false);
 
 /// <summary>Common trigger settings. Boundaries use the Task Scheduler date/time format, including optional timezone offset.</summary>
+/// <remarks>The set of trigger types is closed: only the ten trigger records in this namespace derive from it.</remarks>
 public abstract record TaskTrigger
 {
+    private protected TaskTrigger() { }
     /// <summary>Optional start boundary.</summary>
     public string? StartBoundary { get; init; }
     /// <summary>Optional end boundary.</summary>
@@ -122,6 +124,8 @@ public sealed record ScheduledTaskUpdate
 }
 
 /// <summary>A registered task and its complete native XML, preserving unsupported settings.</summary>
+/// <remarks>LastRunTime and NextRunTime are wall-clock times as Task Scheduler reports them, in the target machine's
+/// local time with <see cref="DateTimeKind.Unspecified"/>. For a remote machine their offset is not known.</remarks>
 public sealed record ScheduledTaskSnapshot(string Name, string Path, ScheduledTaskState State, bool Enabled,
     DateTime? LastRunTime, int LastTaskResult, DateTime? NextRunTime, string Xml);
 

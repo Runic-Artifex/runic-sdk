@@ -61,8 +61,9 @@ public sealed class ActiveDirectoryClient
         _directory.CreateAsync(Dn(parentDistinguishedName, "OU", name), Attributes(("objectClass", "organizationalUnit"), ("ou", name)), cancellationToken);
 
     /// <summary>Retrieves all member DNs, including ranged attributes on large groups.</summary>
-    public Task<ImmutableArray<DirectoryValue>> GetMembersAsync(string groupDistinguishedName, CancellationToken cancellationToken = default) =>
-        _directory.ReadAllAttributeValuesAsync(groupDistinguishedName, "member", cancellationToken);
+    /// <remarks>Raw values remain available through <see cref="WindowsDirectoryClient.ReadAllAttributeValuesAsync"/>.</remarks>
+    public Task<ImmutableArray<string>> GetMembersAsync(string groupDistinguishedName, CancellationToken cancellationToken = default) =>
+        ReadTextValuesAsync(groupDistinguishedName, "member", cancellationToken);
 
     /// <summary>Adds a group member. An existing value is reported by LDAP as a conflict.</summary>
     public Task AddMemberAsync(string groupDistinguishedName, string memberDistinguishedName, CancellationToken cancellationToken = default) =>
@@ -100,8 +101,17 @@ public sealed class ActiveDirectoryClient
         ], cancellationToken);
 
     /// <summary>Reads all service principal names.</summary>
-    public Task<ImmutableArray<DirectoryValue>> GetServicePrincipalNamesAsync(string distinguishedName, CancellationToken cancellationToken = default) =>
-        _directory.ReadAllAttributeValuesAsync(distinguishedName, "servicePrincipalName", cancellationToken);
+    /// <remarks>Raw values remain available through <see cref="WindowsDirectoryClient.ReadAllAttributeValuesAsync"/>.</remarks>
+    public Task<ImmutableArray<string>> GetServicePrincipalNamesAsync(string distinguishedName, CancellationToken cancellationToken = default) =>
+        ReadTextValuesAsync(distinguishedName, "servicePrincipalName", cancellationToken);
+
+    private async Task<ImmutableArray<string>> ReadTextValuesAsync(string distinguishedName, string attribute, CancellationToken cancellationToken)
+    {
+        var values = await _directory.ReadAllAttributeValuesAsync(distinguishedName, attribute, cancellationToken).ConfigureAwait(false);
+        return ReadText(values);
+    }
+
+    internal static ImmutableArray<string> ReadText(ImmutableArray<DirectoryValue> values) => [.. values.Select(ValueText)];
 
     /// <summary>Adds explicit SPNs; does not generate names or choose an account.</summary>
     public Task AddServicePrincipalNamesAsync(string distinguishedName, ImmutableArray<string> names, CancellationToken cancellationToken = default) =>
@@ -124,12 +134,19 @@ public sealed class ActiveDirectoryClient
         return new([.. Encoding.Unicode.GetBytes('"' + password + '"')]);
     }
 
-    private static string ValueText(DirectoryValue value) => value switch
+    private static string ValueText(DirectoryValue value)
     {
-        DirectoryValue.Text text => text.Value,
-        DirectoryValue.Binary binary => new UTF8Encoding(false, true).GetString(binary.Value.AsSpan()),
-        _ => throw NativeError.Win32("Read directory text value", 13)
-    };
+        try
+        {
+            return value switch
+            {
+                DirectoryValue.Text text => text.Value,
+                DirectoryValue.Binary binary => new UTF8Encoding(false, true).GetString(binary.Value.AsSpan()),
+                _ => throw NativeError.Win32("Read directory text value", 13)
+            };
+        }
+        catch (DecoderFallbackException) { throw NativeError.Win32("Read directory text value", 13); }
+    }
 
     private static string Dn(string parent, string type, string name)
     {

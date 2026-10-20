@@ -90,7 +90,7 @@ public sealed partial class WindowsGroupPolicyClient
         }, cancellationToken);
 
     /// <summary>Backs up a selected GPO to an explicit directory. Completion includes GPMC overall status.</summary>
-    public Task<GroupPolicyOperationResult<GroupPolicyBackup>> BackupAsync(Guid id, string directory, string comment = "", CancellationToken cancellationToken = default)
+    public Task<GroupPolicyOperationOutcome<GroupPolicyBackup>> BackupAsync(Guid id, string directory, string comment = "", CancellationToken cancellationToken = default)
     {
         AbsolutePath(directory);
         NativeError.Text(comment, nameof(comment), true);
@@ -98,7 +98,7 @@ public sealed partial class WindowsGroupPolicyClient
     }
 
     /// <summary>Imports policy settings into an existing GPO, replacing its settings while retaining its identity and links.</summary>
-    public Task<GroupPolicyOperationResult<GroupPolicySnapshot>> ImportAsync(Guid destinationId, string backupDirectory, Guid backupId,
+    public Task<GroupPolicyOperationOutcome<GroupPolicySnapshot>> ImportAsync(Guid destinationId, string backupDirectory, Guid backupId,
         GroupPolicyImportOptions? options = null, CancellationToken cancellationToken = default)
     {
         AbsolutePath(backupDirectory);
@@ -109,14 +109,14 @@ public sealed partial class WindowsGroupPolicyClient
     }
 
     /// <summary>Restores an explicitly selected backup through GPMC, preserving its original GPO identity.</summary>
-    public Task<GroupPolicyOperationResult<GroupPolicySnapshot>> RestoreAsync(string backupDirectory, Guid backupId, CancellationToken cancellationToken = default)
+    public Task<GroupPolicyOperationOutcome<GroupPolicySnapshot>> RestoreAsync(string backupDirectory, Guid backupId, CancellationToken cancellationToken = default)
     {
         AbsolutePath(backupDirectory);
         return Execute((gpm, domain) => Restore(gpm, domain, backupDirectory, backupId), cancellationToken);
     }
 
     /// <summary>Generates XML or HTML with native operation status.</summary>
-    public Task<GroupPolicyOperationResult<string>> GenerateReportAsync(Guid id, GroupPolicyReportFormat format, CancellationToken cancellationToken = default)
+    public Task<GroupPolicyOperationOutcome<string>> GenerateReportAsync(Guid id, GroupPolicyReportFormat format, CancellationToken cancellationToken = default)
     {
         if (!Enum.IsDefined(format)) throw new ArgumentOutOfRangeException(nameof(format));
         return Execute((_, domain) => Report(Required(domain, id), format), cancellationToken);
@@ -229,7 +229,7 @@ public sealed partial class WindowsGroupPolicyClient
         NativeError.Check(((IGPMGPO*)value.Pointer)->put_DisplayName(argument.Native).Value, operation);
     }
 
-    private static unsafe DateTime Date(ComObject value, GpmDate field)
+    private static unsafe DateTimeOffset Date(ComObject value, GpmDate field)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         double date;
@@ -241,7 +241,8 @@ public sealed partial class WindowsGroupPolicyClient
             _ => throw new ArgumentOutOfRangeException(nameof(field))
         };
         NativeError.Check(status.Value, "Read GPMC timestamp");
-        return NativeError.Date(date);
+        // GPMC runs in this process and reports local time of this computer.
+        return NativeError.LocalDate(NativeError.Date(date), TimeZoneInfo.Local);
     }
 
     private static GroupPolicySnapshot Snapshot(ComObject gpo) => new(
@@ -298,7 +299,7 @@ public sealed partial class WindowsGroupPolicyClient
         finally { _ = PInvoke.VariantClear(&value); }
     }
 
-    private static unsafe GroupPolicyOperationResult<GroupPolicyBackup> Backup(ComObject gpo, string directory, string comment)
+    private static unsafe GroupPolicyOperationOutcome<GroupPolicyBackup> Backup(ComObject gpo, string directory, string comment)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using (gpo)
@@ -320,7 +321,7 @@ public sealed partial class WindowsGroupPolicyClient
         return StringObject(backupDirectory, GpmLookup.Backup, backupId.ToString("B"), "Open GPO backup");
     }
 
-    private static unsafe GroupPolicyOperationResult<GroupPolicySnapshot> Import(ComObject gpm, ComObject domain, Guid id, string directory,
+    private static unsafe GroupPolicyOperationOutcome<GroupPolicySnapshot> Import(ComObject gpm, ComObject domain, Guid id, string directory,
         Guid backupId, GroupPolicyImportOptions options)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
@@ -335,7 +336,7 @@ public sealed partial class WindowsGroupPolicyClient
         return new(Snapshot(updated), messages);
     }
 
-    private static unsafe GroupPolicyOperationResult<GroupPolicySnapshot> Restore(ComObject gpm, ComObject domain, string directory, Guid backupId)
+    private static unsafe GroupPolicyOperationOutcome<GroupPolicySnapshot> Restore(ComObject gpm, ComObject domain, string directory, Guid backupId)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var backup = OpenBackup(gpm, directory, backupId);
@@ -346,7 +347,7 @@ public sealed partial class WindowsGroupPolicyClient
         return new(Snapshot(restored), messages);
     }
 
-    private static unsafe GroupPolicyOperationResult<string> Report(ComObject gpo, GroupPolicyReportFormat format)
+    private static unsafe GroupPolicyOperationOutcome<string> Report(ComObject gpo, GroupPolicyReportFormat format)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using (gpo)

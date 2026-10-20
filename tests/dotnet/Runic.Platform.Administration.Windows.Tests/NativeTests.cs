@@ -55,8 +55,8 @@ internal sealed class NativeTests
         Check((new FirewallRuleSpecification(missing, FirewallDirection.Inbound, FirewallAction.Block).Profiles & FirewallProfiles.Public) == 0,
             "Firewall rules must not default to the Public profile.");
         var shares = new WindowsShareClient();
-        _ = shares.Enumerate();
-        Check(shares.Find(missing) is null, "Missing share must remain absent.");
+        _ = await shares.EnumerateAsync();
+        Check(await shares.FindAsync(missing) is null, "Missing share must remain absent.");
         Console.WriteLine("PASS Generated firewall and SMB inspection, missing lookups and validation.");
     }
 
@@ -94,7 +94,7 @@ internal sealed class NativeTests
             var before = await client.FindAsync(path) ?? throw new InvalidOperationException("Created link missing.");
             Check(before.TargetPath == target && before.Arguments == specification.Arguments, "Target/arguments did not roundtrip.");
             Check(before.Description == specification.Description && before.WorkingDirectory == folder, "Unicode metadata did not roundtrip.");
-            Check(before.Icon == specification.Icon && before.ShowState == 3 && before.Hotkey == specification.Hotkey, "Icon/show state/hotkey did not roundtrip.");
+            Check(before.Icon == specification.Icon && before.ShowState == ShellLinkShowState.Maximized && before.Hotkey == specification.Hotkey, "Icon/show state/hotkey did not roundtrip.");
             try { await client.CreateAsync(path, new(target)); throw new InvalidOperationException("Duplicate shortcut was overwritten."); }
             catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.Conflict, "Duplicate shortcut was not classified as conflict."); }
             await client.UpdateAsync(path, new() { Description = "Changed" });
@@ -161,11 +161,11 @@ internal sealed class NativeTests
         var nativeVersion = system.GetOperatingSystem().Version; var managedVersion = Environment.OSVersion.Version;
         Check(nativeVersion.Major == managedVersion.Major && nativeVersion.Minor == managedVersion.Minor && nativeVersion.Build == managedVersion.Build, $"Native OS version mismatch: {nativeVersion} / {managedVersion}.");
         Check(system.GetBiosInformation().Length > 0, "BIOS unavailable on fixture.");
-        _ = system.GetDomainMembership();
+        _ = await new WindowsDomainClient().GetMembershipAsync();
         _ = await new WindowsNetworkClient().EnumerateAsync();
         var shares = new WindowsShareClient();
-        _ = shares.Enumerate();
-        Check(shares.Find("RunicMissing-" + Guid.NewGuid().ToString("N")) is null, "Missing share must return null.");
+        _ = await shares.EnumerateAsync();
+        Check(await shares.FindAsync("RunicMissing-" + Guid.NewGuid().ToString("N")) is null, "Missing share must return null.");
         Console.WriteLine("PASS Native OS/BIOS, domain membership, networks and SMB share inspection.");
     }
     [Test]
@@ -279,9 +279,11 @@ internal sealed class NativeTests
     {
         var client = new WindowsProcessClient();
         var snapshot = client.Enumerate();
-        Check(snapshot.Any(row => row.ProcessId == (uint)Environment.ProcessId), "Current process missing from snapshot.");
-        Check(client.Find(uint.MaxValue) is null, "Missing process must return null.");
-        Check(client.GetChildren((uint)Environment.ProcessId).All(row => row.ParentProcessId == (uint)Environment.ProcessId), "Child filter mismatch.");
+        Check(snapshot.Any(row => row.ProcessId == Environment.ProcessId), "Current process missing from snapshot.");
+        Check(client.Find(int.MaxValue) is null, "Missing process must return null.");
+        Check(client.GetChildren(Environment.ProcessId).All(row => row.ParentProcessId == Environment.ProcessId), "Child filter mismatch.");
+        try { _ = client.Find(-1); throw new InvalidOperationException("Negative process ID accepted."); }
+        catch (ArgumentOutOfRangeException) { }
     }
 
     [Test]
@@ -289,16 +291,23 @@ internal sealed class NativeTests
     {
         var client = new WindowsServiceClient();
         var missing = "RunicMissing-" + Guid.NewGuid().ToString("N");
-        Check(client.Find(missing) is null && client.FindStatus(missing) is null, "Missing service must return null.");
+        Check(await client.FindAsync(missing) is null && await client.FindStatusAsync(missing) is null, "Missing service must return null.");
+        // A missing service is NotFound, distinct from an unavailable SCM or machine.
+        try { await client.StartAsync(missing); throw new InvalidOperationException("A missing service started."); }
+        catch (WindowsAdministrationException error)
+        {
+            Check(error.Category == AdministrationErrorCategory.NotFound && error.NativeErrorCode == 1060,
+                $"A missing service must be NotFound, not {error.Category} ({error.NativeErrorCode}).");
+        }
         foreach (var command in new[] { @"C:\Program Files\Runic\service.exe", @"C:\Runic\service.exe --name x", "\"C:\\Runic\\service.exe\"--name" })
         {
-            try { client.Create(new(missing, command, @"NT AUTHORITY\LocalService")); throw new InvalidOperationException("Unquoted service path accepted: " + command); }
+            try { await client.CreateAsync(new(missing, command, @"NT AUTHORITY\LocalService")); throw new InvalidOperationException("Unquoted service path accepted: " + command); }
             catch (ArgumentException) { }
         }
-        var rows = client.Enumerate();
+        var rows = await client.EnumerateAsync();
         Check(rows.Length > 0, "No services returned.");
         // EventLog is queried only; this test never changes a service or machine configuration.
-        var service = client.Find("EventLog") ?? throw new InvalidOperationException("EventLog unavailable on fixture.");
+        var service = await client.FindAsync("EventLog") ?? throw new InvalidOperationException("EventLog unavailable on fixture.");
         Check(service.BinaryCommandLine.Length > 0 && service.AccountName.Length > 0, "Service configuration incomplete.");
         Check(service.Status.State == ServiceState.Running, "EventLog is not running on fixture.");
         Check(new WindowsProcessClient().Find(service.Status.ProcessId) is not null, "Service process ID is not observable.");
@@ -308,5 +317,31 @@ internal sealed class NativeTests
         cancellation.Cancel();
         try { await client.WaitForStateAsync("EventLog", ServiceState.Stopped, TimeSpan.FromSeconds(1), cancellation.Token); throw new InvalidOperationException("Cancelled wait accepted."); }
         catch (OperationCanceledException) { }
+    }
+
+    [Test]
+    public async Task CheckCanceledNativeCallsDoNotStartAsync()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var missing = "RunicMissing-" + Guid.NewGuid().ToString("N");
+        var services = new WindowsServiceClient();
+        var shares = new WindowsShareClient();
+        var domain = new WindowsDomainClient();
+        Func<Task>[] calls =
+        [
+            () => services.EnumerateAsync(cancellation.Token),
+            () => services.StartAsync(missing, cancellation.Token),
+            () => services.DeleteAsync(missing, cancellation.Token),
+            () => shares.EnumerateAsync(cancellation.Token),
+            () => shares.DeleteAsync(missing, cancellation.Token),
+            () => domain.GetMembershipAsync(cancellation.Token),
+            () => domain.DiscoverControllerAsync(cancellationToken: cancellation.Token),
+        ];
+        foreach (var call in calls)
+        {
+            try { await call(); throw new InvalidOperationException("A canceled native call ran."); }
+            catch (OperationCanceledException) { }
+        }
     }
 }

@@ -9,7 +9,9 @@ using Runic.Platform.Administration.Windows.Internal;
 namespace Runic.Platform.Administration.Windows.Services;
 
 /// <summary>Explicit local or remote Service Control Manager access using the current Windows identity.</summary>
-/// <remarks>Each call owns its native handles. Configuration and status reads are not an atomic snapshot.</remarks>
+/// <remarks>Each call owns its native handles. Configuration and status reads are not an atomic snapshot. Native SCM
+/// calls run off the caller's thread; cancellation before a call starts prevents it, and once a call starts its actual
+/// result is returned.</remarks>
 public sealed partial class WindowsServiceClient
 {
     private readonly string? _machineName;
@@ -44,7 +46,38 @@ public sealed partial class WindowsServiceClient
     }
 
     /// <summary>Enumerates Win32 services, including inactive services, without reading privileged configuration.</summary>
-    public unsafe ImmutableArray<ServiceSummary> Enumerate()
+    public Task<ImmutableArray<ServiceSummary>> EnumerateAsync(CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(Enumerate, cancellationToken);
+
+    /// <summary>Reads status only; null means the service does not exist.</summary>
+    public Task<ServiceStatus?> FindStatusAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => FindStatus(name), cancellationToken);
+
+    /// <summary>Reads service configuration and status; null means the service does not exist. Denied configuration access remains an error.</summary>
+    public Task<ServiceSnapshot?> FindAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Find(name), cancellationToken);
+
+    /// <summary>Starts a service. Already running is reported as a native conflict.</summary>
+    public Task StartAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Start(name), cancellationToken);
+
+    /// <summary>Requests a stop; use WaitForStateAsync to observe completion.</summary>
+    public Task StopAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Control(name, 1, 0x20), cancellationToken);
+
+    /// <summary>Requests a pause; use WaitForStateAsync to observe completion.</summary>
+    public Task PauseAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Control(name, 2, 0x40), cancellationToken);
+
+    /// <summary>Requests continuation of a paused service; use WaitForStateAsync to observe completion.</summary>
+    public Task ContinueAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Control(name, 3, 0x40), cancellationToken);
+
+    /// <summary>Marks an existing service for deletion. Returns false only if it was absent; deletion may be deferred by Windows.</summary>
+    public Task<bool> DeleteAsync(string name, CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => Delete(name), cancellationToken);
+
+    private unsafe ImmutableArray<ServiceSummary> Enumerate()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var manager = Manager(4);
@@ -68,15 +101,13 @@ public sealed partial class WindowsServiceClient
         return rows.ToImmutable();
     }
 
-    /// <summary>Reads status only; null means the service does not exist.</summary>
-    public ServiceStatus? FindStatus(string name)
+    private ServiceStatus? FindStatus(string name)
     {
         using var service = Open(name, 4, true);
         return service is null ? null : ReadStatus(service);
     }
 
-    /// <summary>Reads service configuration and status; denied configuration access remains an error.</summary>
-    public unsafe ServiceSnapshot? Find(string name)
+    private unsafe ServiceSnapshot? Find(string name)
     {
         using var service = Open(name, 1 | 4, true);
         if (service is null) return null;
@@ -162,20 +193,12 @@ public sealed partial class WindowsServiceClient
         return status.Snapshot();
     }
 
-    /// <summary>Starts a service. Already running is reported as a native conflict.</summary>
-    public void Start(string name)
+    private void Start(string name)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var service = Open(name, 0x10)!;
         NativeError.CheckWin32(PInvoke.StartService(service, default).Value, "Start service");
     }
-
-    /// <summary>Requests a stop; use WaitForStateAsync to observe completion.</summary>
-    public void Stop(string name) => Control(name, 1, 0x20);
-    /// <summary>Requests a pause.</summary>
-    public void Pause(string name) => Control(name, 2, 0x40);
-    /// <summary>Requests continuation of a paused service.</summary>
-    public void Continue(string name) => Control(name, 3, 0x40);
 
     private unsafe void Control(string name, uint control, uint access)
     {
@@ -184,8 +207,7 @@ public sealed partial class WindowsServiceClient
         NativeError.CheckWin32(PInvoke.ControlService(service, control, out _).Value, "Control service");
     }
 
-    /// <summary>Marks an existing service for deletion. Returns false only if it was absent; deletion may be deferred by Windows.</summary>
-    public bool Delete(string name)
+    private bool Delete(string name)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var service = Open(name, 0x10000, true);
@@ -204,7 +226,8 @@ public sealed partial class WindowsServiceClient
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var current = FindStatus(name) ?? throw NativeError.Win32("Wait for service state", 1060);
+            var current = await FindStatusAsync(name, cancellationToken).ConfigureAwait(false)
+                ?? throw NativeError.Win32("Wait for service state", 1060);
             if (current.State == state) return current;
             var remaining = timeout - clock.Elapsed;
             if (remaining <= TimeSpan.Zero) throw new TimeoutException("The service did not reach the requested state before the timeout.");

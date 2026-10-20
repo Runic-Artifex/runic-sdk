@@ -37,31 +37,43 @@ public enum ComputerDomainRole
 /// <summary>Machine join information; Name identifies either the domain or workgroup.</summary>
 public sealed record DomainMembership(DomainJoinState State, string Name, ComputerDomainRole Role);
 /// <summary>A controller returned by Windows domain discovery.</summary>
-public sealed record DomainControllerInfo(string Name, string Address, uint AddressType, Guid DomainId,
+/// <remarks>NativeAddressType is the native DS_INET_ADDRESS (1) or DS_NETBIOS_ADDRESS (2) value; NativeFlags are the native DS_*_FLAG bits.</remarks>
+public sealed record DomainControllerInfo(string Name, string Address, uint NativeAddressType, Guid DomainId,
     string DomainName, string ForestName, uint NativeFlags, string ControllerSite, string ClientSite);
 
 /// <summary>Native machine membership and controller discovery, without ADSI.</summary>
+/// <remarks>Native NetAPI and DC-locator calls run off the caller's thread. Cancellation before a call starts
+/// prevents it; once a call starts, its actual result is returned.</remarks>
 public sealed partial class WindowsDomainClient
 {
-    private readonly string? _computerName;
+    private readonly string? _machineName;
     /// <summary>Creates a client for the local computer, or an explicit remote computer.</summary>
-    public WindowsDomainClient(string? computerName = null)
+    public WindowsDomainClient(string? machineName = null)
     {
         NativeError.Windows();
-        if (computerName is not null) NativeError.Text(computerName, nameof(computerName));
-        _computerName = computerName;
+        if (machineName is not null) NativeError.Text(machineName, nameof(machineName));
+        _machineName = machineName;
     }
 
     /// <summary>Reads join state and domain role; a workgroup is a successful result, not a failed domain query.</summary>
-    public unsafe DomainMembership GetMembership()
+    public Task<DomainMembership> GetMembershipAsync(CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(GetMembership, cancellationToken);
+
+    /// <summary>Discovers a DNS-named directory controller, with optional primary-controller and writable requirements.</summary>
+    /// <remarks>Discovery can block for the DC locator's network timeouts.</remarks>
+    public Task<DomainControllerInfo> DiscoverControllerAsync(string? domainName = null, bool requirePrimary = false, bool requireWritable = true,
+        CancellationToken cancellationToken = default) =>
+        NativeWork.RunAsync(() => DiscoverController(domainName, requirePrimary, requireWritable), cancellationToken);
+
+    private unsafe DomainMembership GetMembership()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
-        var status = PInvoke.NetGetJoinInformation(_computerName, out var name, out var state);
+        var status = PInvoke.NetGetJoinInformation(_machineName, out var name, out var state);
         if (status != 0) throw NativeError.Win32("Read computer join state", unchecked((int)status));
         try
         {
             byte* role = null;
-            status = PInvoke.DsRoleGetPrimaryDomainInformation(_computerName, DSROLE_PRIMARY_DOMAIN_INFO_LEVEL.DsRolePrimaryDomainInfoBasic, ref role);
+            status = PInvoke.DsRoleGetPrimaryDomainInformation(_machineName, DSROLE_PRIMARY_DOMAIN_INFO_LEVEL.DsRolePrimaryDomainInfoBasic, ref role);
             if (status != 0) throw NativeError.Win32("Read computer domain role", unchecked((int)status));
             try { return new((DomainJoinState)state, name.ToString(), (ComputerDomainRole)((DSROLE_PRIMARY_DOMAIN_INFO_BASIC*)role)->MachineRole); }
             finally { PInvoke.DsRoleFreeMemory(role); }
@@ -69,13 +81,12 @@ public sealed partial class WindowsDomainClient
         finally { _ = PInvoke.NetApiBufferFree(name.Value); }
     }
 
-    /// <summary>Discovers a DNS-named directory controller, with optional primary-controller and writable requirements.</summary>
-    public unsafe DomainControllerInfo DiscoverController(string? domainName = null, bool requirePrimary = false, bool requireWritable = true)
+    private unsafe DomainControllerInfo DiscoverController(string? domainName = null, bool requirePrimary = false, bool requireWritable = true)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
         if (domainName is not null) NativeError.Text(domainName, nameof(domainName));
         var flags = 0x40000000u | 0x10u | (requirePrimary ? 0x80u : 0) | (requireWritable ? 0x1000u : 0);
-        var status = PInvoke.DsGetDcName(_computerName, domainName, null, null, flags, out var pointer);
+        var status = PInvoke.DsGetDcName(_machineName, domainName, null, null, flags, out var pointer);
         if (status != 0) throw NativeError.Win32("Discover domain controller", unchecked((int)status));
         try
         {

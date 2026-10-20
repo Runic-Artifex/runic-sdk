@@ -5,7 +5,6 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
-using Runic.Platform.Administration.Windows.DirectoryServices;
 using Runic.Platform.Administration.Windows.Internal;
 
 namespace Runic.Platform.Administration.Windows.SystemInformation;
@@ -17,21 +16,9 @@ public sealed record WindowsOperatingSystemInfo(Version Version, string Registry
 /// <summary>BIOS information from an SMBIOS type-0 structure, without WMI.</summary>
 public sealed record WindowsBiosInfo(string Vendor, string Version, string ReleaseDateText, DateOnly? ReleaseDate);
 
-/// <summary>Read-only local machine inventory.</summary>
-public interface IWindowsSystemInformationClient
-{
-    /// <summary>Reads the actual native OS version and installed product metadata.</summary>
-    WindowsOperatingSystemInfo GetOperatingSystem();
-    /// <summary>Reads the actual Windows inventory display name.</summary>
-    Task<string> GetOperatingSystemNameAsync(CancellationToken cancellationToken = default);
-    /// <summary>Reads BIOS structures from the firmware's SMBIOS table.</summary>
-    ImmutableArray<WindowsBiosInfo> GetBiosInformation();
-    /// <summary>Reads native computer membership and domain role.</summary>
-    DomainMembership GetDomainMembership();
-}
-
 /// <summary>Local machine information through Windows APIs and read-only registry access.</summary>
-public sealed partial class WindowsSystemInformationClient : IWindowsSystemInformationClient
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Clients are instances like the other administration clients; the members were interface implementations before 0.9 and stay instance members.")]
+public sealed partial class WindowsSystemInformationClient
 {
     /// <summary>Reads the OS display name from Windows inventory. Unlike the compatibility registry label, this distinguishes Windows 11.</summary>
     public Task<string> GetOperatingSystemNameAsync(CancellationToken cancellationToken = default) =>
@@ -44,7 +31,7 @@ public sealed partial class WindowsSystemInformationClient : IWindowsSystemInfor
         }, cancellationToken);
 
 
-    /// <inheritdoc/>
+    /// <summary>Reads the actual native OS version and installed product metadata.</summary>
     public unsafe WindowsOperatingSystemInfo GetOperatingSystem()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
@@ -69,7 +56,7 @@ public sealed partial class WindowsSystemInformationClient : IWindowsSystemInfor
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>Reads BIOS structures from the firmware's SMBIOS table.</summary>
     public unsafe ImmutableArray<WindowsBiosInfo> GetBiosInformation()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
@@ -87,9 +74,6 @@ public sealed partial class WindowsSystemInformationClient : IWindowsSystemInfor
             return ParseBios(bytes.AsSpan(0, checked((int)actual)));
         }
     }
-
-    /// <inheritdoc/>
-    public DomainMembership GetDomainMembership() => new WindowsDomainClient().GetMembership();
 
     internal static ImmutableArray<WindowsBiosInfo> ParseBios(ReadOnlySpan<byte> raw)
     {
