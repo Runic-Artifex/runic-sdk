@@ -120,6 +120,17 @@ else
 fi
 
 dotnet new install "$template_package" --force
+# --host cswebui references the preview Runic.Application.Views.CsWebUi package, which ships on its own
+# prerelease version (eng/release/README.md, "Package tiers"); the template stamps that version separately.
+# verify_template does not pass --runic-cswebui-version, so each cswebui variant restores the stamped version
+# from the candidate feed.
+cswebui_packages=("$package_directory"/Runic.Application.Views.CsWebUi.*.nupkg)
+if [[ ${#cswebui_packages[@]} -ne 1 || ! -f "${cswebui_packages[0]}" ]]; then
+  echo "Expected one Runic.Application.Views.CsWebUi package in $package_directory." >&2
+  exit 1
+fi
+cswebui_version="$(basename "${cswebui_packages[0]}" .nupkg)"
+cswebui_version="${cswebui_version#Runic.Application.Views.CsWebUi.}"
 tool_directory="$template_tmp/tools"
 dotnet tool install dotnet-runic \
   --tool-path "$tool_directory" \
@@ -325,7 +336,7 @@ verify_template() {
   case "$host" in
     cswebui)
       host_client=runic-cswebui.js
-      grep -Fq 'Runic.Application.Views.CsWebUi' "$output/$project_name.csproj"
+      grep -Fq "<PackageReference Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\" />" "$output/$project_name.csproj"
       grep -Fq 'return RunicCsWebUiHost.Run(provider, RunAsync);' "$output/Program.cs"
       ;;
     desktop|desktop-gtk4)

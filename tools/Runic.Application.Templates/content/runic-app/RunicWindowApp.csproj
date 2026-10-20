@@ -54,7 +54,7 @@
     <PackageReference Include="Runic.Desktop.Gtk4" Version="__RUNIC_NUGET_VERSION__" />
 <!--#endif -->
 <!--#else -->
-    <PackageReference Include="Runic.Application.Views.CsWebUi" Version="__RUNIC_NUGET_VERSION__" />
+    <PackageReference Include="Runic.Application.Views.CsWebUi" Version="__RUNIC_CSWEBUI_NUGET_VERSION__" />
 <!--#endif -->
   </ItemGroup>
 </Project>

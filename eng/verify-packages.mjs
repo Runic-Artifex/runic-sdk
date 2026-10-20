@@ -67,6 +67,8 @@ export const packageLayouts = {
     requires: ["Runic.Application.Views", "ReactiveUI.Reactive"],
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i],
   },
+  // The props default RunicAssetsDistExclude before the project file, so a project can empty it.
+  "Runic.Assets": { includes: ["buildTransitive/Runic.Assets.props", "buildTransitive/Runic.Assets.targets"] },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application.Views": {
     includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets"],

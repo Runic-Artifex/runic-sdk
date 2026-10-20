@@ -1861,6 +1861,13 @@ waiting for slow hosts across all Bridges when it is observed.
 
 ## Incremental generation
 
+The generated C# goes to `runic-bridge/` in the project's `IntermediateOutputPath`
+(`obj/<Configuration>/<TargetFramework>/` by default, with the runtime identifier
+when one is set), and the bootstrap pass builds below `BaseIntermediateOutputPath`.
+The frontend files below are in `BaseIntermediateOutputPath` too, so
+`UseArtifactsOutput` and a custom `BaseIntermediateOutputPath` or
+`IntermediateOutputPath` move all of them.
+
 The generator caches successful multi-view generation in its C# `obj` output
 directory. It hashes the model/dependency assemblies, generator assemblies,
 output-affecting options, and generated output contents. Missing or edited
@@ -1869,7 +1876,8 @@ Set `RUNIC_BRIDGE_CODEGEN_FORCE=1` or `RUNIC_BRIDGE_CODEGEN_CACHE=0` to bypass i
 
 The configured frontend build command (`RunicApplicationFrontendBuildCommand`) runs
 when one of its inputs is newer than
-`obj/<Configuration>/<TargetFramework>/runic-bridge-frontend.stamp`, when a file
+`<BaseIntermediateOutputPath><Configuration>/<TargetFramework>/runic-bridge-frontend.stamp`
+(`obj/Debug/net10.0/runic-bridge-frontend.stamp` by default), when a file
 that the last build left in `<frontend>/dist` is missing (a deleted `dist`
 included), or when its build state changed. The inputs are the files under
 `RunicApplicationFrontendDirectory` (excluding `node_modules`, `dist`, `build`, `bin`, `obj`
@@ -1877,7 +1885,7 @@ and dot-directories), the generated TypeScript, the project file and
 `RunicApplicationFrontendInput` items. The build state is a hash of the build
 command, `RunicApplicationHost`, `NODE_ENV` and the environment variables named by
 `RunicApplicationFrontendBuildEnvironment` items; only the hash is written, to
-`obj/runic-bridge-frontend.state`. `dist` serves every configuration and target
+`runic-bridge-frontend.state` in `BaseIntermediateOutputPath` (`obj/` by default). `dist` serves every configuration and target
 framework, so a build whose state differs from the one that last built `dist`
 builds it again, for example Debug after a Release build with other variables. Generated TypeScript is rewritten only when its
 content changes, so C#-only edits skip the frontend build.
@@ -1888,7 +1896,7 @@ them from a target that runs before `RunicViewsGenerateBridge` (the translations
 editor is an example). Delete the stamp or rebuild to force a frontend build.
 
 The copy to `www/` mirrors `dist`. Each copy records the files it wrote, with
-their last write times, in `obj/`, and the next one deletes those that no
+their last write times, in `IntermediateOutputPath`, and the next one deletes those that no
 frontend has any more, such as assets with an earlier hash, or a
 `runic-views.js` that no host copies any more. A recorded file whose time has
 changed since, because someone else wrote it, stays. Nothing else is deleted:

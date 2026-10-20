@@ -37,7 +37,8 @@ Use the folder from `dotnet nuget locals global-packages --list` if
 MSBuild finds the packaged copy itself; set `RunicAssetsPackerPath` to use
 another build. The build passes `--entry-point $(RunicAssetsEntryPoint)`,
 `--exclude $(RunicAssetsDistExclude)` (by default `runic-assets.zip`; setting
-the property replaces that default, so list it again to keep it excluded) and
+the property replaces that default, so list it again to keep it excluded, and
+setting it empty in the project file passes no `--exclude`) and
 `--trusted-generated-output`.
 
 ```text

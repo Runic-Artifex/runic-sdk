@@ -53,7 +53,7 @@
     <PackageVersion Include="Runic.Application.Views" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Application.Views.ReactiveUI" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Application.Views.ReactiveUI.Reactive" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="Runic.Application.Views.CsWebUi" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Application.Views.CsWebUi" Version="$(RunicCsWebUiPackageVersion)" />
     <PackageVersion Include="Runic.Application.Views.Desktop" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Assets.AspNetCore" Version="$(RunicSdkVersion)" />

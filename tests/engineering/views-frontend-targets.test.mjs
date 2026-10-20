@@ -582,3 +582,55 @@ test("NoBuild without generated Bridge code fails with RUNICBRIDGE022", () => {
   result = generateWithoutBuild(project);
   assert.equal(result.status, 0, result.output);
 });
+
+// W319-003 msbuild backlog: the targets wrote to obj/ whatever UseArtifactsOutput, BaseIntermediateOutputPath or
+// IntermediateOutputPath said. The generated code follows IntermediateOutputPath, which has the runtime identifier.
+test("the generated Bridge code lives in IntermediateOutputPath, else below BaseIntermediateOutputPath", () => {
+  const generated = ["App.CounterWindow.View.g.cs", "RunicBridgeComposition.g.cs"];
+  for (const [name, properties, directory] of [
+    ["intermediate-output", ["-p:IntermediateOutputPath=out/obj/debug_linux-x64/"], "out/obj/debug_linux-x64/runic-bridge"],
+    ["base-intermediate-output", ["-p:BaseIntermediateOutputPath=out/obj/App/"], "out/obj/App/Debug/net10.0/runic-bridge"],
+  ]) {
+    const { project } = noBuildProject(`no-build-${name}`);
+    const output = join(project, directory);
+    mkdirSync(output, { recursive: true });
+    for (const file of generated) writeFileSync(join(output, file), "// generated\n");
+    const result = generateWithoutBuild(project, [...properties, "-getItem:Compile"]);
+    assert.equal(result.status, 0, result.output);
+    const compile = JSON.parse(result.output.slice(result.output.indexOf("{"))).Items.Compile.map(item => item.FullPath);
+    assert.deepEqual(compile.sort(), generated.map(file => join(output, file)).sort(), name);
+  }
+});
+
+// Off Windows, WPF passes its temporary markup project an IntermediateOutputPath that still ends with the target
+// framework, and the copy appends it again (obj/Release/net10.0-windows/net10.0-windows/). The copy compiles the code
+// that the real project recorded instead.
+test("WPF's temporary markup project compiles the generated code the real project recorded", () => {
+  const generated = ["App.CounterWindow.View.g.cs", "RunicBridgeComposition.g.cs"];
+  const { project, output } = noBuildProject("markup-temporary", { generated });
+  let result = generateWithoutBuild(project, ["-p:UseWPF=true"]);
+  assert.equal(result.status, 0, result.output);
+  const record = join(project, "obj/runic-bridge/App-Debug-net10.0-.generated-directory");
+  assert.equal(readFileSync(record, "utf8").trim(), `${output}/`);
+
+  result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsMarkupTemporaryCompile",
+    "-p:_TargetAssemblyProjectName=App", "-p:UseWPF=true", "-p:IntermediateOutputPath=obj/Debug/net10.0/net10.0/", "-getItem:Compile",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m"], { cwd: project, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const compile = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))).Items.Compile.map(item => item.FullPath);
+  assert.deepEqual(compile.sort(), generated.map(file => join(output, file)).sort());
+});
+
+test("the frontend install and build state live below BaseIntermediateOutputPath", () => {
+  const app = fixture("base-intermediate-frontend", { name: "app", private: true, devDependencies: { vite: "8.3.2" } });
+  const properties = ["BaseIntermediateOutputPath=out/obj/App/"];
+  let result = build(app, { properties });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install", "build"]);
+  for (const file of ["runic-bridge-frontend-install.stamp", "runic-bridge-frontend.state",
+    "Debug/net10.0/runic-bridge-frontend.stamp", "Debug/net10.0/runic-bridge-frontend.outputs"])
+    assert.ok(existsSync(join(app.project, "out/obj/App", file)), file);
+  assert.ok(!existsSync(join(app.project, "obj")), "Nothing is written to obj/.");
+  result = build(app, { properties });
+  assert.deepEqual(result.commands, [], "The relocated stamps keep an unchanged frontend up to date.");
+});

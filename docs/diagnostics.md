@@ -291,13 +291,14 @@ manager.
 
 The `Runic.Application.Views` build targets report this error. The project is
 built with `NoBuild=true`, as by `dotnet publish --no-build`, which reuses the
-Bridge code that the earlier build generated in
-`obj/<Configuration>/<TargetFramework>/runic-bridge/` instead of running the
-generator. That code, or the composition that
+Bridge code that the earlier build generated in `runic-bridge/` in the
+project's `IntermediateOutputPath` (`obj/<Configuration>/<TargetFramework>/`, or
+`obj/<Configuration>/<TargetFramework>/<RuntimeIdentifier>/` with a runtime
+identifier) instead of running the generator. That code, or the composition that
 `RunicApplicationFrontendCompositionType` names, is not there.
 
 **Fix:** build the project first with the same `Configuration`,
-`TargetFramework` and `PublishAot`, then publish with `--no-build`, or publish
+`TargetFramework`, `RuntimeIdentifier` and `PublishAot`, then publish with `--no-build`, or publish
 without `--no-build`.
 
 ## dotnet runic
@@ -852,6 +853,7 @@ which then accepts as many arguments as its longest command.
 
 A `Runic.Platform.MacOS` daemon setting is missing or invalid: once
 `RunicMacPrivilegedDaemonLabel` is set, the label, `RunicMacBundleIdentifier`
+(by default `ApplicationId`, then `RunicApplicationId`)
 and `RunicMacPrivilegedDaemonIdentifier` must be reverse-DNS names,
 `RunicMacTeamIdentifier` the ten-character Team ID (the daemon's launch
 constraint names it), and `RunicMacPrivilegedDaemonProgram` the daemon
