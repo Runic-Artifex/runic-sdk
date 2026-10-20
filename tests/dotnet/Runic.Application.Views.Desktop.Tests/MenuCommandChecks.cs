@@ -34,12 +34,12 @@ internal sealed class MenuCommandChecks
             WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = Bar,
         });
         var newCommand = new TestCommand();
-        var host = new RunicDesktopHost(provider, desktop)
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
         {
             SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
             WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
-            MenuCommands = new Dictionary<string, ICommand> { ["file.new"] = newCommand },
-        };
+        });
+        using var menu = host.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });
         var application = desktop.MenuCommands ?? throw new InvalidOperationException("The application commands were not bound.");
         Require(application.CanExecute("file.new") && !application.CanExecute("file.save"), "The application's commands were not bound by id.");
         application.Execute("file.new");
@@ -49,7 +49,7 @@ internal sealed class MenuCommandChecks
         try
         {
             var viewModel = window.ViewModel;
-            var target = ((DesktopBridgeWindow<MenuViewModel>)window.Host).Presentation.MenuCommands
+            var target = ((DesktopBridgeWindow<MenuViewModel>)window.Host).Window.MenuCommands
                 ?? throw new InvalidOperationException("The Window's root ViewModel did not become the window's menu command target.");
             Require(target.CanExecute("file.save") && target.CanExecute("tools.explode") && !target.CanExecute("file.new"),
                 "The ViewModel's commands were not bound, also from a submenu.");
@@ -74,6 +74,41 @@ internal sealed class MenuCommandChecks
         }
     }
 
+    // vdesk-01: application commands are application-wide and released. A second host on the same Desktop host cannot
+    // silently replace them, and disposing the result unbinds them and their CanExecuteChanged subscriptions.
+    [Test, NotInParallel(Order = 20)]
+    public async Task ApplicationMenuIsOnePerDesktopHostAndReleased()
+    {
+        await using var provider = new ServiceCollection().BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = Bar,
+        });
+        var first = new RunicDesktopHost(provider, desktop);
+        var second = new RunicDesktopHost(provider, desktop);
+        var newCommand = new TestCommand();
+        var menu = first.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });
+        var bound = desktop.MenuCommands ?? throw new InvalidOperationException("The application commands were not bound.");
+        Require(newCommand.Subscribers == 1 && bound.CanExecute("file.new"), "The commands were not bound when UseApplicationMenu returned.");
+
+        var replacement = new TestCommand();
+        try
+        {
+            second.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = replacement }).Dispose();
+            throw new InvalidOperationException("A second application menu on the same Desktop host did not throw.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("already has application menu commands", StringComparison.Ordinal)) { }
+        Require(ReferenceEquals(desktop.MenuCommands, bound) && replacement.Subscribers == 0,
+            "A second host replaced the application's commands or kept its own subscriptions.");
+
+        menu.Dispose();
+        Require(desktop.MenuCommands is null && newCommand.Subscribers == 0 && !bound.CanExecute("file.new"),
+            "Disposing the application menu kept its commands or their CanExecuteChanged subscriptions.");
+        menu.Dispose();
+        using var again = second.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });
+        Require(desktop.MenuCommands is not null && newCommand.Subscribers == 1, "A released application menu could not be replaced.");
+    }
+
     private static async Task WaitAsync(Func<bool> condition, string message)
     {
         for (var waited = 0; !condition(); waited += 20)
@@ -96,9 +131,15 @@ sealed class TestCommand(Action? execute = null) : ICommand
     public bool Enabled
     {
         get => _enabled;
-        set { _enabled = value; CanExecuteChanged?.Invoke(this, EventArgs.Empty); }
+        set { _enabled = value; _canExecuteChanged?.Invoke(this, EventArgs.Empty); }
     }
-    public event EventHandler? CanExecuteChanged;
+    private EventHandler? _canExecuteChanged;
+    public int Subscribers => _canExecuteChanged?.GetInvocationList().Length ?? 0;
+    public event EventHandler? CanExecuteChanged
+    {
+        add => _canExecuteChanged += value;
+        remove => _canExecuteChanged -= value;
+    }
     public bool CanExecute(object? parameter) => _enabled;
     public void Execute(object? parameter)
     {

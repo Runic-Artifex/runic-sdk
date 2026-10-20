@@ -13,3 +13,5 @@ Runic.Navigation.Wpf.NavigationDialogHost.Region.get -> Runic.Navigation.Navigat
 Runic.Navigation.Wpf.NavigationHost.Region.get -> Runic.Navigation.NavigationRegion?
 static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.NavigationRegion?
 static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.NavigationRegion? region) -> void
+static Runic.Navigation.Wpf.ViewHost.GetServices(System.Windows.DependencyObject! element) -> System.IServiceProvider?
+static Runic.Navigation.Wpf.ViewHost.SetServices(System.Windows.DependencyObject! element, System.IServiceProvider? services) -> void

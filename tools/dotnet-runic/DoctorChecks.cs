@@ -609,13 +609,13 @@ internal static class DoctorChecks
         }
         checks.Add(Warn(id, $"The GTK 4 profile is missing {missing.Count} piece(s): {string.Join("; ", missing)}.",
             $"To use native services with GTK 4: {string.Join(", ", remediation)}. Call services.AddRunicPlatformServices(), " +
-            "whose PlatformServices selects the GTK 4 provider, and select the window provider with DesktopHostOptions.WithGtk4()."));
+            "whose DesktopPlatformServices selects the GTK 4 provider, and select the window provider with DesktopHostOptions.WithGtk4()."));
     }
 
     internal const string PortalServiceFile = "dbus-1/services/org.freedesktop.portal.Desktop.service";
 
     /// <summary>
-    /// Names the provider that Runic.Application.Views.Desktop's PlatformServices selects for this machine, and on Linux
+    /// Names the provider that Runic.Application.Views.Desktop's DesktopPlatformServices selects for this machine, and on Linux
     /// checks that the session can reach xdg-desktop-portal, which serves the file dialogs and file handoff.
     /// CS-WebUI windows have no native owner, so their platform services report that they are unavailable.
     /// </summary>
@@ -633,10 +633,10 @@ internal static class DoctorChecks
         switch (runtime.Platform.Os)
         {
             case "win":
-                checks.Add(Pass(id, "PlatformServices selects the Windows provider: Win32 file dialogs, clipboard and shell handoff."));
+                checks.Add(Pass(id, "DesktopPlatformServices selects the Windows provider: Win32 file dialogs, clipboard and shell handoff."));
                 return;
             case "osx":
-                checks.Add(Pass(id, "PlatformServices selects the macOS provider: AppKit file dialogs, clipboard and file handoff."));
+                checks.Add(Pass(id, "DesktopPlatformServices selects the macOS provider: AppKit file dialogs, clipboard and file handoff."));
                 return;
             case not "linux":
                 return;
@@ -649,14 +649,14 @@ internal static class DoctorChecks
         bool portal = PortalServiceDirectories(runtime).Any(directory => runtime.FileExists(Path.Combine(directory, PortalServiceFile)));
         if (sessionBus && portal)
         {
-            checks.Add(Pass(id, $"PlatformServices selects xdg-desktop-portal file dialogs and handoff parented through {toolkit}, " +
+            checks.Add(Pass(id, $"DesktopPlatformServices selects xdg-desktop-portal file dialogs and handoff parented through {toolkit}, " +
                 $"and the {toolkit} clipboard. The session bus and the portal service are present."));
             return;
         }
         var problems = new List<string>();
         if (!sessionBus) problems.Add("no D-Bus session bus is reachable");
         if (!portal) problems.Add("xdg-desktop-portal is not installed");
-        checks.Add(Warn(id, $"PlatformServices selects xdg-desktop-portal file dialogs parented through {toolkit}, but {string.Join(" and ", problems)}; " +
+        checks.Add(Warn(id, $"DesktopPlatformServices selects xdg-desktop-portal file dialogs parented through {toolkit}, but {string.Join(" and ", problems)}; " +
             "file dialogs and file handoff then report BackendUnavailable.",
             "Install xdg-desktop-portal and a backend for the desktop (xdg-desktop-portal-gnome, -kde or -gtk), and run the application in a desktop session."));
     }

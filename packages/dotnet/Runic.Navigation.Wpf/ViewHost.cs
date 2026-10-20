@@ -22,9 +22,13 @@ public class ViewHost : Decorator
     public static readonly DependencyProperty ViewLocatorProperty = DependencyProperty.Register(nameof(ViewLocator), typeof(INavigationViewLocator),
         typeof(ViewHost), new PropertyMetadata(null, Changed));
 
-    /// <summary>Identifies the Services dependency property.</summary>
-    public static readonly DependencyProperty ServicesProperty = DependencyProperty.Register(nameof(Services), typeof(IServiceProvider),
-        typeof(ViewHost), new PropertyMetadata(null, Changed));
+    /// <summary>Identifies the Services attached dependency property, which descendants inherit.</summary>
+    /// <remarks>
+    /// <c>RunicViewHost</c> in <c>Runic.Application.Views.Wpf</c> shares this property, so one provider set on a window
+    /// reaches both hosts.
+    /// </remarks>
+    public static readonly DependencyProperty ServicesProperty = DependencyProperty.RegisterAttached(nameof(Services), typeof(IServiceProvider),
+        typeof(ViewHost), new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.Inherits, Changed));
 
     /// <summary>Creates a plain-content view host.</summary>
     public ViewHost()
@@ -48,17 +52,38 @@ public class ViewHost : Decorator
     }
 
     /// <summary>Gets or sets the provider for registered view location and view construction.</summary>
-    /// <remarks>The caller owns this provider. Without one, only the explicit locator and implicit templates are available.</remarks>
+    /// <remarks>
+    /// Inherited: set it once on the window with <see cref="SetServices"/>, or on the host. The caller owns this
+    /// provider. Without one, only the explicit locator and implicit templates are available.
+    /// </remarks>
     public IServiceProvider? Services
     {
         get => (IServiceProvider?)GetValue(ServicesProperty);
         set => SetValue(ServicesProperty, value);
     }
 
+    /// <summary>Gets the provider set on <paramref name="element"/>, or inherited from its ancestors.</summary>
+    /// <param name="element">The element, such as a window.</param>
+    /// <returns>The provider, or <see langword="null"/>.</returns>
+    public static IServiceProvider? GetServices(DependencyObject element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return (IServiceProvider?)element.GetValue(ServicesProperty);
+    }
+
+    /// <summary>Sets the provider for every host <paramref name="element"/> contains, such as a window.</summary>
+    /// <param name="element">The element, such as a window.</param>
+    /// <param name="services">The provider, or <see langword="null"/> to clear it.</param>
+    public static void SetServices(DependencyObject element, IServiceProvider? services)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(ServicesProperty, services);
+    }
+
     private static void Changed(DependencyObject target, DependencyPropertyChangedEventArgs args)
     {
-        var host = (ViewHost)target;
-        if (host.IsLoaded) host.Refresh();
+        // The property is attached and inherited: only a loaded host presents again.
+        if (target is ViewHost { IsLoaded: true } host) host.Refresh();
     }
 
     private void Refresh()

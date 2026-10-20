@@ -21,7 +21,7 @@ public static class WpfPlatformServices
     /// that shut down.
     /// </returns>
     /// <remarks>
-    /// The WPF counterpart of <see cref="PlatformServices.PresentAsync(DesktopNativeOwner, DesktopActivationContext?, CancellationToken)"/>
+    /// The WPF counterpart of <see cref="DesktopPlatformServices.PresentAsync(DesktopNativeOwner, DesktopActivationContext?, CancellationToken)"/>
     /// for Runic Desktop windows. A hidden window, or one not shown yet, is shown with <see cref="Window.Show"/>, so WPF's
     /// <see cref="UIElement.Visibility"/> stays current; a minimized one is restored to its previous size. Windows lets a
     /// process take the foreground only when the user just interacted with it or the process in the foreground allows
@@ -59,6 +59,6 @@ public static class WpfPlatformServices
             catch (InvalidOperationException) { return Closed; }
         }
         var handle = new WindowInteropHelper(window).Handle;
-        return handle == 0 ? Closed : PlatformServices.PresentWindowsHandle(handle);
+        return handle == 0 ? Closed : DesktopPlatformServices.PresentWindowsHandle(handle);
     }
 }

@@ -7,7 +7,7 @@ using Runic.Navigation;
 namespace Runic.Application.Views.Desktop;
 
 // Binds the menu bar's command ids to ICommands: those of a Window's root ViewModel (IRunicMenuCommandSource), or the
-// application's (RunicDesktopHost.MenuCommands). AppKit asks CanExecute on its main thread while it shows a menu or
+// application's (RunicDesktopHost.UseApplicationMenu). AppKit asks CanExecute on its main thread while it shows a menu or
 // matches a key, so the availability of each command is cached and updated from CanExecuteChanged. Resolving and
 // running a command happens in the model turn of the ViewModel, when there is one.
 internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposable
@@ -26,6 +26,16 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         _context = context;
         _resolve = resolve;
         _logger = logger;
+    }
+
+    // Binds application commands, which have no model context: the menu bar's command ids resolve before this
+    // returns, and again whenever the bar changes.
+    internal static MenuCommandBinding Bind(DesktopHost host, Func<string, ICommand?> resolve, ILogger logger)
+    {
+        var binding = new MenuCommandBinding(host, context: null, resolve, logger);
+        host.MenuBarChanged += binding.OnMenuBarChanged;
+        _ = binding.RebindAsync();
+        return binding;
     }
 
     // Binds every command id of the host's menu bar now, and again whenever the bar changes.

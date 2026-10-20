@@ -8,7 +8,7 @@ namespace Runic.Platform.Windows;
 /// Every factory throws <see cref="PlatformNotSupportedException"/> on another operating system or before Windows 8.
 /// The application ID that notifications and login startup require is the AppUserModelID and the Run value name: Windows
 /// has no other identity for a process outside an MSIX package. Window services (file dialogs, the clipboard and file
-/// handoff) belong to a window: Runic's hosts create them for each window, such as <c>PlatformServices.ForWindow</c> of
+/// handoff) belong to a window: Runic's hosts create them for each window, such as <c>DesktopPlatformServices.ForWindow</c> of
 /// Runic.Application.Views.Desktop.
 /// </remarks>
 [SupportedOSPlatform("windows")]
@@ -101,7 +101,7 @@ public static class WindowsPlatformProvider
     public static IDesktopStatusIcon CreateStatusIcon()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsStatusIcon(); }
 
-    // Restores and raises an owned window, or flashes its taskbar button; used by PlatformServices.PresentAsync.
+    // Restores and raises an owned window, or flashes its taskbar button; used by DesktopPlatformServices.PresentAsync.
     internal static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativeWindowOwner owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);

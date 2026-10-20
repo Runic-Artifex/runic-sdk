@@ -3,7 +3,7 @@
 The GTK 3 window services for Linux x64: portal file dialogs and file handoff with
 GTK 3 parenting, GTK's own file dialogs, and the GTK 3 text clipboard. The package has
 no public API. Runic.Application.Views.Desktop selects it for GTK 3 windows from
-`PlatformServices.ForWindow` and `services.AddRunicPlatformServices()`, and never in a
+`DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()`, and never in a
 GTK 4 process, which `Runic.Platform.Linux.Gtk4` serves. The package references the
 shared runtime and no Desktop, ASP.NET Core, Windows or macOS assemblies; creating its
 services does not initialize GTK or load native libraries.

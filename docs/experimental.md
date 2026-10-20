@@ -66,11 +66,11 @@ existing WPF visual tree, and its lifecycle API is still being shaped by the
 [hybrid WPF example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-hybrid-editor/README.md).
 It is planned to graduate before 1.0, once these are done: keyboard focus can
 leave the web View with Tab in both directions (done in 0.9), a Narrator check,
-a smoke test of two hosts in one window, and the API changes of the review
-(`OpenAsync` without its options parameter, a start page, no public
-`DiagnosticId`, a cancellation token on `ReloadAsync` and
-`WpfPlatformServices.ForWindow(Window)`). Graduation removes the attribute and
-retires the ID.
+a smoke test of two hosts in one window, and the remaining API changes of the
+review (`OpenAsync` without its options parameter, a cancellation token on
+`ReloadAsync` and `WpfPlatformServices.ForWindow(Window)`; `StartPage`,
+`ViewModel`, the shared `Services` and the removal of the public `DiagnosticId`
+are done in 0.9). Graduation removes the attribute and retires the ID.
 
 <a id="RUNICASSETS001"></a>
 

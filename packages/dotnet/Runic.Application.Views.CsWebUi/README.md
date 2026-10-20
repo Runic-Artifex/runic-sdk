@@ -43,7 +43,7 @@ it to the Window's `DataContext`, attaches the generated Bridge, sets the
 content root and size from `RunicWindowOptions`, and shows `StartPage`. The
 Window owns the native window, scope, and attachments until it is disposed or
 `CloseAsync` drains its accepted operations. Its `Host` is a
-`CsWebUiBridgeWindow<TViewModel>`; `NativeWindow` exposes the underlying
+`CsWebUiBridgeWindow<TViewModel>`; `Window` exposes the underlying
 `WebUiWindow`. `WaitForCloseAsync` completes when WebUI reports that its
 windows have closed: CS-WebUI reports closing for all of its windows at once,
 so with several windows open it waits for all of them.
@@ -88,9 +88,20 @@ and sends to every other CS-WebUI window in the process wait for the same lock.
 By default a window uses WebUI's recommended presentation: an installed browser
 in app mode (Chrome, Edge and other Chromium-based browsers work best; Firefox
 works without app mode), then the system default browser, then the platform
-WebView. `new RunicCsWebUiHost(provider) { UseWebView = true }` always uses the
-WebView: the Edge WebView2 Runtime on Windows, GTK 3 with WebKitGTK 4.1 on
-Linux, or WKWebView on macOS. `ConfigureWindow` configures each `WebUiWindow`
+WebView. `RunicCsWebUiHostOptions.UseWebView` always uses the WebView: the Edge
+WebView2 Runtime on Windows, GTK 3 with WebKitGTK 4.1 on Linux, or WKWebView on
+macOS. Pass the options to `Run`, which keeps WebUI's main-thread loop:
+
+```csharp
+return RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions { UseWebView = true }, async host =>
+{
+    await using var window = await host.OpenWindowAsync<MainWindow>();
+    await window.WaitForCloseAsync();
+    return 0;
+});
+```
+
+`ConfigureWindow` configures each `WebUiWindow`
 before it is shown, for example `SetPort`, and `ShowWindow` replaces how it is
 shown, for example to open a frontend development server's URL. To choose one
 browser, set `CSWEBUI_BROWSER_PATH` to its executable (on macOS its `.app`

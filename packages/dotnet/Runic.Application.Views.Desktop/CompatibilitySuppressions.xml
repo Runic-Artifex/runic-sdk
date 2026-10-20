@@ -2,6 +2,20 @@
 <!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.Desktop.PlatformServices</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.Desktop.PlatformServices</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Application.Views.Desktop.DesktopBridgeWindow`1.CloseAsync(System.TimeSpan,System.Threading.CancellationToken)</Target>
     <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
@@ -10,7 +24,119 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.DesktopBridgeWindow`1.get_Presentation</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.DesktopWindowPlatformServices.get_IsBound</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.get_MenuCommands</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_MenuCommands(System.Collections.Generic.IReadOnlyDictionary{System.String,System.Windows.Input.ICommand})</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_Placement(System.Func{Runic.Application.Views.IRunicWindow,Runic.Desktop.DesktopWindowPlacement})</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_Resources(System.Func{Runic.Application.Views.IRunicWindow,Runic.Desktop.ContentHandler})</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_SurfaceOptions(Runic.Desktop.DesktopSurfaceOptions)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_WindowOptions(Runic.Desktop.DesktopWindowOptions)</Target>
+    <Left>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0-windows7.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Application.Views.Desktop.DesktopBridgeWindow`1.CloseAsync(System.TimeSpan,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.DesktopBridgeWindow`1.get_Presentation</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.DesktopWindowPlatformServices.get_IsBound</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.get_MenuCommands</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_MenuCommands(System.Collections.Generic.IReadOnlyDictionary{System.String,System.Windows.Input.ICommand})</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_Placement(System.Func{Runic.Application.Views.IRunicWindow,Runic.Desktop.DesktopWindowPlacement})</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_Resources(System.Func{Runic.Application.Views.IRunicWindow,Runic.Desktop.ContentHandler})</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_SurfaceOptions(Runic.Desktop.DesktopSurfaceOptions)</Target>
+    <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.Desktop.RunicDesktopHost.set_WindowOptions(Runic.Desktop.DesktopWindowOptions)</Target>
     <Left>lib/net10.0/Runic.Application.Views.Desktop.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.Desktop.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

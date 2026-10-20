@@ -56,7 +56,7 @@ The browser host script defines `__runicBridge`:
 | `onReconnect?(listener): () => void` | Optional. Calls `listener` after the connection is re-established without a page reload; returns an unsubscribe function. |
 | `onConnectionChange?(listener): () => void` | Optional. Calls `listener(connected)` with the authenticated connection state at once and after each change, including a dropped transport, without waiting for a call; returns an unsubscribe function. It must not have the side effects of `isConnected()` (CS-WebUI's allows navigation). Runic Desktop and CS-WebUI poll WebUI's connection every 250 ms while a listener exists. |
 
-A route unbound by `RebindableBridgeTransport` answers the envelope
+A route unbound on CS-WebUI (the transport of `CreateBridgeSession`) answers the envelope
 `{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`. Runic Desktop
 answers a late call of a capability it released shortly before (it remembers the
 last 256) with the same envelope. A client reports it on every route, including

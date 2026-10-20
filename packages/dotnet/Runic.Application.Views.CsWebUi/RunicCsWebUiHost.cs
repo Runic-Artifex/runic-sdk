@@ -49,37 +49,40 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     /// <see cref="WebUiApplication.WaitAsync"/>; call <see cref="WebUiApplication.Clean"/> after the last window is disposed.
     /// </remarks>
     public RunicCsWebUiHost(IServiceProvider services)
+        : this(services, DefaultOptions)
+    {
+    }
+
+    /// <summary>Creates a host that opens Windows from <paramref name="services"/> with <paramref name="options"/>.</summary>
+    /// <param name="services">The application's service provider.</param>
+    /// <param name="options">How the host shows each window.</param>
+    /// <inheritdoc cref="RunicCsWebUiHost(IServiceProvider)" path="/remarks"/>
+    public RunicCsWebUiHost(IServiceProvider services, RunicCsWebUiHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
         Services = services;
+        UseWebView = options.UseWebView;
+        ConfigureWindow = options.ConfigureWindow;
+        ShowWindow = options.ShowWindow;
+        _includeFailureDetail = options.IncludeFailureDetail;
     }
+
+    private readonly bool? _includeFailureDetail;
+
+    private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
 
     /// <inheritdoc />
     public IServiceProvider Services { get; }
 
-    /// <summary>
-    /// Whether windows open in the platform WebView (the Edge WebView2 Runtime on Windows, GTK 3 with WebKitGTK 4.1 on
-    /// Linux, WKWebView on macOS) instead of WebUI's recommended presentation: an installed browser in app mode
-    /// (Chromium-based browsers first), then the system default browser, then the WebView. The default is
-    /// <see langword="false"/>.
-    /// </summary>
-    public bool UseWebView { get; init; }
+    /// <summary>Whether windows open in the platform WebView: <see cref="RunicCsWebUiHostOptions.UseWebView"/>.</summary>
+    public bool UseWebView { get; }
 
-    /// <summary>Configures each native window before it is shown, for example its port or kiosk mode.</summary>
-    public Action<WebUiWindow>? ConfigureWindow { get; init; }
+    /// <summary>Configures each native window before it is shown: <see cref="RunicCsWebUiHostOptions.ConfigureWindow"/>.</summary>
+    public Action<WebUiWindow>? ConfigureWindow { get; }
 
-    /// <summary>
-    /// Shows each native window in place of the presentation <see cref="UseWebView"/> selects. It receives the
-    /// configured window and <see cref="RunicWindowOptions.StartPage"/>, and can show another URL, such as a frontend
-    /// development server, or only start the server with <see cref="WebUiWindow.StartServer"/>.
-    /// </summary>
-    /// <remarks>
-    /// The <c>RUNIC_APPLICATION_SERVE_ONLY</c> switch takes precedence. Under
-    /// <see cref="Run(IServiceProvider, Func{RunicCsWebUiHost, Task{int}})"/> the window counts as shown, so
-    /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> completes when WebUI's wait returns: show the window or
-    /// start its server here.
-    /// </remarks>
-    public Action<WebUiWindow, string>? ShowWindow { get; init; }
+    /// <summary>Shows each native window in place of the selected presentation: <see cref="RunicCsWebUiHostOptions.ShowWindow"/>.</summary>
+    public Action<WebUiWindow, string>? ShowWindow { get; }
 
     /// <summary>
     /// Runs <paramref name="application"/> while the process main thread waits for WebUI, then releases WebUI's
@@ -104,11 +107,21 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     /// <param name="services">The application's service provider.</param>
     /// <param name="application">The application. Its result becomes the return value.</param>
     /// <returns>The value returned by <paramref name="application"/>, or 1 when it did not handle a window that could not be shown.</returns>
-    public static int Run(IServiceProvider services, Func<RunicCsWebUiHost, Task<int>> application)
+    public static int Run(IServiceProvider services, Func<RunicCsWebUiHost, Task<int>> application) =>
+        Run(services, DefaultOptions, application);
+
+    /// <summary>Runs <paramref name="application"/> with a host that shows each window as <paramref name="options"/> say.</summary>
+    /// <param name="services">The application's service provider.</param>
+    /// <param name="options">How the host shows each window, for example in the platform WebView.</param>
+    /// <param name="application">The application. Its result becomes the return value.</param>
+    /// <returns>The value returned by <paramref name="application"/>, or 1 when it did not handle a window that could not be shown.</returns>
+    /// <inheritdoc cref="Run(IServiceProvider, Func{RunicCsWebUiHost, Task{int}})" path="/remarks"/>
+    public static int Run(IServiceProvider services, RunicCsWebUiHostOptions options, Func<RunicCsWebUiHost, Task<int>> application)
     {
         ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(application);
-        var host = new RunicCsWebUiHost(services);
+        var host = new RunicCsWebUiHost(services, options);
         var loop = new MainThreadLoop();
         host._loop = loop;
         try
@@ -176,14 +189,14 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             cancellationToken.ThrowIfCancellationRequested();
             var viewModel = opening.ViewModel;
             window = new WebUiWindow();
-            transport = window.CreateBridgeSession();
+            transport = new RebindableBridgeTransport(new CsWebUiBridgeTransport(window));
             content = new WindowContentSession(transport, new WindowContentSessionOptions
             {
                 ViewLocator = scope.ServiceProvider.GetService<IRunicViewLocator>(),
                 RootModel = viewModel,
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
-                IncludeFailureDetail = opening.Options.IncludeFailureDetail,
+                IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
             });
             var session = content;
             // Only the all-events binding receives disconnects. runic-cswebui.js

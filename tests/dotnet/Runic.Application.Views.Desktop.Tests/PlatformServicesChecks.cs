@@ -14,17 +14,17 @@ internal sealed class PlatformServicesChecks
     [Test, NotInParallel(Order = 13)]
     public void ProviderFollowsTheRunningBackend()
     {
-        Require(PlatformServices.Select(windows: true, macOS: false, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.Windows,
+        Require(DesktopPlatformServices.Select(windows: true, macOS: false, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.Windows,
             "Windows did not select the Windows provider.");
-        Require(PlatformServices.Select(windows: false, macOS: true, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.MacOS,
+        Require(DesktopPlatformServices.Select(windows: false, macOS: true, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.MacOS,
             "macOS did not select the AppKit provider.");
-        Require(PlatformServices.Select(windows: false, macOS: false, linux: true, gtk3Claimed: true, gtk4Claimed: false) == DesktopPlatformProvider.LinuxGtk3,
+        Require(DesktopPlatformServices.Select(windows: false, macOS: false, linux: true, gtk3Claimed: true, gtk4Claimed: false) == DesktopPlatformProvider.LinuxGtk3,
             "A GTK 3 process did not select the GTK 3 provider.");
-        Require(PlatformServices.Select(windows: false, macOS: false, linux: true, gtk3Claimed: false, gtk4Claimed: true) == DesktopPlatformProvider.LinuxGtk4,
+        Require(DesktopPlatformServices.Select(windows: false, macOS: false, linux: true, gtk3Claimed: false, gtk4Claimed: true) == DesktopPlatformProvider.LinuxGtk4,
             "A GTK 4 process did not select the GTK 4 provider.");
-        Require(PlatformServices.Select(windows: false, macOS: false, linux: true, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.None,
+        Require(DesktopPlatformServices.Select(windows: false, macOS: false, linux: true, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.None,
             "A Linux process without a toolkit selected a provider.");
-        Require(PlatformServices.Select(windows: false, macOS: false, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.None,
+        Require(DesktopPlatformServices.Select(windows: false, macOS: false, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.None,
             "An unknown operating system selected a provider.");
     }
 
@@ -44,7 +44,7 @@ internal sealed class PlatformServicesChecks
                 "Capabilities before the window opened were not all owner-unavailable.");
             Require(ReferenceEquals(viewModel.Files, services.FileDialogs) && ReferenceEquals(viewModel.Clipboard, services.Clipboard),
                 "The window scope resolved more than one set of platform services.");
-            Require(services.IsBound && services.Provider == PlatformServices.CurrentProvider,
+            Require(services.IsBound && services.Provider == DesktopPlatformServices.CurrentProvider,
                 "Opening the window did not bind its services with the current provider.");
             var files = services.GetSnapshot().Statuses["platform.files.open"];
             if (services.Provider == DesktopPlatformProvider.None)
@@ -104,8 +104,8 @@ internal sealed class PlatformServicesChecks
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") });
         var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-        var services = PlatformServices.ForWindow(new DesktopNativeOwner(window));
-        Require(services.IsBound && services.Provider == PlatformServices.CurrentProvider, "ForWindow did not bind the open window.");
+        var services = DesktopPlatformServices.ForWindow(new DesktopNativeOwner(window));
+        Require(services.IsBound && services.Provider == DesktopPlatformServices.CurrentProvider, "ForWindow did not bind the open window.");
         await services.DisposeAsync();
         await services.DisposeAsync();
         Require(await services.Clipboard.ReadTextAsync(16) is PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed),
@@ -123,7 +123,7 @@ internal sealed class PlatformServicesChecks
         await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
         {
             var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-            Require(await PlatformServices.PresentAsync(new DesktopNativeOwner(window)) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            Require(await DesktopPlatformServices.PresentAsync(new DesktopNativeOwner(window)) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                 "A window without native dispatch did not report the owner unavailable.");
         }
 
@@ -133,7 +133,7 @@ internal sealed class PlatformServicesChecks
             var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
             var owner = new DesktopNativeOwner(window);
             await window.CloseAsync();
-            Require(await PlatformServices.PresentAsync(owner) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            Require(await DesktopPlatformServices.PresentAsync(owner) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
                 "A closed window did not report the owner closed.");
         }
 
@@ -142,8 +142,8 @@ internal sealed class PlatformServicesChecks
         await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false }))
         {
             await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
-            await ((DesktopBridgeWindow<FileViewModel>)window.Host).Presentation.CloseAsync();
-            Require(await PlatformServices.PresentAsync(window) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            await ((DesktopBridgeWindow<FileViewModel>)window.Host).Window.CloseAsync();
+            Require(await DesktopPlatformServices.PresentAsync(window) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
                 "A Runic Window whose presentation closed did not report the owner closed.");
         }
     }
@@ -161,15 +161,15 @@ internal sealed class PlatformServicesChecks
             var services = (DesktopWindowPlatformServices)window.ViewModel.Platform;
             try
             {
-                Require(await PlatformServices.AnnounceAsync(window, "Saved") is PlatformResult<PlatformUnit>.Success,
+                Require(await DesktopPlatformServices.AnnounceAsync(window, "Saved") is PlatformResult<PlatformUnit>.Success,
                     "A Window did not announce through its embedded window.");
                 Require(await services.AnnounceAsync("The disk is full", DesktopAnnouncementPriority.Assertive) is PlatformResult<PlatformUnit>.Success,
                     "The ViewModel's platform services did not announce.");
                 Require(factory.Hosts[0].Announcements.SequenceEqual(
                     [("Saved", DesktopAnnouncementPriority.Polite), ("The disk is full", DesktopAnnouncementPriority.Assertive)]),
                     "The embedded window did not receive the announcements with their priorities.");
-                await ((DesktopBridgeWindow<FileViewModel>)window.Host).Presentation.CloseAsync();
-                Require(await PlatformServices.AnnounceAsync(window, "Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                await ((DesktopBridgeWindow<FileViewModel>)window.Host).Window.CloseAsync();
+                Require(await DesktopPlatformServices.AnnounceAsync(window, "Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
                     "A Window whose presentation closed did not report the owner closed.");
             }
             finally
@@ -185,7 +185,7 @@ internal sealed class PlatformServicesChecks
             var factory = new NativeDispatchFactory();
             await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
             await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
-            Require(await PlatformServices.AnnounceAsync(window, "Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            Require(await DesktopPlatformServices.AnnounceAsync(window, "Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
                 "A window host without announcements did not report the backend unavailable.");
             Require(factory.Hosts[0].Announcements.IsEmpty, "A window host without announcements received one.");
         }
@@ -215,10 +215,12 @@ internal sealed class PlatformServicesChecks
             if (fail) throw new InvalidOperationException("The desktop refused.");
             return ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()));
         }
-        RunicDesktopHost Windows(DesktopHost desktop, bool hidden = false) => new(provider, desktop)
+        RunicDesktopHost Windows(DesktopHost desktop, bool hidden = false) => new(provider, desktop, new RunicDesktopHostOptions
         {
             SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
             WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = hidden },
+        })
+        {
             Present = Record,
         };
 
@@ -237,7 +239,7 @@ internal sealed class PlatformServicesChecks
             fail = true;
             await using (var refused = await Windows(host).OpenWindowAsync<FileWindow>(null, activation))
             {
-                Require(presented.Count == 2 && refused.Host is DesktopBridgeWindow<FileViewModel> { Presentation.IsOpen: true },
+                Require(presented.Count == 2 && refused.Host is DesktopBridgeWindow<FileViewModel> { Window.IsOpen: true },
                     "A refused presentation failed the open or closed the window.");
             }
         }
@@ -267,7 +269,7 @@ internal sealed class PlatformServicesChecks
     public async Task Gtk4ProcessSelectsOnlyTheGtk4Provider()
     {
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);
-        Require(PlatformServices.CurrentProvider == DesktopPlatformProvider.LinuxGtk4, "A GTK 4 process did not select the GTK 4 provider.");
+        Require(DesktopPlatformServices.CurrentProvider == DesktopPlatformProvider.LinuxGtk4, "A GTK 4 process did not select the GTK 4 provider.");
         await using var provider = CreateProvider();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
         await using (var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>())

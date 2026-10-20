@@ -15,6 +15,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- The test-only view lifetime check of the notes-view-first example wraps a probe transport. -->
+    <InternalsVisibleTo Include="NotesViewFirst" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.CsWebUi.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.targets" />
     <None Update="build/Runic.Application.Views.CsWebUi.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.props" />

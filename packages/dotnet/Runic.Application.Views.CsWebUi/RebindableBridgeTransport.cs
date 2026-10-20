@@ -6,7 +6,7 @@ namespace Runic.Application.Views.CsWebUi;
 /// Keeps each native route for a window while Bridge attachments replace its
 /// managed handler. Dispose this transport before disposing the window.
 /// </summary>
-public sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
+internal sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
 {
     private const string DisconnectedReply =
         "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";

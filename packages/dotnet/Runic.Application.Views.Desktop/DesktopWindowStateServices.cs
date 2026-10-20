@@ -3,7 +3,7 @@ using Runic.Platform;
 
 namespace Runic.Application.Views.Desktop;
 
-public static partial class PlatformServices
+public static partial class DesktopPlatformServices
 {
     /// <summary>
     /// Gets the bounds, maximized and full-screen state of an open Runic Window, or of a closed one as it last was, to
@@ -12,7 +12,7 @@ public static partial class PlatformServices
     /// <param name="window">The Window, on any host. It must have opened; it may have closed since.</param>
     /// <returns>
     /// The state of the Window's embedded Desktop window: <see cref="DesktopWindow.State"/> of
-    /// <see cref="DesktopBridgeWindow{TViewModel}.Presentation"/>. After the window has closed, until the Window is
+    /// <see cref="DesktopBridgeWindow{TViewModel}.Window"/>. After the window has closed, until the Window is
     /// disposed, it is the last state before closing, so save it after <c>WaitForCloseAsync</c> returns.
     /// </returns>
     /// <remarks>
