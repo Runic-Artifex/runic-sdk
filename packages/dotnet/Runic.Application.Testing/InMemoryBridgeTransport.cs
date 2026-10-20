@@ -2,8 +2,8 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Testing;
 
-/// <summary>Arguments delivered to a generated View route by a headless test.</summary>
-public sealed record ViewTestArguments(
+/// <summary>Arguments delivered to a generated Bridge route by a headless test.</summary>
+public sealed record BridgeTestArguments(
     long? Int64Value = null,
     bool? BooleanValue = null,
     string? StringValue = null,
@@ -18,18 +18,15 @@ public sealed record ViewTestArguments(
     public string GetString() => StringValue ?? throw new InvalidOperationException("No string argument was supplied.");
 }
 
-/// <summary>One state publication in the order observed by the test transport.</summary>
-public sealed record ViewTestPublication(string Route, string StateJson);
-
 /// <summary>
 /// In-memory implementation of the same host-neutral route boundary used by
 /// browser adapters. Calls invoke real generated handlers; no native UI runs.
 /// </summary>
-public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
+public sealed class InMemoryBridgeTransport : IBridgeTransport, IDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, Binding> _bindings = new(StringComparer.Ordinal);
-    private readonly List<ViewTestPublication> _publications = [];
+    private readonly List<(string Route, string Json)> _publications = [];
     private TaskCompletionSource _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _disposed;
 
@@ -53,7 +50,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
         return Add(name, new Binding(this, name, null, handler));
     }
 
-    /// <summary>Records a state publication for <see cref="DrainPublications"/>.</summary>
+    /// <summary>Records a state publication for <see cref="TakePublications"/>.</summary>
     public void Publish(string name, string stateJson)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -68,7 +65,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
     }
 
     /// <summary>Calls a synchronous generated route.</summary>
-    public string Call(string name, ViewTestArguments? arguments = null)
+    public string Call(string name, BridgeTestArguments? arguments = null)
     {
         var binding = Find(name);
         if (binding.Sync is null) throw new InvalidOperationException($"Route '{name}' is asynchronous.");
@@ -76,7 +73,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
     }
 
     /// <summary>Calls an asynchronous generated route and observes its result.</summary>
-    public ValueTask<string> CallAsync(string name, ViewTestArguments? arguments = null,
+    public ValueTask<string> CallAsync(string name, BridgeTestArguments? arguments = null,
         CancellationToken cancellationToken = default)
     {
         var binding = Find(name);
@@ -93,8 +90,16 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
     // Whether a bound route is asynchronous, such as an awaited command.
     internal bool IsAsync(string name) => Find(name).Async is not null;
 
-    /// <summary>Returns and clears publications since the previous drain.</summary>
-    public IReadOnlyList<ViewTestPublication> DrainPublications()
+    /// <summary>
+    /// Returns and removes the frames published since the previous call, in order, across all routes. Drivers and
+    /// trackers then do not see them.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A delta frame names a collection change kind the client does not know.</exception>
+    public IReadOnlyList<RunicViewPublication> TakePublications() =>
+        TakeFrames().Select(frame => new RunicViewPublication(frame.Route, frame.Json)).ToArray();
+
+    // Unparsed frames, so the drivers' log parses each route's frames only when that route takes them.
+    internal (string Route, string Json)[] TakeFrames()
     {
         lock (_gate)
         {
@@ -146,7 +151,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
     }
 
     private sealed class Binding(
-        InMemoryViewTransport owner,
+        InMemoryBridgeTransport owner,
         string name,
         Func<IBridgeArguments, string>? sync,
         Func<IBridgeArguments, CancellationToken, ValueTask<string>>? async) : IDisposable

@@ -12,10 +12,10 @@ internal sealed class CodegenShapeTests
     public void GeneratedCodecsRoundTripModelShapes()
     {
         var model = new CodegenShapeViewModel();
-        using var host = new RunicWindowTestHost<CodegenShapeViewModel>(model, "codegenShape",
-            (transport, content, vm) => new CodegenShapeBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<CodegenShapeViewModel>(model,
+            (transport, content, vm) => new CodegenShapeBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "codegenShape", ViewLocator = new TestViewLocator() });
 
-        using (var snapshot = host.Snapshot())
+        using (var snapshot = host.RawSnapshot())
         {
             var state = snapshot.RootElement.GetProperty("state");
             Require(state.GetProperty("mode").GetString() == "None",
@@ -55,7 +55,7 @@ internal sealed class CodegenShapeTests
             "A DTO with JSON members did not round-trip.");
         Rejected(host, "Json", """{"any":null,"node":null,"required":null}""");
         Require(model.Json.Required.GetValue<int>() == 0, "A non-nullable JsonNode accepted JSON null.");
-        using (var snapshot = host.Snapshot())
+        using (var snapshot = host.RawSnapshot())
             Require(snapshot.RootElement.GetProperty("state").GetProperty("json").GetRawText() == """{"any":null,"node":{"b":2},"required":0}""",
                 "A JSON member read from the page was not written back unchanged.");
 
@@ -142,9 +142,9 @@ internal sealed class CodegenShapeTests
                 $"The generated client lost a nullable ReactiveUI type argument: missing '{expected}'.");
 
         using var model = new NullableReactiveViewModel();
-        using var host = new RunicWindowTestHost<NullableReactiveViewModel>(model, "nullableReactive",
-            (transport, content, vm) => new NullableReactiveBridge(transport, vm, content: content), new TestViewLocator());
-        using (var snapshot = host.Snapshot())
+        using var host = new RunicWindowTestHost<NullableReactiveViewModel>(model,
+            (transport, content, vm) => new NullableReactiveBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "nullableReactive", ViewLocator = new TestViewLocator() });
+        using (var snapshot = host.RawSnapshot())
             Require(snapshot.RootElement.GetProperty("state").TryGetProperty("isEchoExecuting", out var executing)
                 && executing.ValueKind == JsonValueKind.False,
                 "A ReactiveUI command with an argument did not write the isEchoExecuting field its client declares.");
@@ -308,8 +308,8 @@ internal sealed class CodegenShapeTests
         Require(!types.Contains("export interface delete ", StringComparison.Ordinal),
             "A C# type named like a TypeScript reserved word was not renamed.");
 
-        using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(), "naming",
-            (transport, content, vm) => new NamingBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(),
+            (transport, content, vm) => new NamingBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "naming", ViewLocator = new TestViewLocator() });
         var reply = host.Transport.Call("namingSnapshot");
         using var snapshot = JsonDocument.Parse(reply);
         var state = snapshot.RootElement.GetProperty("state");

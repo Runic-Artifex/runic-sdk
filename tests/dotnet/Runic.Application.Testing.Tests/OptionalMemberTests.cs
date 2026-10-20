@@ -33,7 +33,7 @@ internal sealed class OptionalMemberTests
         Require(model.LastSettings is { Name: "given", Limit: null, Note: "n" }, "Given init members were not read.");
         Rejected(host, "Configure", """{"name":null}""");
 
-        using var snapshot = host.Snapshot();
+        using var snapshot = host.RawSnapshot();
         var state = snapshot.RootElement.GetProperty("state");
         Require(state.GetProperty("summary").GetRawText() == """{"runs":3,"text":"3 runs"}""",
             $"An output-only DTO was not written: {state}");
@@ -53,7 +53,8 @@ internal sealed class OptionalMemberTests
     }
 
     private static RunicWindowTestHost<OptionalMemberViewModel> Host(OptionalMemberViewModel model) =>
-        new(model, "optionalMember", (transport, content, vm) => new OptionalMemberBridge(transport, vm, content: content), new TestViewLocator());
+        new(model, (transport, content, vm) => new OptionalMemberBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "optionalMember", ViewLocator = new TestViewLocator() });
 
     private static void Call(RunicWindowTestHost<OptionalMemberViewModel> host, string command, string input)
     {

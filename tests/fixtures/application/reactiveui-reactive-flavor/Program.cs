@@ -31,7 +31,7 @@ var command = ReactiveCommand.Create(() => 42, outputScheduler: commandScheduler
 var commandResult = await ReactiveCommandExecution.Execute(command, Unit.Default, CancellationToken.None);
 if (commandResult != 42) throw new InvalidOperationException("The Reactive flavor command adapter lost its typed result.");
 
-using (var transport = new InMemoryViewTransport())
+using (var transport = new InMemoryBridgeTransport())
 using (new FlavorModelBridge(transport, model))
 {
     for (var execution = 0; execution < 100; execution++)

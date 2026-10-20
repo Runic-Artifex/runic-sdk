@@ -37,7 +37,7 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     [Test]
     public async Task Renaming_in_one_window_updates_the_other()
     {
-        (await _first.Root.ExecuteAsync(vm => vm.RenameCommand, "\"Atlas\"")).EnsureOk();
+        (await _first.Root.ExecuteAsync(vm => vm.RenameCommand, "\"Atlas\"")).ThrowIfFailed();
 
         // The rename posted a turn to the second Window's model context; a turn after it sees the new title.
         await _secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>().InvokeAsync(static () => { });
@@ -48,7 +48,7 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     [Test]
     public async Task New_window_opens_another_project_window()
     {
-        (await _first.Root.ExecuteAsync(vm => vm.NewWindowCommand)).EnsureOk();
+        (await _first.Root.ExecuteAsync(vm => vm.NewWindowCommand)).ThrowIfFailed();
 
         await Assert.That(_windows.Opened).IsEquivalentTo([typeof(ProjectWindow)]);
     }
@@ -56,7 +56,7 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     [Test]
     public async Task The_chosen_theme_is_saved_in_the_settings_file()
     {
-        (await _first.Root.ExecuteAsync(vm => vm.ChooseThemeCommand, "\"dark\"")).EnsureOk();
+        (await _first.Root.ExecuteAsync(vm => vm.ChooseThemeCommand, "\"dark\"")).ThrowIfFailed();
 
         await Assert.That(_first.Root.Snapshot().Read(vm => vm.Theme)).IsEqualTo("dark");
         await Assert.That(new SettingsStore(_settingsPath).Load()).IsEqualTo(new AppSettings(Theme: "dark"));

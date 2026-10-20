@@ -104,7 +104,7 @@ public sealed class ReleasedViewReplyTests
     {
         public Fixture()
         {
-            Transport = new InMemoryViewTransport();
+            Transport = new InMemoryBridgeTransport();
             Session = new WindowContentSession(Transport, new WindowContentSessionOptions { RootModel = Root });
             Page = new Page(() => Present(new Page(() => { })));
             Route = $"content{Present(Page).Id}";
@@ -112,7 +112,7 @@ public sealed class ReleasedViewReplyTests
                 "The page did not mount.");
         }
 
-        public InMemoryViewTransport Transport { get; }
+        public InMemoryBridgeTransport Transport { get; }
         public WindowContentSession Session { get; }
         public Shell Root { get; } = new();
         public Page Page { get; }

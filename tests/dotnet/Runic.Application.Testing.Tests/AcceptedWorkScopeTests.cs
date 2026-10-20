@@ -197,7 +197,7 @@ internal sealed class AcceptedWorkScopeTests
             return actualWork;
         }, Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(context));
         var model = new RecoveryModel(command);
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new RecoveryBridge(transport, model, session);
         var invocation = transport.CallAsync("recoverySave").AsTask();

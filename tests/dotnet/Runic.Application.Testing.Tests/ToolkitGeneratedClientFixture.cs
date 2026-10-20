@@ -15,8 +15,8 @@ internal static class ToolkitGeneratedClientFixture
     internal static async Task<ToolkitGeneratedClientTranscript> CreateAsync()
     {
         var model = new ToolkitTypedViewModel();
-        using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model, "toolkitTyped",
-            (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model,
+            (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "toolkitTyped", ViewLocator = new TestViewLocator() });
 
         var snapshot = host.Transport.Call("toolkitTypedSnapshot");
         var stringRequest = JsonSerializer.Serialize("client string", Json);

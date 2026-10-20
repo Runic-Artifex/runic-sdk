@@ -16,7 +16,7 @@ internal sealed class SnapshotBatchTests
     public async Task CoalescesBulkNotifications()
     {
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "bulk", counter);
 
@@ -38,7 +38,7 @@ internal sealed class SnapshotBatchTests
     public async Task ObservableChangesetsCaptureOnceEach()
     {
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "observable", counter);
         var source = new Subject<int[]>();
@@ -80,7 +80,7 @@ internal sealed class SnapshotBatchTests
     public async Task NestedScopesFlushOnce()
     {
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "nested", counter);
 
@@ -101,7 +101,7 @@ internal sealed class SnapshotBatchTests
     public async Task ExceptionStillFlushes()
     {
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "exception", counter);
 
@@ -124,9 +124,9 @@ internal sealed class SnapshotBatchTests
     {
         var first = new Model();
         var second = new Model();
-        using var firstTransport = new InMemoryViewTransport();
-        using var secondTransport = new InMemoryViewTransport();
-        using var otherTransport = new InMemoryViewTransport();
+        using var firstTransport = new InMemoryBridgeTransport();
+        using var secondTransport = new InMemoryBridgeTransport();
+        using var otherTransport = new InMemoryBridgeTransport();
         var firstCounter = new CaptureCounter();
         var secondCounter = new CaptureCounter();
         var otherCounter = new CaptureCounter();
@@ -157,7 +157,7 @@ internal sealed class SnapshotBatchTests
     public async Task RouteRepliesRemainImmediate()
     {
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var content = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         var counter = new CaptureCounter();
         using var bridge = new CheckedProbeBridge(transport, model, content, counter);
@@ -203,20 +203,20 @@ internal sealed class SnapshotBatchTests
     public async Task FailedCaptureKeepsDelivering()
     {
         var model = new Model();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var bridge = new ThrowingProbeBridge(transport, model);
         model.Value = 13;
         await Task.Delay(100);
-        Require(transport.DrainPublications().Count == 0, "A failed capture published a state.");
+        Require(transport.TakePublications().Count == 0, "A failed capture published a state.");
         model.Value = 14;
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        IReadOnlyList<ViewTestPublication> published = [];
+        IReadOnlyList<RunicViewPublication> published = [];
         while (published.Count == 0 && DateTime.UtcNow < deadline)
         {
             await Task.Delay(5);
-            published = transport.DrainPublications();
+            published = transport.TakePublications();
         }
-        Require(published.Count == 1 && published[0].StateJson.Contains("\"value\":14", StringComparison.Ordinal),
+        Require(published.Count == 1 && published[0].Json.Contains("\"value\":14", StringComparison.Ordinal),
             "Delivery stopped after a snapshot writer threw ObjectDisposedException.");
     }
 
@@ -318,7 +318,7 @@ internal sealed class SnapshotBatchTests
 
     private sealed class HeldTransport : IBridgeTransport, IDisposable
     {
-        public InMemoryViewTransport Inner { get; } = new();
+        public InMemoryBridgeTransport Inner { get; } = new();
         public ManualResetEventSlim Release { get; } = new();
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);

@@ -39,13 +39,13 @@ internal sealed class ReactiveCommandFailureLoggingTests
 
             // A Bridge call reports its own failure: the awaited route as event 1000, an operation as event 1004.
             var reply = await host.Root.ExecuteAsync(vm => vm.FailCommand);
-            Require(!reply.Ok, "The awaited Bridge call of a failing command succeeded.");
+            Require(!reply.Succeeded, "The awaited Bridge call of a failing command succeeded.");
             var operation = await host.Root.Start(vm => vm.FailCommand, requestId: "fail-op").WaitAsync();
-            Require(operation.Kind == "failed", $"The failing operation did not fail: {operation.Json}");
+            Require(operation.Kind == RunicOperationStatusKind.Failed, $"The failing operation did not fail: {operation.Json}");
 
             // A declared failure reaches the client and is not logged, from the Bridge or from .NET.
             var declared = await host.Root.ExecuteAsync(vm => vm.DeclinedCommand);
-            Require(!declared.Ok, "The declared failure succeeded.");
+            Require(!declared.Succeeded, "The declared failure succeeded.");
             await ExecuteInModelAsync(context, model.DeclinedCommand);
 
             // The model context runs scheduled deliveries in order: once this execution is logged, every earlier

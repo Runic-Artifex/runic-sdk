@@ -61,7 +61,7 @@ internal sealed class SnapshotDeliveryTests
 
     private sealed class ReentrantTransport : IBridgeTransport, IDisposable
     {
-        public InMemoryViewTransport Inner { get; } = new();
+        public InMemoryBridgeTransport Inner { get; } = new();
         public TaskCompletionSource Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Observed { get; private set; }
         public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);

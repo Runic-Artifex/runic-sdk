@@ -15,7 +15,7 @@ internal sealed class ToolkitCancelTests
     {
         var model = new ToolkitCancelViewModel();
         using var host = CreateHost(model);
-        using (var idle = host.Snapshot())
+        using (var idle = host.RawSnapshot())
             Require(!idle.RootElement.GetProperty("state").GetProperty("canSaveCancel").GetBoolean(),
                 "The generated cancel command must be unavailable while idle.");
         using (var unavailable = JsonDocument.Parse(host.Transport.Call("toolkitCancelSaveCancel")))
@@ -52,7 +52,8 @@ internal sealed class ToolkitCancelTests
     }
 
     private static RunicWindowTestHost<ToolkitCancelViewModel> CreateHost(ToolkitCancelViewModel model) =>
-        new(model, "toolkitCancel", (transport, content, vm) => new ToolkitCancelBridge(transport, vm, content: content), new TestViewLocator());
+        new(model, (transport, content, vm) => new ToolkitCancelBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "toolkitCancel", ViewLocator = new TestViewLocator() });
 
     private static JsonDocument Start(RunicWindowTestHost<ToolkitCancelViewModel> host, string command, string requestId) =>
         JsonDocument.Parse(host.Transport.Call($"toolkitCancelStart{command}", new(StringValue:
@@ -79,7 +80,7 @@ internal sealed class ToolkitCancelTests
             Encode(new { contract, member = command, requestId }))));
         Require(terminal.RootElement.GetProperty("kind").GetString() == "cancelled",
             "Toolkit cancel execution did not finish the original bridge operation as cancelled.");
-        using var idle = host.Snapshot();
+        using var idle = host.RawSnapshot();
         Require(!idle.RootElement.GetProperty("state").GetProperty($"can{command}Cancel").GetBoolean(),
             "A finished Toolkit operation left its generated cancel command available.");
     }
@@ -91,14 +92,14 @@ internal sealed class ToolkitCancelTests
         throw new InvalidOperationException("The actual Toolkit execution was not cancelled.");
     }
 
-    private static async Task<bool> PublishedAsync(InMemoryViewTransport transport, Func<JsonElement, bool> predicate)
+    private static async Task<bool> PublishedAsync(InMemoryBridgeTransport transport, Func<JsonElement, bool> predicate)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
-            foreach (var publication in transport.DrainPublications().Where(publication => publication.Route == "toolkitCancel"))
+            foreach (var publication in transport.TakePublications().Where(publication => publication.Route == "toolkitCancel"))
             {
-                using var state = JsonDocument.Parse(publication.StateJson);
+                using var state = JsonDocument.Parse(publication.Json);
                 if (predicate(state.RootElement)) return true;
             }
             await Task.Delay(10);

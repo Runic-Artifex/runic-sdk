@@ -19,12 +19,12 @@ public sealed class EditorTests
         await Assert.That(web.Root.Snapshot().Read(vm => vm.ValidationMessage)).IsEqualTo("Enter a title.");
         await Assert.That(web.Root.Snapshot().CanExecute(vm => vm.SaveCommand)).IsFalse();
 
-        web.Root.Set(vm => vm.Title, "Updated").EnsureOk();
+        web.Root.Set(vm => vm.Title, "Updated").ThrowIfFailed();
         await Assert.That(app.Editor.Title).IsEqualTo("Updated");
         await Assert.That(app.Editor.IsDirty).IsTrue();
         var save = web.Root.Start(vm => vm.SaveCommand);
         app.Clock.Advance(TimeSpan.FromMilliseconds(350));
-        await Assert.That((await save.WaitAsync()).Kind).IsEqualTo("succeeded");
+        await Assert.That((await save.WaitAsync()).Kind).IsEqualTo(RunicOperationStatusKind.Succeeded);
         await Assert.That(app.Store.Get(1).Title).IsEqualTo("Updated");
         await Assert.That(app.Editor.IsDirty).IsFalse();
         await Assert.That(web.Root.Snapshot().Read(vm => vm.Status)).IsEqualTo("Saved.");
@@ -35,9 +35,9 @@ public sealed class EditorTests
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Body, "Submitted").EnsureOk();
+        web.Root.Set(vm => vm.Body, "Submitted").ThrowIfFailed();
         var save = web.Root.Start(vm => vm.SaveCommand);
-        web.Root.Set(vm => vm.Body, "Later edit").EnsureOk();
+        web.Root.Set(vm => vm.Body, "Later edit").ThrowIfFailed();
         app.Clock.Advance(TimeSpan.FromMilliseconds(350));
         await save.WaitAsync();
         await Assert.That(app.Store.Get(1).Body).IsEqualTo("Submitted");
@@ -50,7 +50,7 @@ public sealed class EditorTests
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Title, "Draft").EnsureOk();
+        web.Root.Set(vm => vm.Title, "Draft").ThrowIfFailed();
         var save = web.Root.Start(vm => vm.SaveCommand);
         await app.Context.InvokeAsync(() => app.Editor.SaveCancelCommand.Execute(null));
         await save.WaitAsync();
@@ -68,8 +68,8 @@ public sealed class EditorTests
         await using var app = await TestApp.OpenAsync(storage);
         storage.AfterWrite = () => app.Editor.SaveCancelCommand.Execute(null);
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Title, "Written").EnsureOk();
-        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
+        web.Root.Set(vm => vm.Title, "Written").ThrowIfFailed();
+        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).ThrowIfFailed();
         await Assert.That(storage.Get(1).Title).IsEqualTo("Written");
         await Assert.That(app.Editor.IsDirty).IsFalse();
         await Assert.That(app.Editor.Status).IsEqualTo("Saved.");
@@ -82,12 +82,12 @@ public sealed class EditorTests
         var storage = new FailingStore();
         await using var app = await TestApp.OpenAsync(storage);
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Title, "Retry").EnsureOk();
-        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
+        web.Root.Set(vm => vm.Title, "Retry").ThrowIfFailed();
+        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).ThrowIfFailed();
         await Assert.That(web.Root.Snapshot().Read(vm => vm.Error)).IsEqualTo("Disk unavailable.");
         await Assert.That(app.Editor.IsDirty).IsTrue();
         storage.Fail = false;
-        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
+        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).ThrowIfFailed();
         await Assert.That(app.Editor.Error).IsEqualTo("");
         await Assert.That(app.Editor.IsDirty).IsFalse();
         await Assert.That(storage.Get(1).Title).IsEqualTo("Retry");
@@ -98,7 +98,7 @@ public sealed class EditorTests
     {
         await using var app = await TestApp.OpenAsync();
         var entry = app.Regions.Main.CurrentEntry;
-        using (var firstWeb = app.Connect()) firstWeb.Root.Set(vm => vm.Body, "Draft survives").EnsureOk();
+        using (var firstWeb = app.Connect()) firstWeb.Root.Set(vm => vm.Body, "Draft survives").ThrowIfFailed();
         // Disposing the session represents web -> native. Native edits use the same model.
         await app.Context.InvokeAsync(() => app.Editor.Title = "Native edit");
         using (var secondWeb = app.Connect())
@@ -139,7 +139,7 @@ public sealed class EditorTests
         await using var app = await TestApp.OpenAsync();
         using (var first = app.Connect())
         {
-            first.Root.Set(vm => vm.Title, "Uncommitted").EnsureOk();
+            first.Root.Set(vm => vm.Title, "Uncommitted").ThrowIfFailed();
             first.Root.Start(vm => vm.SaveCommand);
         }
         await app.Editor.SaveCommand.ExecutionTask!;
@@ -155,7 +155,7 @@ public sealed class EditorTests
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Title, "Draft").EnsureOk();
+        web.Root.Set(vm => vm.Title, "Draft").ThrowIfFailed();
         var entry = app.Regions.Main.CurrentEntry;
         var back = app.Regions.Main.BackAsync().AsTask();
         await WhenAsync(app.Regions.Dialog, () => app.Regions.Dialog.Current is ConfirmViewModel);
@@ -183,7 +183,7 @@ public sealed class EditorTests
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Body, "Keep this").EnsureOk();
+        web.Root.Set(vm => vm.Body, "Keep this").ThrowIfFailed();
         using var cancellation = new CancellationTokenSource();
         var leaving = app.Regions.Main.BackAsync(cancellationToken: cancellation.Token).AsTask();
         await WhenAsync(app.Regions.Dialog, () => app.Regions.Dialog.Current is not null);
@@ -204,11 +204,11 @@ public sealed class EditorTests
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
-        web.Root.Set(vm => vm.Title, "Draft").EnsureOk();
+        web.Root.Set(vm => vm.Title, "Draft").ThrowIfFailed();
         var save = web.Root.Start(vm => vm.SaveCommand);
         await Assert.That(await app.Regions.Main.BackAsync()).IsTypeOf<NavigationResult<object>.Rejected>();
         await Assert.That(app.Regions.Dialog.Current).IsNull();
-        (await web.Root.ExecuteAsync(vm => vm.SaveCancelCommand)).EnsureOk();
+        (await web.Root.ExecuteAsync(vm => vm.SaveCancelCommand)).ThrowIfFailed();
         await save.WaitAsync();
         await Assert.That(app.Editor.IsDirty).IsTrue();
     }

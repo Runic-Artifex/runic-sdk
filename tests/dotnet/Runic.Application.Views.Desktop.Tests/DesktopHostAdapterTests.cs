@@ -141,7 +141,7 @@ internal sealed class DesktopBridgeTransportTests
         var window = new DesktopBridgeWindow<SlowModel>(scope, surface, transport, content, connections, model);
         // The command route is served by an in-memory transport so the test can
         // call it; its admission still belongs to the window's content session.
-        using var calls = new InMemoryViewTransport();
+        using var calls = new InMemoryBridgeTransport();
         window.Attach(new SlowBridge(calls, model, content));
         Require(transport.RegisteredRouteCount > 0, "The window session registered no Desktop routes.");
 

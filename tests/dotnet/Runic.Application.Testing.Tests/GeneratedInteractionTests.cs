@@ -11,9 +11,9 @@ internal sealed class GeneratedInteractionTests
     public async Task GeneratedInteractionDeliversTypedBrowserAnswersAsync()
     {
         using var model = new GeneratedInteractionViewModel();
-        using var host = new RunicWindowTestHost<GeneratedInteractionViewModel>(model, "generatedInteraction",
+        using var host = new RunicWindowTestHost<GeneratedInteractionViewModel>(model,
             (transport, content, vm) => new GeneratedInteractionBridge(transport, vm, content: content),
-            new TestViewLocator());
+            new RunicWindowTestHostOptions { RootRoute = "generatedInteraction", ViewLocator = new TestViewLocator() });
 
         const string route = "generatedInteraction";
         const string presentation = "generated:interaction";

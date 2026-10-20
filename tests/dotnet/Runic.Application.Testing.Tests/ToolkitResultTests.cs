@@ -11,8 +11,8 @@ internal sealed class ToolkitResultTests
     public async Task AToolkitTaskResultIsTheOperationResultAsync()
     {
         var model = new ToolkitResultViewModel();
-        using var host = new RunicWindowTestHost<ToolkitResultViewModel>(model, "toolkitResult",
-            (transport, content, vm) => new ToolkitResultBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<ToolkitResultViewModel>(model,
+            (transport, content, vm) => new ToolkitResultBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "toolkitResult", ViewLocator = new TestViewLocator() });
 
         using (var label = await CompleteAsync(host, "Label", "label-null", null))
             Require(label.RootElement.GetProperty("result").ValueKind == JsonValueKind.Null,

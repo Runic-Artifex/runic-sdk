@@ -193,7 +193,7 @@ internal sealed class CollectionDeltaConformanceTests
     {
         private readonly object _gate = new();
         private readonly List<string> _frames = [];
-        public InMemoryViewTransport Inner { get; } = new();
+        public InMemoryBridgeTransport Inner { get; } = new();
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ManualResetEventSlim Release { get; } = new(!held);
         public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);

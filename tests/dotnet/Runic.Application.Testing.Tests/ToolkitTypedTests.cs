@@ -13,8 +13,8 @@ internal sealed class ToolkitTypedTests
     public async Task ToolkitTypedCommandsCrossTheBridgeAsync()
     {
         var model = new ToolkitTypedViewModel();
-        using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model, "toolkitTyped",
-            (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model,
+            (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "toolkitTyped", ViewLocator = new TestViewLocator() });
 
         AssertSyncCommands(host, model);
         await AssertAsyncCommandsAsync(host, model);
@@ -97,19 +97,19 @@ internal sealed class ToolkitTypedTests
             Encode(new { contract, member = "Cancel", requestId })))));
         Require(terminal.RootElement.GetProperty("kind").GetString() == "cancelled" && model.CancelledCount == 1,
             "A cancelled Toolkit command did not observe command-level cancellation.");
-        using var idle = host.Snapshot();
+        using var idle = host.RawSnapshot();
         Require(!idle.RootElement.GetProperty("state").GetProperty("isCancelExecuting").GetBoolean(),
             "A finished asynchronous Toolkit command still reported isCancelExecuting.");
     }
 
-    private static async Task<bool> PublishedAsync(InMemoryViewTransport transport, Func<JsonElement, bool> predicate)
+    private static async Task<bool> PublishedAsync(InMemoryBridgeTransport transport, Func<JsonElement, bool> predicate)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
-            foreach (var publication in transport.DrainPublications().Where(publication => publication.Route == "toolkitTyped"))
+            foreach (var publication in transport.TakePublications().Where(publication => publication.Route == "toolkitTyped"))
             {
-                using var state = JsonDocument.Parse(publication.StateJson);
+                using var state = JsonDocument.Parse(publication.Json);
                 if (predicate(state.RootElement)) return true;
             }
             await Task.Delay(10);

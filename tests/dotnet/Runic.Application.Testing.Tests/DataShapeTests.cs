@@ -10,8 +10,8 @@ internal sealed class DataShapeTests
     public async Task DataShapesReachTheWireAndPublishNestedChangesAsync()
     {
         var model = new DataShapeViewModel();
-        using var host = new RunicWindowTestHost<DataShapeViewModel>(model, "dataShape",
-            (transport, content, vm) => new DataShapeBridge(transport, vm, content: content), new TestViewLocator());
+        using var host = new RunicWindowTestHost<DataShapeViewModel>(model,
+            (transport, content, vm) => new DataShapeBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "dataShape", ViewLocator = new TestViewLocator() });
         foreach (var malformed in new[] { "{}", "{\"requestId\":\"missing\"}", "{\"requestId\":\"overflow\",\"expectedVersion\":999999999999999999999999}" })
         {
             using var reply = JsonDocument.Parse(host.Transport.Call("dataShapeWriteExactId", new(StringValue: malformed)));
@@ -19,7 +19,7 @@ internal sealed class DataShapeTests
                 && reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "rejected",
                 "Malformed checked write escaped the normal rejected response.");
         }
-        using var snapshot = host.Snapshot();
+        using var snapshot = host.RawSnapshot();
         var state = snapshot.RootElement.GetProperty("state");
         Require(state.GetProperty("exact-id").GetString() == "9007199254740993", "Root RunicAlias was not emitted as an exact Int64 string.");
         Require(state.GetProperty("amount").GetString() == "1234567890.123456789", "Exact decimal state was not emitted as a string.");
@@ -57,7 +57,7 @@ internal sealed class DataShapeTests
         _ = host.Transport.Call("dataShapeSetOptional", new(StringValue: "4"));
         Require(model.Optional == 4, "Nullable scalar setter did not use generated codec decoding.");
 
-        _ = host.Transport.DrainPublications();
+        _ = host.Transport.TakePublications();
         var item = model.Items[0];
         item.Name = "changed";
         Require(await PublishedAsync(host.Transport, json => json.Contains("changed", StringComparison.Ordinal)),
@@ -65,14 +65,14 @@ internal sealed class DataShapeTests
         model.Items.Remove(item);
         Require(await PublishedAsync(host.Transport, json => { using var document = JsonDocument.Parse(json); return document.RootElement.GetProperty("items").GetArrayLength() == 0; }),
             "Removing the item did not publish the new collection.");
-        using var beforeRemovedChange = host.Snapshot();
+        using var beforeRemovedChange = host.RawSnapshot();
         item.Name = "removed";
-        using var afterRemovedChange = host.Snapshot();
+        using var afterRemovedChange = host.RawSnapshot();
         Require(beforeRemovedChange.RootElement.GetProperty("state").GetProperty("revision").GetInt64()
             == afterRemovedChange.RootElement.GetProperty("state").GetProperty("revision").GetInt64(),
             "A removed observable DTO item remained subscribed.");
 
-        _ = host.Transport.DrainPublications();
+        _ = host.Transport.TakePublications();
         var nestedItem = model.Groups[0].Items[0];
         nestedItem.Name = "nested-changed";
         Require(await PublishedAsync(host.Transport, json => json.Contains("nested-changed", StringComparison.Ordinal)),
@@ -83,20 +83,20 @@ internal sealed class DataShapeTests
             using var document = JsonDocument.Parse(json);
             return document.RootElement.GetProperty("groups").GetArrayLength() == 0;
         }), "Removing a nested observable collection owner did not publish the new snapshot.");
-        using var beforeNestedRemovedChange = host.Snapshot();
+        using var beforeNestedRemovedChange = host.RawSnapshot();
         nestedItem.Name = "nested-removed";
-        using var afterNestedRemovedChange = host.Snapshot();
+        using var afterNestedRemovedChange = host.RawSnapshot();
         Require(beforeNestedRemovedChange.RootElement.GetProperty("state").GetProperty("revision").GetInt64()
             == afterNestedRemovedChange.RootElement.GetProperty("state").GetProperty("revision").GetInt64(),
             "A removed nested observable collection item remained subscribed.");
     }
 
-    private static async Task<bool> PublishedAsync(InMemoryViewTransport transport, Func<string, bool> predicate)
+    private static async Task<bool> PublishedAsync(InMemoryBridgeTransport transport, Func<string, bool> predicate)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
-            if (transport.DrainPublications().Any(publication => publication.Route == "dataShape" && predicate(publication.StateJson))) return true;
+            if (transport.TakePublications().Any(publication => publication.Route == "dataShape" && predicate(publication.Json))) return true;
             await Task.Delay(10);
         }
         return false;

@@ -20,10 +20,10 @@ public sealed class ContentLifecycleTests
     {
         var root = new Item();
         var views = new ViewCounter();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var route = $"content{Present(session, root, new Item(), views).Id}";
-        ViewTestArguments From(string connection) =>
+        BridgeTestArguments From(string connection) =>
             new(StringValue: "browser:page", ClientKey: "client", ConnectionKey: connection);
         Require(transport.Call($"{route}Mount", From("connection-one")) == "ok" && views.Attached == 1,
             "The presentation did not mount.");
@@ -46,7 +46,7 @@ public sealed class ContentLifecycleTests
         var a = new Item();
         var b = new Item();
         var views = new ViewCounter();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var reference = Present(session, root, a, views);
         var route = $"content{reference.Id}";
@@ -80,7 +80,7 @@ public sealed class ContentLifecycleTests
         var root = new Item();
         var a = new Item();
         var views = new ViewCounter();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var reference = Present(session, root, a, views);
         var route = $"content{reference.Id}";
@@ -111,7 +111,7 @@ public sealed class ContentLifecycleTests
         var leaf = new Item();
         var views = new ViewCounter();
         var context = new CountingThreadContext();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root, ModelContext = context });
         using var started = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -167,7 +167,7 @@ public sealed class ContentLifecycleTests
     public void CollectionChurnReleasesItemState()
     {
         var root = new Item();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
         var released = Churn(session, root, count: 32);
         Require(session.RetainedContentModelLeaseCount == 1,
@@ -217,23 +217,23 @@ public sealed class ContentLifecycleTests
                 (transport, presented, presentedRoute) => new SlotOwnerBridge(transport, presented, presentedRoute, session),
                 () => new CountedView(views)));
 
-    private static ViewTestArguments Browser(string token) =>
+    private static BridgeTestArguments Browser(string token) =>
         new(StringValue: token, ClientKey: "client", ConnectionKey: "connection");
 
-    private static long Revision(InMemoryViewTransport transport, string route)
+    private static long Revision(InMemoryBridgeTransport transport, string route)
     {
         using var reply = JsonDocument.Parse(transport.Call($"{route}Snapshot"));
         return reply.RootElement.GetProperty("state").GetProperty("revision").GetInt64();
     }
 
-    private static async Task<long> PublishedRevisionAsync(InMemoryViewTransport transport, string route)
+    private static async Task<long> PublishedRevisionAsync(InMemoryBridgeTransport transport, string route)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
-            foreach (var publication in transport.DrainPublications().Where(value => value.Route == route))
+            foreach (var publication in transport.TakePublications().Where(value => value.Route == route))
             {
-                using var state = JsonDocument.Parse(publication.StateJson);
+                using var state = JsonDocument.Parse(publication.Json);
                 return state.RootElement.GetProperty("revision").GetInt64();
             }
             await Task.Delay(10);

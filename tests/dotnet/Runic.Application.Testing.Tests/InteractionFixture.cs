@@ -13,7 +13,7 @@ internal sealed class InteractionFixture
     [Test]
     public async Task InteractionsReachMountedBrowsersAndFallBackAsync()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport);
         var model = new InteractionModel();
         var route = "interaction";
@@ -220,7 +220,7 @@ internal sealed class InteractionFixture
     private static string ControlJson(string route, string presentationId, long generation, string name, string contract) =>
         JsonSerializer.Serialize(new { route, presentationId, generation, handlers = new[] { new { name, contract } } });
 
-    private static string Reply(InMemoryViewTransport transport, string route, string presentationId, string request, bool output,
+    private static string Reply(InMemoryBridgeTransport transport, string route, string presentationId, string request, bool output,
         string connection = "connection-a")
     {
         using var wire = JsonDocument.Parse(request);

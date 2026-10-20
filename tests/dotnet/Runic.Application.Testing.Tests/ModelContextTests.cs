@@ -25,7 +25,7 @@ public sealed class ModelContextTests
     public async Task SessionContextShutdownFailureIsLoggedToTheSession()
     {
         var logs = new CategoryLog();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { LoggerFactory = logs });
         var shutdown = new TaskCompletionSource();
         var context = new ManualShutdownContext(shutdown.Task);
@@ -84,13 +84,13 @@ public sealed class ModelContextTests
         await using var applicationContext = new RunicModelContext();
         await using var otherContext = new RunicModelContext();
         var model = new object();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using (var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = applicationContext }))
         {
             Require(ReferenceEquals(session.ModelContext, applicationContext)
                 && ReferenceEquals(RunicModelContextRegistry.Shared.GetRequired(model), applicationContext),
                 "The session did not bind its root to the supplied application context.");
-            using var conflicting = new InMemoryViewTransport();
+            using var conflicting = new InMemoryBridgeTransport();
             Require(Throws<InvalidOperationException>(() =>
                 _ = new WindowContentSession(conflicting, new WindowContentSessionOptions { RootModel = model, ModelContext = otherContext })),
                 "A session silently split a root model between two contexts.");
@@ -106,7 +106,7 @@ public sealed class ModelContextTests
         var applicationContext = new RunicModelContext();
         var model = new NotifyingModel();
         var child = new NotifyingModel();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = applicationContext });
         var root = new ProbeBridge(transport, model, "probe", session);
         var reference = session.Expose("child", child, (_, current, route) =>
@@ -133,7 +133,7 @@ public sealed class ModelContextTests
     {
         await using var context = new DedicatedThreadContext();
         var model = new object();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = context });
         var exposure = context.InvokeAsync(() => session.Expose("item", new object(),
             static (_, _, _) => new NoopAttachment())).AsTask();
@@ -148,8 +148,8 @@ public sealed class ModelContextTests
         var registry = RunicModelContextRegistry.Shared;
         var model = new object();
         IRunicModelContext context;
-        using var firstTransport = new InMemoryViewTransport();
-        using var secondTransport = new InMemoryViewTransport();
+        using var firstTransport = new InMemoryBridgeTransport();
+        using var secondTransport = new InMemoryBridgeTransport();
         var first = new WindowContentSession(firstTransport, new WindowContentSessionOptions { RootModel = model });
         var second = new WindowContentSession(secondTransport, new WindowContentSessionOptions { RootModel = model });
         try
@@ -183,7 +183,7 @@ public sealed class ModelContextTests
     public async Task PostedTurnsRetainTheirOwnAmbientInvocation()
     {
         await using var context = new RunicModelContext();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport);
         using var drainStarted = new ManualResetEventSlim();
         using var releaseDrain = new ManualResetEventSlim();
@@ -220,7 +220,7 @@ public sealed class ModelContextTests
     public async Task ScheduledInteractionsRetainTheirOwnAmbientInvocation()
     {
         await using var context = new RunicModelContext();
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport);
         var model = new ScheduledInteractionModel();
         const string route = "scheduledInteraction";
@@ -301,7 +301,7 @@ public sealed class ModelContextTests
     private static string WaitJson(string route, string presentationId, string name, string contract) =>
         JsonSerializer.Serialize(new { route, presentationId, handlers = new[] { new { name, contract } } });
 
-    private static void Reply(InMemoryViewTransport transport, JsonElement request, string route, string presentationId,
+    private static void Reply(InMemoryBridgeTransport transport, JsonElement request, string route, string presentationId,
         string name, string contract, string clientKey, string connectionKey, bool output)
     {
         var reply = JsonSerializer.Serialize(new
@@ -334,7 +334,7 @@ public sealed class ModelContextTests
         var registry = RunicModelContextRegistry.Shared;
         var model = new object();
         IRunicModelContext context;
-        using (var transport = new InMemoryViewTransport())
+        using (var transport = new InMemoryBridgeTransport())
         using (var session = new WindowContentSession(transport))
         {
             _ = session.Expose("item", model, static (_, _, _) => new NoopAttachment());
@@ -351,7 +351,7 @@ public sealed class ModelContextTests
     [Test]
     public async Task SessionCloseFromModelTurnDoesNotDeadlock()
     {
-        using var transport = new InMemoryViewTransport();
+        using var transport = new InMemoryBridgeTransport();
         var model = new object();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         var context = session.ModelContext ?? throw new InvalidOperationException("The root model did not receive a context.");

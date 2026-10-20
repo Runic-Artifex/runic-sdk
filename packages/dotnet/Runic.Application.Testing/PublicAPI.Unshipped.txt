@@ -1,5 +1,165 @@
 #nullable enable
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.BindAsync(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<string!>>! handler) -> System.IDisposable!
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.Call(string! name, Runic.Application.Testing.ViewTestArguments? arguments = null) -> string!
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.CallAsync(string! name, Runic.Application.Testing.ViewTestArguments? arguments = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string!>
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.Dispose() -> void
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.DrainPublications() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.ViewTestPublication!>!
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.InMemoryViewTransport() -> void
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.Publish(string! name, string! stateJson) -> void
+*REMOVED*Runic.Application.Testing.InMemoryViewTransport.Routes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+*REMOVED*Runic.Application.Testing.RunicCallReply<TModel>.EnsureOk() -> Runic.Application.Testing.RunicCallReply<TModel!>!
+*REMOVED*Runic.Application.Testing.RunicCallReply<TModel>.Ok.get -> bool
+*REMOVED*Runic.Application.Testing.RunicCollectionChange.Deconstruct(out string! Field, out string! Kind, out int Index, out int OldIndex, out System.Collections.Generic.IReadOnlyList<string!>! Keys, out System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>! Items) -> void
+*REMOVED*Runic.Application.Testing.RunicCollectionChange.Kind.get -> string!
+*REMOVED*Runic.Application.Testing.RunicCollectionChange.RunicCollectionChange(string! Field, string! Kind, int Index, int OldIndex, System.Collections.Generic.IReadOnlyList<string!>! Keys, System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>! Items) -> void
+*REMOVED*Runic.Application.Testing.RunicFieldWriteReceipt<TModel>.Kind.get -> string!
+*REMOVED*Runic.Application.Testing.RunicFieldWriteReceipt<TModel>.Message.get -> string?
+*REMOVED*Runic.Application.Testing.RunicOperationStatus.Deconstruct(out string! Kind, out System.Text.Json.JsonElement? Result, out string? ErrorMessage, out string! Json) -> void
+*REMOVED*Runic.Application.Testing.RunicOperationStatus.Kind.get -> string!
+*REMOVED*Runic.Application.Testing.RunicOperationStatus.RunicOperationStatus(string! Kind, System.Text.Json.JsonElement? Result, string? ErrorMessage, string! Json) -> void
+*REMOVED*Runic.Application.Testing.RunicPathWatchTester.DrainAsync(System.TimeSpan? quiet = null) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicPathChange!>!>!
+*REMOVED*Runic.Application.Testing.RunicPathWatchTester.NextChangeAsync(System.TimeSpan? timeout = null) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!
+*REMOVED*Runic.Application.Testing.RunicPathWatchTester.TriggerAsync(string! path, System.TimeSpan? timeout = null) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!
+*REMOVED*Runic.Application.Testing.RunicStateTracker<TModel>.WaitUntilAsync(System.Func<Runic.Application.Testing.RunicViewState<TModel!>!, bool>! predicate, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Testing.RunicViewState<TModel!>!>
+*REMOVED*Runic.Application.Testing.RunicTestOperation.Admission.get -> string!
+*REMOVED*Runic.Application.Testing.RunicTestOperation.Cancel() -> string!
+*REMOVED*Runic.Application.Testing.RunicTestOperation.Status() -> Runic.Application.Testing.RunicOperationStatus!
+*REMOVED*Runic.Application.Testing.RunicTestOperation.WaitAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Testing.RunicOperationStatus!>
+*REMOVED*Runic.Application.Testing.RunicViewDriver<TModel>.ExecuteAsync(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, string? argumentJson = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Testing.RunicCallReply<TModel!>!>
+*REMOVED*Runic.Application.Testing.RunicViewDriver<TModel>.NextPublicationAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Testing.RunicViewPublication!>
+*REMOVED*Runic.Application.Testing.RunicViewDriver<TModel>.Unmount(string! token, string? clientKey = null, string? connectionKey = null) -> string!
 *REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
-Runic.Application.Testing.RunicWindowTestHost<TViewModel>.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicWindowCloseResult!>
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Mount(Runic.Application.Views.PageReference! reference, string! token, string? clientKey = null, string? connectionKey = null) -> string!
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.RunicWindowTestHost(TViewModel! viewModel, string! rootRoute, System.Func<Runic.Application.Views.IBridgeTransport!, Runic.Application.Views.WindowContentSession!, TViewModel!, System.IDisposable!>! attach, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), Runic.Navigation.IRunicModelContext? modelContext = null) -> void
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Snapshot() -> System.Text.Json.JsonDocument!
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Snapshot(Runic.Application.Views.PageReference! reference) -> System.Text.Json.JsonDocument!
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Transport.get -> Runic.Application.Testing.InMemoryViewTransport!
+*REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Unmount(Runic.Application.Views.PageReference! reference, string! token, string? clientKey = null, string? connectionKey = null) -> string!
+*REMOVED*Runic.Application.Testing.ViewTestArguments
+*REMOVED*Runic.Application.Testing.ViewTestArguments.<Clone>$() -> Runic.Application.Testing.ViewTestArguments!
+*REMOVED*Runic.Application.Testing.ViewTestArguments.BooleanValue.get -> bool?
+*REMOVED*Runic.Application.Testing.ViewTestArguments.BooleanValue.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestArguments.ClientKey.get -> string?
+*REMOVED*Runic.Application.Testing.ViewTestArguments.ClientKey.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestArguments.ConnectionKey.get -> string?
+*REMOVED*Runic.Application.Testing.ViewTestArguments.ConnectionKey.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestArguments.Deconstruct(out long? Int64Value, out bool? BooleanValue, out string? StringValue, out string? ClientKey, out string? ConnectionKey) -> void
+*REMOVED*Runic.Application.Testing.ViewTestArguments.Equals(Runic.Application.Testing.ViewTestArguments? other) -> bool
+*REMOVED*Runic.Application.Testing.ViewTestArguments.GetBoolean() -> bool
+*REMOVED*Runic.Application.Testing.ViewTestArguments.GetInt64() -> long
+*REMOVED*Runic.Application.Testing.ViewTestArguments.GetString() -> string!
+*REMOVED*Runic.Application.Testing.ViewTestArguments.Int64Value.get -> long?
+*REMOVED*Runic.Application.Testing.ViewTestArguments.Int64Value.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestArguments.StringValue.get -> string?
+*REMOVED*Runic.Application.Testing.ViewTestArguments.StringValue.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestArguments.ViewTestArguments(long? Int64Value = null, bool? BooleanValue = null, string? StringValue = null, string? ClientKey = null, string? ConnectionKey = null) -> void
+*REMOVED*Runic.Application.Testing.ViewTestPublication
+*REMOVED*Runic.Application.Testing.ViewTestPublication.<Clone>$() -> Runic.Application.Testing.ViewTestPublication!
+*REMOVED*Runic.Application.Testing.ViewTestPublication.Deconstruct(out string! Route, out string! StateJson) -> void
+*REMOVED*Runic.Application.Testing.ViewTestPublication.Equals(Runic.Application.Testing.ViewTestPublication? other) -> bool
+*REMOVED*Runic.Application.Testing.ViewTestPublication.Route.get -> string!
+*REMOVED*Runic.Application.Testing.ViewTestPublication.Route.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestPublication.StateJson.get -> string!
+*REMOVED*Runic.Application.Testing.ViewTestPublication.StateJson.init -> void
+*REMOVED*Runic.Application.Testing.ViewTestPublication.ViewTestPublication(string! Route, string! StateJson) -> void
+*REMOVED*override Runic.Application.Testing.ViewTestArguments.Equals(object? obj) -> bool
+*REMOVED*override Runic.Application.Testing.ViewTestArguments.GetHashCode() -> int
+*REMOVED*override Runic.Application.Testing.ViewTestArguments.ToString() -> string!
+*REMOVED*override Runic.Application.Testing.ViewTestPublication.Equals(object? obj) -> bool
+*REMOVED*override Runic.Application.Testing.ViewTestPublication.GetHashCode() -> int
+*REMOVED*override Runic.Application.Testing.ViewTestPublication.ToString() -> string!
+*REMOVED*static Runic.Application.Testing.ViewTestArguments.operator !=(Runic.Application.Testing.ViewTestArguments? left, Runic.Application.Testing.ViewTestArguments? right) -> bool
+*REMOVED*static Runic.Application.Testing.ViewTestArguments.operator ==(Runic.Application.Testing.ViewTestArguments? left, Runic.Application.Testing.ViewTestArguments? right) -> bool
+*REMOVED*static Runic.Application.Testing.ViewTestPublication.operator !=(Runic.Application.Testing.ViewTestPublication? left, Runic.Application.Testing.ViewTestPublication? right) -> bool
+*REMOVED*static Runic.Application.Testing.ViewTestPublication.operator ==(Runic.Application.Testing.ViewTestPublication? left, Runic.Application.Testing.ViewTestPublication? right) -> bool
+Runic.Application.Testing.BridgeTestArguments
+Runic.Application.Testing.BridgeTestArguments.<Clone>$() -> Runic.Application.Testing.BridgeTestArguments!
+Runic.Application.Testing.BridgeTestArguments.BooleanValue.get -> bool?
+Runic.Application.Testing.BridgeTestArguments.BooleanValue.init -> void
+Runic.Application.Testing.BridgeTestArguments.BridgeTestArguments(long? Int64Value = null, bool? BooleanValue = null, string? StringValue = null, string? ClientKey = null, string? ConnectionKey = null) -> void
+Runic.Application.Testing.BridgeTestArguments.ClientKey.get -> string?
+Runic.Application.Testing.BridgeTestArguments.ClientKey.init -> void
+Runic.Application.Testing.BridgeTestArguments.ConnectionKey.get -> string?
+Runic.Application.Testing.BridgeTestArguments.ConnectionKey.init -> void
+Runic.Application.Testing.BridgeTestArguments.Deconstruct(out long? Int64Value, out bool? BooleanValue, out string? StringValue, out string? ClientKey, out string? ConnectionKey) -> void
+Runic.Application.Testing.BridgeTestArguments.Equals(Runic.Application.Testing.BridgeTestArguments? other) -> bool
+Runic.Application.Testing.BridgeTestArguments.GetBoolean() -> bool
+Runic.Application.Testing.BridgeTestArguments.GetInt64() -> long
+Runic.Application.Testing.BridgeTestArguments.GetString() -> string!
+Runic.Application.Testing.BridgeTestArguments.Int64Value.get -> long?
+Runic.Application.Testing.BridgeTestArguments.Int64Value.init -> void
+Runic.Application.Testing.BridgeTestArguments.StringValue.get -> string?
+Runic.Application.Testing.BridgeTestArguments.StringValue.init -> void
+Runic.Application.Testing.InMemoryBridgeTransport
+Runic.Application.Testing.InMemoryBridgeTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
+Runic.Application.Testing.InMemoryBridgeTransport.BindAsync(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<string!>>! handler) -> System.IDisposable!
+Runic.Application.Testing.InMemoryBridgeTransport.Call(string! name, Runic.Application.Testing.BridgeTestArguments? arguments = null) -> string!
+Runic.Application.Testing.InMemoryBridgeTransport.CallAsync(string! name, Runic.Application.Testing.BridgeTestArguments? arguments = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string!>
+Runic.Application.Testing.InMemoryBridgeTransport.Dispose() -> void
+Runic.Application.Testing.InMemoryBridgeTransport.InMemoryBridgeTransport() -> void
+Runic.Application.Testing.InMemoryBridgeTransport.Publish(string! name, string! stateJson) -> void
+Runic.Application.Testing.InMemoryBridgeTransport.Routes.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Testing.InMemoryBridgeTransport.TakePublications() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicViewPublication!>!
+Runic.Application.Testing.RunicCallReply<TModel>.Succeeded.get -> bool
+Runic.Application.Testing.RunicCallReply<TModel>.ThrowIfFailed() -> Runic.Application.Testing.RunicCallReply<TModel!>!
+Runic.Application.Testing.RunicCollectionChange.Deconstruct(out string! Field, out Runic.Application.Testing.RunicCollectionChangeKind Kind, out int Index, out int OldIndex, out System.Collections.Generic.IReadOnlyList<string!>! Keys, out System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>! Items) -> void
+Runic.Application.Testing.RunicCollectionChange.Kind.get -> Runic.Application.Testing.RunicCollectionChangeKind
+Runic.Application.Testing.RunicCollectionChange.RunicCollectionChange(string! Field, Runic.Application.Testing.RunicCollectionChangeKind Kind, int Index, int OldIndex, System.Collections.Generic.IReadOnlyList<string!>! Keys, System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>! Items) -> void
+Runic.Application.Testing.RunicCollectionChangeKind
+Runic.Application.Testing.RunicCollectionChangeKind.Add = 0 -> Runic.Application.Testing.RunicCollectionChangeKind
+Runic.Application.Testing.RunicCollectionChangeKind.Move = 3 -> Runic.Application.Testing.RunicCollectionChangeKind
+Runic.Application.Testing.RunicCollectionChangeKind.Remove = 1 -> Runic.Application.Testing.RunicCollectionChangeKind
+Runic.Application.Testing.RunicCollectionChangeKind.Replace = 2 -> Runic.Application.Testing.RunicCollectionChangeKind
+Runic.Application.Testing.RunicFieldWriteReceipt<TModel>.ErrorMessage.get -> string?
+Runic.Application.Testing.RunicFieldWriteReceipt<TModel>.Kind.get -> Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicFieldWriteReceiptKind.Applied = 0 -> Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicFieldWriteReceiptKind.CommittedWithError = 1 -> Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicFieldWriteReceiptKind.Conflict = 2 -> Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicFieldWriteReceiptKind.Failed = 4 -> Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicFieldWriteReceiptKind.Rejected = 3 -> Runic.Application.Testing.RunicFieldWriteReceiptKind
+Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationAdmissionKind.Accepted = 0 -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationAdmissionKind.Cancelled = 5 -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationAdmissionKind.Duplicate = 1 -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationAdmissionKind.Expired = 2 -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationAdmissionKind.Failed = 4 -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationAdmissionKind.Rejected = 3 -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicOperationCancelKind
+Runic.Application.Testing.RunicOperationCancelKind.CancellationRequested = 0 -> Runic.Application.Testing.RunicOperationCancelKind
+Runic.Application.Testing.RunicOperationCancelKind.Expired = 3 -> Runic.Application.Testing.RunicOperationCancelKind
+Runic.Application.Testing.RunicOperationCancelKind.NotRunning = 1 -> Runic.Application.Testing.RunicOperationCancelKind
+Runic.Application.Testing.RunicOperationCancelKind.Unknown = 2 -> Runic.Application.Testing.RunicOperationCancelKind
+Runic.Application.Testing.RunicOperationStatus.Deconstruct(out Runic.Application.Testing.RunicOperationStatusKind Kind, out System.Text.Json.JsonElement? Result, out string? ErrorMessage, out string! Json) -> void
+Runic.Application.Testing.RunicOperationStatus.Kind.get -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatus.RunicOperationStatus(Runic.Application.Testing.RunicOperationStatusKind Kind, System.Text.Json.JsonElement? Result, string? ErrorMessage, string! Json) -> void
+Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.Cancelled = 5 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.DomainFailed = 4 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.Expired = 6 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.Failed = 3 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.Running = 1 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.Succeeded = 2 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicOperationStatusKind.Unknown = 0 -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicPathWatchTester.DrainAsync(System.TimeSpan? quiet = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicPathChange!>!>!
+Runic.Application.Testing.RunicPathWatchTester.NextChangeAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!
+Runic.Application.Testing.RunicPathWatchTester.TriggerAsync(string! path, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!
+Runic.Application.Testing.RunicStateTracker<TModel>.WaitUntilAsync(System.Func<Runic.Application.Testing.RunicViewState<TModel!>!, bool>! predicate, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicViewState<TModel!>!>!
+Runic.Application.Testing.RunicTestOperation.Admission.get -> Runic.Application.Testing.RunicOperationAdmissionKind
+Runic.Application.Testing.RunicTestOperation.Cancel() -> Runic.Application.Testing.RunicOperationCancelKind
+Runic.Application.Testing.RunicTestOperation.GetStatus() -> Runic.Application.Testing.RunicOperationStatus!
+Runic.Application.Testing.RunicTestOperation.WaitAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicOperationStatus!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.ExecuteAsync(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, string? argumentJson = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.NextPublicationAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicViewPublication!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.Unmount(string! token, string? clientKey = null, string? connectionKey = null) -> void
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.DrainAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicWindowCloseResult!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Transport.get -> Runic.Application.Testing.InMemoryBridgeTransport!
 Runic.Application.Testing.RunicWindowTestHostOptions.IncludeFailureDetail.get -> bool?
 Runic.Application.Testing.RunicWindowTestHostOptions.IncludeFailureDetail.init -> void
+override Runic.Application.Testing.BridgeTestArguments.Equals(object? obj) -> bool
+override Runic.Application.Testing.BridgeTestArguments.GetHashCode() -> int
+override Runic.Application.Testing.BridgeTestArguments.ToString() -> string!
+static Runic.Application.Testing.BridgeTestArguments.operator !=(Runic.Application.Testing.BridgeTestArguments? left, Runic.Application.Testing.BridgeTestArguments? right) -> bool
+static Runic.Application.Testing.BridgeTestArguments.operator ==(Runic.Application.Testing.BridgeTestArguments? left, Runic.Application.Testing.BridgeTestArguments? right) -> bool

@@ -11,7 +11,7 @@ public sealed class RunicCallReply<TModel> where TModel : class
         Json = json;
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        Ok = root.GetProperty("ok").GetBoolean();
+        Succeeded = root.GetProperty("ok").GetBoolean();
         if (root.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object) State = new(state);
         if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
         {
@@ -26,10 +26,11 @@ public sealed class RunicCallReply<TModel> where TModel : class
     /// <summary>The reply as .NET serialized it.</summary>
     public string Json { get; }
     /// <summary>Whether the call succeeded.</summary>
-    public bool Ok { get; }
+    public bool Succeeded { get; }
     /// <summary>
-    /// The error kind of a failed call, such as <c>rejected</c> or <c>failed</c>, or
-    /// <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>).
+    /// The BridgeError kind of a failed call, such as <c>rejected</c> or <c>failed</c>, or
+    /// <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>). Error kinds are an open set:
+    /// a minor release may add kinds, so compare with the ones a test expects.
     /// </summary>
     public string? ErrorKind { get; }
     /// <summary>The message of a failed call.</summary>
@@ -40,7 +41,8 @@ public sealed class RunicCallReply<TModel> where TModel : class
     public RunicViewState<TModel>? State { get; }
 
     /// <summary>Returns this reply, or throws when the call failed.</summary>
-    public RunicCallReply<TModel> EnsureOk() => Ok ? this
+    /// <exception cref="InvalidOperationException">The call failed; the message names the route, error kind and message.</exception>
+    public RunicCallReply<TModel> ThrowIfFailed() => Succeeded ? this
         : throw new InvalidOperationException($"{Route} failed ({ErrorKind}): {ErrorMessage}");
 
     /// <inheritdoc />
@@ -59,13 +61,13 @@ public sealed class RunicFieldWriteReceipt<TModel> where TModel : class
         if (root.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object) State = new(state);
         if (!root.TryGetProperty("receipt", out var receipt) || receipt.ValueKind != JsonValueKind.Object)
         {
-            Kind = "failed";
-            Message = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
+            Kind = RunicFieldWriteReceiptKind.Failed;
+            ErrorMessage = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
                 ? error.GetProperty("message").GetString() : null;
             return;
         }
-        Kind = receipt.GetProperty("kind").GetString()!;
-        Message = receipt.TryGetProperty("message", out var message) ? message.GetString() : null;
+        Kind = RunicOperationWire.Receipt(receipt.GetProperty("kind").GetString());
+        ErrorMessage = receipt.TryGetProperty("message", out var message) ? message.GetString() : null;
         if (receipt.TryGetProperty("snapshot", out var snapshot) || receipt.TryGetProperty("incoming", out snapshot))
         {
             Value = snapshot.GetProperty("value").Clone();
@@ -77,13 +79,13 @@ public sealed class RunicFieldWriteReceipt<TModel> where TModel : class
     public string Route { get; }
     /// <summary>The reply as .NET serialized it.</summary>
     public string Json { get; }
+    /// <summary>How the write ended.</summary>
+    public RunicFieldWriteReceiptKind Kind { get; }
     /// <summary>
-    /// <c>applied</c>, <c>committed-with-error</c>, <c>conflict</c> or <c>rejected</c>;
-    /// <c>failed</c> when the route replied with an error instead of a receipt.
+    /// Why the write was rejected, conflicted or failed, or why its validation did not complete; null for an
+    /// applied write.
     /// </summary>
-    public string Kind { get; }
-    /// <summary>Why the write was rejected or conflicted.</summary>
-    public string? Message { get; }
+    public string? ErrorMessage { get; }
     /// <summary>The field value after the write, or the current value of a conflict.</summary>
     public JsonElement? Value { get; }
     /// <summary>The field version that goes with <see cref="Value"/>.</summary>
@@ -96,13 +98,11 @@ public sealed class RunicFieldWriteReceipt<TModel> where TModel : class
 }
 
 /// <summary>The status of an operation, as the generated client reads it.</summary>
-/// <param name="Kind">
-/// <c>running</c>, <c>succeeded</c>, <c>failed</c>, <c>domain-failed</c>, <c>cancelled</c>, <c>expired</c> or <c>unknown</c>.
-/// </param>
+/// <param name="Kind">The status.</param>
 /// <param name="Result">The encoded result of a succeeded operation with a result.</param>
 /// <param name="ErrorMessage">Why a failed operation failed.</param>
 /// <param name="Json">The status as .NET serialized it.</param>
-public sealed record RunicOperationStatus(string Kind, JsonElement? Result, string? ErrorMessage, string Json)
+public sealed record RunicOperationStatus(RunicOperationStatusKind Kind, JsonElement? Result, string? ErrorMessage, string Json)
 {
     /// <summary>The encoded declared failure of a <c>domain-failed</c> operation, when it was retained.</summary>
     public JsonElement? Failure { get; init; }
@@ -111,7 +111,7 @@ public sealed record RunicOperationStatus(string Kind, JsonElement? Result, stri
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        return new(root.TryGetProperty("kind", out var kind) ? kind.GetString() ?? "unknown" : "unknown",
+        return new(root.TryGetProperty("kind", out var kind) ? RunicOperationWire.Status(kind.GetString()) : RunicOperationStatusKind.Unknown,
             root.TryGetProperty("result", out var result) ? result.Clone() : null,
             root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object ? error.GetProperty("message").GetString() : null,
             json)
@@ -124,10 +124,10 @@ public sealed record RunicOperationStatus(string Kind, JsonElement? Result, stri
 /// <summary>An operation started through a generated <c>Start{Command}</c> route.</summary>
 public sealed class RunicTestOperation
 {
-    private readonly InMemoryViewTransport _transport;
+    private readonly InMemoryBridgeTransport _transport;
     private readonly string _identity;
 
-    internal RunicTestOperation(InMemoryViewTransport transport, string contract, string member, string requestId, string admissionJson)
+    internal RunicTestOperation(InMemoryBridgeTransport transport, string contract, string member, string requestId, string admissionJson)
     {
         _transport = transport;
         Contract = contract;
@@ -137,7 +137,7 @@ public sealed class RunicTestOperation
         using (var document = JsonDocument.Parse(admissionJson))
         {
             var root = document.RootElement;
-            Admission = root.TryGetProperty("kind", out var kind) ? kind.GetString() ?? "" : "";
+            Admission = RunicOperationWire.Admission(root.TryGetProperty("kind", out var kind) ? kind.GetString() : null);
             Reason = root.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String ? reason.GetString() : null;
         }
         _identity = RunicJson.Write(writer =>
@@ -156,24 +156,24 @@ public sealed class RunicTestOperation
     public string Member { get; }
     /// <summary>The request id the operation was started with.</summary>
     public string RequestId { get; }
-    /// <summary><c>accepted</c>, <c>duplicate</c>, <c>expired</c>, <c>rejected</c> or <c>failed</c>.</summary>
-    public string Admission { get; }
+    /// <summary>How the start route answered.</summary>
+    public RunicOperationAdmissionKind Admission { get; }
     /// <summary>Why the operation was not accepted.</summary>
     public string? Reason { get; }
     /// <summary>The admission reply as .NET serialized it.</summary>
     public string AdmissionJson { get; }
 
-    /// <summary>Reads the current status.</summary>
-    public RunicOperationStatus Status() => RunicOperationStatus.Parse(_transport.Call("__runicOperationStatus", new(StringValue: _identity)));
+    /// <summary>Reads the current status through the window's status route.</summary>
+    public RunicOperationStatus GetStatus() => RunicOperationStatus.Parse(_transport.Call("__runicOperationStatus", new(StringValue: _identity)));
 
     /// <summary>Waits for the terminal status.</summary>
-    public async ValueTask<RunicOperationStatus> WaitAsync(CancellationToken cancellationToken = default) =>
+    public async Task<RunicOperationStatus> WaitAsync(CancellationToken cancellationToken = default) =>
         RunicOperationStatus.Parse(await _transport.CallAsync("__runicOperationWait", new(StringValue: _identity), cancellationToken).ConfigureAwait(false));
 
-    /// <summary>Requests cancellation and returns how .NET answered, such as <c>cancellation-requested</c>.</summary>
-    public string Cancel()
+    /// <summary>Requests cancellation and returns how .NET answered.</summary>
+    public RunicOperationCancelKind Cancel()
     {
         using var document = JsonDocument.Parse(_transport.Call("__runicOperationCancel", new(StringValue: _identity)));
-        return document.RootElement.GetProperty("kind").GetString()!;
+        return RunicOperationWire.Cancel(document.RootElement.GetProperty("kind").GetString());
     }
 }

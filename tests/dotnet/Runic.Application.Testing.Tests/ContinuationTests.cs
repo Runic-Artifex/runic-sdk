@@ -18,9 +18,9 @@ internal sealed class ContinuationTests
     {
         var probe = new ContinuationProbe();
         var model = new ToolkitContinuationViewModel(probe);
-        using var host = new RunicWindowTestHost<ToolkitContinuationViewModel>(model, "toolkitContinuation",
+        using var host = new RunicWindowTestHost<ToolkitContinuationViewModel>(model,
             (transport, content, vm) => new ToolkitContinuationBridge(transport, vm, content: content),
-            new TestViewLocator());
+            new RunicWindowTestHostOptions { RootRoute = "toolkitContinuation", ViewLocator = new TestViewLocator() });
         probe.Context = host.Content.ModelContext;
         await RunProbeAsync(host.Transport, "toolkitContinuation", probe, "Toolkit");
         Require(model.Status == "b:released", $"The Toolkit command's last write was lost: {model.Status}");
@@ -33,9 +33,9 @@ internal sealed class ContinuationTests
         var probe = new ContinuationProbe { Context = context };
         var model = new ReactiveContinuationViewModel(context, probe);
         using var contextLease = RunicModelContextRegistry.Shared.Bind(context, model);
-        using var host = new RunicWindowTestHost<ReactiveContinuationViewModel>(model, "reactiveContinuation",
+        using var host = new RunicWindowTestHost<ReactiveContinuationViewModel>(model,
             (transport, content, vm) => new ReactiveContinuationBridge(transport, vm, content: content),
-            new TestViewLocator());
+            new RunicWindowTestHostOptions { RootRoute = "reactiveContinuation", ViewLocator = new TestViewLocator() });
         await RunProbeAsync(host.Transport, "reactiveContinuation", probe, "ReactiveUI");
         Require(model.Status == "b:released", $"The ReactiveUI command's last write was lost: {model.Status}");
     }
@@ -67,7 +67,7 @@ internal sealed class ContinuationTests
     // Runs "a" through the awaited command route and "b" through an admitted
     // operation of a second command. Both wait at the same gate; releasing it must apply a's write and
     // then b's, each in its own model turn.
-    private static async Task RunProbeAsync(InMemoryViewTransport transport, string route, ContinuationProbe probe, string flavour)
+    private static async Task RunProbeAsync(InMemoryBridgeTransport transport, string route, ContinuationProbe probe, string flavour)
     {
         var first = transport.CallAsync($"{route}Run", new(StringValue: JsonSerializer.Serialize("a"))).AsTask();
         await probe.WaitingFor("a").WaitAsync(TimeSpan.FromSeconds(5));
