@@ -124,7 +124,7 @@ public static partial class PlatformServices
         if (applicationId is not null) ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
         IDesktopNotifications? notifications = null;
         if (OperatingSystem.IsWindows())
-            notifications = applicationId is null ? null : Optional(() => CreateWindowsNotifications(applicationId));
+            notifications = applicationId is null ? null : Optional(() => OperatingSystem.IsWindows() ? CreateWindowsNotifications(applicationId) : null);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsMacOS()) notifications = CreateMacOSNotifications();
         else if (OperatingSystem.IsLinux()) notifications = CreatePortalNotifications(applicationId, logger);
@@ -160,16 +160,25 @@ public static partial class PlatformServices
     }
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreatePortalStatusIcon(string? applicationId, ILogger? logger) =>
         new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
             .CreateStatusIcon();
 
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static MacStatusIcon CreateMacOSStatusIcon() => new MacStatusIcon();
+    private static IDesktopStatusIcon CreateMacOSStatusIcon() => MacOSPlatformProvider.CreateStatusIcon();
 
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static MacLoginStartup CreateMacOSLoginStartup() => new MacLoginStartup();
+    private static IDesktopLoginStartup CreatePortalLoginStartup(string? applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+            .CreateLoginStartup();
+
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopLoginStartup CreateMacOSLoginStartup() => MacOSPlatformProvider.CreateLoginStartup();
 #endif
 
     /// <summary>Creates login startup for the application from the provider for the operating system.</summary>
@@ -195,11 +204,10 @@ public static partial class PlatformServices
     {
         IDesktopLoginStartup? startup = null;
         if (OperatingSystem.IsWindows())
-            startup = applicationId is null ? null : Optional(() => CreateWindowsLoginStartup(applicationId));
+            startup = applicationId is null ? null : Optional(() => OperatingSystem.IsWindows() ? CreateWindowsLoginStartup(applicationId) : null);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsLinux())
-            startup = new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
-                .CreateLoginStartup();
+            startup = CreatePortalLoginStartup(applicationId, logger);
         else if (OperatingSystem.IsMacOS()) startup = CreateMacOSLoginStartup();
 #endif
         return startup ?? DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
@@ -233,17 +241,20 @@ public static partial class PlatformServices
         return inhibition ?? DesktopInhibition.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopInhibition CreateWindowsInhibition() => WindowsPlatformProvider.CreateInhibition();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopInhibition CreateMacOSInhibition() => MacOSPlatformProvider.CreateInhibition();
 
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopInhibition CreatePortalInhibition(string? applicationId, ILogger? logger) =>
         new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
-            .CreateUnparentedInhibition();
+            .CreateInhibition();
 #endif
 
     /// <summary>
@@ -274,6 +285,7 @@ public static partial class PlatformServices
     }
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopOpenRequests CreateMacOSOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance, ApplicationLaunch? launch) =>
         MacOSPlatformProvider.CreateOpenRequests(options, instance, launch);
@@ -327,26 +339,32 @@ public static partial class PlatformServices
         return applications ?? DesktopApplications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopApplications CreateWindowsApplications() => WindowsPlatformProvider.CreateApplications();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopApplications CreatePortalApplications(ILogger? logger) =>
         new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateApplications();
 
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopApplications CreateMacOSApplications() => MacOSPlatformProvider.CreateApplications();
 #endif
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSecretStore CreateWindowsSecretStore() => WindowsPlatformProvider.CreateSecretStore();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSecretStore CreatePortalSecretStore(ILogger? logger) =>
         new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateSecretStore();
 
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSecretStore CreateMacOSSecretStore() => MacOSPlatformProvider.CreateSecretStore();
 #endif
@@ -406,26 +424,32 @@ public static partial class PlatformServices
         return thumbnails ?? DesktopThumbnails.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopThumbnails CreateWindowsThumbnails() => WindowsPlatformProvider.CreateThumbnails();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopThumbnails CreatePortalThumbnails(ILogger? logger) =>
         new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateThumbnails();
 
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopThumbnails CreateMacOSThumbnails() => MacOSPlatformProvider.CreateThumbnails();
 #endif
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopTrash CreateWindowsTrash() => WindowsPlatformProvider.CreateTrash();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopTrash CreatePortalTrash(ILogger? logger) =>
         new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateTrash();
 
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopTrash CreateMacOSTrash() => MacOSPlatformProvider.CreateTrash();
 #endif
@@ -452,51 +476,63 @@ public static partial class PlatformServices
         return volumes ?? DesktopVolumes.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopVolumes CreateWindowsVolumes() => WindowsPlatformProvider.CreateVolumes();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopVolumes CreatePortalVolumes() => PortalPlatformProvider.CreateVolumes();
+    private static IDesktopVolumes CreatePortalVolumes() => PortalApplication.Inferred.CreateVolumes();
 
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopVolumes CreateMacOSVolumes() => MacOSPlatformProvider.CreateVolumes();
 #endif
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreateWindowsStatusIcon() => WindowsPlatformProvider.CreateStatusIcon();
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopLoginStartup CreateWindowsLoginStartup(string applicationId) =>
         WindowsPlatformProvider.CreateLoginStartup(applicationId);
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNotifications CreateWindowsNotifications(string applicationId) =>
         WindowsPlatformProvider.CreateNotifications(applicationId);
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNotifications CreateMacOSNotifications() => MacOSPlatformProvider.CreateNotifications();
 
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNotifications CreatePortalNotifications(string? applicationId, ILogger? logger) =>
-        PortalPlatformProvider.CreateNotifications(applicationId,
-            logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic));
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+            .CreateNotifications();
 
     // Validates a Linux desktop ID without creating anything that connects.
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void ValidatePortalApplicationId(string applicationId) => _ = new PortalApplication(applicationId);
 #endif
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSettings CreateWindowsSettings() => WindowsPlatformProvider.CreateSettings();
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSettings CreateMacOSSettings() => MacOSPlatformProvider.CreateSettings();
 
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopSettings CreatePortalSettings() => PortalPlatformProvider.CreateSettings();
+    private static IDesktopSettings CreatePortalSettings() => PortalApplication.Inferred.CreateSettings();
 #endif
 
     internal static IWindowPlatformServices Create(DesktopNativeOwner owner, out DesktopPlatformProvider provider)
@@ -508,10 +544,10 @@ public static partial class PlatformServices
         // a GTK 4 process does not even load the GTK 3 provider. The -windows assembly references only the
         // Windows provider, so elsewhere its providers report ProviderNotConfigured.
         NativeServices? native = null;
-        if (provider == DesktopPlatformProvider.Windows) native = CreateWindows(owner);
+        if (provider == DesktopPlatformProvider.Windows && OperatingSystem.IsWindows()) native = CreateWindows(owner);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS()) native = CreateMacOS(owner);
-        else if (provider == DesktopPlatformProvider.LinuxGtk3) native = CreateGtk3(owner);
+        else if (provider == DesktopPlatformProvider.LinuxGtk3 && OperatingSystem.IsLinux()) native = CreateGtk3(owner);
         else if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux()) native = CreateGtk4(owner);
 #endif
         if (native is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
@@ -552,7 +588,7 @@ public static partial class PlatformServices
                 catch (PlatformNotSupportedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured); }
             }
 #if RUNIC_PORTABLE_PLATFORMS
-            if (provider == DesktopPlatformProvider.LinuxGtk3) { await PresentGtk3(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
+            if (provider == DesktopPlatformProvider.LinuxGtk3 && OperatingSystem.IsLinux()) { await PresentGtk3(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
             if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux())
             { await PresentGtk4(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
             if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS())
@@ -647,6 +683,7 @@ public static partial class PlatformServices
         }
     }
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ValueTask<PlatformResult<PlatformUnit>> PresentWindows(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
         WindowsPlatformProvider.PresentAsync(owner, cancellationToken);
@@ -657,6 +694,7 @@ public static partial class PlatformServices
     internal static PlatformResult<PlatformUnit> PresentWindowsHandle(nint handle) => WindowsWindowPresentation.Present(handle);
 
 #if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ValueTask PresentGtk3(DesktopNativeOwner owner, DesktopActivationContext? context, CancellationToken cancellationToken) =>
         new Gtk3PortalWindowOwner(owner).PresentAsync(context, cancellationToken);
@@ -672,6 +710,7 @@ public static partial class PlatformServices
         MacWindowPresenter.PresentAsync(owner, cancellationToken);
 #endif
 
+    [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static NativeServices CreateWindows(DesktopNativeOwner owner) => new(
         WindowsPlatformProvider.CreateFileDialogs(owner),
@@ -686,6 +725,7 @@ public static partial class PlatformServices
         MacOSPlatformProvider.CreateTextClipboard(owner),
         MacOSPlatformProvider.CreateFileLauncher(owner));
 
+    [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static NativeServices CreateGtk3(DesktopNativeOwner owner) => new(
         LinuxPlatformProvider.CreateFileDialogs(owner),
@@ -697,13 +737,13 @@ public static partial class PlatformServices
     private static NativeServices CreateGtk4(DesktopNativeOwner owner)
     {
         var portalOwner = Gtk4PlatformProvider.CreatePortalWindowOwner(owner);
-        return new(PortalPlatformProvider.CreateFileDialogs(portalOwner), Gtk4PlatformProvider.CreateTextClipboard(owner),
-            PortalPlatformProvider.CreateFileLauncher(portalOwner));
+        return new(PortalApplication.Inferred.CreateFileDialogs(portalOwner), Gtk4PlatformProvider.CreateTextClipboard(owner),
+            PortalApplication.Inferred.CreateFileLauncher(portalOwner));
     }
 #endif
 
     // A provider that requires a newer OS version than the one running reports the service unconfigured.
-    private static T? Optional<T>(Func<T> create) where T : class
+    private static T? Optional<T>(Func<T?> create) where T : class
     {
         try { return create(); }
         catch (PlatformNotSupportedException) { return null; }

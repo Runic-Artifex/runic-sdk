@@ -15,7 +15,9 @@ internal sealed class ClipboardTests
     {
         if (!OperatingSystem.IsMacOS())
         {
+#pragma warning disable CA1416 // The case checks the wrong-OS guard that the annotation documents.
             try { MacOSPlatformProvider.CreateTextClipboard(new Owner()); throw new InvalidOperationException("Missing OS guard."); }
+#pragma warning restore CA1416
             catch (PlatformNotSupportedException) { Console.WriteLine("PASS platform guard (native checks require macOS)"); }
             return;
         }

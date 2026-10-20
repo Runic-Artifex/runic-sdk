@@ -83,7 +83,7 @@ internal sealed class InhibitionTests
         await bus.ConnectAsync();
         var service = new Service(bus) { ExpectedParent = "" };
         bus.AddMethodHandler(service);
-        if (new PortalApplication().CreateUnparentedInhibition() is not PortalInhibition)
+        if (new PortalApplication().CreateInhibition() is not PortalInhibition)
             throw new InvalidOperationException("Unparented inhibition did not use the Inhibit portal.");
         var provider = new PortalInhibition(new PortalPlatformProvider.UnparentedOwner(), new PortalApplication(), destination: bus.UniqueName!);
         if (await provider.AcquireAsync(DesktopInhibitionEffects.DisplaySleep, "Presenting") is not PlatformResult<IDesktopInhibitionLease>.Success(var lease)

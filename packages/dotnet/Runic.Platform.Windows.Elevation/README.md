@@ -28,7 +28,7 @@ The build adds `PrivilegedActions.WindowsElevation` to the generated class: the
 
 ```csharp
 var actions = WindowsPrivilegedActions.Create(PrivilegedActions.All,
-    PrivilegedActions.WindowsElevation with { OwnerWindow = mainWindowHandle });
+    PrivilegedActions.WindowsElevation with { Owner = window.NativeOwner });
 
 var result = await actions.RunAsync(
     new PrivilegedActionRequest(PrivilegedActions.Activate, [configurationPath])
@@ -63,7 +63,7 @@ is reserved: every exit code of a helper that ran is its own.
 | --- | --- |
 | `ApplicationDirectory` | Where relative helper paths start. Default: `AppContext.BaseDirectory`. |
 | `Programs` | Each action's `WindowsProgram`; the generated `WindowsElevation` fills it. |
-| `OwnerWindow` | The window (`HWND`) that owns the UAC prompt, so the prompt comes to the front. |
+| `Owner` | The window that owns the UAC prompt, so the prompt comes to the front: an `INativeWindowOwner`, such as a Runic Desktop window's `NativeOwner`. Its handle is read on the window's thread when the prompt is shown; a window that has closed by then leaves the prompt unowned. |
 | `TerminateAfterCancellation` | How long a cancelled action may run before its process is terminated (exit code `WindowsPrivilegedActions.TerminatedExitCode`, 1223). Default: never. The process handle UAC returns to a non-elevated application may not allow termination; the run then ends with `Failed(PermissionDenied)` while the helper may still run. |
 
 ### Output and cancellation

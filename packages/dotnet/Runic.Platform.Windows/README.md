@@ -4,10 +4,18 @@ Windows implementations of the Runic.Platform services for `win-x64` and
 `win-arm64`: file dialogs, the Unicode text clipboard, settings, notifications,
 inhibition, login startup, secret storage, trash, thumbnails, volumes, desktop
 applications, file and URI opening, the status icon and window presentation.
-Select `WindowsPlatformProvider.CreateFileDialogs(owner)` and
-`CreateTextClipboard(owner)` with the presentation's verified native owner.
-The owner dispatches file dialogs on the window's STA and drains native callbacks
-before disposal. This package does not discover providers or depend on Desktop.
+`WindowsPlatformProvider` creates the application-scoped services, the status icon
+included, which a tray-only application can create without a window. Every factory
+is annotated `[SupportedOSPlatform("windows")]` and throws
+`PlatformNotSupportedException` on another operating system or before Windows 8.
+Notifications and login startup require the application ID: it is the
+AppUserModelID and the Run value name, and Windows has no other identity for a
+process outside an MSIX package (see [MSIX packages](#msix-packages)). The window
+services (file dialogs, the clipboard and file handoff) belong to a window:
+Runic.Application.Views.Desktop's `PlatformServices.ForWindow` and
+`AddRunicPlatformServices()` create them for each window, whose owner dispatches
+file dialogs on the window's STA and drains native callbacks before disposal. This
+package does not discover providers or depend on Desktop.
 
 File dialogs require an owner, use filesystem-only Common Item Dialogs and retain
 the shared runtime's atomic replacement policy. Filters become the dialog's file type list, the first

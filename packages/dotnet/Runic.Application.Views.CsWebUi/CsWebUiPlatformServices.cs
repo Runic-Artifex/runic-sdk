@@ -24,8 +24,8 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// ViewModels get native dialogs, the clipboard, the desktop's appearance preferences, notifications, the status
     /// icon, login startup, inhibition, secret storage, the trash, file transfers, the application database and thumbnails. The application services need no window, so a CS-WebUI
     /// application can use them by registering one from a platform provider, such as
-    /// <c>WindowsPlatformProvider.CreateSettings()</c>, <c>PortalApplication.CreateUnparentedInhibition()</c>,
-    /// <c>PortalPlatformProvider.CreateSecretStore()</c> or <c>PortalPlatformProvider.CreateApplications()</c>, or the managed file transfers from
+    /// <c>WindowsPlatformProvider.CreateSettings()</c>, <c>new PortalApplication().CreateInhibition()</c>,
+    /// <c>new PortalApplication().CreateSecretStore()</c> or <c>MacOSPlatformProvider.CreateApplications()</c>, or the managed file transfers from
     /// <c>Runic.Platform.Runtime.LocalFileTransfers.Create()</c>, before calling this method. Existing registrations of
     /// these service types are kept.
     /// </remarks>

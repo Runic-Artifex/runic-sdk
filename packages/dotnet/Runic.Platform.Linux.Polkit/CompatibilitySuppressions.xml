@@ -8,4 +8,18 @@
     <Right>lib/net10.0/Runic.Platform.Linux.Polkit.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Platform.Linux.Polkit.PolkitPrivilegedActions.RunAsync(Runic.Platform.PrivilegedActionRequest,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Platform.Linux.Polkit.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Linux.Polkit.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0008</DiagnosticId>
+    <Target>T:Runic.Platform.Linux.Polkit.PolkitPrivilegedActions</Target>
+    <Left>lib/net10.0/Runic.Platform.Linux.Polkit.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Linux.Polkit.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
 </Suppressions>

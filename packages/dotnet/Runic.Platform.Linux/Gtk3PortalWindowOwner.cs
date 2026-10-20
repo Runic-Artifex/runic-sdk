@@ -5,7 +5,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Linux;
 
 /// <summary>Exports portal parents from the explicitly selected GTK3 presentation.</summary>
-public sealed partial class Gtk3PortalWindowOwner(INativeWindowOwner owner) : IPortalWindowOwner
+internal sealed partial class Gtk3PortalWindowOwner(INativeWindowOwner owner) : IPortalWindowOwner
 {
     // GTK3 supports one exported Wayland handle per window at a time.
     private static readonly ConditionalWeakTable<INativeWindowOwner, SemaphoreSlim> ExportGates = new();

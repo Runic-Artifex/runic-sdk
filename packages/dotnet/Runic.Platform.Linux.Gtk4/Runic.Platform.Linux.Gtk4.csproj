@@ -7,13 +7,16 @@
     <AssemblyName>Runic.Platform.Linux.Gtk4</AssemblyName>
     <RootNamespace>Runic.Platform.Linux.Gtk4</RootNamespace>
     <PackageId>Runic.Platform.Linux.Gtk4</PackageId>
-    <Description>GTK 4 clipboard and XDG portal-parent provider for Runic applications on Linux.</Description>
+    <Description>The GTK 4 window services (clipboard and XDG portal parent) that Runic.Application.Views.Desktop selects on Linux.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <!-- The package has no public API: Runic.Application.Views.Desktop selects its GTK 4 window services. -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
+    <InternalsVisibleTo Include="Runic.Desktop.Gtk4.Smoke" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

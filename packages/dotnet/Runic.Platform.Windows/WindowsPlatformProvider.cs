@@ -1,8 +1,17 @@
+using System.Runtime.Versioning;
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-/// <summary>Explicitly selects the Windows provider without probing or loading other providers.</summary>
+/// <summary>The Windows provider of the application-scoped Runic.Platform services.</summary>
+/// <remarks>
+/// Every factory throws <see cref="PlatformNotSupportedException"/> on another operating system or before Windows 8.
+/// The application ID that notifications and login startup require is the AppUserModelID and the Run value name: Windows
+/// has no other identity for a process outside an MSIX package. Window services (file dialogs, the clipboard and file
+/// handoff) belong to a window: Runic's hosts create them for each window, such as <c>PlatformServices.ForWindow</c> of
+/// Runic.Application.Views.Desktop.
+/// </remarks>
+[SupportedOSPlatform("windows")]
 public static class WindowsPlatformProvider
 {
     /// <summary>Creates operation-scoped idle power inhibition.</summary>
@@ -86,9 +95,10 @@ public static class WindowsPlatformProvider
     /// </remarks>
     public static IDesktopApplications CreateApplications()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsDesktopApplications(new RegistryClasses()); }
-    // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
-    // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
-    internal static IDesktopStatusIcon CreateStatusIcon()
+    /// <summary>Creates the notification-area icon with a menu.</summary>
+    /// <remarks>It needs no window: a tray-only application can create it. The icon and its menu run on a thread of their
+    /// own.</remarks>
+    public static IDesktopStatusIcon CreateStatusIcon()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsStatusIcon(); }
 
     // Restores and raises an owned window, or flashes its taskbar button; used by PlatformServices.PresentAsync.
@@ -99,19 +109,19 @@ public static class WindowsPlatformProvider
         return WindowsWindowPresentation.PresentAsync(owner, cancellationToken);
     }
 
-    /// <summary>Creates owned shell handoff operations: files, and http, https and mailto URIs through the shell's URL association.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
+    // Owned shell handoff operations for a window: files, and http, https and mailto URIs through the shell's URL association.
+    internal static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }
 
-    /// <summary>Creates owned native file dialogs. The owner must dispatch on its Windows STA.</summary>
-    public static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
+    // Owned native file dialogs for a window. The owner must dispatch on its Windows STA.
+    internal static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new NativePickerBackend(owner, new WindowsFilePicker(owner));
     }
 
-    /// <summary>Creates native Unicode text clipboard services for a verified presentation owner.</summary>
-    public static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
+    // Native Unicode text clipboard services for a window.
+    internal static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new WindowsTextClipboard(owner, new Win32Clipboard());

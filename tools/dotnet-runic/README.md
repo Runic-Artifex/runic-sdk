@@ -97,21 +97,14 @@ earlier result there, use `--fail-on fail`, or install the runtime the warning
 names.
 
 A project that references `Runic.Desktop.Gtk4` also gets a `gtk4-profile` check.
-It warns once and lists every missing piece: `Runic.Platform.Linux.Gtk4`, which
-creates the portal parent window and the GTK 4 clipboard;
-`Runic.Platform.Linux.Portal`, which can also come transitively, for example
-through `Runic.Platform.Linux`, once restored; and, on a Linux machine,
-`libgtk-4.so.1`, `libwebkitgtk-6.0.so.4` (or `.so.0`) and a GTK older than
-4.12. The remediation names the distribution's packages for Debian/Ubuntu,
-Fedora, Arch, openSUSE and NixOS, read from `/etc/os-release`, and the library
-file names on other distributions. The check also warns when the project
-restores `Runic.Platform.Linux`: its GTK 3 portal parent loads `libgtk-3`, and a
-GTK 4 process must not load GTK 3. With `--runtime`, `target-presentation` reports
-the native libraries instead. A project on `Runic.Application.Views.Desktop` gets the
-platform providers from that package, and `services.AddRunicPlatformServices()`
-selects the GTK 4 one. For such a project the check lists only the native
-libraries, and warns about `Runic.Platform.Linux` only when the project
-references it directly.
+It warns once and lists every missing piece: `Runic.Application.Views.Desktop`,
+directly or restored transitively, whose `services.AddRunicPlatformServices()`
+creates the GTK 4 window services (the platform packages keep them internal); and,
+on a Linux machine, `libgtk-4.so.1`, `libwebkitgtk-6.0.so.4` (or `.so.0`) and a GTK
+older than 4.12. The remediation names the distribution's packages for
+Debian/Ubuntu, Fedora, Arch, openSUSE and NixOS, read from `/etc/os-release`, and
+the library file names on other distributions. With `--runtime`,
+`target-presentation` reports the native libraries instead.
 
 A project on `Runic.Application.Views.Desktop` or `Runic.Application.Views.CsWebUi` also
 gets a `platform-services` check. With both hosts it checks Runic Desktop's

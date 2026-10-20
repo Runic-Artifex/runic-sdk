@@ -17,7 +17,7 @@ application's own types is [opening files and URLs](open-activation.md).
 | Sandboxed Linux | The host's applications and defaults are out of reach: application methods report `Unavailable(BackendUnavailable)`; content types and icons come from the sandbox's own data. | Portable tests. Inside a real Flatpak or Snap: unverified. |
 | Windows | Implemented in Runic.Platform.Windows: the registry's extension keys and MIME database, `AssocQueryString`, `SHAssocEnumHandlers` and `IAssocHandler::Invoke`, `shell:AppsFolder`, and shell icons. Defaults are the user's to choose: `SetDefaultApplicationAsync` reports `PermissionDenied`. | Portable tests of the type rules, launch grouping and PNG encoding on every OS. In CI on Windows x64 and ARM64, JIT and NativeAOT: the runner's associations read-only, then an extension, MIME type and URL protocol unique to the run, registered under `HKEY_CURRENT_USER\Software\Classes` with the test executable as handler, which records its argument vector; the keys are removed afterwards. |
 | macOS | Implemented in Runic.Platform.MacOS: `UTType`, `NSWorkspace` (Launch Services) and the Applications folders. | Portable tests of the type forms, supertype order and bundle scan. In CI on macOS arm64, JIT and NativeAOT: the runner's Launch Services database read-only, then two app bundles unique to the run that declare a type and a URL scheme, registered with Launch Services, launched (their executable records each start), and unregistered afterwards. Unverified: delivery of the opened items to the application (Apple events), and `SetDefaultApplicationAsync`'s outcome, because macOS asks the user to confirm even the test type's default and the runner cannot answer. |
-| CS-WebUI | `Unavailable(ProviderNotConfigured)`; register `PortalPlatformProvider.CreateApplications()` before `AddRunicPlatformServices()` to use it. | — |
+| CS-WebUI | `Unavailable(ProviderNotConfigured)`; register `new PortalApplication().CreateApplications()` before `AddRunicPlatformServices()` to use it. | — |
 
 ## Contract
 
@@ -64,7 +64,6 @@ public interface IDesktopApplications
 public static class DesktopApplications { public static IDesktopApplications Unavailable(PlatformUnavailableReason reason); }
 // Runic.Platform.Linux.Portal
 public IDesktopApplications PortalApplication.CreateApplications();
-public static IDesktopApplications PortalPlatformProvider.CreateApplications(Action<PortalDiagnostic>? diagnosticSink = null);
 // Runic.Application.Views.Desktop: the provider for the operating system
 public static IDesktopApplications PlatformServices.CreateApplications();
 ```

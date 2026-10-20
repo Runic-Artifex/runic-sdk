@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Platform.Windows.Elevation.WindowsElevationOptions.get_OwnerWindow</Target>
+    <Left>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Platform.Windows.Elevation.WindowsElevationOptions.set_OwnerWindow(System.IntPtr)</Target>
+    <Left>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Platform.Windows.Elevation.WindowsPrivilegedActions.RunAsync(Runic.Platform.PrivilegedActionRequest,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0008</DiagnosticId>
+    <Target>T:Runic.Platform.Windows.Elevation.WindowsPrivilegedActions</Target>
+    <Left>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Windows.Elevation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

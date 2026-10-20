@@ -6,6 +6,9 @@ using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 using Runic.Platform.Runtime;
 
+// A Linux smoke: the portal services are Linux only.
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
+
 const string ApplicationId = "dev.runic.LifetimeSmoke";
 if (args.Length < 1) { Console.Error.WriteLine("Usage: Runic.Lifetime.Smoke LOG [ARGUMENT...]"); return 2; }
 var log = new Lazy<StreamWriter>(() => new StreamWriter(args[0], append: true) { AutoFlush = true });
@@ -29,7 +32,7 @@ if (claimed is ApplicationInstanceClaim.Forwarded)
 }
 
 await using var instance = ((ApplicationInstanceClaim.Primary)claimed).Instance;
-var startup = PortalPlatformProvider.CreateLoginStartup(ApplicationId);
+var startup = new PortalApplication(ApplicationId).CreateLoginStartup();
 var done = new TaskCompletionSource();
 async Task Handle(ApplicationLaunch received)
 {

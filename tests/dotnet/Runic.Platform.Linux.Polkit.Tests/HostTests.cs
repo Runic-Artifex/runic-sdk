@@ -6,6 +6,14 @@ using static DeclarationTests;
 /// <summary>The real filesystem checks: only root may be able to replace the program pkexec runs.</summary>
 internal sealed class HostTests
 {
+    [Test, DisplayName("api: the provider is a static factory; its implementation is internal (W319-003 pk-01)")]
+    public void StaticFactory()
+    {
+        var type = typeof(PolkitPrivilegedActions);
+        Check(type.IsAbstract && type.IsSealed, "PolkitPrivilegedActions is a static class");
+        Check(type.GetMethod("RunAsync") is null && type.GetMethod(nameof(PolkitPrivilegedActions.Create)) is not null, "only Create is public");
+    }
+
     [Test, DisplayName("api: the helper's cancellation token has the same name as on Windows (W319-003 D27 k)")]
     public void CancellationName()
     {

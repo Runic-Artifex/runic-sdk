@@ -56,7 +56,7 @@ internal sealed partial class NativeTests
     {
         if (!OperatingSystem.IsWindows()) return;
         var host = new StandInHost("any") { Impostor = true };
-        var result = await new WindowsPrivilegedActions(PrivilegedActions.All, PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, host)
+        var result = await new ElevatedActionRunner(PrivilegedActions.All, PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, host)
             .RunAsync(new(PrivilegedActions.Flood, ["3"]));
         Check(result is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: 0 }), $"result {result}");
         Check(host.ImpostorConnected && host.ImpostorDisconnected, $"impostor connected {host.ImpostorConnected}, disconnected {host.ImpostorDisconnected}");
@@ -69,7 +69,7 @@ internal sealed partial class NativeTests
         // cmd.exe starts the helper, so the helper's parent is not the pipe's server, and the client is not the
         // process the run started.
         var host = new StandInHost("any") { ThroughCmd = true };
-        var result = await new WindowsPrivilegedActions(PrivilegedActions.All, PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, host)
+        var result = await new ElevatedActionRunner(PrivilegedActions.All, PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, host)
             .RunAsync(new(PrivilegedActions.Wait, [])).AsTask().WaitAsync(TimeSpan.FromSeconds(60));
         Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, { Code: 7 }), $"result {result}");
     }
@@ -258,7 +258,7 @@ internal sealed partial class NativeTests
     }
 
     [SupportedOSPlatform("windows")]
-    private static WindowsPrivilegedActions StandIn(string mode, WindowsElevationOptions? options = null) =>
+    private static ElevatedActionRunner StandIn(string mode, WindowsElevationOptions? options = null) =>
         new(PrivilegedActions.All, options ?? PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, new StandInHost(mode));
 
     /// <summary>The real pipe; CreateProcess of this executable instead of runas; no trust check.</summary>

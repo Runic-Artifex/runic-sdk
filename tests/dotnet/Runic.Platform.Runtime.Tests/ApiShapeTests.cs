@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.Versioning;
 using Runic.Platform.Runtime;
 using TUnit.Core;
 
@@ -114,6 +115,43 @@ internal sealed class ApiShapeTests
             typeof(NativeDirectorySelection), typeof(NativeFileDialogRequest), typeof(NativeFileLocation), typeof(OwnerClosedException),
             typeof(NativeBackendUnavailableException) })
             Check(type.IsPublic, type.Name + " stays public.");
+    }
+
+    // D33/D34 (W319-003 B2): every provider offers the same application-scoped services, the window services are
+    // internal to Runic's hosts, and the providers that throw off their platform say so for CA1416.
+    [Test]
+    public void ProvidersAreUniformAndAnnotated()
+    {
+        CheckProvider(typeof(Windows.WindowsPlatformProvider));
+        CheckProvider(typeof(MacOS.MacOSPlatformProvider));
+        CheckProvider(typeof(Linux.Portal.PortalApplication));
+        Check(typeof(Windows.WindowsPlatformProvider).GetCustomAttribute<SupportedOSPlatformAttribute>()?.PlatformName == "windows", "WindowsPlatformProvider is annotated");
+        Check(typeof(MacOS.MacOSPlatformProvider).GetCustomAttribute<SupportedOSPlatformAttribute>()?.PlatformName == "macos", "MacOSPlatformProvider is annotated");
+        Check(typeof(Linux.Portal.PortalApplication).Assembly.GetCustomAttribute<SupportedOSPlatformAttribute>()?.PlatformName == "linux", "Runic.Platform.Linux.Portal is annotated");
+        Check(typeof(Linux.Portal.PortalApplication).GetMethod("CreateUnparentedInhibition") is null && typeof(Linux.Portal.PortalApplication).GetMethod("OpenUriAsync") is null,
+            "Portal's duplicates are gone.");
+        // Linux's single entry point is PortalApplication; the GTK 3 package has no public types.
+        foreach (var type in new[] { typeof(Linux.Portal.PortalPlatformProvider), typeof(Linux.LinuxPlatformProvider), typeof(Linux.LinuxTextClipboard),
+            typeof(Linux.Gtk3PortalWindowOwner), typeof(IPortalWindowOwner), typeof(PortalParentLease) })
+            Check(!type.IsPublic, type.Name + " is internal.");
+        if (!OperatingSystem.IsLinux())
+        {
+#pragma warning disable CA1416 // The case checks the wrong-OS behaviour that the annotation documents.
+            try { _ = new Linux.Portal.PortalApplication(); throw new InvalidOperationException("PortalApplication must throw off Linux."); }
+            catch (PlatformNotSupportedException) { }
+#pragma warning restore CA1416
+        }
+    }
+
+    // Every provider offers the same application-scoped services, and no window service: Runic's hosts create those.
+    private static void CheckProvider([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type provider)
+    {
+        var methods = provider.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+        foreach (var name in new[] { "CreateSettings", "CreateNotifications", "CreateLoginStartup", "CreateStatusIcon", "CreateInhibition",
+            "CreateSecretStore", "CreateTrash", "CreateApplications", "CreateThumbnails", "CreateVolumes" })
+            Check(methods.Any(m => m.Name == name), $"{provider.Name}.{name}");
+        Check(!methods.Any(m => m.GetParameters().Any(p => typeof(INativeWindowOwner).IsAssignableFrom(p.ParameterType))),
+            $"{provider.Name} has no public window service.");
     }
 
     [Test]

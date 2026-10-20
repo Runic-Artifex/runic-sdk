@@ -108,8 +108,9 @@ export const packageLayouts = {
   "Runic.Platform.Windows.Elevation": {
     files: ["README.md", "Runic.Platform.Windows.Elevation.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Windows.Elevation.dll", "lib/net10.0/Runic.Platform.Windows.Elevation.xml",
       "buildTransitive/Runic.Platform.Windows.Elevation.props", "buildTransitive/Runic.Platform.Windows.Elevation.targets", "buildTransitive/Runic.Platform.Windows.Elevation.manifest"],
-    dependencies: ["Runic.Platform"],
-    exactDependencies: ["Runic.Platform"],
+    // WindowsElevationOptions.Owner takes Runic.Platform.Runtime's INativeWindowOwner (W319-003 el-03).
+    dependencies: ["Runic.Platform.Runtime"],
+    exactDependencies: ["Runic.Platform.Runtime"],
   },
 };
 

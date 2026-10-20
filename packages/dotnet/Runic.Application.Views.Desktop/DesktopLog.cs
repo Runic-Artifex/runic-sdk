@@ -26,6 +26,7 @@ internal static partial class DesktopLog
 
 #if RUNIC_PORTABLE_PLATFORMS
     // A rejected identity or an unreachable portal is a warning; accepted requests and registrations are details.
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     internal static void PortalDiagnostic(ILogger logger, PortalDiagnostic diagnostic) =>
         PortalDiagnostic(logger, IsProblem(diagnostic.Code) ? LogLevel.Warning : LogLevel.Debug, diagnostic.Code,
             diagnostic.Message, diagnostic.Remediation ?? string.Empty);

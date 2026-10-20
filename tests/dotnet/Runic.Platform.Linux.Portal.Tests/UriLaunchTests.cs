@@ -2,7 +2,7 @@ using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 using TUnit.Core;
 
-// IDesktopFileLauncher.LaunchUriAsync on Linux is the OpenURI portal request of PortalPlatformProvider.OpenUriAsync. A
+// IDesktopFileLauncher.LaunchUriAsync on Linux is the OpenURI portal request. A
 // rejected URI never reaches the portal (W319-003 desktop-05, plat-16).
 internal sealed class UriLaunchTests
 {
@@ -27,7 +27,6 @@ internal sealed class UriLaunchTests
         foreach (var uri in Rejected())
         {
             await ThrowsAsync<ArgumentException>(() => launcher.LaunchUriAsync(uri).AsTask(), uri.OriginalString);
-            await ThrowsAsync<ArgumentException>(() => PortalPlatformProvider.OpenUriAsync(owner, uri).AsTask(), "provider " + uri.OriginalString);
         }
         await ThrowsAsync<ArgumentNullException>(() => launcher.LaunchUriAsync(null!).AsTask(), "null");
         Check(refused.Requests == 0 && owner.Released == 0, "a rejected URI reached the portal or exported the parent");

@@ -1,20 +1,40 @@
+using System.Runtime.Versioning;
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Linux.Portal;
 
-/// <summary>Immutable application identity shared by toolkit-independent portal services.</summary>
-/// <remarks>Configure once at application composition. Each service retains its own connection and lifetime;
+/// <summary>The Linux provider of the application-scoped Runic.Platform services: XDG desktop portals, D-Bus services and
+/// freedesktop.org specifications, with one application identity and diagnostic sink for all of them.</summary>
+/// <remarks>
+/// <para>Configure once at application composition. Each service retains its own connection and lifetime;
 /// this object requires no disposal. A supplied host ID requires a matching installed desktop entry.
-/// Omitting the ID retains desktop-inferred identity for development or externally identified applications.</remarks>
+/// Omitting the ID retains desktop-inferred identity for development or externally identified applications.</para>
+/// <para>Windows and macOS have static providers (<c>WindowsPlatformProvider</c>, <c>MacOSPlatformProvider</c>) because
+/// their identity comes from the process: the AppUserModelID or the bundle. On Linux the portals identify the application
+/// by the desktop ID it registers once per connection, and report setup problems to the sink, so both live on this
+/// object.</para>
+/// <para>Window services (file dialogs, the clipboard and file handoff) belong to a window: Runic's hosts create them
+/// for each window, such as <c>PlatformServices.ForWindow</c> of Runic.Application.Views.Desktop.</para>
+/// </remarks>
+[SupportedOSPlatform("linux")]
 public sealed class PortalApplication
 {
+    private static PortalApplication? s_inferred;
+    // Desktop-inferred identity without a sink, for the window services the hosts create.
+    internal static PortalApplication Inferred => s_inferred ??= new();
+
     /// <summary>The installed reverse-DNS application identifier, or null for desktop-inferred identity.</summary>
     public string? ApplicationId { get; }
     private readonly Action<PortalDiagnostic>? _diagnosticSink;
 
     /// <summary>Creates one identity configuration to use across all portal services.</summary>
+    /// <param name="applicationId">The installed reverse-DNS desktop ID, or null for desktop-inferred identity.</param>
+    /// <param name="diagnosticSink">Receives setup messages for logs; see <see cref="PortalDiagnostic"/>.</param>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is not a reverse-DNS D-Bus identifier.</exception>
+    /// <exception cref="PlatformNotSupportedException">The process does not run on Linux.</exception>
     public PortalApplication(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null)
     {
+        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("The desktop portals are a Linux service.");
         if (applicationId is not null && (applicationId.Length > 255 || !applicationId.Contains('.')
             || applicationId.Split('.').Any(part => part.Length == 0 || char.IsAsciiDigit(part[0])
                 || part.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '_' and not '-'))))
@@ -22,14 +42,13 @@ public sealed class PortalApplication
         ApplicationId = applicationId; _diagnosticSink = diagnosticSink;
     }
 
-    /// <summary>Creates operation-scoped idle power inhibition associated with a presentation owner.</summary>
-    public IDesktopInhibition CreateInhibition(IPortalWindowOwner owner)
+    // Inhibition associated with a window, for a host.
+    internal IDesktopInhibition CreateInhibition(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalInhibition(owner, this); }
-    /// <summary>Creates idle power inhibition for an application without a native presentation, or one whose
-    /// operations outlive their windows.</summary>
+    /// <summary>Creates application-scoped idle power inhibition, as the Windows and macOS providers do.</summary>
     /// <remarks>Each request sends the empty parent window identifier, which the Inhibit portal accepts, so the request
-    /// is not tied to a window. Use <see cref="CreateInhibition"/> to associate requests with a presentation.</remarks>
-    public IDesktopInhibition CreateUnparentedInhibition() => new PortalInhibition(new PortalPlatformProvider.UnparentedOwner(), this);
+    /// belongs to the application rather than to a window and works without one.</remarks>
+    public IDesktopInhibition CreateInhibition() => new PortalInhibition(new PortalPlatformProvider.UnparentedOwner(), this);
     /// <summary>Creates application-scoped appearance preferences.</summary>
     public IDesktopSettings CreateSettings() => new PortalDesktopSettings(application: this);
     /// <summary>Creates application-scoped notifications; only one service may own this application bus name.</summary>
@@ -63,23 +82,25 @@ public sealed class PortalApplication
     /// run none, so there only thumbnails their file managers cached are returned. Inside Flatpak the sandbox must allow
     /// reading the host's cache (<c>--filesystem=xdg-cache/thumbnails:ro</c>) and talking to the thumbnailer.</remarks>
     public IDesktopThumbnails CreateThumbnails() => new LinuxThumbnails(LinuxThumbnailOptions.FromProcess(), this);
-    /// <summary>Creates file and URI handoffs for a presentation owner.</summary>
-    public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
+    /// <summary>Creates the desktop's storage volumes from UDisks2 on the system bus.</summary>
+    /// <remarks>UDisks2 asks Polkit for authorization itself and may show a prompt. The volumes need no portal and no
+    /// window; a sandbox must allow talking to <c>org.freedesktop.UDisks2</c> on the system bus. Creating them
+    /// connects to nothing; the first request does.</remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "A factory of the provider instance, as the other services are; the volumes need no identity.")]
+    public IDesktopVolumes CreateVolumes() => new UDisksVolumes();
+    // File and URI handoffs for a window, for a host.
+    internal IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }
-    /// <summary>Creates portal file dialogs for a presentation owner.</summary>
-    public IPickerBackend CreateFileDialogs(IPortalWindowOwner owner)
+    // Portal file dialogs for a window, for a host.
+    internal IPickerBackend CreateFileDialogs(IPortalWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new NativePickerBackend(owner, new PortalFilePicker(owner, new PortalTransport(application: this), _diagnosticSink));
     }
-    /// <summary>Creates explicitly unparented file dialogs for a hostless application.</summary>
+    /// <summary>Creates explicitly unparented file dialogs for an application without a window.</summary>
+    /// <remarks>Linux only: the portal may show such a dialog without a parent. Windows in a Runic host get dialogs owned
+    /// by the window from the host instead.</remarks>
     public IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new PortalPlatformProvider.UnparentedOwner());
-    /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
-    /// <remarks>The same request as <see cref="IDesktopFileLauncher.LaunchUriAsync"/> of <see cref="CreateFileLauncher"/>'s
-    /// launcher.</remarks>
-    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>
-    public ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
-        PortalPlatformProvider.OpenUriCoreAsync(owner, uri, new PortalTransport(application: this), cancellationToken);
 
     internal void Diagnose(string code, string message, string remedy)
     {

@@ -13,7 +13,8 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- WindowsElevationOptions.Owner takes the window owner of Runic's hosts. -->
+    <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <InternalsVisibleTo Include="Runic.Platform.Windows.Elevation.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Platform.Windows.Elevation.targets" Pack="true" PackagePath="buildTransitive/" />

@@ -9,6 +9,7 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 // The open-documents and get-URL Apple events, dispatched through NSAppleEventManager's handler table on the main
 // thread while the Desktop event loop runs (Program.cs runs the category inside it). CI runs it on the macOS runner under JIT and
 // NativeAOT. A launch through LaunchServices with a registered bundle is the CI bundle script's job (RunBundleProbe).
+[System.Runtime.Versioning.SupportedOSPlatform("macos")]
 internal sealed partial class MacOpenEventsNativeTests
 {
     private const uint CoreEventClass = 0x61657674, OpenDocuments = 0x6F646F63, InternetEventClass = 0x4755524C, GetUrl = 0x4755524C;

@@ -277,8 +277,8 @@ internal sealed partial class ProtocolTests
         var verbless = new PrivilegedActionDeclaration("org.example.app.any", "/opt/a");
         Throws<ArgumentException>(() => WindowsPrivilegedActions.Create([PrivilegedActions.Report, verbless]), "a verbless action with another");
         Throws<ArgumentException>(() => WindowsPrivilegedActions.Create([PrivilegedActions.Report, PrivilegedActions.Report]), "twice");
-        Throws<ArgumentException>(() => _ = new WindowsPrivilegedActions(PrivilegedActions.All, new() { Programs = new Dictionary<string, string> { ["org.example.other"] = "x.exe" } }, @"C:\App", new FakeHost()), "an undeclared program entry");
-        Throws<ArgumentException>(() => _ = new WindowsPrivilegedActions(PrivilegedActions.All, new() { Programs = new Dictionary<string, string> { [PrivilegedActions.Report.Id] = @"..\x.exe" } }, @"C:\App", new FakeHost()), "a program outside");
+        Throws<ArgumentException>(() => _ = new ElevatedActionRunner(PrivilegedActions.All, new() { Programs = new Dictionary<string, string> { ["org.example.other"] = "x.exe" } }, @"C:\App", new FakeHost()), "an undeclared program entry");
+        Throws<ArgumentException>(() => _ = new ElevatedActionRunner(PrivilegedActions.All, new() { Programs = new Dictionary<string, string> { [PrivilegedActions.Report.Id] = @"..\x.exe" } }, @"C:\App", new FakeHost()), "a program outside");
         if (OperatingSystem.IsWindows())
             Throws<ArgumentException>(() => WindowsPrivilegedActions.Create(PrivilegedActions.All, new() { ApplicationDirectory = @"\\server\share" }), "a network directory");
         Throws<ArgumentOutOfRangeException>(() => WindowsPrivilegedActions.Create(PrivilegedActions.All, new() { TerminateAfterCancellation = TimeSpan.FromSeconds(-1) }), "a negative wait");

@@ -5,3 +5,24 @@
 Runic.Platform.Linux.Portal.PortalDiagnostic.Deconstruct(out string! Code, out string! Message, out string? Remediation) -> void
 Runic.Platform.Linux.Portal.PortalDiagnostic.PortalDiagnostic(string! Code, string! Message, string? Remediation = null) -> void
 Runic.Platform.Linux.Portal.PortalDiagnostic.Remediation.get -> string?
+*REMOVED*Runic.Platform.Linux.Portal.PortalApplication.CreateFileDialogs(Runic.Platform.Runtime.IPortalWindowOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+*REMOVED*Runic.Platform.Linux.Portal.PortalApplication.CreateFileLauncher(Runic.Platform.Runtime.IPortalWindowOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+*REMOVED*Runic.Platform.Linux.Portal.PortalApplication.CreateInhibition(Runic.Platform.Runtime.IPortalWindowOwner! owner) -> Runic.Platform.IDesktopInhibition!
+*REMOVED*Runic.Platform.Linux.Portal.PortalApplication.CreateUnparentedInhibition() -> Runic.Platform.IDesktopInhibition!
+*REMOVED*Runic.Platform.Linux.Portal.PortalApplication.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+*REMOVED*Runic.Platform.Linux.Portal.PortalPlatformProvider
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateApplications(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopApplications!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.Runtime.IPickerBackend!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.IPortalWindowOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateLoginStartup(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopLoginStartup!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateNotifications(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopNotifications!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateSecretStore(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopSecretStore!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateStatusIcon(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopStatusIcon!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateThumbnails(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopThumbnails!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateTrash(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopTrash!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateUnparentedFileDialogs() -> Runic.Platform.Runtime.IPickerBackend!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
+*REMOVED*static Runic.Platform.Linux.Portal.PortalPlatformProvider.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.Linux.Portal.PortalApplication.CreateInhibition() -> Runic.Platform.IDesktopInhibition!
+Runic.Platform.Linux.Portal.PortalApplication.CreateVolumes() -> Runic.Platform.IDesktopVolumes!

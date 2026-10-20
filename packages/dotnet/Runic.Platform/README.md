@@ -149,7 +149,7 @@ on.
 
 | Platform | Mechanism | Outcomes |
 | --- | --- | --- |
-| Linux (GTK 3 and GTK 4, also in Flatpak and Snap) | The OpenURI desktop portal, as `PortalPlatformProvider.OpenUriAsync` | The portal may let the user choose an application; cancelling is `Failed(UserDismissed)` |
+| Linux (GTK 3 and GTK 4, also in Flatpak and Snap) | The OpenURI desktop portal | The portal may let the user choose an application; cancelling is `Failed(UserDismissed)` |
 | Windows | `ShellExecuteEx` with the URI and the shell's URL association (the user's default), with zone checks | Without a handler, for example no mail client, Windows 11 offers to find an application and reports success; older shells report `Unavailable(BackendUnavailable)` |
 | macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Failed(Other)` with the `NSError` domain and code (macOS 26: `NSCocoaErrorDomain 256`) |
 
@@ -194,7 +194,7 @@ event loop that the Desktop host runs, as their providers describe. Linux inhibi
 window. CS-WebUI selects no native provider; register one before calling
 `AddRunicPlatformServices()` to use an application service there, for example
 `WindowsPlatformProvider.CreateInhibition()` or
-`new PortalApplication("org.example.Notes").CreateUnparentedInhibition()`.
+`new PortalApplication("org.example.Notes").CreateInhibition()`.
 Existing registrations are kept on both hosts.
 
 The application composes `IDesktopPrivilegedActions` itself, because it needs

@@ -7,7 +7,7 @@ internal sealed class SettingsTests
     [Test, Explicit, Category("Settings"), DisplayName("settings: print the session's portal appearance")]
     public async Task ReadSessionSettingsAsync()
     {
-        await using var settings = PortalPlatformProvider.CreateSettings();
+        await using var settings = new PortalApplication().CreateSettings();
         Console.WriteLine(await settings.ReadAsync());
     }
 }

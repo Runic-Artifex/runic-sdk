@@ -555,19 +555,14 @@ internal static class DoctorChecks
             : Warn("compatibility-set", $"No Runic package was selected by {Authority.Id}.", "Restore the generated Views Window project."));
     }
 
-    internal const string PlatformLinuxPackage = "Runic.Platform.Linux";
-    internal const string PlatformLinuxGtk4Package = "Runic.Platform.Linux.Gtk4";
-    internal const string PlatformLinuxPortalPackage = "Runic.Platform.Linux.Portal";
-
     /// <summary>
-    /// Lists every piece a GTK 4 Desktop application is missing in one check: the GTK 4 platform provider (portal
-    /// parent and clipboard), the portal services, and, on a Linux machine, the native libraries. It also warns when
-    /// the project uses Runic.Platform.Linux, whose GTK 3 portal parent loads libgtk-3 into the GTK 4 process.
+    /// Lists every piece a GTK 4 Desktop application is missing in one check: the platform services, which only
+    /// Runic.Application.Views.Desktop creates for a GTK 4 window, and, on a Linux machine, the native libraries.
     /// </summary>
     /// <remarks>
-    /// Runic.Application.Views.Desktop brings every platform provider and selects the GTK 4 one at run time, so with it
-    /// only a direct Runic.Platform.Linux reference, which means the application calls LinuxPlatformProvider itself,
-    /// is a conflict. With --rid the target-presentation check reports the native libraries instead.
+    /// Runic.Application.Views.Desktop brings every platform provider and selects the GTK 4 window services at run time;
+    /// the provider packages keep those internal, so a project without it has no native window services. With --rid
+    /// the target-presentation check reports the native libraries instead.
     /// </remarks>
     private static async Task CheckGtk4ProfileAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
         IDoctorRuntime runtime, bool checkNativeLibraries, CancellationToken cancellationToken)
@@ -579,27 +574,10 @@ internal static class DoctorChecks
         bool facade = available.Contains(DoctorProjectConfiguration.DesktopPackage);
         var missing = new List<string>();
         var remediation = new List<string>();
-        bool gtk3Platform = facade
-            ? project.DirectReferences.Contains(PlatformLinuxPackage, StringComparer.OrdinalIgnoreCase)
-            : available.Contains(PlatformLinuxPackage);
-        if (gtk3Platform)
+        if (!facade)
         {
-            remediation.Add($"remove {PlatformLinuxPackage}");
-        }
-        if (!facade && !available.Contains(PlatformLinuxGtk4Package))
-        {
-            missing.Add($"{PlatformLinuxGtk4Package} (Gtk4PlatformProvider: portal parent windows and the clipboard)");
-            remediation.Add($"reference {PlatformLinuxGtk4Package}");
-        }
-        if (!facade && !available.Contains(PlatformLinuxPortalPackage))
-        {
-            missing.Add($"{PlatformLinuxPortalPackage} (portal file dialogs and services)");
-            remediation.Add($"reference {PlatformLinuxPortalPackage}");
-        }
-        else if (!facade && gtk3Platform && !project.DirectReferences.Contains(PlatformLinuxPortalPackage, StringComparer.OrdinalIgnoreCase))
-        {
-            // The portal may come only through Runic.Platform.Linux; it must stay once that is removed.
-            remediation.Add($"reference {PlatformLinuxPortalPackage} directly");
+            missing.Add($"{DoctorProjectConfiguration.DesktopPackage} (the GTK 4 window services: portal file dialogs, file handoff and the clipboard)");
+            remediation.Add($"reference {DoctorProjectConfiguration.DesktopPackage}");
         }
         if (checkNativeLibraries && runtime.Platform.Os == "linux")
         {
@@ -624,27 +602,14 @@ internal static class DoctorChecks
                     DoctorTargetChecks.MinimumGtk4, gtk4: !gtk4 || oldGtk4, webKit6: !webKit6));
             }
         }
-        if (missing.Count == 0 && !gtk3Platform)
+        if (missing.Count == 0)
         {
-            checks.Add(Pass(id, "The GTK 4 profile has its window provider, platform provider and portal services."));
+            checks.Add(Pass(id, "The GTK 4 profile has its window provider, platform services and native libraries."));
             return;
         }
-        var problems = new List<string>();
-        if (missing.Count != 0)
-        {
-            problems.Add($"The GTK 4 profile is missing {missing.Count} piece(s): {string.Join("; ", missing)}.");
-        }
-        if (gtk3Platform)
-        {
-            problems.Add(facade
-                ? $"{PlatformLinuxPackage} is referenced directly: its LinuxPlatformProvider parents dialogs through GTK 3 and loads libgtk-3, and a GTK 4 process must not load GTK 3."
-                : $"{PlatformLinuxPackage} is referenced: its GTK 3 portal parent windows load libgtk-3, and a GTK 4 process must not load GTK 3.");
-        }
-        checks.Add(Warn(id, string.Join(" ", problems), facade
-            ? $"To use native services with GTK 4: {string.Join(", ", remediation)}. Call services.AddRunicPlatformServices(), " +
-              "whose PlatformServices selects the GTK 4 provider, and select the window provider with DesktopHostOptions.WithGtk4()."
-            : $"To use native services with GTK 4: {string.Join(", ", remediation)}. Create the portal owner with " +
-              "Gtk4PlatformProvider.CreatePortalWindowOwner(owner) and select the window provider with DesktopHostOptions.WithGtk4()."));
+        checks.Add(Warn(id, $"The GTK 4 profile is missing {missing.Count} piece(s): {string.Join("; ", missing)}.",
+            $"To use native services with GTK 4: {string.Join(", ", remediation)}. Call services.AddRunicPlatformServices(), " +
+            "whose PlatformServices selects the GTK 4 provider, and select the window provider with DesktopHostOptions.WithGtk4()."));
     }
 
     internal const string PortalServiceFile = "dbus-1/services/org.freedesktop.portal.Desktop.service";

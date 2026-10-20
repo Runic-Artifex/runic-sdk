@@ -37,7 +37,7 @@ internal static partial class DirectorySmoke
         {
             var portal = new DirectoryPortal(connection, new Uri(path).AbsoluteUri);
             connection.AddMethodHandler(portal);
-            var backend = PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner));
+            var backend = PortalApplication.Inferred.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner));
             await using var lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
             var files = new PresentationFiles(lifetime, backend);
             Check(files.GetSnapshot().Statuses["platform.directories.open"] is CapabilityStatus.Available, "directory capability");

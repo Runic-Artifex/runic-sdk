@@ -31,6 +31,23 @@ internal sealed class ClipboardTests
         Console.WriteLine("PASS Linux clipboard owner dispatch races.");
     }
 
+    // lin-04 (W319-003 D34): inside Flatpak or Snap the GTK-native dialogs report unavailable, as every other
+    // Runic.Platform service reports an environment it cannot serve, instead of throwing at creation.
+    [Test]
+    public async Task SandboxedGtkDialogsReportUnavailableAsync()
+    {
+        string? previous = Environment.GetEnvironmentVariable("SNAP");
+        Environment.SetEnvironmentVariable("SNAP", "/snap/runic-test/1");
+        try
+        {
+            var dialogs = LinuxPlatformProvider.CreateGtkNativeFileDialogs(new DisappearingOwner(new InvalidOperationException("no dispatch expected")));
+            Check(await dialogs.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "open");
+            Check(await dialogs.SaveFileAsync(new("a.txt")) is PickerResult<ISaveFileLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "save");
+            Check(await dialogs.OpenDirectoryAsync(new()) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "directory");
+        }
+        finally { Environment.SetEnvironmentVariable("SNAP", previous); }
+    }
+
     [Test, Explicit, Category("Native")]
     public async Task NativeClipboardAsync()
     {

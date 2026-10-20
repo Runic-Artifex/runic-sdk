@@ -188,7 +188,7 @@ internal sealed partial class TrashTests
     [Test, DisplayName("trash: providers and the unavailable trash")]
     public async Task ProvidersAsync()
     {
-        Check(PortalPlatformProvider.CreateTrash() is LinuxTrash && new PortalApplication("org.example.App").CreateTrash() is LinuxTrash, "providers");
+        Check(new PortalApplication("org.example.App").CreateTrash() is LinuxTrash, "providers");
         var unavailable = DesktopTrash.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         Check(await unavailable.MoveToTrashAsync("/tmp/x") is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.ProviderNotConfigured }, "unavailable");
         Check(await Catch(() => unavailable.MoveToTrashAsync("x").AsTask()) is ArgumentException, "the unavailable trash checks the path");

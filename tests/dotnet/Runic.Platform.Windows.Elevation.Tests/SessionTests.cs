@@ -15,7 +15,7 @@ namespace Runic.Elevation.Smoke;
 /// </summary>
 internal sealed class SessionTests
 {
-    private static WindowsPrivilegedActions Provider(FakeHost host, WindowsElevationOptions? options = null) =>
+    private static ElevatedActionRunner Provider(FakeHost host, WindowsElevationOptions? options = null) =>
         new(PrivilegedActions.All, options ?? PrivilegedActions.WindowsElevation, @"C:\Program Files\Runic Smoke", host);
 
     [Test, DisplayName("session: an accepted action streams both channels and reports its exit code")]
@@ -41,6 +41,51 @@ internal sealed class SessionTests
         var parsed = ProtocolTests.ParseLikeCrt(host.CommandLine!);
         Check(parsed[0] == ElevationProtocol.Marker && ElevationProtocol.IsPipeName(parsed[1]) && parsed[1] == host.Pipe!.Name
             && parsed.Skip(2).SequenceEqual(["report", .. ProtocolTests.AwkwardArguments.Take(8)]), $"command line {host.CommandLine}");
+    }
+
+    // el-03 (W319-003 D33): the prompt's owner is a Runic window owner, whose handle is read on its thread when the
+    // prompt is shown; without an owner, or once it has closed, the prompt has none.
+    [Test, DisplayName("session: the owner window's handle parents the prompt")]
+    public async Task OwnerParentsThePromptAsync()
+    {
+        var host = new FakeHost { Action = (_, _) => 0 };
+        var owner = new Owner(0x1234);
+        var result = await Provider(host, PrivilegedActions.WindowsElevation with { Owner = owner }).RunAsync(new(PrivilegedActions.Report, []));
+        Check(result is PlatformResult<PrivilegedActionCompletion>.Success && host.OwnerWindow == 0x1234 && owner.Invocations == 1, $"owned: {result} {host.OwnerWindow}");
+
+        var unowned = new FakeHost { Action = (_, _) => 0 };
+        await Provider(unowned).RunAsync(new(PrivilegedActions.Report, []));
+        Check(unowned.OwnerWindow == 0, "no owner");
+
+        var closedHost = new FakeHost { Action = (_, _) => 0 };
+        var closed = new Owner(0x1234) { Closed = true };
+        result = await Provider(closedHost, PrivilegedActions.WindowsElevation with { Owner = closed }).RunAsync(new(PrivilegedActions.Report, []));
+        Check(result is PlatformResult<PrivilegedActionCompletion>.Success && closedHost.OwnerWindow == 0, "a closed owner leaves the prompt unowned");
+    }
+
+    // el-01 (W319-003 D33): the provider is a static factory whose implementation is internal.
+    [Test, DisplayName("session: the provider is a static factory with the owner as a window owner")]
+    public void StaticFactory()
+    {
+        var type = typeof(WindowsPrivilegedActions);
+        Check(type.IsAbstract && type.IsSealed && type.GetMethod("RunAsync") is null, "WindowsPrivilegedActions is a static class with Create");
+        Check(typeof(WindowsElevationOptions).GetProperty(nameof(WindowsElevationOptions.Owner))?.PropertyType == typeof(Runic.Platform.Runtime.INativeWindowOwner)
+            && typeof(WindowsElevationOptions).GetProperty("OwnerWindow") is null, "the owner is a window owner, not an HWND");
+    }
+
+    private sealed class Owner(nint handle) : Runic.Platform.Runtime.INativeWindowOwner
+    {
+        internal bool Closed;
+        internal int Invocations;
+        public Guid Generation { get; } = Guid.NewGuid();
+        public bool IsAvailable => true;
+        public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default)
+        {
+            Invocations++;
+            if (Closed) throw new Runic.Platform.Runtime.OwnerClosedException();
+            action(handle);
+            return ValueTask.CompletedTask;
+        }
     }
 
     [Test, DisplayName("session: the prompt declined, UAC off, a rejected action, a JIT helper and a helper that never connects")]
@@ -245,6 +290,7 @@ internal sealed class FakeHost : IElevationHost
 
     public string? CheckedPath { get; private set; }
     public string? CommandLine { get; private set; }
+    public nint OwnerWindow { get; private set; }
     public FakePipe? Pipe { get; private set; }
     public FakeProcess? Process { get; private set; }
     public int Launches { get; private set; }
@@ -265,6 +311,7 @@ internal sealed class FakeHost : IElevationHost
     {
         Launches++;
         CommandLine = commandLine;
+        OwnerWindow = ownerWindow;
         Launched.TrySetResult();
         if (LaunchGate is { } gate) await gate.Task.ConfigureAwait(false);
         if (LaunchError != 0) return new(null, LaunchError);

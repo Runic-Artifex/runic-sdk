@@ -2,50 +2,22 @@
 <!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Platform.Linux.Gtk3PortalWindowOwner.#ctor(Runic.Platform.Runtime.INativePickerOwner)</Target>
-    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
-    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Platform.Linux.LinuxPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativePickerOwner)</Target>
-    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
-    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Platform.Linux.LinuxPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativePickerOwner)</Target>
-    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
-    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Platform.Linux.LinuxPlatformProvider.CreateGtkNativeFileDialogs(Runic.Platform.Runtime.INativePickerOwner)</Target>
-    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
-    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Platform.Linux.LinuxPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner)</Target>
-    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
-    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Platform.Linux.LinuxTextClipboard.#ctor(Runic.Platform.Runtime.INativePickerOwner)</Target>
-    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
-    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0008</DiagnosticId>
+    <DiagnosticId>CP0001</DiagnosticId>
     <Target>T:Runic.Platform.Linux.Gtk3PortalWindowOwner</Target>
+    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Platform.Linux.LinuxPlatformProvider</Target>
+    <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Platform.Linux.LinuxTextClipboard</Target>
     <Left>lib/net10.0/Runic.Platform.Linux.dll</Left>
     <Right>lib/net10.0/Runic.Platform.Linux.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

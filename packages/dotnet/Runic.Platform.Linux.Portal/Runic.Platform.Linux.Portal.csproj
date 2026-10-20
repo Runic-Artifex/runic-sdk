@@ -6,7 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Platform.Linux.Portal</PackageId>
-    <Description>Direct XDG desktop portal file dialogs and URI opening for Runic applications.</Description>
+    <Description>The Linux provider of the Runic.Platform services, built on XDG desktop portals, D-Bus services and freedesktop.org specifications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -28,6 +28,10 @@
     <InternalsVisibleTo Include="Runic.Platform.Linux.Portal.Tests" />
     <!-- Shipping packages pin each other exactly; GTK 3 shares document-portal classification. -->
     <InternalsVisibleTo Include="Runic.Platform.Linux" />
+    <!-- Runic's hosts create the window services (dialogs, file handoff, window inhibition) for each window. -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
+    <InternalsVisibleTo Include="Runic.Desktop.Gtk4.Smoke" />
+    <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../Runic.Platform.Linux.DBus/buildTransitive/Runic.Platform.Linux.DBus.props" />

@@ -639,7 +639,12 @@ validated" policy.
 
 ## macOS design
 
-Implemented in Runic.Platform.MacOS (W300-026); the
+Implemented in Runic.Platform.MacOS (W300-026), not in a separate package as on
+Linux (Runic.Platform.Linux.Polkit) and Windows (Runic.Platform.Windows.Elevation):
+a macOS application ships as one bundle whose daemon is generated only when
+`RunicMacPrivilegedDaemonLabel` is set, so the opt-in is that property rather than
+a package reference, and the daemon's XPC server needs the bundle's code-signing
+identity that the provider package already checks (W319-003 mac-02). The
 [package guide](../../packages/dotnet/Runic.Platform.MacOS/README.md#privileged-actions)
 describes the API, the build properties and the packaging.
 

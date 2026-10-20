@@ -21,7 +21,7 @@ internal sealed class RealPortalAppearanceTests
         Gsettings("org.gnome.desktop.a11y.interface", "high-contrast", "false");
         Gsettings("org.gnome.desktop.a11y.interface", "reduced-motion", "no-preference");
 
-        await using var settings = PortalPlatformProvider.CreateSettings();
+        await using var settings = new PortalApplication().CreateSettings();
         var baseline = await ReadUntilAsync(settings, appearance => appearance.ColorScheme == DesktopColorScheme.Light, "the light baseline");
         Check(baseline is { HighContrast: false, ReducedMotion: false } && Near(baseline.AccentColor, 0.208, 0.518, 0.894),
             $"baseline: {baseline}");

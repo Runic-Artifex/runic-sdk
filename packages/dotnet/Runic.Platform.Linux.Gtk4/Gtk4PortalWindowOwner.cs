@@ -9,7 +9,7 @@ namespace Runic.Platform.Linux.Gtk4;
 /// The supplied owner must dispatch GTK 4 window handles. This class keeps every GTK and
 /// GDK operation inside that owner's callback, so callers never observe a raw native handle.
 /// </remarks>
-public sealed partial class Gtk4PortalWindowOwner(INativeWindowOwner owner) : IPortalWindowOwner
+internal sealed partial class Gtk4PortalWindowOwner(INativeWindowOwner owner) : IPortalWindowOwner
 {
     /// <inheritdoc />
     public Guid Generation => owner.Generation;

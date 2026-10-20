@@ -143,20 +143,8 @@ internal sealed class DirectoryTests
             }
 
             // Unix filenames are native byte strings. A replacement decoder
-            // would select a different resource; reject invalid UTF-8 instead.
-            if (!OperatingSystem.IsWindows())
-            {
-                byte[] exact = [.. Encoding.UTF8.GetBytes(path), 0];
-                nint memory = Marshal.AllocHGlobal(exact.Length);
-                try
-                {
-                    Marshal.Copy(exact, 0, memory, exact.Length);
-                    Check(LinuxFilePicker.ReadExactPath(memory) == path);
-                    Marshal.Copy(new byte[] { (byte)'/', 0xFF, 0 }, 0, memory, 3);
-                    await Throws<IOException>(() => Task.FromResult(LinuxFilePicker.ReadExactPath(memory)));
-                }
-                finally { Marshal.FreeHGlobal(memory); }
-            }
+            // would select a different resource; reject invalid UTF-8 instead. The GTK picker reads them on Linux.
+            if (OperatingSystem.IsLinux()) ReadsExactLinuxPath(path);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -197,6 +185,22 @@ internal sealed class DirectoryTests
         public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
             => ValueTask.FromResult<PickerResult<ISaveFileLease>>(new PickerResult<ISaveFileLease>.Dismissed());
     }
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static void ReadsExactLinuxPath(string path)
+    {
+        byte[] exact = [.. Encoding.UTF8.GetBytes(path), 0];
+        nint memory = Marshal.AllocHGlobal(exact.Length);
+        try
+        {
+            Marshal.Copy(exact, 0, memory, exact.Length);
+            Check(LinuxFilePicker.ReadExactPath(memory) == path);
+            Marshal.Copy(new byte[] { (byte)'/', 0xFF, 0 }, 0, memory, 3);
+            try { _ = LinuxFilePicker.ReadExactPath(memory); throw new InvalidOperationException("Invalid UTF-8 was accepted."); }
+            catch (IOException) { }
+        }
+        finally { Marshal.FreeHGlobal(memory); }
+    }
+
     private sealed class Picker : INativeFilePicker, INativeDirectoryPicker
     {
         internal Func<NativeDirectorySelection?> Select = () => null;

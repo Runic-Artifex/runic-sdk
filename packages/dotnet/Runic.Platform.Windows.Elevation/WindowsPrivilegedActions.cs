@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Runtime.ExceptionServices;
+using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows.Elevation;
 
@@ -23,8 +24,12 @@ public sealed record WindowsElevationOptions
     /// </summary>
     public IReadOnlyDictionary<string, string>? Programs { get; init; }
 
-    /// <summary>The window that owns the UAC prompt (an <c>HWND</c>), so the prompt comes to the front; zero for none.</summary>
-    public nint OwnerWindow { get; init; }
+    /// <summary>
+    /// The window that owns the UAC prompt, so the prompt comes to the front, such as a Runic Desktop window's
+    /// <c>NativeOwner</c>; null for none. Its handle is read on its own thread when the prompt is shown; a window that
+    /// has closed by then leaves the prompt unowned.
+    /// </summary>
+    public INativeWindowOwner? Owner { get; init; }
 
     /// <summary>
     /// How long a running action may take to stop after cancellation before its process is terminated. Null, the
@@ -51,32 +56,10 @@ public sealed record WindowsElevationOptions
 /// result is <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
 /// </para>
 /// </remarks>
-public sealed class WindowsPrivilegedActions : IDesktopPrivilegedActions
+public static class WindowsPrivilegedActions
 {
     /// <summary>The exit code of a helper terminated after <see cref="WindowsElevationOptions.TerminateAfterCancellation"/>: <c>ERROR_CANCELLED</c>.</summary>
     public const int TerminatedExitCode = ElevationOutcome.ErrorCancelled;
-
-    private readonly FrozenDictionary<string, (PrivilegedActionDeclaration Action, string Helper)> _actions;
-    private readonly WindowsElevationOptions _options;
-    private readonly IElevationHost _host;
-
-    internal WindowsPrivilegedActions(IEnumerable<PrivilegedActionDeclaration> actions, WindowsElevationOptions options, string applicationDirectory, IElevationHost host)
-    {
-        _options = options;
-        _host = host;
-        var helpers = new Dictionary<string, (PrivilegedActionDeclaration, string)>(StringComparer.Ordinal);
-        foreach (var action in Index(actions))
-        {
-            string? program = null;
-            options.Programs?.TryGetValue(action.Id, out program);
-            var helper = HelperLocation.Resolve(action, program, applicationDirectory)
-                ?? throw new ArgumentException($"The Windows helper of '{action.Id}' is not a local path without '.' or '..'.", nameof(options));
-            helpers.Add(action.Id, (action, helper));
-        }
-        foreach (var id in options.Programs?.Keys ?? [])
-            if (!helpers.ContainsKey(id)) throw new ArgumentException($"'{id}' in Programs is not a declared action.", nameof(options));
-        _actions = helpers.ToFrozenDictionary(StringComparer.Ordinal);
-    }
 
     /// <summary>Creates the provider for <paramref name="actions"/>, usually the generated <c>PrivilegedActions.All</c>.</summary>
     /// <param name="actions">The declared actions.</param>
@@ -95,13 +78,39 @@ public sealed class WindowsPrivilegedActions : IDesktopPrivilegedActions
         var list = actions.ToList();
         if (!OperatingSystem.IsWindows())
         {
-            _ = Index(list);
+            _ = ElevatedActionRunner.Index(list);
             return DesktopPrivilegedActions.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         }
         var directory = options.ApplicationDirectory ?? AppContext.BaseDirectory;
         if (!HelperLocation.IsValidDirectory(directory))
             throw new ArgumentException("ApplicationDirectory must be a local absolute path such as C:\\Program Files\\Example.", nameof(options));
-        return new WindowsPrivilegedActions(list, options, directory, WindowsElevationHost.Instance);
+        return new ElevatedActionRunner(list, options, directory, WindowsElevationHost.Instance);
+    }
+}
+
+// The provider Create returns on Windows.
+internal sealed class ElevatedActionRunner : IDesktopPrivilegedActions
+{
+    private readonly FrozenDictionary<string, (PrivilegedActionDeclaration Action, string Helper)> _actions;
+    private readonly WindowsElevationOptions _options;
+    private readonly IElevationHost _host;
+
+    internal ElevatedActionRunner(IEnumerable<PrivilegedActionDeclaration> actions, WindowsElevationOptions options, string applicationDirectory, IElevationHost host)
+    {
+        _options = options;
+        _host = host;
+        var helpers = new Dictionary<string, (PrivilegedActionDeclaration, string)>(StringComparer.Ordinal);
+        foreach (var action in Index(actions))
+        {
+            string? program = null;
+            options.Programs?.TryGetValue(action.Id, out program);
+            var helper = HelperLocation.Resolve(action, program, applicationDirectory)
+                ?? throw new ArgumentException($"The Windows helper of '{action.Id}' is not a local path without '.' or '..'.", nameof(options));
+            helpers.Add(action.Id, (action, helper));
+        }
+        foreach (var id in options.Programs?.Keys ?? [])
+            if (!helpers.ContainsKey(id)) throw new ArgumentException($"'{id}' in Programs is not a declared action.", nameof(options));
+        _actions = helpers.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     /// <inheritdoc />
@@ -125,20 +134,22 @@ public sealed class WindowsPrivilegedActions : IDesktopPrivilegedActions
             return new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData,
                 new(ElevationOutcome.Domain, 6, "The arguments are too long for a Windows command line."));
 
+        // Before the pipe exists, so cancelling while the owner's thread is busy leaves nothing to clean up.
+        var ownerWindow = await ElevationRun.OwnerWindowAsync(_options.Owner, cancellationToken).ConfigureAwait(false);
         IElevationPipe pipe;
         try { pipe = _host.CreatePipe(pipeName); }
         catch (IOException e)
         {
             return new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IOError, new("Win32", e.HResult & 0xFFFF, e.Message));
         }
-        return await new ElevationRun(_host, pipe, _options, request.Output).RunAsync(entry.Helper, commandLine, cancellationToken).ConfigureAwait(false);
+        return await new ElevationRun(_host, pipe, _options, request.Output).RunAsync(entry.Helper, commandLine, ownerWindow, cancellationToken).ConfigureAwait(false);
     }
 
     private static bool SameDeclaration(PrivilegedActionDeclaration a, PrivilegedActionDeclaration b) =>
         ReferenceEquals(a, b) || (a.Program == b.Program && a.Verb == b.Verb && a.MaximumArguments == b.MaximumArguments && a.ArgumentPattern == b.ArgumentPattern
             && a.Commands.SequenceEqual(b.Commands));
 
-    private static List<PrivilegedActionDeclaration> Index(IEnumerable<PrivilegedActionDeclaration> actions)
+    internal static List<PrivilegedActionDeclaration> Index(IEnumerable<PrivilegedActionDeclaration> actions)
     {
         ArgumentNullException.ThrowIfNull(actions);
         var byId = new Dictionary<string, PrivilegedActionDeclaration>(StringComparer.Ordinal);
@@ -160,12 +171,23 @@ internal sealed class ElevationRun(IElevationHost host, IElevationPipe pipe, Win
     private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(5);
     private readonly Lock _writeLock = new();
 
-    public async Task<PlatformResult<PrivilegedActionCompletion>> RunAsync(string helper, string commandLine, CancellationToken cancellationToken)
+    // The owner's HWND, read on its thread; zero without an owner or once it has closed. The handle is used after the
+    // callback returns: a window that closes meanwhile only leaves the prompt unowned.
+    internal static async Task<nint> OwnerWindowAsync(INativeWindowOwner? owner, CancellationToken cancellationToken)
+    {
+        if (owner is not { IsAvailable: true }) return 0;
+        nint handle = 0;
+        try { await owner.InvokeAsync(window => handle = window, cancellationToken).ConfigureAwait(false); }
+        catch (Exception error) when (error is OwnerClosedException or ObjectDisposedException or NotSupportedException) { return 0; }
+        return handle;
+    }
+
+    public async Task<PlatformResult<PrivilegedActionCompletion>> RunAsync(string helper, string commandLine, nint ownerWindow, CancellationToken cancellationToken)
     {
         // ShellExecuteExW blocks until the user answers the prompt, and nothing can withdraw a UAC prompt. On
         // cancellation the run stops waiting and closes the pipe: a helper started by a later approval finds no pipe
         // and exits without acting, and is terminated as soon as its handle arrives.
-        var launch = host.LaunchAsync(helper, commandLine, options.OwnerWindow);
+        var launch = host.LaunchAsync(helper, commandLine, ownerWindow);
         try { await launch.WaitAsync(cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

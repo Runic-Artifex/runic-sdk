@@ -26,23 +26,8 @@ public sealed record PolkitOptions
 /// <c>/usr/share/polkit-1/actions</c> or the distribution's equivalent. Without it pkexec falls back to its generic
 /// <c>org.freedesktop.policykit.exec</c> action, which asks for an administrator with a generic message.
 /// </remarks>
-public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
+public static class PolkitPrivilegedActions
 {
-    // A pkexec diagnostic is a few short lines before the program starts.
-    private const int DiagnosticCharacters = 4096;
-    private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(5);
-
-    private readonly FrozenDictionary<string, PrivilegedActionDeclaration> _actions;
-    private readonly PolkitOptions _options;
-    private readonly IPolkitHost _host;
-
-    internal PolkitPrivilegedActions(IEnumerable<PrivilegedActionDeclaration> actions, PolkitOptions options, IPolkitHost host)
-    {
-        _actions = Index(actions);
-        _options = options;
-        _host = host;
-    }
-
     /// <summary>Creates the provider for <paramref name="actions"/>, usually the generated <c>PrivilegedActions.All</c>.</summary>
     /// <remarks>Off Linux, the result reports every request unavailable with <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</remarks>
     /// <exception cref="ArgumentException">Two actions share an ID or a verb, or an action without a verb is not the only one.</exception>
@@ -52,9 +37,28 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
         options ??= new PolkitOptions();
         if (options.PkexecPath is { } path && !Path.IsPathFullyQualified(path))
             throw new ArgumentException("The pkexec path must be absolute.", nameof(options));
-        var indexed = Index(actions);
+        var indexed = PolkitActionRunner.Index(actions);
         if (!OperatingSystem.IsLinux()) return DesktopPrivilegedActions.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-        return new PolkitPrivilegedActions(indexed.Values, options, LinuxPolkitHost.Instance);
+        return new PolkitActionRunner(indexed.Values, options, LinuxPolkitHost.Instance);
+    }
+}
+
+// The provider Create returns on Linux.
+internal sealed class PolkitActionRunner : IDesktopPrivilegedActions
+{
+    // A pkexec diagnostic is a few short lines before the program starts.
+    private const int DiagnosticCharacters = 4096;
+    private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(5);
+
+    private readonly FrozenDictionary<string, PrivilegedActionDeclaration> _actions;
+    private readonly PolkitOptions _options;
+    private readonly IPolkitHost _host;
+
+    internal PolkitActionRunner(IEnumerable<PrivilegedActionDeclaration> actions, PolkitOptions options, IPolkitHost host)
+    {
+        _actions = Index(actions);
+        _options = options;
+        _host = host;
     }
 
     /// <inheritdoc />
@@ -156,7 +160,7 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
         ReferenceEquals(a, b) || (a.Program == b.Program && a.Verb == b.Verb && a.MaximumArguments == b.MaximumArguments && a.ArgumentPattern == b.ArgumentPattern
             && a.Commands.SequenceEqual(b.Commands));
 
-    private static FrozenDictionary<string, PrivilegedActionDeclaration> Index(IEnumerable<PrivilegedActionDeclaration> actions)
+    internal static FrozenDictionary<string, PrivilegedActionDeclaration> Index(IEnumerable<PrivilegedActionDeclaration> actions)
     {
         ArgumentNullException.ThrowIfNull(actions);
         var byId = new Dictionary<string, PrivilegedActionDeclaration>(StringComparer.Ordinal);

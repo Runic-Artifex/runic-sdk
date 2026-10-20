@@ -1,39 +1,48 @@
+using System.Runtime.Versioning;
 using Runic.Platform.Runtime;
 using Runic.Platform.Linux.Portal;
 
 namespace Runic.Platform.Linux;
 
-/// <summary>Explicitly selects GTK services without loading another OS provider.</summary>
-public static class LinuxPlatformProvider
+// The window services of a GTK 3 Desktop window. Internal: Runic.Application.Views.Desktop selects them through
+// PlatformServices; the application-scoped services are PortalApplication's.
+[SupportedOSPlatform("linux")]
+internal static class LinuxPlatformProvider
 {
-    /// <summary>Creates toolkit-independent portal appearance preferences.</summary>
-    public static IDesktopSettings CreateSettings() => Portal.PortalPlatformProvider.CreateSettings();
-    /// <summary>Creates application-scoped desktop portal notifications.</summary>
-    public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) => Portal.PortalPlatformProvider.CreateNotifications(applicationId, diagnosticSink);
-    /// <summary>Creates owned file and URI handoffs for a GTK3 presentation.</summary>
-    public static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
-    { ArgumentNullException.ThrowIfNull(owner); return Portal.PortalPlatformProvider.CreateFileLauncher(new Gtk3PortalWindowOwner(owner)); }
+    // Owned file and URI handoffs for a GTK 3 window.
+    internal static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
+    { ArgumentNullException.ThrowIfNull(owner); return PortalApplication.Inferred.CreateFileLauncher(new Gtk3PortalWindowOwner(owner)); }
 
-    /// <summary>Creates dialogs bound to the verified GTK presentation owner.</summary>
-    public static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
+    // Portal dialogs parented to the GTK 3 window.
+    internal static IPickerBackend CreateFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        return PortalPlatformProvider.CreateFileDialogs(new Gtk3PortalWindowOwner(owner));
+        return PortalApplication.Inferred.CreateFileDialogs(new Gtk3PortalWindowOwner(owner));
     }
 
-    /// <summary>Explicitly selects GTK-native dialogs for an unsandboxed compatibility application.</summary>
-    public static IPickerBackend CreateGtkNativeFileDialogs(INativeWindowOwner owner)
+    // GTK-native dialogs for an unsandboxed compatibility application. Inside Flatpak or Snap they are unavailable, as
+    // every Runic.Platform service reports an environment it cannot serve: use the portal dialogs.
+    internal static IPickerBackend CreateGtkNativeFileDialogs(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        if (File.Exists("/.flatpak-info") || Environment.GetEnvironmentVariable("SNAP") is not null)
-            throw new NotSupportedException("Sandboxed applications must use portal file dialogs.");
-        return new NativePickerBackend(owner, new LinuxFilePicker(owner));
+        return new NativePickerBackend(owner, IsSandboxed() ? new SandboxedPicker() : new LinuxFilePicker(owner));
     }
 
-    /// <summary>Creates the GTK clipboard; dispose it before stopping the owner dispatcher.</summary>
-    public static LinuxTextClipboard CreateTextClipboard(INativeWindowOwner owner)
+    internal static bool IsSandboxed() => File.Exists("/.flatpak-info") || Environment.GetEnvironmentVariable("SNAP") is not null;
+
+    // The GTK clipboard; it is IAsyncDisposable and must be disposed before the owner's dispatcher stops.
+    internal static LinuxTextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         return new LinuxTextClipboard(owner);
+    }
+
+    // Reports every dialog unavailable (BackendUnavailable) through NativePickerBackend.
+    private sealed class SandboxedPicker : INativeFilePicker, INativeDirectoryPicker
+    {
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromException<IReadOnlyList<NativeFileSelection>?>(new NativeBackendUnavailableException("Sandboxed applications must use portal file dialogs."));
+        public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+            ValueTask.FromException<NativeDirectorySelection?>(new NativeBackendUnavailableException("Sandboxed applications must use portal file dialogs."));
     }
 }
