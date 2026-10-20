@@ -1,5 +1,6 @@
 import { assertInInjectionContext, computed, DestroyRef, effect, inject, Injector, isSignal, signal, untracked, type Signal } from "@angular/core";
-import { createViewController, isViewClient, viewSourceIdentity, type ViewClient, type ViewSource } from "@runic-artifex/views";
+import { createViewController, type ViewClient, type ViewSource } from "@runic-artifex/views";
+import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */

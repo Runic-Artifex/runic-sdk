@@ -1,6 +1,7 @@
-<script lang="ts" generics="R extends ViewReference">
+<script lang="ts" generics="R extends PageReference">
   import type { Component, Snippet } from "svelte";
-  import type { ViewReference, ViewRegistry } from "./view-registry.js";
+  import type { PageReference } from "@runic-artifex/views";
+  import type { ViewRegistry } from "./view-registry.js";
 
   let { content, registry, fallback }: {
     content: R | null | undefined;

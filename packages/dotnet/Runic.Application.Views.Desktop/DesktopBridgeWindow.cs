@@ -58,7 +58,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     /// <summary>The opened Desktop window.</summary>
     /// <remarks>Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> the surface serves without a presentation.</remarks>
     /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
-    public DesktopWindow Presentation => Volatile.Read(ref _presentation) ??
+    public DesktopWindow Window => Volatile.Read(ref _presentation) ??
         throw new InvalidOperationException("The Desktop presentation has not opened.");
     /// <summary>The native platform-service owner of the opened presentation.</summary>
     /// <remarks>
@@ -69,7 +69,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     /// <see cref="DesktopNativeOwner.IsAvailable"/> is <see langword="false"/>.
     /// Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> the window has no presentation and so no owner; to bring a Window
     /// forward on any host and in either mode, use
-    /// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/>,
+    /// <see cref="DesktopPlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/>,
     /// which reports <see cref="Runic.Platform.PlatformUnavailableReason.OwnerUnavailable"/> without one.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The presentation has not opened, or the window serves without one.</exception>

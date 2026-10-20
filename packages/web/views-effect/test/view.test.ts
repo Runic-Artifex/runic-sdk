@@ -1,5 +1,5 @@
-import { BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOperation, type CollectionViewport,
-  type CollectionViewportController, type ViewClient } from "@runic-artifex/views";
+import { BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOperation, type ViewClient } from "@runic-artifex/views";
+import type { CollectionViewport, CollectionViewportController } from "@runic-artifex/views/experimental";
 import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
@@ -7,9 +7,10 @@ import { Cause, Effect, Exit, Fiber, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  catchCase, command, connect, followViewport, operation, states, ViewCommandFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
-  type ViewError, type ViewOperationError, type ViewportRange,
+  catchCase, command, connect, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
+  type ViewError, type ViewOperationError,
 } from "../dist/index.js";
+import { followViewport, type ViewportRange } from "../dist/experimental.js";
 
 const contract = "Tests.CounterViewModel:fingerprint";
 const contractId = `${contract}:counter`;
@@ -18,8 +19,7 @@ interface CounterState { readonly count: number; readonly title: string }
 interface CounterClient extends ViewClient<CounterState> {
   increment(): Promise<CounterState>;
   setTitle(value: string): Promise<CounterState>;
-  startRun(): Promise<BridgeOperation<number>>;
-  startRunWithRequestId(requestId: string): Promise<BridgeOperation<number>>;
+  startRun(options?: { readonly requestId?: string }): Promise<BridgeOperation<number>>;
 }
 
 // Shaped like a generated module, so the adapter is tested against the same surface.
@@ -38,8 +38,7 @@ async function connectCounter(mount = false): Promise<CounterClient> {
       if (typeof value !== "string") throw new RangeError("A title is required.");
       return view.invoke("counterSetTitle", value);
     },
-    startRun: () => start(globalThis.crypto.randomUUID()),
-    startRunWithRequestId: start,
+    startRun: (options?: { readonly requestId?: string }) => start(options?.requestId ?? globalThis.crypto.randomUUID()),
   };
 }
 
@@ -120,8 +119,8 @@ describe("command", () => {
     const client = await connectCounter();
     const view = await connectView<CounterState>({ contract, route: "counter", mount: false, hydrate: (wire: CounterState) => wire });
     const failed = await Effect.runPromise(Effect.flip(command(() => view.command("counterFail"))));
-    expect(failed).toBeInstanceOf(ViewCommandFailed);
-    expect(failed).toMatchObject({ _tag: "ViewCommandFailed", message: "Boom", route: "counterFail", detail: { message: "Boom" } });
+    expect(failed).toBeInstanceOf(ViewFailed);
+    expect(failed).toMatchObject({ _tag: "ViewFailed", message: "Boom", route: "counterFail", detail: { message: "Boom" } });
     const defect = await Effect.runPromiseExit(command(() => client.setTitle(undefined as unknown as string)));
     expect(Exit.isFailure(defect) && Cause.squash(defect.cause)).toBeInstanceOf(RangeError);
   });
@@ -226,7 +225,7 @@ describe("operation", () => {
     const client = await connectCounter();
     bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
     await Effect.runPromise(Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(operation(id => client.startRunWithRequestId(id),
+      const fiber = yield* Effect.forkChild(operation(id => client.startRun({ requestId: id }),
         { requestId: "request-3", retry: Schedule.spaced("1 second") }));
       yield* Effect.promise(() => until(() => names().filter(name => name === "__runicOperationWait").length === 1));
       yield* TestClock.adjust("1 second");
@@ -241,7 +240,7 @@ describe("operation", () => {
   test("exhausted retries cancel the last unobserved operation once", async () => {
     const client = await connectCounter();
     bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
-    const error = await Effect.runPromise(Effect.flip(operation(id => client.startRunWithRequestId(id),
+    const error = await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-4", retry: Schedule.recurs(2) })));
     expect(error._tag).toBe("ViewOperationUncertain");
     expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(3);
@@ -251,7 +250,7 @@ describe("operation", () => {
   test("`while` stops retrying", async () => {
     const client = await connectCounter();
     bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
-    await Effect.runPromise(Effect.flip(operation(id => client.startRunWithRequestId(id),
+    await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-5", retry: Schedule.recurs(5), while: () => false })));
     expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(1);
   });
@@ -278,7 +277,7 @@ describe("operation", () => {
       const { requestId } = JSON.parse(identity as string);
       return ++observations === 1 ? Promise.reject(new Error("Socket closed")) : Promise.resolve(status(requestId, "succeeded", { result: 3 }));
     });
-    const result = await Effect.runPromise(operation(id => client.startRunWithRequestId(id),
+    const result = await Effect.runPromise(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-1", retry: Schedule.recurs(2) }));
     expect(result).toBe(3);
     const starts = bridge.calls.filter(call => call.name === "counterStartRun").map(call => call.args[0]);
@@ -290,13 +289,31 @@ describe("operation", () => {
     const client = await connectCounter();
     bridge.route("__runicOperationWait", identity =>
       Promise.resolve(status(JSON.parse(identity as string).requestId, "failed", { error: { kind: "failed", message: "No" } })));
-    const failed = await Effect.runPromise(Effect.flip(operation(id => client.startRunWithRequestId(id),
+    const failed = await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-2", retry: Schedule.recurs(3) })));
     expect(failed._tag).toBe("ViewOperationFailed");
     bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
     const uncertain = await Effect.runPromise(Effect.flip(operation(() => client.startRun())));
     expect(uncertain._tag).toBe("ViewOperationUncertain");
+    expect(uncertain).toMatchObject({ status: undefined });
     expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(2);
+  });
+
+  // VFX-03: an uncertain outcome from a terminal status carries that status, like the other operation errors.
+  test("an expired operation is uncertain with its status", async () => {
+    const client = await connectCounter();
+    bridge.route("__runicOperationWait", identity => Promise.resolve(status(JSON.parse(identity as string).requestId, "expired")));
+    const uncertain = await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }), { requestId: "request-6" })));
+    expect(uncertain).toMatchObject({ _tag: "ViewOperationUncertain", requestId: "request-6", status: { kind: "expired", requestId: "request-6" } });
+  });
+});
+
+// VFX-01: every ViewError tag is "View" + the BridgeError kind in PascalCase.
+describe("tag names", () => {
+  test("follow the BridgeError kinds", () => {
+    const cause = new BridgeError("timeout", "Late");
+    expect(fromBridgeError(cause)._tag).toBe("ViewTimeout");
+    expect(fromBridgeError(new BridgeError("failed", "Boom"))._tag).toBe("ViewFailed");
   });
 });
 

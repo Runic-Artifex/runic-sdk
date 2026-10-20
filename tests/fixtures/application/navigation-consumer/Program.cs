@@ -19,7 +19,7 @@ services.AddRunicViews();
 await using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true }))
 {
     // The checks drive the Bridge in process, so the window is opened without being shown.
-    var host = new RunicCsWebUiHost(provider) { ShowWindow = static (_, _) => { } };
+    var host = new RunicCsWebUiHost(provider, new RunicCsWebUiHostOptions { ShowWindow = static (_, _) => { } });
     host.ValidateWindow<ShellWindow>().ThrowIfInvalid();
     var window = await host.OpenWindowAsync<ShellWindow>();
     var shell = window.DataContext!;

@@ -140,7 +140,7 @@ The result exposes reactive `pending`, `admitting`, `operation`, `status`, `outc
 `failure`, `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation`
 and `cancelError`, with `run(...args)`, `cancel()` and `reset()`. Both async methods never
 reject. A run that ends with a `cancelled` status sets `cancelled` and leaves `error`
-undefined; `failed` and `timedOut` statuses are still `error`. Cancel before a delayed Start receipt is retained for that captured run;
+undefined; `failed` and `timed-out` statuses are still `error`. Cancel before a delayed Start receipt is retained for that captured run;
 its response does not release pending state. `reset()` clears feedback while
 preserving busy state and cancellation identity. Component destruction settles UI
 observation promises and detaches feedback without cancelling accepted mutations.
@@ -159,7 +159,7 @@ the next admission after terminal observation and any application drain barrier:
 
 ```svelte
 <script lang="ts">
-  import { createLatestOperationController } from "@runic-artifex/views";
+  import { createLatestOperationController } from "@runic-artifex/views/experimental";
 
   const selections = createLatestOperationController<void>();
   let selection = $state.raw(selections.current);
@@ -240,7 +240,7 @@ registered handler's answer; see the [Testing guide](https://github.com/Runic-Ar
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
-`viewport` is the reactive [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
+`viewport` is the reactive [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
 range; `attach` is an attachment for the container. Call it during component
 initialization and send the range to the ViewModel from an effect:
 

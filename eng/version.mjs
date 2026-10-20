@@ -2,7 +2,8 @@
 // eng/workspace.json owns the SDK release-train version. eng/Versions.props,
 // every npm manifest, the manifests' bun.lock workspace entries and the project
 // references in every committed NuGet packages.lock.json carry copies that
-// `check` compares and `bump` rewrites.
+// `check` compares and `bump` rewrites, as does the version constant that
+// @runic-artifex/views compares with the .NET Views version it connects to.
 // Directory.Packages.props and the template package read RunicSdkVersion, the
 // CLI compatibility metadata is regenerated, and template locks are stamped
 // from the packed archives. Runic.CommandLine is released independently.
@@ -16,7 +17,7 @@
 // Runic.Application.Views.CsWebUi version explicitly.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,6 +26,9 @@ const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$/;
 const workspaceVersion = /^(  "version": ")([^"]*)(",?)$/m;
 const manifestVersion = /^(  "version": ")([^"]*)(",?)$/m;
 const sdkVersion = /(<RunicSdkVersion>)([^<]*)(<\/RunicSdkVersion>)/;
+// The browser runtime reports a .NET Runic.Application.Views of another release (D02).
+const viewsVersionFile = "packages/web/views/src/version.ts";
+const viewsVersion = /^(export const viewsVersion = ")([^"]*)(";)$/m;
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
 // The eng/Versions.props property that carries each separately versioned package's version.
 export const separateVersions = { "Runic.Application.Views.CsWebUi": "RunicCsWebUiPackageVersion" };
@@ -67,6 +71,7 @@ export function readVersionFiles(base = root) {
     "eng/workspace.json": workspace,
     "eng/Versions.props": read("eng/Versions.props"),
     "bun.lock": read("bun.lock"),
+    ...(existsSync(resolve(base, viewsVersionFile)) ? { [viewsVersionFile]: read(viewsVersionFile) } : {}),
     ...Object.fromEntries(JSON.parse(workspace).npm.map(p => [`${p.path}/package.json`, read(`${p.path}/package.json`)])),
     ...Object.fromEntries(execFileSync("git", ["ls-files", "-z", "--", "*packages*.lock.json"], { cwd: base, encoding: "utf8" })
       .split("\0").filter(isNugetLock).map(path => [path, read(path)])),
@@ -88,6 +93,8 @@ export function versionCopies(files) {
       value: single(files["eng/Versions.props"], propertyVersion(property), property), expected: packageVersion(workspace, name) };
   for (const entry of npm)
     copies[`bun.lock ${entry.path}`] = train(single(files["bun.lock"], lockVersion(entry), `bun.lock workspace entry for ${entry.path}`));
+  if (files[viewsVersionFile] !== undefined)
+    copies[viewsVersionFile] = train(single(files[viewsVersionFile], viewsVersion, "viewsVersion"));
   for (const [path, text] of Object.entries(files)) {
     if (isNugetLock(path)) {
       for (const { key, name, range } of nugetProjectRanges(text))
@@ -146,6 +153,7 @@ export function bumpVersionFiles(files, version, packageVersions = {}) {
       updated = Object.entries(separateVersions).filter(([name]) => findEntry(after, name))
         .reduce((props, [name, property]) => replaceVersion(props, propertyVersion(property), packageVersion(after, name)), replaceVersion(text, sdkVersion, version));
     else if (path === "bun.lock") updated = npm.reduce((lock, entry) => replaceVersion(lock, lockVersion(entry), version), text);
+    else if (path === viewsVersionFile) updated = replaceVersion(text, viewsVersion, version);
     else if (isNugetLock(path))
       updated = [...new Set([...nugetProjectRanges(text)].map(({ name }) => name))]
         .reduce((lock, name) => lock.replaceAll(`"${name}": "[${packageVersion(before, name)}, )"`, `"${name}": "[${packageVersion(after, name)}, )"`), text);

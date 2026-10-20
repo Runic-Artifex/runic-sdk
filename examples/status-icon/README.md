@@ -19,7 +19,7 @@ dotnet run --project examples/status-icon -c Release
 `ApplicationInstance.ClaimAsync` makes the first launch the primary instance. A
 later launch forwards its arguments, working directory and activation token, and
 exits; the primary instance raises `IApplicationInstance.Launched`, and
-`PlatformServices.PresentAsync` brings the open Window forward with that token.
+`DesktopPlatformServices.PresentAsync` brings the open Window forward with that token.
 Without an open Window, `RunicDesktopHost.OpenWindowAsync(options, context)`
 opens one and presents it with the token, so that Wayland compositors such as
 KWin give it focus.

@@ -13,7 +13,7 @@ export interface EffectActionState<A, E> {
   readonly pending: boolean;
   /** The value of the last successful run. */
   readonly value: A | undefined;
-  /** The typed failure of the last run, such as `ViewCommandFailed`. */
+  /** The typed failure of the last run, such as `ViewFailed`. */
   readonly error: E | undefined;
   /** The complete cause of the last failed or interrupted run, including defects. */
   readonly cause: Cause.Cause<E> | undefined;

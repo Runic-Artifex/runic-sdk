@@ -1,3 +1,16 @@
 #nullable enable
 *REMOVED*[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 [RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicWindowCloseResult!>
+*REMOVED*[RUNICWPF001]const Runic.Application.Views.Wpf.RunicWebView.DiagnosticId = "RUNICWPF001" -> string!
+*REMOVED*[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.EntryPage.get -> string?
+*REMOVED*[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.EntryPage.set -> void
+*REMOVED*[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.Model.get -> object?
+*REMOVED*[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.Model.set -> void
+*REMOVED*[RUNICWPF001]static readonly Runic.Application.Views.Wpf.RunicViewHost.EntryPageProperty -> System.Windows.DependencyProperty!
+*REMOVED*[RUNICWPF001]static readonly Runic.Application.Views.Wpf.RunicViewHost.ModelProperty -> System.Windows.DependencyProperty!
+[RUNICWPF001]static readonly Runic.Application.Views.Wpf.RunicViewHost.ViewModelProperty -> System.Windows.DependencyProperty!
+[RUNICWPF001]static readonly Runic.Application.Views.Wpf.RunicViewHost.StartPageProperty -> System.Windows.DependencyProperty!
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.ViewModel.set -> void
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.ViewModel.get -> object?
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.StartPage.get -> string?
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicViewHost.StartPage.set -> void

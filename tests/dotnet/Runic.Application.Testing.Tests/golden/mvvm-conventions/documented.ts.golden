@@ -34,6 +34,7 @@ export interface DocumentedClient extends ViewClient<DocumentedState> {
   setNote(value: string): Promise<DocumentedState>;
   /** The note being edited. */
   writeNote(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
+  /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof DocumentedCheckedFields>(field: K): FieldBaseline<DocumentedCheckedFields[K]>;
   /** Switches to `layout`. */
   changeLayout(layout: DocumentedLayout): Promise<DocumentedState>;

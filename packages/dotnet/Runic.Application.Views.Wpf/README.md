@@ -11,12 +11,12 @@ The XAML namespace is `https://runic-artifex.eu/xaml/views`, with the prefix `rv
 
 ## Host a web View in XAML
 
-`RunicViewHost` presents an existing model through its generated web View:
+`RunicViewHost` presents an existing ViewModel through its generated web View:
 
 ```xml
 <UserControl xmlns:rv="https://runic-artifex.eu/xaml/views"
              xmlns:local="clr-namespace:MyApp">
-  <rv:RunicViewHost Model="{Binding}">
+  <rv:RunicViewHost ViewModel="{Binding}">
     <!-- Shown with the same DataContext when the web View can't open. -->
     <local:NativeEditorView />
   </rv:RunicViewHost>
@@ -30,12 +30,16 @@ from a View that received its provider (`host.Services = services`):
 RunicViewHost.SetServices(mainWindow, services);
 ```
 
+The property is the inherited `Services` of `ViewHost` in Runic.Navigation.Wpf,
+so a window that also hosts native navigation sets the provider once, with
+either `RunicViewHost.SetServices` or `ViewHost.SetServices`.
+
 The host owns the hosting lifecycle:
 
-- It opens when it is **loaded** with a `Model` and `Services`, and waits for
+- It opens when it is **loaded** with a `ViewModel` and `Services`, and waits for
   the native child's `Loaded` before starting the presentation.
-- It closes when it is **unloaded** or `Model` becomes `null`. Changing
-  `Model`, `Services`, `ModelContext`, `ContentRoot`, `EntryPage` or
+- It closes when it is **unloaded** or `ViewModel` becomes `null`. Changing
+  `ViewModel`, `Services`, `ModelContext`, `ContentRoot`, `StartPage` or
   `SurfaceOptions` closes the session and opens a fresh one.
 - Changes run **one at a time**. A newer change cancels an open in progress,
   and changes that queue behind a running one collapse into the latest.
@@ -49,8 +53,8 @@ The host owns the hosting lifecycle:
   session.
 
 `ContentRoot` (default `www`) is the built frontend's directory relative to the
-application's base directory, and `EntryPage` the page to open in it (default
-`index.html`). Set `SurfaceOptions` for anything else. `ModelContext` defaults
+application's base directory, and `StartPage` the page to open in it (default
+`index.html`), as `RunicWindowOptions.StartPage` is for a Runic Window. Set `SurfaceOptions` for anything else. `ModelContext` defaults
 to the `IRunicModelContext` registered in `Services`; pass the navigator's
 dispatcher context when navigation and the web View present the same model.
 `State`, `Error` and `StateChanged` report progress; `Surface` is the open
@@ -168,7 +172,7 @@ var result = await WpfPlatformServices.PresentAsync(mainWindow);
 It shows a hidden window, or one not shown yet, with `Window.Show()` and
 restores a minimized one to its previous size, then asks Windows to put it in
 the foreground on the window's dispatcher, as
-`PlatformServices.PresentAsync` does for Runic Desktop windows. Windows lets the
+`DesktopPlatformServices.PresentAsync` does for Runic Desktop windows. Windows lets the
 running instance take the foreground because the forwarding launch allows it
 (`AllowSetForegroundWindow`); otherwise the taskbar button flashes and the
 result is `Failed` with `PermissionDenied`. A closed window, or one whose

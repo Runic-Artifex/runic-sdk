@@ -10,7 +10,7 @@ namespace Runic.Application.Views.Desktop;
 
 /// <summary>
 /// Opens Runic Windows in native Runic Desktop windows with the embedded WebView, falling back to an installed
-/// browser. Start it with <see cref="Run(IServiceProvider, DesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+/// browser. Start it with <see cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
 /// and open Windows with <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/>:
 /// <code>
 /// return RunicDesktopHost.Run(provider, async host =&gt;
@@ -27,7 +27,7 @@ namespace Runic.Application.Views.Desktop;
 /// The application runs as long as the body passed to <c>Run</c>: closing the last Window does not end it, and a body
 /// may run without any Window, for example behind a status icon. To keep one copy running, claim
 /// <c>ApplicationInstance.ClaimAsync</c> before <c>Run</c> and bring an open Window forward with
-/// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/> when another launch arrives, or open one for it with
+/// <see cref="DesktopPlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/> when another launch arrives, or open one for it with
 /// <see cref="OpenWindowAsync{TWindow}(RunicWindowOptions?, DesktopActivationContext?, CancellationToken)"/>.
 /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, as on CS-WebUI, no window or browser
 /// is opened: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
@@ -35,7 +35,7 @@ namespace Runic.Application.Views.Desktop;
 /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. A line ends every Window serving when it is read; a
 /// Window opened after it serves until the next line. The surface admits one browser, a guarded Window
 /// opens unguarded (event 1053) and platform services, including
-/// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/>,
+/// <see cref="DesktopPlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/>,
 /// report <c>OwnerUnavailable</c>. This switch takes precedence
 /// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>. <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/>
 /// makes the same decision: it skips the findings of <see cref="DesktopHost.Validate"/> about what this machine lacks
@@ -63,17 +63,45 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     /// <summary>Creates a host that opens Windows from <paramref name="services"/> on <paramref name="desktop"/>.</summary>
     /// <remarks>
-    /// <see cref="Run(IServiceProvider, DesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/> creates the host for
-    /// you. Use this constructor inside <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>
-    /// or with a <see cref="DesktopHost"/> you started yourself, for example to set <see cref="WindowOptions"/>.
+    /// <see cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// creates the host for you. Use this constructor inside
+    /// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> or with a
+    /// <see cref="DesktopHost"/> you started yourself, for example for a second host on the same Desktop host.
     /// </remarks>
     public RunicDesktopHost(IServiceProvider services, DesktopHost desktop)
+        : this(services, desktop, DefaultOptions)
+    {
+    }
+
+    /// <summary>
+    /// Creates a host that opens Windows from <paramref name="services"/> on <paramref name="desktop"/> with
+    /// <paramref name="options"/>.
+    /// </summary>
+    /// <param name="services">The application's service provider.</param>
+    /// <param name="desktop">The Desktop host that presents the windows.</param>
+    /// <param name="options">The window, surface, resource and placement options of this host's Windows.</param>
+    /// <inheritdoc cref="RunicDesktopHost(IServiceProvider, DesktopHost)" path="/remarks"/>
+    public RunicDesktopHost(IServiceProvider services, DesktopHost desktop, RunicDesktopHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(desktop);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.WindowOptions);
         Services = services;
         Desktop = desktop;
+        WindowOptions = options.WindowOptions;
+        SurfaceOptions = options.SurfaceOptions;
+        Resources = options.Resources;
+        Placement = options.Placement;
+        _includeFailureDetail = options.IncludeFailureDetail;
     }
+
+    private readonly bool? _includeFailureDetail;
+
+    // A Window's own choice of Bridge failure detail, or else the application's default.
+    internal bool? IncludeFailureDetailFor(RunicWindowOptions options) => options.IncludeFailureDetail ?? _includeFailureDetail;
+
+    private static readonly RunicDesktopHostOptions DefaultOptions = new();
 
     /// <inheritdoc />
     public IServiceProvider Services { get; }
@@ -81,101 +109,80 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// <summary>The Runic Desktop host that presents the windows.</summary>
     public DesktopHost Desktop { get; }
 
-    /// <summary>
-    /// The Desktop options of every window. <see cref="RunicWindowOptions.Width"/> and
-    /// <see cref="RunicWindowOptions.Height"/> replace their width and height when set.
-    /// </summary>
-    public DesktopWindowOptions WindowOptions { get; init; } = DefaultWindowOptions;
-
-    /// <summary>
-    /// The surface options of every window, or <see langword="null"/>, the default, to serve
-    /// <see cref="RunicWindowOptions.ContentRoot"/> and open <see cref="RunicWindowOptions.StartPage"/>.
-    /// </summary>
-    public DesktopSurfaceOptions? SurfaceOptions { get; init; }
-
-    /// <summary>
-    /// Chooses the resources of each Window: application files outside the frontend build, such as icons from a
-    /// cache, that the Window's page loads from its own address. <see langword="null"/>, the default, serves none.
-    /// </summary>
+    /// <summary>The Desktop options of every window: <see cref="RunicDesktopHostOptions.WindowOptions"/>.</summary>
     /// <remarks>
-    /// Called with each Window as it opens, once its ViewModel is set (<see cref="RunicWindow{TViewModel}.ViewModel"/>)
-    /// and before its surface is created. It returns the handler for the requests the Window's content does not serve,
-    /// or <see langword="null"/> for none, and it becomes <see cref="DesktopSurfaceOptions.Resources"/> of the Window's
-    /// surface, replacing the one of <see cref="SurfaceOptions"/>. The resources are served whether the Window is
-    /// shown or served to a browser under <c>RUNIC_APPLICATION_SERVE_ONLY</c>, for as long as the Window is open.
-    /// <code>
-    /// var host = new RunicDesktopHost(provider, desktop)
-    /// {
-    ///     Resources = window =&gt; window is DashboardWindow ? icons.ServeAsync : null,
-    /// };
-    /// </code>
-    /// A handler that throws fails the request with 500, and a callback that throws fails the open.
+    /// <see cref="RunicWindowOptions.Width"/> and <see cref="RunicWindowOptions.Height"/> replace their width and
+    /// height when set.
     /// </remarks>
-    public Func<IRunicWindow, ContentHandler?>? Resources { get; init; }
+    public DesktopWindowOptions WindowOptions { get; }
+
+    /// <summary>The surface options of every window: <see cref="RunicDesktopHostOptions.SurfaceOptions"/>.</summary>
+    public DesktopSurfaceOptions? SurfaceOptions { get; }
+
+    /// <summary>Chooses the resources of each Window: <see cref="RunicDesktopHostOptions.Resources"/>.</summary>
+    public Func<IRunicWindow, ContentHandler?>? Resources { get; }
+
+    /// <summary>Chooses the saved placement each Window restores: <see cref="RunicDesktopHostOptions.Placement"/>.</summary>
+    public Func<IRunicWindow, DesktopWindowPlacement?>? Placement { get; }
+
+    private static readonly object ApplicationMenuGate = new();
 
     /// <summary>
-    /// Chooses the saved placement each Window restores: its size, position and maximized state from the last time it
-    /// closed. <see langword="null"/>, the default, restores none.
+    /// Runs the application's menu bar commands by command id, such as New or Settings…, when no key window's root
+    /// ViewModel (<see cref="IRunicMenuCommandSource"/>) runs the id, until the returned object is disposed.
     /// </summary>
+    /// <param name="commands">The commands by command id of <see cref="DesktopHost.MenuBar"/>.</param>
+    /// <returns>Disposing it stops running the commands and releases their <c>CanExecuteChanged</c> subscriptions.</returns>
     /// <remarks>
-    /// Called with each Window as it opens, once its ViewModel is set, before its native window opens. It returns
-    /// the placement saved from <see cref="PlatformServices.GetWindowState(IRunicWindow)"/>, or <see langword="null"/>
-    /// for none, and it becomes <see cref="DesktopWindowOptions.Placement"/> of the Window, replacing the size of
-    /// <see cref="WindowOptions"/> and <see cref="RunicWindowOptions"/>. The embedded window keeps a restored placement on a
-    /// monitor that exists now; see <see cref="DesktopWindowOptions.Placement"/>.
+    /// <para>
+    /// The commands are application-wide: they become <see cref="DesktopHost.MenuCommands"/> of <see cref="Desktop"/>,
+    /// which every host on that Desktop host shares. Each command's availability follows its
+    /// <see cref="System.Windows.Input.ICommand.CanExecute"/> with a <see langword="null"/> parameter, and it runs on the
+    /// thread pool: an application command has no ViewModel turn. A failure is logged (event 2004).
+    /// </para>
     /// <code>
-    /// var host = new RunicDesktopHost(provider, desktop)
+    /// return RunicDesktopHost.Run(provider, new DesktopHostOptions { MenuBar = menus }, async host =&gt;
     /// {
-    ///     Placement = window =&gt; window is MainWindow ? settings.MainWindowPlacement : null,
-    /// };
-    /// await using var window = await host.OpenWindowAsync&lt;MainWindow&gt;();
-    /// await window.WaitForCloseAsync();
-    /// if (PlatformServices.GetWindowState(window) is PlatformResult&lt;DesktopWindowState&gt;.Success { Value: var state })
-    ///     settings.MainWindowPlacement = state.Placement;
-    /// </code>
-    /// A placement saved on one machine or operating system is not meant for another; see
-    /// <see cref="DesktopWindowPlacement"/>. A callback that throws fails the open.
-    /// </remarks>
-    public Func<IRunicWindow, DesktopWindowPlacement?>? Placement { get; init; }
-
-    private IReadOnlyDictionary<string, System.Windows.Input.ICommand>? _menuCommands;
-    private MenuCommandBinding? _applicationMenu;
-
-    /// <summary>
-    /// The application's menu bar commands by command id, such as New or Settings…, which run when no key window's
-    /// root ViewModel (<see cref="IRunicMenuCommandSource"/>) runs the id; <see langword="null"/>, the default, for none.
-    /// </summary>
-    /// <remarks>
-    /// It becomes <see cref="DesktopHost.MenuCommands"/> of <see cref="Desktop"/>. Each command's availability follows
-    /// its <see cref="System.Windows.Input.ICommand.CanExecute"/> with a <see langword="null"/> parameter, and it runs on
-    /// the thread pool: an application command has no ViewModel turn. A failure is logged (event 2004).
-    /// <code>
-    /// var host = new RunicDesktopHost(provider, desktop)
-    /// {
-    ///     MenuCommands = new Dictionary&lt;string, ICommand&gt; { ["file.new"] = newWindowCommand },
-    /// };
+    ///     using var menu = host.UseApplicationMenu(new Dictionary&lt;string, ICommand&gt; { ["file.new"] = newWindowCommand });
+    ///     await using var window = await host.OpenWindowAsync&lt;MainWindow&gt;();
+    ///     await window.WaitForCloseAsync();
+    ///     return 0;
+    /// });
     /// </code>
     /// </remarks>
-    public IReadOnlyDictionary<string, System.Windows.Input.ICommand>? MenuCommands
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="Desktop"/> already has application menu commands, from another call that is not disposed yet or set
+    /// directly on <see cref="DesktopHost.MenuCommands"/>.
+    /// </exception>
+    public IDisposable UseApplicationMenu(IReadOnlyDictionary<string, System.Windows.Input.ICommand> commands)
     {
-        get => _menuCommands;
-        init
+        ArgumentNullException.ThrowIfNull(commands);
+        var copy = new Dictionary<string, System.Windows.Input.ICommand>(commands, StringComparer.Ordinal);
+        var logger = (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
+            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        lock (ApplicationMenuGate)
         {
-            _menuCommands = value;
-            _applicationMenu?.Dispose();
-            _applicationMenu = null;
-            if (value is null)
+            if (Desktop.MenuCommands is not null)
             {
-                Desktop.MenuCommands = null;
-                return;
+                throw new InvalidOperationException(
+                    "The Desktop host already has application menu commands. Dispose the previous UseApplicationMenu result first.");
             }
-            var commands = new Dictionary<string, System.Windows.Input.ICommand>(value, StringComparer.Ordinal);
-            var logger = (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
-                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-            // Without a model context the binding resolves synchronously.
-            _applicationMenu = MenuCommandBinding.BindAsync(Desktop, context: null, id => commands.GetValueOrDefault(id), logger)
-                .AsTask().GetAwaiter().GetResult();
-            Desktop.MenuCommands = _applicationMenu;
+            // Without a model context the commands resolve before this returns; nothing waits on the binding.
+            var binding = MenuCommandBinding.Bind(Desktop, id => copy.GetValueOrDefault(id), logger);
+            Desktop.MenuCommands = binding;
+            return new ApplicationMenu(Desktop, binding);
+        }
+    }
+
+    private sealed class ApplicationMenu(DesktopHost desktop, MenuCommandBinding binding) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (ApplicationMenuGate)
+            {
+                if (ReferenceEquals(desktop.MenuCommands, binding)) desktop.MenuCommands = null;
+            }
+            binding.Dispose();
         }
     }
 
@@ -197,9 +204,14 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     }
 
     /// <summary>Runs <paramref name="application"/> with the default <see cref="DesktopHostOptions"/>.</summary>
-    /// <inheritdoc cref="Run(IServiceProvider, DesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// <inheritdoc cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
     public static int Run(IServiceProvider services, Func<RunicDesktopHost, Task<int>> application) =>
-        Run(services, new DesktopHostOptions(), application);
+        Run(services, new DesktopHostOptions(), DefaultOptions, application);
+
+    /// <summary>Runs <paramref name="application"/> with the default <see cref="RunicDesktopHostOptions"/>.</summary>
+    /// <inheritdoc cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    public static int Run(IServiceProvider services, DesktopHostOptions options, Func<RunicDesktopHost, Task<int>> application) =>
+        Run(services, options, DefaultOptions, application);
 
     /// <summary>
     /// Starts a Desktop host with <paramref name="options"/> and runs <paramref name="application"/> on the event
@@ -219,19 +231,23 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// </remarks>
     /// <param name="services">The application's service provider.</param>
     /// <param name="options">The Desktop host options, for example <c>new DesktopHostOptions().WithGtk4()</c>.</param>
+    /// <param name="hostOptions">The window, surface, resource and placement options of the host's Windows.</param>
     /// <param name="application">The application. Its result becomes the return value.</param>
     /// <returns>The value returned by <paramref name="application"/>.</returns>
-    public static int Run(IServiceProvider services, DesktopHostOptions options, Func<RunicDesktopHost, Task<int>> application)
+    public static int Run(IServiceProvider services, DesktopHostOptions options, RunicDesktopHostOptions hostOptions,
+        Func<RunicDesktopHost, Task<int>> application)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(hostOptions);
+        ArgumentNullException.ThrowIfNull(hostOptions.WindowOptions);
         ArgumentNullException.ThrowIfNull(application);
         // The Desktop host logs shutdown, close confirmation, configuration and browser-launch messages through
         // the application's logging, as the Views in its windows do; it writes them to Trace only without one.
         // The factory is lent for the run: later messages go to Trace, since the caller then disposes services.
         var lent = options.LoggerFactory is null ? LentLoggerFactory.From(services.GetService<ILoggerFactory>()) : null;
         if (lent is not null) options = options with { LoggerFactory = lent };
-        try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop))); }
+        try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop, hostOptions))); }
         finally { lent?.Return(); }
     }
 
@@ -245,7 +261,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// compositors such as KWin give a new window focus only with the activation token of the launch it answers;
     /// without it, the window opens behind the active one and only asks for attention. The window is presented with
     /// the context as soon as it is shown, as
-    /// <see cref="PlatformServices.PresentAsync(DesktopNativeOwner, DesktopActivationContext?, CancellationToken)"/>
+    /// <see cref="DesktopPlatformServices.PresentAsync(DesktopNativeOwner, DesktopActivationContext?, CancellationToken)"/>
     /// does; the desktop decides whether to grant focus. Nothing is presented for a <see langword="null"/> context, a
     /// hidden window (<see cref="DesktopWindowOptions.Hidden"/>), a window served under
     /// <c>RUNIC_APPLICATION_SERVE_ONLY</c> or an installed browser after an embedded-window fallback. The activation
@@ -274,9 +290,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         return window;
     }
 
-    // PlatformServices.PresentAsync; tests observe the request instead.
+    // DesktopPlatformServices.PresentAsync; tests observe the request instead.
     internal Func<DesktopNativeOwner, DesktopActivationContext?, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>> Present
-    { get; init; } = PlatformServices.PresentAsync;
+    { get; init; } = DesktopPlatformServices.PresentAsync;
 
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
     {
@@ -360,7 +376,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 RootModel = viewModel,
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = loggerFactory,
-                IncludeFailureDetail = opening.Options.IncludeFailureDetail,
+                IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
             });
             var session = content;
             connectionBinding = surface.SubscribeConnectionEvents(invocation =>

@@ -179,7 +179,9 @@ internal static class MockTypeScriptEmitter
         body.AppendLine("}");
 
         var text = body.ToString();
-        var mockImports = new List<string> { Import("mockTypedView"), "type " + Import("MockBridge"), "type " + Import("MockTypedView"), "type " + Import("MockTypedViewSpec") };
+        // The generator's mock runtime is in the /generated/mock entry; the shapes tests name are in /mock.
+        var generatedImports = new List<string> { Import("mockTypedView"), "type " + Import("MockTypedViewSpec") };
+        var mockImports = new List<string> { "type " + Import("MockBridge"), "type " + Import("MockTypedView") };
         if (plan.Setters.Count > 0) mockImports.Add("type " + Import("MockSetterHandler"));
         if (plan.Commands.Count > 0) mockImports.Add("type " + Import("MockCommandHandler"));
         if (plan.Operations.Count > 0) mockImports.AddRange(["type " + Import("MockTypedOperation"), "type " + Import("MockTypedOperationHandler")]);
@@ -190,7 +192,8 @@ internal static class MockTypeScriptEmitter
         module.AppendLine(GeneratedOutput.Header);
         if (text.Contains("bridgeWire.", StringComparison.Ordinal))
             module.AppendLine("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
-        module.AppendLine($"import {{ {string.Join(", ", mockImports)} }} from \"@runic-artifex/views/mock\";");
+        module.AppendLine($"import {{ {string.Join(", ", generatedImports)} }} from \"@runic-artifex/views/generated/mock\";");
+        module.AppendLine($"import type {{ {string.Join(", ", mockImports.Select(name => name["type ".Length..]))} }} from \"@runic-artifex/views/mock\";");
         module.AppendLine($"import type {{ {name}Client, {name}State }} from \"./{clientModule}.js\";");
         module.AppendLine(TypeScriptModules.NamedTypeImports);
         module.AppendLine();

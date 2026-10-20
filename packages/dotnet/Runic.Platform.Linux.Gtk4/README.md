@@ -3,7 +3,7 @@
 GTK 4 services for a Runic application with an explicitly selected GTK 4 desktop host.
 
 The package has no public API. Runic.Application.Views.Desktop creates its services for each
-GTK 4 window from `PlatformServices.ForWindow` and `services.AddRunicPlatformServices()`: the
+GTK 4 window from `DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()`: the
 clipboard, which keeps its work on the window's dispatcher, and the portal parent, which
 exports only valid GTK 4 X11 or Wayland parent identifiers for `Runic.Platform.Linux.Portal`'s
 file dialogs and file handoff. It never exposes a raw window pointer or silently changes an

@@ -12,7 +12,7 @@ Notifications and login startup require the application ID: it is the
 AppUserModelID and the Run value name, and Windows has no other identity for a
 process outside an MSIX package (see [MSIX packages](#msix-packages)). The window
 services (file dialogs, the clipboard and file handoff) belong to a window:
-Runic.Application.Views.Desktop's `PlatformServices.ForWindow` and
+Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and
 `AddRunicPlatformServices()` create them for each window, whose owner dispatches
 file dialogs on the window's STA and drains native callbacks before disposal. This
 package does not discover providers or depend on Desktop.
@@ -134,7 +134,7 @@ logon session's vault, such as a service, reports
 
 ## Status icon and window presentation
 
-`PlatformServices.CreateStatusIcon()` and `AddRunicPlatformServices()` in
+`DesktopPlatformServices.CreateStatusIcon()` and `AddRunicPlatformServices()` in
 `Runic.Application.Views.Desktop` select this package's notification-area icon
 on Windows. It is a `Shell_NotifyIconW` icon with `NOTIFYICON_VERSION_4`, owned
 by a hidden window on its own thread. A click or Space/Enter (`NIN_SELECT`,
@@ -162,7 +162,7 @@ without `/F`, Restart Manager). When the session ends (`WM_ENDSESSION`), or the
 window is destroyed some other way, the icon is removed and the window's
 thread ends. A later `ShowAsync` starts a new window.
 
-`PlatformServices.PresentAsync(owner)` restores a minimized Desktop window,
+`DesktopPlatformServices.PresentAsync(owner)` restores a minimized Desktop window,
 shows a hidden one (as a close-to-tray application leaves it), and calls
 `SetForegroundWindow` on the window's thread. Windows grants the
 foreground only to the process the user just started, so

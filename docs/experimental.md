@@ -66,11 +66,11 @@ existing WPF visual tree, and its lifecycle API is still being shaped by the
 [hybrid WPF example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-hybrid-editor/README.md).
 It is planned to graduate before 1.0, once these are done: keyboard focus can
 leave the web View with Tab in both directions (done in 0.9), a Narrator check,
-a smoke test of two hosts in one window, and the API changes of the review
-(`OpenAsync` without its options parameter, a start page, no public
-`DiagnosticId`, a cancellation token on `ReloadAsync` and
-`WpfPlatformServices.ForWindow(Window)`). Graduation removes the attribute and
-retires the ID.
+a smoke test of two hosts in one window, and the remaining API changes of the
+review (`OpenAsync` without its options parameter, a cancellation token on
+`ReloadAsync` and `WpfPlatformServices.ForWindow(Window)`; `StartPage`,
+`ViewModel`, the shared `Services` and the removal of the public `DiagnosticId`
+are done in 0.9). Graduation removes the attribute and retires the ID.
 
 <a id="RUNICASSETS001"></a>
 
@@ -127,3 +127,19 @@ Views application does not use it directly. Its shape follows the WebUI wire
 protocol (event kinds numbered like WebUI's, arguments read by position, `ulong`
 session IDs) and mixes `Task` and `ValueTask`, which a later transport design can
 change. It graduates with that redesign.
+
+<a id="npm-packages"></a>
+
+## npm packages
+
+An npm package has no diagnostic ID: its experimental APIs are exported only
+from its `./experimental` subpath, so importing one is the opt-in. They may
+change or be removed in a minor release, and no stable export names an
+experimental type. Graduation moves the export to the package's root entry; the
+experimental path is then removed in the next major. The APIs today:
+
+| Package | `./experimental` exports | Status |
+|---|---|---|
+| `@runic-artifex/views` | `createCollectionViewportController`, `collectionViewport`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions` | The fixed-row-height viewport model has one consumer, the [DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata); variable row heights may change its shape. |
+| `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState` | No framework adapter wraps it yet, and its shape differs from `createOperationController` (`run(intent)`, `clear(mode)`). It graduates once an adapter and a sample use it. |
+| `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | Effect helpers of the viewport controller; they follow its status. |

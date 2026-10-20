@@ -31,7 +31,7 @@ public static IDesktopOpenRequests ApplicationInstance.CreateOpenRequests(Deskto
 // Runic.Platform.MacOS
 public static IDesktopOpenRequests MacOSPlatformProvider.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
 // Runic.Application.Views.Desktop: the provider for the operating system
-public static IDesktopOpenRequests PlatformServices.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
+public static IDesktopOpenRequests DesktopPlatformServices.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
 ```
 
 - Items are absolute URIs: `file:` URIs for files, and URIs with a registered

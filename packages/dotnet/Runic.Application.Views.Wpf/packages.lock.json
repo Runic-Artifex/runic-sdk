@@ -39,6 +39,14 @@
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
         }
       },
+      "runic.navigation.wpf": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
+          "Runic.Navigation": "[0.8.0-preview.6, )"
+        }
+      },
       "runic.platform": {
         "type": "Project"
       },

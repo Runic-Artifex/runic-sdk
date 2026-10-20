@@ -15,24 +15,24 @@ import {
   type VNodeChild,
 } from "vue";
 import {
-  createCollectionViewportController,
   createCommandController,
   createOperationController,
   createViewController,
-  viewSourceIdentity,
   type BridgeOperation,
   type BridgeOutcomeFailure,
   type OperationController,
   type OperationControllerOptions,
   type OperationState,
-  type CollectionViewport,
-  type CollectionViewportOptions,
+  type PageReference,
   type ViewClient,
-  type ViewReference,
   type ViewSource,
 } from "@runic-artifex/views";
-
-export type { CollectionViewport, CollectionViewportOptions, ViewClient, ViewConnector, ViewReference, ViewSource } from "@runic-artifex/views";
+import { viewSourceIdentity } from "@runic-artifex/views/bindings";
+import {
+  createCollectionViewportController,
+  type CollectionViewport,
+  type CollectionViewportOptions,
+} from "@runic-artifex/views/experimental";
 
 // Vue's bundler builds require bundlers to define process.env.NODE_ENV too.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
@@ -100,11 +100,11 @@ export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<Vie
  * A build-known map checks each generated reference kind against its component's `page` prop. A nullable
  * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
  */
-export type ViewRegistry<R extends ViewReference | null | undefined> = {
+export type ViewRegistry<R extends PageReference | null | undefined> = {
   readonly [K in NonNullable<R>["kind"]]: Component<{ page: Extract<NonNullable<R>, { readonly kind: K }> }>;
 };
 
-export interface ViewOutletProps<R extends ViewReference> {
+export interface ViewOutletProps<R extends PageReference> {
   /** The presented reference, such as `state.main`. */
   content: R | null | undefined;
   registry: ViewRegistry<R>;
@@ -125,7 +125,7 @@ function referenceKey(reference: object): number {
  * component. A kind without a component renders an alert; the default slot
  * renders while there is no content.
  */
-export const ViewOutlet = defineComponent(<R extends ViewReference>(props: ViewOutletProps<R>, { slots }: SetupContext) => (): VNodeChild => {
+export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewOutletProps<R>, { slots }: SetupContext) => (): VNodeChild => {
   const content = props.content;
   if (!content) return slots.default?.();
   const component = props.registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined;

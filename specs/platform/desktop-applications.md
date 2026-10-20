@@ -65,7 +65,7 @@ public static class DesktopApplications { public static IDesktopApplications Una
 // Runic.Platform.Linux.Portal
 public IDesktopApplications PortalApplication.CreateApplications();
 // Runic.Application.Views.Desktop: the provider for the operating system
-public static IDesktopApplications PlatformServices.CreateApplications();
+public static IDesktopApplications DesktopPlatformServices.CreateApplications();
 ```
 
 - The service is application-scoped and needs no window.

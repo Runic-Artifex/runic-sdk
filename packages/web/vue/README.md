@@ -148,7 +148,7 @@ The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failur
 `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
 `cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
 run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
-without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
+without an `error`; `failed` and `timed-out` statuses are still `error`. `pending`
 stays true after a Cancel response until the operation reaches its terminal status.
 Disposing the effect scope settles run promises without cancelling accepted work.
 
@@ -221,7 +221,7 @@ registered handler's answer; see the [Testing guide](https://github.com/Runic-Ar
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
-`viewport` is a shallow ref with the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
+`viewport` is a shallow ref with the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
 range; `attach` is a function ref for the container. Bind it to a native element
 such as a `<div>`: a component instance (`:ref="attach"` on a component) or a
 non-HTML element detaches the viewport, and development builds warn. Pass a getter for the

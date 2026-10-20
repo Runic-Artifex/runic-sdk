@@ -43,7 +43,7 @@ export async function runFailureGeneratedClient(fixture: FailureGeneratedClientT
     const reserved = await view.reserve(5);
     expect(!reserved.ok && reserved.failure.limit === 3 && reserved.failure.requested === 5,
       "reserve() did not decode its DTO failure.");
-    const operation = await view.startPublishWithRequestId(fixture.publishRequestId);
+    const operation = await view.startPublish({ requestId: fixture.publishRequestId });
     const outcome = await operation.outcome();
     expect(!outcome.ok && outcome.failure === "Archived", "outcome() did not decode the enum failure.");
     const status = await operation.wait();

@@ -107,11 +107,11 @@ internal sealed class ServeOnlyChecks
                 catch (InvalidOperationException error) { noOwner = error.Message; }
                 Check(noOwner?.Contains("RUNIC_APPLICATION_SERVE_ONLY", StringComparison.Ordinal) == true,
                     $"NativeOwner did not report serve-only mode: '{noOwner}'.");
-                Check(await PlatformServices.PresentAsync(first) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+                Check(await DesktopPlatformServices.PresentAsync(first) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                     "Presenting a serve-only Window did not report the owner unavailable.");
-                Check(await PlatformServices.AnnounceAsync(first, "Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+                Check(await DesktopPlatformServices.AnnounceAsync(first, "Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                     "An announcement for a serve-only Window did not report the owner unavailable.");
-                Check(PlatformServices.GetWindowState(first) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+                Check(DesktopPlatformServices.GetWindowState(first) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                     "The state of a serve-only Window did not report the owner unavailable.");
 
                 var closed = Task.WhenAll(first.WaitForCloseAsync().AsTask(), second.WaitForCloseAsync().AsTask());
@@ -178,7 +178,7 @@ internal sealed class ServeOnlyChecks
             foreach (var (name, options, code) in environments)
             {
                 await using var desktop = await DesktopHost.StartAsync(options);
-                var host = new RunicDesktopHost(provider, desktop)
+                var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
                 {
                     SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
                     WindowOptions = new DesktopWindowOptions
@@ -186,7 +186,7 @@ internal sealed class ServeOnlyChecks
                         Browser = BrowserKind.Embedded,
                         PresentationPolicy = DesktopPresentationPolicy.RequestedOnly,
                     },
-                };
+                });
 
                 Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
                 var presented = host.ValidateWindow<ProbeWindow>();
@@ -218,10 +218,10 @@ internal sealed class ServeOnlyChecks
                     WindowHostFactory = OperatingSystem.IsLinux() ? null : new UnavailableFactory(),
                     WaitForConnection = false,
                 });
-                var host = new RunicDesktopHost(provider, desktop)
+                var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
                 {
                     SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-                };
+                });
                 Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
                 var presented = host.ValidateWindow<ProbeWindow>();
                 Check(!presented.IsValid && presented.Errors.Any(error => error.Code == "presentation-unavailable"),
@@ -268,7 +268,8 @@ internal sealed class ServeOnlyChecks
             foreach (var (name, options, windowOptions, code) in configurations)
             {
                 await using var desktop = await DesktopHost.StartAsync(options);
-                var served = new RunicDesktopHost(provider, desktop) { WindowOptions = windowOptions }.ValidateWindow<ProbeWindow>();
+                var served = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions { WindowOptions = windowOptions })
+                    .ValidateWindow<ProbeWindow>();
                 Check(!served.IsValid && served.Errors.Any(error => error.Code == code),
                     $"With {name} in serve-only mode, ValidateWindow did not report {code}: " +
                     $"{string.Join(", ", served.Diagnostics.Select(diagnostic => $"{diagnostic.Severity} {diagnostic.Code}"))}.");
@@ -312,7 +313,7 @@ internal sealed class ServeOnlyChecks
                 WaitForConnection = false,
             });
             var chosen = new List<IRunicWindow>();
-            var host = new RunicDesktopHost(provider, desktop)
+            var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
             {
                 SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
                 WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
@@ -326,7 +327,7 @@ internal sealed class ServeOnlyChecks
                             : null)
                         : null;
                 },
-            };
+            });
             using var client = new HttpClient();
 
             async Task CheckResourcesAsync(IRunicWindow window, string mode)

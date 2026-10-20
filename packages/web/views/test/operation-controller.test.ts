@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   BridgeError, BridgeOperationUncertainError, bridgeFailure, bridgeSuccess,
-  createLatestOperationController, createOperationController, onBridgeDiagnostic,
+  createOperationController, onBridgeDiagnostic,
   type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
 } from "../dist/index.js";
+import { createLatestOperationController } from "../dist/experimental.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -30,7 +31,7 @@ function held<TResult = void, TFailure = never>(requestId: string, outcome: Brid
       const status = await terminal.promise;
       if (status.kind === "cancelled") throw new BridgeError("cancelled", "Cancelled");
       if (status.kind === "failed") throw new BridgeError("failed", status.error.message);
-      if (status.kind === "timedOut") throw new BridgeError("timeout", "Timed out");
+      if (status.kind === "timed-out") throw new BridgeError("timeout", "Timed out");
       return outcome;
     },
   };
@@ -169,7 +170,7 @@ test("a cancelled run is a normal terminal state, not an error", async () => {
 test("failed and timed-out runs remain errors", async () => {
   for (const status of [
     { contract: "test", requestId: "x", kind: "failed", error: { kind: "failed", message: "boom" } },
-    { contract: "test", requestId: "x", kind: "timedOut", cancellation: "cancellation-requested" },
+    { contract: "test", requestId: "x", kind: "timed-out", cancellation: "cancellation-requested" },
   ] as const) {
     const work = held("x");
     const controller = createOperationController(() => work.operation);
@@ -398,7 +399,7 @@ test("definitive older Start failure admits latest; uncertain Start and terminal
     let starts = 0;
     const active = blocked.run({ start: () => delayed.promise });
     const pending = blocked.run({ start: () => { starts++; return next.operation; } });
-    if (kind === "uncertain-start") delayed.reject(new BridgeOperationUncertainError("test", kind, "admission lost"));
+    if (kind === "uncertain-start") delayed.reject(new BridgeOperationUncertainError("admission lost", { contract: "test", requestId: kind }));
     else if (kind === "lost-recovery") delayed.reject(new Error("Start reply and recovery status lost"));
     else {
       delayed.resolve(work.operation);

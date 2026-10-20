@@ -1,7 +1,8 @@
 import {
   isBridgeOutcome, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
-  type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
+  type ViewClient, type ViewConnector,
 } from "@runic-artifex/views";
+import type { CollectionViewport, CollectionViewportController } from "@runic-artifex/views/experimental";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -103,7 +104,7 @@ export interface RetryOperationOptions extends OperationOptions {
   readonly requestId: string;
   /**
    * Retries a start or observation that failed with `ViewDisconnected`,
-   * `ViewBridgeTimeout` or `ViewOperationUncertain`. Other failures, and an
+   * `ViewTimeout` or `ViewOperationUncertain`. Other failures, and an
    * operation that reached a terminal status, are not retried.
    */
   readonly retry?: Schedule.Schedule<unknown, ViewOperationError>;
@@ -112,7 +113,7 @@ export interface RetryOperationOptions extends OperationOptions {
 }
 
 const transient = (error: ViewOperationError) =>
-  error._tag === "ViewDisconnected" || error._tag === "ViewBridgeTimeout" || error._tag === "ViewOperationUncertain";
+  error._tag === "ViewDisconnected" || error._tag === "ViewTimeout" || error._tag === "ViewOperationUncertain";
 
 // The operation the latest attempt started, shared by every attempt.
 interface Started {
@@ -136,7 +137,7 @@ interface Started {
  *
  * ```ts
  * yield* operation(() => editor.startSave(), { timeout: "10 seconds" });
- * yield* operation(id => editor.startSaveWithRequestId(id), {
+ * yield* operation(id => editor.startSave({ requestId: id }), {
  *   requestId: crypto.randomUUID(),
  *   retry: Schedule.exponential("200 millis").pipe(Schedule.take(3)),
  * });
@@ -230,7 +231,7 @@ function fromStatus<T, F>(observed: unknown): Effect.Effect<T, ViewOperationErro
       }) as ViewDomainFailureOf<F>);
     case "cancelled":
       return Effect.fail(new ViewOperationCancelled({ message: `The operation ${requestId} was cancelled.`, requestId, status }));
-    case "timedOut":
+    case "timed-out":
       return Effect.fail(new ViewOperationTimedOut({
         message: `The operation ${requestId} timed out.`, requestId, timeout: undefined, cancellation: status.cancellation ?? "unobserved",
       }));
@@ -238,12 +239,13 @@ function fromStatus<T, F>(observed: unknown): Effect.Effect<T, ViewOperationErro
     case "expired":
     case "unknown":
       return Effect.fail(new ViewOperationUncertain({
-        message: `The outcome of operation ${requestId} is ${status.kind}.`, requestId, cause: status,
+        message: `The outcome of operation ${requestId} is ${status.kind}.`, requestId, status, cause: status,
       }));
     default: {
       const unknown: never = status;
       return Effect.fail(new ViewOperationUncertain({
-        message: `The outcome of operation ${requestId} is ${String((unknown as { readonly kind?: unknown }).kind)}.`, requestId, cause: unknown,
+        message: `The outcome of operation ${requestId} is ${String((unknown as { readonly kind?: unknown }).kind)}.`, requestId,
+        status: unknown as BridgeOperationStatusOf<unknown, unknown>, cause: unknown,
       }));
     }
   }

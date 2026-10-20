@@ -242,6 +242,57 @@ internal sealed class DesktopWindowTests
         Require(!ran, "Native work queued before close ran after it.");
     }
 
+    // vdesk-02: the options of Run's own host, which before needed a host created outside Run, reach every Window.
+    [Test, NotInParallel(Order = 8)]
+    public async Task RunAppliesTheHostOptionsToItsWindows()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<OrderedCollectionModel>();
+        services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+            _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+        await using var provider = services.BuildServiceProvider();
+        var factory = new NativeDispatchFactory();
+        var placement = new DesktopWindowPlacement { Width = 640, Height = 480 };
+        var asked = new List<IRunicWindow>();
+        var hostOptions = new RunicDesktopHostOptions
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, MinimumWidth = 300, MinimumHeight = 200 },
+            Placement = window => { asked.Add(window); return placement; },
+        };
+        var result = await Task.Run(() => RunicDesktopHost.Run(provider,
+            new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false, HandleShutdownSignals = false },
+            hostOptions,
+            async host =>
+            {
+                Require(ReferenceEquals(host.WindowOptions, hostOptions.WindowOptions) && ReferenceEquals(host.SurfaceOptions, hostOptions.SurfaceOptions)
+                    && ReferenceEquals(host.Placement, hostOptions.Placement) && host.Resources is null,
+                    "Run did not give its host the host options.");
+                await using var window = await host.OpenWindowAsync<ProbeWindow>();
+                var options = factory.Hosts.Single().Options!;
+                Require(asked is [var only] && ReferenceEquals(only, window) && options.Placement == placement
+                    && options.Width == 640 && options.MinimumWidth == 300,
+                    "The Window did not open with the host options' window options and placement.");
+                return 5;
+            }));
+        Require(result == 5, $"Run returned {result} instead of the application's result.");
+    }
+
+    // The host options give the application's default for Bridge failure detail; a Window's own option wins.
+    [Test, NotInParallel(Order = 8)]
+    public async Task WindowFailureDetailOverridesTheApplicationDefault()
+    {
+        await using var provider = new ServiceCollection().BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
+        var unset = new RunicDesktopHost(provider, desktop);
+        var detailed = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions { IncludeFailureDetail = true });
+        Require(unset.IncludeFailureDetailFor(new RunicWindowOptions()) is null
+            && detailed.IncludeFailureDetailFor(new RunicWindowOptions()) == true
+            && detailed.IncludeFailureDetailFor(new RunicWindowOptions { IncludeFailureDetail = false }) == false
+            && unset.IncludeFailureDetailFor(new RunicWindowOptions { IncludeFailureDetail = true }) == true,
+            "The Window's failure detail did not follow its own option first, then the host options.");
+    }
+
     [Test, NotInParallel(Order = 8)]
     public async Task OpenedWindowExposesItsNativeOwner()
     {
@@ -253,7 +304,7 @@ internal sealed class DesktopWindowTests
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
         await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<ProbeWindow>();
         var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
-        Require(bridge.NativeOwner.IsAvailable && ReferenceEquals(bridge.NativeOwner.Window, bridge.Presentation)
+        Require(bridge.NativeOwner.IsAvailable && ReferenceEquals(bridge.NativeOwner.Window, bridge.Window)
             && ReferenceEquals(bridge.NativeOwner, bridge.NativeOwner),
             "The opened Desktop window did not expose one available native owner for its presentation.");
     }
@@ -275,7 +326,7 @@ internal sealed class DesktopWindowTests
         await using (var window = await windows.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { Width = 640, Height = 480 }))
         {
             var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
-            Require(ReferenceEquals(window.DataContext, bridge.ViewModel) && bridge.Presentation.IsOpen,
+            Require(ReferenceEquals(window.DataContext, bridge.ViewModel) && bridge.Window.IsOpen,
                 "OpenWindowAsync did not assign the scoped ViewModel and open the presentation.");
             using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
             {
@@ -286,7 +337,7 @@ internal sealed class DesktopWindowTests
                 }
                 catch (OperationCanceledException) { }
             }
-            Require(bridge.Presentation.IsOpen, "Cancelling WaitForCloseAsync closed the window.");
+            Require(bridge.Window.IsOpen, "Cancelling WaitForCloseAsync closed the window.");
 
             var closed = window.WaitForCloseAsync().AsTask();
             Require(!closed.IsCompleted, "WaitForCloseAsync completed before the window closed.");
@@ -400,7 +451,7 @@ internal sealed class DesktopWindowTests
         await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<ProbeWindow>();
         var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
         var owner = bridge.NativeOwner;
-        Require(bridge.Presentation.IsOpen && ReferenceEquals(owner.Window, bridge.Presentation),
+        Require(bridge.Window.IsOpen && ReferenceEquals(owner.Window, bridge.Window),
             "A presentation without native dispatch did not expose its owner.");
         Require(!owner.IsAvailable && !owner.CheckAccess(), "An owner without native dispatch reported itself available.");
         var ran = false;
@@ -489,11 +540,11 @@ sealed class ProbeWindow : RunicWindow<OrderedCollectionModel>;
 static class TestWindows
 {
     // A Window host that serves a blank page in an embedded window.
-    public static RunicDesktopHost EmbeddedHtml(IServiceProvider services, DesktopHost host) => new(services, host)
+    public static RunicDesktopHost EmbeddedHtml(IServiceProvider services, DesktopHost host) => new(services, host, new RunicDesktopHostOptions
     {
         SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
         WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
-    };
+    });
 }
 
 sealed class NativeDispatchFactory : IDesktopWindowHostFactory

@@ -427,12 +427,12 @@ internal sealed class WindowServiceChecks
     public async Task OpenRequestsComeFromTheLaunchArguments()
     {
         if (OperatingSystem.IsMacOS()) return;
-        await using var opens = PlatformServices.CreateOpenRequests(new(["org.example.notes"]), launch: new ApplicationLaunch(["--new", "org.example.notes:draft/1"], "/"));
+        await using var opens = DesktopPlatformServices.CreateOpenRequests(new(["org.example.notes"]), launch: new ApplicationLaunch(["--new", "org.example.notes:draft/1"], "/"));
         var opened = new TaskCompletionSource<DesktopOpenRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         opens.Opened += (_, request) => opened.TrySetResult(request);
         var request = await opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Require(request.Items is [{ Scheme: "org.example.notes" }], $"The launch's registered URL was not delivered: {string.Join(", ", request.Items)}");
-        Require(Catch(() => PlatformServices.CreateOpenRequests(new(["not a scheme"]))) is ArgumentException, "An invalid scheme was accepted.");
+        Require(Catch(() => DesktopPlatformServices.CreateOpenRequests(new(["not a scheme"]))) is ArgumentException, "An invalid scheme was accepted.");
     }
 
     [Test]

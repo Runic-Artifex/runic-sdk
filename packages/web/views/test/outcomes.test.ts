@@ -11,9 +11,11 @@ import {
 import { bridgeOperations, connectView } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import {
-  createMockBridge, installMockBridge, mockFailure, mockTypedView, type MockBridge, type MockFailureOf, type MockTypedOperation,
+  createMockBridge, installMockBridge, mockFailure, type MockBridge, type MockFailureOf, type MockTypedOperation,
   type MockTypedView,
 } from "../dist/mock.js";
+import { mockTypedView } from "../dist/generated-mock.js";
+import { viewsVersion } from "../dist/version.js";
 
 type SaveFailure = { readonly $case: "titleRequired" } | { readonly $case: "titleTaken"; readonly existingTitle: string };
 type EditorState = { readonly title: string };
@@ -57,7 +59,8 @@ test("outcomes carry a registered, non-enumerable brand", () => {
   assert.equal(isBridgeOutcome(JSON.parse(JSON.stringify(failure))), false, "a JSON round-trip is plain data");
   assert.equal(isBridgeOutcome({ ok: false, failure: 1 }), false);
   assert.equal(Object.isFrozen(success), true);
-  assert.equal((success as unknown as Record<symbol, unknown>)[Symbol.for("runic.bridgeOutcome")], true);
+  assert.equal((success as unknown as Record<symbol, unknown>)[Symbol.for("runic.views.BridgeOutcome")], true);
+  assert.equal((success as unknown as Record<symbol, unknown>)[Symbol.for("runic.bridgeOutcome")], undefined, "The pre-1.0 key is gone.");
 });
 
 test("matchCase calls the handler of the case and infers the union of handler results", () => {
@@ -123,6 +126,43 @@ test("a declared failure without a state resolves and reports the missing state"
     reports.restore();
     client.dispose();
   }
+});
+
+// D02: the .NET host reports its Runic.Application.Views version, and a page that uses another
+// @runic-artifex/views release learns it from a diagnostic, once per Bridge.
+test("a snapshot reply from another Runic.Application.Views release is reported once", async () => {
+  const bridge = fresh();
+  let version = "0.1.0-other";
+  bridge.view("editor", { state: { title: "" } });
+  bridge.view("other", { state: { title: "" } });
+  for (const route of ["editor", "other"])
+    bridge.route(`${route}Snapshot`, () => JSON.stringify({ ok: true, state: { revision: 1, title: "" }, error: null, protocol: 2, version }));
+  const diagnostics: BridgeDiagnostic[] = [];
+  const stop = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
+  try {
+    const first = await connect();
+    const second = await connectView({ contract, route: "other", mount: false, hydrate });
+    const reported = diagnostics.filter(diagnostic => diagnostic.code === "version");
+    assert.equal(reported.length, 1);
+    assert.equal(reported[0]!.kind, "error");
+    assert.match(reported[0]!.message, new RegExp(`Runic.Application.Views 0.1.0-other, but this page uses @runic-artifex/views ${viewsVersion.replaceAll(".", "\\.")}`));
+    first.dispose();
+    second.dispose();
+    const quiet = fresh();
+    quiet.view("editor", { state: { title: "" } });
+    diagnostics.length = 0;
+    version = viewsVersion;
+    const current = await connect();
+    assert.equal(diagnostics.some(diagnostic => diagnostic.code === "version"), false);
+    current.dispose();
+  } finally {
+    stop();
+  }
+});
+
+test("the package version matches its manifest", async () => {
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+  assert.equal(viewsVersion, manifest.version);
 });
 
 test("an unknown or undeclared error kind is a failed BridgeError", async () => {
@@ -239,7 +279,7 @@ test("the status union narrows by kind and hides domain-failed for undeclared op
       case "succeeded": return status.result;
       case "domain-failed": return status.failure?.$case;
       case "failed": return status.error.message;
-      case "timedOut": return status.cancellation;
+      case "timed-out": return status.cancellation;
       case "running": case "cancelled": case "expired": case "unknown": return status.kind;
       default: { const exhaustive: never = status; return exhaustive; }
     }
@@ -322,6 +362,7 @@ test("the mock Bridge answers declared failures for commands, operations and str
   const client = await connect();
   const snapshot = JSON.parse(await bridge.call("editorSnapshot")) as Record<string, unknown>;
   assert.equal(snapshot["protocol"], 2);
+  assert.equal(snapshot["version"], viewsVersion, "the mock reports this release, as .NET reports its own");
   const saved = JSON.parse(await bridge.call("editorSave")) as Record<string, unknown>;
   assert.deepEqual(saved["error"], { kind: "domain-failed", message: "Save failed.", failure: { $case: "titleRequired" } });
   assert.equal("protocol" in saved, false, "only snapshot replies state the protocol");

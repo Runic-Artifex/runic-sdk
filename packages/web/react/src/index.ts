@@ -11,28 +11,27 @@ import {
   type ReactNode,
 } from "react";
 import {
-  createCollectionViewportController,
   createCommandController,
   createOperationController,
   createViewController,
-  isViewClient,
-  viewSourceIdentity,
   type BridgeOperation,
   type BridgeOutcomeFailure,
   type OperationController,
   type OperationControllerOptions,
   type OperationState,
-  type CollectionViewport,
-  type CollectionViewportOptions,
+  type PageReference,
   type ViewClient,
   type ViewConnector,
   type ViewController,
   type ViewControllerState,
-  type ViewReference,
   type ViewSource,
 } from "@runic-artifex/views";
-
-export type { CollectionViewport, CollectionViewportOptions, ViewClient, ViewConnector, ViewReference, ViewSource } from "@runic-artifex/views";
+import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
+import {
+  createCollectionViewportController,
+  type CollectionViewport,
+  type CollectionViewportOptions,
+} from "@runic-artifex/views/experimental";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
@@ -248,11 +247,11 @@ export function useSuspenseView<TClient extends ViewClient>(source: ViewConnecto
  * A build-known map checks each generated reference kind against its component's `page` prop. A nullable
  * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
  */
-export type ViewRegistry<R extends ViewReference | null | undefined> = {
+export type ViewRegistry<R extends PageReference | null | undefined> = {
   readonly [K in NonNullable<R>["kind"]]: ComponentType<{ readonly page: Extract<NonNullable<R>, { readonly kind: K }> }>;
 };
 
-export interface ViewOutletProps<R extends ViewReference> {
+export interface ViewOutletProps<R extends PageReference> {
   /** The presented reference, such as `state.main`. */
   readonly content: R | null | undefined;
   readonly registry: ViewRegistry<R>;
@@ -274,7 +273,7 @@ function referenceKey(reference: object): number {
  * the reference as its `page` prop. A different reference remounts the
  * component. A kind without a component renders an alert.
  */
-export function ViewOutlet<R extends ViewReference>({ content, registry, fallback = null }: ViewOutletProps<R>): ReactNode {
+export function ViewOutlet<R extends PageReference>({ content, registry, fallback = null }: ViewOutletProps<R>): ReactNode {
   if (!content) return fallback;
   const component = registry[content.kind as R["kind"]] as ComponentType<{ readonly page: R }> | undefined;
   if (!component) return createElement("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);

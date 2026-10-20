@@ -3,8 +3,9 @@ import { test } from "node:test";
 import { BridgeError, BridgeOperationUncertainError, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
-import { createMockBridge, installMockBridge, mockTypedView, type MockBridge, type MockTypedCollection,
+import { createMockBridge, installMockBridge, type MockBridge, type MockTypedCollection,
   type MockTypedInteraction, type MockTypedOperation, type MockTypedView } from "../dist/mock.js";
+import { mockTypedView } from "../dist/generated-mock.js";
 
 type Row = { readonly id: number; readonly label: string };
 type State = { readonly title: string; readonly count: bigint; readonly rows: readonly Row[]; readonly canSave: boolean; readonly isSaveExecuting: boolean };
@@ -305,8 +306,17 @@ test("an operation start in flight when the connection is lost has an uncertain 
   const start = client.startOperation("Save", "request-1", () => JSON.stringify({ requestId: "request-1" }), value => value);
   await transport.waitFor(() => transport.held() === 1);
   transport.lose();
-  await assert.rejects(start, (error: unknown) => error instanceof BridgeOperationUncertainError && error.requestId === "request-1");
+  // D40 f: the error names the View's contract and route apart, not the wire's `{contract}:{route}`.
+  await assert.rejects(start, (error: unknown) => error instanceof BridgeOperationUncertainError && error.requestId === "request-1"
+    && error.contract === contract && error.route === "notes" && !(error instanceof BridgeError));
   client.dispose();
+});
+
+test("BridgeOperationUncertainError takes its identity in an options object", () => {
+  const cause = new Error("lost");
+  const error = new BridgeOperationUncertainError("The outcome is unknown.", { contract, requestId: "r", route: "notes", cause });
+  assert.deepEqual([error.message, error.contract, error.requestId, error.route, error.cause], ["The outcome is unknown.", contract, "r", "notes", cause]);
+  assert.equal(new BridgeOperationUncertainError("m", { contract, requestId: "r" }).route, undefined);
 });
 
 test("interaction long polls in flight when the connection is lost stop without retrying", async () => {

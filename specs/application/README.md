@@ -15,9 +15,10 @@ specification is maintained by [Runic Translations](https://github.com/Runic-Art
 Every reply from a snapshot route carries `"protocol": 2` and `"version"`, the
 `Runic.Application.Views` package version without build metadata (such as
 `"0.9.0-preview.1"`); command, setter and write replies do not. Both are
-informational: generated clients do not gate on them, and report a snapshot reply
-whose `protocol` differs from their own as a diagnostic, in every environment and
-once per Bridge. The .NET and npm packages of one release are meant to be used
+informational: generated clients do not gate on them. `@runic-artifex/views`
+reports a snapshot reply whose `protocol` differs from its own as a diagnostic
+with code `protocol`, and one whose `version` differs from its own package
+version with code `version`, in every environment and once per Bridge. The .NET and npm packages of one release are meant to be used
 together (see the [release policy](../../eng/release/README.md)). Clients ignore envelope members they do not
 know, so adding members is compatible. The version changes only when a client
 built for the previous version could misread a reply. Version 2 added the
@@ -56,7 +57,7 @@ The browser host script defines `__runicBridge`:
 | `onReconnect?(listener): () => void` | Optional. Calls `listener` after the connection is re-established without a page reload; returns an unsubscribe function. |
 | `onConnectionChange?(listener): () => void` | Optional. Calls `listener(connected)` with the authenticated connection state at once and after each change, including a dropped transport, without waiting for a call; returns an unsubscribe function. It must not have the side effects of `isConnected()` (CS-WebUI's allows navigation). Runic Desktop and CS-WebUI poll WebUI's connection every 250 ms while a listener exists. |
 
-A route unbound by `RebindableBridgeTransport` answers the envelope
+A route unbound on CS-WebUI (the transport of `CreateBridgeSession`) answers the envelope
 `{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`. Runic Desktop
 answers a late call of a capability it released shortly before (it remembers the
 last 256) with the same envelope. A client reports it on every route, including
@@ -73,8 +74,9 @@ with an empty string, so a client reports an empty reply as an invalid response
 One page can load several copies of `@runic-artifex/views`, for example from two
 bundles, and `@runic-artifex/vite-plugin-runic/client` reads its diagnostics.
 They find each other through `__runicBridge` and through these registered symbols
-(`Symbol.for`), so the keys and their shapes are part of the protocol. A release
-may add a key; renaming one or changing its shape is breaking.
+(`Symbol.for`), so the keys and their shapes are part of the protocol. Every key
+starts with `runic.views.`. A release may add a key; renaming one or changing its
+shape is breaking.
 
 | Key | Set on | Contract |
 | --- | --- | --- |
@@ -83,7 +85,7 @@ may add a key; renaming one or changing its shape is breaking.
 | `runic.views.diagnosticReported` | An error | `true` once a diagnostic reported the error, so each error is reported once. |
 | `runic.views.unavailableReported` | `globalThis` | `true` once the page reported that it has no `__runicBridge`. |
 | `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |
-| `runic.bridgeOutcome` | An outcome | A non-enumerable `true` that `isBridgeOutcome` checks. |
+| `runic.views.BridgeOutcome` | An outcome | A non-enumerable `true` that `isBridgeOutcome` checks (`runic.bridgeOutcome` before 0.9). |
 | `runic.views.mockFailure` | An error | The declared failure of an error from `mockFailure()` (`@runic-artifex/views/mock`). |
 
 ## Routes
@@ -94,7 +96,7 @@ example `counter`), or `content{id}` for presented content, where `id` is the
 
 | Route | Arguments | Reply |
 | --- | --- | --- |
-| `{p}Snapshot` | none | envelope with `protocol` |
+| `{p}Snapshot` | none | envelope with `protocol` and `version` |
 | `{p}Set{Property}` | value | envelope |
 | `{p}Write{Property}` | `{requestId, expectedVersion, expectedValue, value}` | envelope with `receipt` |
 | `{p}{Command}` | input, if any | envelope after the command completes |
@@ -254,6 +256,15 @@ published; its pages report `kind: "domain-failed"` and `completed: true`. A can
 `not-running`, `unknown` or `expired`; cancellation never rewrites a success. A
 stream page adds `cursor`, `completed`, `items: [{sequence, value}]` and
 `delivery`. Malformed requests answer `{kind: "invalid-request"}`.
+
+The TypeScript client adds one status kind of its own, `timed-out`: `wait({ timeout })`
+passed its deadline and sent a cancellation request. .NET never sends it, and a
+stream page never has it. A rejection for it is a `BridgeError` with kind
+`timeout`, the kind a connect that passed its deadline also has.
+
+Multi-word wire values are kebab-case (`domain-failed`, `result-too-large`,
+`cancellation-requested`, `timed-out`); a new one follows the rule. Generated enum
+unions keep their C# member names (or `[RunicAlias]`), as System.Text.Json writes them.
 
 A window retains at most 64 operations, 32 terminal results, 128 expired ids, and
 256 KiB of results, declared failures and stream replay. A declared failure that

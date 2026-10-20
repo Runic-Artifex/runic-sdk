@@ -24,7 +24,7 @@ namespace Runic.Application.Views;
 /// An item follows its command's <see cref="ICommand.CanExecute"/>, read with a <see langword="null"/> parameter and
 /// updated on <see cref="ICommand.CanExecuteChanged"/>, and runs <see cref="ICommand.Execute"/> in the model turn. A
 /// command with a required parameter cannot be a menu command. An id the ViewModel returns <see langword="null"/>
-/// for falls to the application's commands (<c>RunicDesktopHost.MenuCommands</c>), and is disabled without one.
+/// for falls to the application's commands (<c>RunicDesktopHost.UseApplicationMenu</c>), and is disabled without one.
 /// </para>
 /// <para>
 /// Runic Desktop shows the menu bar on macOS. On Windows and Linux, and on CS-WebUI, there is no native menu bar in

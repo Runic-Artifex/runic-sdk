@@ -1,6 +1,7 @@
 import { effectScope, nextTick, shallowRef } from "vue";
 import { describe, expect, test } from "vitest";
-import { useView, type ViewSource } from "../dist/index.js";
+import type { ViewSource } from "@runic-artifex/views";
+import { useView } from "../dist/index.js";
 
 type State = { readonly count: number };
 

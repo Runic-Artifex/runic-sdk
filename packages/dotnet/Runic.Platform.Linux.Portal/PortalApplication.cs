@@ -14,7 +14,7 @@ namespace Runic.Platform.Linux.Portal;
 /// by the desktop ID it registers once per connection, and report setup problems to the sink, so both live on this
 /// object.</para>
 /// <para>Window services (file dialogs, the clipboard and file handoff) belong to a window: Runic's hosts create them
-/// for each window, such as <c>PlatformServices.ForWindow</c> of Runic.Application.Views.Desktop.</para>
+/// for each window, such as <c>DesktopPlatformServices.ForWindow</c> of Runic.Application.Views.Desktop.</para>
 /// </remarks>
 [SupportedOSPlatform("linux")]
 public sealed class PortalApplication

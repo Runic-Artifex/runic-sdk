@@ -17,7 +17,9 @@ export interface CounterCheckedFields {
 export interface CounterClient extends ViewClient<CounterState> {
   /** Calls the public C# setter of `CounterViewModel.Step`. */
   setStep(value: number): Promise<CounterState>;
+  /** Writes `CounterViewModel.Step` with an acknowledged field write, which reports whether .NET committed it. */
   writeStep(value: number, options: FieldWriteOptions<number>): Promise<FieldWriteReceipt<number>>;
+  /** The value and version of a checked field that a `write…` call is based on. */
   fieldBaseline<K extends keyof CounterCheckedFields>(field: K): FieldBaseline<CounterCheckedFields[K]>;
   increment(): Promise<CounterState>;
 }

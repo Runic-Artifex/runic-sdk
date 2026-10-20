@@ -56,7 +56,7 @@ These words name one concept each across the Runic packages and frontends.
   `Host` property returns its per-Window adapter, an `IBridgeWindow`.
 - **Presentation**: what shows a Window's or View's web content on screen: an
   embedded WebView or an installed browser window, such as
-  `DesktopBridgeWindow.Presentation` (a `DesktopWindow`) or the WebView of a
+  `DesktopBridgeWindow.Window` (a `DesktopWindow`) or the WebView of a
   `RunicViewHost`. A presentation closes and reopens without changing the
   ViewModel.
 - **Surface**: Runic Desktop's `DesktopSurface`, which serves a Window's web
@@ -260,8 +260,9 @@ CommunityToolkit.Mvvm ViewModels.
   does and returns whether it closed; with `GuardClose` it asks `CanCloseAsync`
   first (see [Guarding a user close](#guarding-a-user-close)).
 - `Host` returns the host adapter, an `IBridgeWindow`:
-  `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Presentation` and
-  `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `NativeWindow`).
+  `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Window` and
+  `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `Window`), each
+  `Window` being the host's own window object.
 
 ### View lifetime hooks
 
@@ -590,7 +591,7 @@ The host asks once for each id when the Window opens, and again after
 while its command's `CanExecute(null)` is `true`, following `CanExecuteChanged`,
 and runs `Execute(null)` in the model turn; a failure is logged as event 2004,
 `DesktopMenuCommandFailed`. An id the ViewModel returns `null` for goes to the
-application's commands, `RunicDesktopHost.MenuCommands`, such as New or
+application's commands, `RunicDesktopHost.UseApplicationMenu`, such as New or
 Settings…, which also run while no Window is open. Runic Desktop shows the menu
 bar on macOS; elsewhere, and on CS-WebUI, render menus in the page, bound to the
 same commands.
@@ -698,7 +699,7 @@ in `PackageReference` and `Directory.Packages.props`; namespaces are unchanged.
 | `WebUiApplication.Wait()` and `WebUiApplication.Clean()` in `Program.cs` | `RunicCsWebUiHost.Run(provider, async host => ...)` |
 | `window.Presentation.WaitForClose()`, `WebUiApplication.Wait()` | `await window.WaitForCloseAsync(cancellationToken)` |
 | `IBridgeWindow.CloseAsync(TimeSpan)` | `IBridgeWindow.CloseAsync(TimeSpan, CancellationToken)` and `WaitForCloseAsync(CancellationToken)` |
-| `SetRootFolder`, `SetSize`, `SetPort`, `Show`, `ShowWebView`, `StartServer` on `CsWebUiBridgeWindow<T>` and `CsWebUiWindow<T>` | `RunicWindowOptions`, and `UseWebView`, `ConfigureWindow` and `ShowWindow` on `RunicCsWebUiHost`; `NativeWindow` remains |
+| `SetRootFolder`, `SetSize`, `SetPort`, `Show`, `ShowWebView`, `StartServer` on `CsWebUiBridgeWindow<T>` and `CsWebUiWindow<T>` | `RunicWindowOptions`, and `UseWebView`, `ConfigureWindow` and `ShowWindow` of `RunicCsWebUiHostOptions`; the bridge window's `Window` remains |
 | Log events 1050 `CsWebUiWindowRegistrationMissing` and 2001 `DesktopWindowRegistrationMissing` | Event 1050 `WindowRegistrationMissing` on every host |
 | Package `Runic.Application` | `Runic.Application.Views`, its namespace |
 | Package `Runic.Application.CsWebUi` | `Runic.Application.Views.CsWebUi` |
@@ -1838,7 +1839,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
-| 2004 | `DesktopMenuCommandFailed` | Error | A menu bar command of a Window's root ViewModel (`IRunicMenuCommandSource`) or of `RunicDesktopHost.MenuCommands` threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
+| 2004 | `DesktopMenuCommandFailed` | Error | A menu bar command of a Window's root ViewModel (`IRunicMenuCommandSource`) or of `RunicDesktopHost.UseApplicationMenu` threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
 | 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |

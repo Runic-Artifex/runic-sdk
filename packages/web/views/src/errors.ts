@@ -65,11 +65,37 @@ export class BridgeError extends Error {
   }
 }
 
-/** The client could not observe whether .NET admitted or completed an operation. */
+/** The identity of an operation whose outcome the client could not observe. */
+export interface BridgeOperationUncertainErrorOptions {
+  /** The generated Bridge contract of the View, such as `Notes.EditorViewModel:7E66…`. */
+  readonly contract: string;
+  /** The operation's request id. */
+  readonly requestId: string;
+  /** The View route the operation runs on, such as `editor` or `content12`, when known. */
+  readonly route?: string;
+  /** The underlying error or status, kept as `error.cause`. */
+  readonly cause?: unknown;
+}
+
+/**
+ * The client could not observe whether .NET admitted or completed an operation, so its outcome is
+ * unknown: do not retry it blindly. It is deliberately not a `BridgeError`, whose kinds are failures
+ * a caller may retry.
+ */
 export class BridgeOperationUncertainError extends Error {
-  constructor(readonly contract: string, readonly requestId: string, message: string, options: { readonly cause?: unknown } = {}) {
+  /** The generated Bridge contract of the View. */
+  readonly contract: string;
+  /** The operation's request id. */
+  readonly requestId: string;
+  /** The View route the operation runs on, when known. */
+  readonly route?: string;
+
+  constructor(message: string, options: BridgeOperationUncertainErrorOptions) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "BridgeOperationUncertainError";
+    this.contract = options.contract;
+    this.requestId = options.requestId;
+    if (options.route !== undefined) this.route = options.route;
     Object.defineProperty(this, uncertainBrand, { value: true });
   }
 
@@ -78,4 +104,14 @@ export class BridgeOperationUncertainError extends Error {
       ? branded(value, uncertainBrand)
       : Function.prototype[Symbol.hasInstance].call(this, value);
   }
+}
+
+// Operations name their View as `{contract}:{route}` on the wire; the error keeps the two apart.
+export function uncertainOperation(operationContract: string, requestId: string, message: string, cause?: unknown): BridgeOperationUncertainError {
+  const separator = operationContract.lastIndexOf(":");
+  const contract = separator < 0 ? operationContract : operationContract.slice(0, separator);
+  const route = separator < 0 ? undefined : operationContract.slice(separator + 1);
+  return new BridgeOperationUncertainError(message, {
+    contract, requestId, ...(route === undefined ? {} : { route }), ...(cause === undefined ? {} : { cause }),
+  });
 }

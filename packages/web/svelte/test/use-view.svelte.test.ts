@@ -2,7 +2,8 @@
 
 import { flushSync } from "svelte";
 import { describe, expect, test } from "vitest";
-import { useView, type ViewHandle, type ViewSource } from "../src/views/index.js";
+import type { ViewSource } from "@runic-artifex/views";
+import { useView, type ViewHandle } from "../src/views/index.js";
 
 type State = { readonly count: number };
 

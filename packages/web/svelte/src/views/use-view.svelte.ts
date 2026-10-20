@@ -1,5 +1,6 @@
 import { untrack } from "svelte";
-import { createViewController, isViewClient, viewSourceIdentity, type ViewClient, type ViewSource } from "@runic-artifex/views";
+import { createViewController, type ViewClient, type ViewSource } from "@runic-artifex/views";
+import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
