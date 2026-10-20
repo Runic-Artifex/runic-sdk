@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Runic.Platform.Runtime;
 using TUnit.Core;
@@ -10,15 +11,17 @@ namespace Runic.Platform.Runtime.Tests;
 // picker contract (D46).
 internal sealed class ApiShapeTests
 {
-    private static readonly Assembly Platform = typeof(PlatformResult<>).Assembly;
-    private static readonly Assembly Runtime = typeof(INativeWindowOwner).Assembly;
-
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private static bool IsPublic(Assembly assembly, string name) => assembly.GetType(name)?.IsPublic == true;
+    // The cases run in the NativeAOT test executable too, so reflection goes through trim-annotated helpers.
+    private static ParameterInfo[] ConstructorParameters([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type, int count) =>
+        type.GetConstructors().Single(c => c.GetParameters().Length == count).GetParameters();
+
+    private static bool HasProperty([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type, string name) =>
+        type.GetProperty(name) is not null;
 
     [Test]
     public void ZeroIsNeverARealFailureCode()
@@ -41,11 +44,9 @@ internal sealed class ApiShapeTests
         // Positional, as on PlatformResult<T>.Failed: the diagnostic deconstructs with the code.
         var (code, deconstructed) = new FileCommitResult.CommitUnknown(PlatformFailureCode.Other);
         Check(code == PlatformFailureCode.Other && deconstructed is null, "The diagnostic defaults to null.");
-        foreach (var type in new[] { typeof(PickerResult<IReadFileLease>.Failed), typeof(FileCommitResult.NotCommitted), typeof(FileCommitResult.CommitUnknown) })
-        {
-            var parameters = type.GetConstructors().Single(c => c.GetParameters().Length == 2).GetParameters();
-            Check(parameters[1].Name == "Diagnostic" && parameters[1].HasDefaultValue, type.Name + " needs a positional Diagnostic = null.");
-        }
+        foreach (var parameters in new[] { ConstructorParameters(typeof(PickerResult<IReadFileLease>.Failed), 2),
+            ConstructorParameters(typeof(FileCommitResult.NotCommitted), 2), ConstructorParameters(typeof(FileCommitResult.CommitUnknown), 2) })
+            Check(parameters[1].Name == "Diagnostic" && parameters[1].HasDefaultValue, "A failed result needs a positional Diagnostic = null.");
     }
 
     [Test]
@@ -67,9 +68,8 @@ internal sealed class ApiShapeTests
     [Test]
     public void OneDispatcherAndOwnerVocabulary()
     {
-        Check(Platform.GetType("Runic.Platform.IUiDispatcher") is null, "IUiDispatcher has no consumer and is removed.");
-        Check(Runtime.GetType("Runic.Platform.Runtime.PresentationDispatcher") is null, "PresentationDispatcher is removed.");
-        Check(Runtime.GetType("Runic.Platform.Runtime.INativePickerOwner") is null, "The owner is INativeWindowOwner.");
+        // IUiDispatcher, PresentationDispatcher and INativePickerOwner are gone: PublicAPI.Unshipped.txt records it, and
+        // this file compiles only against INativeWindowOwner.
         Check(typeof(INativeWindowOwner).GetMethod(nameof(INativeWindowOwner.InvokeAsync)) is { } invoke
             && invoke.GetParameters()[0].ParameterType == typeof(Action<nint>), "INativeWindowOwner.InvokeAsync(Action<nint>, ...)");
     }
@@ -77,7 +77,7 @@ internal sealed class ApiShapeTests
     [Test]
     public void NamesFollowTheFrameworkDesignGuidelines()
     {
-        Check(Platform.GetType("Runic.Platform.DesktopStatusIcons") is null && typeof(DesktopStatusIcon).IsAbstract && typeof(DesktopStatusIcon).IsSealed,
+        Check(typeof(DesktopStatusIcon).IsAbstract && typeof(DesktopStatusIcon).IsSealed && DesktopStatusIcon.Unavailable(PlatformUnavailableReason.BackendUnavailable) is not null,
             "The status icon factory is the static class DesktopStatusIcon.");
         Check(new DesktopApplicationInfo("a", "A") { IsHidden = true }.IsHidden, "IsHidden");
         var command = new DesktopMenuCommand("id", "Label") { IsChecked = true };
@@ -85,21 +85,19 @@ internal sealed class ApiShapeTests
         Check(new DesktopMenuSubmenu("Label", []).IsEnabled, "DesktopMenuSubmenu.IsEnabled");
         Check(new DesktopOpenOptions(["org.example"]) { IncludeFiles = true }.IncludeFiles, "IncludeFiles");
         Check(new DesktopIcon { IconName = "folder" }.IconName == "folder", "DesktopIcon.IconName");
-        foreach (var (type, old) in new[] { (typeof(DesktopApplicationInfo), "Hidden"), (typeof(DesktopMenuCommand), "Enabled"),
-            (typeof(DesktopMenuCommand), "Checked"), (typeof(DesktopMenuSubmenu), "Enabled"), (typeof(DesktopOpenOptions), "Files"),
-            (typeof(DesktopIcon), "ThemeName") })
-            Check(type.GetProperty(old) is null, $"{type.Name}.{old} is renamed.");
+        Check(!HasProperty(typeof(DesktopApplicationInfo), "Hidden") && !HasProperty(typeof(DesktopMenuCommand), "Enabled")
+            && !HasProperty(typeof(DesktopMenuCommand), "Checked") && !HasProperty(typeof(DesktopMenuSubmenu), "Enabled")
+            && !HasProperty(typeof(DesktopOpenOptions), "Files") && !HasProperty(typeof(DesktopIcon), "ThemeName"), "The old names are gone.");
     }
 
     [Test]
     public void LimitsThatMayChangeAreReadAtRunTime()
     {
-        foreach (var (type, name) in new[] { (typeof(DesktopThumbnails), "MaximumSize"), (typeof(DesktopIconRequest), "MaximumSize"),
-            (typeof(DesktopIconRequest), "MaximumScale") })
-        {
-            Check(type.GetField(name) is null, $"{type.Name}.{name} must not be a const compiled into callers.");
-            Check(type.GetProperty(name, BindingFlags.Public | BindingFlags.Static) is not null, $"{type.Name}.{name} is a static property.");
-        }
+        Check(typeof(DesktopThumbnails).GetField("MaximumSize") is null && typeof(DesktopThumbnails).GetProperty("MaximumSize") is not null,
+            "DesktopThumbnails.MaximumSize is a static property, not a const compiled into callers.");
+        Check(typeof(DesktopIconRequest).GetField("MaximumSize") is null && typeof(DesktopIconRequest).GetProperty("MaximumSize") is not null
+            && typeof(DesktopIconRequest).GetField("MaximumScale") is null && typeof(DesktopIconRequest).GetProperty("MaximumScale") is not null,
+            "DesktopIconRequest's limits are static properties.");
         Check(DesktopThumbnails.MaximumSize == 1024 && DesktopIconRequest.MaximumSize == 4096 && DesktopIconRequest.MaximumScale == 16, "Limits");
         // Fixed for the major version: they bound the privileged helper's protocol.
         Check(typeof(PrivilegedActionDeclaration).GetField(nameof(PrivilegedActionDeclaration.ArgumentLimit))?.IsLiteral == true, "ArgumentLimit stays const.");
@@ -108,14 +106,14 @@ internal sealed class ApiShapeTests
     [Test]
     public void RuntimeExposesOnlyTheApplicationApiAndTheProviderContract()
     {
-        foreach (var name in new[] { "PresentationLifetime", "PresentationFiles", "PresentationClipboard", "PresentationFileLauncher",
-            "DesktopServiceValidation", "InhibitionValidation", "SecretStoreValidation", "DesktopSettingsSource" })
-            Check(!IsPublic(Runtime, "Runic.Platform.Runtime." + name), name + " is internal to Runic's providers and hosts.");
-        foreach (var name in new[] { "ApplicationInstance", "ApplicationInstanceOptions", "LocalFileTransfers", "INativeWindowOwner",
-            "IPickerBackend", "INativeFilePicker", "INativeDirectoryPicker", "NativePickerBackend", "NativeFileSelection",
-            "NativeDirectorySelection", "NativeFileDialogRequest", "NativeFileLocation", "OwnerClosedException",
-            "NativeBackendUnavailableException" })
-            Check(IsPublic(Runtime, "Runic.Platform.Runtime." + name), name + " stays public.");
+        foreach (var type in new[] { typeof(PresentationLifetime), typeof(PresentationFiles), typeof(PresentationClipboard), typeof(PresentationFileLauncher),
+            typeof(DesktopServiceValidation), typeof(InhibitionValidation), typeof(SecretStoreValidation), typeof(DesktopSettingsSource) })
+            Check(!type.IsPublic, type.Name + " is internal to Runic's providers and hosts.");
+        foreach (var type in new[] { typeof(ApplicationInstance), typeof(ApplicationInstanceOptions), typeof(LocalFileTransfers), typeof(INativeWindowOwner),
+            typeof(IPickerBackend), typeof(INativeFilePicker), typeof(INativeDirectoryPicker), typeof(NativePickerBackend), typeof(NativeFileSelection),
+            typeof(NativeDirectorySelection), typeof(NativeFileDialogRequest), typeof(NativeFileLocation), typeof(OwnerClosedException),
+            typeof(NativeBackendUnavailableException) })
+            Check(type.IsPublic, type.Name + " stays public.");
     }
 
     [Test]
