@@ -10,6 +10,20 @@ The native clipboard executable in `tests/dotnet/Runic.Platform.MacOS.Tests` tes
 
 Native clipboard ABI references: [Apple Pasteboard functions](https://developer.apple.com/documentation/applicationservices/applicationservices_functions) and [PasteboardCreate](https://developer.apple.com/documentation/applicationservices/1461248-pasteboardcreate). No extra native shim is packaged.
 
+## Supported macOS versions
+
+Runic supports macOS 15 and later on `osx-arm64`; `osx-x64` is packaged and
+best effort ([release policy](../../../eng/release/README.md#supported-platforms)).
+Every service of this package works on those versions. The sections below name
+the older macOS version some services need; Runic does not test or support
+those older versions:
+
+| Service | Needs |
+| --- | --- |
+| File dialog filters (`UTType` content types) | macOS 11 |
+| Login startup (`SMAppService`) | macOS 13 |
+| Privileged actions (launch daemon), cooperative window activation | macOS 14 |
+
 ## Desktop services
 
 Application-scoped appearance and notification providers, and owned file opening,

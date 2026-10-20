@@ -51,6 +51,16 @@ for (const file of [...sources(join(root, 'packages/dotnet')), ...sources(join(r
     }
   }
 }
+// The npm packages report IDs at the start of an error message, such as 'RUNICP007: devtools: true requires …'.
+for (const directory of readdirSync(join(root, 'packages/web'))) {
+  const source = join(root, 'packages/web', directory, 'src');
+  if (!existsSync(source)) continue;
+  for (const entry of readdirSync(source, { recursive: true }).filter(name => /\.(ts|svelte)$/.test(name))) {
+    const file = join(source, entry);
+    for (const [, id] of readFileSync(file, 'utf8').matchAll(/["'`]([A-Z]{3,}\d{3,})\b/g))
+      reports.set(id, [...(reports.get(id) ?? []), relative(root, file)]);
+  }
+}
 const property = (project, name) =>
   readFileSync(project, 'utf8').match(new RegExp(`<${name}>([^<]*)</${name}>`))?.[1];
 
@@ -58,6 +68,17 @@ test('the scan finds every diagnostic family', () => {
   const families = new Set([...reports.keys()].map(id => id.replace(/\d+$/, '')));
   for (const family of ['RUNICBRIDGE', 'RAPPCLI', 'RAPPDEV', 'RAS', 'RAPPSIZE', 'RCLI', 'RCREATE'])
     expect(families).toContain(family);
+});
+
+// D20: the release policy lists every family that shipped code or docs/experimental.md uses.
+test('the release policy lists every diagnostic family', () => {
+  const policy = readFileSync(join(root, 'eng/release/README.md'), 'utf8');
+  const listed = new Set([...policy.matchAll(/^ *\| ((?:`[A-Z]+`(?:, )?)+) \|/gm)]
+    .flatMap(match => [...match[1].matchAll(/`([A-Z]+)`/g)].map(prefix => prefix[1])));
+  const ids = [...reports.keys(), ...[...experimental.matchAll(/`([A-Z]{3,}\d{3,})`/g)].map(match => match[1])];
+  const families = [...new Set(ids.map(id => id.replace(/\d+$/, '')))];
+  expect(families).toContain('RUNICP');
+  expect(families.filter(family => !listed.has(family))).toEqual([]);
 });
 
 test('every reported diagnostic ID has a catalog entry', () => {

@@ -14,6 +14,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="ReactiveUI.Reactive" />
+    <!-- Direct references bound every package whose types the public API exposes (eng/release/README.md). -->
+    <PackageReference Include="ReactiveUI.Core" />
+    <PackageReference Include="ReactiveUI.Binding.Reactive" />
+    <PackageReference Include="System.Reactive" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveCommandExecution.cs" Link="Shared/ReactiveCommandExecution.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/BridgeSnapshotObservableExtensions.cs" Link="Shared/BridgeSnapshotObservableExtensions.cs" />

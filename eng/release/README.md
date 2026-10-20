@@ -272,11 +272,39 @@ of the same major without changes by its author. That includes:
   positional record's primary constructor; changing documented behaviour or a
   documented failure result. New types, overloads that create no ambiguity,
   optional `init` properties and default interface members are not breaking.
+  A positional record therefore keeps its primary constructor and `Deconstruct`
+  for the major and gains data only as optional `init` properties; this applies
+  to records added later too.
+- **Enums and string unions:** the documentation of every public enum and
+  exported npm string union says whether it is open or closed. An open set, such
+  as failure codes, rejection reasons, error kinds and diagnostic codes, may gain
+  values in a minor release: code that switches over it handles an unknown value,
+  for example with a default arm, and a TypeScript exhaustive `never` check over
+  it can stop compiling. A closed set, such as `DesktopFileOperation`, gains
+  values only in a major release. Removing, renaming or renumbering a value is
+  breaking for both.
 - **NativeAOT and trimming:** a library marked `IsAotCompatible` reporting new
   trim or AOT warnings for code that was clean.
-- **Diagnostic IDs** (`RUNICBRIDGE`, `RUNICPA`, `RUNICWPF`): reusing an ID for
-  another meaning, or turning a warning into an error. New warnings are not
-  breaking, nor are new errors for input that already failed at run time.
+- **Diagnostic IDs** of every family below: reusing an ID for another meaning, or
+  turning a warning into an error. New warnings are not breaking, nor are new
+  errors for input that already failed at run time. Message text is not a
+  contract. [`docs/diagnostics.md`](../../docs/diagnostics.md) describes every ID,
+  and [`docs/experimental.md`](../../docs/experimental.md) the experimental ones,
+  which number from `100` in a family that also reports diagnostics.
+
+  | Prefix | Reported by |
+  | --- | --- |
+  | `RUNICBRIDGE` | The Runic.Application.Views generator and build targets |
+  | `RUNICPA` | Privileged actions: the build targets of Runic.Platform and its platform packages |
+  | `RUNICEL` | The Runic.Platform.Windows.Elevation build targets |
+  | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |
+  | `RUNICDESK` | The Runic.Desktop build targets; experimental Desktop APIs |
+  | `RUNICASSETS`, `RUNICWPF` | Experimental APIs of Runic.Assets and Runic.Application.Views.Wpf |
+  | `RUNICP` | `@runic-artifex/vite-plugin-runic` |
+  | `RAPPCLI`, `RAPPDEV`, `RAPPSIZE` | `dotnet runic` |
+  | `RCLI` | The Runic.CommandLine codes the tools report, and `dotnet runic doctor` checks (`RCLI81xx`) |
+  | `RCREATE` | `runic-create` |
+  | `RAS` | The asset packer and the Runic.Assets build targets |
 - **MSBuild properties, items and targets** that the documentation names:
   removing or renaming one, or changing a default so that a passing build fails
   or produces a different application. A renamed property keeps the old name
@@ -284,9 +312,11 @@ of the same major without changes by its author. That includes:
 - **Command-line tools** (`dotnet runic`, `runic-create`): removing or renaming a
   command or option (a hidden alias stays), changing exit codes or a JSON
   contract. Human-readable output is not a contract.
-- **Versioned JSON contracts** (`runic.create/1`, `runic.application.tool/1`,
-  `runic.application.tool.doctor/1`, `runic.size/1`, `runic.support-envelope/1`,
-  `runic.assets/1`, `runic.assets.archive/1`, `runic.assets.pack-result/1`):
+- **Versioned JSON contracts** (`runic.create/2`, `runic.application.tool.dev/1`,
+  `runic.application.tool.size/1`, `runic.application.tool.doctor/1`,
+  `runic.size/2`, `runic.assets/1`, `runic.assets.archive/1`,
+  `runic.assets.pack-result/1`; support envelopes belong to
+  [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/eng/release/README.md#versioning-and-support-from-10)):
   removing, renaming or retyping a field, changing property casing, or changing
   the meaning of a value. Such a change gets a new identifier (`/2`), and the old
   one stays available until the next major. New optional fields are not breaking;
@@ -294,13 +324,24 @@ of the same major without changes by its author. That includes:
 - **Bridge protocol and generated clients:** a change that .NET and npm packages
   of the same release cannot negotiate. Mixing .NET and npm packages of different
   releases is unsupported; the exact `@runic-artifex/views` peer versions enforce it.
+  The registered `Symbol.for` keys, the `__runicBridge` global and the diagnostics
+  channel, which copies of the npm packages on one page share, are part of the
+  protocol ([specification](../../specs/application/README.md#shared-globals)).
+- **Templates** (`dotnet new runic-app` and the `runic-create` choices that
+  select it): the template identity and short name, parameter names, choice
+  values and defaults. Removing a parameter or choice, or changing a default, is
+  breaking. The content a template generates is not a contract: a later release
+  may generate different code, and an application created from an earlier
+  release keeps building under the rules above.
+- **Logging and telemetry:** log event IDs and names, `ActivitySource` and `Meter`
+  names, and the instrument and tag names that the documentation names stay
+  stable within a major. Log message text is not a contract.
 - **npm packages:** removing or renaming an export, `exports` entry or TypeScript
   type; narrowing a peer dependency range; changing the generated client shape or
   `runic-views.js` behaviour. Widening a peer range is not breaking.
 - **Platforms:** dropping a supported RID, host or OS version before .NET drops it.
-- **Third-party types in the public API** (ReactiveUI in the `*.ReactiveUI*`
-  packages, `CsWebUi.WebUiWindow`): moving to a dependency version that changes a
-  type Runic exposes.
+- **Third-party types in the public API:** moving to a dependency version that
+  changes a type Runic exposes (see [Dependencies](#dependencies)).
 
 ### Enforcement
 
@@ -323,7 +364,7 @@ of the same major without changes by its author. That includes:
 Runic Translations depends on Runic Command Line (`Runic.Translations.CommandLine`
 and `Runic.Translations.Tooling` reference `Runic.CommandLine`). Runic SDK
 libraries depend on neither; its `dotnet-runic` and `Runic.Create` tools bundle
-Command Line.
+Command Line, from 1.0 a stable release of it.
 
 - 1.0.0 ships as one release train in dependency order: Command Line, then
   Translations, then Runic SDK. "Runic 1.0" means that set.
@@ -331,6 +372,46 @@ Command Line.
   notes name the versions of the other SDKs it was tested with. References
   between SDKs use the lowest stable version that works as a NuGet minimum
   version, never an exact pin.
+
+### Dependencies
+
+Between packages of this repository:
+
+- Every package references another package of the repository with the exact
+  version of the release (`[x.y.z]`), which `eng/build/package-dependencies.targets`
+  writes into the packages, and each npm adapter requires the exact
+  `@runic-artifex/views` version. A package that uses another package's internals
+  through `InternalsVisibleTo` must keep that exact reference: internals are not
+  API and change in any release, so both packages have to come from the same
+  release. Where the consumer needs an API that applications should use too, make
+  it public instead.
+
+Third-party packages:
+
+- A package whose types appear in a shipped API is referenced directly and
+  bounded to the major Runic is tested with (`Directory.Packages.props`;
+  `eng/workspace.test.mjs` checks it), so a restore cannot combine Runic with an
+  untested major:
+
+  | Package | Range | Exposed by |
+  | --- | --- | --- |
+  | `ReactiveUI`, `ReactiveUI.Core`, `ReactiveUI.Reactive` | `[26.0.1, 27)` | The `*.ReactiveUI*` packages |
+  | `ReactiveUI.Binding`, `ReactiveUI.Binding.Reactive` | `[9.1.0, 10)` | The `*.ReactiveUI*` packages |
+  | `ReactiveUI.Primitives`, `ReactiveUI.Primitives.Reactive`, `ReactiveUI.Disposables` | `[9.0.0, 10)` | The `*.ReactiveUI*` packages |
+  | `System.Reactive` | `[7.0.0, 8)` | The `*.ReactiveUI.Reactive` packages |
+  | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.7, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
+  | `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) | `[10.10.0, 11)` | `Runic.Application.Testing` |
+  | `effect` (npm) | `^4.0.1` | `@runic-artifex/views-effect` |
+
+- Moving to a new major of one of them needs a major Runic release, with one
+  exception: the ReactiveUI adapters (`Runic.Application.Views.ReactiveUI*` and
+  `Runic.Navigation.ReactiveUI*`, both flavors together) may move to a new
+  ReactiveUI major in a minor release, with a migration entry in its release notes.
+- The `Microsoft.Extensions.*` abstractions, such as dependency injection and
+  logging, follow .NET's own compatibility and are not bounded.
+- A dependency that no API exposes may move to any version in any release. An
+  example is `Tmds.DBus.Protocol` (0.x), which Runic.Platform.Linux.DBus and
+  Runic.Platform.Linux.Portal use internally.
 
 ### Supported platforms
 
@@ -404,6 +485,8 @@ requirement, not a consumer one.
   prerelease version and may change in any release. `RunicCsWebUiPackageVersion`
   in `eng/Versions.props` sets that version (the release train's until they
   differ); the `runic-app` template's `--host cswebui` references it.
+  `bun run version:bump <version> --cswebui <cswebui-version>` sets the two
+  versions separately.
 
 ### Deprecation
 

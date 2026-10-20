@@ -1,10 +1,14 @@
 import { Context, Deferred, Effect, Exit, Layer, ManagedRuntime } from "effect";
-import { act, createElement, StrictMode } from "react";
+import * as React from "react";
+import { createElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, test } from "vitest";
 import { createEffectAction, ViewDisconnected } from "../dist/index.js";
 import { useEffectAction, type EffectActionHandle } from "../dist/react.js";
 import { BridgeError } from "@runic-artifex/views";
+
+// React 18.3.0, the lowest supported React, exports act only as unstable_act.
+const act: typeof React.act = React.act ?? (React as unknown as { unstable_act: typeof React.act }).unstable_act;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

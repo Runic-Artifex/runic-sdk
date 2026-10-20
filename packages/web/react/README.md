@@ -11,7 +11,7 @@ bun add @runic-artifex/react@preview @runic-artifex/views@preview
 ```
 
 Previews are published under the `preview` dist-tag. Install the versions that
-match your Runic SDK packages. React 18.3 or later is supported.
+match your Runic SDK packages. React 18.3 and 19 are supported.
 
 ```tsx
 import { useCommand, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
@@ -160,6 +160,29 @@ stays true after a Cancel response until the operation reaches its terminal stat
 Unmounting stops rendering feedback but never cancels accepted work. The optional
 `cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
 controller's options.
+
+## Errors
+
+The `error` of `useView` and of a command or operation handle is typed
+`unknown`: it holds whatever the connection or the call rejected with. A Bridge
+failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
+`instanceof` before reading `kind`, `route` or `detail`:
+
+```ts
+import { BridgeError } from "@runic-artifex/views";
+
+const offline = error instanceof BridgeError && error.kind === "disconnected";
+```
+
+`instanceof` holds for errors from every copy of the package on the page.
+[Errors and diagnostics](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#errors-and-diagnostics)
+lists the kinds. Any other value, such as an exception that your own connect
+function or command callback throws, arrives unchanged.
+
+The hooks run in the browser or webview that a Runic host serves. `useView`
+connects in an effect, but `useSuspenseView` connects during render, so a server
+render would try to connect: render the components that use them on the client
+only.
 
 ## Interactions
 

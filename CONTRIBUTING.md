@@ -173,6 +173,26 @@ Shipping .NET libraries record their public API in `PublicAPI.Shipped.txt` and
 CI fails with RS0016 or RS0017 otherwise. See
 [the build policy](eng/build/README.md#public-api).
 
+New API follows the conventions that keep it compatible under the
+[release policy](eng/release/README.md#what-counts-as-breaking):
+
+- **Async.** An operation that is remote or I/O-bound is `…Async` and takes a
+  `CancellationToken` as its last parameter (`= default` where a token is
+  optional), not a separate timeout. Platform, Desktop and Views runtime paths
+  return `ValueTask`/`ValueTask<T>`; administration and test APIs may return
+  `Task`. No `Begin…`/`End…` pairs.
+- **Records.** A positional record is fine for data Runic creates; it gains data
+  later only as optional `init` properties, never through its primary
+  constructor.
+- **Enums and string unions.** Say in the type's documentation whether it is
+  open (callers handle unknown values; a minor release may add some) or closed.
+  Failure codes, rejection reasons, error kinds and diagnostic codes are open.
+- **Dependencies.** A third-party type in a public signature makes its package an
+  exposed dependency: reference it directly with a range bounded to its major and
+  list it under [Dependencies](eng/release/README.md#dependencies). Using another
+  Runic package's internals needs the exact-version reference that package
+  dependencies already get.
+
 ### Regenerate checked files
 
 When CI reports a stale generated file, run:

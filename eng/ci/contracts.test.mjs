@@ -183,6 +183,11 @@ test('every web package with a test script has a planned step in the web job', (
   assert.deepEqual(frameworks.map(step => step.run), ['bun run --bun check', 'bun run --bun check', 'bun tests/web/svelte-package-consumers/package-consumers.mjs']);
   for (const step of frameworks)
     assert.equal(step.if, "${{ !cancelled() && steps.restore.outcome == 'success' && fromJSON(needs.plan.outputs.frameworks) }}");
+  // The framework adapters also run their tests at their lowest peers when one of them is planned.
+  const lowest = steps.find(step => step.run === 'bun tests/web/lowest-peers/lowest-peers.mjs');
+  for (const name of ['react', 'vue', 'svelte', 'views-effect'])
+    assert.ok(lowest?.if.includes(`contains(fromJSON(needs.plan.outputs.web), '${name}')`), name);
+  assert.equal(lowest.env.RUNIC_LOWEST_PEER_PACKAGES, '${{ needs.plan.outputs.web }}');
   const inline = workflow.jobs.web.steps.find(step => step.name === 'Verify Svelte inline SSR and hydration');
   assert.equal(inline, undefined);
 });

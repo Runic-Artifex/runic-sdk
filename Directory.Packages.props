@@ -13,8 +13,10 @@
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <PackageVersion Include="GirCore.WebKit-6.0" Version="0.8.1" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
-    <PackageVersion Include="CsWebUi" Version="2.5.0-beta.4.7" />
-    <PackageVersion Include="CsWebUi.Native" Version="2.5.0-beta.4.7" />
+    <!-- Exposed third-party packages are bounded to the tested major (eng/release/README.md,
+         "Third-party dependencies"). -->
+    <PackageVersion Include="CsWebUi" Version="[2.5.0-beta.4.7, 3)" />
+    <PackageVersion Include="CsWebUi.Native" Version="[2.5.0-beta.4.7, 3)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
@@ -25,15 +27,23 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="[10.10.0, 11)" />
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
-    <PackageVersion Include="ReactiveUI" Version="26.0.1" />
-    <PackageVersion Include="ReactiveUI.Reactive" Version="26.0.1" />
+    <!-- The ReactiveUI adapters reference every package whose types their API exposes, bounded to
+         the tested major (eng/release/README.md, "Third-party dependencies"). -->
+    <PackageVersion Include="ReactiveUI" Version="[26.0.1, 27)" />
+    <PackageVersion Include="ReactiveUI.Core" Version="[26.0.1, 27)" />
+    <PackageVersion Include="ReactiveUI.Reactive" Version="[26.0.1, 27)" />
     <!-- Only the ReactiveUI variant of examples/wpf-navigation uses the WPF platform package. -->
     <PackageVersion Include="ReactiveUI.WPF" Version="26.0.1" />
     <!-- Binding matches the 9.1.0 dependency of ReactiveUI 26.0.1. -->
-    <PackageVersion Include="ReactiveUI.Binding" Version="9.1.0" />
-    <PackageVersion Include="ReactiveUI.Binding.Reactive" Version="9.1.0" />
+    <PackageVersion Include="ReactiveUI.Binding" Version="[9.1.0, 10)" />
+    <PackageVersion Include="ReactiveUI.Binding.Reactive" Version="[9.1.0, 10)" />
+    <!-- Primitives and Disposables match the 9.0.0 dependencies of ReactiveUI 26.0.1. -->
+    <PackageVersion Include="ReactiveUI.Disposables" Version="[9.0.0, 10)" />
+    <PackageVersion Include="ReactiveUI.Primitives" Version="[9.0.0, 10)" />
+    <PackageVersion Include="ReactiveUI.Primitives.Reactive" Version="[9.0.0, 10)" />
+    <PackageVersion Include="System.Reactive" Version="[7.0.0, 8)" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="4.2.0" />
     <PackageVersion Include="Splat" Version="21.0.0" />
     <!-- Used only by compiler contract tests to validate emitted instances against draft 2020-12 schemas. -->

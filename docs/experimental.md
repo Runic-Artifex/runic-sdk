@@ -53,14 +53,20 @@ and `Runic.Navigation.ReactiveUI.Reactive`) is no longer experimental as of
 ## RUNICWPF001
 
 **Covers:** the WPF child presentation of a Runic web View in
-`Runic.Application.Views.Wpf`: `RunicWebView`, `WpfBridgeView<TViewModel>` and
-`WpfBridgeViewExtensions` (`CreateWpfViewAsync`).
+`Runic.Application.Views.Wpf`: `RunicViewHost`, `RunicViewHostState`,
+`RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions`
+(`CreateWpfViewAsync`) and `WpfPlatformServices`.
 
 **Status:** experimental. It hosts Runic Desktop's WebView2 controller inside an
 existing WPF visual tree, and its lifecycle API is still being shaped by the
 [hybrid WPF example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-hybrid-editor/README.md).
-No stabilization criteria are published yet; removing `RUNICWPF001` is a
-maintainer decision.
+It is planned to graduate before 1.0, once these are done: keyboard focus can
+leave the web View with Tab in both directions (done in 0.9), a Narrator check,
+a smoke test of two hosts in one window, and the API changes of the review
+(`OpenAsync` without its options parameter, a start page, no public
+`DiagnosticId`, a cancellation token on `ReloadAsync` and
+`WpfPlatformServices.ForWindow(Window)`). Graduation removes the attribute and
+retires the ID.
 
 <a id="RUNICASSETS001"></a>
 

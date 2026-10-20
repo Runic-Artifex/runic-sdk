@@ -28,7 +28,7 @@
       "runic.application.views.cswebui": {
         "type": "Project",
         "dependencies": {
-          "CsWebUi": "[2.5.0-beta.4.7, )",
+          "CsWebUi": "[2.5.0-beta.4.7, 3.0.0)",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Runic.Application.Views": "[0.8.0-preview.6, )",
           "Runic.Platform": "[0.8.0-preview.6, )"
@@ -46,7 +46,7 @@
       },
       "CsWebUi": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.7, )",
+        "requested": "[2.5.0-beta.4.7, 3.0.0)",
         "resolved": "2.5.0-beta.4.7",
         "contentHash": "qHo0PWbIqteewgp/LTjf5L2R0Qmt+Z7r0g4boIJZdPimcAMfPJsO/PvqcVWkI1efsVdkPJFGdFAb5Ep9ynMGzw==",
         "dependencies": {
@@ -55,7 +55,7 @@
       },
       "CsWebUi.Native": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.7, )",
+        "requested": "[2.5.0-beta.4.7, 3.0.0)",
         "resolved": "2.5.0-beta.4.7",
         "contentHash": "B0LrDa68M0oGJDkkY869YhMeOqaKlNgS3/TUR/s/aQLTK6GLJ+GXxmhgLbTACg2HXD7W9QYysiM8EqdlhX7+BQ=="
       },

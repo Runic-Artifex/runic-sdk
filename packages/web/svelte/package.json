@@ -42,7 +42,7 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "svelte": ">=5.46.4 <6",
+    "svelte": ">=5.57.1 <6",
     "@runic-artifex/views": "0.8.0-preview.6"
   },
   "publishConfig": {
@@ -55,9 +55,6 @@
     "directory": "packages/web/svelte"
   },
   "packageManager": "bun@1.4.2",
-  "engines": {
-    "node": ">=24.18.0 <25"
-  },
   "devDependencies": {
     "@runic-artifex/views": "workspace:*",
     "@sveltejs/adapter-static": "4.0.0",
