@@ -29,7 +29,7 @@ function hydrate(wire: WireState): PinnedNoteState {
     label: bridgeWire.string(wire.label),
   };
 }
-const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:40D769D3CFF1067D01A4F7BCD7BBBC0F2DF1906BFD84477727DBCB9C6886AD57";
+const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:52DE8C6E8174A48E2168364330131A22475E3CB80C5EAADEDE330EACD9F97837";
 
 /**
  * Connects a PinnedNote client. It waits up to `options.timeout` milliseconds (default 5000) for the
