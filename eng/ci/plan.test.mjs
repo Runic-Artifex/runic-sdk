@@ -464,6 +464,34 @@ test('the hybrid host has portable session checks and a Windows native runner', 
   assert.ok(workflow.jobs.wpf.steps.some(step => step.run === 'dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release'));
 });
 
+// #473 (B11): Runic.Application.Views.Wpf.Windows.Tests checks the ReactiveUI adapters' failure bookkeeping under
+// WPF's dispatcher, and Runic.Navigation carries their model-turn flow. A change to any project the suite references,
+// directly or transitively, schedules the x64 WPF leg that runs it, except the Linux and macOS platform providers,
+// whose rules keep them off Windows.
+test('the projects the Windows WPF suite references schedule the x64 WPF leg', () => {
+  const suite = resolve(root, 'tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/Runic.Application.Views.Wpf.Windows.Tests.csproj');
+  const projects = new Set();
+  const walk = project => {
+    if (projects.has(project)) return;
+    projects.add(project);
+    for (const [, reference] of readFileSync(project, 'utf8').matchAll(/<ProjectReference Include="([^"]+)"/g))
+      walk(resolve(dirname(project), reference.replaceAll('\\', '/')));
+  };
+  walk(suite);
+  const directories = [...projects].map(project => relative(root, dirname(project)));
+  for (const required of ['packages/dotnet/Runic.Application.Views.ReactiveUI', 'packages/dotnet/Runic.Navigation', 'packages/dotnet/Runic.Application.Testing'])
+    assert.ok(directories.includes(required), `the Windows WPF suite no longer references ${required}`);
+  const offWindows = directory => /^packages\/dotnet\/Runic\.(Platform\.Linux|Platform\.MacOS|Desktop\.Gtk4)/.test(directory);
+  const files = [...directories.filter(directory => !offWindows(directory)).map(directory => `${directory}/Example.cs`),
+    'packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/ReactiveModelContextScheduler.cs',
+    'packages/dotnet/Runic.Navigation/RunicModelContext.cs'];
+  for (const file of files) {
+    const result = plan([file]);
+    assert.ok(runs(result, 'wpf'), `${file} does not plan the wpf job`);
+    assert.ok(result.wpf.include.some(leg => leg.platform === 'win-x64'), `${file} does not plan the win-x64 WPF leg`);
+  }
+});
+
 test('the WPF navigation example builds from the packed packages in the WPF lane', () => {
   const path = 'examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj';
   assert.ok(!managedTests(root, 'linux').some(test => test.path === path));
