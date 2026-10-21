@@ -366,12 +366,12 @@ internal sealed class ServeOnlyChecks
 
             var servedSurface = RunicDesktopHost.GetSurface(served)!;
             Check(servedSurface.ConnectionCount == 0, $"A served Window without a tab counted {servedSurface.ConnectionCount}.");
-            var counts = new System.Collections.Concurrent.ConcurrentQueue<(PresentationEventKind, int)>();
+            var counts = new System.Collections.Concurrent.ConcurrentQueue<(DesktopConnectionEventKind, int)>();
             var lastTabClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var connections = servedSurface.SubscribeConnectionEvents(invocation =>
             {
                 counts.Enqueue((invocation.Kind, invocation.Surface.ConnectionCount));
-                if (invocation.Kind == PresentationEventKind.Disconnected && invocation.Surface.ConnectionCount == 0)
+                if (invocation.Kind == DesktopConnectionEventKind.Disconnected && invocation.Surface.ConnectionCount == 0)
                     lastTabClosed.TrySetResult();
             });
             using (var tab = await DesktopWireClient.ConnectAsync(servedSurface, deadline.Token))
@@ -379,7 +379,7 @@ internal sealed class ServeOnlyChecks
                 while (servedSurface.ConnectionCount != 1) await Task.Delay(10, deadline.Token);
             }
             await lastTabClosed.Task.WaitAsync(deadline.Token);
-            Check(counts.SequenceEqual([(PresentationEventKind.Connected, 1), (PresentationEventKind.Disconnected, 0)]),
+            Check(counts.SequenceEqual([(DesktopConnectionEventKind.Connected, 1), (DesktopConnectionEventKind.Disconnected, 0)]),
                 $"The connection events saw the counts {string.Join(", ", counts)}.");
             lines.Send("");
         }

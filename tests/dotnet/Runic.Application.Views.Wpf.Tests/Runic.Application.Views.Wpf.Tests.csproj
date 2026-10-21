@@ -8,7 +8,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
   <ItemGroup>

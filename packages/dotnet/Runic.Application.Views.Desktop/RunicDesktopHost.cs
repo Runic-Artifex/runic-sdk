@@ -191,7 +191,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// <remarks>
     /// The surface is the same in a native window, in a browser after a fallback and under
     /// <c>RUNIC_APPLICATION_SERVE_ONLY</c>. Its <see cref="DesktopSurface.ConnectionCount"/> and
-    /// <see cref="DesktopSurface.SubscribeConnectionEvents"/>, experimental (<c>RUNICDESK101</c>), tell when the last
+    /// <see cref="DesktopSurface.SubscribeConnectionEvents"/> tell when the last
     /// browser tab of a served Window closed, and <see cref="DesktopSurface.Url"/> is its address. It is the
     /// <see cref="DesktopBridgeWindow{TViewModel}.Surface"/> of <see cref="IRunicWindow.Host"/>, without naming the
     /// ViewModel type.
@@ -379,10 +379,10 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
             });
             var session = content;
-            connectionBinding = surface.SubscribeConnectionEvents(invocation =>
+            connectionBinding = surface.SubscribeConnectionEvents(connection =>
             {
-                if (invocation.Kind == PresentationEventKind.Disconnected)
-                    session.ReleaseConnection(invocation.Session.Id.ToString(CultureInfo.InvariantCulture));
+                if (connection.Kind == DesktopConnectionEventKind.Disconnected)
+                    session.ReleaseConnection(connection.SessionId.ToString(CultureInfo.InvariantCulture));
             });
             owner = new DesktopBridgeWindow<TViewModel>(scope, surface, transport, content, connectionBinding, viewModel);
             var attachment = opening.AttachBridge(transport, content);

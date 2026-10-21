@@ -692,7 +692,7 @@ Runic.Desktop.DesktopWindowState.Height.get -> int
 Runic.Desktop.IDesktopWindowHost.NavigateAsync(System.Uri! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.ILinuxDesktopWindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
 Runic.Desktop.DesktopWindowPlacement.Width.get -> int
-[RUNICDESK101]Runic.Desktop.DesktopSurface.ConnectionCount.get -> int
+Runic.Desktop.DesktopSurface.ConnectionCount.get -> int
 Runic.Desktop.DesktopWindowPlacement.Height.get -> int
 Runic.Desktop.DesktopWindowHostOptions.Resizable.init -> void
 Runic.Desktop.DesktopWindowHostOptions.Frameless.get -> bool

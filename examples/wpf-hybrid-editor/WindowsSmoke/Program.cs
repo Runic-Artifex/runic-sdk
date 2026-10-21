@@ -62,12 +62,13 @@ internal static class Program
             // The session connects before the View mounts its inputs, so the poll waits for them too.
             await UntilAsync("the web title input to show the native draft", async () => await first.ExecuteJavaScriptAsync("return document.querySelector('#title')?.value ?? '';") == "Native draft");
 
-            await first.RunJavaScriptAsync("""
+            await first.ExecuteJavaScriptAsync("""
                 const title = document.querySelector('#title');
                 title.value = 'Saved from web'; title.dispatchEvent(new Event('input'));
                 const body = document.querySelector('#body');
                 body.value = 'One shared draft'; body.dispatchEvent(new Event('input'));
                 document.querySelector('#save').click();
+                return '';
                 """);
             await UntilAsync("the web save to reach the store and clear IsDirty", () => store.Get(1).Title == "Saved from web" && !model.IsDirty);
             Console.WriteLine("Hybrid smoke: web edits saved in shared store");

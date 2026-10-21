@@ -1,9 +1,11 @@
 # Runic Desktop
 
 Runic Desktop is a managed .NET runtime for web-powered desktop applications.
-It serves application content with ASP.NET Core, connects JavaScript and .NET,
-and opens the interface in an installed browser or an embedded platform
-WebView. It does not load the native WebUI library.
+It serves application content with ASP.NET Core, carries the connection between
+the page and .NET, and opens the interface in an installed browser or an
+embedded platform WebView. For calls between JavaScript and .NET, use
+[Runic Windows and Views](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views.Desktop)
+(`Runic.Application.Views.Desktop`), whose Bridge runs on Runic Desktop. It does not load the native WebUI library.
 
 > **Source preview · first package pending.** The API may change before the
 > first published preview.
@@ -11,8 +13,8 @@ WebView. It does not load the native WebUI library.
 ## Capabilities
 
 - Embedded HTML, files, folders, external URLs, and fixed or streaming virtual content
-- Async JavaScript-to-.NET presentation capabilities
-- Managed-to-JavaScript execution, navigation, and raw byte transport
+- Authenticated page connections, connection events and a connected-page count
+- Managed-to-JavaScript script execution with a size-checked result
 - Shared or isolated Kestrel listeners with explicit host and surface ownership
 - Request-scoped dependency injection, streaming backpressure, and cancellation causes
 - Same-origin admission and 256-bit surface-scoped session credentials by default
@@ -39,16 +41,14 @@ await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOption
     Content = new DesktopContent.Html("""
     <!doctype html>
     <html>
-    <head><script src="webui.js"></script></head>
-    <body><button onclick="greet('Runic').then(alert)">Greet</button></body>
+    <head><script src="webui.js"></script><title>Runic</title></head>
+    <body><h1>Hello from Runic Desktop</h1></body>
     </html>
     """),
 });
-using var greeting = surface.RegisterCapability(
-    "greet",
-    static (invocation, _) =>
-        ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!"));
 await using var window = await surface.OpenWindowAsync();
+using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+Console.WriteLine(await surface.ExecuteJavaScriptAsync("return document.title;", timeout.Token));
 await window.WaitForCloseAsync();
 ```
 
@@ -76,8 +76,7 @@ Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or
 lifecycle; see
 [custom window hosts](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop#custom-window-hosts).
-The low-level presentation transport of `DesktopSurface` (`RUNICDESK101`) is
-[experimental](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md).
+No API of this package is experimental.
 
 Windows open in the embedded WebView unless `DesktopWindowOptions.Browser`
 selects an installed browser. Check a window request at startup, before doing

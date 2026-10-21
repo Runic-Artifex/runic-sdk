@@ -10,8 +10,6 @@
     <!-- The executable is also the application ShutdownSignalTests stops (ShutdownSignalFixture.cs),
          so Program.cs chooses between that fixture and the test application. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
-    <!-- Uses the experimental presentation transport of Runic.Desktop (docs/experimental.md). -->
-    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -506,11 +506,12 @@ requirement, not a consumer one.
   signature. Graduation removes the attribute and retires the ID, which is
   never reused. IDs follow the numbering in `docs/experimental.md` (from `100`
   where the prefix already names diagnostics, such as `RUNICDBUS100`). Today's
-  families are `RUNICASSETS001` (Linux development-directory asset source) and
-  `RUNICDESK101` (the low-level Desktop presentation transport). Retired:
-  `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7), `RUNICWPF001` (WPF
-  child web presentation, graduated in 0.9.0) and `RUNICDESK100` (custom Desktop
-  window hosts, graduated in 0.10.0). An npm package exports its
+  family is `RUNICASSETS001` (Linux development-directory asset source).
+  Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
+  `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
+  `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0) and
+  `RUNICDESK101` (the Desktop presentation transport, partly graduated and the
+  rest internal in 0.10.0). An npm package exports its
   experimental APIs only from its `./experimental` subpath, which may change in
   a minor release; graduation moves an export to the root entry.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It

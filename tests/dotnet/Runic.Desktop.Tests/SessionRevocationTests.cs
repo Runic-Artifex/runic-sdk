@@ -179,14 +179,14 @@ public sealed class SessionRevocationTests
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var host = await DesktopHost.StartAsync();
         await using var surface = await host.CreateSurfaceAsync();
-        var first = new System.Collections.Concurrent.ConcurrentQueue<PresentationEventKind>();
-        var second = new System.Collections.Concurrent.ConcurrentQueue<PresentationEventKind>();
+        var first = new System.Collections.Concurrent.ConcurrentQueue<DesktopConnectionEventKind>();
+        var second = new System.Collections.Concurrent.ConcurrentQueue<DesktopConnectionEventKind>();
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var firstSubscription = surface.SubscribeConnectionEvents(invocation => first.Enqueue(invocation.Kind));
         using var secondSubscription = surface.SubscribeConnectionEvents(invocation =>
         {
             second.Enqueue(invocation.Kind);
-            if (invocation.Kind == PresentationEventKind.Disconnected) disconnected.TrySetResult();
+            if (invocation.Kind == DesktopConnectionEventKind.Disconnected) disconnected.TrySetResult();
         });
 
         var (socket, _, reply) = await ConnectToSurfaceAsync(surface.Url, deadline.Token);
@@ -199,7 +199,7 @@ public sealed class SessionRevocationTests
         }
 
         await disconnected.Task.WaitAsync(deadline.Token);
-        PresentationEventKind[] expected = [PresentationEventKind.Connected, PresentationEventKind.Disconnected];
+        DesktopConnectionEventKind[] expected = [DesktopConnectionEventKind.Connected, DesktopConnectionEventKind.Disconnected];
         Assert.Equal(expected, first.ToArray());
         Assert.Equal(expected, second.ToArray());
     }
@@ -216,12 +216,12 @@ public sealed class SessionRevocationTests
             Content = new DesktopContent.Html("<!doctype html>"),
             Security = new DesktopSecurityPolicy { ClientAdmission = DesktopClientAdmission.Multiple },
         });
-        var seen = new System.Collections.Concurrent.ConcurrentQueue<(PresentationEventKind Kind, int Count)>();
+        var seen = new System.Collections.Concurrent.ConcurrentQueue<(DesktopConnectionEventKind Kind, int Count)>();
         var lastClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var subscription = surface.SubscribeConnectionEvents(invocation =>
         {
             seen.Enqueue((invocation.Kind, invocation.Surface.ConnectionCount));
-            if (invocation.Kind == PresentationEventKind.Disconnected && invocation.Surface.ConnectionCount == 0)
+            if (invocation.Kind == DesktopConnectionEventKind.Disconnected && invocation.Surface.ConnectionCount == 0)
                 lastClosed.TrySetResult();
         });
         Assert.Equal(0, surface.ConnectionCount);
@@ -245,8 +245,8 @@ public sealed class SessionRevocationTests
         await lastClosed.Task.WaitAsync(deadline.Token);
         Assert.Equal(0, surface.ConnectionCount);
         Assert.Equal(
-            [(PresentationEventKind.Connected, 1), (PresentationEventKind.Connected, 2), (PresentationEventKind.Disconnected, 1),
-             (PresentationEventKind.Disconnected, 0)],
+            [(DesktopConnectionEventKind.Connected, 1), (DesktopConnectionEventKind.Connected, 2), (DesktopConnectionEventKind.Disconnected, 1),
+             (DesktopConnectionEventKind.Disconnected, 0)],
             seen.ToArray());
     }
 

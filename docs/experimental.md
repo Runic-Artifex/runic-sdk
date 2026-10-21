@@ -9,7 +9,6 @@ your project accepts changes to that API before it is supported.
 | ID | API family | Packages |
 |---|---|---|
 | [`RUNICASSETS001`](#RUNICASSETS001) | Linux development-directory asset source | `Runic.Assets` |
-| [`RUNICDESK101`](#RUNICDESK101) | Low-level presentation transport | `Runic.Desktop` |
 
 An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
 that names no other diagnostics numbers its experimental families from `001`,
@@ -47,10 +46,11 @@ When a family graduates, its attribute is removed and its API is supported like
 the rest of its package. Its ID is retired and never names another family, so a
 leftover suppression is harmless; remove it.
 
-<a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
+<a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
 
 | ID | API family | Graduated in |
 |---|---|---|
+| `RUNICDESK101` | Low-level presentation transport (`Runic.Desktop`), partly graduated and the rest made internal. Stable: `DesktopSurface.ExecuteJavaScriptAsync` (now returning `ValueTask<string>`), `DesktopSurface.ConnectionCount` and `DesktopSurface.SubscribeConnectionEvents`, whose handler receives the new `DesktopConnectionEvent` (`Kind`, `Surface`) with `DesktopConnectionEventKind` instead of `PresentationInvocation`. Internal: `RegisterCapability`, `RunJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types; calls between JavaScript and .NET go through [Runic Windows and Views](../packages/dotnet/Runic.Application.Views.Desktop/README.md). | 0.10.0 |
 | `RUNICDESK100` | Custom window hosts (`Runic.Desktop`, `Runic.Desktop.Gtk4`, `Runic.Application.Views.Wpf`): `IDesktopWindowHostFactory`, `IDesktopWindowHost`, `IDesktopEventLoopWindowHostFactory`, `ILinuxDesktopWindowHostFactory`, `IDesktopNativeDispatchWindowHost`, `IDesktopWindowStateHost`, `IDesktopFileDropWindowHost`, `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`, `LinuxDesktopRuntime.ClaimBackend`, `LinuxDesktopRuntime.IsLibraryAvailable`, `Gtk4WindowHostFactory` and `RunicWebView.CreateWindowHostFactory()`. What a host must do is in the Runic.Desktop README, [Custom window hosts](../packages/dotnet/Runic.Desktop/README.md#custom-window-hosts). | 0.10.0 |
 | `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined `RUNICDESK100`, the custom window-host family it belongs to. | 0.9.0 |
 | `RUNICNAV001` | Navigation (`Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`) | 0.7.0-preview.7 |
@@ -74,24 +74,6 @@ such as the synchronous `Refresh`, the two ways to stop a watch and the
 Linux-only name, may change once a host consumes it. It graduates when a Runic
 host uses it. Embedded and archive sources (`EmbeddedAssetSource`,
 `AssetArchiveSource`) are stable.
-
-<a id="RUNICDESK101"></a>
-
-## RUNICDESK101
-
-**Covers:** the low-level presentation transport of a `DesktopSurface`:
-`RegisterCapability`, `SubscribeConnectionEvents`, `ConnectionCount`,
-`RunJavaScriptAsync`, `ExecuteJavaScriptAsync`, `NavigateAsync` and `SendAsync`,
-and the types `PresentationCapabilityHandler`,
-`PresentationCapabilityRegistration`, `PresentationEventKind`,
-`PresentationInvocation`, `PresentationResult` and `PresentationSession`.
-
-**Status:** experimental since 0.9.0. Runic Windows and Views
-(`Runic.Application.Views.Desktop`) carry their Bridge over this transport, so a
-Views application does not use it directly. Its shape follows the WebUI wire
-protocol (event kinds numbered like WebUI's, arguments read by position, `ulong`
-session IDs) and mixes `Task` and `ValueTask`, which a later transport design can
-change. It graduates with that redesign.
 
 <a id="npm-packages"></a>
 

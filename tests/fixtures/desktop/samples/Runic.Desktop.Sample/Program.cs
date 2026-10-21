@@ -1,6 +1,7 @@
-using System.Globalization;
 using Runic.Desktop;
 
+// Runic Desktop on its own serves content and presents it. For calls between the page and .NET, use
+// Runic Windows and Views (Runic.Application.Views.Desktop), whose Bridge runs over the same surface.
 var content = """
     <!doctype html>
     <html lang="en">
@@ -11,13 +12,11 @@ var content = """
     </head>
     <body>
       <h1>Runic Desktop managed presentation host</h1>
-      <button onclick="multiply(6, 7).then(value => alert(`6 × 7 = ${value}`))">Multiply</button>
-      <button onclick="greet('Runic Desktop').then(alert)">Greet</button>
-      <button id="increment">Increment from managed C#</button>
+      <p id="greeting">Waiting for the application…</p>
+      <button id="increment" onclick="setCount(count + 1)">Increment</button>
       <p>Count: <strong id="count">0</strong></p>
       <script>
         let count = 0;
-        function getCount() { return count; }
         function setCount(value) { count = value; document.querySelector('#count').textContent = value; }
       </script>
     </body>
@@ -31,27 +30,27 @@ return DesktopEventLoop.Run(
     async host =>
     {
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) });
-        using var multiply = surface.RegisterCapability(
-            "multiply",
-            static (invocation, _) => ValueTask.FromResult<PresentationResult>(
-                invocation.GetInt64() * invocation.GetInt64(1)));
-        using var greet = surface.RegisterCapability(
-            "greet",
-            static (invocation, cancellationToken) =>
+        // Each page that connects, including after a reload, gets the greeting from .NET.
+        using var connections = surface.SubscribeConnectionEvents(connection =>
+        {
+            Console.WriteLine($"Page {connection.Kind}; {connection.Surface.ConnectionCount} connected.");
+            if (connection.Kind != DesktopConnectionEventKind.Connected) return;
+            _ = Task.Run(async () =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                return ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!");
+                try
+                {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                    await surface.ExecuteJavaScriptAsync(
+                        "document.querySelector('#greeting').textContent = 'Hello from .NET ' + "
+                            + "'" + Environment.Version + "'; return '';",
+                        timeout.Token);
+                }
+                catch (Exception error) when (error is InvalidOperationException or OperationCanceledException)
+                {
+                    Console.WriteLine($"The page left before the greeting: {error.Message}");
+                }
             });
-        using var increment = surface.RegisterCapability(
-            "increment",
-            async (invocation, cancellationToken) =>
-            {
-                var count = int.Parse(
-                    await surface.ExecuteJavaScriptAsync("return getCount();", cancellationToken: cancellationToken),
-                    CultureInfo.InvariantCulture);
-                await invocation.RunJavaScriptAsync($"setCount({count + 1});", cancellationToken);
-                return PresentationResult.None;
-            });
+        });
 
         var browser = args.Contains("--webview", StringComparer.Ordinal)
             ? BrowserKind.Embedded

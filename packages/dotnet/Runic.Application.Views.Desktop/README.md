@@ -518,17 +518,14 @@ presents a window.
 A served Window can end with its last browser tab, as a `--browser` command
 that opens the URL in the default browser would. The Window's surface counts
 its connected pages in `ConnectionCount`, and a connection event's handler
-already sees the count with that event. Both belong to the experimental
-presentation transport of Runic.Desktop (`RUNICDESK101`, see
-[Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md)):
-suppress the ID where you use them. A reload disconnects before or after
+already sees the count with that event. A reload disconnects before or after
 the page connects again, so wait a moment before closing:
 
 ```csharp
 var surface = RunicDesktopHost.GetSurface(window)!;
-using var connections = surface.SubscribeConnectionEvents(invocation =>
+using var connections = surface.SubscribeConnectionEvents(connection =>
 {
-    if (invocation is not { Kind: PresentationEventKind.Disconnected, Surface.ConnectionCount: 0 }) return;
+    if (connection is not { Kind: DesktopConnectionEventKind.Disconnected, Surface.ConnectionCount: 0 }) return;
     _ = Task.Run(async () =>
     {
         await Task.Delay(TimeSpan.FromSeconds(1));
@@ -572,8 +569,7 @@ var title = await surface.ExecuteJavaScriptAsync(
     "return document.querySelector('h1')?.textContent ?? ''", timeout.Token);
 ```
 
-`ExecuteJavaScriptAsync` is part of the experimental presentation transport
-(`RUNICDESK101`); suppress the ID in the test project. It needs a connected
+`ExecuteJavaScriptAsync` needs a connected
 page; with `DesktopHostOptions.WaitForConnection` the window has connected when
 `OpenWindowAsync` returns. The token bounds the wait. A result larger than
 16 MiB of UTF-8 throws a `DesktopException` with the category `LimitExceeded`

@@ -11,14 +11,14 @@
     <PackageId>Runic.Application.Views.Desktop</PackageId>
     <Description>Runic Window and View host adapter for Runic Desktop.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- The Bridge transport is built on the experimental presentation transport of Runic.Desktop. -->
-    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">
     <DefineConstants>$(DefineConstants);RUNIC_PORTABLE_PLATFORMS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <!-- The Bridge transport uses Runic.Desktop's internal presentation transport (InternalsVisibleTo); packing pins
+         the exact version (eng/build/README.md). -->
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <!-- DesktopPlatformServices selects one provider at run time; a provider loads native libraries only when used. -->

@@ -262,10 +262,10 @@ public static class WpfBridgeViewExtensions
                 LoggerFactory = loggerFactory,
             });
             var session = content;
-            connections = surface.SubscribeConnectionEvents(invocation =>
+            connections = surface.SubscribeConnectionEvents(connection =>
             {
-                if (invocation.Kind == PresentationEventKind.Disconnected)
-                    session.ReleaseConnection(invocation.Session.Id.ToString(CultureInfo.InvariantCulture));
+                if (connection.Kind == DesktopConnectionEventKind.Disconnected)
+                    session.ReleaseConnection(connection.SessionId.ToString(CultureInfo.InvariantCulture));
             });
             var attachment = attachWithContent is not null ? attachWithContent(transport, content, viewModel) : attach!(transport, viewModel);
             return new(surface, transport, content, connections, attachment, viewModel, WpfViewsLog.For(loggerFactory));
