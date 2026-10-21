@@ -450,6 +450,9 @@ var result = await Main.PushAsync<DetailViewModel>(); // Rejected(Busy)
 - `region.WhenIdleAsync()` completes when the region is not busy. Unlike
   `RunicNavigator.WhenIdleAsync()`, it doesn't wait for other regions, nor for
   the guard of a Back whose callers have all cancelled; the navigator's does.
+- `RunicNavigator.IsBusy` is `true` while the navigator's `WhenIdleAsync()`
+  would wait. It is a snapshot without change notification: bind a spinner
+  to the region's `IsBusy`.
 
 ### Ownership
 
@@ -595,8 +598,9 @@ the generated Bridge presents in the window's web View; see
 Other hosts bind `NavigationRegion`, the non-generic base class of every
 `NavigationRegion<TContent>`, and `NavigationEntry`, the base class of every
 `NavigationEntry<TContent>`, like `Task` and `Task<T>`: its `CurrentEntry` and
-`History` return the region's typed entries, and its `BackAsync` and
-`ClearAsync` return a `NavigationResult<object>`. Only the navigator creates
+`History` return the region's typed entries, and its `BackAsync`,
+`BackToAsync`, `ClearHistoryAsync` and `ClearAsync` return a
+`NavigationResult<object>`. Only the navigator creates
 regions and entries; the base classes can't be derived from outside
 Runic.Navigation. `Runic.Navigation.Wpf` provides WPF hosts and a dispatcher
 model context. `RunicNavigator.AttachPresentation` is for presentation
@@ -842,7 +846,8 @@ Runic Desktop's embedded window) or `GuardWindowClose` on a WPF
 `NavigationHost` (Runic.Navigation.Wpf). Either clears the window's regions
 before it closes, and a guard that rejects or fails keeps the window open.
 
-`WhenIdleAsync()` waits until no transition or retirement is running;
+`WhenIdleAsync()` waits until no transition or retirement is running, and
+`IsBusy` says whether it would wait now;
 `NavigationRegion<T>.WhenIdleAsync()` waits only for the requests of one region.
 
 ### Threading

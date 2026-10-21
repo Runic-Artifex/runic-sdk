@@ -332,9 +332,13 @@ internal sealed partial class NavigationTests
             otherGuarding.TrySetResult();
             return await otherAllow.Task;
         };
+        Require(!fixture.Navigator.IsBusy, "The navigator was busy with no request running.");
         var otherPush = otherRegion.PushAsync(NavigationTarget.Own(new Page("x"))).AsTask();
         await Wait(otherGuarding.Task);
         await Wait(region.WhenIdleAsync());
+        // I-029: RunicNavigator.IsBusy counts every region, like its WhenIdleAsync.
+        Require(fixture.Navigator.IsBusy && !region.IsBusy && otherRegion.IsBusy,
+            "The navigator was not busy while another region's request ran.");
 
         var page = new Page("page");
         await Wait(region.PushAsync(NavigationTarget.Own(page)));
@@ -355,12 +359,13 @@ internal sealed partial class NavigationTests
         disposed.SetResult();
         await Wait(idle);
         // The region is idle before the request's result is set, so the Back may still be completing.
-        Require(!region.IsBusy && !navigatorIdle.IsCompleted,
+        Require(!region.IsBusy && !navigatorIdle.IsCompleted && fixture.Navigator.IsBusy,
             "The region's WhenIdleAsync did not complete with its request, independent of the other region.");
         Require(await Wait(back) is NavigationResult<Page>.Committed, "The Back did not commit.");
         otherAllow.SetResult(true);
         await Wait(otherPush);
         await Wait(navigatorIdle);
+        Require(!fixture.Navigator.IsBusy, "The navigator was still busy after its WhenIdleAsync completed.");
     }
 
     // #415: a token-bearing Back returns Rejected(Cancelled) as soon as its token is cancelled, before its guard returns.
@@ -418,15 +423,15 @@ internal sealed partial class NavigationTests
             await Wait(Task.Delay(50));
             Require(!second.IsCompleted && asked == 1 && region.IsBusy && Names(region) == "home,a,document",
                 $"The Back after the cancelled one did not wait for the abandoned guard ({second.Status}, {asked} asks).");
-            Require(!fixture.Navigator.WhenIdleAsync().AsTask().IsCompleted,
-                "The navigator's WhenIdleAsync did not wait for the abandoned guard.");
+            Require(!fixture.Navigator.WhenIdleAsync().AsTask().IsCompleted && fixture.Navigator.IsBusy,
+                "The navigator's WhenIdleAsync and IsBusy did not wait for the abandoned guard.");
             release.SetResult();
         }
         // The abandoned Back never commits, even though its guard allowed it: the next Back asks again and pops once.
         Require(await Wait(second) is NavigationResult<Page>.Committed && asked == 2 && Names(region) == "home,a",
             $"The Back after the cancelled one gave {second.Result}, {asked} asks, {Names(region)}.");
         await Wait(fixture.Navigator.WhenIdleAsync());
-        Require(document.Disposed == 1 && !region.IsBusy, $"The document was disposed {document.Disposed} times.");
+        Require(document.Disposed == 1 && !region.IsBusy && !fixture.Navigator.IsBusy, $"The document was disposed {document.Disposed} times.");
     }
 
     // While another caller still awaits a joined Back, cancelling one caller leaves the region busy for that caller. Once
