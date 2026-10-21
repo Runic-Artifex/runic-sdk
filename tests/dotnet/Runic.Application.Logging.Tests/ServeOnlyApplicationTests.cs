@@ -33,7 +33,7 @@ internal sealed class ServeOnlyApplicationTests
             Require(exitCode == 0, $"The application exited with {exitCode}.", application);
             Require(await application.StopAsync(TimeSpan.FromSeconds(1)) == exitCode, "A second StopAsync returned another exit code.", application);
             Require(await AllExitedAsync(descendants),
-                $"Processes outlived the application: {Describe(descendants.Where(process => !process.HasExited))}.", application);
+                $"Processes outlived the application: {Describe(descendants.Where(process => !process.HasExited()))}.", application);
         }
         finally { Release(descendants); }
     }
@@ -152,7 +152,7 @@ internal sealed class ServeOnlyApplicationTests
 
     // The application starts its child process before it opens its window, so the child is running by now; the
     // wait covers a slow process listing.
-    private static async Task<IReadOnlyList<Process>> WaitForDescendantsAsync(RunicServeOnlyApplication application)
+    private static async Task<IReadOnlyList<RunicDescendantProcess>> WaitForDescendantsAsync(RunicServeOnlyApplication application)
     {
         var deadline = DateTime.UtcNow + Timeout;
         while (true)
@@ -166,10 +166,10 @@ internal sealed class ServeOnlyApplicationTests
         return [];
     }
 
-    private static async Task<bool> AllExitedAsync(IReadOnlyList<Process> processes, TimeSpan? wait = null)
+    private static async Task<bool> AllExitedAsync(IReadOnlyList<RunicDescendantProcess> processes, TimeSpan? wait = null)
     {
         var deadline = DateTime.UtcNow + (wait ?? TimeSpan.FromSeconds(10));
-        while (processes.Any(process => !process.HasExited))
+        while (processes.Any(process => !process.HasExited()))
         {
             if (DateTime.UtcNow > deadline) return false;
             await Task.Delay(100);
@@ -177,18 +177,22 @@ internal sealed class ServeOnlyApplicationTests
         return true;
     }
 
-    private static void Release(IReadOnlyList<Process> processes)
+    // Kills what the application left running; HasExited() first rules out a reused process id.
+    private static void Release(IReadOnlyList<RunicDescendantProcess> processes)
     {
-        foreach (var process in processes)
+        foreach (var descendant in processes.Where(process => !process.HasExited()))
         {
-            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            try
+            {
+                using var process = Process.GetProcessById(descendant.Id);
+                process.Kill(entireProcessTree: true);
+            }
+            catch (ArgumentException) { }
             catch (InvalidOperationException) { }
-            process.Dispose();
         }
     }
 
-    private static string Describe(IEnumerable<Process> processes) =>
-        string.Join(", ", processes.Select(process => process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    private static string Describe(IEnumerable<RunicDescendantProcess> processes) => string.Join(", ", processes);
 
     private static void Require(bool condition, string message, RunicServeOnlyApplication application)
     {
