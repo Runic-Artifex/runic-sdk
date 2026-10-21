@@ -35,7 +35,9 @@ internal static unsafe partial class ServiceFixture
         try
         {
             Log("ServiceMain entered");
-            fixed (char* name = _name) _handle = RegisterServiceCtrlHandlerW(name, &Control);
+            // The extended handler: under the JIT host, a handler registered with RegisterServiceCtrlHandlerW never
+            // received a control, the SCM answered every control with 1061 and the dispatcher returned (I-080).
+            fixed (char* name = _name) _handle = RegisterServiceCtrlHandlerExW(name, &Control, 0);
             Log("control handler registered: " + (_handle != 0) + "; last error " + Marshal.GetLastPInvokeError());
             if (_handle == 0) { _error = Marshal.GetLastPInvokeError(); return; }
             Status(4);
@@ -46,7 +48,7 @@ internal static unsafe partial class ServiceFixture
         catch { _error = 13; if (_handle != 0) Status(1); }
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-    private static void Control(uint control)
+    private static uint Control(uint control, uint eventType, nint eventData, nint context)
     {
         Log("control " + control);
         try
@@ -56,9 +58,12 @@ internal static unsafe partial class ServiceFixture
                 case 1: case 5: Status(3); Stopped.Set(); break;
                 case 2: Status(7); break;
                 case 3: Status(4); break;
+                case 4: break;
+                default: return 120; // ERROR_CALL_NOT_IMPLEMENTED
             }
         }
         catch { _error = 13; Stopped.Set(); }
+        return 0;
     }
     private static void Status(uint state)
     {
@@ -85,7 +90,7 @@ internal static unsafe partial class ServiceFixture
     [LibraryImport("advapi32.dll", SetLastError = true)]
     private static partial int StartServiceCtrlDispatcherW(Entry* table);
     [LibraryImport("advapi32.dll", SetLastError = true)]
-    private static partial nint RegisterServiceCtrlHandlerW(char* name, delegate* unmanaged[Stdcall]<uint, void> handler);
+    private static partial nint RegisterServiceCtrlHandlerExW(char* name, delegate* unmanaged[Stdcall]<uint, uint, nint, nint, uint> handler, nint context);
     [LibraryImport("advapi32.dll", SetLastError = true)]
     private static partial int SetServiceStatus(nint handle, NativeStatus* status);
 }

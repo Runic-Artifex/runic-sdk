@@ -86,22 +86,19 @@ fails. A rerun with that change (`125793e8`) left nothing behind:
 - NativeAOT, elevated, `--allow-changes`: 19 passed.
 - NativeAOT, non-elevated, `--expect-denied`: 13 passed.
 
-JIT verifier limitation: when the JIT apphost hosts the verifier's disposable
-service, the service registers its control handler and reports `Running` with
-stop and pause accepted. The test service's diagnostic log
-(`service-diagnostics/<name>.log`) shows what happens next.
-`StartServiceCtrlDispatcherW` returns success about 0.2 to 2 seconds after the
-start, when the first control arrives, while `ServiceMain` is still waiting.
-The control handler is never invoked. The Service Control Manager rejects
-that control and the following ones, including interrogate, with
-`ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061). The process then ends and the
-service is reported `Stopped`.
-
-The same source works under NativeAOT. Why the dispatcher returns under JIT is
-not yet known. This is a defect in the verifier's test service, not in
-`WindowsServiceClient`, which reported the native error correctly. Validate
-the service lifecycle with the NativeAOT verifier until the test service is
-fixed.
+JIT verifier limitation, fixed on 2026-10-21: when the JIT apphost hosted the
+verifier's disposable service, the service registered its control handler and
+reported `Running` with stop and pause accepted, but the handler registered with
+`RegisterServiceCtrlHandlerW` was never invoked. The Service Control Manager
+rejected every control, including interrogate, with
+`ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), and the dispatcher returned when the
+service was stopped. Neither disabling tiered compilation nor copying the
+service table and name to native memory changed that. Registering the handler
+with `RegisterServiceCtrlHandlerExW`, as `System.ServiceProcess.ServiceBase`
+does, fixed it. The defect was in the verifier's test service, not in
+`WindowsServiceClient`, which reported the native error correctly. After the
+fix, `local --allow-changes` passed 19/19 under both JIT and NativeAOT on the
+Windows 11 VM (build 26200, .NET SDK 10.0.401).
 
 ## 0.9 API changes (W319-003)
 
@@ -136,7 +133,7 @@ JIT.
 | Domain writes | delegate, explicit `NetworkCredential` | `domain … --allow-changes --only ldap,dns --credential-stdin` | 33 passed, exit 0 | same |
 | Denied writes | restricted, own logon | `domain … --expect-denied` | 11 passed, 2 skipped, exit 0 | same |
 | Denied writes | restricted, explicit credential | `domain … --expect-denied --credential-stdin` | 13 passed, exit 0 | same |
-| Local writes | elevated | `local --allow-changes` | 19 passed, exit 0 | 18 passed; `services.lifecycle` fails with 1061 (JIT test-service limitation above) |
+| Local writes | elevated | `local --allow-changes` | 19 passed, exit 0 | 18 passed; `services.lifecycle` failed with 1061 (JIT test-service limitation above, since fixed) |
 | Local denied | non-elevated | `local --expect-denied --only services,tasks,firewall,shares` | 8 passed, exit 0 | same |
 
 Accepted on this fixture:
