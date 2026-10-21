@@ -399,6 +399,8 @@ internal sealed partial class NavigationTests
         var first = region.BackAsync(cancellationToken: cancellation.Token).AsTask();
         await Wait(guarding.Task);
         Require(region.IsBusy, "The region was not busy while the Back's guard ran.");
+        // Let the posted change to busy run first: a change back to the value last raised is not raised.
+        await Wait(fixture.Context.InvokeAsync(() => { }));
         cancellation.Cancel();
         Require(await Wait(first) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled },
             "The cancelled Back did not return Rejected(Cancelled).");
