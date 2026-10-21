@@ -214,6 +214,87 @@ internal sealed class NativeChecks
         }
     }
 
+    // SEC-04: the child WebView2 applies the default DesktopWebContentPolicy. Scripts without a user gesture cannot leave
+    // the application or open windows; a click, sent through the DevTools protocol as trusted input, opens an external
+    // link with the system's handler, which the check replaces to observe it. Developer tools are off outside
+    // Development.
+    [Test, NotInParallel("WpfSuite", Order = 19)]
+    public async Task ChildWebViewKeepsThePageOnTheApplication()
+    {
+        using var child = new RunicWebView();
+        var window = new Window { Content = child, Width = 600, Height = 400, Title = "Runic WPF web content" };
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        child.Loaded += (_, _) => loaded.TrySetResult();
+        var opened = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var opener = Runic.Desktop.Internal.WindowsWebView2Interop.OpenExternally;
+        Runic.Desktop.Internal.WindowsWebView2Interop.OpenExternally = opened.Enqueue;
+        window.Show();
+        try
+        {
+            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var collection = new ServiceCollection();
+            collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => new Attachment());
+            await using var services = collection.BuildServiceProvider();
+            await using var host = await DesktopHost.StartAsync(new()
+            {
+                WindowHostFactory = child.CreateWindowHostFactory(),
+                ConnectionTimeout = TimeSpan.FromSeconds(20),
+            });
+            await using var view = await services.CreateWpfViewAsync(host, new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("""
+                    <!doctype html><script src="webui.js"></script><script>window.documentId = Math.random();</script>
+                    <style>body { margin: 0 } a { position: absolute; left: 0; width: 300px; height: 80px; display: block }</style>
+                    <a id="out" href="https://example.invalid/clicked" style="top: 0">External</a>
+                    <a id="blank" href="https://example.invalid/blank" target="_blank" style="top: 100px">New window</a>
+                    """),
+            }, new object());
+            await view.OpenAsync();
+            var controller = child.Controller ?? throw new InvalidOperationException("The child presentation has no WebView2 controller.");
+            var expectedDevTools = string.Equals(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+            Program.Check(controller.AreDevToolsEnabled == expectedDevTools, $"Developer tools are {controller.AreDevToolsEnabled}, not {expectedDevTools}.");
+            var page = await view.Surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", TimeSpan.FromSeconds(15));
+
+            await view.Surface.ExecuteJavaScriptAsync("location.href = 'https://example.invalid/script'; return true;", TimeSpan.FromSeconds(15));
+            var popup = await view.Surface.ExecuteJavaScriptAsync("return String(window.open('https://example.invalid/popup') === null);", TimeSpan.FromSeconds(15));
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            var after = await view.Surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", TimeSpan.FromSeconds(15));
+            Program.Check(after == page && popup == "true" && opened.IsEmpty,
+                $"A script left the page or opened a window: {page} -> {after}, window.open null: {popup}, opened: {string.Join(", ", opened)}.");
+
+            await ClickAsync(controller, 50, 40);
+            await ClickAsync(controller, 50, 140);
+            await UntilAsync(() => opened.Count >= 2);
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            after = await view.Surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", TimeSpan.FromSeconds(15));
+            Program.Check(after == page && opened.SequenceEqual(["https://example.invalid/clicked", "https://example.invalid/blank"]),
+                $"Clicked external links did not open externally while the page stayed: {page} -> {after}, opened: {string.Join(", ", opened)}.");
+
+            await view.Surface.ExecuteJavaScriptAsync("location.href = location.pathname + '?same-origin'; return true;", TimeSpan.FromSeconds(15));
+            // The reloaded page reconnects; ask until it answers from the new document.
+            var search = "";
+            for (var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30); search != "?same-origin" && DateTime.UtcNow < deadline;)
+            {
+                try { search = await view.Surface.ExecuteJavaScriptAsync("return location.search;", TimeSpan.FromSeconds(5)); }
+                catch (Exception error) when (error is not OutOfMemoryException) { await Task.Delay(100); }
+            }
+            Program.Check(search == "?same-origin", $"A same-origin navigation did not load: '{search}'.");
+            Console.WriteLine("Runic.Application.Views.Wpf web content checks passed.");
+        }
+        finally
+        {
+            Runic.Desktop.Internal.WindowsWebView2Interop.OpenExternally = opener;
+            window.Close();
+        }
+
+        static async Task ClickAsync(Runic.Desktop.Internal.WindowsWebView2Controller controller, int x, int y)
+        {
+            foreach (var type in new[] { "mousePressed", "mouseReleased" })
+                await controller.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                    $$"""{"type":"{{type}}","x":{{x}},"y":{{y}},"button":"left","buttons":1,"clickCount":1}""");
+        }
+    }
+
     // RunicViewHost in XAML terms: ViewModel bound to the DataContext, Services inherited from the window.
     [Test, NotInParallel("WpfSuite", Order = 12)]
     public async Task HostAsync()

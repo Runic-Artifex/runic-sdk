@@ -22,6 +22,18 @@ if (args.Contains("--keyboard", StringComparer.Ordinal))
     });
 }
 
+// SEC-04: the window's DesktopWebContentPolicy, with real clicks through XTEST under Xvfb.
+if (args.Contains("--web-content", StringComparer.Ordinal))
+{
+    return Gtk4Application.Run(async () =>
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions().WithGtk4() with { ConnectionTimeout = TimeSpan.FromSeconds(45) });
+        await WebContentSmoke.RunAsync(host, new WebContentSmoke.Toolkit("gtk4", static opener => Gtk4WindowHost.ExternalOpenerOverride = opener));
+        Console.WriteLine("PASS GTK 4 web content policy.");
+        return 0;
+    });
+}
+
 if (Array.IndexOf(args, "--announcement") is var announcement and >= 0)
     return AnnouncementSmoke.Run(announcement + 1 < args.Length ? args[announcement + 1] : "gtk4");
 

@@ -136,6 +136,11 @@ public sealed partial class RunicWebView : HwndHost
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
                 initializing.RegisterEvents(static _ => { }, RequestClose, options.AllowedPermissions, url);
                 initializing.RegisterMoveFocusRequested(view.TabOut);
+                initializing.ApplyWebContent(
+                    new WebContentRules(options.WebContent, url, options.AdditionalOrigins),
+                    target => WindowsWebView2Interop.OpenExternally(target),
+                    // From a WebView2 event: navigate once the event has returned.
+                    target => view.Dispatcher.BeginInvoke(() => _controller?.Navigate(target)));
                 if (options.DocumentStartScript is { } script)
                     await initializing.AddDocumentStartScriptAsync(script);
                 await initializing.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));

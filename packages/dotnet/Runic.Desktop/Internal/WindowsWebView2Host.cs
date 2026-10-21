@@ -534,6 +534,15 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 () => Native.PostMessage(_window, WmClose, 0, 0),
                 options.AllowedPermissions,
                 url);
+            _controller.ApplyWebContent(
+                new WebContentRules(options.WebContent, url, options.AdditionalOrigins),
+                target => WindowsWebView2Interop.OpenExternally(target),
+                // From a WebView2 event: navigate once the event has returned.
+                target => _ = Task.Run(async () =>
+                {
+                    try { await InvokeAsync(() => _controller?.Navigate(target), CancellationToken.None).ConfigureAwait(false); }
+                    catch (InvalidOperationException) { } // The window closed meanwhile.
+                }));
             if (options.DocumentStartScript is { } documentStartScript)
             {
                 await _controller.AddDocumentStartScriptAsync(documentStartScript);

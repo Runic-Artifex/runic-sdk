@@ -14,6 +14,9 @@ internal static class DesktopUriPolicy
     internal const string SettingsRejectedMessage =
         "An ms-settings URI must be ms-settings:<page>, where the page is 1 to 64 letters, digits or hyphens, with no " +
         "path, query, fragment or escapes, and does not end in -action.";
+    internal const string MailtoAttachmentRejectedMessage =
+        "A mailto URI must not name an attachment (attach or attachment): mail clients that honour it send the file " +
+        "without the user choosing it.";
 
     private const string SettingsScheme = "ms-settings";
     private const int MaximumSettingsPage = 64;
@@ -25,7 +28,36 @@ internal static class DesktopUriPolicy
         // Uri lowercases the scheme; IsAbsoluteUri first, because Scheme throws for a relative URI.
         if (!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto" or SettingsScheme))
             throw new ArgumentException(RejectedMessage, nameof(uri));
+        if (uri.Scheme == "mailto" && NamesAttachment(uri.AbsoluteUri))
+            throw new ArgumentException(MailtoAttachmentRejectedMessage, nameof(uri));
         return uri.Scheme == SettingsScheme ? SettingsTarget(uri) : uri.AbsoluteUri;
+    }
+
+    // Some mail clients attach the file an attach= or attachment= header field names, without the user choosing it
+    // (SEC-07); Runic Desktop's embedded windows apply this rule to the links they open externally too. Every header field
+    // name of the URI handed over (AbsoluteUri) is checked, unescaped as often as it unescapes, case-insensitively and
+    // without whitespace or control characters, and a name beginning with "attach" is refused.
+    private static bool NamesAttachment(string mailto)
+    {
+        int query = mailto.IndexOf('?');
+        if (query < 0) return false;
+        foreach (string field in mailto[(query + 1)..].Split('&', ';'))
+        {
+            string name = field.Split('=', 2)[0];
+            for (int round = 0; round < 8; round++)
+            {
+                string unescaped = Uri.UnescapeDataString(name.Replace('+', ' '));
+                if (unescaped == name) break;
+                name = unescaped;
+            }
+            var visible = new System.Text.StringBuilder(name.Length);
+            foreach (char character in name)
+            {
+                if (!char.IsWhiteSpace(character) && !char.IsControl(character)) visible.Append(character);
+            }
+            if (visible.ToString().StartsWith("attach", StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
     }
 
     // An accepted URI that only Windows can open. Call after Require.

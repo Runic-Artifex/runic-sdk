@@ -397,6 +397,7 @@ public sealed class DesktopSurface : IAsyncDisposable
             _engine.SetBrowserArguments(arguments);
         }
         _engine.SetAllowedPermissions(options.AllowedPermissions);
+        _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
     }
 
@@ -544,6 +545,14 @@ public sealed class DesktopSurface : IAsyncDisposable
         if ((options.AllowedPermissions & ~supported) != 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "AllowedPermissions contains an unsupported value.");
+        }
+        if (options.WebContent is null)
+        {
+            throw new ArgumentNullException(nameof(options), "WebContent must not be null.");
+        }
+        if (!Enum.IsDefined(options.WebContent.ExternalNavigation))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "WebContent.ExternalNavigation contains an unsupported value.");
         }
         if (options.Width <= 0 || options.Height <= 0 || options.MinimumWidth <= 0 || options.MinimumHeight <= 0)
         {

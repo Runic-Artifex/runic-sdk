@@ -152,9 +152,11 @@ var result = await launcher.LaunchUriAsync(new Uri("https://example.org/help"));
 It accepts only absolute `http`, `https`, `mailto` and `ms-settings` URIs. A relative URI, a
 path (an absolute path parses as a `file:` URI, a UNC path too) and every other
 scheme throw `ArgumentException` before anything native runs, so a link never
-starts a program; open local files with `LaunchAsync`. The URI comes from
-trusted application code: validate links a web page supplies before passing them
-on.
+starts a program; open local files with `LaunchAsync`. A `mailto` URI that names
+an attachment (a header field `attach`, `attachment` or another name beginning
+with `attach`, in any case or escaping) throws too: some mail clients attach that
+file without the user choosing it. The URI comes from trusted application code:
+validate links a web page supplies before passing them on.
 
 `LaunchAsync(path)` opens a local file in its default application. On Windows and
 macOS, `DesktopFileOperation.Open` returns `Failed(PermissionDenied)` instead of

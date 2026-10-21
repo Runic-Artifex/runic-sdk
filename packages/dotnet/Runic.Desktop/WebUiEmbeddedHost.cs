@@ -138,6 +138,12 @@ internal sealed record WebUiEmbeddedHostOptions
 
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 
+    /// <summary>The window's web content policy, with the Development default resolved.</summary>
+    public DesktopWebContentPolicy WebContent { get; init; } = DesktopWebContentPolicy.Default with { DevTools = false };
+
+    /// <summary>The surface's origin and additional origins, which are the application's own besides the presented URL's.</summary>
+    public IReadOnlyList<Uri> AdditionalOrigins { get; init; } = [];
+
     /// <summary>Credential-bearing script run in every frame before page scripts, when the host supports it.</summary>
     public string? DocumentStartScript { get; init; }
 

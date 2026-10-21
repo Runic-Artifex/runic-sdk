@@ -29,6 +29,13 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private nint _dragContext;
     private List<string>? _dragPaths;
     private bool _dropRequested;
+    // GTK thread only: the window's DesktopWebContentPolicy (SEC-04) and the web context's download-started connection.
+    private WebKitGtkWebContent? _webContent;
+    private nint _downloadContext;
+    private ulong _downloadHandler;
+
+    // Tests observe the URLs handed to the system's handler here instead of launching it.
+    internal static Action<string>? ExternalOpenerOverride { get; set; }
 
     public bool SupportsCloseConfirmation => true;
 
@@ -311,6 +318,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Api.EnableResizeEvents(_webView);
             Api.Connect(_webView, "button-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnButtonPress, this);
         }
+        ApplyWebContent(new WebContentRules(options.WebContent, url, options.AdditionalOrigins));
         Api.LoadUri(_webView, url.AbsoluteUri);
         if (options.Placement is { Maximized: true } && !options.Kiosk)
         {
@@ -420,6 +428,13 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // container's disposal enumerates children. Destroy children while the
         // WebView still exposes them, so GTK releases their native resources.
         Api.DestroyWebViewChildren(_webView);
+        if (_downloadContext != 0)
+        {
+            Api.DisconnectAndRelease(_downloadContext, _downloadHandler);
+            _downloadContext = 0;
+            _downloadHandler = 0;
+        }
+        _webContent?.Clear();
         _drops?.Dispose();
         _dragContext = 0;
         _dragPaths = null;
@@ -634,6 +649,181 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         _presentedUrl is { } presented &&
         Api.IsCameraOrMicrophoneRequest(request) &&
         PresentationSecurityPolicy.IsSameOrigin(presented, Api.WebKitWebViewGetUri(webView));
+
+    // DesktopWebContentPolicy (SEC-04), before the first load: developer extras, top-level navigations, new windows and
+    // downloads. See WebKitGtkWebContent for how the main frame's navigations are told apart.
+    private unsafe void ApplyWebContent(WebContentRules rules)
+    {
+        _webContent = new WebKitGtkWebContent(rules, Api.CanIdentifyMainFrame);
+        Api.SetDeveloperExtras(_webView, rules.DevToolsEnabled);
+        Api.Connect(_webView, "decide-policy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, nint, int>)&OnDecidePolicy, this);
+        Api.Connect(_webView, "create", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)&OnCreate, this);
+        Api.Connect(_webView, "load-failed", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, nint, nint, int>)&OnLoadFailed, this);
+        if (!rules.AllowsDownloads)
+        {
+            // <a download> and other downloads WebKit starts without a response decision. The context is the view's own
+            // (WebKitWebViewNew), referenced here until the window is destroyed.
+            (_downloadContext, _downloadHandler) = Api.ConnectDownloadStarted(_webView,
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnDownloadStarted, this);
+        }
+    }
+
+    private const int PolicyDecisionNavigationAction = 0;
+    private const int PolicyDecisionNewWindowAction = 1;
+    private const int PolicyDecisionResponse = 2;
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnDecidePolicy(nint webView, nint decision, int type, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _webContent: { } content } host)
+            {
+                return host.DecidePolicy(content, decision, type) ? 1 : 0;
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+        return 0;
+    }
+
+    // Whether this handler decided; WebKit's default handling applies otherwise.
+    private bool DecidePolicy(WebKitGtkWebContent content, nint decision, int type)
+    {
+        switch (type)
+        {
+            case PolicyDecisionNavigationAction:
+            {
+                var (url, userGesture) = Api.GetNavigation(Api.GetNavigationAction(decision));
+                return Apply(decision, content.ForNavigationAction(url, userGesture), url);
+            }
+            case PolicyDecisionNewWindowAction:
+            {
+                // Ignored, so WebKit emits no create signal for it.
+                var (url, userGesture) = Api.GetNavigation(Api.GetNavigationAction(decision));
+                Api.IgnorePolicy(decision);
+                OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+                return true;
+            }
+            case PolicyDecisionResponse:
+                if (Api.IsMainFrameMainResource(decision)
+                    && content.ForMainFrameResponse(Api.GetResponseUri(decision)) is var navigation and not WebContentRules.Decision.Allow)
+                {
+                    return Apply(decision, navigation, Api.GetResponseUri(decision));
+                }
+                if (content.CancelsResponse(Api.IsMimeTypeSupported(decision)))
+                {
+                    Api.IgnorePolicy(decision);
+                    return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private bool Apply(nint decision, WebContentRules.Decision navigation, string? url)
+    {
+        if (navigation == WebContentRules.Decision.Allow) return false;
+        Api.IgnorePolicy(decision);
+        if (navigation == WebContentRules.Decision.OpenExternally) OpenExternally(url);
+        return true;
+    }
+
+    // window.open, and a target="_blank" WebKit did not ask decide-policy about. Never creates a view.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static nint OnCreate(nint webView, nint navigationAction, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _webContent: { } content } host)
+            {
+                var (url, userGesture) = Api.GetNavigation(navigationAction);
+                host.OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+        return 0;
+    }
+
+    private void OpenNewWindow(WebContentRules.Decision decision, string? url)
+    {
+        if (decision == WebContentRules.Decision.OpenExternally)
+        {
+            OpenExternally(url);
+        }
+        else if (decision == WebContentRules.Decision.NavigateInWindow && url is not null)
+        {
+            // From WebKit's signal: load once it has returned.
+            Dispatcher.Post(() =>
+            {
+                if (IsOpen && _webView != 0) Api.LoadUri(_webView, url);
+            });
+        }
+    }
+
+    // A failed main-frame load: one waiting for its response may still open externally, and WebKit's error page must not
+    // replace the application's document for a URL the window would not show.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnLoadFailed(nint webView, int loadEvent, nint failingUri, nint error, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _webContent: { } content } host)
+            {
+                var url = Marshal.PtrToStringUTF8(failingUri);
+                if (content.ForFailedMainFrameLoad(url, out var suppress) == WebContentRules.Decision.OpenExternally)
+                {
+                    host.OpenExternally(url);
+                }
+                return suppress ? 1 : 0;
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+        return 0;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnDownloadStarted(nint webContext, nint download, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { _webView: not 0 } host
+                && Api.GetDownloadWebView(download) == host._webView)
+            {
+                Api.CancelDownload(download);
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+    }
+
+    // A URL WebContentRules.ExternalTarget accepts, with the system's default handler, after WebKit's signal returned.
+    private void OpenExternally(string? url)
+    {
+        if (WebContentRules.ExternalTarget(url) is not { } target) return;
+        Dispatcher.Post(() =>
+        {
+            if (ExternalOpenerOverride is { } opener)
+            {
+                opener(target);
+            }
+            else if (_window != 0)
+            {
+                Api.ShowUri(_window, target);
+            }
+        });
+    }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void ReleaseSignalContext(nint context, nint _)
@@ -914,6 +1104,24 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GdkKeymapGetForDisplayPointer = Required(_gtk, "gdk_keymap_get_for_display");
                 GdkKeymapGetEntriesForKeycodePointer = Required(_gtk, "gdk_keymap_get_entries_for_keycode");
                 GFreePointer = Required(_gtk, "g_free");
+                GErrorFreePointer = Required(_gtk, "g_error_free");
+                GObjectRefPointer = Required(_gObject, "g_object_ref");
+                GSignalHandlerDisconnectPointer = Required(_gObject, "g_signal_handler_disconnect");
+                GtkShowUriOnWindowPointer = Optional(_gtk, "gtk_show_uri_on_window");
+                WebKitWebViewGetSettingsPointer = Required(_webkit, "webkit_web_view_get_settings");
+                WebKitSettingsSetEnableDeveloperExtrasPointer = Required(_webkit, "webkit_settings_set_enable_developer_extras");
+                WebKitWebViewGetContextPointer = Required(_webkit, "webkit_web_view_get_context");
+                WebKitNavigationPolicyDecisionGetNavigationActionPointer = Required(_webkit, "webkit_navigation_policy_decision_get_navigation_action");
+                WebKitNavigationActionGetRequestPointer = Required(_webkit, "webkit_navigation_action_get_request");
+                WebKitNavigationActionIsUserGesturePointer = Required(_webkit, "webkit_navigation_action_is_user_gesture");
+                WebKitUriRequestGetUriPointer = Required(_webkit, "webkit_uri_request_get_uri");
+                WebKitPolicyDecisionIgnorePointer = Required(_webkit, "webkit_policy_decision_ignore");
+                WebKitResponsePolicyDecisionGetRequestPointer = Required(_webkit, "webkit_response_policy_decision_get_request");
+                WebKitResponsePolicyDecisionIsMimeTypeSupportedPointer = Required(_webkit, "webkit_response_policy_decision_is_mime_type_supported");
+                // WebKitGTK 2.40.
+                WebKitResponsePolicyDecisionIsMainFrameMainResourcePointer = Optional(_webkit, "webkit_response_policy_decision_is_main_frame_main_resource");
+                WebKitDownloadGetWebViewPointer = Required(_webkit, "webkit_download_get_web_view");
+                WebKitDownloadCancelPointer = Required(_webkit, "webkit_download_cancel");
                 IsAvailable = true;
             }
             catch (EntryPointNotFoundException)
@@ -1164,6 +1372,102 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GdkKeymapGetForDisplayPointer { get; }
         private nint GdkKeymapGetEntriesForKeycodePointer { get; }
         private nint GFreePointer { get; }
+        private nint GErrorFreePointer { get; }
+        private nint GObjectRefPointer { get; }
+        private nint GSignalHandlerDisconnectPointer { get; }
+        private nint GtkShowUriOnWindowPointer { get; }
+        private nint WebKitWebViewGetSettingsPointer { get; }
+        private nint WebKitSettingsSetEnableDeveloperExtrasPointer { get; }
+        private nint WebKitWebViewGetContextPointer { get; }
+        private nint WebKitNavigationPolicyDecisionGetNavigationActionPointer { get; }
+        private nint WebKitNavigationActionGetRequestPointer { get; }
+        private nint WebKitNavigationActionIsUserGesturePointer { get; }
+        private nint WebKitUriRequestGetUriPointer { get; }
+        private nint WebKitPolicyDecisionIgnorePointer { get; }
+        private nint WebKitResponsePolicyDecisionGetRequestPointer { get; }
+        private nint WebKitResponsePolicyDecisionIsMimeTypeSupportedPointer { get; }
+        private nint WebKitResponsePolicyDecisionIsMainFrameMainResourcePointer { get; }
+        private nint WebKitDownloadGetWebViewPointer { get; }
+        private nint WebKitDownloadCancelPointer { get; }
+
+        // Whether a response decision tells the main frame's document apart; see WebKitGtkWebContent.
+        internal bool CanIdentifyMainFrame => WebKitResponsePolicyDecisionIsMainFrameMainResourcePointer != 0;
+
+        internal void SetDeveloperExtras(nint webView, bool enabled)
+        {
+            var settings = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetSettingsPointer)(webView);
+            if (settings == 0) throw new InvalidOperationException("WebKitGTK did not provide the view's settings.");
+            ((delegate* unmanaged[Cdecl]<nint, int, void>)WebKitSettingsSetEnableDeveloperExtrasPointer)(settings, enabled ? 1 : 0);
+        }
+
+        internal nint GetNavigationAction(nint decision) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitNavigationPolicyDecisionGetNavigationActionPointer)(decision);
+
+        // The navigation's URL and whether a user gesture (a click or key press) started it.
+        internal (string? Url, bool UserGesture) GetNavigation(nint navigationAction)
+        {
+            if (navigationAction == 0) return (null, false);
+            var request = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitNavigationActionGetRequestPointer)(navigationAction);
+            var userGesture = ((delegate* unmanaged[Cdecl]<nint, int>)WebKitNavigationActionIsUserGesturePointer)(navigationAction) != 0;
+            return (RequestUri(request), userGesture);
+        }
+
+        internal void IgnorePolicy(nint decision) => ((delegate* unmanaged[Cdecl]<nint, void>)WebKitPolicyDecisionIgnorePointer)(decision);
+
+        internal bool IsMainFrameMainResource(nint decision) => CanIdentifyMainFrame &&
+            ((delegate* unmanaged[Cdecl]<nint, int>)WebKitResponsePolicyDecisionIsMainFrameMainResourcePointer)(decision) != 0;
+
+        internal bool IsMimeTypeSupported(nint decision) =>
+            ((delegate* unmanaged[Cdecl]<nint, int>)WebKitResponsePolicyDecisionIsMimeTypeSupportedPointer)(decision) != 0;
+
+        internal string? GetResponseUri(nint decision) =>
+            RequestUri(((delegate* unmanaged[Cdecl]<nint, nint>)WebKitResponsePolicyDecisionGetRequestPointer)(decision));
+
+        private string? RequestUri(nint request) => request == 0
+            ? null
+            : Marshal.PtrToStringUTF8(((delegate* unmanaged[Cdecl]<nint, nint>)WebKitUriRequestGetUriPointer)(request));
+
+        // Connects download-started on the view's web context and keeps a reference to the context for the disconnection.
+        internal (nint Context, ulong Handler) ConnectDownloadStarted(nint webView, nint callback, LinuxWebKitGtkHost host)
+        {
+            var context = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetContextPointer)(webView);
+            if (context == 0) throw new InvalidOperationException("WebKitGTK did not provide the view's web context.");
+            ((delegate* unmanaged[Cdecl]<nint, nint>)GObjectRefPointer)(context);
+            try
+            {
+                return (context, Connect(context, "download-started", callback, host));
+            }
+            catch
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(context);
+                throw;
+            }
+        }
+
+        internal void DisconnectAndRelease(nint instance, ulong handler)
+        {
+            ((delegate* unmanaged[Cdecl]<nint, ulong, void>)GSignalHandlerDisconnectPointer)(instance, handler);
+            ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(instance);
+        }
+
+        internal nint GetDownloadWebView(nint download) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitDownloadGetWebViewPointer)(download);
+
+        internal void CancelDownload(nint download) => ((delegate* unmanaged[Cdecl]<nint, void>)WebKitDownloadCancelPointer)(download);
+
+        // gtk_show_uri_on_window (GTK 3.22) with GDK_CURRENT_TIME; inside Flatpak GTK asks the OpenURI portal. A failure
+        // is not reported: the page cannot act on it.
+        internal void ShowUri(nint window, string uri)
+        {
+            if (GtkShowUriOnWindowPointer == 0) return;
+            using var value = Utf8String.Create(uri);
+            nint error = 0;
+            if (((delegate* unmanaged[Cdecl]<nint, byte*, uint, nint*, int>)GtkShowUriOnWindowPointer)(window, value.Pointer, 0, &error) == 0
+                && error != 0)
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)GErrorFreePointer)(error);
+            }
+        }
 
         internal bool GtkInitCheck() => ((delegate* unmanaged[Cdecl]<nint, nint, int>)GtkInitCheckPointer)(0, 0) != 0;
         internal void GtkMain() => ((delegate* unmanaged[Cdecl]<void>)GtkMainPointer)();
@@ -1293,7 +1597,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             internal long Data1;
         }
 
-        internal void Connect(nint instance, string signal, nint callback, LinuxWebKitGtkHost host, bool after = false)
+        internal ulong Connect(nint instance, string signal, nint callback, LinuxWebKitGtkHost host, bool after = false)
         {
             using var value = Utf8String.Create(signal);
             var handle = GCHandle.Alloc(host);
@@ -1309,6 +1613,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 handle.Free();
                 throw new InvalidOperationException($"GTK rejected the '{signal}' signal handler.");
             }
+            return handler;
         }
 
         internal nint WebKitWebViewNew()

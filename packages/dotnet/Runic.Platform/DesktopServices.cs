@@ -123,7 +123,8 @@ public interface IDesktopFileLauncher
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> without a native call.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path, not an http, https, mailto or
-    /// ms-settings URI, or an ms-settings URI outside the page rule.</exception>
+    /// ms-settings URI, an ms-settings URI outside the page rule, or a mailto URI that names an attachment
+    /// (<c>attach</c>, <c>attachment</c>).</exception>
     ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default);
 }
 

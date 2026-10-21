@@ -50,6 +50,16 @@ internal sealed class Pointer : IDisposable
         Button(false);
     }
 
+    // A real primary-button click, which WebKit reports as a user gesture.
+    internal async Task ClickAsync(int x, int y)
+    {
+        Move(x, y);
+        await Task.Delay(150);
+        Button(true);
+        await Task.Delay(50);
+        Button(false);
+    }
+
     private unsafe void Move(int x, int y)
     {
         ((delegate* unmanaged[Cdecl]<nint, int, int, int, nuint, int>)NativeLibrary.GetExport(_xtest, "XTestFakeMotionEvent"))(_display, -1, x, y, 0);

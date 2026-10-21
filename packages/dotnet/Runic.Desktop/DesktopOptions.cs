@@ -274,6 +274,71 @@ public enum DesktopPermissionGrant
     MediaCapture = 1 << 0,
 }
 
+/// <summary>What an embedded window does when its page leaves the application's own origins.</summary>
+/// <remarks>The enum is closed.</remarks>
+public enum DesktopExternalNavigation
+{
+    /// <summary>
+    /// Keep the window on the application: cancel the navigation and, when the user started it (a click), open an
+    /// <c>http</c>, <c>https</c> or <c>mailto</c> URL with the system's default handler, such as the default browser.
+    /// Other schemes, and navigations a script starts without a user gesture, are cancelled. WKWebView reports a
+    /// script's <c>click()</c> on a link as a link activation, so on macOS a page script can open such a URL too.
+    /// </summary>
+    OpenInBrowser,
+
+    /// <summary>Cancel every navigation and new-window request outside the application's origins.</summary>
+    Block,
+
+    /// <summary>
+    /// Load other origins in the window, as before 0.10. A new-window request for an <c>http</c> or <c>https</c> URL
+    /// loads it in this window too; no embedded window ever opens a second WebView window.
+    /// </summary>
+    AllowInWindow,
+}
+
+/// <summary>
+/// Controls what an embedded window (WebView2, WKWebView, WebKitGTK and the WPF <c>RunicWebView</c>) does with
+/// navigation away from the application, new windows, downloads and developer tools.
+/// </summary>
+/// <remarks>
+/// The application's origins are the origin of the presented surface and its
+/// <see cref="DesktopSecurityPolicy.AdditionalOrigins"/>; their documents always load in the window, and iframes are
+/// not affected. A new-window request (<c>target="_blank"</c>, <c>window.open</c>) never opens a second WebView
+/// window: one for an application origin is cancelled, and other URLs follow <see cref="ExternalNavigation"/>. Open
+/// further application windows from .NET. Installed browsers apply their own navigation and download behaviour.
+/// </remarks>
+public sealed record DesktopWebContentPolicy
+{
+    /// <summary>
+    /// Gets the safe default: external links open in the default browser, downloads are refused, and developer tools
+    /// are available only in Development.
+    /// </summary>
+    public static DesktopWebContentPolicy Default { get; } = new();
+
+    /// <summary>Gets what a navigation or new-window request outside the application's origins does.</summary>
+    public DesktopExternalNavigation ExternalNavigation { get; init; } = DesktopExternalNavigation.OpenInBrowser;
+
+    /// <summary>Gets whether the page may download files. Downloads are cancelled by default.</summary>
+    /// <remarks>
+    /// When <see langword="true"/>, WebView2 and WebKitGTK download with their own behaviour: WebView2 shows its
+    /// download dialog; WebKitGTK saves <c>&lt;a download&gt;</c> links and <c>Content-Disposition: attachment</c>
+    /// responses to the user's download folder and still ignores other content it cannot show. WKWebView has no
+    /// download support, so macOS windows refuse downloads either way.
+    /// </remarks>
+    public bool AllowDownloads { get; init; }
+
+    /// <summary>
+    /// Gets whether the window's developer tools (F12, Inspect Element, Safari's Web Inspector) are available, or
+    /// <see langword="null"/>, the default, for only when <c>DOTNET_ENVIRONMENT</c>, or else
+    /// <c>ASPNETCORE_ENVIRONMENT</c>, is <c>Development</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>dotnet runic dev</c> runs the application in Development. Developer tools give whoever uses them full access
+    /// to the page and its Bridge. WKWebView supports them from macOS 13.3.
+    /// </remarks>
+    public bool? DevTools { get; init; }
+}
+
 /// <summary>Identifies a platform-window operation reported by a presentation.</summary>
 [Flags]
 public enum DesktopWindowCapabilities
@@ -457,6 +522,12 @@ public sealed record DesktopWindowOptions
     /// Embedded windows use the system proxy, and Firefox ignores the option.
     /// </remarks>
     public string? ProxyServer { get; init; }
+
+    /// <summary>
+    /// Gets what the embedded window does with navigation away from the application, new windows, downloads and
+    /// developer tools. Installed browsers do not apply it.
+    /// </summary>
+    public DesktopWebContentPolicy WebContent { get; init; } = DesktopWebContentPolicy.Default;
 
     /// <summary>Gets additional command-line arguments for the browser or WebView2 runtime.</summary>
     /// <remarks>
