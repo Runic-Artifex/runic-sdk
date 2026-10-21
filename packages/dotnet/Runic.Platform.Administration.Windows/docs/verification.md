@@ -202,6 +202,38 @@ Limits:
   controller or site, cross-domain trusts, other Windows Server versions, and
   remote DNS servers that are not domain controllers.
 
+## 0.10 typed models and graduation (2026-10-21, W319-010)
+
+The W319-009 fixture (snapshots `clean-promoted` and the joined client) was run again
+on the 0.10 shape: typed task boundaries, `WindowsSecurityDescriptor` for share
+security, `FirewallProtocol`, `ServiceAcceptedControls`, and
+`ActiveDirectoryObjectIdentity` returned by the AD create methods. The verifier was
+built on the client with .NET SDK 10.0.401 as NativeAOT (no warnings) and as JIT.
+
+| Run | Identity and logon | Command | NativeAOT | JIT |
+| --- | --- | --- | --- | --- |
+| Unit tests | — | `Runic.Platform.Administration.Windows.Tests` | 33 passed | 33 passed |
+| Local writes | elevated | `local --allow-changes` | 19 passed, exit 0 | 19 passed, exit 0 |
+| Local denied | non-elevated | `local --expect-denied --only services,tasks,firewall,shares` | 8 passed, exit 0 | same |
+| Domain writes | delegate, own logon (scheduled task) | `domain … --allow-changes` | 39 passed, 2 skipped (Basic binds need an explicit credential), exit 0 | same |
+| Domain writes | delegate, explicit `NetworkCredential` | `domain … --allow-changes --only ldap,dns --credential-stdin` | 33 passed, exit 0 | same |
+| Denied writes | restricted, own logon | `domain … --expect-denied` | 11 passed, 2 skipped, exit 0 | same |
+| Denied writes | restricted, explicit credential | `domain … --expect-denied --credential-stdin` | 13 passed, exit 0 | same |
+
+New in these runs:
+
+- The create methods returned the stored DN and a distinct non-empty `objectGUID` for
+  the user, group and computer. The renamed user's `objectGUID` equals the GUID
+  `CreateUserAsync` returned.
+- The share ACL roundtrip compares `WindowsSecurityDescriptor` values; a
+  metadata-only update and a repeated security update kept the exact binary form.
+- `services.lifecycle` passed under JIT as well, after the I-080 test-service fix.
+
+Independent cleanup check afterwards: `OU=RunicTests` had no children, the test
+zone held only SOA/NS, only the two default GPOs existed, and the client had no
+`RunicVerify-*` service, task, firewall rule or share. Both VMs were reverted to
+their snapshots.
+
 ## Outside the verified scope
 
 Local service, task, firewall and share writes, and the domain scenarios, are
