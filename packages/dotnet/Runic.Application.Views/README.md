@@ -588,8 +588,9 @@ public sealed partial class EditorViewModel : ObservableObject, IRunicMenuComman
 
 The host asks once for each id when the Window opens, and again after
 `DesktopHost.SetMenuBar`, in the ViewModel's model turn. An item is enabled
-while its command's `CanExecute(null)` is `true`, following `CanExecuteChanged`,
-and runs `Execute(null)` in the model turn; a failure is logged as event 2004,
+while its declared `IsEnabled` and its command's `CanExecute(null)` are `true`,
+following `CanExecuteChanged`, and runs `Execute(null)` in the model turn; a
+failure is logged as event 2004,
 `DesktopMenuCommandFailed`. An id the ViewModel returns `null` for goes to the
 application's commands, `RunicDesktopHost.UseApplicationMenu`, such as New or
 Settings…, which also run while no Window is open. Runic Desktop shows the menu

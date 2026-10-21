@@ -15,6 +15,10 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="buildTransitive/Runic.Platform.targets" Pack="true" PackagePath="buildTransitive/" />
+    <!-- The menu bar and status icon menus check entries with the same internal DesktopMenuRules. Both packages pin
+         Runic.Platform to their own version (eng/build/package-dependencies.targets). -->
+    <InternalsVisibleTo Include="Runic.Desktop" />
+    <InternalsVisibleTo Include="Runic.Platform.Runtime" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

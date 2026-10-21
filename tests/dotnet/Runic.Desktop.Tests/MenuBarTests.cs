@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Runic.Desktop.Internal;
+using Runic.Platform;
 using TUnit.Core;
 
 namespace Runic.Desktop.Tests;
@@ -61,7 +62,7 @@ public sealed class DesktopShortcutTests
 
 public sealed class DesktopMenuBarTests
 {
-    private static DesktopMenuBarItem Item(string title, string id, string? shortcut = null) =>
+    private static DesktopMenuItem Item(string title, string id, string? shortcut = null) =>
         new(title, id) { Shortcut = shortcut is null ? null : DesktopShortcut.Parse(shortcut) };
 
     [Test]
@@ -95,6 +96,54 @@ public sealed class DesktopMenuBarTests
         Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", [null!])], macOS: true));
         Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check(
             [new("Help", []) { Role = DesktopMenuRole.Help }, new("More Help", []) { Role = DesktopMenuRole.Help }], macOS: true));
+    }
+
+    // The same vectors as the status icon menu (Runic.Platform.Runtime.Tests, StatusIconMenuRuleTests).
+    private static JsonElement Rules() =>
+        JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "menu-entries.json"))).RootElement;
+
+    private static IEnumerable<string> Values(JsonElement rules, string group, string kind) =>
+        rules.GetProperty(group).GetProperty(kind).EnumerateArray().Select(static value => value.ValueKind == JsonValueKind.String
+            ? value.GetString()!
+            : string.Concat(Enumerable.Repeat(value.GetProperty("repeat").GetString(), value.GetProperty("count").GetInt32())));
+
+    [Test]
+    public void SharedTitleAndCommandIdRulesApplyToTheMenuBar()
+    {
+        var rules = Rules();
+        foreach (var title in Values(rules, "titles", "valid"))
+        {
+            DesktopMenuBar.Check([new(title, [Item(title, "id")])], macOS: true);
+            DesktopMenuBar.Check([new("Tools", [new DesktopMenu(title, [])])], macOS: true);
+        }
+        foreach (var title in Values(rules, "titles", "invalid"))
+        {
+            Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new(title, [])], macOS: true));
+            Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", [Item(title, "id")])], macOS: true));
+            Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", [new DesktopMenu(title, [])])], macOS: true));
+        }
+        foreach (var id in Values(rules, "commandIds", "valid")) DesktopMenuBar.Check([new("Tools", [Item("Run", id)])], macOS: true);
+        foreach (var id in Values(rules, "commandIds", "invalid"))
+        {
+            var error = Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", [Item("Run", id)])], macOS: true));
+            // The message names the id and the rule.
+            if (id.Length > 0) Assert.Contains($"'{id}'", error.Message);
+            Assert.Contains("ASCII letters, digits, dots, underscores or hyphens", error.Message);
+        }
+        foreach (var id in Values(rules, "commandIds", "reserved"))
+        {
+            var error = Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", [Item("Run", id)])], macOS: true));
+            Assert.Contains($"'{id}'", error.Message);
+            Assert.Contains("reserved", error.Message);
+        }
+    }
+
+    [Test]
+    public void TheMenuBarAllowsRepeatedCommandIdsButNoDefaultItemList()
+    {
+        DesktopMenuBar.Check([new("File", [Item("Save", "file.save")]), new("Tools", [Item("Save Again", "file.save")])], macOS: true);
+        Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", default)], macOS: true));
+        Assert.Throws<ArgumentException>(() => DesktopMenuBar.Check([new("Tools", [new DesktopMenu("More", default)])], macOS: true));
     }
 
     [Test]
@@ -139,7 +188,7 @@ public sealed class DesktopMenuBarTests
 
     private sealed class Target : IDesktopMenuCommandTarget
     {
-        public bool CanExecute(string commandId) => true;
-        public void Execute(string commandId) { }
+        public bool CanExecute(DesktopMenuItem item) => true;
+        public void Execute(DesktopMenuItem item) { }
     }
 }

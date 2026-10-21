@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Runic.Desktop;
+using Runic.Platform;
 
 // W315-002 and W315-003 on the macOS runner: the application's menus join the standard ones in NSApp.mainMenu, items
 // follow their command's availability when AppKit validates them, choosing one or pressing its key equivalent runs the
@@ -8,22 +9,28 @@ internal static partial class MacOsMenuSmoke
 {
     internal static readonly IReadOnlyList<DesktopMenu> Bar =
     [
-        new("Settings", [new DesktopMenuBarItem("Settings…", "app.settings") { Shortcut = DesktopShortcut.Parse("Primary+,") }])
+        new("Settings", [new DesktopMenuItem("Settings…", "app.settings") { Shortcut = DesktopShortcut.Parse("Primary+,") }])
         {
             Role = DesktopMenuRole.Application,
         },
-        new("Fichier", [new DesktopMenuBarItem("Enregistrer", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
+        new("Fichier", [new DesktopMenuItem("Enregistrer", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
         {
             Role = DesktopMenuRole.File,
         },
         new("Tools",
         [
-            new DesktopMenuBarItem("Run", "tools.run") { Shortcut = DesktopShortcut.Parse("Primary+Shift+R") },
-            new DesktopMenuBarSeparator(),
-            new DesktopMenuBarItem("Copy Special", "tools.copy") { Shortcut = DesktopShortcut.Parse("Primary+C") },
-            new DesktopMenu("More", [new DesktopMenuBarItem("Nothing", "tools.nothing")]),
+            new DesktopMenuItem("Run", "tools.run") { Shortcut = DesktopShortcut.Parse("Primary+Shift+R") },
+            new DesktopMenuSeparator(),
+            new DesktopMenuItem("Copy Special", "tools.copy") { Shortcut = DesktopShortcut.Parse("Primary+C") },
+            new DesktopMenu("More", [new DesktopMenuItem("Nothing", "tools.nothing")]),
+            // Declared state: disabled although the target runs tools.run, checked, and a disabled submenu.
+            new DesktopMenuItem("Locked", "tools.run") { IsEnabled = false },
+            new DesktopMenuItem("Word Wrap", "tools.run") { IsChecked = true },
+            new DesktopMenuItem("Ruler", "tools.run") { IsChecked = false },
+            new DesktopMenu("Disabled More", [new DesktopMenuItem("Inside", "tools.run")]) { IsEnabled = false },
         ]),
-        new("Help", [new DesktopMenuBarItem("Runic Help", "help.show")]) { Role = DesktopMenuRole.Help },
+        new("Archive", [new DesktopMenuItem("Restore", "tools.run")]) { IsEnabled = false },
+        new("Help", [new DesktopMenuItem("Runic Help", "help.show")]) { Role = DesktopMenuRole.Help },
     ];
 
     internal sealed class Target : IDesktopMenuCommandTarget
@@ -32,8 +39,8 @@ internal static partial class MacOsMenuSmoke
         internal Target(params string[] handled) => _handled = [.. handled];
         internal bool Enabled { get; set; } = true;
         internal System.Collections.Concurrent.ConcurrentQueue<string> Executed { get; } = new();
-        public bool CanExecute(string commandId) => Enabled && _handled.Contains(commandId);
-        public void Execute(string commandId) => Executed.Enqueue(commandId);
+        public bool CanExecute(DesktopMenuItem item) => Enabled && _handled.Contains(item.CommandId);
+        public void Execute(DesktopMenuItem item) => Executed.Enqueue(item.CommandId);
     }
 
     internal static async Task ExerciseAsync(DesktopHost host, DesktopWindow window)
@@ -55,7 +62,7 @@ internal static partial class MacOsMenuSmoke
         });
         if (failure is not null) throw new InvalidOperationException("Menu bar: " + failure);
         // The command runs after AppKit returns; the target only records it.
-        Console.WriteLine("PASS menu bar: declared menus beside the standard ones, availability, actions and key equivalents.");
+        Console.WriteLine("PASS menu bar: declared menus beside the standard ones, availability, declared disabled and checked state, actions and key equivalents.");
         host.MenuCommands = null;
         window.MenuCommands = null;
         host.SetMenuBar([]);
@@ -67,7 +74,7 @@ internal static partial class MacOsMenuSmoke
         var mainMenu = Send(application, Sel("mainMenu"));
         Console.WriteLine("MENU " + Describe(mainMenu, 0));
         var titles = Items(mainMenu).Select(item => Text(Send(item, Sel("title")))).ToArray();
-        string[] expectedOrder = ["Fichier", "Edit", "View", "Tools", "Window", "Help"];
+        string[] expectedOrder = ["Fichier", "Edit", "View", "Tools", "Archive", "Window", "Help"];
         if (!titles.Skip(1).SequenceEqual(expectedOrder))
             return $"the menus are [{string.Join(", ", titles)}], not the application menu then [{string.Join(", ", expectedOrder)}]";
 
@@ -106,6 +113,28 @@ internal static partial class MacOsMenuSmoke
         windowTarget.Enabled = true;
         applicationTarget.Enabled = true;
         Send(tools, Sel("update"));
+
+        // IsEnabled = false and IsChecked are shown as declared (NSControlStateValueOn is 1).
+        if (Find(tools, "Locked") is not { } locked || Bool(locked, Sel("isEnabled")) != 0)
+            return "the declared-disabled Locked item is enabled while its command can run";
+        if (Find(tools, "Word Wrap") is not { } wrap || Send(wrap, Sel("state")) != 1 || Bool(wrap, Sel("isEnabled")) == 0)
+            return "Word Wrap is not an enabled checked item";
+        if (Find(tools, "Ruler") is not { } ruler || Send(ruler, Sel("state")) != 0 || Send(run, Sel("state")) != 0)
+            return "Ruler or Run shows a check mark";
+        if (Find(tools, "Disabled More") is not { } disabledMore || Bool(disabledMore, Sel("isEnabled")) != 0)
+            return "the disabled submenu Disabled More is enabled";
+        var disabledMenu = Send(disabledMore, Sel("submenu"));
+        Send(disabledMenu, Sel("update"));
+        if (Find(disabledMenu, "Inside") is not { } inside || Bool(inside, Sel("isEnabled")) != 0)
+            return "an item of the disabled submenu is enabled";
+        Send(mainMenu, Sel("update"));
+        if (Find(mainMenu, "Archive") is not { } archive || Bool(archive, Sel("isEnabled")) != 0)
+            return "the disabled Archive menu is enabled in the menu bar";
+        if (Find(mainMenu, "Tools") is not { } toolsItem || Bool(toolsItem, Sel("isEnabled")) == 0)
+            return "the Tools menu is not enabled in the menu bar";
+        Arg(tools, Sel("performActionForItemAtIndex:"), (nint)4);
+        if (!windowTarget.Executed.IsEmpty || !applicationTarget.Executed.IsEmpty)
+            return "choosing the disabled Locked item ran its command";
 
         var key = Bool(window, Sel("isKeyWindow")) != 0;
         Arg(tools, Sel("performActionForItemAtIndex:"), (nint)0);

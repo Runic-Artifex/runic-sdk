@@ -1,5 +1,5 @@
 {
-  "description": "Keyboard shortcut text shared by DesktopShortcut (.NET, Runic.Desktop.Tests) and matchesShortcut/formatShortcut (@runic-artifex/views). Primary is Command on Apple platforms and Ctrl elsewhere; Control is the Control key on Apple platforms and the same Ctrl elsewhere.",
+  "description": "Keyboard shortcut text shared by DesktopShortcut (.NET Runic.Platform, Runic.Desktop.Tests) and matchesShortcut/formatShortcut (@runic-artifex/views). Primary is Command on Apple platforms and Ctrl elsewhere; Control is the Control key on Apple platforms and the same Ctrl elsewhere.",
   "parse": [
     { "text": "Primary+S", "canonical": "Primary+S", "apple": "⌘S", "other": "Ctrl+S" },
     { "text": "primary+shift+s", "canonical": "Primary+Shift+S", "apple": "⇧⌘S", "other": "Ctrl+Shift+S" },

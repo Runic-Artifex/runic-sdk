@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Runic.Platform;
 
 namespace Runic.Desktop;
 
@@ -135,12 +136,15 @@ public sealed record DesktopHostOptions
     /// Window menus; empty by default. Windows and Linux show no native menu bar in this release.
     /// </summary>
     /// <remarks>
-    /// Each <see cref="DesktopMenuBarItem"/> names a command that the key window's <see cref="DesktopWindow.MenuCommands"/>
-    /// runs, or else <see cref="DesktopHost.MenuCommands"/>; an item is disabled while neither can run it. Titles are
-    /// user-visible text, so take them from the application's translations, and call
-    /// <see cref="DesktopHost.SetMenuBar"/> to show the bar again after the language changes. Building the host throws
-    /// <see cref="ArgumentException"/> for a menu without a title, an item without a title or command, or a second
-    /// Application, File or Help menu. See <see cref="DesktopHost.Validate"/> for the shortcuts it does not apply.
+    /// Each <see cref="DesktopMenuItem"/> names a command that the key window's <see cref="DesktopWindow.MenuCommands"/>
+    /// runs, or else <see cref="DesktopHost.MenuCommands"/>; an item is enabled while its
+    /// <see cref="DesktopMenuItem.IsEnabled"/> is <see langword="true"/> and one of them can run it, and shows
+    /// <see cref="DesktopMenuItem.IsChecked"/> as declared. Titles are user-visible text, so take them from the
+    /// application's translations, and call <see cref="DesktopHost.SetMenuBar"/> to show the bar again after the language
+    /// changes. Building the host throws <see cref="ArgumentException"/> for a blank title or one longer than 128
+    /// characters, a command id outside 1 to 64 ASCII letters, digits, dots, underscores or hyphens, a command id starting
+    /// with the reserved <c>runic.</c>, or a second Application, File or Help menu. See <see cref="DesktopHost.Validate"/>
+    /// for the shortcuts it does not apply.
     /// </remarks>
     public IReadOnlyList<DesktopMenu> MenuBar { get; init; } = [];
 

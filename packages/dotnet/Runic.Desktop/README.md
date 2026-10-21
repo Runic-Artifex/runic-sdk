@@ -296,24 +296,33 @@ expected to have: the application menu (About, Hide, Quit), File with Close
 (⌘W, which asks the window's close guard), Edit (Undo, Redo, Cut, Copy, Paste,
 Select All), View with the page zoom items, and Window (Minimize, Zoom, Bring
 All to Front). `DesktopHostOptions.MenuBar` adds the application's own menus,
-whose items run commands by id:
+whose items run commands by id. The menu types come from
+[Runic.Platform](../Runic.Platform/README.md#menus), which status icon menus
+use too:
 
 ```csharp
-IReadOnlyList<DesktopMenu> MenuBar(AppText text) =>
+using Runic.Platform;
+
+IReadOnlyList<DesktopMenu> MenuBar(AppText text, bool wordWrap) =>
 [
-    new(text.Messages.menu_settings, [new DesktopMenuBarItem(text.Messages.menu_settings_item, "app.settings")
+    new(text.Messages.menu_settings, [new DesktopMenuItem(text.Messages.menu_settings_item, "app.settings")
         { Shortcut = DesktopShortcut.Parse("Primary+,") }]) { Role = DesktopMenuRole.Application },
     new(text.Messages.menu_file,
     [
-        new DesktopMenuBarItem(text.Messages.menu_file_new, "file.new") { Shortcut = DesktopShortcut.Parse("Primary+N") },
-        new DesktopMenuBarItem(text.Messages.menu_file_save, "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") },
+        new DesktopMenuItem(text.Messages.menu_file_new, "file.new") { Shortcut = DesktopShortcut.Parse("Primary+N") },
+        new DesktopMenuItem(text.Messages.menu_file_save, "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") },
     ]) { Role = DesktopMenuRole.File },
-    new(text.Messages.menu_tools, [new DesktopMenuBarItem(text.Messages.menu_tools_run, "tools.run")]),
+    new(text.Messages.menu_tools,
+    [
+        new DesktopMenuItem(text.Messages.menu_tools_run, "tools.run"),
+        new DesktopMenuSeparator(),
+        new DesktopMenuItem(text.Messages.menu_tools_wrap, "tools.wrap") { IsChecked = wordWrap },
+    ]),
 ];
 
 var options = new DesktopHostOptions { MenuBar = MenuBar(text) };
 // Titles are user-visible: build the bar again in the new language.
-manager.LocaleChanged += (_, _) => host.SetMenuBar(MenuBar(text));
+manager.LocaleChanged += (_, _) => host.SetMenuBar(MenuBar(text, wordWrap));
 ```
 
 `text` and `manager` are the application's Runic Translations catalog and
@@ -322,13 +331,21 @@ the application's menus at run time, so the bar follows a language change
 without a restart; the standard menus keep their English titles in this
 release. A menu's `Role` places it: `Application` adds its items after About,
 `File` fills the File menu before Close and gives it its title, `Help` goes
-last, and others go between View and Window.
+last, and others go between View and Window. Titles are literal text of at
+most 128 characters, and command ids have 1 to 64 ASCII letters, digits, dots,
+underscores or hyphens; ids starting with `runic.` are reserved. Building the
+host and `SetMenuBar` throw `ArgumentException` for anything else, naming the
+id and the rule.
 
 An item runs its command on the key window's `DesktopWindow.MenuCommands`, an
 `IDesktopMenuCommandTarget`, or else on `DesktopHost.MenuCommands`, also when
-no window is open. AppKit asks `CanExecute` whenever it shows a menu or matches
-a key, on its main thread, so keep it cheap; an item that no target can run is
-disabled. Runic Windows bind these to ViewModel commands; see
+no window is open. The target receives the `DesktopMenuItem` and reads its
+`CommandId`. AppKit asks `CanExecute` whenever it shows a menu or matches a key,
+on its main thread, so keep it cheap; an item that no target can run is
+disabled. An item or menu declared with `IsEnabled = false` is disabled without
+asking, a disabled menu disables its items too, and `IsChecked` shows a check
+mark as declared: build the bar again with `SetMenuBar` when the state changes.
+Runic Windows bind these to ViewModel commands; see
 [Menu bar commands](../Runic.Application.Views/README.md#menu-bar-commands).
 
 `DesktopShortcut` writes shortcuts once for every platform: `Primary` is ⌘ on
@@ -348,8 +365,8 @@ Windows and Linux show no native menu bar in this release, and
 `DesktopHost.Validate` reports `menu-bar-unsupported` for a declared one. Render
 the menu bar and context menus in the page there, bound to the same commands;
 the web view keeps its own context menu unless the page handles `contextmenu`
-and calls `preventDefault()`. Native menu bars and context menus, checked
-items, and global shortcuts are planned for later releases.
+and calls `preventDefault()`. Native menu bars and context menus on Windows and
+Linux, and global shortcuts, are planned for later releases.
 
 ## File drops
 

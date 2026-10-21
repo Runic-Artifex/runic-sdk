@@ -1,4 +1,4 @@
-// Keyboard shortcuts for the page, with the rule of Runic Desktop's DesktopShortcut: "Primary" is Command on Apple
+// Keyboard shortcuts for the page, with the rule of Runic.Platform's DesktopShortcut: "Primary" is Command on Apple
 // platforms and Ctrl elsewhere, so one shortcut such as "Primary+S" means Save on every platform. The shared cases
 // are in specs/desktop/fixtures/shortcuts.json.
 

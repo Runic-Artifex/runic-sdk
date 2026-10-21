@@ -172,8 +172,16 @@
         "tools/Runic.Administration.Verify"
       ]
     },
-    "desktop": {
+    "platform-contracts": {
       "dependsOn": [],
+      "paths": [
+        "packages/dotnet/Runic.Platform"
+      ]
+    },
+    "desktop": {
+      "dependsOn": [
+        "platform-contracts"
+      ],
       "paths": [
         "packages/dotnet/Runic.Desktop",
         "tests/native/Runic.Desktop.ComparativeStressAdapter",
@@ -351,10 +359,10 @@
     },
     "platform": {
       "dependsOn": [
+        "platform-contracts",
         "desktop"
       ],
       "paths": [
-        "packages/dotnet/Runic.Platform",
         "packages/dotnet/Runic.Platform.Runtime",
         "packages/dotnet/Runic.Platform.Windows",
         "packages/dotnet/Runic.Platform.Linux",

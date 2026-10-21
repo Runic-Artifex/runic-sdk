@@ -227,6 +227,46 @@ The application composes `IDesktopPrivilegedActions` itself, because it needs
 declared actions and a provider package, and claims `ApplicationInstance` before
 it starts a host.
 
+## Menus
+
+Status icon menus (`DesktopStatusIconState.Menu`) and the Runic Desktop menu bar
+(`DesktopHostOptions.MenuBar`) share one model:
+
+| Type | Is |
+| --- | --- |
+| `DesktopMenuEntry` | The base of every entry. The set is open: a minor release may add entry kinds, so give a `switch` over entries a default arm. Code that walks a menu skips entries it does not know. |
+| `DesktopMenuItem(Title, CommandId)` | An item that runs a command, with `IsEnabled`, `IsChecked` (`null` for a plain item) and `Shortcut` |
+| `DesktopMenuSeparator` | A line between groups of entries |
+| `DesktopMenu(Title, Items)` | A submenu, or a menu of the menu bar, with `IsEnabled` and the menu bar's `Role` |
+| `DesktopShortcut`, `DesktopShortcutModifiers` | A key and its modifiers, written as `Primary+Shift+S` |
+
+```csharp
+ImmutableArray<DesktopMenuEntry> menu =
+[
+    new DesktopMenuItem(Title: "Open window", CommandId: "open"),
+    new DesktopMenuItem(Title: "Start at login", CommandId: "login") { IsChecked = startsAtLogin },
+    new DesktopMenuSeparator(),
+    new DesktopMenu("More", [new DesktopMenuItem(Title: "About", CommandId: "about")]),
+    new DesktopMenuItem(Title: "Quit", CommandId: "quit"),
+];
+```
+
+The title comes first. A title is literal user-visible text: not blank, at most
+128 characters and without NUL. It has no mnemonic markers: providers show `&`
+and `_` as written. A command id is an application-owned routing key, never a
+command line: 1 to 64 ASCII letters, digits, dots, underscores or hyphens. Ids
+starting with `runic.`, in any letter case, are reserved for Runic's standard
+commands. Each surface checks these rules when it receives a menu and throws an
+`ArgumentException` that names the id or title and the rule.
+
+| | Status icon menu | Menu bar (Runic Desktop) |
+| --- | --- | --- |
+| Command ids | Unique in the menu | May repeat |
+| Limits | Four nested submenus, 256 entries | None beyond the rules above |
+| `IsEnabled`, `IsChecked` | Shown as declared | Shown as declared; an item is also disabled while no command target can run it |
+| `Shortcut`, `Role` | Ignored | The macOS key equivalent and where the menu goes |
+| Choosing an item | `IDesktopStatusIcon.Activated` with `Kind` `MenuItem` and the item's `CommandId` | The command target's `Execute(DesktopMenuItem)` |
+
 ## Opening files and URLs
 
 `IDesktopOpenRequests` raises `Opened` with the files and URLs the user opens

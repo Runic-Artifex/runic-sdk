@@ -30,6 +30,7 @@
     <None Include="../../../specs/desktop/conformance/scenarios/*.json" Link="conformance/scenarios/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/desktop/conformance/vectors/*.json" Link="conformance/vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/desktop/fixtures/shortcuts.json" Link="fixtures/shortcuts.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../specs/desktop/fixtures/menu-entries.json" Link="fixtures/menu-entries.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../fixtures/desktop/evidence/conformance/dotnet-m6.json" Link="conformance/dotnet-m6.json" CopyToOutputDirectory="PreserveNewest" />
 
   </ItemGroup>

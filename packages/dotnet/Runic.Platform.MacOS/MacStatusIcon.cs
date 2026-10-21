@@ -296,9 +296,9 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         return menu;
     }
 
-    private void Raise(DesktopStatusIconActivationKind kind, string? menuItemId = null)
+    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null)
     {
-        if (!_disposed) _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, menuItemId));
+        if (!_disposed) _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId));
     }
 
     private async Task PumpAsync()

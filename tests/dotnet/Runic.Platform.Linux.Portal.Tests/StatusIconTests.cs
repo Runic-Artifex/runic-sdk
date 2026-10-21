@@ -18,10 +18,10 @@ internal sealed class StatusIconTests
             AttentionIcon = new DesktopIcon { IconName = "software-update-available" },
             Menu =
             [
-                new DesktopMenuCommand("open", "Open_dashboard"),
+                new DesktopMenuItem("Open_dashboard", "open"),
                 new DesktopMenuSeparator(),
-                new DesktopMenuCommand("check", "Check daily") { IsChecked = true },
-                new DesktopMenuSubmenu("More", [new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false }]),
+                new DesktopMenuItem("Check daily", "check") { IsChecked = true },
+                new DesktopMenu("More", [new DesktopMenuItem("Unavailable", "disabled") { IsEnabled = false }]),
             ],
         };
 
@@ -40,10 +40,10 @@ internal sealed class StatusIconTests
         Rejects(State() with { Title = " " }, "blank title");
         Rejects(State() with { Icon = new DesktopIcon() }, "icon without name or image");
         Rejects(State() with { Icon = new DesktopIcon { Images = [new DesktopIconImage(2, 2, [1, 2, 3])] } }, "image size mismatch");
-        Rejects(State() with { Menu = [new DesktopMenuCommand("a", "One"), new DesktopMenuCommand("a", "Two")] }, "duplicate IDs");
-        Rejects(State() with { Menu = [new DesktopMenuSubmenu("Deep", [new DesktopMenuCommand("a", "One")]), new DesktopMenuCommand("a", "Two")] }, "duplicate nested IDs");
-        var deep = ImmutableArray.Create<DesktopMenuItem>(new DesktopMenuCommand("leaf", "Leaf"));
-        for (int i = 0; i < 6; i++) deep = [new DesktopMenuSubmenu("Level", deep)];
+        Rejects(State() with { Menu = [new DesktopMenuItem("One", "a"), new DesktopMenuItem("Two", "a")] }, "duplicate IDs");
+        Rejects(State() with { Menu = [new DesktopMenu("Deep", [new DesktopMenuItem("One", "a")]), new DesktopMenuItem("Two", "a")] }, "duplicate nested IDs");
+        var deep = ImmutableArray.Create<DesktopMenuEntry>(new DesktopMenuItem("Leaf", "leaf"));
+        for (int i = 0; i < 6; i++) deep = [new DesktopMenu("Level", deep)];
         Rejects(State() with { Menu = deep }, "too deep");
         Rejects(State() with { Menu = [null!] }, "null entry");
     }
@@ -91,7 +91,7 @@ internal sealed class StatusIconTests
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(root.Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
         var chosen = await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
-        Check(chosen is { Kind: DesktopStatusIconActivationKind.MenuItem, MenuItemId: "open" }, "menu click routes the command ID");
+        Check(chosen is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open" }, "menu click routes the command ID");
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(root.Children[3].Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
 
@@ -114,7 +114,7 @@ internal sealed class StatusIconTests
             writer.WriteArrayEnd(events);
         }, static (message, _) => message.GetBodyReader().ReadArrayOfInt32());
         Check(unknown.SequenceEqual([9999]), "EventGroup reports unknown IDs");
-        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait) is { MenuItemId: "open" }, "EventGroup clicks route the command ID");
+        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait) is { CommandId: "open" }, "EventGroup clicks route the command ID");
 
         // libdbusmenu-glib (Waybar) asks before opening; it waits for these replies.
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShowGroup", "ai", (ref MessageWriter writer) => writer.WriteArray(RootMenu))
@@ -139,7 +139,7 @@ internal sealed class StatusIconTests
             static (message, _) => message.GetBodyReader().ReadUInt32(), notification => { if (notification.HasValue) layout.TrySetResult(notification.Value); },
             emitOnCapturedContext: false, flags: ObserverFlags.EmitAll);
         Check(await icon.ShowAsync(State(DesktopStatusIconStatus.NeedsAttention) with
-        { Menu = [new DesktopMenuCommand("quit", "Quit"), new DesktopMenuCommand("check", "Check daily") { IsChecked = false }] }) is PlatformResult<PlatformUnit>.Success, "update");
+        { Menu = [new DesktopMenuItem("Quit", "quit"), new DesktopMenuItem("Check daily", "check") { IsChecked = false }] }) is PlatformResult<PlatformUnit>.Success, "update");
         Check(await status.Task.WaitAsync(Wait) == "NeedsAttention", "NewStatus carries the status");
         Check(await layout.Task.WaitAsync(Wait) > revision, "LayoutUpdated carries a newer revision");
         var (_, updated) = await Layout(host, item);

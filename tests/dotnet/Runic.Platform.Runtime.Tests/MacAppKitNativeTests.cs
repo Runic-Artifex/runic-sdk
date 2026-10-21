@@ -37,15 +37,15 @@ internal sealed class MacAppKitNativeTests
             AttentionIcon = badge,
             Menu =
             [
-                new DesktopMenuCommand("open", "Open window"),
-                new DesktopMenuCommand("daily", "Check daily") { IsChecked = true },
+                new DesktopMenuItem("Open window", "open"),
+                new DesktopMenuItem("Check daily", "daily") { IsChecked = true },
                 new DesktopMenuSeparator(),
-                new DesktopMenuSubmenu("More",
+                new DesktopMenu("More",
                 [
-                    new DesktopMenuCommand("attention", "Ask for attention"),
-                    new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false },
+                    new DesktopMenuItem("Ask for attention", "attention"),
+                    new DesktopMenuItem("Unavailable", "disabled") { IsEnabled = false },
                 ]),
-                new DesktopMenuCommand("quit", "Quit"),
+                new DesktopMenuItem("Quit", "quit"),
             ],
         };
         Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The status item was not shown.");
@@ -207,7 +207,7 @@ internal sealed class MacAppKitNativeTests
     private static async Task ExpectAsync(Channel<DesktopStatusIconActivation> activations, DesktopStatusIconActivationKind kind, string? id)
     {
         var activation = await activations.Reader.ReadAsync().AsTask().WaitAsync(Step);
-        Require(activation.Kind == kind && activation.MenuItemId == id && activation.PlatformContext is null, $"Expected {kind} {id}; got {activation}.");
+        Require(activation.Kind == kind && activation.CommandId == id && activation.PlatformContext is null, $"Expected {kind} {id}; got {activation}.");
     }
 
     private static async Task WaitAsync(Func<Task<bool>> check, string description)

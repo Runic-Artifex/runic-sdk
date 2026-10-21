@@ -49,10 +49,10 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
         Tooltip = "Click to open the counter",
         Menu =
         [
-            new DesktopMenuCommand("open", "Open window"),
-            new DesktopMenuCommand("login", "Start at login") { IsChecked = startsAtLogin, IsEnabled = canChange },
+            new DesktopMenuItem(Title: "Open window", CommandId: "open"),
+            new DesktopMenuItem(Title: "Start at login", CommandId: "login") { IsChecked = startsAtLogin, IsEnabled = canChange },
             new DesktopMenuSeparator(),
-            new DesktopMenuCommand("quit", "Quit"),
+            new DesktopMenuItem(Title: "Quit", CommandId: "quit"),
         ],
     };
     if (await icon.ShowAsync(State()) is not PlatformResult<PlatformUnit>.Success)
@@ -62,8 +62,8 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
     Task? closed = null;
     await foreach (var item in events.Reader.ReadAllAsync())
     {
-        if (item is DesktopStatusIconActivation { MenuItemId: "quit" }) break;
-        if (item is DesktopStatusIconActivation { MenuItemId: "login" })
+        if (item is DesktopStatusIconActivation { CommandId: "quit" }) break;
+        if (item is DesktopStatusIconActivation { CommandId: "login" })
         {
             var changed = startsAtLogin
                 ? await startup.DisableAsync()
@@ -77,7 +77,7 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
         // The primary click, "Open window" and a second launch open the counter, or bring the open one forward.
         // The launch's or the click's activation token lets the desktop give the Window focus.
         var context = (item as ApplicationLaunch)?.PlatformContext ?? (item as DesktopStatusIconActivation)?.PlatformContext;
-        if (item is ApplicationLaunch || item is DesktopStatusIconActivation { Kind: DesktopStatusIconActivationKind.Primary } or DesktopStatusIconActivation { MenuItemId: "open" })
+        if (item is ApplicationLaunch || item is DesktopStatusIconActivation { Kind: DesktopStatusIconActivationKind.Primary } or DesktopStatusIconActivation { CommandId: "open" })
         {
             if (window is null)
             {

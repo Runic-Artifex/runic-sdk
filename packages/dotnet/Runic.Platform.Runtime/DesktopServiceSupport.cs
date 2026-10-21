@@ -176,28 +176,29 @@ internal static class DesktopServiceValidation
                 throw new ArgumentException("Status icon images need 1 to 512 pixels on each side and four RGBA bytes per pixel.");
         }
     }
-    private static void Menu(ImmutableArray<DesktopMenuItem> items, HashSet<string> ids, int depth, ref int count)
+    private static void Menu(ImmutableArray<DesktopMenuEntry> entries, HashSet<string> ids, int depth, ref int count)
     {
-        if (items.IsDefault) throw new ArgumentException("Status icon menus must be initialized.");
+        if (entries.IsDefault) throw new ArgumentException("Status icon menus must be initialized.");
         if (depth > 4) throw new ArgumentException("Status icon menus nest at most four submenus deep.");
-        foreach (var item in items)
+        foreach (var entry in entries)
         {
             if (++count > 256) throw new ArgumentException("A status icon menu has at most 256 entries.");
-            switch (item)
+            switch (entry)
             {
-                case DesktopMenuCommand command:
-                    Identifier(command.Id);
-                    if (!ids.Add(command.Id)) throw new ArgumentException("Status icon menu command IDs must be unique.");
-                    Text(command.Label, 128, "Menu label");
+                case null:
+                    throw new ArgumentNullException(nameof(entries), "Status icon menus cannot contain null entries.");
+                case DesktopMenuItem item:
+                    DesktopMenuRules.Title(item.Title, "A status icon menu item");
+                    DesktopMenuRules.CommandId(item.CommandId, $"the status icon menu item '{item.Title}'");
+                    if (!ids.Add(item.CommandId)) throw new ArgumentException($"The command id '{item.CommandId}' appears twice; status icon menu command ids must be unique.");
                     break;
-                case DesktopMenuSubmenu submenu:
-                    Text(submenu.Label, 128, "Menu label");
+                case DesktopMenu submenu:
+                    DesktopMenuRules.Title(submenu.Title, "A status icon submenu");
                     Menu(submenu.Items, ids, depth + 1, ref count);
                     break;
-                case DesktopMenuSeparator:
-                    break;
                 default:
-                    throw new ArgumentNullException(nameof(items), "Status icon menus cannot contain null entries.");
+                    // A separator, or an entry kind of a later release that providers skip.
+                    break;
             }
         }
     }

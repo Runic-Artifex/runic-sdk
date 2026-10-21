@@ -1,0 +1,12 @@
+{
+  "description": "Menu entry rules shared by the Runic Desktop menu bar (DesktopHostOptions.MenuBar, Runic.Desktop.Tests) and status icon menus (DesktopStatusIconState.Menu, Runic.Platform.Runtime.Tests). A title is literal text: not blank, at most 128 characters, no NUL. A command id has 1 to 64 ASCII letters, digits, dots, underscores or hyphens and does not start with the reserved 'runic.' in any letter case. A value {\"repeat\": s, \"count\": n} stands for s repeated n times.",
+  "titles": {
+    "valid": ["Save", "Open & show", "Open_dashboard", "Enregistrer…", "保存", " Padded ", { "repeat": "a", "count": 128 }],
+    "invalid": ["", " ", "\t", "Nul\u0000here", { "repeat": "a", "count": 129 }]
+  },
+  "commandIds": {
+    "valid": ["file.save", "a", "A-Z_0.9", "app.runic.settings", "runic", "runicx.save", { "repeat": "x", "count": 64 }],
+    "invalid": ["", " ", "file:open", "file save", "file/save", "über", "file.save\u0000", { "repeat": "x", "count": 65 }],
+    "reserved": ["runic.edit.copy", "runic.", "Runic.App.Quit", "RUNIC.x"]
+  }
+}

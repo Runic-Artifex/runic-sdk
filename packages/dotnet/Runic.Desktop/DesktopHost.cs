@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Runic.Desktop.Internal;
+using Runic.Platform;
 
 namespace Runic.Desktop;
 

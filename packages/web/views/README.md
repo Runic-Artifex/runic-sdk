@@ -321,8 +321,8 @@ shortcut, and `formatShortcut("Primary+S")` shows it as the platform does:
 Apple platforms and Ctrl elsewhere, `Alt` is Option, and `Control` is the
 Control key on Apple platforms and the same Ctrl elsewhere; matching requires
 exactly the shortcut's modifiers and ignores keys an input method is composing.
-The text is the same as Runic Desktop's `DesktopShortcut`, which macOS menu
-items use, and both are checked against the cases in
+The text is the same as Runic.Platform's `DesktopShortcut`, which Runic
+Desktop's macOS menu items use, and both are checked against the cases in
 [specs/desktop/fixtures/shortcuts.json](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/fixtures/shortcuts.json).
 Pass `{ apple: true }` or `{ apple: false }` to choose the platform rule
 instead of detecting it from `navigator`. See the

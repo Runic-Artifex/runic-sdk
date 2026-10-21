@@ -29,6 +29,8 @@ intentionally divergent, or not applicable.
 - [Shortcut cases](fixtures/shortcuts.json) are the keyboard shortcut text,
   display and key-event matching that `DesktopShortcut` and the page's
   `matchesShortcut` both check.
+- [Menu entry cases](fixtures/menu-entries.json) are the title and command id
+  rules that the Runic Desktop menu bar and status icon menus both check.
 
 The schemas and committed examples under `conformance/` are normative test
 inputs. Test reports, platform receipts, performance measurements, WebUI

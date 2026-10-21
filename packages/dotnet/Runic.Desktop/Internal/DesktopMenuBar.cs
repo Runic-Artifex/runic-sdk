@@ -1,3 +1,5 @@
+using Runic.Platform;
+
 namespace Runic.Desktop.Internal;
 
 // Checks a declared menu bar and maps it to AppKit. Pure, so the rules are tested on every platform.
@@ -37,7 +39,7 @@ internal static class DesktopMenuBar
         foreach (var menu in menus)
         {
             if (menu is null) throw new ArgumentException("The menu bar contains a null menu.", nameof(menus));
-            CheckMenu(menu, menu.Title, seen, diagnostics);
+            CheckMenu(menu, "", seen, diagnostics);
         }
         if (!macOS)
         {
@@ -57,21 +59,24 @@ internal static class DesktopMenuBar
 
     private static void CheckMenu(DesktopMenu menu, string path, Dictionary<DesktopShortcut, string> seen, List<DesktopDiagnostic> diagnostics)
     {
-        if (string.IsNullOrWhiteSpace(menu.Title)) throw new ArgumentException("A menu has no title.");
-        if (menu.Items is null) throw new ArgumentException($"The menu '{path}' has no item list.");
+        DesktopMenuRules.Title(menu.Title, path.Length == 0 ? "A menu" : $"A submenu of '{path}'");
+        path = path.Length == 0 ? menu.Title : path + " ▸ " + menu.Title;
+        if (menu.Items.IsDefault) throw new ArgumentException($"The menu '{path}' has no item list.");
         foreach (var entry in menu.Items)
         {
             switch (entry)
             {
+                case null:
+                    throw new ArgumentException($"The menu '{path}' contains a null entry.");
                 case DesktopMenu submenu:
-                    CheckMenu(submenu, path + " ▸ " + submenu.Title, seen, diagnostics);
+                    CheckMenu(submenu, path, seen, diagnostics);
                     break;
-                case DesktopMenuBarItem item:
-                    if (string.IsNullOrWhiteSpace(item.Title)) throw new ArgumentException($"An item of '{path}' has no title.");
-                    if (string.IsNullOrWhiteSpace(item.CommandId)) throw new ArgumentException($"The item '{path} ▸ {item.Title}' has no command.");
+                case DesktopMenuItem item:
+                    DesktopMenuRules.Title(item.Title, $"An item of '{path}'");
+                    var itemPath = path + " ▸ " + item.Title;
+                    DesktopMenuRules.CommandId(item.CommandId, $"'{itemPath}'");
                     if (item.Shortcut is { Key: not null } shortcut)
                     {
-                        var itemPath = path + " ▸ " + item.Title;
                         if (Reserved.FirstOrDefault(reserved => reserved.Shortcut == shortcut) is { Item: { } standard })
                         {
                             diagnostics.Add(Warning(ReservedCode,
@@ -89,10 +94,9 @@ internal static class DesktopMenuBar
                         }
                     }
                     break;
-                case DesktopMenuBarSeparator:
-                    break;
                 default:
-                    throw new ArgumentException($"The menu '{path}' contains a null entry.");
+                    // A separator, or an entry kind of a later release that the bar does not show.
+                    break;
             }
         }
     }

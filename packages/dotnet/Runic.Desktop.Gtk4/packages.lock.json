@@ -159,8 +159,12 @@
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Web.WebView2": "[1.0.4258.31, )"
+          "Microsoft.Web.WebView2": "[1.0.4258.31, )",
+          "Runic.Platform": "[0.9.1, )"
         }
+      },
+      "runic.platform": {
+        "type": "Project"
       },
       "Microsoft.Web.WebView2": {
         "type": "CentralTransitive",

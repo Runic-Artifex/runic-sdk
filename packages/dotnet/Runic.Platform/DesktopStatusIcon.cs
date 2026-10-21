@@ -26,32 +26,6 @@ public sealed record DesktopIcon
     public ImmutableArray<DesktopIconImage> Images { get; init; } = [];
 }
 
-/// <summary>An entry in a status icon's menu.</summary>
-/// <remarks>This set is closed: it gains cases only in a major release.</remarks>
-public abstract record DesktopMenuItem
-{
-    private protected DesktopMenuItem() { }
-}
-
-/// <summary>A menu command. Its ID is an application-owned routing key, never a command.</summary>
-public sealed record DesktopMenuCommand(string Id, string Label) : DesktopMenuItem
-{
-    /// <summary>Whether the command can be chosen.</summary>
-    public bool IsEnabled { get; init; } = true;
-    /// <summary>Null for a plain command; true or false for a check item and its state.</summary>
-    public bool? IsChecked { get; init; }
-}
-
-/// <summary>A line between groups of menu entries.</summary>
-public sealed record DesktopMenuSeparator : DesktopMenuItem;
-
-/// <summary>A labelled submenu.</summary>
-public sealed record DesktopMenuSubmenu(string Label, ImmutableArray<DesktopMenuItem> Items) : DesktopMenuItem
-{
-    /// <summary>Whether the submenu can be opened.</summary>
-    public bool IsEnabled { get; init; } = true;
-}
-
 /// <summary>Everything a status icon shows. Each <see cref="IDesktopStatusIcon.ShowAsync"/> replaces the whole state.</summary>
 public sealed record DesktopStatusIconState(DesktopIcon Icon, string Title)
 {
@@ -62,7 +36,13 @@ public sealed record DesktopStatusIconState(DesktopIcon Icon, string Title)
     /// <summary>Text shown below <see cref="Title"/> in the tooltip.</summary>
     public string? Tooltip { get; init; }
     /// <summary>The menu, opened with the secondary button. An empty menu shows none.</summary>
-    public ImmutableArray<DesktopMenuItem> Menu { get; init; } = [];
+    /// <remarks>
+    /// Command ids are unique, submenus nest at most four deep and the menu has at most 256 entries. Each
+    /// <see cref="DesktopMenuItem"/> shows its <see cref="DesktopMenuItem.IsEnabled"/> and
+    /// <see cref="DesktopMenuItem.IsChecked"/>; <see cref="DesktopMenuItem.Shortcut"/> and <see cref="DesktopMenu.Role"/>
+    /// are ignored.
+    /// </remarks>
+    public ImmutableArray<DesktopMenuEntry> Menu { get; init; } = [];
 }
 
 /// <summary>How the user activated a status icon.</summary>
@@ -73,12 +53,14 @@ public enum DesktopStatusIconActivationKind
     Primary,
     /// <summary>The secondary action, usually a middle click.</summary>
     Secondary,
-    /// <summary>A menu command; see <see cref="DesktopStatusIconActivation.MenuItemId"/>.</summary>
+    /// <summary>A menu item; see <see cref="DesktopStatusIconActivation.CommandId"/>.</summary>
     MenuItem
 }
 
 /// <summary>A user action on a status icon. Treat activation as untrusted input at the application boundary.</summary>
-public sealed record DesktopStatusIconActivation(DesktopStatusIconActivationKind Kind, string? MenuItemId = null)
+/// <param name="Kind">How the user activated the icon.</param>
+/// <param name="CommandId">The <see cref="DesktopMenuItem.CommandId"/> of the chosen item for <see cref="DesktopStatusIconActivationKind.MenuItem"/>; otherwise <see langword="null"/>.</param>
+public sealed record DesktopStatusIconActivation(DesktopStatusIconActivationKind Kind, string? CommandId = null)
 {
     /// <summary>Short-lived desktop activation data for raising a window. Dispatch promptly; do not persist it.</summary>
     public DesktopActivationContext? PlatformContext { get; init; }
