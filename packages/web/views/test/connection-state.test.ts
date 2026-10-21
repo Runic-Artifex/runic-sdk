@@ -178,7 +178,7 @@ test("connecting a View publishes the connection on the shared channel", async (
   const seen: string[] = [];
   page[key] = { listeners: new Set([state => seen.push(state)]) };
   const fake = hostBridge(true);
-  host.__runicBridge = { ...fake.bridge, call: async () => JSON.stringify({ ok: true, state: { revision: 1 }, error: null }) };
+  host.__runicBridge = { ...fake.bridge, call: async () => JSON.stringify({ ok: true, state: { revision: 1 }, error: null, protocol: 3 }) };
   const client = await connectView({ contract: "Tests.Shared:1", route: "shared", mount: false, hydrate: (wire: unknown) => wire });
   assert.equal(page[key]!.state, "connected");
   fake.set(false);

@@ -26,7 +26,7 @@ public sealed class WindowCloseTests
         Require(!close.IsCompleted && !model.Cancelled,
             "Close did not wait for an awaited command, or cancelled it before its timeout.");
         using (var rejected = JsonDocument.Parse(await transport.CallAsync("slowSave")))
-            Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "disconnected",
+            Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "released",
                 "A closing window admitted a new awaited command.");
 
         model.Release.TrySetResult();
@@ -58,7 +58,7 @@ public sealed class WindowCloseTests
         Require(cancelled, "Cancelling the token did not stop the drain wait.");
         Require(!model.Cancelled, "Cancelling the wait cancelled the accepted command.");
         using (var rejected = JsonDocument.Parse(await transport.CallAsync("slowSave")))
-            Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "disconnected",
+            Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "released",
                 "A cancelled drain reopened admission.");
         model.Release.TrySetResult();
         using (var reply = JsonDocument.Parse(await call))

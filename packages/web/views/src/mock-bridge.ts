@@ -1,6 +1,6 @@
 import type { BridgeErrorKind, BridgeFailureDetail } from "./errors.js";
 import type { RunicBridgeClient } from "./transport.js";
-import { viewsVersion } from "./version.js";
+import { bridgeProtocol, viewsVersion } from "./version.js";
 
 /** A wire state as .NET serializes it, without `revision`. */
 export type MockState = Record<string, unknown>;
@@ -32,10 +32,11 @@ export interface MockErrorFailure {
   /**
    * The BridgeError kind of the reply. `transport` makes the call itself reject,
    * like a dropped host connection; the client reports it as `failed`, or as
-   * `disconnected` after `disconnect()`. A `disconnected` reply is how .NET answers
-   * a released View, so the client reports it as `released`.
+   * `disconnected` after `disconnect()`. `disconnected` is not a reply kind: .NET
+   * never sends it, so use `disconnect()` for a lost connection. `released` is how
+   * .NET answers a released View.
    */
-  readonly kind: BridgeErrorKind | "transport";
+  readonly kind: Exclude<BridgeErrorKind, "disconnected"> | "transport";
   readonly message?: string;
   /** Development-only .NET detail, as `BridgeError.detail` exposes it. */
   readonly detail?: BridgeFailureDetail;
@@ -244,7 +245,7 @@ export interface MockBridge extends Required<RunicBridgeClient> {
   /**
    * Rejects further calls until `reconnect()` and reports the loss to `onConnectionChange` listeners. Like
    * .NET when a connection closes, it ends the mounted presentations, and a later `Mount` in their browser
-   * session answers `disconnected`, which the client reports as `released`.
+   * session answers `released`.
    */
   disconnect(): void;
   /** Restores calls and notifies connection and reconnect listeners, as a host transport does after a reconnect. */
@@ -414,7 +415,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   // Like .NET, only snapshot replies state the protocol and package version; the mock is of this release.
   const envelope = (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown; failure?: unknown },
     protocol = false) => JSON.stringify({
-    ok: error === undefined, state: wireState(view), error: error ?? null, ...(protocol ? { protocol: 2, version: viewsVersion } : {}),
+    ok: error === undefined, state: wireState(view), error: error ?? null, ...(protocol ? { protocol: bridgeProtocol, version: viewsVersion } : {}),
   });
   // A thrown mockFailure replies with the declared failure, which never has detail.
   const errorReply = (view: MockRegisteredView, suffix: string, error: unknown) => {
@@ -709,8 +710,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   function endPresentation(view: MockRegisteredView, presentation: Presentation): void {
     view.presentations.delete(presentation.id);
-    presentation.wait?.resolve(JSON.stringify({ kind: "disconnected" }));
-    presentation.controlWait?.resolve(JSON.stringify({ kind: "disconnected" }));
+    presentation.wait?.resolve(JSON.stringify({ kind: "released" }));
+    presentation.controlWait?.resolve(JSON.stringify({ kind: "released" }));
     presentation.wait = presentation.controlWait = undefined;
     for (const request of presentation.queue.splice(0)) request.reply.resolve({ kind: "cancelled" });
   }
@@ -733,7 +734,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       }
       case "__runicInteractionWait": {
         const { view, presentation } = presentationOf(payload);
-        if (!view || !presentation) return JSON.stringify({ kind: "disconnected" });
+        if (!view || !presentation) return JSON.stringify({ kind: "released" });
         const next = presentation.queue.shift();
         if (next) return requestEnvelope(view, presentation, next);
         presentation.wait = deferred<string>();
@@ -741,7 +742,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       }
       case "__runicInteractionControlWait": {
         const { view, presentation } = presentationOf(payload);
-        if (!view || !presentation) return JSON.stringify({ kind: "disconnected" });
+        if (!view || !presentation) return JSON.stringify({ kind: "released" });
         const cancelled = presentation.cancellations.shift();
         if (cancelled) return JSON.stringify({ kind: "cancelled", requestId: cancelled });
         presentation.controlWait = deferred<string>();
@@ -843,7 +844,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     }
     if (suffix === "Snapshot") return envelope(view, undefined, true);
     if (suffix === "Mount") {
-      if (typeof args[0] === "string" && closedSessions.has(sessionOf(args[0]))) return "disconnected";
+      if (typeof args[0] === "string" && closedSessions.has(sessionOf(args[0]))) return "released";
       // The mount token identifies the presentation that interaction handlers belong to.
       if (typeof args[0] === "string" && !view.presentations.has(args[0]))
         view.presentations.set(args[0], { id: args[0], handlers: [], queue: [], cancellations: [] });

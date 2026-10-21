@@ -117,7 +117,7 @@ internal static class BridgeCallOutcome
     internal const string Rejected = "rejected";
     internal const string Cancelled = "cancelled";
     internal const string Failed = "failed";
-    internal const string Disconnected = "disconnected";
+    internal const string Released = "released";
     internal const string Unavailable = "unavailable";
     internal const string Capacity = "capacity";
     internal const string Duplicate = "duplicate";

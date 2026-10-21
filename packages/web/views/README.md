@@ -83,7 +83,8 @@ only. Application code imports the root entry, `/experimental` and `/mock`. The
 any later release of the same major, but their shape is not for hand-written
 code. A framework binding depends on the exact same release. Use the .NET and
 npm packages of one release together: a .NET host of another release is
-reported as a diagnostic with code `version` (see
+reported as a diagnostic with code `version`, and a client does not connect to a
+host of another Views protocol version (see
 [Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, operation and keyed
 collection runtimes to `connectView` only when its ViewModel has them, and
 imports the decoders as a namespace, so a bundler leaves out the protocol code
@@ -439,7 +440,8 @@ so the test decides when the client observes each one. `sleep(ms)` resolves in
 virtual time, which only `advance` moves, in both scheduling modes.
 `failNext(route, { kind: "transport" })` rejects the call itself, like a
 dropped connection, and `disconnect()`/`reconnect()` exercise the reconnect
-path.
+path. `failNext` takes no `disconnected` kind, because .NET never sends it: use
+`disconnect()` for a lost connection.
 
 The mock follows the .NET protocol where a client can observe it:
 
@@ -451,10 +453,10 @@ The mock follows the .NET protocol where a client can observe it:
 - A checked write retried with the same request id returns its first receipt, and
   reusing the id for another write is a `conflict`. A setter handler that throws an
   error with `kind: "committed-with-error"` keeps the value and returns that receipt.
-- Only snapshot replies carry `protocol`, and a declared failure replies
+- Only snapshot replies carry `protocol` (3), and a declared failure replies
   `domain-failed` with `failure` and the state after the call.
 - `disconnect()` ends the mounted presentations, and a later `Mount` in their
-  browser session answers `disconnected`, as .NET does when a CS-WebUI reconnect
+  browser session answers `released`, as .NET does when a CS-WebUI reconnect
   keeps the connection key. After `reconnect()` the client mounts its Views again
   in a new browser session. Both are reported to `onConnectionChange` listeners,
   so `onBridgeConnection` sees `reconnecting` and `connected`.
@@ -530,10 +532,20 @@ A `BridgeError` names what failed and why:
   `dispose()` or by .NET, for example because navigation replaced it), `timeout`
   (a Bridge is installed but did not connect in time) or `unavailable` (no
   host installed `window.__runicBridge`, for example a frontend opened from a
-  plain Vite server; the message says how to fix it). A reply kind the client
-  does not know, including a declared failure of a command whose client does not
-  declare it, is `failed`. .NET answers a call of a released View with
-  `disconnected` on the wire; the reply arrived, so the client reports `released`.
+  plain Vite server; the message says how to fix it). `disconnected` is decided
+  by the client; .NET never sends it. A reply kind the client does not know,
+  including a declared failure of a command whose client does not declare it, is
+  `failed`.
+- `reason` refines `kind` when .NET sent one (`BridgeErrorReason`, open): a
+  `rejected` command whose `CanExecute` is false has `unavailable`, and a setter
+  value or command argument that does not decode or is rejected has
+  `invalid-input`. `unresolved-key` is reserved for a later release.
+- A connect to a .NET host that speaks another Views protocol version, for example
+  a page of this release with `Runic.Application.Views` of another one, rejects
+  with `failed` and a message that names both versions. Use the .NET and npm
+  packages of one release, rebuild so the generated clients are regenerated, and
+  reload the page. A snapshot read after a reconnect to such a host fails the
+  same way.
 - A command that replaces or leaves its own page in a navigation region ran,
   so its call resolves, with the last state the client accepted, although .NET
   released the page's View before the reply. A later call of the released View,
@@ -586,7 +598,7 @@ failure a caller may retry, while an uncertain operation may have run, so start 
 again only with the same request id. `BridgeError` and
 `BridgeOperationUncertainError` have public constructors for tests and mocks.
 
-String unions are open or closed. `BridgeErrorKind`, `BridgeDiagnosticCode`,
+String unions are open or closed. `BridgeErrorKind`, `BridgeErrorReason`, `BridgeDiagnosticCode`,
 `BridgeOperationDeliveryFailureKind` and `BridgeOperationCancelKind` are open: a
 minor release may add a member, so a `switch` over them needs a `default`.
 `BridgeOperationStatusKind` and `BridgeConnectionState` are closed until the next
@@ -598,7 +610,8 @@ failed call or a missing or unconnected Bridge, `uncertain` for an uncertain
 operation, `timed-out` for an operation `wait({ timeout })` that passed its
 deadline, `reported` for errors the runtime caught from listeners, invalid pushes
 and reconnect work (those are also passed to `reportError`), `protocol` for a
-.NET host that speaks another Views protocol version and `version` for a .NET
+.NET host that speaks another Views protocol version (the only diagnostic of the
+reads it fails) and `version` for a .NET
 host whose `Runic.Application.Views` is of another release than this package
 (each once per Bridge). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
 forwards them to its DevTools dock during development. A call of a released

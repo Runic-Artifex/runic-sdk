@@ -8,6 +8,7 @@ export {
   type BridgeOperationUncertainErrorOptions,
   type BridgeErrorKind,
   type BridgeErrorOptions,
+  type BridgeErrorReason,
   type BridgeFailureDetail,
 } from "./errors.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, type BridgeDiagnosticListener } from "./diagnostics.js";

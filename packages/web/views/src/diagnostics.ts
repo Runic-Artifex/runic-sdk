@@ -66,6 +66,11 @@ function markReported(error: object): boolean {
   return true;
 }
 
+/** Marks an error as reported without a diagnostic, because another diagnostic already stated its cause. */
+export function suppressErrorDiagnostic(error: object): void {
+  markReported(error);
+}
+
 export function emitBridgeDiagnostic(diagnostic: BridgeDiagnostic): void {
   const error = diagnostic.error;
   if (typeof error === "object" && error !== null && !markReported(error)) return;

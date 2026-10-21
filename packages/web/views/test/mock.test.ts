@@ -425,7 +425,7 @@ test("commands and interactions work again after a reconnect remounts the View",
   assert.deepEqual(inputs, ["yes"]);
   const [first, second] = bridge.calls.filter(call => call.name === "notesMount").map(call => String(call.args[0]).split(":"));
   assert.ok(first && second && first[0] !== second[0] && first[1] === second[1], "the View mounted again in a new browser session");
-  assert.equal(await bridge.call("notesMount", first!.join(":")), "disconnected");
+  assert.equal(await bridge.call("notesMount", first!.join(":")), "released");
   stop();
   client.dispose();
 });

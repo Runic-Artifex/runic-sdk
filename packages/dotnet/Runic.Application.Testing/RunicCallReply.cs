@@ -28,9 +28,10 @@ public sealed class RunicCallReply<TModel> where TModel : class
     /// <summary>Whether the call succeeded.</summary>
     public bool Succeeded { get; }
     /// <summary>
-    /// The BridgeError kind of a failed call, such as <c>rejected</c> or <c>failed</c>, or
-    /// <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>). Error kinds are an open set:
-    /// a minor release may add kinds, so compare with the ones a test expects.
+    /// The BridgeError kind of a failed call, such as <c>rejected</c> or <c>failed</c>, <c>released</c> for a
+    /// released View or closed window, or <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>).
+    /// Error kinds are an open set: a minor release may add kinds, so compare with the ones a test expects. A
+    /// <c>rejected</c> reply's <c>reason</c> (<c>unavailable</c>, <c>invalid-input</c>) is in <see cref="Json"/>.
     /// </summary>
     public string? ErrorKind { get; }
     /// <summary>The message of a failed call.</summary>

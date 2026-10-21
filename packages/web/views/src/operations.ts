@@ -368,9 +368,9 @@ export const bridgeOperations: BridgeOperations = {
     };
     try { admission = JSON.parse(reply) as typeof admission; }
     catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
-    // A released View answers `{kind: "disconnected"}`, or the host's disconnected envelope once its route is unbound.
-    if (admission.kind === "disconnected") throw new BridgeError("released", admission.reason ?? "This View was released.", { route: startRoute });
-    if (admission.error?.kind === "disconnected") throw releasedRouteError(startRoute);
+    // A released View answers `{kind: "released"}`, or the host's released envelope once its route is unbound.
+    if (admission.kind === "released") throw new BridgeError("released", admission.reason ?? "This View was released.", { route: startRoute });
+    if (admission.error?.kind === "released") throw releasedRouteError(startRoute);
     if (admission.kind === "accepted" || admission.kind === "duplicate") {
       const terminal = admission.terminal === null || admission.terminal === undefined
         ? undefined : operations.parseStatus(JSON.stringify(admission.terminal), requestId, decode, decodeFailure);

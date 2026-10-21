@@ -1,10 +1,9 @@
-import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
-import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
+import { emitErrorDiagnostic } from "./diagnostics.js";
+import { BridgeError, type BridgeErrorKind, type BridgeErrorReason, decodeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
-import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
+import { checkSnapshotProtocol, errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, notConnectedError, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
-import { viewsVersion } from "./version.js";
 import * as bridgeWire from "./wire.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
@@ -90,54 +89,32 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
     stream?: boolean, decodeFailure?: (value: unknown) => TFailure): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
 }
 
-type EnvelopeError = { readonly kind: string; readonly message: string; readonly detail?: unknown; readonly failure?: unknown };
+type EnvelopeError = {
+  readonly kind: string; readonly message: string; readonly detail?: unknown; readonly failure?: unknown; readonly reason?: unknown;
+};
 // `released` is true when .NET released the View during the call, so the reply has no state.
 type Envelope = {
   readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null; readonly protocol?: unknown; readonly version?: unknown;
   readonly released?: unknown;
 };
 
-/** The Views wire protocol this runtime implements (specs/application/README.md). */
-export const bridgeProtocol = 2;
-
 const callFailed = (bridge: RunicBridgeClient, message: string, route: string, cause: unknown) =>
   new BridgeError(bridge.isConnected() ? "failed" : "disconnected", message, { cause, route });
 
-const errorKinds: readonly string[] = ["rejected", "cancelled", "failed", "disconnected", "released", "timeout", "unavailable"] satisfies readonly BridgeErrorKind[];
+// The reply error kinds a client accepts from the wire (protocol 3). `disconnected` is
+// client-only, the Bridge is not connected, and .NET never sends it, so like any kind
+// this client does not know, including `domain-failed` on a route that declares no
+// failure type, it is `failed`: a newer host cannot surprise the client.
+const replyErrorKinds: readonly string[] = ["rejected", "cancelled", "failed", "released", "timeout", "unavailable"] satisfies readonly BridgeErrorKind[];
 
-// A kind this client does not know, including `domain-failed` on a route that
-// declares no failure type, is `failed`: a newer host cannot surprise it.
-// .NET answers a call of a released or closed View `disconnected`; the reply
-// arrived, so the Bridge is connected and the View was released.
 function replyError(error: EnvelopeError | null, route: string, fallback: string): BridgeError {
   const detail = decodeFailureDetail(error?.detail);
-  const known = typeof error?.kind === "string" && errorKinds.includes(error.kind) ? error.kind as BridgeErrorKind : "failed";
-  const kind = known === "disconnected" ? "released" : known;
-  return new BridgeError(kind, error?.message ?? fallback, { route, ...(detail === undefined ? {} : { detail }) });
-}
-
-// The protocol and package versions are informational. A snapshot reply from a
-// host that speaks another protocol version, or that runs Runic.Application.Views
-// of another release than this package, is reported once per Bridge, as a diagnostic.
-const protocolReported = new WeakSet<object>();
-const versionReported = new WeakSet<object>();
-function checkProtocol(reply: Envelope, entry: SharedEntry, route: string): void {
-  if (reply.protocol !== undefined && reply.protocol !== bridgeProtocol && !protocolReported.has(entry.bridge)) {
-    protocolReported.add(entry.bridge);
-    emitBridgeDiagnostic({
-      kind: "error", code: "protocol", route,
-      message: `The .NET host uses Views protocol ${String(reply.protocol)}, but this client was built for protocol ${bridgeProtocol}. ` +
-        "Use the same Runic.Application.Views and @runic-artifex/views version.",
-    });
-  }
-  if (typeof reply.version === "string" && reply.version !== viewsVersion && !versionReported.has(entry.bridge)) {
-    versionReported.add(entry.bridge);
-    emitBridgeDiagnostic({
-      kind: "error", code: "version", route,
-      message: `The .NET host runs Runic.Application.Views ${reply.version}, but this page uses @runic-artifex/views ${viewsVersion}. ` +
-        "Use the .NET and npm packages of one release.",
-    });
-  }
+  const kind = typeof error?.kind === "string" && replyErrorKinds.includes(error.kind) ? error.kind as BridgeErrorKind : "failed";
+  // `reason` is an open vocabulary; an unknown reason is kept as sent.
+  const reason = typeof error?.reason === "string" ? error.reason as BridgeErrorReason : undefined;
+  return new BridgeError(kind, error?.message ?? fallback, {
+    route, ...(detail === undefined ? {} : { detail }), ...(reason === undefined ? {} : { reason }),
+  });
 }
 
 // Parses a reply and accepts its state. Returns the envelope and the accepted
@@ -147,7 +124,7 @@ function parse(json: string, entry: SharedEntry, route: string): { readonly repl
   try { reply = JSON.parse(json) as Envelope; }
   catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route }); }
   if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.", { route });
-  if (route.endsWith("Snapshot")) checkProtocol(reply, entry, route);
+  if (route.endsWith("Snapshot")) checkSnapshotProtocol(reply, entry.bridge, route);
   let state: unknown;
   try { state = reply.state === null ? undefined : entry.accept(reply.state); }
   catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route }); }
@@ -474,7 +451,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       catch (cause) { throw callFailed(bridge, "The command availability query could not complete.", name, cause); }
       if (reply === "true") return true;
       if (reply === "false") return false;
-      if (isDisconnectedEnvelope(reply)) throw releasedRouteError(name);
+      if (isReleasedEnvelope(reply)) throw releasedRouteError(name);
       throw new BridgeError("failed", "The command availability query returned an invalid response.", { route: name });
     }),
     writeField: (name, payload, decode) => observed(name, async () => {
@@ -518,10 +495,10 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
 }
 
 // The reply of a route the host no longer binds, on a route whose replies are not envelopes.
-function isDisconnectedEnvelope(json: string): boolean {
+function isReleasedEnvelope(json: string): boolean {
   try {
     const reply = JSON.parse(json) as Partial<Envelope> | null;
-    return reply !== null && typeof reply === "object" && reply.ok === false && reply.error?.kind === "disconnected";
+    return reply !== null && typeof reply === "object" && reply.ok === false && reply.error?.kind === "released";
   } catch { return false; }
 }
 

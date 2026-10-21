@@ -196,7 +196,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="connectionKey">The connection identity the View was mounted with.</param>
     /// <exception cref="InvalidOperationException">
     /// The route did not release it, for example because another client mounted it (<c>ignored</c>) or the window
-    /// closed (<c>disconnected</c>). The message names the reply.
+    /// closed (<c>released</c>). The message names the reply.
     /// </exception>
     public void Unmount(string token, string? clientKey = null, string? connectionKey = null)
     {

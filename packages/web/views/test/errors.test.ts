@@ -133,7 +133,7 @@ test("an unusable collection change is reported before the client recovers", asy
   const { reported, restore } = observe();
   try {
     let recoveries = 0;
-    bridge.route("rowsSnapshot", () => { recoveries++; return JSON.stringify({ ok: true, state: { revision: 5, rows: [{ id: 5 }] }, error: null }); });
+    bridge.route("rowsSnapshot", () => { recoveries++; return JSON.stringify({ ok: true, state: { revision: 5, rows: [{ id: 5 }] }, error: null, protocol: 3 }); });
     const push = host["__rowsChanged"] as (wire: unknown) => void;
     push({ __runicDelta: 1, baseRevision: 1, revision: 2,
       changes: [{ field: "rows", kind: "remove", index: 0, oldIndex: 0, keys: ["missing"], items: [] }] });

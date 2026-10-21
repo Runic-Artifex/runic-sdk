@@ -117,7 +117,7 @@ try {
   if (await query('document.querySelector("#document-pane p")?.textContent') !== "Line one")
     throw new Error("Preview did not observe Editor state.");
   const detachedEditor = await snapshot(`content${editorId}`);
-  if (detachedEditor.error?.kind !== "disconnected") throw new Error("Nested Editor endpoint stayed active after its outlet changed.");
+  if (detachedEditor.error?.kind !== "released") throw new Error("Nested Editor endpoint stayed active after its outlet changed.");
   if (!(await snapshot(`content${sidebarId}`)).ok) throw new Error("Independent sidebar disconnected with the Editor.");
 
   await click("[data-pane=editor]");
@@ -146,7 +146,7 @@ try {
   // Home is unavailable until its Back ends, so focus returns once it is enabled again.
   await waitFor(async () => await query('document.activeElement?.getAttribute("data-go")') === "home",
     { label: "the dialog returning focus to the sidebar", detail });
-  if ((await snapshot(`content${dialogId}`)).error?.kind !== "disconnected")
+  if ((await snapshot(`content${dialogId}`)).error?.kind !== "released")
     throw new Error("Closed dialog endpoint stayed active.");
 
   await click("[data-go=home]");

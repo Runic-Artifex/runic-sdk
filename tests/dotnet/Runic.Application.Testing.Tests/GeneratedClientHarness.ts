@@ -264,7 +264,7 @@ for (let attempt = 0; interactionReply === undefined && attempt < 500; attempt++
 expect(interactionReply?.kind === "answered" && JSON.stringify(interactionReply.output) === fixture.dtoInteraction.output,
   `A DTO interaction output was not encoded as .NET accepts it: ${JSON.stringify(interactionReply)}`);
 dtoInteraction.dispose();
-releaseControlWait?.(JSON.stringify({ kind: "disconnected" }));
+releaseControlWait?.(JSON.stringify({ kind: "released" }));
 
 function expectArgs(route: string, actual: readonly unknown[], expected: string): void {
   expect(actual.length === 1 && actual[0] === expected,

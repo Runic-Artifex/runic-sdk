@@ -48,10 +48,10 @@ class MockBridge {
       // Real transport yields to I/O. This also prevents a broken generated
       // polling loop from starving test deadlines with resolved microtasks.
       await Bun.sleep(1);
-      if (!this.connected) return JSON.stringify({ kind: "disconnected" });
+      if (!this.connected) return JSON.stringify({ kind: "released" });
       switch (route) {
         case "generatedInteractionSnapshot": return JSON.stringify({ ok: true, state: {
-          revision: 0, attempt: 0, acceptedCount: 0, canAsk: true, isAskExecuting: false }, error: null });
+          revision: 0, attempt: 0, acceptedCount: 0, canAsk: true, isAskExecuting: false }, error: null, protocol: 3 });
         case "generatedInteractionMount": this.mountToken = String(args[0]); return "ok";
         case "generatedInteractionUnmount": return "ok";
         case "generatedInteractionAsk":
@@ -103,7 +103,7 @@ class MockBridge {
   }
   close(): void {
     this.connected = false;
-    for (const resolve of this.pending.values()) resolve(JSON.stringify({ kind: "disconnected" }));
+    for (const resolve of this.pending.values()) resolve(JSON.stringify({ kind: "released" }));
     this.pending.clear(); this.queued.clear();
     for (const finish of [...this.handlers]) finish();
   }
@@ -196,10 +196,10 @@ await scenario("two concurrent prompts", async (mock, view) => {
   await eventually(() => mock.replies === 2, "Handlers did not reply independently");
 });
 
-for (const kind of ["ignored", "unsupported", "disconnected"] as const) {
+for (const kind of ["ignored", "unsupported", "released"] as const) {
   await scenario(`${kind} stops polling`, async (mock, view) => {
     view.interactions.confirm.handle(() => false);
-    const route: Poll = kind === "disconnected" ? "__runicInteractionControlWait" : "__runicInteractionWait";
+    const route: Poll = kind === "released" ? "__runicInteractionControlWait" : "__runicInteractionWait";
     mock.send(route, { kind });
     await Bun.sleep(40);
     expect(mock.counts.get(route) === 1, `${kind} response restarted the poll.`);
@@ -210,7 +210,7 @@ await scenario("late prompt after disconnect", async (mock, view) => {
   let invoked = false;
   view.interactions.confirm.handle(() => { invoked = true; return false; });
   await eventually(() => mock.pending.size === 2, "Both polls did not start");
-  mock.send("__runicInteractionControlWait", { kind: "disconnected" });
+  mock.send("__runicInteractionControlWait", { kind: "released" });
   await Bun.sleep(10);
   mock.send("__runicInteractionWait", mock.request("late"));
   await Bun.sleep(10);

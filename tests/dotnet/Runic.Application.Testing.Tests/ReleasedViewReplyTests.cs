@@ -43,7 +43,7 @@ public sealed class ReleasedViewReplyTests
     {
         using var fixture = new Fixture();
         var reply = Read(fixture.Transport.Call($"{fixture.Route}SetValue", new(Int64Value: -1)));
-        Require(!reply.Ok && reply.ErrorKind == "rejected" && !reply.HasState && reply.Released,
+        Require(!reply.Ok && reply.ErrorKind == "rejected" && reply.Reason == "invalid-input" && !reply.HasState && reply.Released,
             $"A rejected call on a released page replied {reply.Json}.");
     }
 
@@ -55,20 +55,20 @@ public sealed class ReleasedViewReplyTests
         const string write = """{"requestId":"leave","expectedVersion":0,"expectedValue":0,"value":3}""";
         var reply = Read(fixture.Transport.Call($"{fixture.Route}WriteCount", new(StringValue: write)));
         Require(fixture.Page.Ran && fixture.Page.Count == 3, "The checked write did not run.");
-        Require(!reply.Ok && reply.ErrorKind == "disconnected" && !reply.HasState && reply.Released
+        Require(!reply.Ok && reply.ErrorKind == "released" && !reply.HasState && reply.Released
             && !reply.Json.Contains("\"receipt\"", StringComparison.Ordinal),
             $"A checked write that released its own page replied {reply.Json}.");
     }
 
     // A snapshot read has nothing to report once its bridge is released while it is captured.
     [Test]
-    public void ASnapshotReadOfAReleasedPageIsDisconnected()
+    public void ASnapshotReadOfAReleasedPageIsReleased()
     {
         using var fixture = new Fixture();
         fixture.Page.LeaveOnSnapshot = true;
         var reply = Read(fixture.Transport.Call($"{fixture.Route}Snapshot"));
         Require(fixture.Page.Ran, "The snapshot writer did not release the page.");
-        Require(!reply.Ok && reply.ErrorKind == "disconnected" && !reply.HasState && !reply.Released,
+        Require(!reply.Ok && reply.ErrorKind == "released" && !reply.HasState && !reply.Released && reply.Protocol == BridgeProtocol.Version,
             $"A snapshot read of a released page replied {reply.Json}.");
     }
 
@@ -90,17 +90,19 @@ public sealed class ReleasedViewReplyTests
             root.GetProperty("state").ValueKind == JsonValueKind.Object,
             root.TryGetProperty("released", out var released) && released.ValueKind == JsonValueKind.True,
             error.ValueKind == JsonValueKind.Object ? error.GetProperty("kind").GetString() : null,
-            error.ValueKind == JsonValueKind.Object ? error.GetProperty("message").GetString() : null);
+            error.ValueKind == JsonValueKind.Object ? error.GetProperty("message").GetString() : null,
+            error.ValueKind == JsonValueKind.Object && error.TryGetProperty("reason", out var reason) ? reason.GetString() : null,
+            root.TryGetProperty("protocol", out var protocol) ? protocol.GetInt32() : null);
     }
 
-    private sealed record Reply(string Json, bool Ok, bool HasState, bool Released, string? ErrorKind, string? Message);
+    private sealed record Reply(string Json, bool Ok, bool HasState, bool Released, string? ErrorKind, string? Message, string? Reason, int? Protocol);
 
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         public Fixture()
         {
@@ -131,12 +133,12 @@ public sealed class ReleasedViewReplyTests
         }
     }
 
-    private sealed class Shell : INotifyPropertyChanged
+    internal sealed class Shell : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
     }
 
-    private sealed class Page(Action leave) : INotifyPropertyChanged
+    internal sealed class Page(Action leave) : INotifyPropertyChanged
     {
         private int _value;
         private int _count;

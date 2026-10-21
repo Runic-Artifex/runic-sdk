@@ -1,11 +1,20 @@
 /**
  * Why a Bridge call did not complete. `unavailable` means no host installed
  * `window.__runicBridge`; `timeout` means a Bridge exists but did not connect in time.
- * `disconnected` means the Bridge itself is not connected to .NET; `released` means
- * the Bridge is connected but .NET or the page released this View, for example
- * because navigation replaced it.
+ * `disconnected` means the Bridge itself is not connected to .NET (the client decides
+ * this; .NET never sends it); `released` means the Bridge is connected but .NET or the
+ * page released this View, for example because navigation replaced it.
  */
 export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnected" | "released" | "timeout" | "unavailable";
+
+/**
+ * Refines a {@link BridgeError} kind. .NET sends `unavailable` (a command whose
+ * `CanExecute` is false) and `invalid-input` (a setter value or command argument that
+ * does not decode or is rejected) with `rejected`. `unresolved-key` is reserved for a
+ * command parameter resolved from a wire key that resolves to nothing; no release sends
+ * it yet. Open: a minor release may add a reason, so handle unknown reasons.
+ */
+export type BridgeErrorReason = "unavailable" | "invalid-input" | "unresolved-key";
 
 /**
  * Local failure detail that .NET adds to an error reply only in development
@@ -34,6 +43,8 @@ export interface BridgeErrorOptions {
   /** The Bridge route that failed, such as `counterIncrement`. */
   readonly route?: string;
   readonly detail?: BridgeFailureDetail;
+  /** What refines `kind`, such as `unavailable` for a `rejected` command. */
+  readonly reason?: BridgeErrorReason;
 }
 
 // Brands are registered symbols, so `instanceof` also holds for an error
@@ -51,12 +62,15 @@ export class BridgeError extends Error {
   readonly route?: string;
   /** Development-only .NET failure detail, when the host sent it. */
   readonly detail?: BridgeFailureDetail;
+  /** What refines `kind`, when .NET sent it, such as `unavailable` or `invalid-input` for `rejected`. */
+  readonly reason?: BridgeErrorReason;
 
   constructor(readonly kind: BridgeErrorKind, message: string, options: BridgeErrorOptions = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "BridgeError";
     if (options.route !== undefined) this.route = options.route;
     if (options.detail !== undefined) this.detail = options.detail;
+    if (options.reason !== undefined) this.reason = options.reason;
     Object.defineProperty(this, bridgeErrorBrand, { value: true });
   }
 

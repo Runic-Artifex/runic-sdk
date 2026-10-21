@@ -1,1 +1,3 @@
 #nullable enable
+*REMOVED*const Runic.Application.Views.Generated.BridgeProtocol.Version = 2 -> int
+const Runic.Application.Views.Generated.BridgeProtocol.Version = 3 -> int

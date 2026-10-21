@@ -219,8 +219,9 @@ public sealed class DesktopApiTests
         Assert.Empty(diagnostics);
 
         // The owner released the capability while the page's call was in flight: late, so no diagnostic and no handler.
-        // The reply is the disconnected envelope CS-WebUI sends for an unbound route.
-        const string released = "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";
+        // The reply is the released envelope CS-WebUI sends for an unbound route (Views protocol 3,
+        // specs/application/fixtures/released/unbound-route.json).
+        const string released = "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
         registration.Dispose();
         Assert.Equal(released, await CallAsync("page.unmount"));
         Assert.Equal(1, Volatile.Read(ref invocations));

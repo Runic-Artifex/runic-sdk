@@ -194,7 +194,7 @@ internal sealed class InteractionFixture
             disconnected = model.ConfirmDelete.Handle("disconnect");
         _ = await disconnectWait;
         session.ReleaseConnection("connection-b");
-        Require(Kind(await disconnectControl) == "disconnected"
+        Require(Kind(await disconnectControl) == "released"
             && await ThrowsAsync<RunicInteractionCancelledException>(async () => _ = await disconnected),
             "Connection loss did not terminate its selected interaction and control poll.");
 

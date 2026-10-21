@@ -25,7 +25,7 @@ async function connectLog(initial: unknown, recovery: unknown) {
   const bridge = installMockBridge(createMockBridge());
   let reads = 0;
   bridge.route("logSnapshot", () =>
-    JSON.stringify({ ok: true, state: reads++ === 0 ? initial : recovery, error: null, protocol: 2 }));
+    JSON.stringify({ ok: true, state: reads++ === 0 ? initial : recovery, error: null, protocol: 3 }));
   const client = await connectView({ contract: "Tests.TextDeltaViewModel:fixtures", route: "log", mount: false, collections, hydrate });
   const push = host["__logChanged"] as (wire: unknown) => void;
   return { client, push, recoveries: () => reads - 1 };

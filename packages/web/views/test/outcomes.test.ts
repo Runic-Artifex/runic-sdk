@@ -136,7 +136,7 @@ test("a snapshot reply from another Runic.Application.Views release is reported 
   bridge.view("editor", { state: { title: "" } });
   bridge.view("other", { state: { title: "" } });
   for (const route of ["editor", "other"])
-    bridge.route(`${route}Snapshot`, () => JSON.stringify({ ok: true, state: { revision: 1, title: "" }, error: null, protocol: 2, version }));
+    bridge.route(`${route}Snapshot`, () => JSON.stringify({ ok: true, state: { revision: 1, title: "" }, error: null, protocol: 3, version }));
   const diagnostics: BridgeDiagnostic[] = [];
   const stop = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
   try {
@@ -177,33 +177,98 @@ test("an unknown or undeclared error kind is a failed BridgeError", async () => 
   client.dispose();
 });
 
-test("a snapshot reply from another protocol version is reported once", async () => {
+// Protocol 3: a client accepts only a host of its own protocol version. A mixed pair, such as a
+// protocol-2 (0.9) .NET host and this page, fails to connect with one `protocol` diagnostic.
+test("a snapshot reply from another protocol version fails the connect with one protocol diagnostic", async () => {
   const bridge = fresh();
-  let protocol = 1;
+  let protocol = 2;
   bridge.view("editor", { state: { title: "" } });
   bridge.view("other", { state: { title: "" } });
   for (const route of ["editor", "other"])
-    bridge.route(`${route}Snapshot`, () => JSON.stringify({ ok: true, state: { revision: 1, title: "" }, error: null, protocol }));
+    bridge.route(`${route}Snapshot`, () => JSON.stringify({ ok: true, state: { revision: 1, title: "" }, error: null, protocol, version: "0.9.1" }));
   const diagnostics: BridgeDiagnostic[] = [];
   const stop = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
+  const mismatch = (route: string, host: RegExp) => (error: unknown) => error instanceof BridgeError && error.kind === "failed"
+    && error.route === route && host.test(error.message) && /this client implements protocol 3/.test(error.message)
+    && /Runic\.Application\.Views and @runic-artifex\/views of one release/.test(error.message);
   try {
-    const first = await connect();
-    const second = await connectView({ contract, route: "other", mount: false, hydrate });
-    const reported = diagnostics.filter(diagnostic => diagnostic.code === "protocol");
-    assert.equal(reported.length, 1);
-    assert.match(reported[0]!.message, /protocol 1, but this client was built for protocol 2/);
-    first.dispose();
-    second.dispose();
+    await assert.rejects(connect(), mismatch("editorSnapshot", /uses Views protocol 2/));
+    await assert.rejects(connectView({ contract, route: "other", mount: false, hydrate }), mismatch("otherSnapshot", /uses Views protocol 2/));
+    // One cause in the console: no generic `failed` and no `version` diagnostic beside it.
+    assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.kind, diagnostic.code, diagnostic.route]), [["error", "protocol", "editorSnapshot"]]);
+    assert.match(diagnostics[0]!.message, /uses Views protocol 2, but this client implements protocol 3/);
+
+    // A successful snapshot reply without `protocol` predates it and is refused too.
+    const unstated = fresh();
+    unstated.view("editor", { state: { title: "" } });
+    unstated.route("editorSnapshot", () => JSON.stringify({ ok: true, state: { revision: 1, title: "" }, error: null }));
+    diagnostics.length = 0;
+    await assert.rejects(connect(), mismatch("editorSnapshot", /does not state a Views protocol/));
+    assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["protocol"]);
+
     const quiet = fresh();
     quiet.view("editor", { state: { title: "" } });
     diagnostics.length = 0;
-    protocol = 2;
+    protocol = 3;
     const current = await connect();
     assert.equal(diagnostics.some(diagnostic => diagnostic.code === "protocol"), false);
     current.dispose();
   } finally {
     stop();
   }
+});
+
+test("a snapshot read after a reconnect fails when the host now speaks another protocol", async () => {
+  const bridge = fresh();
+  bridge.view("editor", { state: { title: "" } });
+  const client = await connect();
+  const diagnostics: BridgeDiagnostic[] = [];
+  const stop = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
+  const reports = captureReports();
+  try {
+    // A dev host rebuilt against packages of another release.
+    bridge.route("editorSnapshot", () => JSON.stringify({ ok: true, state: { revision: 9, title: "stale" }, error: null, protocol: 2 }));
+    bridge.disconnect();
+    bridge.reconnect();
+    await bridge.flush();
+    assert.equal(client.snapshot.title, "", "a state from a host of another protocol is not accepted");
+    assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["protocol"]);
+    assert.equal(reports.reported.length, 1);
+    assert.ok(reports.reported[0] instanceof BridgeError && reports.reported[0].kind === "failed");
+  } finally {
+    reports.restore();
+    stop();
+    client.dispose();
+  }
+});
+
+test("a rejected reply carries its reason, and an unknown reason is kept", async () => {
+  const bridge = fresh();
+  bridge.view("editor", { state: { title: "" } });
+  const reply = (reason: unknown) => JSON.stringify({ ok: false, state: { revision: 1, title: "" },
+    error: { kind: "rejected", message: "Save was rejected.", ...(reason === undefined ? {} : { reason }) } });
+  bridge.route("editorSave", () => reply("unavailable"));
+  bridge.route("editorSetTitle", () => reply("invalid-input"));
+  bridge.route("editorDelete", () => reply("unresolved-key"));
+  bridge.route("editorFuture", () => reply("rate-limited"));
+  bridge.route("editorPlain", () => reply(undefined));
+  bridge.route("editorMalformed", () => reply(7));
+  const client = await connect();
+  const reasonOf = async (route: string) => {
+    try { await client.command(route); } catch (error) {
+      assert.ok(error instanceof BridgeError && error.kind === "rejected");
+      return error.reason;
+    }
+    throw new Error(`${route} did not reject.`);
+  };
+  assert.equal(await reasonOf("editorSave"), "unavailable");
+  assert.equal(await reasonOf("editorSetTitle"), "invalid-input");
+  assert.equal(await reasonOf("editorDelete"), "unresolved-key");
+  assert.equal(await reasonOf("editorFuture"), "rate-limited");
+  assert.equal(await reasonOf("editorPlain"), undefined);
+  assert.equal(await reasonOf("editorMalformed"), undefined);
+  assert.equal(new BridgeError("rejected", "x", { reason: "unavailable" }).reason, "unavailable");
+  client.dispose();
 });
 
 // Starts an operation whose wait route answers `status`.
@@ -361,7 +426,7 @@ test("the mock Bridge answers declared failures for commands, operations and str
   });
   const client = await connect();
   const snapshot = JSON.parse(await bridge.call("editorSnapshot")) as Record<string, unknown>;
-  assert.equal(snapshot["protocol"], 2);
+  assert.equal(snapshot["protocol"], 3);
   assert.equal(snapshot["version"], viewsVersion, "the mock reports this release, as .NET reports its own");
   const saved = JSON.parse(await bridge.call("editorSave")) as Record<string, unknown>;
   assert.deepEqual(saved["error"], { kind: "domain-failed", message: "Save failed.", failure: { $case: "titleRequired" } });
