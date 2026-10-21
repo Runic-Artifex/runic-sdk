@@ -44,7 +44,7 @@ public static class ReactiveCommandExecution
         using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
+        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
             value =>
             {
                 count++;
@@ -79,7 +79,7 @@ public static class ReactiveCommandExecution
         using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
+        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
             value => { count++; result = value; },
             error =>
             {
@@ -108,7 +108,7 @@ public static class ReactiveCommandExecution
         using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
+        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
             _ => { },
             error =>
             {
@@ -138,10 +138,11 @@ public static class ReactiveCommandExecution
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(encode);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var call = BridgeCommandFailures.For(command).BeginCall();
+        // A stream can run for as long as the client keeps it open, so its flow holds no failures until it ends.
+        using var call = BridgeCommandFailures.For(command).BeginCall(holdsFlow: false);
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
+        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
             value =>
             {
                 bool published;
@@ -343,24 +344,34 @@ public static class ReactiveCommandExecution
     }
 }
 
-// Carries the model context of the turn that executes a bridged command to the
-// command's later notifications. ReactiveUI's token-taking CreateFromTask
-// completes its execution from the task's continuation, outside the turn, even
-// when the body resumed in it; the execution context captured by Subscribe in
-// the turn still flows there, so the main-thread scheduler can route the result
-// and IsExecuting back to this context.
+// The model context that work scheduled on ReactiveUI's main-thread scheduler belongs to, and the Bridge call whose
+// flow the calling code runs in (#473).
+//
+// ReactiveUI's token-taking CreateFromTask completes its execution from the task's continuation, outside the turn,
+// even when the body resumed in it, and code after ConfigureAwait(false) or in Task.Run leaves the turn too. The
+// execution context of the turn still flows there: RunicModelContext marks each turn's flow (Flowing), so the
+// main-thread scheduler routes a command's result and IsExecuting back to the context whose turn started it, also
+// for a plain Execute in hand-written code. A Bridge call's scope carries the context as well, for a call made in a
+// turn whose item carried no flow. A flowed context that has closed is not a target: its work runs on the fallback.
 internal static class ModelTurnFlow
 {
-    private static readonly AsyncLocal<RunicModelContext?> Flowed = new();
+    private static readonly AsyncLocal<BridgeCallScope?> Call = new();
 
-    internal static RunicModelContext? Current => RunicModelContext.Current ?? Flowed.Value;
+    internal static RunicModelContext? Current =>
+        RunicModelContext.Current ?? Open(RunicModelContext.Flowing) ?? Open(Call.Value?.Context);
 
-    internal static IDisposable Subscribe<T>(IObservable<T> source, IObserver<T> observer)
+    // The innermost Bridge call whose flow the calling code runs in, or null.
+    internal static BridgeCallScope? CurrentCall => Call.Value;
+
+    // Subscribes in the flow of a Bridge call: the command's execution, its later notifications and the code its
+    // body runs inherit the call's scope. The scope stays in the rest of the caller's flow, which needs no restore
+    // because every caller is an async method: its builder gives its own caller back that caller's execution context.
+    internal static IDisposable SubscribeInCall<T>(BridgeCallScope scope, IObservable<T> source, IObserver<T> observer)
     {
-        if (RunicModelContext.Current is not { } context) return source.Subscribe(observer);
-        var previous = Flowed.Value;
-        Flowed.Value = context;
-        try { return source.Subscribe(observer); }
-        finally { Flowed.Value = previous; }
+        Call.Value = scope;
+        return source.Subscribe(observer);
     }
+
+    private static RunicModelContext? Open(RunicModelContext? context) =>
+        context is null || context.Closed.IsCancellationRequested ? null : context;
 }
