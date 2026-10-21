@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <RunicSdkVersion>0.9.0-preview.1</RunicSdkVersion>
+    <RunicSdkVersion>0.9.0</RunicSdkVersion>
     <!-- Last published release; package validation compares shipping libraries with it. -->
     <RunicPackageValidationBaselineVersion>0.8.0-preview.6</RunicPackageValidationBaselineVersion>
     <!-- Runic.Application.Views.CsWebUi is the preview package. It depends on the prerelease CsWebUi, so from 1.0

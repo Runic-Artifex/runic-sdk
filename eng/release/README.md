@@ -239,8 +239,12 @@ The marketing site links to the docs and needs no routine version edits.
 
 ## Versioning and support from 1.0
 
-This policy takes effect with 1.0.0. Until then every release is a preview: any
-release may change or remove an API, and only the latest preview gets fixes.
+This policy takes effect with 1.0.0. Until then every release is a preview with
+a plain `0.y.z` version: a new minor (`0.9.0` to `0.10.0`) may change or remove
+APIs, a patch (`0.9.1`) only fixes or adds, and only the latest minor gets fixes.
+Releases from 0.9.0 on carry no `-preview.N` suffix; GitHub still marks them as
+prereleases. `Runic.Application.Views.CsWebUi` keeps a prerelease version of its
+own while the CS-WebUI release it depends on is a prerelease.
 It covers the three SDKs, Runic SDK (this repository),
 [Runic Command Line](https://github.com/Runic-Artifex/runic-cli-sdk/blob/main/eng/release/README.md#versioning-and-support-from-10)
 and [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/eng/release/README.md#versioning-and-support-from-10),
@@ -254,9 +258,9 @@ same policy.
   may break; a minor release adds features, packages, platforms and deprecations;
   a patch release only fixes.
 - All packages of one repository share its version (`eng/workspace.json` here).
-- Previews of the next version, `x.y.0-preview.N`, remain possible. From 1.0 they
-  go to the npm `preview` dist-tag, and npm `latest` moves only to stable
-  versions; until 1.0 it moves to every preview (see
+- From 1.0, previews of the next version, `x.y.0-preview.N` or `x.y.0-rc.N`, remain
+  possible. They go to the npm `preview` dist-tag, and npm `latest` moves only to
+  stable versions; until 1.0 it moves to every `0.y.z` release (see
   [Publishing setup and retries](#publishing-setup-and-retries)).
 - APIs marked `[Experimental]` and the preview package (see
   [Package tiers](#package-tiers)) are outside these rules.
@@ -504,7 +508,7 @@ requirement, not a consumer one.
   `RUNICDESK100` (custom Desktop window host providers) and `RUNICDESK101` (the
   low-level Desktop presentation transport). Retired: `RUNICNAV001`
   (Navigation, graduated in 0.7.0-preview.7) and `RUNICWPF001` (WPF child web
-  presentation, graduated in 0.9.0-preview.1). An npm package exports its
+  presentation, graduated in 0.9.0). An npm package exports its
   experimental APIs only from its `./experimental` subpath, which may change in
   a minor release; graduation moves an export to the root entry.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It

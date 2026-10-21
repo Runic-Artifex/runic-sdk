@@ -14,7 +14,7 @@ specification is maintained by [Runic Translations](https://github.com/Runic-Art
 
 Every reply from a snapshot route carries `"protocol": 2` and `"version"`, the
 `Runic.Application.Views` package version without build metadata (such as
-`"0.9.0-preview.1"`); command, setter and write replies do not. Both are
+`"0.9.0"`); command, setter and write replies do not. Both are
 informational: generated clients do not gate on them. `@runic-artifex/views`
 reports a snapshot reply whose `protocol` differs from its own as a diagnostic
 with code `protocol`, and one whose `version` differs from its own package
@@ -115,7 +115,7 @@ routes exist only for a root bridge that exposes interactions.
 ## Reply envelope and state
 
 ```json
-{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 2, "version": "0.9.0-preview.1" }
+{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 2, "version": "0.9.0" }
 ```
 
 `error` is `{kind, message}` with `kind` one of `rejected`, `cancelled`,

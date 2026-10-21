@@ -37,7 +37,7 @@ ends. Only one Desktop event loop runs per process; a nested call throws.
 `WithGtk4(applicationId)` validates the reverse-DNS ID on every OS. This is the
 only entry point: the former `Gtk4Application.Run`, which skipped the option
 validation, browser fallback, signal handling and host disposal, is internal
-since 0.9.0-preview.1. An application that started hosts itself inside it calls
+since 0.9.0. An application that started hosts itself inside it calls
 `DesktopEventLoop.Run(new DesktopHostOptions().WithGtk4(), ...)` and creates them
 in the callback.
 
