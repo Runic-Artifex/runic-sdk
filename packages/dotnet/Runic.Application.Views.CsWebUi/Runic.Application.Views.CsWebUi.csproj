@@ -7,6 +7,8 @@
     <PackageId>Runic.Application.Views.CsWebUi</PackageId>
     <!-- The preview package's own version (eng/Versions.props). -->
     <PackageVersion>$(RunicCsWebUiPackageVersion)</PackageVersion>
+    <!-- Validated against its own last release, not the train's (eng/build/public-api.targets). -->
+    <PackageValidationBaselineVersion>$(RunicCsWebUiPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
     <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

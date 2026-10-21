@@ -1,19 +1,16 @@
 #nullable enable
-Runic.Desktop.Gtk4.Gtk4Application
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Create() -> Runic.Desktop.IDesktopWindowHost!
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Gtk4WindowHostFactory() -> void
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.IsSupported.get -> bool
-static Runic.Desktop.Gtk4.Gtk4Application.Run(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
-static Runic.Desktop.Gtk4.Gtk4Application.Run(System.Func<System.Threading.Tasks.Task<int>!>! application, string! applicationId) -> int
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
 Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
 static Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions.WithGtk4(this Runic.Desktop.DesktopHostOptions! options) -> Runic.Desktop.DesktopHostOptions!
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ApplicationId.get -> string?
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ApplicationId.init -> void
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
 static Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions.WithGtk4(this Runic.Desktop.DesktopHostOptions! options, string! applicationId) -> Runic.Desktop.DesktopHostOptions!
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Gtk4WindowHostFactory() -> void
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ApplicationId.get -> string?
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ApplicationId.init -> void
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.IsSupported.get -> bool
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+[RUNICDESK100]Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Create() -> Runic.Desktop.IDesktopWindowHost!

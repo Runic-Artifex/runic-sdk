@@ -1,11 +1,8 @@
 #nullable enable
 Runic.Platform.MacOS.MacOSPlatformProvider
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateInhibition() -> Runic.Platform.IDesktopInhibition!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateNotifications() -> Runic.Platform.IDesktopNotifications!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
 Runic.Platform.MacOS.MacPrivilegedActions
 Runic.Platform.MacOS.MacPrivilegedDaemon
 Runic.Platform.MacOS.MacPrivilegedDaemonDefinition
@@ -58,3 +55,5 @@ static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTrash() -> Runic.Platfor
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateThumbnails() -> Runic.Platform.IDesktopThumbnails!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateApplications() -> Runic.Platform.IDesktopApplications!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateLoginStartup() -> Runic.Platform.IDesktopLoginStartup!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateStatusIcon() -> Runic.Platform.IDesktopStatusIcon!

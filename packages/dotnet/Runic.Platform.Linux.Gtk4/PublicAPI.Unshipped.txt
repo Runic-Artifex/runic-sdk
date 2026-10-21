@@ -1,11 +1,1 @@
 #nullable enable
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.Gtk4PortalWindowOwner(Runic.Platform.Runtime.INativePickerOwner! owner) -> void
-*REMOVED*static Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider.CreatePortalWindowOwner(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPortalWindowOwner!
-*REMOVED*static Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PlatformProvider
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.ExportParentAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.PortalParentLease!>
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.Generation.get -> System.Guid
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.IsAvailable.get -> bool
-*REMOVED*Runic.Platform.Linux.Gtk4.Gtk4PortalWindowOwner.PresentAsync(Runic.Platform.DesktopActivationContext? context = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
