@@ -42,7 +42,7 @@ internal sealed class NativeTests
         try
         {
             await firewall.CreateAsync(new(missing, FirewallDirection.Inbound, FirewallAction.Block)
-            { Protocol = 1, LocalPorts = "80" });
+            { Protocol = FirewallProtocol.IcmpV4, LocalPorts = "80" });
             throw new InvalidOperationException("Invalid firewall specification reached native creation.");
         }
         catch (ArgumentException) { }
@@ -191,10 +191,10 @@ internal sealed class NativeTests
     {
         var client = new WindowsTaskSchedulerClient();
         ImmutableArray<TaskTrigger> triggers = [
-            new TimeTaskTrigger { StartBoundary = "2030-01-01T12:00:00" },
-            new DailyTaskTrigger { StartBoundary = "2030-01-01T12:00:00" },
-            new WeeklyTaskTrigger([DayOfWeek.Monday]) { StartBoundary = "2030-01-01T12:00:00" },
-            new MonthlyTaskTrigger([1, 6], [1, 15], true) { StartBoundary = "2030-01-01T12:00:00" },
+            new TimeTaskTrigger { StartBoundary = new DateTime(2030, 1, 1, 12, 0, 0) },
+            new DailyTaskTrigger { StartBoundary = new DateTime(2030, 1, 1, 12, 0, 0) },
+            new WeeklyTaskTrigger([DayOfWeek.Monday]) { StartBoundary = new DateTime(2030, 1, 1, 12, 0, 0) },
+            new MonthlyTaskTrigger([1, 6], [1, 15], true) { StartBoundary = new DateTime(2030, 1, 1, 12, 0, 0) },
             new BootTaskTrigger(), new LogonTaskTrigger(), new IdleTaskTrigger(), new RegistrationTaskTrigger(),
             new EventTaskTrigger("<QueryList><Query Id=\"0\" Path=\"System\"><Select Path=\"System\">*[System[(EventID=1)]]</Select></Query></QueryList>"),
             new SessionStateTaskTrigger(TaskSessionChange.SessionLock)
@@ -343,5 +343,43 @@ internal sealed class NativeTests
             try { await call(); throw new InvalidOperationException("A canceled native call ran."); }
             catch (OperationCanceledException) { }
         }
+    }
+
+    // A self-relative descriptor with no owner, group or ACLs: revision 1, control SE_SELF_RELATIVE.
+    private static readonly byte[] EmptyDescriptor = [1, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    // System.Security.AccessControl supports only Windows.
+    [Test]
+    public void SecurityDescriptorsCompareByBinaryForm()
+    {
+        var left = WindowsSecurityDescriptor.FromBinaryForm(EmptyDescriptor);
+        var right = WindowsSecurityDescriptor.From(new System.Security.AccessControl.RawSecurityDescriptor(EmptyDescriptor, 0));
+        Check(left == right && left.Equals((object)right) && left.GetHashCode() == right.GetHashCode(), "Equal binary forms must compare equal.");
+        Check(new ShareUpdate { SecurityDescriptor = left } == new ShareUpdate { SecurityDescriptor = right }, "Records must compare descriptors by value.");
+        Check(left.BinaryForm.AsSpan().SequenceEqual(EmptyDescriptor), "The binary form must be kept as supplied.");
+        var raw = left.ToRawSecurityDescriptor();
+        Check(!ReferenceEquals(raw, left.ToRawSecurityDescriptor()), "Each call must return a new RawSecurityDescriptor.");
+        raw.SetFlags(System.Security.AccessControl.ControlFlags.DiscretionaryAclPresent);
+        Check(left == right, "Changing a returned RawSecurityDescriptor must not change the descriptor.");
+        Check(left != WindowsSecurityDescriptor.From(raw), "A changed descriptor must compare unequal.");
+        foreach (var invalid in new[] { Array.Empty<byte>(), new byte[] { 1, 0, 0, 0x80 }, EmptyDescriptor[..19] })
+        {
+            try { _ = WindowsSecurityDescriptor.FromBinaryForm(invalid); throw new InvalidOperationException("An invalid descriptor was accepted."); }
+            catch (ArgumentException) { }
+        }
+    }
+
+    // SDDL conversion uses the Windows security APIs.
+    [Test]
+    public void SecurityDescriptorSddlRoundTrips()
+    {
+        const string sddl = "O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)(D;;FW;;;WD)";
+        var descriptor = WindowsSecurityDescriptor.FromSddl(sddl);
+        Check(descriptor.Sddl == sddl && descriptor.ToString() == sddl, "SDDL did not round-trip: " + descriptor.Sddl);
+        Check(WindowsSecurityDescriptor.FromBinaryForm(descriptor.BinaryForm.AsSpan()) == descriptor, "The binary form did not round-trip.");
+        Check(WindowsSecurityDescriptor.FromSddl("O:BAG:BAD:(A;;FR;;;BU)(A;;FA;;;BA)") != WindowsSecurityDescriptor.FromSddl("O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)"),
+            "ACE order must be part of the value.");
+        try { _ = WindowsSecurityDescriptor.FromSddl("not sddl"); throw new InvalidOperationException("Invalid SDDL accepted."); }
+        catch (ArgumentException) { }
     }
 }

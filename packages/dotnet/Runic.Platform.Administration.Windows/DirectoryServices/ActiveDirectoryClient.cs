@@ -25,40 +25,43 @@ public sealed class ActiveDirectoryClient
     public ActiveDirectoryClient(WindowsDirectoryClient directory) =>
         _directory = directory ?? throw new ArgumentNullException(nameof(directory));
 
-    /// <summary>Creates a disabled user. Assign a password and enable it explicitly afterward.</summary>
-    public Task CreateUserAsync(string parentDistinguishedName, string commonName, string accountName, string? userPrincipalName = null,
+    /// <summary>Creates a disabled user and returns its identity. Assign a password and enable it explicitly afterward.</summary>
+    /// <remarks>The object's identity is read on the same connection after it is created. If that read fails, the
+    /// <see cref="WindowsAdministrationException"/> has the operation "Read created directory object" and the object exists.
+    /// The same applies to the other create methods.</remarks>
+    public Task<ActiveDirectoryObjectIdentity> CreateUserAsync(string parentDistinguishedName, string commonName, string accountName, string? userPrincipalName = null,
         CancellationToken cancellationToken = default)
     {
         NativeError.Text(accountName, nameof(accountName));
         var attributes = Attributes(("objectClass", "user"), ("cn", commonName), ("sAMAccountName", accountName), ("userAccountControl", "514"));
         if (userPrincipalName is not null) attributes = attributes.Add("userPrincipalName", [new DirectoryValue.Text(userPrincipalName)]);
-        return _directory.CreateAsync(Dn(parentDistinguishedName, "CN", commonName), attributes, cancellationToken);
+        return _directory.CreateAndIdentifyAsync(Dn(parentDistinguishedName, "CN", commonName), attributes, cancellationToken);
     }
 
-    /// <summary>Creates a disabled workstation computer account. accountName must include its trailing dollar sign.</summary>
-    public Task CreateComputerAsync(string parentDistinguishedName, string commonName, string accountName, CancellationToken cancellationToken = default)
+    /// <summary>Creates a disabled workstation computer account and returns its identity. accountName must include its trailing dollar sign.</summary>
+    public Task<ActiveDirectoryObjectIdentity> CreateComputerAsync(string parentDistinguishedName, string commonName, string accountName, CancellationToken cancellationToken = default)
     {
         NativeError.Text(accountName, nameof(accountName));
         if (!accountName.EndsWith('$')) throw new ArgumentException("Computer account names must end in '$'.", nameof(accountName));
-        return _directory.CreateAsync(Dn(parentDistinguishedName, "CN", commonName),
+        return _directory.CreateAndIdentifyAsync(Dn(parentDistinguishedName, "CN", commonName),
             Attributes(("objectClass", "computer"), ("cn", commonName), ("sAMAccountName", accountName), ("userAccountControl", "4098")), cancellationToken);
     }
 
-    /// <summary>Creates a group with explicit scope and security/distribution semantics.</summary>
-    public Task CreateGroupAsync(string parentDistinguishedName, string commonName, string accountName,
+    /// <summary>Creates a group with explicit scope and security/distribution semantics and returns its identity.</summary>
+    public Task<ActiveDirectoryObjectIdentity> CreateGroupAsync(string parentDistinguishedName, string commonName, string accountName,
         ActiveDirectoryGroupScope scope, bool securityEnabled, CancellationToken cancellationToken = default)
     {
         NativeError.Text(accountName, nameof(accountName));
         if (!Enum.IsDefined(scope)) throw new ArgumentOutOfRangeException(nameof(scope));
         var groupType = (int)scope | (securityEnabled ? int.MinValue : 0);
-        return _directory.CreateAsync(Dn(parentDistinguishedName, "CN", commonName),
+        return _directory.CreateAndIdentifyAsync(Dn(parentDistinguishedName, "CN", commonName),
             Attributes(("objectClass", "group"), ("cn", commonName), ("sAMAccountName", accountName),
                 ("groupType", groupType.ToString(CultureInfo.InvariantCulture))), cancellationToken);
     }
 
-    /// <summary>Creates an organizational unit with an escaped relative name.</summary>
-    public Task CreateOrganizationalUnitAsync(string parentDistinguishedName, string name, CancellationToken cancellationToken = default) =>
-        _directory.CreateAsync(Dn(parentDistinguishedName, "OU", name), Attributes(("objectClass", "organizationalUnit"), ("ou", name)), cancellationToken);
+    /// <summary>Creates an organizational unit with an escaped relative name and returns its identity.</summary>
+    public Task<ActiveDirectoryObjectIdentity> CreateOrganizationalUnitAsync(string parentDistinguishedName, string name, CancellationToken cancellationToken = default) =>
+        _directory.CreateAndIdentifyAsync(Dn(parentDistinguishedName, "OU", name), Attributes(("objectClass", "organizationalUnit"), ("ou", name)), cancellationToken);
 
     /// <summary>Retrieves all member DNs, including ranged attributes on large groups.</summary>
     /// <remarks>Raw values remain available through <see cref="WindowsDirectoryClient.ReadAllAttributeValuesAsync"/>.</remarks>

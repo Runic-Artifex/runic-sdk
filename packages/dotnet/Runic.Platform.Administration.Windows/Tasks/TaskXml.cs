@@ -166,9 +166,20 @@ internal static class TaskXml
         return element;
     }
 
-    private static string Boundary(string value)
+    // Unspecified: wall-clock time of the target machine, no offset. Utc: "Z". Local: this computer's offset at that time.
+    internal static string Boundary(DateTime value)
     {
-        _ = XmlConvert.ToDateTime(value, XmlDateTimeSerializationMode.RoundtripKind);
-        return value;
+        if (value.Ticks % TimeSpan.TicksPerSecond != 0)
+            throw new ArgumentException("Task boundaries must be whole seconds.", nameof(value));
+        var text = value.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss", CultureInfo.InvariantCulture);
+        return value.Kind switch
+        {
+            DateTimeKind.Utc => text + "Z",
+            DateTimeKind.Local => text + Offset(TimeZoneInfo.Local.GetUtcOffset(value)),
+            _ => text
+        };
     }
+
+    private static string Offset(TimeSpan offset) =>
+        (offset < TimeSpan.Zero ? "-" : "+") + offset.Duration().ToString("hh':'mm", CultureInfo.InvariantCulture);
 }

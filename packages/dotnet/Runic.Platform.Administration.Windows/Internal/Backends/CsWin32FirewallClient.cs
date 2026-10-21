@@ -165,14 +165,14 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
             names = GeneratedArrays.ReadStrings(interfaces);
         }
         finally { _ = PInvoke.VariantClear(&interfaces); }
-        var protocol = Integer(rule, Field.Protocol);
+        var protocol = (FirewallProtocol)Integer(rule, Field.Protocol);
         var configuration = new FirewallRuleSpecification(Text(rule, Field.Name), (FirewallDirection)Integer(rule, Field.Direction), (FirewallAction)Integer(rule, Field.Action))
         {
             Description = Text(rule, Field.Description), ApplicationPath = Text(rule, Field.ApplicationName), ServiceName = Text(rule, Field.ServiceName),
-            Protocol = protocol, LocalPorts = protocol is 6 or 17 ? Text(rule, Field.LocalPorts) : "",
-            RemotePorts = protocol is 6 or 17 ? Text(rule, Field.RemotePorts) : "",
+            Protocol = protocol, LocalPorts = protocol is (FirewallProtocol.Tcp or FirewallProtocol.Udp) ? Text(rule, Field.LocalPorts) : "",
+            RemotePorts = protocol is (FirewallProtocol.Tcp or FirewallProtocol.Udp) ? Text(rule, Field.RemotePorts) : "",
             LocalAddresses = Text(rule, Field.LocalAddresses), RemoteAddresses = Text(rule, Field.RemoteAddresses),
-            IcmpTypesAndCodes = protocol is 1 or 58 ? Text(rule, Field.IcmpTypesAndCodes) : "",
+            IcmpTypesAndCodes = protocol is (FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6) ? Text(rule, Field.IcmpTypesAndCodes) : "",
             Interfaces = names, InterfaceTypes = Text(rule, Field.InterfaceTypes), Enabled = Boolean(rule, Field.Enabled),
             Grouping = Text(rule, Field.Grouping), Profiles = (FirewallProfiles)Integer(rule, Field.Profiles), EdgeTraversal = Boolean(rule, Field.EdgeTraversal)
         };
@@ -248,10 +248,10 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         {
             Description = Optional(specification.Description), ApplicationPath = Optional(specification.ApplicationPath),
             ServiceName = Optional(specification.ServiceName), Protocol = specification.Protocol,
-            LocalPorts = specification.Protocol is 6 or 17 ? Optional(specification.LocalPorts) : null,
-            RemotePorts = specification.Protocol is 6 or 17 ? Optional(specification.RemotePorts) : null,
+            LocalPorts = specification.Protocol is (FirewallProtocol.Tcp or FirewallProtocol.Udp) ? Optional(specification.LocalPorts) : null,
+            RemotePorts = specification.Protocol is (FirewallProtocol.Tcp or FirewallProtocol.Udp) ? Optional(specification.RemotePorts) : null,
             LocalAddresses = specification.LocalAddresses, RemoteAddresses = specification.RemoteAddresses,
-            IcmpTypesAndCodes = specification.Protocol is 1 or 58 ? Optional(specification.IcmpTypesAndCodes) : null,
+            IcmpTypesAndCodes = specification.Protocol is (FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6) ? Optional(specification.IcmpTypesAndCodes) : null,
             Interfaces = specification.Interfaces.IsEmpty ? null : specification.Interfaces,
             InterfaceTypes = specification.InterfaceTypes, Enabled = specification.Enabled, Grouping = Optional(specification.Grouping),
             Profiles = specification.Profiles, EdgeTraversal = specification.EdgeTraversal,
@@ -304,13 +304,13 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         // before switching protocol, then apply only fields valid for the new protocol.
         if (existing.Configuration.Protocol != next.Protocol)
         {
-            if (existing.Configuration.Protocol is 6 or 17 && next.Protocol is not (6 or 17))
+            if (existing.Configuration.Protocol is (FirewallProtocol.Tcp or FirewallProtocol.Udp) && next.Protocol is not (FirewallProtocol.Tcp or FirewallProtocol.Udp))
             {
                 SetText(rule, Field.LocalPorts, "");
                 SetText(rule, Field.RemotePorts, "");
                 update = update with { LocalPorts = null, RemotePorts = null };
             }
-            if (existing.Configuration.Protocol is 1 or 58 && next.Protocol is not (1 or 58))
+            if (existing.Configuration.Protocol is (FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6) && next.Protocol is not (FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6))
             {
                 SetText(rule, Field.IcmpTypesAndCodes, "");
                 update = update with { IcmpTypesAndCodes = null };
@@ -324,7 +324,7 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
 
     private static void Apply(GeneratedCom rule, FirewallRuleUpdate update)
     {
-        if (update.Protocol is { } protocol) SetInt(rule, Field.Protocol, protocol);
+        if (update.Protocol is { } protocol) SetInt(rule, Field.Protocol, (int)protocol);
         if (update.Description is { } description) SetText(rule, Field.Description, description);
         if (update.ApplicationPath is { } application) SetText(rule, Field.ApplicationName, application);
         if (update.ServiceName is { } service) SetText(rule, Field.ServiceName, service);

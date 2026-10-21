@@ -56,15 +56,52 @@ public sealed record ServiceFailureAction(ServiceFailureActionKind Kind, TimeSpa
 public sealed record ServiceFailurePolicy(TimeSpan? ResetPeriod, ImmutableArray<ServiceFailureAction> Actions,
     string RebootMessage = "", string Command = "", bool OnNonCrashFailures = false);
 
+/// <summary>Controls a running service accepts (the native SERVICE_ACCEPT_* flags).</summary>
+/// <remarks>Bits without a name here are passed through unchanged.</remarks>
+[Flags]
+public enum ServiceAcceptedControls
+{
+    /// <summary>No controls.</summary>
+    None = 0,
+    /// <summary>The service can be stopped.</summary>
+    Stop = 0x1,
+    /// <summary>The service can be paused and continued.</summary>
+    PauseContinue = 0x2,
+    /// <summary>The service is notified when the system shuts down.</summary>
+    Shutdown = 0x4,
+    /// <summary>The service can reread its startup parameters.</summary>
+    ParameterChange = 0x8,
+    /// <summary>The service is notified of network binding changes.</summary>
+    NetBindChange = 0x10,
+    /// <summary>The service is notified of hardware profile changes.</summary>
+    HardwareProfileChange = 0x20,
+    /// <summary>The service is notified of power events.</summary>
+    PowerEvent = 0x40,
+    /// <summary>The service is notified of session changes.</summary>
+    SessionChange = 0x80,
+    /// <summary>The service performs pre-shutdown tasks.</summary>
+    Preshutdown = 0x100,
+    /// <summary>The service is notified when the system time changes.</summary>
+    TimeChange = 0x200,
+    /// <summary>The service is notified of registered trigger events.</summary>
+    TriggerEvent = 0x400,
+    /// <summary>The service is notified when a user logs off.</summary>
+    UserLogoff = 0x800,
+    /// <summary>The service is notified of low resources.</summary>
+    LowResources = 0x2000,
+    /// <summary>The service is notified of low system resources.</summary>
+    SystemLowResources = 0x4000
+}
+
 /// <summary>Service state observed at a moment in time.</summary>
 /// <param name="State">The current state.</param>
 /// <param name="ProcessId">The hosting process ID, or 0 when the service is not running.</param>
-/// <param name="NativeAcceptedControls">The native SERVICE_ACCEPT_* flags.</param>
+/// <param name="AcceptedControls">The controls the service accepts; unnamed native bits are passed through.</param>
 /// <param name="Win32ExitCode">The native Win32 exit code.</param>
 /// <param name="ServiceSpecificExitCode">The service-specific exit code.</param>
 /// <param name="CheckPoint">The native progress check point.</param>
 /// <param name="WaitHint">The service's estimate for its pending operation.</param>
-public sealed record ServiceStatus(ServiceState State, int ProcessId, uint NativeAcceptedControls,
+public sealed record ServiceStatus(ServiceState State, int ProcessId, ServiceAcceptedControls AcceptedControls,
     uint Win32ExitCode, uint ServiceSpecificExitCode, uint CheckPoint, TimeSpan WaitHint);
 
 /// <summary>Service enumeration row; detailed configuration is retrieved separately.</summary>

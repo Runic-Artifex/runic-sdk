@@ -60,7 +60,7 @@ var tasks = new WindowsTaskSchedulerClient();
 var definition = new ScheduledTaskSpecification(
     new("SYSTEM", TaskLogonType.ServiceAccount, true),
     [new(@"C:\Windows\System32\cmd.exe", "/c exit 0")],
-    [new DailyTaskTrigger { StartBoundary = "2030-01-01T12:00:00" }]);
+    [new DailyTaskTrigger { StartBoundary = new DateTime(2030, 1, 1, 12, 0, 0) }]);
 
 await tasks.ValidateAsync(definition); // Does not register or execute it.
 foreach (var task in await tasks.EnumerateAsync())
@@ -72,7 +72,10 @@ fields without delete-before-update. RunAsync returns an instance and scheduler
 state, not an assertion that the command succeeded. FindAsync returns last-run
 information and complete XML. RegisterXmlAsync opts into replacement explicitly.
 Time, daily, weekly, monthly, boot, logon, idle, registration, event and session
-triggers are supported.
+triggers are supported. A trigger boundary's `DateTime.Kind` selects its meaning:
+`Unspecified` is a wall-clock time of the target machine (Task Scheduler's
+default), `Utc` and `Local` are points in time written with an offset ("synchronize
+across time zones"). Boundaries have whole seconds.
 
 ## Firewall
 
@@ -86,7 +89,9 @@ if (existing is not null) Console.WriteLine(existing.Configuration);
 ~~~
 
 Fixture writes use FirewallRuleSpecification and FirewallRuleUpdate, and the
-identity from the returned snapshot. An ambiguous name is a conflict. For a
+identity from the returned snapshot. `Protocol` is a `FirewallProtocol`: `Tcp` and
+`Udp` allow ports, `IcmpV4` and `IcmpV6` allow ICMP types, `Any` is the default, and
+other IANA protocol numbers are cast, for example `(FirewallProtocol)47`. An ambiguous name is a conflict. For a
 protocol change, explicitly clear incompatible ports/ICMP settings; null means
 preserve, not clear. Local Group Policy restrictions fail rather than claiming
 a rule became effective.
@@ -112,7 +117,11 @@ Console.WriteLine(members.Length);
 ~~~
 
 CreateUserAsync, CreateComputerAsync, CreateGroupAsync and
-CreateOrganizationalUnitAsync provide curated creation. Directory ModifyAsync,
+CreateOrganizationalUnitAsync provide curated creation. Each returns the new
+object's `ActiveDirectoryObjectIdentity`: its distinguished name as stored and its
+`objectGUID`, which stays the same across renames and moves. If reading the
+identity fails after the object was created, the exception's operation is "Read
+created directory object" and the object exists. Directory ModifyAsync,
 DeleteAsync and MoveAsync provide schema-extensible editing, deletion, rename and
 move without an application object model. Use DirectoryNames.EscapeFilterValue
 for literal filter values and EscapeRdnValue for RDN values; these are different
@@ -148,16 +157,20 @@ var shares = new WindowsShareClient("fileserver.example.test");
 foreach (var share in await shares.EnumerateAsync()) Console.WriteLine(share);
 var snapshot = await shares.FindAsync("FixtureShare");
 if (snapshot is not null)
-    Console.WriteLine($"{snapshot.Path}: stored security: {snapshot.SecurityDescriptor?.Length.ToString() ?? "absent"}");
+    Console.WriteLine($"{snapshot.Path}: stored security: {snapshot.SecurityDescriptor?.Sddl ?? "absent"}");
 ~~~
 
 On a disposable server, CreateAsync accepts ShareSpecification, which requires an
-explicit self-relative share security descriptor. UpdateAsync can replace
-description, maximum uses or the complete self-relative security descriptor.
-On reads, a null SecurityDescriptor means Windows returned no stored descriptor;
-it is not an empty (deny-all) DACL and does not describe filesystem permissions.
-On updates, null preserves each field. Decode present descriptors with RawSecurityDescriptor when needed; retain
-unknown ACEs, ordering and inheritance when editing. Delete removes the share,
+explicit share security descriptor, for example
+`WindowsSecurityDescriptor.FromSddl("O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)")`.
+UpdateAsync can replace description, maximum uses or the complete security
+descriptor. On reads, a null SecurityDescriptor means Windows returned no stored
+descriptor; it is not an empty (deny-all) DACL and does not describe filesystem
+permissions. On updates, null preserves each field. `WindowsSecurityDescriptor`
+is immutable and compares by its binary form. To edit one, call
+`ToRawSecurityDescriptor()`, change the copy, and pass
+`WindowsSecurityDescriptor.From(raw)`; retain unknown ACEs, ordering and
+inheritance when editing. Delete removes the share,
 not its directory or files (DeleteAsync).
 
 ## DNS

@@ -94,14 +94,24 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
   Native RPC/COM calls can outlive a cancellation request; LDAP timeouts and WMI
   query wait bounds are not universal hard deadlines.
 - Process IDs are `int`, as in `System.Diagnostics.Process`. Raw native numbers
-  carry a `Native` prefix (`NativeFlags`, `NativeAddressType`, `NativeAcceptedControls`,
-  `NativeRecordClass`); `FirewallRuleSpecification.Protocol` is the IANA protocol number.
+  carry a `Native` prefix (`NativeFlags`, `NativeAddressType`, `NativeRecordClass`).
+  Native values that have a typed form use an enum that passes unknown values
+  through: `ServiceStatus.AcceptedControls` is the `[Flags]` enum
+  `ServiceAcceptedControls`, and `FirewallRuleSpecification.Protocol` is
+  `FirewallProtocol`, an open enum of IANA protocol numbers with `Any` (256); cast
+  other numbers, for example `(FirewallProtocol)47`.
 - Group Policy times (`GroupPolicySnapshot.CreationTime`/`ModificationTime`,
   `GroupPolicyBackup.Timestamp`) are `DateTimeOffset` values in the local time zone of
   the computer running the client, where GPMC runs. Task Scheduler times
   (`ScheduledTaskSnapshot.LastRunTime`/`NextRunTime`) are `DateTime` wall-clock times
   of the target machine with `Kind=Unspecified`; for a remote machine their offset is
   not known.
+- Task trigger boundaries (`TaskTrigger.StartBoundary`/`EndBoundary`) are `DateTime`
+  values with whole seconds, and their `Kind` selects how Task Scheduler reads them:
+  `Unspecified` is a wall-clock time of the target machine, written without an offset
+  (Task Scheduler's default); `Utc` is written with `Z`, and `Local` with the offset of
+  the computer running the client at that time. Both are points in time ("synchronize
+  across time zones").
 - GetOperatingSystem exposes RegistryProductName verbatim; Windows can retain a Windows 10 compatibility label on Windows 11. GetOperatingSystemNameAsync reads the display name from native Windows inventory.
 - Service BinaryCommandLine is the configured command line, not an executable path.
   Writes require a quoted executable path when the command line contains
@@ -120,8 +130,15 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
   not replace sibling records. Unsupported types are returned as Unsupported with
   native class and text; they cannot be written through the curated typed API.
   TXT data follows the DNS WMI provider's quoted textual representation.
-- Share security descriptors retain SID/ACE information and ordering as native
-  self-relative bytes. They represent share permissions, never filesystem ACLs.
+- Share security descriptors are `WindowsSecurityDescriptor` values: immutable,
+  compared by their self-relative binary form, with `Sddl`, `FromSddl`,
+  `FromBinaryForm`, `From(RawSecurityDescriptor)` and `ToRawSecurityDescriptor()`.
+  They keep SID/ACE information and ordering exactly. They represent share
+  permissions, never filesystem ACLs.
+- The Active Directory create methods return the new object's
+  `ActiveDirectoryObjectIdentity` (stored distinguished name and `objectGUID`), read on
+  the same connection after the add. If that read fails, the exception's operation is
+  "Read created directory object" and the object exists.
 - GPMC operations return `GroupPolicyOperationOutcome<T>`, a success value with
   GPMC's detailed status collection; a failed overall HRESULT throws
   `GroupPolicyOperationException`. Import overwrites settings in an explicitly selected destination GPO;
