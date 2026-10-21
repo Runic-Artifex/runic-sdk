@@ -16,17 +16,15 @@ Namespace: `Runic.Assets`
 - `AssetArchiveInspection`
 - `EmbeddedAssetRegistration`
 - `EmbeddedAssetSource`
-
-Experimental (`RUNICASSETS001`, see docs/experimental.md), Linux only:
-
-- `DevelopmentDirectoryAssetSource`
+- `DevelopmentDirectoryAssetSource` (Linux, Windows and macOS)
 - `IAssetSourceChangeNotifier`
-- `IAssetWatch`
 - `AssetWatchOptions`
 - `AssetSourceChangedEventArgs`
 
-Replacing the entry document with a development bootstrap is not public API:
-an application calling it in production would let an environment variable
-replace its `index.html`. It is internal to development tooling.
+No API lets an environment variable replace an application's content. The
+Runic Desktop Views host reads the directory that `dotnet runic dev` passes
+(`RUNIC_APPLICATION_DEVELOPMENT_ASSETS`, an internal contract) only in a
+`Development` environment and only when the application sets no surface
+options of its own.
 
 The API is transport-neutral and depends only on the .NET base class library.

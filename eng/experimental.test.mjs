@@ -14,18 +14,19 @@ const docs = readFileSync(resolve(root, "docs/experimental.md"), "utf8");
 test("every Experimental attribute sets a documentation UrlFormat", () => {
   const attributes = sources.flatMap(([file, text]) =>
     [...text.matchAll(/\[(?:System\.Diagnostics\.CodeAnalysis\.)?Experimental\(([^\]]*)\)\]/g)].map(([, args]) => ({ file, args })));
-  assert.ok(attributes.length > 0);
   const missing = attributes.filter(({ args }) =>
     !/UrlFormat = RunicReleaseLinks\.ExperimentalUrlFormat$/.test(args));
   assert.deepEqual(missing, [], "Set UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat");
 });
 
-test("docs/experimental.md has an entry for every experimental diagnostic ID", () => {
+test("docs/experimental.md has an entry for every experimental diagnostic ID, or says there is none", () => {
   const ids = new Set(sources.flatMap(([, text]) => [
     ...[...text.matchAll(/const string \w*Id = "(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
     ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
   ]));
-  assert.deepEqual([...ids].sort(), ["RUNICASSETS001"]);
+  // RUNICASSETS001, the last .NET family, graduated in 0.10.0 (D029.3); a new family adds its ID here.
+  assert.deepEqual([...ids].sort(), []);
+  if (ids.size === 0) assert.match(docs, /^No \.NET API is experimental\./m);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.
     assert.ok(docs.includes(`<a id="${id}"></a>`), `docs/experimental.md has no anchor for ${id}`);
@@ -41,7 +42,7 @@ test("experimental help links name the release tag, not main", () => {
 });
 
 // A graduated family's ID is never reused: it stays listed as retired and no source marks an API with it.
-const retired = ["RUNICDESK100", "RUNICDESK101", "RUNICNAV001", "RUNICWPF001"];
+const retired = ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101", "RUNICNAV001", "RUNICWPF001"];
 
 test("graduated diagnostic IDs are retired, not reused", () => {
   const section = docs.slice(docs.indexOf('<a id="retired"></a>'));

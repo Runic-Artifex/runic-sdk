@@ -505,13 +505,14 @@ requirement, not a consumer one.
   in a minor release. An experimental type does not appear in a stable API's
   signature. Graduation removes the attribute and retires the ID, which is
   never reused. IDs follow the numbering in `docs/experimental.md` (from `100`
-  where the prefix already names diagnostics, such as `RUNICDBUS100`). Today's
-  family is `RUNICASSETS001` (Linux development-directory asset source).
+  where the prefix already names diagnostics, such as `RUNICDBUS100`). No .NET
+  API is experimental today.
   Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
   `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
-  `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0) and
+  `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0),
   `RUNICDESK101` (the Desktop presentation transport, partly graduated and the
-  rest internal in 0.10.0). An npm package exports its
+  rest internal in 0.10.0) and `RUNICASSETS001` (the development-directory asset
+  source, graduated in 0.10.0). An npm package exports its
   experimental APIs only from its `./experimental` subpath, which may change in
   a minor release; graduation moves an export to the root entry. No npm API is
   experimental since 0.10.0, which removed every `./experimental` entry.

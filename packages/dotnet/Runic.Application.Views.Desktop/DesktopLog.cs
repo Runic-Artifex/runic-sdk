@@ -24,6 +24,19 @@ internal static partial class DesktopLog
         Message = "The menu command {CommandId} failed with {ErrorType}.")]
     internal static partial void MenuCommandFailed(ILogger logger, Exception? exception, string commandId, string errorType);
 
+    [LoggerMessage(EventId = 2005, EventName = "DesktopDevelopmentAssetsServed", Level = LogLevel.Information,
+        Message = "Serving the development assets in {Directory}; windows reload when they change.")]
+    internal static partial void DevelopmentAssetsServed(ILogger logger, string directory);
+
+    [LoggerMessage(EventId = 2006, EventName = "DesktopDevelopmentAssetsUnavailable", Level = LogLevel.Warning,
+        Message = "The development assets in {Directory} cannot be served ({ErrorType}); the window serves {Instead}.")]
+    internal static partial void DevelopmentAssetsUnavailable(ILogger logger, Exception? exception, string directory,
+        string errorType, string instead);
+
+    [LoggerMessage(EventId = 2007, EventName = "DesktopDevelopmentReloadFailed", Level = LogLevel.Debug,
+        Message = "A window did not reload after its development assets changed.")]
+    internal static partial void DevelopmentReloadFailed(ILogger logger, Exception? exception);
+
 #if RUNIC_PORTABLE_PLATFORMS
     // A rejected identity or an unreachable portal is a warning; accepted requests and registrations are details.
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]

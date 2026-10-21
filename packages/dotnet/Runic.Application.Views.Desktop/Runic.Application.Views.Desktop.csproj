@@ -21,6 +21,8 @@
          the exact version (eng/build/README.md). -->
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <!-- dotnet runic dev without a development server serves the frontend output directory live (DevelopmentAssets). -->
+    <ProjectReference Include="../Runic.Assets.Desktop/Runic.Assets.Desktop.csproj" />
     <!-- DesktopPlatformServices selects one provider at run time; a provider loads native libraries only when used. -->
     <ProjectReference Include="../Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />

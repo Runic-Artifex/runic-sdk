@@ -23,6 +23,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Runic.Application.Views": "[0.9.1, )",
+          "Runic.Assets.Desktop": "[0.9.1, )",
           "Runic.Desktop": "[0.9.1, )",
           "Runic.Platform.Runtime": "[0.9.1, )",
           "Runic.Platform.Windows": "[0.9.1, )"
@@ -33,6 +34,16 @@
         "dependencies": {
           "Runic.Application.Views.Desktop": "[0.9.1, )",
           "Runic.Navigation.Wpf": "[0.9.1, )"
+        }
+      },
+      "runic.assets": {
+        "type": "Project"
+      },
+      "runic.assets.desktop": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Assets": "[0.9.1, )",
+          "Runic.Desktop": "[0.9.1, )"
         }
       },
       "runic.desktop": {

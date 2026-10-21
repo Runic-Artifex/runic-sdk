@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace Runic.Application.Tool;
@@ -45,6 +46,9 @@ internal sealed record DevProjectConfiguration(
         "_RunicApplicationFrontendCompilerHotReloadTarget",
         "ProjectAssetsFile",
         "TargetDir",
+        // The hosts whose build files the project imports, such as "desktop;cswebui", and the one it chose.
+        "_RunicApplicationHostNames",
+        "RunicApplicationHost",
     ];
 
     internal bool IsViewsWindowProject { get; init; }
@@ -56,6 +60,15 @@ internal sealed record DevProjectConfiguration(
     internal string FrontendCompilerHotReloadTarget { get; init; } = string.Empty;
 
     internal bool HasFrontendCompiler => FrontendCompilerEnabled;
+
+    /// <summary>The Views hosts the restored project imports (<c>desktop</c>, <c>cswebui</c>), or none before a restore.</summary>
+    internal IReadOnlyList<string> ApplicationHosts { get; init; } = [];
+
+    /// <summary>
+    /// Whether the application runs on CS-WebUI only, which serves the initial build. Runic Desktop serves the
+    /// frontend output directory live; an unrestored project is assumed to be on Runic Desktop.
+    /// </summary>
+    internal bool RunsOnCsWebUiOnly => ApplicationHosts.Count != 0 && !ApplicationHosts.Contains("desktop");
 
     internal string DevelopmentServerKind { get; init; } =
         ViteDevServerEnabled ? "vite" : string.Empty;
@@ -182,6 +195,10 @@ internal sealed record DevProjectConfiguration(
             FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
             DevelopmentServerDocument = Value("RunicApplicationFrontendDevServerDocument"),
+            ApplicationHosts = Value("RunicApplicationHost").Trim() is { Length: > 0 } chosen
+                ? [chosen.ToLowerInvariant()]
+                : [.. Value("_RunicApplicationHostNames").Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Select(static name => name.ToLowerInvariant()).Distinct()],
         };
         evaluated.Validate();
         return evaluated;

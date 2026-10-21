@@ -355,9 +355,16 @@ test('each platform rule plans its Windows and macOS legs, first match wins', ()
     + 'osx-arm64: packages/dotnet/Runic.Platform.MacOS/MacOSPlatformProvider.cs');
 });
 
+// B10: the development-directory source pins its root per OS and watches with FSEvents and ReadDirectoryChangesW,
+// so its native-job step runs on x64 Windows and macOS.
+test('the development asset source plans the x64 Windows and macOS legs', () => {
+  for (const file of ['packages/dotnet/Runic.Assets/DevelopmentDirectoryAssetSource.cs', 'tests/dotnet/Runic.Assets.Tests/DevelopmentDirectoryTests.cs'])
+    assert.deepEqual(plan([file]).platforms, ['win-x64', 'osx-arm64'], file);
+});
+
 test('owned files without a rule, engineering-only and neutral files plan no Windows or macOS leg', () => {
   for (const file of ['packages/web/svelte/src/index.ts', 'packages/web/views/src/index.ts', 'tools/Runic.Application.Templates/content/runic-app/Program.cs',
-    'packages/dotnet/Runic.Assets/AssetCatalog.cs', 'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigationRegionExtensions.cs', 'examples/notes-view-first/Program.cs',
+    'packages/dotnet/Runic.Assets.AspNetCore/RunicAssetEndpointExtensions.cs', 'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigationRegionExtensions.cs', 'examples/notes-view-first/Program.cs',
     'docs/README.md', 'eng/ci/plan.test.mjs', 'tests/native/Runic.Desktop.Gtk4.Smoke/Program.cs', 'eng/portals/README.txt']) {
     const result = plan([file]);
     assert.deepEqual(result.platforms, [], file);

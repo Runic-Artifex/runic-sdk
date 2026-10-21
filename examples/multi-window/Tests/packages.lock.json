@@ -211,6 +211,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Runic.Application.Views": "[0.9.1, )",
+          "Runic.Assets.Desktop": "[0.9.1, )",
           "Runic.Desktop": "[0.9.1, )",
           "Runic.Platform.Linux": "[0.9.1, )",
           "Runic.Platform.Linux.Gtk4": "[0.9.1, )",
@@ -229,6 +230,16 @@
           "ReactiveUI.Core": "[26.0.1, 27.0.0)",
           "ReactiveUI.Primitives": "[9.0.0, 10.0.0)",
           "Runic.Application.Views": "[0.9.1, )"
+        }
+      },
+      "runic.assets": {
+        "type": "Project"
+      },
+      "runic.assets.desktop": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Assets": "[0.9.1, )",
+          "Runic.Desktop": "[0.9.1, )"
         }
       },
       "runic.desktop": {
