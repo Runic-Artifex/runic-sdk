@@ -421,7 +421,8 @@ that did not pass to `fail` or `warn` in `fault.details`.
 ### RAPPCLI1011
 
 `doctor` target options are invalid: the runtime identifier is malformed, or
-`--aot`, `--no-aot` or `--self-contained` is used without `--runtime`.
+`--aot`, `--no-aot`, `--self-contained` or `--no-self-contained` is used
+without `--runtime`.
 
 **Fix:** pass a runtime identifier such as `linux-x64`, `win-x64` or
 `osx-arm64` with `--runtime`.

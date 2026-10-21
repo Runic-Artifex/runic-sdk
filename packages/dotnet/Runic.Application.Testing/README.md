@@ -401,7 +401,7 @@ public async Task IncrementsTheCount()
     var children = app.GetDescendantProcesses();   // while the application runs
     await browser.CloseAsync();
     await Assert.That(await app.StopAsync()).IsEqualTo(0);
-    await Assert.That(children.All(child => child.HasExited)).IsTrue();
+    await Assert.That(children.All(child => child.HasExited())).IsTrue();
 }
 ```
 
@@ -424,9 +424,12 @@ it throws `InvalidOperationException`. Disposing stops the application the same
 way but kills a hanging one without an exception, so call `StopAsync` when a
 test should fail on a shutdown that hangs. To check that the application ends
 the processes it started, such as a long-running tool it cancels on shutdown,
-list them with `GetDescendantProcesses` while it runs and check `HasExited`
-after `StopAsync`. A process whose parent has exited is no longer listed as a
-descendant.
+list them with `GetDescendantProcesses` while it runs and call `HasExited()`
+on each after `StopAsync`. A process whose parent has exited is no longer listed
+as a descendant. Each `RunicDescendantProcess` is a snapshot of the process id
+and start time that holds no process handle, so there is nothing to dispose.
+`HasExited()` looks the process up again and also reports a process whose id
+the system has since given to another process as exited.
 
 A test process that exits without disposing the application still ends it on a
 best-effort basis: on Windows the application runs in a job object that ends

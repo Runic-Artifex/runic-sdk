@@ -1186,7 +1186,7 @@ internal sealed class ToolTests
         }
     }
 
-    [Test, DisplayName("--runtime/--rid and --aot/--no-aot are spelled alike in every command")]
+    [Test, DisplayName("--runtime/--rid, --aot/--no-aot and --self-contained/--no-self-contained are spelled alike in every command")]
     public void RidAndAotOptionsMatchAcrossCommands()
     {
         Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
@@ -1206,6 +1206,11 @@ internal sealed class ToolTests
             {
                 True(spellings.Contains("--aot") && spellings.Contains("--no-aot"), $"{command.Name} needs --aot and --no-aot.");
             }
+            if (spellings.Contains("--self-contained") || spellings.Contains("--no-self-contained"))
+            {
+                True(spellings.Contains("--self-contained") && spellings.Contains("--no-self-contained"),
+                    $"{command.Name} needs --self-contained and --no-self-contained.");
+            }
         }
         Equal(2, ridCommands);
 
@@ -1216,6 +1221,8 @@ internal sealed class ToolTests
             new[] { "size", "--rid", "linux-x64", "--aot" },
             ["size", "--runtime", "linux-x64", "--no-aot"],
             ["doctor", "--runtime", "linux-x64", "--no-aot"],
+            ["doctor", "--runtime", "linux-x64", "--self-contained"],
+            ["doctor", "--runtime", "linux-x64", "--no-self-contained"],
         })
         {
             (int exitCode, string output) = RunCli([.. arguments, "--project", missing, "--format", "json"]);
@@ -1230,11 +1237,23 @@ internal sealed class ToolTests
             using JsonDocument document = JsonDocument.Parse(output);
             DoesNotContain(document.RootElement.GetProperty("fault").GetProperty("code").GetString() ?? "", "RAPPDEV1002");
         }
-        (int noAotExit, string noAotOutput) = RunCli("doctor", "--no-aot", "--project", missing, "--format", "json");
-        Equal(2, noAotExit);
-        using JsonDocument noAotWithoutRid = JsonDocument.Parse(noAotOutput);
-        Equal("RAPPCLI1011", noAotWithoutRid.RootElement.GetProperty("fault").GetProperty("code").GetString());
-        Contains(string.Join(',', DoctorProjectConfiguration.PublishProperties(DoctorTargetRid.Parse("linux-x64"), false, false)), "PublishAot=false");
+        {
+            (int exitCode, string output) = RunCli("doctor", "-r", "linux-x64", "--self-contained", "--no-self-contained", "--project", missing, "--format", "json");
+            Equal(2, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output);
+            DoesNotContain(document.RootElement.GetProperty("fault").GetProperty("code").GetString() ?? "", "RAPPDEV1002");
+        }
+        foreach (string option in new[] { "--no-aot", "--self-contained", "--no-self-contained" })
+        {
+            (int exitCode, string output) = RunCli("doctor", option, "--project", missing, "--format", "json");
+            Equal(2, exitCode);
+            using JsonDocument withoutRid = JsonDocument.Parse(output);
+            Equal("RAPPCLI1011", withoutRid.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        }
+        DoctorTargetRid linuxX64 = DoctorTargetRid.Parse("linux-x64");
+        Contains(string.Join(',', DoctorProjectConfiguration.PublishProperties(linuxX64, false, null)), "PublishAot=false");
+        DoesNotContain(string.Join(',', DoctorProjectConfiguration.PublishProperties(linuxX64, null, null)), "SelfContained");
+        Contains(string.Join(',', DoctorProjectConfiguration.PublishProperties(linuxX64, null, false)), "SelfContained=false,_CommandLineDefinedSelfContained=true");
     }
 
     [Test, DisplayName("doctor guides an unrestored project instead of failing")]
@@ -2005,7 +2024,7 @@ internal sealed class ToolTests
             </Project>
             """);
         workspace.Write("Frontend/package.json", """{"packageManager":"npm@10.0.0"}""");
-        DoctorProjectConfiguration Evaluate(string configuration, string rid, bool? aot = null, bool selfContained = false) =>
+        DoctorProjectConfiguration Evaluate(string configuration, string rid, bool? aot = null, bool? selfContained = null) =>
             DoctorProjectConfiguration.EvaluateAsync("dotnet", project, configuration, CancellationToken.None,
                 DoctorProjectConfiguration.PublishProperties(DoctorTargetRid.Parse(rid), aot, selfContained))
                 .GetAwaiter().GetResult();
@@ -2024,6 +2043,7 @@ internal sealed class ToolTests
         True(switches.PublishAot, "--aot sets PublishAot.");
         True(switches.SelfContained, "--self-contained sets SelfContained.");
         False(Evaluate("Release", "win-x64", aot: false).PublishAot, "--no-aot overrides a project PublishAot.");
+        False(Evaluate("Release", "linux-x64", selfContained: false).SelfContained, "--no-self-contained overrides a project PublishSelfContained.");
 
         // Without -c, --rid evaluates Release like dotnet publish.
         (int exitCode, string output) = RunCli("doctor", "--project", project, "--format", "json", "--fail-on", "never", "--rid", "linux-x64");

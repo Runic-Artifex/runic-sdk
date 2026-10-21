@@ -134,7 +134,8 @@ internal static partial class Program
         CommandExecutionContext context,
         [Option("--aot", ConflictsWith = ["no-aot"], Description = "With --runtime, check a publish with -p:PublishAot=true.")] bool aot,
         [Option("--no-aot", ConflictsWith = ["aot"], Description = "With --runtime, check a publish with -p:PublishAot=false.")] bool noAot,
-        [Option("--self-contained", Description = "With --runtime, check a publish with --self-contained true.")] bool selfContained,
+        [Option("--self-contained", ConflictsWith = ["no-self-contained"], Description = "With --runtime, check a publish with --self-contained true.")] bool selfContained,
+        [Option("--no-self-contained", ConflictsWith = ["self-contained"], Description = "With --runtime, check a publish with --self-contained false.")] bool noSelfContained,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --runtime as dotnet publish does.")] string configuration = "",
@@ -145,13 +146,14 @@ internal static partial class Program
         {
             DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn);
             DoctorTargetRid? target = string.IsNullOrEmpty(rid) ? null : DoctorTargetRid.Parse(rid);
-            if (target is null && (aot || noAot || selfContained))
+            if (target is null && (aot || noAot || selfContained || noSelfContained))
             {
-                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot, --no-aot and --self-contained require --runtime.");
+                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot, --no-aot, --self-contained and --no-self-contained require --runtime.");
             }
             string evaluated = configuration.Length != 0 ? configuration : target is null ? "Debug" : "Release";
             DoctorRun run = await DoctorApplication.InspectAsync(
-                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, evaluated, target, aot ? true : noAot ? false : null, selfContained),
+                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, evaluated, target, aot ? true : noAot ? false : null,
+                    selfContained ? true : noSelfContained ? false : null),
                 cancellationToken).ConfigureAwait(false);
             DoctorApplication.WriteReport(run.Project, run.Report, run.Target);
             return DoctorOutcome.Create(

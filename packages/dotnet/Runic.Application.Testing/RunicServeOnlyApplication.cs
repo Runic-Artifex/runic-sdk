@@ -198,13 +198,13 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// List them while the application runs: a process whose parent has exited is no longer its descendant. After
-    /// <see cref="StopAsync"/>, <see cref="Process.HasExited"/> tells whether the application ended each one.
-    /// Dispose the returned processes.
+    /// <see cref="StopAsync"/>, <see cref="RunicDescendantProcess.HasExited"/> tells whether the application ended
+    /// each one. The snapshots hold no process handle.
     /// </remarks>
-    public IReadOnlyList<Process> GetDescendantProcesses()
+    public IReadOnlyList<RunicDescendantProcess> GetDescendantProcesses()
     {
         var parents = ProcessTree.ReadParents();
-        var descendants = new List<Process>();
+        var descendants = new List<RunicDescendantProcess>();
         var pending = new Queue<(int Id, DateTime? Started)>([(_process.Id, StartTimeOf(_process))]);
         var seen = new HashSet<int> { _process.Id };
         while (pending.TryDequeue(out var parent))
@@ -212,23 +212,22 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
             foreach (var (child, childParent) in parents)
             {
                 if (childParent != parent.Id || !seen.Add(child)) continue;
-                Process process;
-                try { process = Process.GetProcessById(child); }
-                catch (ArgumentException) { continue; } // It has exited meanwhile.
-                DateTime? started = null;
-                if (OperatingSystem.IsWindows())
+                DateTime? started;
+                try
                 {
-                    // Windows keeps a process's parent id after the parent exits and reuses ids, so the recorded
-                    // parent may be an unrelated, newer process with the old id. A child is only accepted when it
-                    // started after its parent, as Process.Kill(entireProcessTree: true) checks.
+                    using var process = Process.GetProcessById(child);
                     started = StartTimeOf(process);
-                    if (started is not { } childStarted || parent.Started is not { } parentStarted || childStarted <= parentStarted)
-                    {
-                        process.Dispose();
-                        continue;
-                    }
                 }
-                descendants.Add(process);
+                catch (ArgumentException) { continue; } // It has exited meanwhile.
+                // Windows keeps a process's parent id after the parent exits and reuses ids, so the recorded
+                // parent may be an unrelated, newer process with the old id. A child is only accepted when it
+                // started after its parent, as Process.Kill(entireProcessTree: true) checks.
+                if (OperatingSystem.IsWindows() &&
+                    (started is not { } childStarted || parent.Started is not { } parentStarted || childStarted <= parentStarted))
+                {
+                    continue;
+                }
+                descendants.Add(new RunicDescendantProcess(child, started));
                 pending.Enqueue((child, started));
             }
         }

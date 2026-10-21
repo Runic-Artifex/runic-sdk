@@ -124,11 +124,12 @@ global properties of `dotnet publish -r <rid>` (`RuntimeIdentifier=<rid>` and
 `_IsPublishing=true`), and in Release unless you pass `-c`, so RID-, publish- and
 configuration-conditioned `PublishAot`, `PublishSelfContained` and
 `SelfContained` settings apply. Doctor does not see properties passed to
-`dotnet publish` on its command line; `--aot`, `--no-aot` and
-`--self-contained` check a publish with `-p:PublishAot=true`,
-`-p:PublishAot=false` or `--self-contained true`. A malformed RID, or `--aot`,
-`--no-aot` or `--self-contained` without `--runtime`, is a usage error
-(`RAPPCLI1011`, exit code 2).
+`dotnet publish` on its command line; `--aot`, `--no-aot`,
+`--self-contained` and `--no-self-contained` check a publish with
+`-p:PublishAot=true`, `-p:PublishAot=false`, `--self-contained true` or
+`--self-contained false`. `--aot` and `--no-aot` conflict, and so do
+`--self-contained` and `--no-self-contained`. A malformed RID, or one of these
+switches without `--runtime`, is a usage error (`RAPPCLI1011`, exit code 2).
 
 | Check | What it reports |
 | --- | --- |

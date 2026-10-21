@@ -74,14 +74,16 @@ internal sealed record DoctorProjectConfiguration(
 
     /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
-    /// SelfContained for the --aot, --no-aot and --self-contained switches.
+    /// SelfContained for the --aot, --no-aot, --self-contained and --no-self-contained switches.
     /// </summary>
-    internal static IReadOnlyList<string> PublishProperties(DoctorTargetRid target, bool? aot, bool selfContained)
+    internal static IReadOnlyList<string> PublishProperties(DoctorTargetRid target, bool? aot, bool? selfContained)
     {
         ArgumentNullException.ThrowIfNull(target);
         List<string> properties = [$"RuntimeIdentifier={target.Value}", "_IsPublishing=true"];
         if (aot is { } publishAot) properties.Add(publishAot ? "PublishAot=true" : "PublishAot=false");
-        if (selfContained) properties.AddRange(["SelfContained=true", "_CommandLineDefinedSelfContained=true"]);
+        // dotnet publish --self-contained true|false also sets _CommandLineDefinedSelfContained.
+        if (selfContained is { } publishSelfContained)
+            properties.AddRange([publishSelfContained ? "SelfContained=true" : "SelfContained=false", "_CommandLineDefinedSelfContained=true"]);
         return properties;
     }
 
