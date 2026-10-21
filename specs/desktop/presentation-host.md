@@ -233,7 +233,8 @@ credential-bearing bootstrap content.
 Non-loopback binding, additional origins, anonymous sessions, multiple clients,
 or relaxed content access require explicit policy. Loopback location alone
 must not be treated as authentication. Credentials must not appear in URLs,
-public errors, or retained diagnostics.
+public errors, or retained diagnostics; the one-time browser launch code below is
+not a credential.
 
 A loopback listener rejects every HTTP request whose `Host` is not a loopback
 address or `localhost` at the bound port, so a DNS-rebinding page cannot read
@@ -252,9 +253,30 @@ exposes them only to documents whose origin is the surface origin or an
 additional origin. While such a host presents the surface, fetchable bootstrap
 scripts carry no credentials. The built-in WebView2, WKWebView, and WebKitGTK
 hosts support this. Installed browsers and custom hosts without the capability
-still fetch credential-bearing scripts, protected only by the `Host` and
+still fetch credential-bearing scripts, protected by the `Host` and
 fetch-metadata checks; a browser that omits fetch metadata cannot be
 distinguished from a non-browser client.
+
+An installed browser's command line is readable by other users of Linux and
+macOS, so it must not carry the surface address. A host that launches a browser
+for a surface with required session credentials and single-client admission
+passes it a one-time launch code instead, at `<surface>/_runic_launch/<code>`.
+The launch code is not a session credential: it carries no authority after its
+first use. The first request with the code binds the surface to that client
+through the client cookie and is redirected to the entry. From then on, for the
+surface's lifetime or until the next launch, credential-bearing bootstrap
+scripts and WebSocket upgrades are refused to every other client
+(`client-not-bound`), whatever credential or `Origin` they present. When the
+host can identify the user owning the requesting socket (Linux, through
+`/proc/net/tcp`), a request for the code from another user is refused without
+using the code (`browser-launch-foreign-user`). When the used code is presented
+again by a client that is not bound, the binding is revoked, the surface's
+sessions are closed, a pending presentation fails, and the conflict is reported
+(`browser-launch-conflict`); neither client keeps the surface. A launch with
+multiple-client admission keeps the surface address on the command line. Because
+the browser sends the binding cookie only to same-site requests, an additional
+origin that is cross-site to the surface cannot load its bootstrap in an
+installed browser.
 
 A credential is scoped to one surface and one host lifetime. It must not admit
 a session on another surface, remains invalid after its surface or host closes,

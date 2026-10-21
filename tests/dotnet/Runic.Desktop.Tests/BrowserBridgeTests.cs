@@ -224,7 +224,7 @@ public sealed class BrowserBridgeTests
         return retained.ToString();
     }
 
-    private static string? FindChrome()
+    internal static string? FindChrome()
     {
         if (Environment.GetEnvironmentVariable("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH") is { Length: > 0 } configured)
         {
