@@ -4,7 +4,7 @@ Optional WPF child presentation for a Runic web View.
 Targets .NET 10 and Windows. The containing WPF application owns its dispatcher,
 shell, navigation engine, ViewModels and services. Toolkit, ReactiveUI, or plain
 observable models can use the same presentation adapter. The API is stable since
-0.9.0-preview.1; its former experimental ID `RUNICWPF001` is retired, so remove
+0.9.0; its former experimental ID `RUNICWPF001` is retired, so remove
 its suppressions. Only `RunicWebView.CreateWindowHostFactory()`, for the
 lower-level API, belongs to Runic Desktop's experimental custom window-host family
 [`RUNICDESK100`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK100).

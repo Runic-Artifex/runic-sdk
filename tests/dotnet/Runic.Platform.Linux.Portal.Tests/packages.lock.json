@@ -85,22 +85,22 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Platform": "[0.8.0-preview.6, )",
+          "Runic.Platform": "[0.9.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.linux.portal": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Linux.DBus": "[0.8.0-preview.6, )",
-          "Runic.Platform.Runtime": "[0.8.0-preview.6, )",
+          "Runic.Platform.Linux.DBus": "[0.9.0, )",
+          "Runic.Platform.Runtime": "[0.9.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.8.0-preview.6, )"
+          "Runic.Platform": "[0.9.0, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {

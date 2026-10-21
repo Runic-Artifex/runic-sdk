@@ -135,8 +135,9 @@ test("bump moves an equal CsWebUi version with the train, keeps a distinct one, 
 
 test("each NuGet package packs at its own version", () => {
   const workspace = JSON.parse(separateFiles("1.0.0-preview.1")["eng/workspace.json"]);
-  const version = p => nugetPackArguments(workspace, p, { built: true, nuget: "/feed", npm: "/npm" }).filter(arg => arg.startsWith("-p:PackageVersion="));
-  assert.deepEqual(version(workspace.nuget[0]), ["-p:PackageVersion=1.0.0-preview.1"]);
+  const version = p => nugetPackArguments(workspace, p, { built: true, nuget: "/feed", npm: "/npm" }).filter(arg => /^-p:\w*PackageVersion=/.test(arg));
+  // Not a global PackageVersion, which would pin its project references to the same version.
+  assert.deepEqual(version(workspace.nuget[0]), ["-p:RunicCsWebUiPackageVersion=1.0.0-preview.1"]);
   assert.deepEqual(version(workspace.nuget[1]), ["-p:PackageVersion=0.6.0-preview.1"]);
   assert.deepEqual(nugetPackArguments(workspace, workspace.nuget[1], { built: false, nuget: "/feed", npm: "/npm", selectedConfiguration: "Release" }),
     ["pack", "packages/dotnet/Runic.Platform/Runic.Platform.csproj", "-c", "Release", "--no-restore", "-o", "/feed", "-p:PackageVersion=0.6.0-preview.1"]);

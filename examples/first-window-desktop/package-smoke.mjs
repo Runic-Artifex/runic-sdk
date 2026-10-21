@@ -28,8 +28,9 @@ const projects = [
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;
 // A unique package version keeps restore from resolving the published release of the
-// same version from nuget.org or the global packages folder.
-const testVersion = `${version}.packagetest${process.pid}${Date.now()}`;
+// same version from nuget.org or the global packages folder; a stable version gets a
+// prerelease label, a prerelease one an extra identifier.
+const testVersion = `${version}${version.includes("-") ? "." : "-"}packagetest${process.pid}${Date.now()}`;
 const dependencyInjection = (await readFile(join(root, "Directory.Packages.props"), "utf8"))
   .match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
 if (!dependencyInjection) throw new Error("The dependency injection version was not found.");

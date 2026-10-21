@@ -145,9 +145,11 @@ test("the cswebui host references the preview package's separately stamped versi
   assert.deepEqual(evaluate(templates, ["RunicNuGetTemplateVersion", "RunicCsWebUiNuGetTemplateVersion"], preview),
     { RunicNuGetTemplateVersion: "1.0.0", RunicCsWebUiNuGetTemplateVersion: "1.0.0-preview.1" });
   assert.deepEqual(evaluate(cswebui, ["PackageVersion"], preview), { PackageVersion: "1.0.0-preview.1" });
-  // Until the versions diverge, the preview package follows the release train.
+  // Without overrides, the template uses the preview package's version from eng/workspace.json.
+  const workspace = JSON.parse(readFileSync(resolve(root, "eng/workspace.json"), "utf8"));
+  const shipped = workspace.nuget.find(entry => entry.name === "Runic.Application.Views.CsWebUi")?.version ?? workspace.version;
   const train = evaluate(templates, ["RunicSdkVersion", "RunicCsWebUiNuGetTemplateVersion"]);
-  assert.equal(train.RunicCsWebUiNuGetTemplateVersion, train.RunicSdkVersion);
+  assert.deepEqual(train, { RunicSdkVersion: workspace.version, RunicCsWebUiNuGetTemplateVersion: shipped });
 });
 
 const templateProject = resolve(root, "tools/Runic.Application.Templates/Runic.Application.Templates.csproj");

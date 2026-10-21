@@ -142,7 +142,7 @@
           "ReactiveUI.Binding.Reactive": "[9.1.0, 10.0.0)",
           "ReactiveUI.Primitives.Reactive": "[9.0.0, 10.0.0)",
           "ReactiveUI.Reactive": "[26.0.1, 27.0.0)",
-          "Runic.Navigation": "[0.8.0-preview.6, )",
+          "Runic.Navigation": "[0.9.0, )",
           "System.Reactive": "[7.0.0, 8.0.0)"
         }
       },

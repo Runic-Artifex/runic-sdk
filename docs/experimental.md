@@ -52,7 +52,7 @@ leftover suppression is harmless; remove it.
 
 | ID | API family | Graduated in |
 |---|---|---|
-| `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined [`RUNICDESK100`](#RUNICDESK100), the custom window-host family it belongs to. | 0.9.0-preview.1 |
+| `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined [`RUNICDESK100`](#RUNICDESK100), the custom window-host family it belongs to. | 0.9.0 |
 | `RUNICNAV001` | Navigation (`Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`) | 0.7.0-preview.7 |
 
 <a id="RUNICASSETS001"></a>
@@ -63,7 +63,7 @@ leftover suppression is harmless; remove it.
 `DevelopmentDirectoryAssetSource`, `IAssetSourceChangeNotifier`, `IAssetWatch`,
 `AssetWatchOptions` and `AssetSourceChangedEventArgs`.
 
-**Status:** experimental since 0.9.0-preview.1. The source refreshes a local
+**Status:** experimental since 0.9.0. The source refreshes a local
 directory for a development inner loop, but no Runic host or tool uses it yet:
 `dotnet runic dev` serves the frontend from its development server. Its shape,
 such as the synchronous `Refresh`, the two ways to stop a watch and the
@@ -85,7 +85,7 @@ GTK 4 provider and the WPF control implement: `IDesktopWindowHostFactory`,
 in `Runic.Desktop`, `Gtk4WindowHostFactory` in `Runic.Desktop.Gtk4`, and
 `RunicWebView.CreateWindowHostFactory()` in `Runic.Application.Views.Wpf`.
 
-**Status:** experimental since 0.9.0-preview.1. Applications that use the
+**Status:** experimental since 0.9.0. Applications that use the
 built-in windows, or select GTK 4 with `WithGtk4()`, do not use this family and
 need no suppression; `LinuxDesktopRuntime.CanUse` stays stable. Neither do WPF
 applications that use `RunicViewHost`; only composing a `RunicWebView` with your
@@ -107,7 +107,7 @@ and the types `PresentationCapabilityHandler`,
 `PresentationCapabilityRegistration`, `PresentationEventKind`,
 `PresentationInvocation`, `PresentationResult` and `PresentationSession`.
 
-**Status:** experimental since 0.9.0-preview.1. Runic Windows and Views
+**Status:** experimental since 0.9.0. Runic Windows and Views
 (`Runic.Application.Views.Desktop`) carry their Bridge over this transport, so a
 Views application does not use it directly. Its shape follows the WebUI wire
 protocol (event kinds numbered like WebUI's, arguments read by position, `ulong`
