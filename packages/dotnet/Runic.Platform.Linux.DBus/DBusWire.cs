@@ -91,8 +91,14 @@ internal static class DBusWire
         }
     }
 
-    private static DBusValue Read(ref Reader reader, string signature)
+    // The D-Bus specification's limit on arrays, structs, dictionary entries and variants nested in each other. A peer
+    // could otherwise send variants that recurse until the stack overflows, which ends the process.
+    private const int MaxDepth = 64;
+
+    private static DBusValue Read(ref Reader reader, string signature, int depth = 0)
     {
+        depth += signature[0] switch { 'a' when signature[1] == '{' => 2, 'a' or '(' or 'v' => 1, _ => 0 };
+        if (depth > MaxDepth) throw new DBusException(DBusException.InvalidArgs, $"The message nests values deeper than {MaxDepth} levels.");
         switch (signature[0])
         {
             case 'y': return DBusValue.From(reader.ReadByte());
@@ -112,7 +118,7 @@ internal static class DBusWire
                 string inner = reader.ReadSignatureAsString();
                 if (!DBusSignatures.IsSingleCompleteType(inner))
                     throw new DBusException(DBusException.InvalidArgs, $"The variant signature \"{inner}\" is not one complete type.");
-                return DBusValue.FromWire("v", new DBusValue.VariantBox(Read(ref reader, inner)));
+                return DBusValue.FromWire("v", new DBusValue.VariantBox(Read(ref reader, inner, depth)));
             case 'a' when signature[1] == '{':
             {
                 string key = signature[2..3], value = signature[3..^1];
@@ -121,8 +127,8 @@ internal static class DBusWire
                 while (reader.HasNext(end))
                 {
                     reader.AlignStruct();
-                    var entryKey = Read(ref reader, key);
-                    entries.Add(KeyValuePair.Create(entryKey, Read(ref reader, value)));
+                    var entryKey = Read(ref reader, key, depth);
+                    entries.Add(KeyValuePair.Create(entryKey, Read(ref reader, value, depth)));
                 }
                 return DBusValue.DictionaryFromWire(signature, entries.ToImmutable());
             }
@@ -131,14 +137,14 @@ internal static class DBusWire
                 string element = signature[1..];
                 var items = ImmutableArray.CreateBuilder<DBusValue>();
                 var end = reader.ReadArrayStart((DBusType)(byte)element[0]);
-                while (reader.HasNext(end)) items.Add(Read(ref reader, element));
+                while (reader.HasNext(end)) items.Add(Read(ref reader, element, depth));
                 return DBusValue.ArrayFromWire(signature, items.ToImmutable());
             }
             case '(':
             {
                 reader.AlignStruct();
                 var fields = ImmutableArray.CreateBuilder<DBusValue>();
-                foreach (string field in DBusSignatures.Split(signature[1..^1])) fields.Add(Read(ref reader, field));
+                foreach (string field in DBusSignatures.Split(signature[1..^1])) fields.Add(Read(ref reader, field, depth));
                 return DBusValue.StructFromWire(signature, fields.ToImmutable());
             }
             default: throw new DBusException(DBusException.InvalidArgs, $"Unsupported signature \"{signature}\".");

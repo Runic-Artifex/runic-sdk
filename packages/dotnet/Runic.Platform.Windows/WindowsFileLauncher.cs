@@ -73,14 +73,18 @@ internal sealed class WindowsFileLauncher(INativeWindowOwner owner) : IDesktopFi
         }
         finally { PInvoke.CoUninitialize(); }
     }
-    // The shell's default verb runs programs, scripts, installers and shortcuts, which can
-    // target a program themselves. Opening a document must never execute code.
+    // The shell's default verb runs programs, scripts, installers and shortcuts, which can target a program themselves,
+    // and mounts disk images that hold them. Opening a document must never execute code. The list is best effort, as is
+    // the check of the type's registration below: an application must not open files from untrusted sources.
     private static readonly HashSet<string> ProgramExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".exe", ".com", ".scr", ".pif", ".cpl", ".msc", ".bat", ".cmd", ".ps1", ".psm1", ".psd1", ".vbs", ".vbe", ".js", ".jse",
-        ".wsf", ".wsh", ".wsc", ".hta", ".jar", ".py", ".pyw", ".msi", ".msp", ".mst", ".appx", ".appxbundle", ".msix", ".msixbundle",
-        ".appinstaller", ".application", ".appref-ms", ".lnk", ".url", ".website", ".scf", ".reg", ".inf", ".chm", ".diagcab",
-        ".settingcontent-ms", ".library-ms", ".search-ms", ".searchconnector-ms",
+        ".exe", ".com", ".scr", ".pif", ".cpl", ".msc", ".bat", ".cmd", ".ps1", ".psm1", ".psd1", ".ps1xml", ".ps2", ".ps2xml",
+        ".psc1", ".psc2", ".vb", ".vbs", ".vbe", ".js", ".jse", ".ws", ".wsf", ".wsh", ".wsc", ".sct", ".hta", ".jar", ".jnlp",
+        ".py", ".pyw", ".msi", ".msp", ".mst", ".msu", ".appx", ".appxbundle", ".msix", ".msixbundle", ".appinstaller",
+        ".application", ".appref-ms", ".xbap", ".vsix", ".vsto", ".lnk", ".url", ".website", ".scf", ".shb", ".shs", ".reg",
+        ".inf", ".ins", ".isp", ".chm", ".hlp", ".diagcab", ".gadget", ".rdp", ".theme", ".themepack", ".deskthemepack",
+        ".settingcontent-ms", ".library-ms", ".search-ms", ".searchconnector-ms", ".iso", ".img", ".vhd", ".vhdx", ".xll",
+        ".xla", ".xlam", ".mde", ".ade", ".adp", ".accde",
     };
     internal static bool StartsProgram(string path)
     {
@@ -95,8 +99,19 @@ internal sealed class WindowsFileLauncher(INativeWindowOwner owner) : IDesktopFi
         bool IsProgram(string name)
         {
             string extension = Path.GetExtension(name);
-            return extension.Length != 0 && (ProgramExtensions.Contains(extension) || executable.Contains(extension, StringComparer.OrdinalIgnoreCase));
+            return extension.Length != 0 && (ProgramExtensions.Contains(extension) || executable.Contains(extension, StringComparer.OrdinalIgnoreCase)
+                || OperatingSystem.IsWindowsVersionAtLeast(8) && RegisteredToRun(extension));
         }
+    }
+    // A type the shell considers dangerous (its own list and types marked FTA_AlwaysUnsafe), or whose open command runs
+    // the file itself, as "%1" %* does for .exe. A failed query adds nothing to the list.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+    private static bool RegisteredToRun(string extension)
+    {
+        if (PInvoke.AssocIsDangerous(extension)) return true;
+        string command = WindowsShellAssociations.Query(new(AssociationKind.Extension, extension), ASSOCSTR.ASSOCSTR_COMMAND, "open")?.Trim() ?? "";
+        return command.StartsWith("\"%1\"", StringComparison.Ordinal) || command.StartsWith("%1", StringComparison.Ordinal)
+            || command.StartsWith("\"%L\"", StringComparison.OrdinalIgnoreCase) || command.StartsWith("%L", StringComparison.OrdinalIgnoreCase);
     }
     private static PlatformResult<PlatformUnit> Success() => new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private static PlatformResult<PlatformUnit> FromHResult(int result) => result >= 0 ? Success() :
