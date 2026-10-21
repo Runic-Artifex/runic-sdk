@@ -181,7 +181,9 @@ internal sealed class LinuxAccessibility : AccessibilityClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (depth > 40 || visited.Count > 5000 || !visited.Add(node)) return;
-        await visit(node);
+        // The page can remove a node between listing and reading it; the next attempt walks the tree again.
+        try { await visit(node); }
+        catch (Exception error) when (IsMissing(error)) { return; }
         IReadOnlyList<Node> children;
         try { children = await ChildrenAsync(_bus, node); }
         catch (Exception error) when (IsMissing(error)) { return; }
