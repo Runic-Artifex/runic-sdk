@@ -251,7 +251,7 @@ for case in "${cases[@]}"; do
     grep -qx '/result' "$project/.gitignore"
     if [[ "$manager" == pnpm ]]; then
       # pnpm refuses packages younger than its minimumReleaseAge (a day), which a recent published version is.
-      printf 'minimumReleaseAge: 0\n' > "$project/Frontend/pnpm-workspace.yaml"
+      printf 'minimumReleaseAge: 0\n' >> "$project/Frontend/pnpm-workspace.yaml"
     fi
     # What the project's README asks for before the first nix build: the NuGet lock, and the files in Git.
     quiet dotnet restore "$project/NixApp.csproj"
