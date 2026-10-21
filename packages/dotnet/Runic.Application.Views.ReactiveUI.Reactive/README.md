@@ -30,9 +30,12 @@ Runic adapters.
 `AddRunicReactiveModelContext()` installs a model-context
 `RxSchedulers.MainThreadScheduler` when ReactiveUI's is still a System.Reactive
 default, so commands created without an `outputScheduler` deliver their results
-and `IsExecuting` on the model context of the turn that runs them. Work
-scheduled outside a turn runs on the replaced scheduler and is logged once per
-ViewModel type (Views event 1043). A scheduler the application or platform set
+and `IsExecuting` on the model context of the turn that runs them, also for a
+plain `Execute` in hand-written code started in a turn. Work that a turn's async
+flow schedules after it left the turn, such as after `ConfigureAwait(false)` or
+in `Task.Run`, runs on that turn's context too (since 0.10). Work whose flow
+never ran in a turn, or whose context has closed, runs on the replaced scheduler
+and is logged once per ViewModel type (Views event 1043). A scheduler the application or platform set
 is kept. An application that builds ReactiveUI with `RxAppBuilder` adds
 `WithRunicModelContext()` (namespace `ReactiveUI.Reactive.Builder`) to that
 builder. To opt out, set `RxSchedulers.MainThreadScheduler`, or call

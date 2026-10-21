@@ -13,6 +13,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <InternalsVisibleTo Include="Runic.Navigation.Tests" />
+    <!-- The ReactiveUI adapters' main-thread scheduler follows a model turn's async flow (RunicModelContext.Flowing,
+         #473). They reference this package through Runic.Application.Views, with the exact version of the release. -->
+    <InternalsVisibleTo Include="Runic.Application.Views.ReactiveUI" />
+    <InternalsVisibleTo Include="Runic.Application.Views.ReactiveUI.Reactive" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

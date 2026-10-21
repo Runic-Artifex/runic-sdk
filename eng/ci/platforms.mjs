@@ -55,15 +55,19 @@ export const platformRules = [
     "eng/build/desktop.props", "eng/branding/desktop", "tools/Runic.Application.Templates/content/runic-app/packaging",
     "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs", "tools/Runic.Application.Templates/content/runic-app/icons",
     "tests/native/Runic.Packaging.Probe"] },
-  // The managed Windows and View runtime, its NativeAOT apps, probes and file watching: x64 Windows and macOS.
+  // The managed Windows and View runtime, its NativeAOT apps, probes and file watching, and the test host whose tests
+  // run there (Runic.Application.Views.Wpf.Windows.Tests references it too): x64 Windows and macOS.
   { platforms: ["win-x64", "osx-arm64"], paths: ["packages/dotnet/Runic.Application.Views", "packages/dotnet/Runic.Application.Views.Desktop",
     "packages/dotnet/Runic.Application.Views.CsWebUi", "examples/first-window", "tests/fixtures/application/cswebui-window-probes",
-    "tests/dotnet/Runic.Application.Testing.Tests"] },
+    "packages/dotnet/Runic.Application.Testing", "tests/dotnet/Runic.Application.Testing.Tests"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },
-  // WPF hosts, the navigation engine they host, the Bridge generator, the IDE host and Windows administration.
+  // WPF hosts, the navigation engine they host, the ReactiveUI adapters (the WPF suite checks their failure bookkeeping
+  // under WPF's dispatcher; Runic.Navigation also carries their model-turn flow), the Bridge generator, the IDE host
+  // and Windows administration.
   { platforms: ["win-x64"], paths: ["packages/dotnet/Runic.Navigation", "packages/dotnet/Runic.Navigation.Wpf", "tests/dotnet/Runic.Navigation.Wpf.Tests",
+    "packages/dotnet/Runic.Application.Views.ReactiveUI*",
     "tests/fixtures/navigation/wpf-consumer", "packages/dotnet/Runic.Application.Views.Wpf", "tests/dotnet/Runic.Application.Views.Wpf.Tests",
     "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests", "tests/fixtures/application/wpf-bridge-consumer", "examples/wpf-*",
     "tests/native/wpf-ui-automation",

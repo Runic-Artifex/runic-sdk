@@ -67,8 +67,11 @@ public static class ReactiveSchedulers
     /// it afterwards. Call this before ViewModels create their commands.
     /// </para>
     /// <para>
-    /// Work scheduled outside a model turn, for example from a timer thread or after an <c>await</c> with
-    /// <c>ConfigureAwait(false)</c>, runs on the replaced scheduler, and event 1043
+    /// Work that a turn's async flow schedules after it left the turn, for example after an <c>await</c> with
+    /// <c>ConfigureAwait(false)</c>, in <c>Task.Run</c> or from a timer created in the turn, runs in that turn's
+    /// context too, as do the later notifications of a command that a turn executed with a plain <c>Execute</c>.
+    /// Work whose flow never ran in a model turn, for example from a timer or service started outside any turn, and
+    /// work whose context has closed, runs on the replaced scheduler, and event 1043
     /// (<c>ReactiveSchedulerOutsideModelTurn</c>) is logged once per ViewModel type that scheduled it, as found on
     /// the call stack, and once for work that no ViewModel on the stack scheduled.
     /// </para>
@@ -109,6 +112,7 @@ public static class ReactiveSchedulers
             if (loggerFactory is not null) scheduler.Logger = loggerFactory.CreateLogger(RunicViewsTelemetry.LogCategory);
             RxSchedulers.MainThreadScheduler = scheduler;
             _installed = true;
+            RunicModelContext.FlowTurns = true;
             return true;
         }
     }
@@ -121,6 +125,7 @@ public static class ReactiveSchedulers
         {
             _requested = true;
             _installed = true;
+            RunicModelContext.FlowTurns = true;
             if (RxSchedulers.MainThreadScheduler is ModelContextMainThreadScheduler installed) return installed;
             return _created ??= new ModelContextMainThreadScheduler(DefaultScheduler.Instance);
         }
@@ -168,7 +173,8 @@ public sealed class ReactiveSchedulerProvider : IReactiveSchedulerProvider
 }
 
 // ReactiveUI's main-thread scheduler in a Runic app. Each call resolves its target: the shared scheduler of
-// the model context whose turn is running, or the scheduler this one replaced.
+// the model context whose turn is running or whose turn started the calling flow and is still open (ModelTurnFlow),
+// or the scheduler this one replaced.
 internal sealed class ModelContextMainThreadScheduler(IScheduler fallback) : IScheduler
 {
     private readonly OutsideModelTurnReporter _outside = new();
@@ -287,10 +293,18 @@ internal sealed class RunicModelContextScheduler(IRunicModelContext context) : I
             IDisposable? inner = null;
             try
             {
+                // The item runs in its own turn's flow (RunicModelContext.EnterTurnFlow): work it starts belongs to
+                // this context, also when it was scheduled from another context's flow. The scheduler posts each item
+                // as its own turn with suppressed flow, which enters nothing, so the common case, an item scheduled
+                // from this context's own flow, writes nothing.
                 if (executionContext is null)
                     inner = action(scheduler, state) ?? Disposable.Empty;
                 else
-                    ExecutionContext.Run(executionContext, _ => inner = action(scheduler, state) ?? Disposable.Empty, null);
+                    ExecutionContext.Run(executionContext, _ =>
+                    {
+                        RunicModelContext.EnterTurnFlow();
+                        inner = action(scheduler, state) ?? Disposable.Empty;
+                    }, null);
             }
             catch
             {

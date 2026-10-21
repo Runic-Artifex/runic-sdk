@@ -166,9 +166,12 @@ that context, so a bridged command delivers its results and `IsExecuting` on
 the model context of the Window that runs it, ordered with Bridge replies and
 state publication. `CanExecute` follows its source synchronously, in the turn
 that changes the state it observes. Routing follows the running turn, so two
-Windows never share notifications. Work scheduled outside a turn, for example
-from a timer thread or after `ConfigureAwait(false)`, runs on the scheduler the
-extension replaced, ReactiveUI's task pool. Runic logs that as
+Windows never share notifications. Work that a turn's async flow schedules after
+it left the turn, for example after `ConfigureAwait(false)`, in `Task.Run`, or
+from a timer or `Interval` created in the turn, also runs on that turn's context
+(since 0.10). Work whose flow never ran in a turn, for example from a timer or
+service started outside any turn, and work of a context that has closed, runs on
+the scheduler the extension replaced, ReactiveUI's task pool. Runic logs that as
 `ReactiveSchedulerOutsideModelTurn` (Views event 1043, Warning), once per
 ViewModel type found on the call stack, named in its `Source` property, and once
 for work with no ViewModel there. Runic Desktop, CS-WebUI and
@@ -215,14 +218,17 @@ The scheduler only delivers the command's notifications. The task body runs in
 the context because the Bridge starts it in a turn. Set ViewModel state directly
 in a `CreateFromTask` body, also after `await`, as with any MVVM library. Use
 `InvokeAsync` only for code that left the context, for example after
-`ConfigureAwait(false)` or in `Task.Run`. A bridged execution carries its turn's
-context to the command's notifications, so a `CreateFromTask(async
-cancellationToken => ...)` command, which ReactiveUI completes outside the turn,
-and a body whose last `await` uses `ConfigureAwait(false)` still deliver on the
-Window's context. That does not apply when a ViewModel calls
-`command.Execute().Subscribe(...)` itself: such a command delivers in the turn
-only if its body resumes in the turn and it does not take a cancellation token.
-Otherwise its notifications run on the fallback scheduler. The
+`ConfigureAwait(false)` or in `Task.Run`: the scheduler routes such code's
+ReactiveUI work back to the context, but a plain property write there still runs
+outside the turn. An execution started in a turn carries the turn's context to
+the command's notifications, so a `CreateFromTask(async cancellationToken =>
+...)` command, which ReactiveUI completes outside the turn, and a body whose last
+`await` uses `ConfigureAwait(false)` still deliver on the Window's context. That
+holds for a bridged execution and, since 0.10, for a plain
+`command.Execute().Subscribe(...)` or `await command.Execute()` in hand-written
+code started in a turn, such as a wrapper command or a property-change handler.
+A turn that blocks on these notifications deadlocks, as it does for a bridged
+execution. The
 [threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await)
 has the details.
 
@@ -277,7 +283,23 @@ subscription of its own. Each exception is reported exactly once:
 | --- | --- |
 | Declared failure (`RunicFailureException`) or cancellation | The reply to the client (`domain-failed`, `cancelled`); not logged as an error |
 | Unexpected exception of a Bridge call | The Views runtime: the reply and event 1000 (awaited call) or 1004 (operation) |
-| Unexpected exception of an execution no Bridge call received, such as `command.Execute().Subscribe()` in .NET or a failing `canExecute` | The Bridge: `ReactiveCommandFailed` (event 1042, Error), in category `Runic.Application.Views` through the Window's `ILoggerFactory`, with `Model.Command` as `Source` |
+| Unexpected exception of an execution that hand-written code ran with a plain `Execute` inside a Bridge call, when the code let it propagate or wrapped it (as `InnerException` or in an `AggregateException`) | The Views runtime, as the Bridge call's exception (since 0.10) |
+| Unexpected exception of an execution no Bridge call received, such as `command.Execute().Subscribe()` in .NET, a fire-and-forget `ICommand.Execute` or `InvokeCommand`, or a failing `canExecute` | The Bridge: `ReactiveCommandFailed` (event 1042, Error), in category `Runic.Application.Views` through the Window's `ILoggerFactory`, with `Model.Command` as `Source` |
+
+A failure raised in a Bridge call's async flow, also by a command that the
+call's own command runs, is held until that call ends, and until the outermost
+Bridge call in the flow ends: it is logged then unless one of the calls received
+it or an exception that wraps it. A fire-and-forget failure during a Bridge call
+is therefore logged when the call ends, not at once. A streamed operation's flow
+holds nothing, so a failure during a long stream is logged when it happens.
+
+Runic cannot tell an execution whose hand-written caller received and handled
+the exception from a fire-and-forget one: ReactiveUI does not report which
+observer received an error. So event 1042 is still logged when hand-written
+code awaits a bridged command and handles the exception itself, and when it runs
+a bridged command outside any Bridge call, for example in a model turn, and
+handles the exception. Observe that command with `ObserveBridgeExceptions` to
+take over its logging there.
 
 Two Bridges that present one ViewModel log an exception once. The Bridge
 unsubscribes when it detaches; a command that no Bridge presents, such as one

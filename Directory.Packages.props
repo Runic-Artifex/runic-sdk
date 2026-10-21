@@ -34,7 +34,8 @@
     <PackageVersion Include="ReactiveUI" Version="[26.0.1, 27)" />
     <PackageVersion Include="ReactiveUI.Core" Version="[26.0.1, 27)" />
     <PackageVersion Include="ReactiveUI.Reactive" Version="[26.0.1, 27)" />
-    <!-- Only the ReactiveUI variant of examples/wpf-navigation uses the WPF platform package. -->
+    <!-- The WPF platform package: the ReactiveUI variant of examples/wpf-navigation, and the dispatcher case of
+         Runic.Application.Views.Wpf.Windows.Tests. -->
     <PackageVersion Include="ReactiveUI.WPF" Version="26.0.1" />
     <!-- Binding matches the 9.1.0 dependency of ReactiveUI 26.0.1. -->
     <PackageVersion Include="ReactiveUI.Binding" Version="[9.1.0, 10)" />

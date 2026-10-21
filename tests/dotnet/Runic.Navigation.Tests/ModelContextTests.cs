@@ -46,6 +46,59 @@ internal sealed class ModelContextTests
             "Code after ConfigureAwait(false) stayed on the model context.");
     }
 
+    // #473: with turn flows on (the ReactiveUI adapters' main-thread scheduler), a turn whose item carries an execution
+    // context marks its async flow as its own, also after the flow leaves the turn. A turn of another context posted
+    // from that flow marks it with its own context; a turn posted with suppressed flow marks nothing; the code that
+    // awaited the turn is not in its flow.
+    [Test]
+    public async Task TurnsMarkTheirAsyncFlow()
+    {
+        var flowTurns = RunicModelContext.FlowTurns;
+        RunicModelContext.FlowTurns = true;
+        try
+        {
+            await using var first = new RunicModelContext();
+            await using var second = new RunicModelContext();
+            var observed = new TaskCompletionSource<(RunicModelContext? Flowing, RunicModelContext? Current)>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            await first.InvokeAsync(() => _ = Task.Run(() => observed.TrySetResult((RunicModelContext.Flowing, RunicModelContext.Current))));
+            Require(await observed.Task.WaitAsync(TimeSpan.FromSeconds(5)) == (first, null),
+                "Work that a turn started with Task.Run did not carry the turn's context.");
+
+            var continued = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            async Task LeaveAsync()
+            {
+                await Task.Delay(1).ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+                continued.TrySetResult(RunicModelContext.Flowing);
+            }
+            await first.InvokeAsync(() => _ = LeaveAsync());
+            Require(await continued.Task.WaitAsync(TimeSpan.FromSeconds(5)) == first,
+                "Code after ConfigureAwait(false) in a turn did not carry the turn's context.");
+
+            var posted = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await first.InvokeAsync(() => second.TryPost(() => posted.TrySetResult(RunicModelContext.Flowing)));
+            Require(await posted.Task.WaitAsync(TimeSpan.FromSeconds(5)) == second,
+                "A turn of another context, posted from a turn's flow, kept the posting context.");
+
+            var suppressed = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (ExecutionContext.SuppressFlow())
+                first.TryPost(() => suppressed.TrySetResult(RunicModelContext.Flowing));
+            Require(await suppressed.Task.WaitAsync(TimeSpan.FromSeconds(5)) is null, "A turn posted with suppressed flow marked its flow.");
+
+            await first.InvokeAsync(() => { });
+            Require(RunicModelContext.Flowing is null, "A turn's flow reached the code that awaited the turn.");
+
+            RunicModelContext.FlowTurns = false;
+            var off = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await first.InvokeAsync(() => off.TrySetResult(RunicModelContext.Flowing));
+            Require(await off.Task.WaitAsync(TimeSpan.FromSeconds(5)) is null, "A turn marked its flow while turn flows were off.");
+        }
+        finally
+        {
+            RunicModelContext.FlowTurns = flowTurns;
+        }
+    }
+
     // Continuations become turns in the order they become ready, and each runs to its next await
     // before another turn starts.
     [Test]

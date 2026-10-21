@@ -5,10 +5,15 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 #if SYSTEM_REACTIVE
+using Runic.Application.Views.ReactiveUI.Reactive.Generated;
+
 namespace Runic.Application.Views.ReactiveUI.Reactive;
 #else
+using Runic.Application.Views.ReactiveUI.Generated;
+
 namespace Runic.Application.Views.ReactiveUI;
 #endif
 
@@ -119,8 +124,14 @@ public static class ReactiveBridgeExceptionExtensions
 //   unexpected one), as for a command of any MVVM library;
 // - while ObserveBridgeExceptions observes the command, that handler replaces this logging.
 // ReactiveUI delivers ThrownExceptions on the command's output scheduler: with the model-context scheduler after
-// the failed execution's own observer, with the immediate scheduler before it. An exception that arrives while a
-// Bridge call runs is therefore held until the calls end, and logged then unless one of them received it.
+// the failed execution's own observer, with the immediate scheduler before it. An exception is therefore held, and
+// logged when the hold ends unless a Bridge call received it:
+// - while a Bridge call of the same command runs;
+// - while the Bridge call runs in whose flow the exception was raised (#473), so an exception that hand-written code
+//   received from a plain Execute and let propagate, or wrapped, reaches the call first. ReactiveUI delivers
+//   ThrownExceptions in the failing execution's execution context, which descends from the call: Runic's schedulers
+//   and a UI dispatcher restore it per item, and the immediate scheduler runs inline. A call whose flow raised it
+//   hands it to the enclosing call when it ends; the outermost one logs it.
 internal sealed class BridgeCommandFailures
 {
     private static readonly ConditionalWeakTable<object, BridgeCommandFailures> States = [];
@@ -164,16 +175,18 @@ internal sealed class BridgeCommandFailures
         return new Release(this, static owner => { lock (owner._gate) owner._claims--; });
     }
 
-    // Brackets one Bridge execution of the command; exceptions that arrive meanwhile are held until it ends.
-    internal Call BeginCall()
+    // Brackets one Bridge execution of the command; exceptions of the command that arrive meanwhile are held until
+    // it ends. Unless holdsFlow is false, exceptions that any bridged command raises in the call's flow are held too.
+    internal Call BeginCall(bool holdsFlow = true)
     {
         lock (_gate) _calls++;
-        return new Call(this);
+        return new Call(this, new BridgeCallScope(ModelTurnFlow.CurrentCall, RunicModelContext.Current, holdsFlow));
     }
 
     private void OnNext(Exception error)
     {
-        if (ReactiveBridgeExceptionExtensions.IsReported(error) || ReceivedByCall.TryGetValue(error, out _)) return;
+        if (ReactiveBridgeExceptionExtensions.IsReported(error) || IsReceived(error)) return;
+        if (ModelTurnFlow.CurrentCall is { } scope && scope.TryHold(this, error)) return;
         lock (_gate)
         {
             if (_calls > 0)
@@ -195,10 +208,12 @@ internal sealed class BridgeCommandFailures
             _held.Clear();
         }
         foreach (var error in held)
-            if (!ReceivedByCall.TryGetValue(error, out _)) Report(error);
+            if (!IsReceived(error)) Report(error);
     }
 
-    private void Report(Exception error)
+    internal static bool IsReceived(Exception error) => ReceivedByCall.TryGetValue(error, out _);
+
+    internal void Report(Exception error)
     {
         Logging? logging;
         lock (_gate) logging = _claims > 0 || _loggings.Count == 0 ? null : _loggings[0];
@@ -218,12 +233,25 @@ internal sealed class BridgeCommandFailures
         subscription?.Dispose();
     }
 
-    // Marks the exception that a Bridge execution's observer received; the Bridge reports it.
-    internal static void MarkReceived(Exception error) => ReceivedByCall.AddOrUpdate(error, Received);
-
-    internal readonly struct Call(BridgeCommandFailures owner) : IDisposable
+    // Marks the exception that a Bridge execution's observer received; the Bridge reports it. The exceptions it wraps
+    // are marked too: hand-written code that wraps a command's exception lets the call report both.
+    internal static void MarkReceived(Exception error)
     {
-        public void Dispose() => owner.EndCall();
+        ReceivedByCall.AddOrUpdate(error, Received);
+        if (error is AggregateException aggregate)
+            foreach (var inner in aggregate.InnerExceptions) MarkReceived(inner);
+        else if (error.InnerException is { } wrapped) MarkReceived(wrapped);
+    }
+
+    internal readonly struct Call(BridgeCommandFailures owner, BridgeCallScope scope) : IDisposable
+    {
+        internal BridgeCallScope Scope => scope;
+
+        public void Dispose()
+        {
+            owner.EndCall();
+            scope.End();
+        }
     }
 
     private sealed class Logging(BridgeCommandFailures owner, ILogger logger, string name) : IDisposable
@@ -260,5 +288,52 @@ internal sealed class BridgeCommandFailures
         }
 
         public void OnNext(Exception value) => owner.OnNext(value);
+    }
+}
+
+// One Bridge call's flow (#473). ModelTurnFlow puts it into the async flow of the call's subscription, so the
+// command's execution, the hand-written code its body runs and the executions that code starts inherit it. An
+// exception that a bridged command reports on ThrownExceptions in this flow is held until the call ends; an ended
+// call hands what it held, and what arrives later in its flow, to the enclosing call while that one runs. A call that
+// does not hold (ExecuteStream, which can stay open indefinitely) shields its flow from the enclosing call.
+internal sealed class BridgeCallScope(BridgeCallScope? parent, RunicModelContext? context, bool holds)
+{
+    private readonly Lock _gate = new();
+    private List<(BridgeCommandFailures Owner, Exception Error)>? _held;
+    private bool _ended;
+
+    // The model context of the turn that started the call, for ModelTurnFlow.
+    internal RunicModelContext? Context => context;
+
+    internal bool TryHold(BridgeCommandFailures owner, Exception error)
+    {
+        if (!holds) return false;
+        lock (_gate)
+        {
+            if (!_ended)
+            {
+                (_held ??= []).Add((owner, error));
+                return true;
+            }
+        }
+        return parent?.TryHold(owner, error) ?? false;
+    }
+
+    internal void End()
+    {
+        if (!holds) return;
+        List<(BridgeCommandFailures Owner, Exception Error)>? held;
+        lock (_gate)
+        {
+            _ended = true;
+            held = _held;
+            _held = null;
+        }
+        if (held is null) return;
+        foreach (var (owner, error) in held)
+        {
+            if (BridgeCommandFailures.IsReceived(error) || (parent?.TryHold(owner, error) ?? false)) continue;
+            owner.Report(error);
+        }
     }
 }

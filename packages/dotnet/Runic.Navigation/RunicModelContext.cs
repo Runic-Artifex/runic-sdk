@@ -75,6 +75,12 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
 {
     [ThreadStatic]
     private static RunicModelContext? Executing;
+    // The context of the turn that started the calling async flow (#473). A turn whose work item carries an execution
+    // context enters it, so work that the turn's flow schedules later, after ConfigureAwait(false), in Task.Run or
+    // from a timer created in the turn, still names that turn's context. Every turn runs in ExecutionContext.Run, so
+    // the value stays in the turn's flow and never reaches the next turn or the caller.
+    private static readonly AsyncLocal<RunicModelContext?> FlowingContext = new();
+    private static volatile bool _flowTurns;
     private readonly object _gate = new();
     private readonly Queue<IWorkItem> _queued = new();
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -128,6 +134,27 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     /// </para>
     /// </remarks>
     public static RunicModelContext? Current => Executing;
+
+    // Whether turns enter their flow. The ReactiveUI adapters turn it on when they install their main-thread
+    // scheduler, which reads Flowing; without them a turn costs no execution-context copy.
+    internal static bool FlowTurns
+    {
+        get => _flowTurns;
+        set => _flowTurns = value;
+    }
+
+    // The context whose turn started the calling async flow, also after the flow left the turn, or null. The context
+    // may have closed since.
+    internal static RunicModelContext? Flowing => FlowingContext.Value;
+
+    // Called first in a turn's execution context: marks the flow as the running turn's. A turn whose item carries no
+    // execution context, such as a scheduler's batched drain posted with suppressed flow, does not call it; the
+    // scheduler's items restore their own context and enter it themselves.
+    internal static void EnterTurnFlow()
+    {
+        if (_flowTurns && Executing is { } executing && !ReferenceEquals(FlowingContext.Value, executing))
+            FlowingContext.Value = executing;
+    }
 
     /// <summary>Gets a token cancelled after the context stops accepting work and before queued work is rejected.</summary>
     /// <remarks>
@@ -318,12 +345,17 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
         RunicModelContext owner) : IWorkItem
     {
         private static readonly ContextCallback InvokeInContext = static self => ((ContinuationWorkItem)self!).Invoke();
+        private static readonly ContextCallback EnterAndInvoke = static self =>
+        {
+            EnterTurnFlow();
+            ((ContinuationWorkItem)self!).Invoke();
+        };
 
         public void Execute(ExecutionContext? baselineExecutionContext)
         {
-            var executionContext = context ?? baselineExecutionContext;
-            if (executionContext is null) Invoke();
-            else ExecutionContext.Run(executionContext, InvokeInContext, this);
+            if (context is not null) ExecutionContext.Run(context, EnterAndInvoke, this);
+            else if (baselineExecutionContext is not null) ExecutionContext.Run(baselineExecutionContext, InvokeInContext, this);
+            else Invoke();
         }
 
         public void RejectDisposed() =>
@@ -344,15 +376,19 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
 
     private sealed class ExecutionContextWorkItem(IWorkItem inner, ExecutionContext? context) : IWorkItem
     {
+        private static readonly ContextCallback ExecuteOnly = static state => ((IWorkItem)state!).Execute(null);
+        private static readonly ContextCallback EnterAndExecute = static state =>
+        {
+            EnterTurnFlow();
+            ((IWorkItem)state!).Execute(null);
+        };
+
+        // A turn posted with suppressed flow runs in the baseline and does not enter a turn flow (see EnterTurnFlow).
         public void Execute(ExecutionContext? baselineExecutionContext)
         {
-            var executionContext = context ?? baselineExecutionContext;
-            if (executionContext is null)
-            {
-                inner.Execute(null);
-                return;
-            }
-            ExecutionContext.Run(executionContext, static state => ((IWorkItem)state!).Execute(null), inner);
+            if (context is not null) ExecutionContext.Run(context, EnterAndExecute, inner);
+            else if (baselineExecutionContext is not null) ExecutionContext.Run(baselineExecutionContext, ExecuteOnly, inner);
+            else inner.Execute(null);
         }
 
         public void RejectDisposed() => inner.RejectDisposed();
