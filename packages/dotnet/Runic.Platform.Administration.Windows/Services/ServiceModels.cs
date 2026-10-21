@@ -57,7 +57,8 @@ public sealed record ServiceFailurePolicy(TimeSpan? ResetPeriod, ImmutableArray<
     string RebootMessage = "", string Command = "", bool OnNonCrashFailures = false);
 
 /// <summary>Controls a running service accepts (the native SERVICE_ACCEPT_* flags).</summary>
-/// <remarks>Bits without a name here are passed through unchanged.</remarks>
+/// <remarks>This set is open: Windows may define more flags and a minor release may name them. Bits without a name
+/// here are passed through unchanged.</remarks>
 [Flags]
 public enum ServiceAcceptedControls
 {

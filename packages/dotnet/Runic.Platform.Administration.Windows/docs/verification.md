@@ -1,9 +1,15 @@
 # Native verification status
 
-Recorded for the initial Windows x64 implementation on 2026-09-10. These results
-apply to the local development machine, not an AD/server test environment.
+The package is supported as of 0.10.0. The sections below record what was
+verified, on which fixtures, and which implemented features fall outside the
+verified scope. Windows CI runs the read-only native checks (JIT and NativeAOT)
+on every change; the local write, denied-access and domain suites need the
+disposable VMs and run manually (see "Rerunning the suites" below).
 
-## Executed
+## Initial implementation (2026-09-10)
+
+These results apply to the local development machine, not an AD/server test
+environment.
 
 - Release build with Runic verification analyzers; no warnings.
 - Windows x64 NativeAOT publish with the entire administration assembly rooted;
@@ -196,12 +202,13 @@ Limits:
   controller or site, cross-domain trusts, other Windows Server versions, and
   remote DNS servers that are not domain controllers.
 
-## Not natively accepted
+## Outside the verified scope
 
 Local service, task, firewall and share writes, and the domain scenarios, are
-accepted above. The following remain **implemented but not natively accepted**:
+accepted above. The following are implemented and supported, but were not run
+on a fixture. Report problems with them like any other defect:
 
-| Stage | Fixture work still required |
+| Stage | Not run on a fixture |
 | --- | --- |
 | Services/processes | Failure actions other than none; reboot actions; timeouts; per-service denied rights beyond SCM creation; remote SCM. |
 | Tasks/firewall | Preservation of unsupported XML/native settings; password principals; trigger executions; effective Group Policy restrictions; firewall protocol transitions. |
@@ -209,7 +216,9 @@ accepted above. The following remain **implemented but not natively accepted**:
 | System/networks/shares | ACE order/inheritance retention beyond the tested descriptors; remote shares and remote denied rights. Broader hardware/OS comparisons and malformed/unsupported firmware data. |
 | DNS | Non-DC DNS servers, file-backed zones, unsupported record reporting, TXT text that contains quotes (the provider cannot delete it), and sibling-record concurrency. |
 | GPMC | Real WMI-filter association, migration tables, multiple controllers, and report generation under a network-only logon (not supported by GPMC). |
-| Interop | Required domain-operation thread affinity, repeated server mutations and failure cleanup on the fixtures; other architectures not accepted. |
+| Interop | Required domain-operation thread affinity, repeated server mutations and failure cleanup on the fixtures. Other architectures are not supported (x64 only, by policy). |
+
+## Rerunning the suites
 
 Use snapshot-restorable Windows x64 VMs, a dedicated test domain/OU, a dedicated
 existing DNS zone, a test file-server directory, and unique resource names. Test

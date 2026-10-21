@@ -452,8 +452,8 @@ assets. The 1.0 status:
 - CS-WebUI ships no native library for musl or `win-arm64`. Publish for a glibc
   RID or `win-x64` (which runs under emulation on Windows on Arm), or use Runic
   Desktop.
-- `Runic.Platform.Administration.Windows` supports Windows x64 only; arm64 may
-  follow in a 1.x minor.
+- `Runic.Platform.Administration.Windows` supports Windows x64 only, by policy;
+  no arm64 or x86 support is planned. On Windows on Arm, publish it for `win-x64`.
 - Packages without native assets, such as `Runic.Navigation` and
   `Runic.Application.Testing`, are supported wherever .NET 10 is.
 

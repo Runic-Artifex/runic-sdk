@@ -31,7 +31,7 @@ public enum FirewallProfiles
     All = int.MaxValue
 }
 /// <summary>IP protocol of a firewall rule: an IANA protocol number, or <see cref="Any"/>.</summary>
-/// <remarks>The enum is open. The named values are the protocols with protocol-specific settings; other IANA protocol
+/// <remarks>This set is open: a minor release may name more protocols. The named values are the protocols with protocol-specific settings; other IANA protocol
 /// numbers from 0 to 255 are cast, for example <c>(FirewallProtocol)47</c> for GRE, and rules read from Windows can
 /// return them.</remarks>
 public enum FirewallProtocol
