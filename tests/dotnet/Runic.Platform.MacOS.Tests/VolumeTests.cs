@@ -208,7 +208,7 @@ internal sealed partial class VolumeTests
             var mounted = await volumes.MountAsync(volumeHfs.Id, timeout.Token);
             Console.WriteLine($"Mount: {mounted}");
             Check(mounted is PlatformResult<DesktopVolume>.Success { Value.MountPaths: [var path] } && Directory.Exists(path), $"the volume is mounted again: {mounted}");
-            var ejected = await volumes.EjectAsync(volumeHfs.Id, timeout.Token);
+            var ejected = await EjectAsync(volumes, volumeHfs.Id, timeout.Token);
             Console.WriteLine($"Eject: {ejected}");
             Check(ejected is PlatformResult<PlatformUnit>.Success, $"the image is ejected: {ejected}");
             await WaitForRemovalAsync(changes.Reader, volumeHfs.Id, timeout.Token);
@@ -222,7 +222,7 @@ internal sealed partial class VolumeTests
             Console.WriteLine($"Attached: {Describe(volumeApfs)}");
             Check(volumeApfs is { FileSystem: "apfs", IsSystem: false, CanEject: true } && volumeApfs.DriveId == attached[^1],
                 $"the APFS volume belongs to the image's disk {attached[^1]}: {Describe(volumeApfs)}");
-            var ejectedApfs = await volumes.EjectAsync(volumeApfs.Id, timeout.Token);
+            var ejectedApfs = await EjectAsync(volumes, volumeApfs.Id, timeout.Token);
             Console.WriteLine($"Eject: {ejectedApfs}");
             Check(ejectedApfs is PlatformResult<PlatformUnit>.Success, $"the APFS image is ejected: {ejectedApfs}");
             await WaitForRemovalAsync(changes.Reader, volumeApfs.Id, timeout.Token);
@@ -233,7 +233,7 @@ internal sealed partial class VolumeTests
             var readOnly = await WaitForAsync(changes.Reader, v => v.DisplayName == hfs && !v.MountPaths.IsEmpty, timeout.Token);
             Console.WriteLine($"Attached read-only: {Describe(readOnly)}");
             Check(readOnly.IsReadOnly, $"the read-only volume: {Describe(readOnly)}");
-            Check(await volumes.EjectAsync(readOnly.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "the read-only image is ejected");
+            Check(await EjectAsync(volumes, readOnly.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "the read-only image is ejected");
             await WaitForRemovalAsync(changes.Reader, readOnly.Id, timeout.Token);
             attached.RemoveAt(attached.Count - 1);
             Console.WriteLine("PASS macOS volumes: listing, the startup volume, HFS+ and APFS images mounted, unmounted, busy and ejected, read-only.");
@@ -245,6 +245,19 @@ internal sealed partial class VolumeTests
             await watching;
             await volumes.DisposeAsync();
             try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    // Right after a mount or a closed file, macOS services such as Spotlight can hold a new volume
+    // for a moment, and Disk Arbitration (and hdiutil detach -force) report it busy; retry briefly.
+    private static async Task<PlatformResult<PlatformUnit>> EjectAsync(IDesktopVolumes volumes, string id, CancellationToken token)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var result = await volumes.EjectAsync(id, token);
+            if (result is not PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.ResourceBusy } || attempt == 10) return result;
+            Console.WriteLine($"Eject attempt {attempt}: {result}; retrying.");
+            await Task.Delay(500, token);
         }
     }
 
