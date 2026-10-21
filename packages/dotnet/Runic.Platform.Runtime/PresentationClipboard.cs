@@ -35,7 +35,7 @@ internal sealed class PresentationClipboard : ITextClipboard, IPlatformCapabilit
         CapabilityStatus status = Reason is { } reason
             ? new CapabilityStatus.Unavailable(reason) : new CapabilityStatus.Available();
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
-            .Add("platform.clipboard.readText", status).Add("platform.clipboard.writeText", status));
+            .Add(PlatformCapabilityIds.ClipboardReadText, status).Add(PlatformCapabilityIds.ClipboardWriteText, status));
     }
 
     /// <inheritdoc />

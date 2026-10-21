@@ -2,11 +2,21 @@ using Runic.Platform;
 using Runic.Platform.Runtime;
 using TUnit.Core;
 
-// IDesktopFileLauncher.LaunchUriAsync: only absolute http, https and mailto URIs reach native dispatch; a relative
-// string, a path or any other scheme is rejected before it, on every implementation (W319-003 desktop-05, plat-16).
+// IDesktopFileLauncher.LaunchUriAsync: only absolute http, https, mailto and ms-settings URIs reach native dispatch; a
+// relative string, a path or any other scheme is rejected before it, on every implementation (W319-003 desktop-05,
+// plat-16, D028.5). ms-settings: reaches only the Windows shell; macOS and Linux report it unavailable.
 internal sealed class UriLaunchTests
 {
     internal static readonly string[] Accepted = ["https://example.org/a?b=c#d", "http://example.org", "HTTPS://EXAMPLE.ORG/", "mailto:someone@example.org?subject=Hi"];
+
+    // Windows Settings pages, and odd values: the scheme alone routes the URI to the Settings app's protocol handler,
+    // whatever follows it, so the policy passes them unchanged and never treats them as a path.
+    internal static readonly string[] Settings =
+    [
+        "ms-settings:display", "MS-SETTINGS:privacy-webcam", "ms-settings:",
+        "ms-settings:../../Windows/System32/cmd.exe", @"ms-settings:..\..\Windows\System32\cmd.exe",
+        "ms-settings:display?x=%22%20/c%20calc", "ms-settings:" + new string('a', 8000),
+    ];
 
     internal static Uri[] Rejected() =>
     [
@@ -21,7 +31,12 @@ internal sealed class UriLaunchTests
         new("javascript:alert(1)"),
         new("data:text/html,<script>alert(1)</script>"),
         new("vbscript:msgbox"),
-        new("ms-settings:privacy"),
+        // Look-alikes of the accepted schemes.
+        new("ms-settingsx:display"),
+        new("ms-setting:display"),
+        new("ms-settings-app:display"),
+        new("httpx://example.org"),
+        new("mailtox:someone@example.org"),
         new("shell:AppsFolder"),
         new("search-ms:query=x"),
         new("ftp://example.org/file"),
@@ -35,11 +50,18 @@ internal sealed class UriLaunchTests
         foreach (var uri in Rejected())
         {
             Throws<ArgumentException>(() => DesktopUriPolicy.Require(uri), uri.OriginalString);
-            Check(!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto"), $"a rejected case has an allowed scheme: {uri}");
+            Check(!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto" or "ms-settings"), $"a rejected case has an allowed scheme: {uri}");
         }
         Throws<ArgumentNullException>(() => DesktopUriPolicy.Require(null!), "null");
         foreach (var text in Accepted)
-            Check(DesktopUriPolicy.Require(new Uri(text)) == new Uri(text).AbsoluteUri, $"accepted {text}");
+            Check(DesktopUriPolicy.Require(new Uri(text)) == new Uri(text).AbsoluteUri && !DesktopUriPolicy.IsWindowsOnly(new Uri(text)), $"accepted {text}");
+        foreach (var text in Settings)
+        {
+            var uri = new Uri(text);
+            string target = DesktopUriPolicy.Require(uri);
+            Check(target.StartsWith("ms-settings:", StringComparison.Ordinal) && !uri.IsFile && !uri.IsUnc && DesktopUriPolicy.IsWindowsOnly(uri),
+                $"accepted Settings URI {text[..Math.Min(text.Length, 60)]}: {target[..Math.Min(target.Length, 60)]}");
+        }
 
         // The Windows and macOS launchers: a rejected URI never reaches the owner's thread; an accepted one does.
         var owner = new CountingOwner();
@@ -57,6 +79,24 @@ internal sealed class UriLaunchTests
             owner.Dispatches = 0;
         }
 
+        // ms-settings: reaches the Windows shell; macOS reports it unavailable without reaching the owner's thread.
+        var windows = new Runic.Platform.Windows.WindowsFileLauncher(owner);
+        foreach (var text in Settings)
+            Check(await windows.LaunchUriAsync(new Uri(text)) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed },
+                $"Windows dispatches {text[..Math.Min(text.Length, 60)]}");
+        Check(owner.Dispatches == Settings.Length, "Windows dispatched every Settings URI once");
+        owner.Dispatches = 0;
+        var mac = new Runic.Platform.MacOS.MacDesktopFileLauncher(owner);
+        foreach (var text in Settings)
+            Check(await mac.LaunchUriAsync(new Uri(text)) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+                $"macOS reports {text[..Math.Min(text.Length, 60)]} unavailable");
+        Check(owner.Dispatches == 0, "macOS dispatched a Settings URI");
+        using (var cancelledSettings = new CancellationTokenSource())
+        {
+            cancelledSettings.Cancel();
+            await ThrowsAsync<OperationCanceledException>(() => mac.LaunchUriAsync(new Uri(Settings[0]), cancelledSettings.Token).AsTask(), "macOS Settings URI, cancelled");
+        }
+
         // The window services' lifetime wrapper: the policy, then the lifetime, then the backend.
         var backend = new RecordingLauncher();
         await using (var lifetime = new PresentationLifetime(() => true, Guid.NewGuid()))
@@ -67,7 +107,8 @@ internal sealed class UriLaunchTests
             Check(backend.Uris.Count == 0, "the presentation launcher passed a rejected URI to its backend");
             Check(await launcher.LaunchUriAsync(new Uri(Accepted[0])) is PlatformResult<PlatformUnit>.Success && backend.Uris.SequenceEqual([new Uri(Accepted[0])]),
                 "an accepted URI reaches the backend");
-            Check(launcher.GetSnapshot().Statuses["platform.uris.launch"] is CapabilityStatus.Available, "the URI capability is available with an owner");
+            Check(await launcher.LaunchUriAsync(new Uri(Settings[0])) is PlatformResult<PlatformUnit>.Success && backend.Uris.Count == 2, "a Settings URI reaches the backend");
+            Check(launcher.GetSnapshot().Statuses[PlatformCapabilityIds.UrisLaunch] is CapabilityStatus.Available, "the URI capability is available with an owner");
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
             await ThrowsAsync<OperationCanceledException>(() => launcher.LaunchUriAsync(new Uri(Accepted[0]), cancelled.Token).AsTask(), "caller cancellation");
@@ -80,7 +121,7 @@ internal sealed class UriLaunchTests
             Check(await launcher.LaunchUriAsync(new Uri(Accepted[0])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "closed owner");
             await ThrowsAsync<ArgumentException>(() => launcher.LaunchUriAsync(new Uri("file:///etc/passwd")).AsTask(), "a closed launcher still rejects paths");
         }
-        Check(backend.Uris.Count == 1, "only the accepted URI reached the backend");
+        Check(backend.Uris.Count == 2, "only the accepted URIs reached the backend");
 
         // Hosts without a native owner: every URI is unavailable, and the same URIs are rejected.
         Check(WindowPlatformServices.CapabilityIds.Contains("platform.uris.launch"), "window services report the URI capability");
@@ -90,6 +131,23 @@ internal sealed class UriLaunchTests
             await ThrowsAsync<ArgumentException>(() => unavailable.FileLauncher.LaunchUriAsync(uri).AsTask(), "unavailable " + uri.OriginalString);
         Check(await unavailable.FileLauncher.LaunchUriAsync(new Uri(Accepted[3])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable },
             "unavailable services report their reason");
+        Check(await unavailable.FileLauncher.LaunchUriAsync(new Uri(Settings[0])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable },
+            "unavailable services report their reason for a Settings URI");
+    }
+
+    [Test, DisplayName("Capability identifiers: the constants are the window services' identifiers and the snapshot keys")]
+    public async Task CapabilityIdsAsync()
+    {
+        string[] constants = [.. typeof(PlatformCapabilityIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Select(static field => (string)field.GetRawConstantValue()!)];
+        Check(constants.Length == 9 && constants.Distinct().Count() == constants.Length, "nine distinct constants");
+        Check(WindowPlatformServices.CapabilityIds.Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)), "CapabilityIds holds every constant");
+        Check(WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable).GetSnapshot().Statuses.Keys.Order(StringComparer.Ordinal)
+            .SequenceEqual(constants.Order(StringComparer.Ordinal)), "the unavailable services report every constant");
+        await using var lifetime = new PresentationLifetime(() => true, Guid.NewGuid());
+        IPlatformCapabilities[] parts = [new PresentationFileLauncher(lifetime), new PresentationClipboard(lifetime), new PresentationFiles(lifetime)];
+        Check(parts.SelectMany(static part => part.GetSnapshot().Statuses.Keys).Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)),
+            "the presentation services report exactly the constants");
     }
 
     private sealed class CountingOwner : INativeWindowOwner

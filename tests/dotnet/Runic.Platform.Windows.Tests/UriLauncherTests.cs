@@ -11,7 +11,7 @@ namespace Runic.Platform.Windows.Tests;
 #pragma warning disable CA1416 // The case checks for Windows first.
 internal sealed class UriLauncherTests
 {
-    [Test, Explicit, Category("NativeApplications"), DisplayName("URI launcher: paths and other schemes are refused, ShellExecuteEx reaches the URL handler")]
+    [Test, Explicit, Category("NativeApplications"), DisplayName("URI launcher: paths and other schemes are refused, ShellExecuteEx reaches the URL handler and Settings")]
     public async Task ShellUrlAssociationAsync()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(8)) throw new PlatformNotSupportedException("The shell's URL associations require Windows.");
@@ -58,6 +58,22 @@ internal sealed class UriLauncherTests
             await Task.Delay(2000);
             Console.WriteLine($"Unregistered scheme: {unregistered}; {ApplicationsTests.Choosers()} Open With choosers closed");
             Check(File.ReadAllLines(log).Length == lines.Count, "nothing else reached the probe");
+
+            // Windows Settings (D028.5): the public launcher hands ms-settings:display to the shell, which opens the
+            // Settings app. Odd values (a path after the scheme, a long page name) go to the Settings app's protocol handler
+            // or fail; nothing runs the path.
+            var commandShells = Processes("cmd");
+            foreach (var text in new[] { "ms-settings:display", "ms-settings:../../Windows/System32/cmd.exe", "ms-settings:" + new string('a', 4000) })
+            {
+                var settings = await launcher.LaunchUriAsync(new Uri(text));
+                Console.WriteLine($"LaunchUriAsync {text[..Math.Min(text.Length, 60)]}: {settings}");
+                // Only the Settings page itself is asserted; the shell's answer to odd values is recorded.
+                Check(settings is PlatformResult<PlatformUnit>.Success || text != "ms-settings:display", "the shell opened ms-settings:display");
+            }
+            await Task.Delay(3000);
+            Check(!Processes("cmd").Except(commandShells).Any(), "an ms-settings: URI started a command shell");
+            int closed = CloseSettings();
+            Console.WriteLine($"{closed} Settings processes closed");
             Console.WriteLine("PASS Windows URI launcher: refusals before dispatch, ShellExecuteEx through the URL association.");
         }
         finally
@@ -71,6 +87,27 @@ internal sealed class UriLauncherTests
                 catch (IOException) { await Task.Delay(500); } // The probe may still hold the log.
             }
         }
+    }
+
+    private static HashSet<int> Processes(string name)
+    {
+        var processes = System.Diagnostics.Process.GetProcessesByName(name);
+        try { return [.. processes.Select(static process => process.Id)]; }
+        finally { foreach (var process in processes) process.Dispose(); }
+    }
+
+    // Closes the Settings app the ms-settings: launches opened (SystemSettings.exe on Windows 10 and 11, and Server).
+    private static int CloseSettings()
+    {
+        int closed = 0;
+        foreach (var process in System.Diagnostics.Process.GetProcessesByName("SystemSettings"))
+        {
+            using (process)
+            {
+                try { process.Kill(); closed++; } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            }
+        }
+        return closed;
     }
 
     // Runs each dispatch on its own STA thread without a window, as a window's thread would.

@@ -6,7 +6,8 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-// Opens a web or mail URI with the shell's URL association: the user's default browser or mail client.
+// Opens a web, mail or ms-settings URI with the shell's URL association: the user's default browser or mail client,
+// or the Settings app.
 internal sealed class WindowsUriLauncher(INativeWindowOwner owner)
 {
     private const int ErrorAccessDenied = 5, ErrorNoAssociation = 1155, ErrorCancelled = 1223;

@@ -130,17 +130,26 @@ them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
 capabilities all report that reason. Tests can use the same instance.
 
+The capability identifiers are constants of `PlatformCapabilityIds`, so a typo
+does not compile:
+
+```csharp
+var snapshot = services.GetSnapshot();
+bool canSave = snapshot.Statuses[PlatformCapabilityIds.FilesSave] is CapabilityStatus.Available;
+```
+
 ### Opening links
 
 `IDesktopFileLauncher.LaunchUriAsync(uri)` opens a web or mail link in the
-user's default browser or mail client and reports the outcome as a
-`PlatformResult` (capability `platform.uris.launch`):
+user's default browser or mail client, or a Windows Settings page, and reports
+the outcome as a `PlatformResult` (capability
+`PlatformCapabilityIds.UrisLaunch`):
 
 ```csharp
 var result = await launcher.LaunchUriAsync(new Uri("https://example.org/help"));
 ```
 
-It accepts only absolute `http`, `https` and `mailto` URIs. A relative URI, a
+It accepts only absolute `http`, `https`, `mailto` and `ms-settings` URIs. A relative URI, a
 path (an absolute path parses as a `file:` URI, a UNC path too) and every other
 scheme throw `ArgumentException` before anything native runs, so a link never
 starts a program; open local files with `LaunchAsync`. The URI comes from
@@ -154,6 +163,18 @@ on.
 | macOS | `NSWorkspace openURL:configuration:completionHandler:` | No application for the scheme: `Failed(Other)` with the `NSError` domain and code (macOS 26: `NSCocoaErrorDomain 256`) |
 
 Success means the desktop accepted the URI, not that an application showed it.
+
+`ms-settings:` URIs, such as `ms-settings:display` or `ms-settings:defaultapps`,
+open the Windows Settings app through the same shell call. Linux and macOS
+accept them too and return `Unavailable(BackendUnavailable)` without a native
+call, so cross-platform code can offer a Settings link on Windows and handle
+the result elsewhere:
+
+```csharp
+var result = await launcher.LaunchUriAsync(new Uri("ms-settings:defaultapps"));
+if (result is PlatformResult<PlatformUnit>.Unavailable)
+    ShowManualInstructions();
+```
 
 `IDesktopSettings` is application-scoped, so `AddRunicPlatformServices()`
 registers one singleton for it. A host or platform without a provider

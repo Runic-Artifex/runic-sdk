@@ -118,7 +118,8 @@ the path of its executable or, for a packaged application, its AppUserModelID.
 Only a registered handler of every item's type starts, never a path or a
 command line. Windows lets only the user choose defaults, so
 `SetDefaultApplicationAsync` reports `PermissionDenied` with a diagnostic that
-points to `ms-settings:defaultapps`. See the
+points to `ms-settings:defaultapps`; the window's file launcher opens that page
+with `LaunchUriAsync(new Uri("ms-settings:defaultapps"))`. See the
 [desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
 
 ## Secret storage

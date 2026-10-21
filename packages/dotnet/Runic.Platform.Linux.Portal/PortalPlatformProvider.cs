@@ -12,6 +12,12 @@ internal static class PortalPlatformProvider
     {
         ArgumentNullException.ThrowIfNull(owner);
         string target = DesktopUriPolicy.Require(uri);
+        // ms-settings: opens Windows Settings; the portal has no handler for it.
+        if (DesktopUriPolicy.IsWindowsOnly(uri))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        }
         try
         {
             var response = await PortalRequest.RunAsync(owner, transport, "OpenURI", target, cancellationToken).ConfigureAwait(false);

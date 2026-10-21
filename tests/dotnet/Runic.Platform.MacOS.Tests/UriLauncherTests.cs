@@ -45,6 +45,9 @@ internal sealed class UriLauncherTests
                 catch (ArgumentException) { }
             }
             Check(owner.Dispatches == 0, "a refused URI reached the owner's thread");
+            // A Windows Settings URI is accepted and unavailable on macOS, without reaching the owner's thread.
+            Check(await launcher.LaunchUriAsync(new Uri("ms-settings:display")) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }
+                && owner.Dispatches == 0, "ms-settings: is unavailable on macOS");
             await Task.Delay(1000);
             Check(!File.Exists(marker), "a refused URI started the application");
 
