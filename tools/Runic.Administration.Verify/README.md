@@ -208,13 +208,12 @@ The local write and denied-access suites passed on the Windows 11 VM on
 2026-10-07. See the
 [verification guide](../../packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md).
 
-JIT limitation: in a JIT build (`dotnet publish` without `-p:PublishAot=true`),
-the disposable service starts and reports `Running`. When the first control
-arrives, `StartServiceCtrlDispatcherW` returns while `ServiceMain` is still
-waiting, and the control handler never runs. The Service Control Manager rejects
-the controls with `ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), so
-`services.lifecycle` fails. Run the service lifecycle with the NativeAOT
-executable. All other JIT checks pass.
+The test service registers its control handler with
+`RegisterServiceCtrlHandlerExW`. With the older `RegisterServiceCtrlHandlerW`, a
+JIT build (`dotnet publish` without `-p:PublishAot=true`) never received a
+control: the Service Control Manager rejected each one with
+`ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), and `services.lifecycle` failed. The
+service lifecycle now passes in JIT and NativeAOT builds.
 
 Service cleanup always calls `DeleteService`. If stopping fails, it ends the
 service's process (only after checking that its image is this verifier) and
