@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ReactiveUi25AotProof;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated.Bridges;
 using Runic.Navigation;
 
 await using var context = new RunicModelContext();

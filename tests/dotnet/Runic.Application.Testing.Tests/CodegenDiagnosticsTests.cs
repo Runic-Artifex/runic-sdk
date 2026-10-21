@@ -331,13 +331,25 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed class ToJsonViewModel : FixtureModel { public IAsyncRelayCommand ToJSONCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask); }
                 public sealed partial class ToJsonWindow : RunicWindow<ToJsonViewModel>;
                 """, "error RUNICBRIDGE004:", "the generated client member 'toJSON'").ConfigureAwait(false);
-            // The bridge is generated as CounterBridge beside CounterViewModel (#258).
-            await RejectAt("BridgeTypeName", """
+            // I-003: the bridge is generated in Runic.Application.Views.Generated.Bridges, so an application type named
+            // like it (#258) no longer collides with it.
+            const string BridgeNamesake = """
                 public sealed class CounterBridge { }
                 public sealed class CounterViewModel : FixtureModel { public int Count { get; } }
                 public sealed partial class CounterWindow : RunicWindow<CounterViewModel>;
-                """, "RUNICBRIDGE004", "public sealed class CounterBridge",
-                "Fixture.CounterBridge has the name of the Bridge generated for Fixture.CounterViewModel.").ConfigureAwait(false);
+                """;
+            var namesake = await GenerateValidAsync(generator, temporaryRoot, "BridgeTypeName", Preamble + BridgeNamesake)
+                .ConfigureAwait(false);
+            var namesakeBridge = File.ReadAllText(Path.Combine(namesake, "Fixture.CounterViewModel.Bridge.g.cs"));
+            Require(namesakeBridge.Contains("namespace Runic.Application.Views.Generated.Bridges;", StringComparison.Ordinal)
+                    && namesakeBridge.Contains("internal sealed class CounterBridge : ", StringComparison.Ordinal),
+                $"The bridge is not generated in Runic.Application.Views.Generated.Bridges:\n{namesakeBridge}");
+            var namesakeErrors = Compile("BridgeTypeNameConsumer", Preamble + BridgeNamesake)
+                .AddSyntaxTrees(Directory.GetFiles(namesake, "*.g.cs").Select(path =>
+                    CSharpSyntaxTree.ParseText(File.ReadAllText(path), new CSharpParseOptions(LanguageVersion.Latest), path)))
+                .GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).ToArray();
+            Require(namesakeErrors.Length == 0,
+                $"The generated bridge does not compile beside a type of its name:\n{string.Join('\n', namesakeErrors)}");
             await Reject("AvailabilityRoute", """
                 public sealed class AvailabilityViewModel : FixtureModel
                 {

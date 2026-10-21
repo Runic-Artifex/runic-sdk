@@ -12,26 +12,28 @@ namespace Runic.Application.Views.Codegen.ReactiveUI;
 /// </summary>
 public static class ReactiveCommandInspector
 {
-    /// <summary>Returns the typed ReactiveUI command contract implemented by a property.</summary>
+    /// <summary>
+    /// Returns the typed ReactiveUI command contract implemented by a property. ReactiveUI declares
+    /// <c>IReactiveCommand&lt;TParam, TResult&gt;</c> once, in ReactiveUI.Core, for both distributions, so a command
+    /// does not reveal its flavor: it is <paramref name="declaredFlavor"/>, which the build infers from the Runic
+    /// ReactiveUI adapter the project references.
+    /// </summary>
     public static ReactiveCommandContract? InspectContract(PropertyInfo command,
         ReactiveUiFlavor declaredFlavor = ReactiveUiFlavor.Default)
     {
         ArgumentNullException.ThrowIfNull(command);
         var contract = Enumerate(command.PropertyType).FirstOrDefault(candidate => candidate.IsGenericType
-            && candidate.GetGenericTypeDefinition().FullName is "ReactiveUI.IReactiveCommand`2"
-                or "ReactiveUI.Reactive.IReactiveCommand`2");
+            && candidate.GetGenericTypeDefinition().FullName == "ReactiveUI.IReactiveCommand`2");
         if (contract is null) return null;
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
             throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
         var arguments = contract.GenericTypeArguments;
-        var flavor = contract.GetGenericTypeDefinition().FullName == "ReactiveUI.Reactive.IReactiveCommand`2"
-            ? ReactiveUiFlavor.SystemReactive : declaredFlavor;
         var cardinality = command.CustomAttributes.FirstOrDefault(attribute =>
             attribute.AttributeType.FullName == "Runic.Application.Views.RunicCommandResultAttribute")
             ?.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
         if (ReactiveCommandContract.IsVoid(arguments[1]) && cardinality != 0)
             throw new NotSupportedException($"{command.Name}: RxVoid commands cannot select a result cardinality.");
-        return new(command.Name[..^"Command".Length], arguments[0], arguments[1], flavor,
+        return new(command.Name[..^"Command".Length], arguments[0], arguments[1], declaredFlavor,
             (RunicCommandResultCardinality)cardinality);
     }
 

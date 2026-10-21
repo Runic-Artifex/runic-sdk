@@ -10,8 +10,6 @@
     <!-- Selects the System.Reactive namespaces in the source shared with
          Runic.Application.Views.ReactiveUI. Only the scheduler adapter differs. -->
     <DefineConstants>$(DefineConstants);SYSTEM_REACTIVE</DefineConstants>
-    <!-- Packs buildTransitive/$(PackageId).props with the diagnostics help links (eng/build/release-links.targets). -->
-    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
     <Using Include="Runic.Application.Views.Generated" />
@@ -33,7 +31,6 @@
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveSchedulerDiagnostics.cs" Link="Shared/ReactiveSchedulerDiagnostics.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveUIBuilderExtensions.cs" Link="Shared/ReactiveUIBuilderExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
-    <None Include="buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

@@ -64,7 +64,6 @@ export const packageLayouts = {
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i, /^ReactiveUI\.Reactive$/i],
   },
   "Runic.Application.Views.ReactiveUI.Reactive": {
-    includes: ["buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.props", "buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets"],
     requires: ["Runic.Application.Views", "ReactiveUI.Reactive"],
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i],
   },
@@ -313,6 +312,7 @@ async function verifyConsumers(directory, packageName) {
       p.name === "Runic.Application.Testing"
         ? `using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated.Bridges;
 using PackageConsumer;
 var model = new ConsumerViewModel();
 var window = new ConsumerWindow { DataContext = model };

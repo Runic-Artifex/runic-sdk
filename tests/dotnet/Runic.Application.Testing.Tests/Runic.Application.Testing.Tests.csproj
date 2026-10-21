@@ -25,6 +25,8 @@
   <ItemGroup>
     <!-- The tests construct generated-code support types directly. -->
     <Using Include="Runic.Application.Views.Generated" />
+    <!-- The generated bridges, which the bootstrap pass does not have yet. -->
+    <Using Include="Runic.Application.Views.Generated.Bridges" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TUnit.Core" />

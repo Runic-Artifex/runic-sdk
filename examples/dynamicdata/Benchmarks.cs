@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
 using Runic.Application.Views.Generated;
+using Runic.Application.Views.Generated.Bridges;
 
 namespace DynamicDataExample;
 

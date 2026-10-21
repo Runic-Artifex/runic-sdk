@@ -4,6 +4,7 @@ using DynamicDataExample;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Advanced;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated.Bridges;
 using Runic.Navigation;
 
 if (args.Contains("--benchmark", StringComparer.Ordinal)) { await Benchmarks.RunAsync(); return; }
