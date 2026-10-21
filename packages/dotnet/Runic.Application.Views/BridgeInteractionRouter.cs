@@ -287,7 +287,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         Waiter? waiter;
         lock (_gate)
         {
-            if (_disposed) return EncodeKind("disconnected");
+            if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
             if (!_presentations.TryGetValue(request.PresentationId, out var presentation)
                 || !presentation.Matches(request.Route, arguments)
                 || _waiters.ContainsKey(request.PresentationId)) return EncodeKind("ignored");
@@ -316,7 +316,7 @@ public sealed class BridgeInteractionRouter : IDisposable
 
         lock (_gate)
         {
-            if (_disposed) return EncodeKind("disconnected");
+            if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
             if (!_presentations.TryGetValue(request.PresentationId, out var presentation)
                 || !presentation.Matches(request.Route, arguments)) return EncodeKind("ignored");
             var result = UpdateCapabilities(presentation, request.Route, request.Handlers, request.Generation);
@@ -335,7 +335,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         ControlWaiter? waiter;
         lock (_gate)
         {
-            if (_disposed) return EncodeKind("disconnected");
+            if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
             if (!_presentations.TryGetValue(request.PresentationId, out var presentation)
                 || !presentation.Matches(request.Route, arguments)
                 || _controlWaiters.ContainsKey(request.PresentationId)) return EncodeKind("ignored");
@@ -359,7 +359,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         PendingRequest request;
         lock (_gate)
         {
-            if (_disposed) return EncodeKind("disconnected");
+            if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
             if (!_pending.TryGetValue(reply.RequestId, out var pending))
             {
                 return _receipts.TryGetValue(reply.RequestId, out var receipt) && receipt.Matches(reply, arguments)
@@ -496,12 +496,12 @@ public sealed class BridgeInteractionRouter : IDisposable
         if (_waiters.Remove(presentationId, out var waiter))
         {
             waiter.DisposeRegistration();
-            waiter.Completion.TrySetResult(EncodeKind("disconnected"));
+            waiter.Completion.TrySetResult(EncodeKind(Generated.BridgeFailure.Released));
         }
         if (_controlWaiters.Remove(presentationId, out var controlWaiter))
         {
             controlWaiter.DisposeRegistration();
-            controlWaiter.Completion.TrySetResult(EncodeKind("disconnected"));
+            controlWaiter.Completion.TrySetResult(EncodeKind(Generated.BridgeFailure.Released));
         }
         foreach (var request in _pending.Values.Where(value => value.PresentationId == presentationId).ToArray())
         {
@@ -698,9 +698,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            foreach (var waiter in _waiters.Values) { waiter.DisposeRegistration(); waiter.Completion.TrySetResult(EncodeKind("disconnected")); }
+            foreach (var waiter in _waiters.Values) { waiter.DisposeRegistration(); waiter.Completion.TrySetResult(EncodeKind(Generated.BridgeFailure.Released)); }
             _waiters.Clear();
-            foreach (var waiter in _controlWaiters.Values) { waiter.DisposeRegistration(); waiter.Completion.TrySetResult(EncodeKind("disconnected")); }
+            foreach (var waiter in _controlWaiters.Values) { waiter.DisposeRegistration(); waiter.Completion.TrySetResult(EncodeKind(Generated.BridgeFailure.Released)); }
             _controlWaiters.Clear();
             foreach (var request in _pending.Values) { request.CompleteException(new RunicInteractionCancelledException("The window was closed.")); request.Dispose(); }
             _pending.Clear();

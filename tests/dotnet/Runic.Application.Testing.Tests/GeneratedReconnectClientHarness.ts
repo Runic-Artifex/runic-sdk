@@ -28,7 +28,7 @@ host.window.__runicBridge = {
     calls.push({ route, args });
     switch (route) {
       case "contentreconnectSnapshot":
-        return JSON.stringify({ ok: true, state: { revision, title, __runicFields: { title: { version: 0 } } }, error: null });
+        return JSON.stringify({ ok: true, state: { revision, title, __runicFields: { title: { version: 0 } } }, error: null, protocol: 3 });
       case "contentreconnectMount": return mountReplies.shift() ?? "unexpected";
       case "contentreconnectUnmount": return "ok";
       default: throw new Error(`Unexpected generated-client route ${route}.`);

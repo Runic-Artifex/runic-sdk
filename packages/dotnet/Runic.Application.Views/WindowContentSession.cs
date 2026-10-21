@@ -1024,7 +1024,7 @@ public sealed class WindowContentSession : IDisposable
             if (token.Length is 0 or > 256 || token.IndexOf(':') <= 0) return "invalid";
             lock (_gate)
             {
-                if (_disposed) return "disconnected";
+                if (_disposed) return Generated.BridgeFailure.Released;
                 var owner = new MountOwner(arguments.ClientKey, arguments.ConnectionKey);
                 if (!_presentations.TryAdd(token, owner)) return _presentations[token].Matches(arguments) ? "ok" : "ignored";
                 _owner._interactions.OnPresentationMounted(_route, token, owner.ClientKey, owner.ConnectionKey);
@@ -1037,7 +1037,7 @@ public sealed class WindowContentSession : IDisposable
             var token = arguments.GetString();
             lock (_gate)
             {
-                if (_disposed) return "disconnected";
+                if (_disposed) return Generated.BridgeFailure.Released;
                 if (!_presentations.TryGetValue(token, out var owner)) return "ok";
                 if (!owner.Matches(arguments)) return "ignored";
                 _presentations.Remove(token);
@@ -1152,12 +1152,12 @@ public sealed class WindowContentSession : IDisposable
             lock (_gate)
             {
                 // A suspended route has no bridge to present.
-                if (_disposed || _inner is null) return "disconnected";
+                if (_disposed || _inner is null) return Generated.BridgeFailure.Released;
                 var session = token[..separator];
                 var clientKey = arguments.ClientKey;
                 if (arguments.ConnectionKey is { } connectionKey)
                 {
-                    if (_closedSessions.Contains((connectionKey, session))) return "disconnected";
+                    if (_closedSessions.Contains((connectionKey, session))) return Generated.BridgeFailure.Released;
                     _connectionSessions[connectionKey] = session;
                 }
                 if (clientKey is not null)
@@ -1211,7 +1211,7 @@ public sealed class WindowContentSession : IDisposable
             bool closed;
             lock (_gate)
             {
-                if (_disposed) return "disconnected";
+                if (_disposed) return Generated.BridgeFailure.Released;
                 if (_mounts.TryGetValue(token, out var owner) && !owner.Matches(arguments))
                     return "ignored";
                 release = ReleaseMountCore(token, "The browser presentation was unmounted.");

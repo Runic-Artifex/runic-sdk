@@ -60,7 +60,7 @@ async function connectRows(initial: unknown, recovery: unknown, failedReads = 0)
   bridge.route("rowsSnapshot", () => {
     const read = reads++;
     if (read > 0 && read <= failedReads) throw new Error("The snapshot read failed.");
-    return JSON.stringify({ ok: true, state: read === 0 ? initial : recovery, error: null, protocol: 1 });
+    return JSON.stringify({ ok: true, state: read === 0 ? initial : recovery, error: null, protocol: 3 });
   });
   const client = await connectView({ contract: "Tests.CollectionDeltaViewModel:fixtures", route: "rows", mount: false, collections, hydrate });
   const push = host["__rowsChanged"] as (wire: unknown) => void;

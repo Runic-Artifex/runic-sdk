@@ -19,9 +19,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private const string BridgePath = "/webui.js";
     private const string DesktopBootstrapPath = "/runic-desktop.js";
     private const int ReleasedBindingMemory = 256;
-    // The reply to a late call of a recently released capability.
+    // The reply to a late call of a recently released capability (Views protocol 3).
     internal const string ReleasedCapabilityReply =
-        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";
+        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
     private const string WebSocketPath = "/_webui_ws_connect";
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
@@ -1369,7 +1369,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             // A page can still call a capability its owner just released: a page removed from a navigation region
             // unmounts after the snapshot that removed it reached the browser. Such a call is late, not unadmitted.
             // Nothing is invoked, and the reply says the capability is gone, in the envelope a CS-WebUI host sends for
-            // an unbound route, so a client reports it as disconnected rather than as an invalid reply.
+            // an unbound route, so a client reports it as released rather than as an invalid reply.
             if (WasRecentlyReleased(element)) return WebUiResult.FromString(ReleasedCapabilityReply);
 
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(

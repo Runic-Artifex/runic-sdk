@@ -1,0 +1,8 @@
+{
+  "description": "A Mount with a token whose browser session belongs to a closed connection answers the plain string released. The client's connect rejects with BridgeError(\"released\").",
+  "scenario": "mount-ack",
+  "producer": "Runic.Application.Views",
+  "route": "mount",
+  "wire": "released",
+  "client": { "error": { "kind": "released" }, "diagnostics": [] }
+}

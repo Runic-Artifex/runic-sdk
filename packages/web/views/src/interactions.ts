@@ -305,7 +305,7 @@ class InteractionRuntime implements InteractionSession {
       this.retryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const request = envelope as Record<string, unknown>;
-      if (request["kind"] === "disconnected" || request["kind"] === "ignored" || request["kind"] === "unsupported"
+      if (request["kind"] === "released" || request["kind"] === "ignored" || request["kind"] === "unsupported"
         || request["kind"] === "invalid-request" || request["kind"] === "cancelled") { this.stopLoops(); return; }
       if (request["kind"] === "request") void this.handleRequest(request);
     }
@@ -330,7 +330,7 @@ class InteractionRuntime implements InteractionSession {
       this.retryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const control = envelope as Record<string, unknown>;
-      if (control["kind"] === "disconnected" || control["kind"] === "ignored" || control["kind"] === "invalid-request"
+      if (control["kind"] === "released" || control["kind"] === "ignored" || control["kind"] === "invalid-request"
         || (control["kind"] === "cancelled" && typeof control["requestId"] !== "string")) { this.stopLoops(); return; }
       if (control["kind"] === "cancelled" && typeof control["requestId"] === "string") this.cancelRequest(control["requestId"]);
     }

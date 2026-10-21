@@ -129,12 +129,12 @@ try {
   await click("[data-save]");
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Saved After HMR");
   await click("[data-pane=preview]");
-  await retry(async () => (await snapshot(editorRoute)).error?.kind === "disconnected");
+  await retry(async () => (await snapshot(editorRoute)).error?.kind === "released");
   await retry(async () => await query(`typeof window.__${editorRoute}Changed`) === "undefined");
   if ((await snapshot(compactRoute)).state.activationCount - (await snapshot(compactRoute)).state.deactivationCount !== 1)
     throw new Error("The compact View lost its activation after HMR and nested navigation.");
   await click("[data-go=home]");
-  await retry(async () => (await snapshot(compactRoute)).error?.kind === "disconnected");
+  await retry(async () => (await snapshot(compactRoute)).error?.kind === "released");
   await retry(async () => await query(`typeof window.__${compactRoute}Changed`) === "undefined");
   if (viaRunicDev) {
     await retry(async () => (await query('(async () => (await fetch("/__runic_dev/status")).json())()')).generation === 1);

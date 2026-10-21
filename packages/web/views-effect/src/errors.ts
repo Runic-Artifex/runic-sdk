@@ -14,7 +14,10 @@ export interface ViewFailureFields {
 
 /** No host installed `window.__runicBridge`, for example a page opened from a plain Vite server (`unavailable`). */
 export class ViewUnavailable extends Data.TaggedError("ViewUnavailable")<ViewFailureFields> {}
-/** The Bridge is not connected to .NET: the transport closed or the host ended (`disconnected`). */
+/**
+ * The Bridge is not connected to .NET: the transport closed or the host ended (`disconnected`).
+ * The client decides this; .NET never sends it.
+ */
 export class ViewDisconnected extends Data.TaggedError("ViewDisconnected")<ViewFailureFields> {}
 /**
  * The Bridge is connected, but this View was released: the client was disposed, or .NET
@@ -23,13 +26,16 @@ export class ViewDisconnected extends Data.TaggedError("ViewDisconnected")<ViewF
 export class ViewReleased extends Data.TaggedError("ViewReleased")<ViewFailureFields> {}
 /** A Bridge exists but did not connect in time, or a call did not complete in time (`timeout`). */
 export class ViewTimeout extends Data.TaggedError("ViewTimeout")<ViewFailureFields> {}
-/** .NET refused the call, for example a command whose `CanExecute` is false (`rejected`). */
+/**
+ * .NET refused the call, for example a command whose `CanExecute` is false (`rejected`).
+ * `cause.reason` refines it when .NET sent one, such as `unavailable` or `invalid-input`.
+ */
 export class ViewRejected extends Data.TaggedError("ViewRejected")<ViewFailureFields> {}
 /** .NET cancelled the call (`cancelled`). */
 export class ViewCancelled extends Data.TaggedError("ViewCancelled")<ViewFailureFields> {}
 /**
- * A connect, command, setter or query failed: the .NET handler threw, or the reply was
- * invalid (`failed`). `detail` holds the exception type, message and stack when .NET runs
+ * A connect, command, setter or query failed: the .NET handler threw, the reply was
+ * invalid, or the .NET host speaks another Views protocol version (`failed`). `detail` holds the exception type, message and stack when .NET runs
  * in development.
  */
 export class ViewFailed extends Data.TaggedError("ViewFailed")<ViewFailureFields & {

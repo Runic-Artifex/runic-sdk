@@ -8,8 +8,9 @@ namespace Runic.Application.Views.CsWebUi;
 /// </summary>
 internal sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
 {
-    private const string DisconnectedReply =
-        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";
+    // The reply to a call of an unbound route (Views protocol 3).
+    private const string ReleasedReply =
+        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
 
     private readonly object _gate = new();
     private readonly IBridgeTransport _inner;
@@ -77,14 +78,14 @@ internal sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
     {
         Func<IBridgeArguments, string>? active;
         lock (_gate) active = _disposed ? null : route.Sync;
-        return active is null ? DisconnectedReply : active(arguments);
+        return active is null ? ReleasedReply : active(arguments);
     }
 
     private ValueTask<string> DispatchAsync(Route route, IBridgeArguments arguments, CancellationToken token)
     {
         Func<IBridgeArguments, CancellationToken, ValueTask<string>>? active;
         lock (_gate) active = _disposed ? null : route.Async;
-        return active is null ? ValueTask.FromResult(DisconnectedReply) : active(arguments, token);
+        return active is null ? ValueTask.FromResult(ReleasedReply) : active(arguments, token);
     }
 
     private void Release(Route route, long generation)

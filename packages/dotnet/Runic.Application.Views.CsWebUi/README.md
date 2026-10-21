@@ -204,7 +204,7 @@ A cross-origin navigation and a form submission stay cancelled.
 
 A window-local `CreateBridgeSession()` retains one native binding for each route
 name and swaps the active managed handler as Views change; an inactive route
-returns `disconnected`, which the browser client reports as a `released` View. CS-WebUI cannot remove a native route registration
+returns the reply error `released` (Views protocol 3). CS-WebUI cannot remove a native route registration
 before its window closes. Retained page references reuse routes; new page
 identities still add routes.
 

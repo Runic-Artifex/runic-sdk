@@ -1,6 +1,6 @@
 # Runic Application Views wire protocol
 
-This is the protocol, version 2, between a .NET window session
+This is the protocol, version 3, between a .NET window session
 (`WindowContentSession` and generated `ViewModelBridge` subclasses) and the
 generated TypeScript clients, as implemented by `Runic.Application.Views`. The
 previous preview Application Bridge protocol and its Bridge IR are retired.
@@ -12,17 +12,33 @@ specification is maintained by [Runic Translations](https://github.com/Runic-Art
 
 ## Version
 
-Every reply from a snapshot route carries `"protocol": 2` and `"version"`, the
+Every reply from a snapshot route carries `"protocol": 3` and `"version"`, the
 `Runic.Application.Views` package version without build metadata (such as
-`"0.9.0"`); command, setter and write replies do not. Both are
-informational: generated clients do not gate on them. `@runic-artifex/views`
-reports a snapshot reply whose `protocol` differs from its own as a diagnostic
-with code `protocol`, and one whose `version` differs from its own package
-version with code `version`, in every environment and once per Bridge. The .NET and npm packages of one release are meant to be used
-together (see the [release policy](../../eng/release/README.md)). Clients ignore envelope members they do not
-know, so adding members is compatible. The version changes only when a client
-built for the previous version could misread a reply. Version 2 added the
-`domain-failed` error and operation status kind.
+`"0.10.0"`); command, setter and write replies do not.
+
+A client accepts only a host of its own protocol version. It refuses a snapshot
+reply whose `protocol` differs from its own, and a successful one without
+`protocol`: the read rejects with a `BridgeError` of kind `failed` whose message
+names both versions and the fix (use the .NET and npm packages of one release,
+rebuild so the generated clients are regenerated, and reload). So a connect fails
+before `Mount`, and so does a snapshot read after `onReconnect`. The client reports
+these failures with one diagnostic with code `protocol`, once per Bridge, and no
+other diagnostic. An error reply without `protocol`, such as a host's `released`
+envelope of an unbound route, is handled as that error. .NET does not check the
+client's version.
+
+`version` is informational: `@runic-artifex/views` reports a snapshot reply whose
+`version` differs from its own package version as a diagnostic with code
+`version`, in every environment and once per Bridge, and keeps working. The .NET
+and npm packages of one release are meant to be used together (see the
+[release policy](../../eng/release/README.md)).
+
+Clients ignore envelope members they do not know, so adding members, routes and
+`reason` values is compatible and never changes the version. The version changes
+only when a client built for the previous version could misread a reply, and then
+the two cannot talk. Version 2 added the `domain-failed` error and operation
+status kind. Version 3 answers a released View `released` instead of
+`disconnected`, adds the reply error `reason`, and makes the version check strict.
 
 ## Transport
 
@@ -58,12 +74,14 @@ The browser host script defines `__runicBridge`:
 | `onConnectionChange?(listener): () => void` | Optional. Calls `listener(connected)` with the authenticated connection state at once and after each change, including a dropped transport, without waiting for a call; returns an unsubscribe function. It must not have the side effects of `isConnected()` (CS-WebUI's allows navigation). Runic Desktop and CS-WebUI poll WebUI's connection every 250 ms while a listener exists. |
 
 A route unbound on CS-WebUI (the transport of `CreateBridgeSession`) answers the envelope
-`{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`. Runic Desktop
-answers a late call of a capability it released shortly before (it remembers the
-last 256) with the same envelope. A client reports it on every route, including
+`{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}`.
+Runic Desktop answers a late call of a capability it released shortly before (it
+remembers the last 256) with the same envelope, and a custom `IBridgeTransport`
+answers an unbound route with it too. A client reports it on every route, including
 `Can`, `Mount` and `Start` routes, as `released`: the host answered, so the
-Bridge is connected and only the View was released. A client reports a call that
-fails while `isConnected()` is false as `disconnected`. Runic Desktop answers
+Bridge is connected and only the View was released. `disconnected` is
+client-only: a client reports a call that fails while `isConnected()` is false as
+`disconnected`, and .NET never sends it. Runic Desktop answers
 other calls it cannot serve with an empty reply: a capability that was never
 admitted, an undecodable call and a handler that threw. No Views route replies
 with an empty string, so a client reports an empty reply as an invalid response
@@ -115,12 +133,30 @@ routes exist only for a root bridge that exposes interactions.
 ## Reply envelope and state
 
 ```json
-{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 2, "version": "0.9.0" }
+{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 3, "version": "0.10.0" }
 ```
 
 `error` is `{kind, message}` with `kind` one of `rejected`, `cancelled`,
-`failed`, `domain-failed` or `disconnected`; `ok` is false exactly when `error`
-is set. In development (`IncludeFailureDetail`, a window option), an error caused by an exception
+`failed`, `domain-failed` or `released` (the View, presentation or window was
+released); `ok` is false exactly when `error` is set. A client reports a `kind`
+it does not know, including `disconnected`, as `failed`.
+
+`error` may add `reason`, a kebab-case token that refines `kind`. Its vocabulary
+is open: a client keeps a reason it does not know and does not fail on it.
+Protocol 3 defines these reasons:
+
+| `reason` | `kind` | Sent when |
+| --- | --- | --- |
+| `unavailable` | `rejected` | A command's `CanExecute` is false. |
+| `invalid-input` | `rejected` | A setter value, checked write or command argument does not decode, or the setter or command rejects it with `ArgumentException`, `FormatException` or `JsonException`. |
+| `unresolved-key` | `rejected` | Reserved for a command parameter resolved from a wire key that resolves to nothing. No release sends it yet. |
+
+```json
+{ "ok": false, "state": { "revision": 12 }, "error": { "kind": "rejected", "message": "Delete is unavailable.", "reason": "unavailable" } }
+```
+
+Operation admissions keep their own `{kind, reason}` shape (see
+[Operations](#operations)), whose `reason` can be a sentence. In development (`IncludeFailureDetail`, a window option), an error caused by an exception
 adds `detail: {type, message, stack}`; production replies never carry it.
 
 `domain-failed` is a command's declared failure (`[RunicFailure]`, thrown as
@@ -154,11 +190,11 @@ command that replaces or leaves the page in its navigation region does. The repl
 then has `state: null` and `released: true`: a call that succeeded stays `ok`, and
 a failed call keeps its `error`. A client resolves a successful `released` reply
 with the last state it accepted; a successful reply without state and without
-`released` is invalid. A snapshot read of a released bridge replies
-`disconnected`, and so does a checked write, which adds `released: true` too.
+`released` is invalid. A snapshot read of a released bridge replies with the
+error `released`, and so does a checked write, which adds `released: true` too.
 
 `state` is also null when the bridge was detached or closed before the call ran;
-such a reply is `disconnected`. A checked write adds `receipt`:
+such a reply is `released`. A checked write adds `receipt`:
 `applied` or `committed-with-error` with `snapshot: {value, version}`,
 `conflict` with `incoming`, or `rejected` with `message`.
 
@@ -209,10 +245,10 @@ A generated client mounts each presentation of a content reference with a token
 
 - `Mount` answers `ok` (also for an exact duplicate), `invalid` for a malformed
   token, `ignored` when another client or connection owns the token, and
-  `disconnected` when the route is suspended or the token's browser session was
+  `released` when the route is suspended or the token's browser session was
   used by a connection that has since closed. A new browser session from the same
   client supersedes that client's earlier tokens.
-- `Unmount` answers `ok`, `ignored` for another owner's token, or `disconnected`.
+- `Unmount` answers `ok`, `ignored` for another owner's token, or `released`.
 - Each mounted token gets a fresh .NET View. A disconnect releases the tokens of
   that connection.
 - A suspended reference whose tokens are still mounted keeps its `Mount` and
@@ -224,7 +260,7 @@ A generated client mounts each presentation of a content reference with a token
   browser session and mounts each mounted presentation again from the new
   connection as `{newBrowserSession}:{presentation}`, retrying while it is
   `ignored`. A CS-WebUI reconnect can keep the connection key, so re-sending the
-  former token would be `disconnected`: .NET cannot tell it from a late call of
+  former token would be `released`: .NET cannot tell it from a late call of
   the closed connection. Interaction handlers resume under the new token.
 
 ## Operations
@@ -238,7 +274,7 @@ A `Start` route admits a recoverable operation and answers
 `kind` is `accepted`, `duplicate`, `expired` or `rejected`; `reason` names a
 rejection (`owner-closing`, `owner-disposed`, `identity-conflict`, `capacity`,
 `unavailable`, `stream-capacity`). A failed admission before identity checks
-answers `{kind, reason}`, with `detail` as in a reply error; it is `disconnected`
+answers `{kind, reason}`, with `detail` as in a reply error; it is `released`
 when the bridge was released, and a client reports it so. `contract` is
 `{ViewModel full name}:{fingerprint}:{route prefix}`. A request id is bound to the
 command member and the canonical input digest: reusing it for other work is
@@ -275,7 +311,7 @@ a 256 KiB window budget; the default stream bound is 128 items and 64 KiB. An
 overflowing stream is terminal and visible as `stream-overflow`.
 
 Awaited command routes are window work as well. Closing a window stops admission
-(`Start` answers `owner-closing`, an awaited route answers `disconnected`), waits
+(`Start` answers `owner-closing`, an awaited route answers `released`), waits
 up to its timeout for operations and awaited commands, and then requests
 cancellation of what remains. The host keeps its DI scope until that work ends.
 
@@ -290,11 +326,11 @@ is a request
   "name": "...", "contract": "...", "expiresAt": "...", "input": {} }
 ```
 
-or `{kind}` with `cancelled`, `disconnected`, `ignored`, `unsupported`, `stale`
+or `{kind}` with `cancelled`, `released`, `ignored`, `unsupported`, `stale`
 or `invalid-request`. The browser answers on `__runicInteractionReply` with the
 request identity, `kind` `answered` (with `output`), `cancelled` or `failed`. The
 reply route answers `ok`, `already-completed` for an identical retry, `stale`,
-`invalid-request`, `disconnected`, or `invalid-output` when the generated decoder
+`invalid-request`, `released`, or `invalid-output` when the generated decoder
 rejects `output`; the waiting interaction then fails with
 `RunicInteractionOutputException`. `__runicInteractionControl` registers
 capabilities with `{route, presentationId, generation, handlers}`;
@@ -356,8 +392,12 @@ equality treats byte-identical writer output as equal without validating it.
 - Clients that predate `protocol`, `onReconnect` or `onConnectionChange` ignore them.
   A client with a host script that has no `onConnectionChange` reports the first
   connection and each reconnect, but not a loss.
-- The wire keeps `disconnected` for a released View, so a client that predates
-  `released` reports it as before; a newer client reports it as `released`.
+- Protocol 3 is not compatible with protocol 2: a protocol-3 client refuses a
+  protocol-2 host (see [Version](#version)). A protocol-2 (0.9) client does not
+  refuse a protocol-3 host, but only reports it. It reads a `released` reply
+  error as `released`, while an operation admission `{kind: "released"}` becomes
+  `failed` and its interaction loops poll again until `ignored` or the transport
+  ends. Use the .NET and npm packages of one release.
 - Clients treat a reply error `kind` they do not know as `failed`. A generated
   client also treats `domain-failed` as `failed` for a command or operation
   that declares no failure, so a newer host cannot surprise an older client.
@@ -365,3 +405,10 @@ equality treats byte-identical writer output as equal without validating it.
 Portable fixtures under [`fixtures/domain-failures`](fixtures/domain-failures)
 pair the wire .NET writes for declared failures with the outcome a declared
 client reports; the .NET tests and `@runic-artifex/views` check both sides.
+
+Fixtures under [`fixtures/released`](fixtures/released) and
+[`fixtures/error-reasons`](fixtures/error-reasons) pair protocol-3 replies (a
+released View, a host's unbound-route envelope, `reason`) and the protocol-2
+replies a protocol-3 client refuses with what the client reports. Each names its
+`producer`; the .NET tests write the `Runic.Application.Views` ones and
+`@runic-artifex/views` reads all of them.

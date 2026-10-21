@@ -1,5 +1,7 @@
+import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { hostCallbacks, reportBridgeError, type RunicBridgeClient } from "./transport.js";
+import { bridgeProtocol, viewsVersion } from "./version.js";
 
 // The page-wide runtime lives on the window under a registered symbol. Every
 // generated module, every copy of this package, and a runtime created by an
@@ -112,7 +114,9 @@ function resumeAfterReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient)
       if (!entry.active) continue;
       const snapshotRoute = `${route.route}Snapshot`;
       void bridge.call(snapshotRoute).then(json => {
-        const reply = JSON.parse(json) as { readonly state?: unknown };
+        const reply = JSON.parse(json) as { readonly ok?: unknown; readonly state?: unknown; readonly protocol?: unknown; readonly version?: unknown };
+        // A host rebuilt with packages of another release fails the read loudly instead of drifting.
+        if (reply !== null && typeof reply === "object") checkSnapshotProtocol(reply, bridge, snapshotRoute);
         if (entry.active && reply.state !== null && reply.state !== undefined) entry.accept(reply.state);
       }).catch(cause => {
         // The route keeps its last state and the next push or call refreshes it.
@@ -171,6 +175,41 @@ export function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient
   runtime.routes.set(route, sharedRoute);
   callbacks[callbackName] = sharedRoute.callback;
   return sharedRoute;
+}
+
+const protocolReported = new WeakSet<object>();
+const versionReported = new WeakSet<object>();
+
+/**
+ * Checks the `protocol` and `version` of a snapshot reply. This client accepts only a host of its own
+ * protocol: a reply that states another protocol, or a successful one that states none, fails the read
+ * as `failed`. The `protocol` diagnostic, once per Bridge, is the only report of such failures. A reply
+ * without `protocol` that is an error, such as a host's `released` envelope of an unbound route, is
+ * handled as an error. The package version is informational: another one is a `version` diagnostic,
+ * once per Bridge.
+ */
+export function checkSnapshotProtocol(reply: { readonly ok?: unknown; readonly protocol?: unknown; readonly version?: unknown },
+  bridge: object, route: string): void {
+  if (reply.protocol !== bridgeProtocol && (reply.protocol !== undefined || reply.ok === true)) {
+    const host = reply.protocol === undefined ? "does not state a Views protocol" : `uses Views protocol ${String(reply.protocol)}`;
+    const error = new BridgeError("failed", `The .NET host ${host}, but this client implements protocol ${bridgeProtocol}, so the View ` +
+      "cannot connect. Use Runic.Application.Views and @runic-artifex/views of one release, rebuild so the generated clients " +
+      "are regenerated, and reload the page.", { route });
+    if (protocolReported.has(bridge)) suppressErrorDiagnostic(error);
+    else {
+      protocolReported.add(bridge);
+      emitBridgeDiagnostic({ kind: "error", code: "protocol", route, message: error.message, error });
+    }
+    throw error;
+  }
+  if (typeof reply.version === "string" && reply.version !== viewsVersion && !versionReported.has(bridge)) {
+    versionReported.add(bridge);
+    emitBridgeDiagnostic({
+      kind: "error", code: "version", route,
+      message: `The .NET host runs Runic.Application.Views ${reply.version}, but this page uses @runic-artifex/views ${viewsVersion}. ` +
+        "Use the .NET and npm packages of one release.",
+    });
+  }
 }
 
 /** The message of a caught value, for an error that wraps it. */

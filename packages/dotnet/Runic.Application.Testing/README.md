@@ -175,7 +175,8 @@ already have. A `RunicViewDriver<T>` has:
   `ThrowIfFailed()` throws for a failed call, as `NavigationResult` does. A
   command's declared failure (`[RunicFailure]`) replies with `ErrorKind`
   `domain-failed` and the encoded failure as `Failure`, such as
-  `{"$case":"titleRequired"}`.
+  `{"$case":"titleRequired"}`. A call of a released View or a closed window
+  replies `released`.
 - `Start(command, argumentJson, requestId)` for a recoverable operation. Its
   `Admission` is a `RunicOperationAdmissionKind` (`Accepted`, `Duplicate`, ...).
   It has `GetStatus()`, `WaitAsync()` and `Cancel()`, which returns a

@@ -35,7 +35,7 @@ internal sealed class PageRemovalTests
         var popped = await fixture.ViewModel.Main.BackAsync();
         Require(popped is NavigationResult<GuardedPage>.Committed, $"Back did not commit: {popped}");
         Require(await PageRouteAsync(browser, cancellation) == home, "The snapshot after Back did not present the first page.");
-        // The late call is answered with the disconnected envelope, which a generated client reports as disconnected (#246).
+        // The late call is answered with the released envelope, which a generated client reports as released (#246).
         var late = await browser.CallAsync($"{detail}Unmount", cancellation, "session:detail");
         Require(late == ReleasedReply, $"The late unmount of the retired page was answered '{late}'.");
         Require(fixture.Diagnostics.IsEmpty, $"Popping a page reported diagnostics: {Describe(fixture)}");
@@ -59,7 +59,7 @@ internal sealed class PageRemovalTests
     }
 
     private const string ReleasedReply =
-        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";
+        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
 
     // The route of the page the shell's snapshot presents.
     private static async Task<string> PageRouteAsync(DesktopWireClient browser, CancellationToken cancellationToken)

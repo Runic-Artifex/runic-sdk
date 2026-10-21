@@ -33,7 +33,7 @@ public sealed class ContentLifecycleTests
         Require(views.Detached == 1, "Releasing the former connection did not release its View.");
         Require(transport.Call($"{route}Mount", From("connection-two")) == "ok" && views.Attached == 2,
             "The reconnected browser could not remount its presentation.");
-        Require(transport.Call($"{route}Mount", From("connection-one")) == "disconnected",
+        Require(transport.Call($"{route}Mount", From("connection-one")) == "released",
             "The closed connection could remount its former browser session.");
     }
 

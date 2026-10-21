@@ -153,7 +153,7 @@ try {
   if (webRoot) await click("[data-pinned-action=remove]");
   else await evaluate('(async () => window.__runicBridge.call("shellRemovePinned"))()');
   await retry(async () => (await snapshot("shell")).state.pinned.length === 1);
-  if ((await snapshot(`content${originalPins[0].id}`)).error?.kind !== "disconnected")
+  if ((await snapshot(`content${originalPins[0].id}`)).error?.kind !== "released")
     throw new Error("Removing a View collection item kept its route connected.");
   if (!(await snapshot(`content${originalPins[1].id}`)).state)
     throw new Error("Removing a sibling View disconnected the surviving item.");
@@ -211,7 +211,7 @@ try {
 
   await click("[data-pane=preview]");
   await retry(async () => await query('document.querySelector("#document-pane [data-heading]")?.textContent') === "Shared note");
-  if ((await snapshot(editorRoute)).error?.kind !== "disconnected")
+  if ((await snapshot(editorRoute)).error?.kind !== "released")
     throw new Error("The full editor endpoint stayed active after the nested route changed.");
   const whilePreview = (await snapshot(compactRoute)).state;
   if (whilePreview?.activationCount !== 1 || whilePreview?.deactivationCount !== 0)
@@ -225,7 +225,7 @@ try {
 
   await click("[data-go=home]");
   await retry(async () => await query('document.querySelector("#main h1")?.textContent') === "Reactive Notes");
-  if ((await snapshot(compactRoute)).error?.kind !== "disconnected")
+  if ((await snapshot(compactRoute)).error?.kind !== "released")
     throw new Error("The compact endpoint stayed active after leaving Document.");
   await click("[data-go=document]");
   await retry(async () => await query('document.querySelector("#document-pane [data-title]")?.value') === "Shared note");

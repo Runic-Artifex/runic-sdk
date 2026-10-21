@@ -49,7 +49,7 @@ try {
   await first.call("shellSwapPinned");
   await retry(async () => (await second.snapshot("shell")).state.pinned[0]?.id === pinnedBefore[1].id);
   await first.call("shellRemovePinned");
-  await retry(async () => (await second.snapshot(`content${pinnedBefore[0].id}`)).error?.kind === "disconnected");
+  await retry(async () => (await second.snapshot(`content${pinnedBefore[0].id}`)).error?.kind === "released");
   await first.call("shellRestorePinned");
   await retry(async () => (await second.snapshot("shell")).state.pinned[0]?.id === pinnedBefore[0].id);
 

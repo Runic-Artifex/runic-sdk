@@ -1916,7 +1916,7 @@ exception types, never arguments or state.
 Spans are named `<kind> <Model>.<Member>` and have the tags
 `runic.bridge.kind`, `runic.bridge.model`, `runic.bridge.member`,
 `runic.bridge.route` and `runic.bridge.outcome`. The outcome is `ok`,
-`rejected`, `cancelled`, `failed`, `domain_failed` or `disconnected`. An
+`rejected`, `cancelled`, `failed`, `domain_failed` or `released` (`disconnected` before 0.10). An
 admission can also be `unavailable`, `capacity`, `duplicate` or `expired`, and
 an operation whose result could not be delivered is `delivery_failed`. A failed
 span has the status `Error` and `error.type`. A `domain_failed` call is an

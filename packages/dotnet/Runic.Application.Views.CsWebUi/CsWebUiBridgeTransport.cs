@@ -9,7 +9,7 @@ public static class CsWebUiBridgeExtensions
     /// <summary>Creates a transport whose routes outlive individual bridge attachments.</summary>
     /// <remarks>
     /// CS-WebUI cannot remove a native route before its window closes, so the transport keeps each route and lets
-    /// Bridge attachments replace its handler; a call to a released route gets the disconnected reply. The returned
+    /// Bridge attachments replace its handler; a call to a released route gets the `released` reply. The returned
     /// object is also <see cref="IDisposable"/>: dispose it before disposing <paramref name="window"/>.
     /// </remarks>
     public static IBridgeTransport CreateBridgeSession(this WebUiWindow window) =>

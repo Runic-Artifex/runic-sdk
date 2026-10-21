@@ -72,12 +72,12 @@ select them. Each keeps the original `BridgeError` as `cause` and its `route`.
 | Tag | `BridgeError` kind | Meaning |
 | --- | --- | --- |
 | `ViewUnavailable` | `unavailable` | No host installed `window.__runicBridge`, for example a page served by plain Vite. |
-| `ViewDisconnected` | `disconnected` | The Bridge is not connected to .NET: the transport closed or the host ended. |
+| `ViewDisconnected` | `disconnected` | The Bridge is not connected to .NET: the transport closed or the host ended. The client decides this; .NET never sends it. |
 | `ViewReleased` | `released` | The Bridge is connected, but this View was released: the client was disposed, or .NET released the View, for example because navigation replaced it. |
 | `ViewTimeout` | `timeout` | A Bridge exists but did not connect in time. |
-| `ViewRejected` | `rejected` | .NET refused the call. |
+| `ViewRejected` | `rejected` | .NET refused the call. `cause.reason` says why when .NET sent it: `unavailable` (`CanExecute` is false) or `invalid-input`. |
 | `ViewCancelled` | `cancelled` | .NET cancelled the call. |
-| `ViewFailed` | `failed` | The handler threw or the reply was invalid. `detail` has the .NET exception type, message and stack in development. |
+| `ViewFailed` | `failed` | The handler threw or the reply was invalid, or the .NET host speaks another Views protocol version (connect fails with a `protocol` diagnostic). `detail` has the .NET exception type, message and stack in development. |
 
 `ViewError` is the union of these. Operations add four more, together
 `ViewOperationError`:

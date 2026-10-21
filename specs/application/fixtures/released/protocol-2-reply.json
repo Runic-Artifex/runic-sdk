@@ -1,0 +1,8 @@
+{
+  "description": "Protocol 2 answered a call of a released View disconnected. Protocol 3 never sends it: disconnected is client-only (the Bridge is not connected), so a protocol-3 client treats it like an unknown kind and rejects with BridgeError(\"failed\").",
+  "scenario": "protocol-2-reply",
+  "producer": "protocol-2",
+  "route": "command",
+  "wire": { "ok": false, "state": null, "error": { "kind": "disconnected", "message": "The Bridge is closed." } },
+  "client": { "error": { "kind": "failed" }, "diagnostics": ["failed"] }
+}

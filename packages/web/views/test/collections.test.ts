@@ -65,7 +65,7 @@ test("clients ignore duplicate deltas and recover a revision gap with one snapsh
   assert.equal(client.snapshot.rows.length, 2);
   assert.equal(client.snapshot.rows[0], original);
   let recoveries = 0;
-  bridge.route("rowsSnapshot", () => { recoveries++; return JSON.stringify({ ok: true, state: { revision: 5, rows: [{ id: 4, label: "recovered" }], title: "rows" }, error: null }); });
+  bridge.route("rowsSnapshot", () => { recoveries++; return JSON.stringify({ ok: true, state: { revision: 5, rows: [{ id: 4, label: "recovered" }], title: "rows" }, error: null, protocol: 3 }); });
   push({ ...delta, baseRevision: 3, revision: 4 });
   // Held during the read and then judged against the recovered revision.
   push({ ...delta, baseRevision: 3, revision: 5 });
@@ -86,7 +86,7 @@ async function connectRows(read: (attempt: number) => unknown) {
   let reads = 0;
   bridge.route("rowsSnapshot", () => {
     const state = reads++ === 0 ? { revision: 1, rows: [{ id: 1, label: "one" }], title: "rows" } : read(reads - 1);
-    return JSON.stringify({ ok: true, state, error: null });
+    return JSON.stringify({ ok: true, state, error: null, protocol: 3 });
   });
   const client = await connectView({ contract: "rows:recovery", route: "rows", mount: false, collections: defineCollections(definitions),
     hydrate: (wire: Wire) => ({ rows: wire.rows.map(decode), title: wire.title }) });
@@ -163,7 +163,7 @@ test("frames that arrive during recovery are applied after it, or recover again"
   const { bridge, client, push, reads } = await connectRows(() => recovered);
   bridge.route("rowsSnapshot", async () => {
     await new Promise<void>(resolve => { release = resolve; });
-    return JSON.stringify({ ok: true, state: recovered, error: null });
+    return JSON.stringify({ ok: true, state: recovered, error: null, protocol: 3 });
   });
   push(gap);
   push({ __runicDelta: 1, baseRevision: 3, revision: 4, changes: [change("add", 2, ["4"], [{ id: 4, label: "four" }])] });
@@ -176,7 +176,7 @@ test("frames that arrive during recovery are applied after it, or recover again"
   bridge.route("rowsSnapshot", async () => {
     second++;
     if (second === 1) await new Promise<void>(resolve => { release = resolve; });
-    return JSON.stringify({ ok: true, state: { ...recovered, revision: second === 1 ? 6 : 9 }, error: null });
+    return JSON.stringify({ ok: true, state: { ...recovered, revision: second === 1 ? 6 : 9 }, error: null, protocol: 3 });
   });
   push({ ...gap, baseRevision: 5, revision: 6 });
   push({ ...gap, baseRevision: 7, revision: 8 });

@@ -24,8 +24,8 @@ const connect = () => connectView({ contract, route: "page", mount: false, hydra
 // The replies .NET sends for a call that released its own View (BridgeRuntime.EncodeReleased).
 const released = JSON.stringify({ ok: true, state: null, error: null, released: true });
 const releasedRejected = JSON.stringify({ ok: false, state: null, error: { kind: "rejected", message: "Back is unavailable." }, released: true });
-// What Runic Desktop and CS-WebUI answer for a route they released.
-const unbound = JSON.stringify({ ok: false, state: null, error: { kind: "disconnected", message: "This view is no longer connected." } });
+// What Runic Desktop and CS-WebUI answer for a route they released (specs/application/fixtures/released/unbound-route.json).
+const unbound = JSON.stringify({ ok: false, state: null, error: { kind: "released", message: "This View was released." } });
 const routes = ["pageSnapshot", "pageBack", "pageSetTitle", "pageWriteTitle", "pageCanBack", "pageStartSave"];
 
 function captureDiagnostics() {
@@ -127,7 +127,7 @@ test("an empty reply is an invalid response on every route", async () => {
 test("an operation start on a released View is released", async () => {
   const bridge = fresh();
   bridge.view("page", { state: { title: "detail" } });
-  bridge.route("pageStartSave", () => JSON.stringify({ kind: "disconnected", reason: "The Bridge is closed." }));
+  bridge.route("pageStartSave", () => JSON.stringify({ kind: "released", reason: "The Bridge is closed." }));
   const client = await connect();
   await assert.rejects(client.startOperation("Save", "request-1", () => "{}", value => value), isKind("released", "pageStartSave"));
   client.dispose();

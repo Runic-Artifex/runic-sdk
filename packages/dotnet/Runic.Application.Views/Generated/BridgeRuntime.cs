@@ -204,9 +204,17 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
 // Detail is present only when the window allows local failure detail.
 // Failure is the encoded declared failure of a domain-failed reply, which
 // never carries detail (D-1).
-internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null, string? Failure = null)
+// Reason refines Kind with an open kebab-case token (protocol 3): "unavailable"
+// and "invalid-input" under "rejected"; "unresolved-key" is reserved for wire-key
+// command parameters and not sent yet.
+internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null, string? Failure = null, string? Reason = null)
 {
     internal const string DomainFailed = "domain-failed";
+    // .NET answers a call of a View, presentation or window it released with this kind. The
+    // client-only `disconnected` (the transport is down) is never sent.
+    internal const string Released = "released";
+    internal const string Unavailable = "unavailable";
+    internal const string InvalidInput = "invalid-input";
 }
 
 /// <summary>The Views wire protocol described in specs/application/README.md.</summary>
@@ -215,11 +223,15 @@ public static class BridgeProtocol
 {
     /// <summary>
     /// The protocol version reported as <c>protocol</c> in every snapshot-route reply.
-    /// It changes only when a generated client built for the previous version could
-    /// misread a reply. It is informational: generated clients do not gate on it.
+    /// A generated client accepts only a host of its own protocol version and fails to
+    /// connect to any other. Additive changes never change it.
     /// </summary>
-    /// <remarks>Version 2 adds the <c>domain-failed</c> reply error and operation status.</remarks>
-    public const int Version = 2;
+    /// <remarks>
+    /// Version 2 added the <c>domain-failed</c> reply error and operation status. Version 3
+    /// answers a released View <c>released</c> instead of <c>disconnected</c> and adds the
+    /// reply error <c>reason</c>.
+    /// </remarks>
+    public const int Version = 3;
 
     // The Runic.Application.Views package version, reported as "version" beside "protocol" so the browser runtime can
     // report an @runic-artifex/views package of another release (D02). Build metadata (+commit) is dropped.
@@ -517,8 +529,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private string Reply()
     {
+        // Every snapshot reply states the protocol, including the one of a released bridge.
         lock (_modelGate) return IsInactive
-            ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."))
+            ? EncodeReleased(error: null, protocol: true)
             : Encode(protocol: true);
     }
 
@@ -526,7 +539,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         lock (_modelGate)
         {
-            if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
             var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, property.Name);
             try
             {
@@ -538,7 +551,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
+                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
             }
             catch (Exception error)
             {
@@ -553,7 +566,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         lock (_modelGate)
         {
-            if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
             var call = BridgeCall.Start(BridgeCallKind.Write, ModelName, _name, property.Descriptor.Name);
             BridgeFieldWriteRequest<object?> request;
             try
@@ -578,7 +591,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException or OverflowException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
+                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
             }
 
             try
@@ -644,7 +657,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         lock (_modelGate)
         {
-            if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
             var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
             try
             {
@@ -653,7 +666,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 if (!IsAvailable(descriptor, argument))
                 {
                     call.Complete(BridgeCallOutcome.Rejected);
-                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
+                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
                 }
                 using var invocation = EnterInvocation(descriptor, arguments, CancellationToken.None);
                 ((ICommand)command).Execute(argument);
@@ -673,7 +686,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
+                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
             }
             catch (Exception error)
             {
@@ -691,20 +704,20 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         // cancels it after the close timeout.
         using var admission = _content?.Operations.TryBeginAwaited(token);
         if (_content is not null && admission is null)
-            return EncodeWithoutSnapshot(new("disconnected", "The window is closing."));
+            return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The window is closing."));
         var cancellation = admission?.Token ?? token;
         Task<BridgeOperationResult>? execution = null;
         var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
         try
         {
-            var rejected = BridgeCallOutcome.Disconnected;
+            var rejected = BridgeCallOutcome.Released;
             var rejection = _modelTurn.Run(() =>
             {
-                if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+                if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
                 var argument = descriptor.ReadArgument?.Invoke(arguments);
                 rejected = BridgeCallOutcome.Rejected;
                 if (!IsAvailable(descriptor, argument))
-                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
+                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
                 using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                 execution = InvokeCommandAsync(descriptor, argument, cancellation);
                 return null;
@@ -732,7 +745,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         {
             call.Complete(BridgeCallOutcome.Rejected);
             var detail = BridgeFailureDetails.Capture(error, IncludesFailureDetail);
-            return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", detail)));
+            return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", detail, Reason: BridgeFailure.InvalidInput)));
         }
         catch (Exception error)
         {
@@ -767,7 +780,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         try { return _modelTurn.Run(encode); }
         catch (ObjectDisposedException)
-        { return EncodeWithoutSnapshot(new("disconnected", "The window closed before the command replied.")); }
+        { return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The window closed before the command replied.")); }
     }
 
     private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
@@ -802,7 +815,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         lock (_modelGate)
         {
-            if (IsInactive) return EncodeOperationStartFailure("disconnected", "The Bridge is closed.");
+            if (IsInactive) return EncodeOperationStartFailure(BridgeFailure.Released, "The Bridge is closed.");
             var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
             try
             {
@@ -943,9 +956,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     // the page in its region detaches the page before the reply captures a
     // state. The reply says so with `released: true` and no state; a call that
     // succeeded stays `ok`, a failed call keeps its error. A snapshot read on a
-    // released bridge is `disconnected` instead, because it has nothing to report.
+    // released bridge is `released` without that flag instead, because it has nothing to report.
     private static string EncodeReleased(BridgeFailure? error, bool protocol = false) => protocol
-        ? EncodeReply(error ?? new("disconnected", "The Bridge is closed."), writeState: null, protocol)
+        ? EncodeReply(error ?? new(BridgeFailure.Released, "The Bridge is closed."), writeState: null, protocol)
         : EncodeReply(error, writeState: null, released: true);
 
     private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
@@ -1152,11 +1165,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             });
-            return IsInactive ? EncodeReleased(new("disconnected", "The Bridge is closed.")) : reply;
+            return IsInactive ? EncodeReleased(new(BridgeFailure.Released, "The Bridge is closed.")) : reply;
         }
         catch (Exception released) when (released is BridgeSnapshotDetachedException || IsInactive)
         {
-            return EncodeReleased(new("disconnected", "The Bridge is closed."));
+            return EncodeReleased(new(BridgeFailure.Released, "The Bridge is closed."));
         }
         catch (BridgeCollectionKeyException keys)
         {
@@ -1198,6 +1211,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             writer.WriteStartObject();
             writer.WriteString("kind", error.Kind);
             writer.WriteString("message", error.Message);
+            if (error.Reason is { } reason) writer.WriteString("reason", reason);
             if (error.Failure is { } failure)
             {
                 writer.WritePropertyName("failure");

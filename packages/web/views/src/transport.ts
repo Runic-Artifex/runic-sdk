@@ -66,7 +66,7 @@ export function hostCallbacks(): Record<string | symbol, unknown> {
 }
 
 // A host answers a late call of a route it released, such as a route of a View
-// that .NET released during the call, with a `disconnected` envelope. Runic
+// that .NET released during the call, with a `released` envelope. Runic
 // Desktop and CS-WebUI send the same one. The host answered, so the Bridge is
 // connected and only the View was released. An empty reply (a Runic Desktop
 // handler that threw, or a capability that was never admitted) stays an invalid response.
