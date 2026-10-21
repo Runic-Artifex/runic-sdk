@@ -253,6 +253,9 @@ internal static class DesktopWindowOptionValidation
         ProfilePath = options.ProfilePath,
         BrowserArguments = options.BrowserArguments,
         AllowedPermissions = options.AllowedPermissions,
+        WebContent = options.WebContent is { } webContent
+            ? WebContentRules.Resolve(webContent, Environment.GetEnvironmentVariable)
+            : DesktopWindowHostOptions.SafeWebContent,
     };
 
     internal static DesktopDiagnostic Invalid(string message) => new(

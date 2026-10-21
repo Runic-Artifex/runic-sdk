@@ -233,6 +233,58 @@ call on the handle to `InvokeNativeAsync`, which runs it there with the handle.
 which decides a window's initial theme when `DesktopWindowOptions.HighContrast`
 is not set. To follow changes, observe `IDesktopSettings` from Runic.Platform.
 
+## Links, new windows, downloads and developer tools
+
+Since 0.10.0 an embedded window keeps its page on the application.
+`DesktopWindowOptions.WebContent` (`DesktopWebContentPolicy`) controls it; the
+defaults are:
+
+- **External links open in the default browser.** A top-level navigation stays in
+  the window only for the application's origins: the surface's origin and its
+  `DesktopSecurityPolicy.AdditionalOrigins`. A link the user clicks to another
+  `http`, `https` or `mailto` URL is cancelled and opened with the system's
+  handler (a `mailto` URL that names an attachment is refused). Navigations a
+  script starts without a click, and other schemes, are cancelled. Iframes are
+  not affected.
+- **No second WebView window.** A `target="_blank"` link or `window.open` for
+  another origin follows the same rule; one for the application's own origin is
+  cancelled. Open further windows from .NET.
+- **Downloads are refused.**
+- **Developer tools only in Development.** F12 and Inspect Element (WebView2),
+  the WebKitGTK inspector and Safari's Web Inspector (WKWebView, macOS 13.3 and
+  later) are available only when `DOTNET_ENVIRONMENT`, or else
+  `ASPNETCORE_ENVIRONMENT`, is `Development`, as under `dotnet runic dev`. Before
+  0.10.0 WebView2 always had them, including in Release builds, which let anyone
+  at the keyboard script the page and its Bridge.
+
+```csharp
+await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    WebContent = new DesktopWebContentPolicy
+    {
+        ExternalNavigation = DesktopExternalNavigation.Block, // or AllowInWindow, as before 0.10.0
+        AllowDownloads = true,
+        DevTools = true, // or false; null follows the environment
+    },
+});
+```
+
+`AllowInWindow` loads other origins in the window, as before 0.10.0, and loads
+an external new-window request there too. With `AllowDownloads`, WebView2 shows
+its download dialog and WebKitGTK saves `<a download>` links and
+`Content-Disposition: attachment` responses to the download folder; WKWebView
+cannot download, so macOS refuses downloads either way. WebView2 and WebKitGTK
+tell a click from a script's `click()` on a link; WKWebView does not, so on
+macOS a page script can still open an external `http`, `https` or `mailto` URL
+in the browser. WebKitGTK cannot tell which frame a navigation is for until the
+response arrives, so an external page that a top-level navigation asks for is
+requested and then cancelled. Installed browsers do not apply
+the policy. A [custom window host](#custom-window-hosts) receives it, with the
+Development default resolved, in `DesktopWindowHostOptions.WebContent`, and the
+application's origins besides the presented URL's in
+`DesktopWindowHostOptions.AdditionalOrigins`; `RunicWebView` applies it as the
+built-in hosts do.
+
 ## Window state and restore
 
 An embedded window whose `Capabilities` include `DesktopWindowCapabilities.State`
@@ -801,6 +853,14 @@ credential into those scripts instead, which any client that can fetch them can
 read; report `false` only when the WebView cannot run document-start scripts.
 The script carries the credential: never log it, store it or expose it to page
 content.
+
+**The web content rule.** Apply `DesktopWindowHostOptions.WebContent` when the
+WebView lets you intercept them: keep top-level navigations to the presented
+URL's origin and `DesktopWindowHostOptions.AdditionalOrigins` in the window,
+handle others and new-window requests as
+[Links, new windows, downloads and developer tools](#links-new-windows-downloads-and-developer-tools)
+describes, cancel downloads unless `AllowDownloads` is set, and enable the
+developer tools only when `DevTools` is `true`.
 
 **Capabilities and optional interfaces.** Runic Desktop calls a window operation
 (`FocusAsync`, `MinimizeAsync`, `ToggleMaximizedAsync`, `ResizeAsync`,

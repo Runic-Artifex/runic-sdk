@@ -386,9 +386,17 @@ internal static class WebUiBridge
               }
             });
           }
-          globalThis.addEventListener("beforeunload", () => {
+          // pagehide, not beforeunload: the window's web content policy can cancel a navigation after beforeunload
+          // (an external link opens in the browser instead), and the page must keep its Bridge then. A page restored
+          // from the back-forward cache connects again.
+          globalThis.addEventListener("pagehide", () => {
             reconnect = false;
             socket?.close();
+          });
+          globalThis.addEventListener("pageshow", event => {
+            if (!event.persisted) return;
+            reconnect = true;
+            connect();
           });
           setInterval(() => {
             if (socket?.readyState === WebSocket.OPEN) sendPacket(encoder.encode("ping")).catch(() => {});

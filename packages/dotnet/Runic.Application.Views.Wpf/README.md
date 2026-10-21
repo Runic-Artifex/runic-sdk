@@ -137,8 +137,14 @@ diagnostics.
 The adapter uses DesktopHost's existing asset server, authenticated surface,
 WebSocket transport and Views session. Its `HwndHost` reuses Runic Desktop's
 native WebView2 controller and native loader, including origin-bound document
-start credentials and permission policy. Install Microsoft Edge WebView2 Runtime
-on the Windows machine. It creates no separate WPF window or UI thread.
+start credentials, permission policy and the web content policy: external links
+open in the default browser, downloads are refused and developer tools are
+available only in Development (see [Links, new windows, downloads and developer tools](../Runic.Desktop/README.md#links-new-windows-downloads-and-developer-tools)).
+`WpfBridgeView` and `RunicViewHost` open with the defaults; a surface you open
+yourself through `RunicWebView.CreateWindowHostFactory()` takes
+`DesktopWindowOptions.WebContent`.
+Install Microsoft Edge WebView2 Runtime on the Windows machine. It creates no
+separate WPF window or UI thread.
 
 `CreateWpfViewAsync` borrows the exact supplied model and service provider. It
 does not create or dispose a DI scope, ViewModel, navigator, or application-owned

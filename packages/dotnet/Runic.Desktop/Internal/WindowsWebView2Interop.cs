@@ -9,7 +9,20 @@ namespace Runic.Desktop.Internal;
 // or assembly-location discovery are needed by NativeAOT applications.
 internal static partial class WindowsWebView2Interop
 {
+    internal const int SettingsSlot = 3;
     internal const int NavigateSlot = 5;
+    internal const int NavigationStartingSlot = 7;
+    internal const int NewWindowRequestedSlot = 44;
+    internal const int DownloadStartingSlot = 75;
+    internal const int SettingsDevToolsSlot = 12;
+    internal const int SettingsGetDevToolsSlot = 11;
+    internal const int NavigationStartingUriSlot = 3;
+    internal const int NavigationStartingUserInitiatedSlot = 4;
+    internal const int NavigationStartingCancelSlot = 8;
+    internal const int NewWindowUriSlot = 3;
+    internal const int NewWindowHandledSlot = 6;
+    internal const int NewWindowUserInitiatedSlot = 8;
+    internal const int DownloadStartingCancelSlot = 5;
     internal const int PermissionRequestedSlot = 23;
     internal const int AddScriptToExecuteOnDocumentCreatedSlot = 27;
     internal const int DocumentTitleChangedSlot = 46;
@@ -38,6 +51,7 @@ internal static partial class WindowsWebView2Interop
     internal const int ObjectCollectionValueSlot = 4;
     internal const int FilePathSlot = 3;
     internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
+    internal static readonly Guid WebView4Interface = new("20d02d59-6df2-42dc-bd06-f98a694b1302");
     internal static readonly Guid FileInterface = new("f2c19559-6bc1-4583-a757-90021be9afec");
     private static readonly Lazy<nint> Loader = new(LoadLoader);
 
@@ -132,6 +146,14 @@ internal static partial class WindowsWebView2Interop
             Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, int>)Slot(webView, NavigateSlot))(webView, value));
     }
 
+    // Opens a URL that WebContentRules.ExternalTarget accepted with its default handler, as Runic.Platform's Windows
+    // launcher does: the URL only, with no parameters string.
+    // Tests observe it instead.
+    internal static Action<string> OpenExternally { get; set; } = static url => _ = ShellExecute(0, "open", url, null, null, 1);
+
+    [LibraryImport("shell32.dll", EntryPoint = "ShellExecuteW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial nint ShellExecute(nint window, string verb, string file, string? parameters, string? directory, int show);
+
     internal static unsafe void AddScriptToExecuteOnDocumentCreated(nint webView, string script, nint callback)
     {
         fixed (char* value = script)
@@ -181,6 +203,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
     private nint _controller;
     private nint _environment;
     private nint _webView;
+    private nint _webView4;
     private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
 
     private WindowsWebView2Controller(nint environment, nint controller)
@@ -340,6 +363,61 @@ internal sealed class WindowsWebView2Controller : IDisposable
         }));
     }
 
+    // Whether the developer tools are enabled, for native checks.
+    internal bool AreDevToolsEnabled
+    {
+        get
+        {
+            var settings = WindowsWebView2Interop.GetPointer(_webView, WindowsWebView2Interop.SettingsSlot);
+            try { return WindowsWebView2Interop.GetInteger(settings, WindowsWebView2Interop.SettingsGetDevToolsSlot) != 0; }
+            finally { WindowsWebView2Interop.Release(settings); }
+        }
+    }
+
+    // DesktopWebContentPolicy (SEC-04): developer tools, top-level navigations, new-window requests and downloads.
+    // openExternally receives a URL that WebContentRules.ExternalTarget accepted; navigate loads one in this window.
+    internal void ApplyWebContent(WebContentRules rules, Action<string> openExternally, Action<string> navigate)
+    {
+        var settings = WindowsWebView2Interop.GetPointer(_webView, WindowsWebView2Interop.SettingsSlot);
+        try { WindowsWebView2Interop.SetInteger(settings, WindowsWebView2Interop.SettingsDevToolsSlot, rules.DevToolsEnabled ? 1 : 0); }
+        finally { WindowsWebView2Interop.Release(settings); }
+
+        AddEvent<IWebViewNavigationStarting>(WindowsWebView2Interop.NavigationStartingSlot, new WebViewEvent(args =>
+        {
+            var url = GetString(args, WindowsWebView2Interop.NavigationStartingUriSlot);
+            var userInitiated = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationStartingUserInitiatedSlot) != 0;
+            var decision = rules.ForNavigation(url, userInitiated);
+            if (decision == WebContentRules.Decision.Allow) return;
+            WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.NavigationStartingCancelSlot, 1);
+            if (decision == WebContentRules.Decision.OpenExternally && WebContentRules.ExternalTarget(url) is { } target) openExternally(target);
+        }));
+        AddEvent<IWebViewNewWindowRequested>(WindowsWebView2Interop.NewWindowRequestedSlot, new WebViewEvent(args =>
+        {
+            var url = GetString(args, WindowsWebView2Interop.NewWindowUriSlot);
+            var userInitiated = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NewWindowUserInitiatedSlot) != 0;
+            // Handled without a new window: no popup opens, and window.open returns null.
+            WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.NewWindowHandledSlot, 1);
+            switch (rules.ForNewWindow(url, userInitiated))
+            {
+                case WebContentRules.Decision.OpenExternally when WebContentRules.ExternalTarget(url) is { } target:
+                    openExternally(target);
+                    break;
+                case WebContentRules.Decision.NavigateInWindow when url is not null:
+                    navigate(url);
+                    break;
+            }
+        }));
+        if (!rules.AllowsDownloads)
+        {
+            // ICoreWebView2_4; an older runtime without it cannot report downloads to the host.
+            // Kept until Dispose, which removes the registration through it.
+            try { _webView4 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView4Interface); }
+            catch (InvalidCastException) { return; }
+            AddEvent<IWebViewDownloadStarting>(_webView4, WindowsWebView2Interop.DownloadStartingSlot, new WebViewEvent(args =>
+                WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.DownloadStartingCancelSlot, 1)));
+        }
+    }
+
     private static string? GetString(nint instance, int slot)
     {
         var value = WindowsWebView2Interop.GetPointer(instance, slot);
@@ -371,10 +449,11 @@ internal sealed class WindowsWebView2Controller : IDisposable
             {
                 foreach (var entry in _events) entry.Handler.Dispose();
                 _events.Clear();
+                WindowsWebView2Interop.Release(_webView4);
                 WindowsWebView2Interop.Release(_webView);
                 WindowsWebView2Interop.Release(_controller);
                 WindowsWebView2Interop.Release(_environment);
-                _webView = _controller = _environment = 0;
+                _webView = _webView4 = _controller = _environment = 0;
             }
         }
     }
@@ -405,6 +484,12 @@ internal partial interface IWebViewWebMessageReceived { [PreserveSig] int Invoke
 internal partial interface IWebViewPermissionRequested { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("69035451-6dc7-4cb8-9bce-b2bd70ad289f")]
 internal partial interface IWebViewMoveFocusRequested { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("9adbe429-f36d-432b-9ddc-f8881fbd76e3")]
+internal partial interface IWebViewNavigationStarting { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("d4c185fe-c81c-4989-97af-2d3fa7ab5651")]
+internal partial interface IWebViewNewWindowRequested { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("efedc989-c396-41ca-83f7-07f845a55724")]
+internal partial interface IWebViewDownloadStarting { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("5c4889f0-5ef6-4c5a-952c-d8f1b92d0574")]
 internal partial interface IWebViewDevToolsCompleted { [PreserveSig] int Invoke(int errorCode, nint result); }
 
@@ -463,7 +548,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 
 [GeneratedComClass]
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
-    IWebViewWebMessageReceived, IWebViewMoveFocusRequested
+    IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting
 {
     public int Invoke(nint sender, nint args)
     {

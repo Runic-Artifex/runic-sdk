@@ -161,3 +161,29 @@ Runic.Desktop.DesktopHost.SetMenuBar(System.Collections.Generic.IReadOnlyList<Ru
 Runic.Desktop.DesktopHostOptions.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
 Runic.Desktop.IDesktopMenuCommandTarget.CanExecute(Runic.Platform.DesktopMenuItem! item) -> bool
 Runic.Desktop.IDesktopMenuCommandTarget.Execute(Runic.Platform.DesktopMenuItem! item) -> void
+Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopExternalNavigation.AllowInWindow = 2 -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopExternalNavigation.Block = 1 -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopExternalNavigation.OpenInBrowser = 0 -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopWebContentPolicy
+Runic.Desktop.DesktopWebContentPolicy.AllowDownloads.get -> bool
+Runic.Desktop.DesktopWebContentPolicy.AllowDownloads.init -> void
+Runic.Desktop.DesktopWebContentPolicy.DesktopWebContentPolicy() -> void
+Runic.Desktop.DesktopWebContentPolicy.DevTools.get -> bool?
+Runic.Desktop.DesktopWebContentPolicy.DevTools.init -> void
+Runic.Desktop.DesktopWebContentPolicy.ExternalNavigation.get -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopWebContentPolicy.ExternalNavigation.init -> void
+Runic.Desktop.DesktopWindowHostOptions.AdditionalOrigins.get -> System.Collections.Generic.IReadOnlyList<System.Uri!>!
+Runic.Desktop.DesktopWindowHostOptions.AdditionalOrigins.init -> void
+Runic.Desktop.DesktopWindowHostOptions.WebContent.get -> Runic.Desktop.DesktopWebContentPolicy!
+Runic.Desktop.DesktopWindowHostOptions.WebContent.init -> void
+Runic.Desktop.DesktopWindowOptions.WebContent.get -> Runic.Desktop.DesktopWebContentPolicy!
+Runic.Desktop.DesktopWindowOptions.WebContent.init -> void
+static Runic.Desktop.DesktopWebContentPolicy.Default.get -> Runic.Desktop.DesktopWebContentPolicy!
+override Runic.Desktop.DesktopWebContentPolicy.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopWebContentPolicy.GetHashCode() -> int
+override Runic.Desktop.DesktopWebContentPolicy.ToString() -> string!
+Runic.Desktop.DesktopWebContentPolicy.<Clone>$() -> Runic.Desktop.DesktopWebContentPolicy!
+Runic.Desktop.DesktopWebContentPolicy.Equals(Runic.Desktop.DesktopWebContentPolicy? other) -> bool
+static Runic.Desktop.DesktopWebContentPolicy.operator !=(Runic.Desktop.DesktopWebContentPolicy? left, Runic.Desktop.DesktopWebContentPolicy? right) -> bool
+static Runic.Desktop.DesktopWebContentPolicy.operator ==(Runic.Desktop.DesktopWebContentPolicy? left, Runic.Desktop.DesktopWebContentPolicy? right) -> bool

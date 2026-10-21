@@ -82,6 +82,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private IReadOnlyList<string> _browserArgumentList = [];
     private string? _browserArguments;
     private DesktopPermissionGrant _allowedPermissions;
+    private DesktopWebContentPolicy _webContent = DesktopWebContentPolicy.Default;
     private string? _embeddedHtml;
     private string? _entryFile;
     private Uri? _externalUrl;
@@ -909,6 +910,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal void SetAllowedPermissions(DesktopPermissionGrant permissions) => _allowedPermissions = permissions;
 
+    internal void SetWebContent(DesktopWebContentPolicy policy) => _webContent = policy;
+
     /// <summary>Sets whether the browser is launched in kiosk mode.</summary>
     public void SetKiosk(bool enabled)
     {
@@ -1651,6 +1654,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ProfilePath = profilePath,
             BrowserArguments = _browserArguments,
             AllowedPermissions = _allowedPermissions,
+            WebContent = WebContentRules.Resolve(_webContent, Environment.GetEnvironmentVariable),
+            // The surface's own origin too: a window presenting external content can return to it.
+            AdditionalOrigins = (_securityPolicy?.AdditionalOrigins ?? Enumerable.Empty<string>())
+                .Select(static origin => new Uri(origin, UriKind.Absolute))
+                .Prepend(Url!)
+                .ToArray(),
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
         };

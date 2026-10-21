@@ -39,6 +39,22 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2ObjectCollectionView", "get_Count", WindowsWebView2Interop.ObjectCollectionCountSlot),
             ("ICoreWebView2ObjectCollectionView", "GetValueAtIndex", WindowsWebView2Interop.ObjectCollectionValueSlot),
             ("ICoreWebView2File", "get_Path", WindowsWebView2Interop.FilePathSlot),
+            ("ICoreWebView2", "get_Settings", WindowsWebView2Interop.SettingsSlot),
+            ("ICoreWebView2", "add_NavigationStarting", WindowsWebView2Interop.NavigationStartingSlot),
+            ("ICoreWebView2", "remove_NavigationStarting", WindowsWebView2Interop.NavigationStartingSlot + 1),
+            ("ICoreWebView2", "add_NewWindowRequested", WindowsWebView2Interop.NewWindowRequestedSlot),
+            ("ICoreWebView2", "remove_NewWindowRequested", WindowsWebView2Interop.NewWindowRequestedSlot + 1),
+            ("ICoreWebView2_4", "add_DownloadStarting", WindowsWebView2Interop.DownloadStartingSlot),
+            ("ICoreWebView2_4", "remove_DownloadStarting", WindowsWebView2Interop.DownloadStartingSlot + 1),
+            ("ICoreWebView2Settings", "put_AreDevToolsEnabled", WindowsWebView2Interop.SettingsDevToolsSlot),
+            ("ICoreWebView2Settings", "get_AreDevToolsEnabled", WindowsWebView2Interop.SettingsGetDevToolsSlot),
+            ("ICoreWebView2NavigationStartingEventArgs", "get_Uri", WindowsWebView2Interop.NavigationStartingUriSlot),
+            ("ICoreWebView2NavigationStartingEventArgs", "get_IsUserInitiated", WindowsWebView2Interop.NavigationStartingUserInitiatedSlot),
+            ("ICoreWebView2NavigationStartingEventArgs", "put_Cancel", WindowsWebView2Interop.NavigationStartingCancelSlot),
+            ("ICoreWebView2NewWindowRequestedEventArgs", "get_Uri", WindowsWebView2Interop.NewWindowUriSlot),
+            ("ICoreWebView2NewWindowRequestedEventArgs", "put_Handled", WindowsWebView2Interop.NewWindowHandledSlot),
+            ("ICoreWebView2NewWindowRequestedEventArgs", "get_IsUserInitiated", WindowsWebView2Interop.NewWindowUserInitiatedSlot),
+            ("ICoreWebView2DownloadStartingEventArgs", "put_Cancel", WindowsWebView2Interop.DownloadStartingCancelSlot),
         })
         {
             var start = header.IndexOf($"typedef struct {type}Vtbl", StringComparison.Ordinal);

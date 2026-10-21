@@ -276,6 +276,26 @@ public sealed record DesktopWindowHostOptions
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 
     /// <summary>
+    /// Gets what the window does with navigation away from the application, new windows, downloads and developer tools
+    /// (<see cref="DesktopWindowOptions.WebContent"/>). Runic Desktop resolves the Development default, so
+    /// <see cref="DesktopWebContentPolicy.DevTools"/> is never <see langword="null"/> here.
+    /// </summary>
+    /// <remarks>
+    /// A host that can intercept them applies it to top-level navigations, new-window requests and downloads: the
+    /// application's origins are the presented URL's origin and <see cref="AdditionalOrigins"/>.
+    /// </remarks>
+    public DesktopWebContentPolicy WebContent { get; init; } = SafeWebContent;
+
+    // The default for hosts given no policy: the safe defaults with developer tools off.
+    internal static DesktopWebContentPolicy SafeWebContent { get; } = DesktopWebContentPolicy.Default with { DevTools = false };
+
+    /// <summary>
+    /// Gets the application's origins besides the presented URL's: the surface's own origin and its
+    /// <see cref="DesktopSecurityPolicy.AdditionalOrigins"/>.
+    /// </summary>
+    public IReadOnlyList<Uri> AdditionalOrigins { get; init; } = [];
+
+    /// <summary>
     /// Gets the script a host reporting <see cref="IDesktopWindowHost.SupportsDocumentStartScript"/> must add before
     /// its first navigation. It carries session credentials: do not log, persist, or expose it to page content.
     /// </summary>
@@ -361,6 +381,8 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             ProfilePath = options.ProfilePath,
             BrowserArguments = options.BrowserArguments,
             AllowedPermissions = options.AllowedPermissions,
+            WebContent = options.WebContent,
+            AdditionalOrigins = options.AdditionalOrigins,
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
         }, cancellationToken);

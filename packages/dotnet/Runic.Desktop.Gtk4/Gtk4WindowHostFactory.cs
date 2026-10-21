@@ -427,6 +427,14 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     private NativeObjectFinalizationProbe? _finalization;
     private Gtk.EventControllerKey? _keys;
     private UserContentManager? _contentManager;
+    // GTK thread only: the window's DesktopWebContentPolicy (SEC-04) and the network session's download-started
+    // connection. The session is shared by the process's views and outlives this one.
+    private WebKitGtkWebContent? _webContent;
+    private nint _downloadSession;
+    private ulong _downloadHandler;
+
+    // Tests observe the URLs handed to the system's handler here instead of launching it.
+    internal static Action<string>? ExternalOpenerOverride { get; set; }
 
     public event EventHandler? Closed;
 
@@ -727,6 +735,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             TitleSignal.Connect(this, webView);
             _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
             _receivesFileDrops = Gtk4FileDrops.Connect(this, webView);
+            ApplyWebContent(webView, new WebContentRules(options.WebContent, url, options.AdditionalOrigins));
             webView.LoadUri(url.AbsoluteUri);
             if (options.Placement is { Maximized: true } && !options.Kiosk)
             {
@@ -765,6 +774,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             }
             DetachZoomHandlers(keys, contentManager);
             Gtk4FileDrops.Disconnect(this);
+            DisconnectDownloads();
             if (window is not null)
             {
                 window.OnCloseRequest -= OnCloseRequest;
@@ -1025,6 +1035,338 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
     }
 
+    // DesktopWebContentPolicy (SEC-04), before the first load: developer extras, top-level navigations, new windows and
+    // downloads. See WebKitGtkWebContent for how the main frame's navigations are told apart.
+    private void ApplyWebContent(WebView webView, WebContentRules rules)
+    {
+        _webContent = new WebKitGtkWebContent(rules, WebContentSignals.CanIdentifyMainFrame);
+        webView.GetSettings().SetEnableDeveloperExtras(rules.DevToolsEnabled);
+        WebContentSignals.Connect(this, webView);
+        if (!rules.AllowsDownloads)
+        {
+            // <a download> and other downloads WebKit starts without a response decision.
+            (_downloadSession, _downloadHandler) = WebContentSignals.ConnectDownloadStarted(this, webView);
+        }
+    }
+
+    private void DisconnectDownloads()
+    {
+        if (_downloadSession == 0) return;
+        WebContentSignals.DisconnectAndRelease(_downloadSession, _downloadHandler);
+        _downloadSession = 0;
+        _downloadHandler = 0;
+    }
+
+    private const int PolicyDecisionNavigationAction = 0;
+    private const int PolicyDecisionNewWindowAction = 1;
+    private const int PolicyDecisionResponse = 2;
+
+    // Whether this handler decided; WebKit's default handling applies otherwise.
+    private bool DecidePolicy(nint webView, nint decision, int type)
+    {
+        if (!IsOwnOpenView(webView) || _webContent is not { } content) return false;
+        switch (type)
+        {
+            case PolicyDecisionNavigationAction:
+            {
+                var (url, userGesture) = WebContentSignals.GetNavigation(WebContentSignals.GetNavigationAction(decision));
+                return Apply(decision, content.ForNavigationAction(url, userGesture), url);
+            }
+            case PolicyDecisionNewWindowAction:
+            {
+                // Ignored, so WebKit emits no create signal for it.
+                var (url, userGesture) = WebContentSignals.GetNavigation(WebContentSignals.GetNavigationAction(decision));
+                WebContentSignals.IgnorePolicy(decision);
+                OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+                return true;
+            }
+            case PolicyDecisionResponse:
+                if (WebContentSignals.IsMainFrameMainResource(decision)
+                    && content.ForMainFrameResponse(WebContentSignals.GetResponseUri(decision)) is var navigation and not WebContentRules.Decision.Allow)
+                {
+                    return Apply(decision, navigation, WebContentSignals.GetResponseUri(decision));
+                }
+                if (content.CancelsResponse(WebContentSignals.IsMimeTypeSupported(decision)))
+                {
+                    WebContentSignals.IgnorePolicy(decision);
+                    return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private bool Apply(nint decision, WebContentRules.Decision navigation, string? url)
+    {
+        if (navigation == WebContentRules.Decision.Allow) return false;
+        WebContentSignals.IgnorePolicy(decision);
+        if (navigation == WebContentRules.Decision.OpenExternally) OpenExternally(url);
+        return true;
+    }
+
+    // window.open, and a target="_blank" WebKit did not ask decide-policy about. Never creates a view.
+    private void OnCreate(nint webView, nint navigationAction)
+    {
+        if (!IsOwnOpenView(webView) || _webContent is not { } content) return;
+        var (url, userGesture) = WebContentSignals.GetNavigation(navigationAction);
+        OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+    }
+
+    private void OpenNewWindow(WebContentRules.Decision decision, string? url)
+    {
+        if (decision == WebContentRules.Decision.OpenExternally)
+        {
+            OpenExternally(url);
+        }
+        else if (decision == WebContentRules.Decision.NavigateInWindow && url is not null)
+        {
+            // From WebKit's signal: load once it has returned.
+            Gtk4Dispatcher.Instance.Post(() =>
+            {
+                try
+                {
+                    if (IsOpen) _webView?.LoadUri(url);
+                }
+                catch
+                {
+                    // Never unwind through GTK.
+                }
+            });
+        }
+    }
+
+    // A failed main-frame load: one waiting for its response may still open externally, and WebKit's error page must not
+    // replace the application's document for a URL the window would not show.
+    private bool OnLoadFailed(nint webView, string? url)
+    {
+        if (!IsOwnOpenView(webView) || _webContent is not { } content) return false;
+        if (content.ForFailedMainFrameLoad(url, out var suppress) == WebContentRules.Decision.OpenExternally)
+        {
+            OpenExternally(url);
+        }
+        return suppress;
+    }
+
+    private void OnDownloadStarted(nint download)
+    {
+        if (IsOpen && _webView is { } view && WebContentSignals.GetDownloadWebView(download) == view.Handle.DangerousGetHandle())
+        {
+            WebContentSignals.CancelDownload(download);
+        }
+    }
+
+    private bool IsOwnOpenView(nint webView) => IsOpen && _webView is { } view && view.Handle.DangerousGetHandle() == webView;
+
+    // A URL WebContentRules.ExternalTarget accepts, with the system's default handler (GtkUriLauncher, which asks the
+    // OpenURI portal inside Flatpak), after WebKit's signal returned. A failure is not reported: the page cannot act on it.
+    private void OpenExternally(string? url)
+    {
+        if (WebContentRules.ExternalTarget(url) is not { } target) return;
+        Gtk4Dispatcher.Instance.Post(() =>
+        {
+            try
+            {
+                if (ExternalOpenerOverride is { } opener)
+                {
+                    opener(target);
+                }
+                else if (_window is { } window)
+                {
+                    var launcher = Gtk.UriLauncher.New(target);
+                    _ = launcher.LaunchAsync(window).ContinueWith(static (launch, state) =>
+                    {
+                        _ = launch.Exception;
+                        ((Gtk.UriLauncher)state!).Dispose();
+                    }, launcher, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                }
+            }
+            catch
+            {
+                // Never unwind through GTK.
+            }
+        });
+    }
+
+    // decide-policy, create and load-failed on the view, and download-started on its network session. Connected through
+    // GObject, not GirCore events, for the reason WebProcessTerminatedSignal gives; the view's connections end when it is
+    // finalized, the session's when the window closes.
+    private static unsafe partial class WebContentSignals
+    {
+        private static readonly nint WebKit = LoadWebKit();
+        private static readonly nint NavigationPolicyDecisionGetNavigationAction = Export("webkit_navigation_policy_decision_get_navigation_action");
+        private static readonly nint NavigationActionGetRequest = Export("webkit_navigation_action_get_request");
+        private static readonly nint NavigationActionIsUserGesture = Export("webkit_navigation_action_is_user_gesture");
+        private static readonly nint UriRequestGetUri = Export("webkit_uri_request_get_uri");
+        private static readonly nint PolicyDecisionIgnore = Export("webkit_policy_decision_ignore");
+        private static readonly nint ResponsePolicyDecisionGetRequest = Export("webkit_response_policy_decision_get_request");
+        private static readonly nint ResponsePolicyDecisionIsMimeTypeSupported = Export("webkit_response_policy_decision_is_mime_type_supported");
+        private static readonly nint ResponsePolicyDecisionIsMainFrameMainResource = Export("webkit_response_policy_decision_is_main_frame_main_resource");
+        private static readonly nint WebViewGetNetworkSession = Export("webkit_web_view_get_network_session");
+        private static readonly nint DownloadGetWebView = Export("webkit_download_get_web_view");
+        private static readonly nint DownloadCancel = Export("webkit_download_cancel");
+
+        // WebKitGTK 6.0 is 2.40 or later, which has the response API.
+        internal static bool CanIdentifyMainFrame => true;
+
+        internal static void Connect(Gtk4WindowHost host, WebView webView)
+        {
+            var view = webView.Handle.DangerousGetHandle();
+            ConnectSignal(host, view, "decide-policy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, nint, int>)&OnDecidePolicy);
+            ConnectSignal(host, view, "create", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)&OnCreate);
+            ConnectSignal(host, view, "load-failed", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, nint, nint, int>)&OnLoadFailed);
+        }
+
+        // Connects download-started on the view's network session and keeps a reference to the session for the
+        // disconnection.
+        internal static (nint Session, ulong Handler) ConnectDownloadStarted(Gtk4WindowHost host, WebView webView)
+        {
+            var session = ((delegate* unmanaged[Cdecl]<nint, nint>)WebViewGetNetworkSession)(webView.Handle.DangerousGetHandle());
+            if (session == 0) throw new InvalidOperationException("WebKitGTK did not provide the view's network session.");
+            ObjectRef(session);
+            try
+            {
+                return (session, ConnectSignal(host, session, "download-started", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnDownloadStarted));
+            }
+            catch
+            {
+                ObjectUnref(session);
+                throw;
+            }
+        }
+
+        internal static void DisconnectAndRelease(nint instance, ulong handler)
+        {
+            HandlerDisconnect(instance, handler);
+            ObjectUnref(instance);
+        }
+
+        internal static nint GetNavigationAction(nint decision) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint>)NavigationPolicyDecisionGetNavigationAction)(decision);
+
+        // The navigation's URL and whether a user gesture (a click or key press) started it.
+        internal static (string? Url, bool UserGesture) GetNavigation(nint navigationAction)
+        {
+            if (navigationAction == 0) return (null, false);
+            var request = ((delegate* unmanaged[Cdecl]<nint, nint>)NavigationActionGetRequest)(navigationAction);
+            var userGesture = ((delegate* unmanaged[Cdecl]<nint, int>)NavigationActionIsUserGesture)(navigationAction) != 0;
+            return (RequestUri(request), userGesture);
+        }
+
+        internal static void IgnorePolicy(nint decision) => ((delegate* unmanaged[Cdecl]<nint, void>)PolicyDecisionIgnore)(decision);
+
+        internal static bool IsMainFrameMainResource(nint decision) =>
+            ((delegate* unmanaged[Cdecl]<nint, int>)ResponsePolicyDecisionIsMainFrameMainResource)(decision) != 0;
+
+        internal static bool IsMimeTypeSupported(nint decision) =>
+            ((delegate* unmanaged[Cdecl]<nint, int>)ResponsePolicyDecisionIsMimeTypeSupported)(decision) != 0;
+
+        internal static string? GetResponseUri(nint decision) =>
+            RequestUri(((delegate* unmanaged[Cdecl]<nint, nint>)ResponsePolicyDecisionGetRequest)(decision));
+
+        internal static nint GetDownloadWebView(nint download) => ((delegate* unmanaged[Cdecl]<nint, nint>)DownloadGetWebView)(download);
+
+        internal static void CancelDownload(nint download) => ((delegate* unmanaged[Cdecl]<nint, void>)DownloadCancel)(download);
+
+        private static string? RequestUri(nint request) => request == 0
+            ? null
+            : Marshal.PtrToStringUTF8(((delegate* unmanaged[Cdecl]<nint, nint>)UriRequestGetUri)(request));
+
+        private static ulong ConnectSignal(Gtk4WindowHost host, nint instance, string signal, nint callback)
+        {
+            var context = GCHandle.Alloc(host);
+            var handler = ConnectData(instance, signal, callback, GCHandle.ToIntPtr(context),
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Release, 0);
+            if (handler == 0)
+            {
+                context.Free();
+                throw new InvalidOperationException($"GTK rejected the '{signal}' signal handler.");
+            }
+            return handler;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static int OnDecidePolicy(nint webView, nint decision, int type, nint context)
+        {
+            try
+            {
+                return (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.DecidePolicy(webView, decision, type) == true ? 1 : 0;
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+                return 0;
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static nint OnCreate(nint webView, nint navigationAction, nint context)
+        {
+            try
+            {
+                (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnCreate(webView, navigationAction);
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+            return 0;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static int OnLoadFailed(nint webView, int loadEvent, nint failingUri, nint error, nint context)
+        {
+            try
+            {
+                return (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnLoadFailed(webView, Marshal.PtrToStringUTF8(failingUri)) == true ? 1 : 0;
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+                return 0;
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnDownloadStarted(nint session, nint download, nint context)
+        {
+            try
+            {
+                (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnDownloadStarted(download);
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void Release(nint context, nint closure) => GCHandle.FromIntPtr(context).Free();
+
+        private static nint LoadWebKit()
+        {
+            foreach (var name in Gtk4NativeLibraries.WebKit)
+            {
+                if (NativeLibrary.TryLoad(name, out var library)) return library;
+            }
+            throw new DllNotFoundException("WebKitGTK 6.0 could not be loaded.");
+        }
+
+        private static nint Export(string name) => NativeLibrary.GetExport(WebKit, name);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial ulong ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_handler_disconnect")]
+        private static partial void HandlerDisconnect(nint instance, ulong handler);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_ref")]
+        private static partial nint ObjectRef(nint instance);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")]
+        private static partial void ObjectUnref(nint instance);
+    }
+
     // WebKitGTK does not identify the requesting frame; the top-level document must
     // still have the presented origin. Screen capture is not part of the grant.
     private bool AllowsMediaCapture(WebView webView, PermissionRequest request) =>
@@ -1201,6 +1543,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         }
         _drops?.Dispose();
         Gtk4FileDrops.Disconnect(this);
+        DisconnectDownloads();
+        _webContent?.Clear();
 
         webView.OnPermissionRequest -= OnPermissionRequest;
         DetachZoomHandlers(_keys, _contentManager);

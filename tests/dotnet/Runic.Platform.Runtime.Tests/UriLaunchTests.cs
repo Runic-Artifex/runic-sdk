@@ -37,6 +37,18 @@ internal sealed class UriLaunchTests
         new("ms-settings://display"),
     ];
 
+    // mailto URIs that name a file for the mail client to attach (SEC-07), in any case and escaping, also twice escaped.
+    internal static Uri[] RejectedMail() =>
+    [
+        new("mailto:someone@example.org?attach=/home/user/.ssh/id_ed25519"),
+        new("mailto:someone@example.org?subject=Hi&ATTACHMENT=C:%5CUsers%5Cme%5Csecret.txt"),
+        new("mailto:someone@example.org?body=x;Attach=~/.ssh/id_rsa"),
+        new("mailto:?%61ttach=/etc/passwd"),
+        new("mailto:?%2561ttach=/etc/passwd"),
+        new("mailto:someone@example.org?%20attach%20=/etc/passwd"),
+        new("mailto:someone@example.org?attachments=/etc/passwd&subject=x"),
+    ];
+
     internal static Uri[] Rejected() =>
     [
         new("relative/page.html", UriKind.Relative),
@@ -72,6 +84,20 @@ internal sealed class UriLaunchTests
             Throws<ArgumentException>(() => DesktopUriPolicy.Require(uri), uri.OriginalString);
             Check(!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto"), $"a rejected case has an allowed scheme: {uri}");
         }
+        foreach (var uri in RejectedMail())
+        {
+            try
+            {
+                DesktopUriPolicy.Require(uri);
+                Check(false, $"accepted {uri}");
+            }
+            catch (ArgumentException error)
+            {
+                Check(error.Message.StartsWith(DesktopUriPolicy.MailtoAttachmentRejectedMessage, StringComparison.Ordinal), $"the attachment message for {uri}");
+            }
+        }
+        Check(DesktopUriPolicy.Require(new Uri("mailto:someone@example.org?subject=attach%20this&body=attachment")) is { Length: > 0 },
+            "a value that mentions attachments is not a field name");
         Throws<ArgumentNullException>(() => DesktopUriPolicy.Require(null!), "null");
         foreach (var text in Accepted)
             Check(DesktopUriPolicy.Require(new Uri(text)) == new Uri(text).AbsoluteUri && !DesktopUriPolicy.IsWindowsOnly(new Uri(text)), $"accepted {text}");

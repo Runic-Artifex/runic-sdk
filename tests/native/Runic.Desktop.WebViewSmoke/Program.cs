@@ -27,6 +27,13 @@ try
     {
         await KeyboardSmoke.RunAsync(CreateHostOptions(), "gtk3");
     }
+    else if (args.Contains("--web-content", StringComparer.Ordinal))
+    {
+        // SEC-04 on Linux: real clicks through XTEST under Xvfb.
+        await using var host = await DesktopHost.StartAsync(CreateHostOptions());
+        await WebContentSmoke.RunAsync(host, new WebContentSmoke.Toolkit("gtk3",
+            static opener => Runic.Desktop.Internal.LinuxWebKitGtkHost.ExternalOpenerOverride = opener));
+    }
     else if (args.Contains("--dpi", StringComparer.Ordinal))
     {
         await WindowsDpiSmoke.RunAsync(CreateHostOptions());
@@ -47,6 +54,11 @@ try
     {
         // Must run before the first await, as --event-loop: the AppKit loop owns the main thread.
         MacOsZoomSmoke.Run(CreateHostOptions());
+    }
+    else if (args.Contains("--web-content", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
+    {
+        // Must run before the first await, as --zoom.
+        MacOsWebContentSmoke.Run(CreateHostOptions());
     }
     else if (args.Contains("--event-loop", StringComparer.Ordinal))
     {

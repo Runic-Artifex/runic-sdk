@@ -662,6 +662,11 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 8
         run: GDK_BACKEND=x11 xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk3 dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+      # SEC-04: DesktopWebContentPolicy with real clicks through XTEST; see WebContentSmoke.cs.
+      - name: Exercise the web content policy in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --web-content
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -682,6 +687,8 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
           # SIGTERM closes the GTK window and disposes the host before the GTK loop ends.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --signal
+          # SEC-04: DesktopWebContentPolicy with real clicks through XTEST.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --web-content
           # DesktopWindow.AnnounceAsync reaches AT-SPI as Object:Announcement with GTK 3 and GTK 4 (#318).
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
@@ -1038,6 +1045,12 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
+      # SEC-04: the WKWebView's navigation and UI delegate apply DesktopWebContentPolicy (external links, window.open,
+      # downloads, isInspectable).
+      - name: Apply the web content policy in the macOS window
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --web-content
       - name: Prepare signed macOS sandbox fixture for manual permission evidence
         if: runner.os == 'macOS'
         shell: bash

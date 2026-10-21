@@ -23,10 +23,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> Hosts = new();
     private static readonly ConcurrentQueue<NativeDispatchWork> MainQueue = new();
     private static readonly nint DelegateClass = CreateDelegateClass();
-    // Hosts by their WKWebView, for the drop override and the page's drop label.
+    // Hosts by their WKWebView, for the web content delegate, the drop override and the page's drop label.
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> WebViews = new();
     private static readonly nint WebViewClass = CreateWebViewClass();
     private static readonly nint TitleObserverClass = CreateTitleObserverClass();
+    private static readonly nint WebContentDelegateClass = CreateWebContentDelegateClass();
+
+    // Opens a URL that WebContentRules.ExternalTarget accepted with the system's handler. Tests observe it instead.
+    internal static Action<string> ExternalOpener { get; set; } = static target => Api.OpenWithWorkspace(target);
     private static readonly Lazy<nint> FileDropHandler = new(CreateFileDropHandler);
     private FileDropPairing? _drops;
     private IDesktopMenuCommandTarget? _menuCommands;
@@ -75,6 +79,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private nint _webView;
     private nint _titleObserver;
     private nint _delegate;
+    // The web view's navigation and UI delegate, which WebKit references weakly; released with the web view.
+    private nint _webContentDelegate;
+    private WebContentRules? _webContent;
     private Action? _closeRequested;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
@@ -326,6 +333,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private void Create(Uri url, WebUiEmbeddedHostOptions options)
     {
+        if (WebContentDelegateClass == 0)
+        {
+            // Without its delegate the window could not apply its web content policy.
+            throw new InvalidOperationException("The Objective-C runtime could not create the WKWebView navigation delegate.");
+        }
         _application = Api.SendNint(Api.GetClass("NSApplication"), "sharedApplication");
         // A bundle with LSUIElement runs without a Dock icon and menu bar, also while it shows a window.
         if (!Api.InfoDictionaryBool("LSUIElement"))
@@ -363,8 +375,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (WebViewClass != 0)
         {
             _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
-            WebViews[_webView] = this;
         }
+        WebViews[_webView] = this;
+        ApplyWebContent(new WebContentRules(options.WebContent, url, options.AdditionalOrigins));
         // underPageBackgroundColor requires macOS 12; ask the created view, not the unset field.
         if (options.Transparent && Api.RespondsToSelector(_webView, "setUnderPageBackgroundColor:"))
         {
@@ -537,6 +550,39 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         finally
         {
             Api.SendVoid(value, "release");
+        }
+    }
+
+    // DesktopWebContentPolicy (SEC-04), before the first load: one object is the web view's navigation delegate, which
+    // decides top-level navigations, new-window links and responses, and its UI delegate, which answers window.open.
+    // Both are weak references in WebKit; the host keeps the object until ReleaseNativeObjects.
+    private void ApplyWebContent(WebContentRules rules)
+    {
+        _webContent = rules;
+        // isInspectable (macOS 13.3) enables Safari's Web Inspector; earlier systems decide it themselves.
+        if (Api.RespondsToSelector(_webView, "setInspectable:"))
+        {
+            Api.SendVoidBool(_webView, "setInspectable:", rules.DevToolsEnabled);
+        }
+        _webContentDelegate = Api.SendNint(Api.SendNint(WebContentDelegateClass, "alloc"), "init");
+        Api.SendVoidNint(_webView, "setNavigationDelegate:", _webContentDelegate);
+        Api.SendVoidNint(_webView, "setUIDelegate:", _webContentDelegate);
+    }
+
+    // Main thread, after the decision handler ran: hands a URL to the system's handler, or loads one in this window.
+    private void Complete(MacOsWebContent.Outcome outcome)
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+        if (outcome.OpenExternally is { } target)
+        {
+            ExternalOpener(target);
+        }
+        if (outcome.NavigateInWindow is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            Navigate(uri);
         }
     }
 
@@ -859,9 +905,20 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         var webView = Interlocked.Exchange(ref _webView, 0);
         var windowDelegate = Interlocked.Exchange(ref _delegate, 0);
         var titleObserver = Interlocked.Exchange(ref _titleObserver, 0);
+        var webContentDelegate = Interlocked.Exchange(ref _webContentDelegate, 0);
         if (window != 0)
         {
             Api.SendVoidNint(window, "setDelegate:", 0);
+        }
+        if (webContentDelegate != 0)
+        {
+            // WebKit holds the delegates weakly: clear them before the object goes.
+            if (webView != 0)
+            {
+                Api.SendVoidNint(webView, "setNavigationDelegate:", 0);
+                Api.SendVoidNint(webView, "setUIDelegate:", 0);
+            }
+            Api.SendVoid(webContentDelegate, "release");
         }
         if (titleObserver != 0)
         {
@@ -956,6 +1013,145 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, void>)&TitleChanged, "v@:@@@^v");
         Api.RegisterClassPair(type);
         return type;
+    }
+
+    // WKNavigationDelegate and WKUIDelegate of a window's web view (SEC-04). WebKit asks respondsToSelector: when the
+    // delegate is set, so only these methods change its behaviour; it keeps its defaults for every other one, such as
+    // reloading after the web content process terminates. A block parameter is encoded "@?".
+    private static unsafe nint CreateWebContentDelegateClass()
+    {
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable)
+        {
+            return 0;
+        }
+        var existing = Api.GetClass("RunicDesktopWebContentDelegate");
+        if (existing != 0)
+        {
+            return existing;
+        }
+        var type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopWebContentDelegate");
+        if (type == 0)
+        {
+            return 0;
+        }
+        Api.AddMethod(type, "webView:decidePolicyForNavigationAction:decisionHandler:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&DecidePolicyForNavigationAction, "v@:@@@?");
+        Api.AddMethod(type, "webView:decidePolicyForNavigationResponse:decisionHandler:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&DecidePolicyForNavigationResponse, "v@:@@@?");
+        Api.AddMethod(type, "webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint>)&CreateWebView, "@@:@@@@");
+        Api.RegisterClassPair(type);
+        return type;
+    }
+
+    // The handler is called exactly once, with Cancel when anything fails; the window acts on the outcome afterwards.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void DecidePolicyForNavigationAction(nint self, nint selector, nint webView, nint navigationAction, nint decisionHandler)
+    {
+        var outcome = MacOsWebContent.Cancel;
+        MacOsWkWebViewHost? host = null;
+        nint pool = 0;
+        try
+        {
+            pool = Api.SendNint(Api.SendNint(Api.GetClass("NSAutoreleasePool"), "alloc"), "init");
+            if (WebViews.TryGetValue(webView, out host) && host._webContent is { } rules)
+            {
+                var frame = Api.SendNint(navigationAction, "targetFrame");
+                bool? mainFrame = frame == 0 ? null : Api.SendBool(frame, "isMainFrame");
+                // shouldPerformDownload: macOS 11.3.
+                var download = Api.RespondsToSelector(navigationAction, "shouldPerformDownload") && Api.SendBool(navigationAction, "shouldPerformDownload");
+                outcome = MacOsWebContent.ForNavigationAction(rules, Api.RequestUrl(navigationAction), mainFrame,
+                    Api.SendNint(navigationAction, "navigationType"), download);
+            }
+        }
+        catch
+        {
+            outcome = MacOsWebContent.Cancel;
+        }
+        try
+        {
+            MacOsWebContent.InvokePolicyHandler(decisionHandler, outcome.Policy);
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+        try
+        {
+            host?.Complete(outcome);
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+        try
+        {
+            if (pool != 0) Api.SendVoid(pool, "drain");
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void DecidePolicyForNavigationResponse(nint self, nint selector, nint webView, nint navigationResponse, nint decisionHandler)
+    {
+        var policy = MacOsWebContent.PolicyCancel;
+        try
+        {
+            policy = MacOsWebContent.ForNavigationResponse(Api.SendBool(navigationResponse, "canShowMIMEType"));
+        }
+        catch
+        {
+            policy = MacOsWebContent.PolicyCancel;
+        }
+        try
+        {
+            MacOsWebContent.InvokePolicyHandler(decisionHandler, policy);
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+    }
+
+    // window.open: no second WebView. WebKit's pop-up blocker (javaScriptCanOpenWindowsAutomatically NO, set in
+    // AllocInitWebView) lets only a script that handles a user gesture reach this. Links with a target came through
+    // DecidePolicyForNavigationAction, which cancelled them.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static nint CreateWebView(nint self, nint selector, nint webView, nint configuration, nint navigationAction, nint windowFeatures)
+    {
+        nint pool = 0;
+        try
+        {
+            pool = Api.SendNint(Api.SendNint(Api.GetClass("NSAutoreleasePool"), "alloc"), "init");
+            if (WebViews.TryGetValue(webView, out var host) && host._webContent is { } rules)
+            {
+                var outcome = MacOsWebContent.ForNewWindow(rules, Api.RequestUrl(navigationAction), userInitiated: true);
+                try
+                {
+                    host.Complete(outcome);
+                }
+                catch
+                {
+                    // The page gets no window either way.
+                }
+            }
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+        try
+        {
+            if (pool != 0) Api.SendVoid(pool, "drain");
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+        return 0;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -1202,6 +1398,36 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             finally
             {
                 SendVoid(name, "release");
+            }
+        }
+
+        // navigationAction.request.URL.absoluteString, or null.
+        internal string? RequestUrl(nint navigationAction)
+        {
+            var request = navigationAction == 0 ? 0 : SendNint(navigationAction, "request");
+            var url = request == 0 ? 0 : SendNint(request, "URL");
+            var text = url == 0 ? 0 : SendNint(url, "absoluteString");
+            return text == 0 ? null : Text(text);
+        }
+
+        // [[NSWorkspace sharedWorkspace] openURL:], as Runic.Platform.MacOS's MacUriLauncher: the default browser or
+        // mail client.
+        internal void OpenWithWorkspace(string target)
+        {
+            var pool = SendNint(SendNint(GetClass("NSAutoreleasePool"), "alloc"), "init");
+            var text = CreateString(target);
+            try
+            {
+                var url = SendNintNint(GetClass("NSURL"), "URLWithString:", text);
+                if (url != 0)
+                {
+                    _ = SendBool(SendNint(GetClass("NSWorkspace"), "sharedWorkspace"), "openURL:", url);
+                }
+            }
+            finally
+            {
+                SendVoid(text, "release");
+                SendVoid(pool, "drain");
             }
         }
 
@@ -1548,6 +1774,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 {
                     AddFileDropScript(SendNint(configuration, "userContentController"), fileDropHandler);
                 }
+
+                // WebKit's pop-up blocker: window.open reaches the UI delegate only from a script that handles a user
+                // gesture, which CreateWebView relies on. Without a gesture window.open returns null, as before.
+                SendVoidBool(SendNint(configuration, "preferences"), "setJavaScriptCanOpenWindowsAutomatically:", false);
 
                 var instance = SendNint(webViewClass != 0 ? webViewClass : GetClass("WKWebView"), "alloc");
                 return ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, nint, nint>)_messageSend)(
