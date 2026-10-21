@@ -27,6 +27,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
     private const string NoCache = "no-cache, no-store, must-revalidate, private, max-age=0";
     private const string AccessDenied = "<html><head><title>Access Denied</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Access Denied</h2><p>This content is already in use and multi-client mode is disabled.</p></body></html>";
+    private const string LaunchRefused = "<html><head><title>Access Denied</title></head><body><h2>&#9888; Access Denied</h2><p>This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.</p></body></html>";
     private const string ResourceUnavailable = "<html><head><title>Resource Not Available</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Resource Not Available</h2><p>The requested resource is not available.</p></body></html>";
     private const string DefaultIcon = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" viewBox=\"0 0 375 375\" height=\"500\"><path fill=\"#2a6699\" d=\"M22 22h330v330H22z\"/></svg>";
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
@@ -45,6 +46,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The sessions whose Connected event was dispatched and whose Disconnected event was not.
     private readonly ConcurrentDictionary<Guid, byte> _connectedSessions = new();
     private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
+    // The installed browser this window launched, and the client that opened its launch code (SEC-01).
+    private readonly BrowserLaunchBinding _launchBinding = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _presentationGate = new(1, 1);
     private readonly TaskCompletionSource _disposeCompletion = NewCompletionSource();
@@ -455,11 +458,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             _y,
             _allowedPermissions);
         connection = BeginConnection();
+        // The command line is readable by other users of a Linux or macOS machine: give the browser a one-time
+        // code that binds it to the surface instead of the surface's address.
+        var launchUrl = BindsBrowserLaunch
+            ? new Uri(Url!, $"{BrowserLaunchBinding.PathSegment.TrimStart('/')}/{_launchBinding.Begin(browserUrl)}")
+            : browserUrl;
         Process process;
         Task outputClosed;
         try
         {
-            process = WebUiBrowserHost.Start(installation, browserUrl, options, out outputClosed);
+            process = WebUiBrowserHost.Start(installation, launchUrl, options, out outputClosed);
         }
         catch
         {
@@ -2301,8 +2309,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 "The bootstrap script was requested by a document whose origin is not allowed.",
                 Retryable: false));
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return false;
         }
-        return admitted;
+        // In an installed browser the bootstrap carries the session credential: only the launched browser gets it.
+        if (ChecksLaunchBinding && !_launchBinding.Admits(RequestClient(context)))
+        {
+            RejectUnboundClient(context, "bootstrap");
+            return false;
+        }
+        return true;
     }
 
     private async Task ServeBridgeAsync(HttpContext context)
@@ -2419,6 +2434,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
+        if (ChecksLaunchBinding && !_launchBinding.Admits(FindClient(context)))
+        {
+            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            HandshakeLog.RecordRejection("the client is not the browser this window launched");
+            RejectUnboundClient(context, "WebSocket");
+            return;
+        }
+
         bool admitted;
         lock (_connectionGate)
         {
@@ -2516,6 +2539,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (!context.WebSockets.IsWebSocketRequest)
         {
             var clientId = GetOrCreateClient(context);
+            context.Items[typeof(BrowserLaunchBinding)] = clientId;
+            // Before the single-client check: the launched browser must reach its conflict check even when another
+            // client already holds the connection.
+            if (context.Request.Path.StartsWithSegments(BrowserLaunchBinding.PathSegment, out var code))
+            {
+                await ServeBrowserLaunchAsync(context, clientId, code.Value?.TrimStart('/') ?? string.Empty).ConfigureAwait(false);
+                return;
+            }
             if (UseClientCookies &&
                 !AllowMultipleClients &&
                 _sessions.Values.Any(session => session.ClientId != clientId))
@@ -2528,6 +2559,101 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         await next(context).ConfigureAwait(false);
     }
+
+    // The installed browser was launched with a one-time code: bind its client, or detect that another client
+    // used the code first (SEC-01).
+    private async Task ServeBrowserLaunchAsync(HttpContext context, nuint clientId, string code)
+    {
+        HandshakeLog.Record($"{BrowserLaunchBinding.PathSegment} requested");
+        if (!HttpMethods.IsGet(context.Request.Method))
+        {
+            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return;
+        }
+        if (OperatingSystem.IsLinux() &&
+            context.Connection.RemoteIpAddress is { } remoteAddress &&
+            context.Connection.LocalIpAddress is { } localAddress &&
+            LoopbackPeerOwner.Find(remoteAddress, context.Connection.RemotePort, localAddress, context.Connection.LocalPort) is { } owner &&
+            owner != LoopbackPeerOwner.CurrentUser)
+        {
+            HandshakeLog.RecordRejection("another user opened the launch code");
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.AuthenticationDenied,
+                "browser-launch-foreign-user",
+                "Another user's process opened the browser launch address and was refused.",
+                Retryable: false));
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
+            return;
+        }
+
+        switch (_launchBinding.Consume(code, clientId, out var target))
+        {
+            case BrowserLaunchBinding.Outcome.Bound or BrowserLaunchBinding.Outcome.AlreadyBound:
+                ReportConnectionProgress(ConnectionProgress.DocumentRequested);
+                context.Response.StatusCode = StatusCodes.Status303SeeOther;
+                context.Response.Headers.Location = target!.AbsoluteUri;
+                return;
+            case BrowserLaunchBinding.Outcome.Conflict:
+                HandshakeLog.RecordRejection("another client used the launch code first");
+                RevokeLaunchedSessions();
+                break;
+            default:
+                HandshakeLog.RecordRejection("the launch code is not valid");
+                break;
+        }
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
+    }
+
+    // Someone else used the launch code before the launched browser, or after it: nobody keeps the surface.
+    private void RevokeLaunchedSessions()
+    {
+        const string message =
+            "Another client opened this window's browser launch address. The window's sessions were closed; show the window again.";
+        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+            DesktopErrorCategory.AuthenticationDenied,
+            "browser-launch-conflict",
+            message,
+            Retryable: true));
+        _browserConnected.TrySetException(new DesktopException(
+            DesktopErrorCategory.AuthenticationDenied,
+            "browser-launch-conflict",
+            message,
+            retryable: true));
+        foreach (var session in _sessions.Values)
+        {
+            _ = CloseBridgeIgnoringFailureAsync(session, CancellationToken.None);
+        }
+    }
+
+    private void RejectUnboundClient(HttpContext context, string request)
+    {
+        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+            DesktopErrorCategory.AuthenticationDenied,
+            "client-not-bound",
+            $"A {request} request came from a client other than the browser this window launched.",
+            Retryable: false));
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+    }
+
+    // Launch binding needs the client cookie, a credential to protect and a single client.
+    private bool BindsBrowserLaunch =>
+        _securityPolicy is { RequireSessionCredential: true } && !AllowMultipleClients && UseClientCookies;
+
+    // Only while the surface is not in an embedded host, which has no access to the browser's cookie and
+    // receives the credential from its document-start script instead.
+    private bool ChecksLaunchBinding => _embeddedHost is null && _launchBinding.IsActive;
+
+    // The client of a request that PrepareResponseAsync identified.
+    private static nuint RequestClient(HttpContext context) =>
+        context.Items.TryGetValue(typeof(BrowserLaunchBinding), out var client) && client is nuint id ? id : 0;
+
+    // The client a WebSocket upgrade's cookie names, without creating one.
+    private nuint FindClient(HttpContext context) =>
+        context.Request.Cookies.TryGetValue(AuthCookieName, out var cookie) && _clients.TryGetValue(cookie, out var clientId)
+            ? clientId
+            : 0;
 
     private nuint GetOrCreateClient(HttpContext context)
     {

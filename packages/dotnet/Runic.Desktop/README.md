@@ -840,8 +840,35 @@ rest is internal to Runic Desktop and Runic Windows and Views. See
 
 ## Security notes
 
+- **Installed browsers.** Other users of a Linux or macOS machine can read a
+  browser's command line (`/proc/<pid>/cmdline`, `ps`). Since 0.10.0 the
+  command line no longer names the surface: the browser opens
+  `<surface>/_runic_launch/<code>`, a one-time code that binds the surface to
+  that browser through its `HttpOnly`, `SameSite=Strict` client cookie and
+  redirects to the page. The credential-bearing bootstrap scripts
+  (`webui.js`, `runic-desktop.js`) and the Bridge WebSocket are then refused
+  to every other client (`client-not-bound`), even one that presents the
+  credential and a forged `Origin`. On Linux a request for the code from a
+  process of another user is refused (`browser-launch-foreign-user`) without
+  using the code. Where the user cannot be checked (macOS), a process that
+  reads the command line can still use the code before the browser does; when
+  the browser then arrives with the used code, nobody keeps the surface: its
+  sessions are closed, the browser shows an error page, a window still being
+  opened fails with `DesktopException` code `browser-launch-conflict`, and the
+  same code is reported to `DiagnosticSink`. Open the window again to start
+  over. Embedded windows are not affected: they receive the credential from a
+  document-start script, and Windows does not show other users' command lines.
+  This applies to surfaces with the default `RequireSessionCredential` and
+  `DesktopClientAdmission.Single`; with `Multiple`, the surface address stays
+  on the command line and any client that knows it can connect.
+- In an installed browser, a page from an `AdditionalOrigins` entry receives
+  the bootstrap only when it is same-site with the surface, such as another
+  port of `http://127.0.0.1`: the browser does not send the binding cookie to
+  a cross-site page such as `http://localhost:5173`.
 - A local client that holds the session credential can take the only Bridge
   connection from the page after the page's own WebSocket has been silent for 2
   seconds. The page's Bridge then reconnects and is refused until that client's
-  connection ends. This is a residual risk of the handshake deadline (#35). The
-  credential is still required, and a wrong credential is closed at once.
+  connection ends. This is a residual risk of the handshake deadline (#35). In an
+  embedded window only the surface's own documents receive the credential; in an
+  installed browser only the launched browser does (see above). The credential is
+  still required, and a wrong credential is closed at once.
