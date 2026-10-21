@@ -19,10 +19,10 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
         CapabilityStatus multiple = files is CapabilityStatus.Available && backend?.SupportsMultipleSelection != true
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
-            .Add("platform.files.open", files).Add("platform.files.save", save)
-            .Add("platform.directories.open", directories)
-            .Add("platform.dialogs.owned", files)
-            .Add("platform.files.openMultiple", multiple));
+            .Add(PlatformCapabilityIds.FilesOpen, files).Add(PlatformCapabilityIds.FilesSave, save)
+            .Add(PlatformCapabilityIds.DirectoriesOpen, directories)
+            .Add(PlatformCapabilityIds.DialogsOwned, files)
+            .Add(PlatformCapabilityIds.FilesOpenMultiple, multiple));
     }
 
     /// <inheritdoc />

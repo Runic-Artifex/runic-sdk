@@ -40,6 +40,6 @@ internal sealed class PresentationFileLauncher(PresentationLifetime lifetime, ID
             : lifetime.IsClosing ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed)
             : !lifetime.HasOwner ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable) : new CapabilityStatus.Available();
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
-            .Add("platform.files.launch", status).Add("platform.uris.launch", status));
+            .Add(PlatformCapabilityIds.FilesLaunch, status).Add(PlatformCapabilityIds.UrisLaunch, status));
     }
 }

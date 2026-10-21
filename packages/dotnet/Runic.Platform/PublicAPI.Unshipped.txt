@@ -1,1 +1,11 @@
 #nullable enable
+const Runic.Platform.PlatformCapabilityIds.ClipboardReadText = "platform.clipboard.readText" -> string!
+const Runic.Platform.PlatformCapabilityIds.ClipboardWriteText = "platform.clipboard.writeText" -> string!
+const Runic.Platform.PlatformCapabilityIds.DialogsOwned = "platform.dialogs.owned" -> string!
+const Runic.Platform.PlatformCapabilityIds.DirectoriesOpen = "platform.directories.open" -> string!
+const Runic.Platform.PlatformCapabilityIds.FilesLaunch = "platform.files.launch" -> string!
+const Runic.Platform.PlatformCapabilityIds.FilesOpen = "platform.files.open" -> string!
+const Runic.Platform.PlatformCapabilityIds.FilesOpenMultiple = "platform.files.openMultiple" -> string!
+const Runic.Platform.PlatformCapabilityIds.FilesSave = "platform.files.save" -> string!
+const Runic.Platform.PlatformCapabilityIds.UrisLaunch = "platform.uris.launch" -> string!
+Runic.Platform.PlatformCapabilityIds

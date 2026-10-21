@@ -103,8 +103,8 @@ public interface IDesktopFileLauncher
     ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Opens an absolute <c>http</c>, <c>https</c> or <c>mailto</c> URI in the user's default handler, such as
-    /// the default browser or mail client.</summary>
+    /// <summary>Opens an absolute <c>http</c>, <c>https</c>, <c>mailto</c> or <c>ms-settings</c> URI in the user's default
+    /// handler, such as the default browser, the mail client or, for <c>ms-settings</c>, the Windows Settings app.</summary>
     /// <param name="uri">The URI. Relative URIs, paths (an absolute path is a <c>file:</c> URI) and every other scheme are
     /// rejected before anything native runs, so a launch never executes a program; open local files with
     /// <see cref="LaunchAsync"/>.</param>
@@ -114,9 +114,14 @@ public interface IDesktopFileLauncher
     /// <see cref="PlatformFailureCode.UserDismissed"/> when they cancel; Windows uses the shell's URL association; macOS
     /// uses <c>NSWorkspace</c>. Without a registered handler, for example no mail client for <c>mailto</c>, the desktop
     /// may offer to find an application (Windows 11 does, and reports success), or the result is
-    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> or a failure, depending on the platform.</remarks>
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> or a failure, depending on the platform. An
+    /// <c>ms-settings</c> URI must be exactly <c>ms-settings:</c> and a page of 1 to 64 letters, digits or hyphens, such as
+    /// <c>ms-settings:display</c>, with no path, query, fragment or escapes; pages ending in <c>-action</c>, which act
+    /// instead of showing a page, are refused. Only Windows opens it; Linux and macOS validate it the same way and return
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> without a native call.</remarks>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path or not an http, https or mailto URI.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative, a path, not an http, https, mailto or
+    /// ms-settings URI, or an ms-settings URI outside the page rule.</exception>
     ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default);
 }
 

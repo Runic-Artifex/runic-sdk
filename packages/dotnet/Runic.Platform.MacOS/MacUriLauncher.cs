@@ -3,7 +3,8 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 
 namespace Runic.Platform.MacOS;
 
-// Opens a web or mail URI with NSWorkspace: the user's default browser or mail client.
+// Opens a web or mail URI with NSWorkspace: the user's default browser or mail client. ms-settings: (Windows Settings)
+// is accepted by the policy and reported unavailable without a native call.
 internal sealed class MacUriLauncher(INativeWindowOwner owner)
 {
     // Launch Services has no application for the URL's scheme (kLSApplicationNotFoundErr). macOS 26 reports a scheme
@@ -15,6 +16,11 @@ internal sealed class MacUriLauncher(INativeWindowOwner owner)
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(Uri uri, CancellationToken cancellationToken)
     {
         string target = DesktopUriPolicy.Require(uri);
+        if (DesktopUriPolicy.IsWindowsOnly(uri))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        }
         Task<PlatformResult<PlatformUnit>>? opened = null;
         try
         {

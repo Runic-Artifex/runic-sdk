@@ -17,19 +17,48 @@ public interface IWindowPlatformServices : IPlatformCapabilities
     IFileDialogs FileDialogs { get; }
     /// <summary>The Unicode text clipboard, used through the window's native thread.</summary>
     ITextClipboard Clipboard { get; }
-    /// <summary>Hands local files and web or mail URIs to native applications on behalf of the window.</summary>
+    /// <summary>Hands local files and web, mail or Windows Settings URIs to native applications on behalf of the window.</summary>
     IDesktopFileLauncher FileLauncher { get; }
+}
+
+/// <summary>The capability identifiers of a window's platform services, the keys of
+/// <see cref="CapabilitySnapshot.Statuses"/>.</summary>
+/// <example><code>
+/// if (services.GetSnapshot().Statuses[PlatformCapabilityIds.UrisLaunch] is CapabilityStatus.Available) { … }
+/// </code></example>
+public static class PlatformCapabilityIds
+{
+    /// <summary>Opening a file through <see cref="IFileDialogs.OpenFileAsync"/>.</summary>
+    public const string FilesOpen = "platform.files.open";
+    /// <summary>Saving a file through <see cref="IFileDialogs.SaveFileAsync"/>. Unavailable with
+    /// <see cref="PlatformUnavailableReason.AtomicReplaceUnavailable"/> when saves cannot replace atomically.</summary>
+    public const string FilesSave = "platform.files.save";
+    /// <summary>Selecting a directory through <see cref="IFileDialogs.OpenDirectoryAsync"/>.</summary>
+    public const string DirectoriesOpen = "platform.directories.open";
+    /// <summary>File dialogs owned by the window.</summary>
+    public const string DialogsOwned = "platform.dialogs.owned";
+    /// <summary>Reading text through <see cref="ITextClipboard.ReadTextAsync"/>.</summary>
+    public const string ClipboardReadText = "platform.clipboard.readText";
+    /// <summary>Writing text through <see cref="ITextClipboard.WriteTextAsync"/>.</summary>
+    public const string ClipboardWriteText = "platform.clipboard.writeText";
+    /// <summary>Handing local files to applications through <see cref="IDesktopFileLauncher.LaunchAsync"/>.</summary>
+    public const string FilesLaunch = "platform.files.launch";
+    /// <summary>Selecting several files through <see cref="IFileDialogs.OpenFilesAsync"/>.</summary>
+    public const string FilesOpenMultiple = "platform.files.openMultiple";
+    /// <summary>Opening URIs through <see cref="IDesktopFileLauncher.LaunchUriAsync"/>.</summary>
+    public const string UrisLaunch = "platform.uris.launch";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
 public static class WindowPlatformServices
 {
-    /// <summary>The capability identifiers a window's platform services report.</summary>
+    /// <summary>The capability identifiers a window's platform services report: every <see cref="PlatformCapabilityIds"/>
+    /// constant.</summary>
     public static ImmutableArray<string> CapabilityIds { get; } =
     [
-        "platform.files.open", "platform.files.save", "platform.directories.open", "platform.dialogs.owned",
-        "platform.clipboard.readText", "platform.clipboard.writeText", "platform.files.launch", "platform.files.openMultiple",
-        "platform.uris.launch",
+        PlatformCapabilityIds.FilesOpen, PlatformCapabilityIds.FilesSave, PlatformCapabilityIds.DirectoriesOpen,
+        PlatformCapabilityIds.DialogsOwned, PlatformCapabilityIds.ClipboardReadText, PlatformCapabilityIds.ClipboardWriteText,
+        PlatformCapabilityIds.FilesLaunch, PlatformCapabilityIds.FilesOpenMultiple, PlatformCapabilityIds.UrisLaunch,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>

@@ -108,7 +108,8 @@ a chooser and accepts one exact local directory URI. Its directory lease retains
 presentation ownership; persistent portal document permissions remain owned by
 the user's permission store.
 
-The file launcher's `LaunchUriAsync(uri)` uses OpenURI for HTTP, HTTPS and mailto links. Relative URIs, paths and other
+The file launcher's `LaunchUriAsync(uri)` uses OpenURI for HTTP, HTTPS and mailto links. A valid Windows Settings URI
+(`ms-settings:<page>`) returns `Unavailable(BackendUnavailable)` without a D-Bus call. Relative URIs, paths and other
 schemes throw `ArgumentException` before any D-Bus call, and cancelling the portal's
 application chooser is `Failed(UserDismissed)`. Local-file opening uses the file
 launcher's `LaunchAsync` and passes a retained file descriptor.

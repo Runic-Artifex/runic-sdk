@@ -332,9 +332,8 @@ interfaces are CsWin32's raw vtables, so the provider is NativeAOT-safe
   written another way. The provider checks that the application opens the type
   (else `InvalidData`) and reports `Failed(PermissionDenied)`; the diagnostic
   (`HRESULT 0x80070005`) points to `ms-settings:defaultapps`, where the user
-  chooses. `IDesktopFileLauncher.LaunchUriAsync` opens only `http`, `https` and
-  `mailto` URIs, so an application tells the user where to go rather than
-  opening the Settings page itself.
+  chooses. An application can open that page with
+  `IDesktopFileLauncher.LaunchUriAsync(new Uri("ms-settings:defaultapps"))`.
 - **`GetApplicationsAsync`**: the Start menu's applications, the children of
   `shell:AppsFolder`. A desktop application's ID is the executable its
   shortcut targets (`System.Link.TargetParsingPath`), as the handlers' IDs

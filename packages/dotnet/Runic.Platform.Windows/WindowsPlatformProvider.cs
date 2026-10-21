@@ -109,7 +109,7 @@ public static class WindowsPlatformProvider
         return WindowsWindowPresentation.PresentAsync(owner, cancellationToken);
     }
 
-    // Owned shell handoff operations for a window: files, and http, https and mailto URIs through the shell's URL association.
+    // Owned shell handoff operations for a window: files, and http, https, mailto and ms-settings URIs through the shell's URL association.
     internal static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }
 

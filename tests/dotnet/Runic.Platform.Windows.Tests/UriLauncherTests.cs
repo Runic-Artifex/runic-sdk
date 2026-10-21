@@ -11,7 +11,7 @@ namespace Runic.Platform.Windows.Tests;
 #pragma warning disable CA1416 // The case checks for Windows first.
 internal sealed class UriLauncherTests
 {
-    [Test, Explicit, Category("NativeApplications"), DisplayName("URI launcher: paths and other schemes are refused, ShellExecuteEx reaches the URL handler")]
+    [Test, Explicit, Category("NativeApplications"), DisplayName("URI launcher: paths and other schemes are refused, ShellExecuteEx reaches the URL handler and Settings")]
     public async Task ShellUrlAssociationAsync()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(8)) throw new PlatformNotSupportedException("The shell's URL associations require Windows.");
@@ -58,6 +58,24 @@ internal sealed class UriLauncherTests
             await Task.Delay(2000);
             Console.WriteLine($"Unregistered scheme: {unregistered}; {ApplicationsTests.Choosers()} Open With choosers closed");
             Check(File.ReadAllLines(log).Length == lines.Count, "nothing else reached the probe");
+
+            // Windows Settings (D028.5, D031.6): the public launcher hands ms-settings:display to the shell, which opens the
+            // Settings app. Values outside the page rule (a path, a long page, a query, a fragment, an -action page) are
+            // refused before the owner's thread.
+            int before = owner.Dispatches;
+            foreach (var text in new[] { "ms-settings:../../Windows/System32/cmd.exe", "ms-settings:" + new string('a', 4000), "ms-settings:display?x=1",
+                "ms-settings:display#top", "ms-settings:windowsupdate-action" })
+            {
+                try { await launcher.LaunchUriAsync(new Uri(text)); throw new InvalidOperationException($"LaunchUriAsync accepted {text[..Math.Min(text.Length, 60)]}"); }
+                catch (ArgumentException) { }
+            }
+            Check(owner.Dispatches == before, "a refused Settings URI reached the owner's thread");
+            var settings = await launcher.LaunchUriAsync(new Uri("ms-settings:display"));
+            Console.WriteLine($"LaunchUriAsync ms-settings:display: {settings}");
+            Check(settings is PlatformResult<PlatformUnit>.Success && owner.Dispatches == before + 1, "the shell opened ms-settings:display");
+            await Task.Delay(3000);
+            int closed = CloseSettings();
+            Console.WriteLine($"{closed} Settings processes closed");
             Console.WriteLine("PASS Windows URI launcher: refusals before dispatch, ShellExecuteEx through the URL association.");
         }
         finally
@@ -71,6 +89,20 @@ internal sealed class UriLauncherTests
                 catch (IOException) { await Task.Delay(500); } // The probe may still hold the log.
             }
         }
+    }
+
+    // Closes the Settings app the ms-settings: launches opened (SystemSettings.exe on Windows 10 and 11, and Server).
+    private static int CloseSettings()
+    {
+        int closed = 0;
+        foreach (var process in System.Diagnostics.Process.GetProcessesByName("SystemSettings"))
+        {
+            using (process)
+            {
+                try { process.Kill(); closed++; } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            }
+        }
+        return closed;
     }
 
     // Runs each dispatch on its own STA thread without a window, as a window's thread would.
