@@ -9,9 +9,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
-    <!-- The provider implements the custom window host SPI (docs/experimental.md). -->
-    <NoWarn>$(NoWarn);RUNICDESK100</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />

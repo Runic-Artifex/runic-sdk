@@ -82,8 +82,8 @@ and release the body exactly once. Multiple surfaces share one listener by
 default, while `UseIsolatedListener` is available for policy boundaries.
 
 Installed browsers and the built-in WebView2, WKWebView, and WebKitGTK adapters
-remain replaceable through `IDesktopWindowHostFactory`, an experimental API
-(`RUNICDESK100`, see [Experimental APIs](#experimental-apis)). A host reporting
+remain replaceable through `IDesktopWindowHostFactory` (see
+[Custom window hosts](#custom-window-hosts)). A host reporting
 `SupportsDocumentStartScript` must run `DesktopWindowHostOptions.DocumentStartScript`
 in every frame before page scripts; the surface then withholds session
 credentials from its fetchable bootstrap scripts. The internal
@@ -196,7 +196,7 @@ window host:
 | macOS, WKWebView | `NSWindow*` |
 | Linux, GTK 3 and WebKitGTK 4.1 | GTK 3 `GtkWindow*` |
 | Linux, GTK 4 (`Runic.Desktop.Gtk4`) | GTK 4 `GtkWindow*` |
-| Custom window host | What its `IDesktopWindowHost.NativeHandle` reports |
+| [Custom window host](#custom-window-hosts) | What its `IDesktopWindowHost.NativeHandle` reports |
 
 Read on another thread, the value is for identity only, such as comparing
 windows: AppKit and GTK objects may be used only on their UI thread. Pass any
@@ -695,6 +695,115 @@ fields, and Command and Q through a close guard, on the macOS runner. On macOS, 
 buttons and links only with Keyboard Navigation turned on in the system settings,
 as in Safari.
 
+## Custom window hosts
+
+A window host puts a surface's page into a native window. Runic Desktop brings
+its own for WebView2, WKWebView and WebKitGTK 4.1. `Runic.Desktop.Gtk4`
+(`Gtk4WindowHostFactory`, selected by `WithGtk4()`) and the WPF control
+`RunicWebView` (`CreateWindowHostFactory()`, in
+[Runic.Application.Views.Wpf](../Runic.Application.Views.Wpf/README.md)) supply
+theirs through the same public interface, which you can implement too: set
+`DesktopHostOptions.WindowHostFactory` to your `IDesktopWindowHostFactory`. The
+host then opens every `BrowserKind.Embedded` window through it. The managed
+server, the transport, the session credentials, the capabilities and the window
+lifecycle stay with Runic Desktop; the host owns only the native window and its
+WebView. The interface is stable since 0.10.0 (it was the experimental
+`RUNICDESK100` family before).
+
+**The factory.** `IsSupported` says whether the platform runtime the host needs
+is present. `Capabilities` lists the window operations its windows will support,
+before one opens; an open window's own `IDesktopWindowHost.Capabilities` is
+authoritative. `Validate`, `GetPresentationPreflight` and `DesktopEventLoop.Run`
+call `IsSupported`, `ValidateOptions` and `GetAvailabilityDiagnostics` before any
+window exists, from any thread, so keep them cheap and do not load native
+libraries there: report one diagnostic per rejected option (`Error`) or ignored
+option (`Warning`) from `ValidateOptions`, and every missing prerequisite from
+`GetAvailabilityDiagnostics` while `IsSupported` is `false`, with codes and
+remediations of your own. `Create()` returns a new, closed host for each window
+that opens.
+
+**Threading.** Runic Desktop calls a host's members from any thread, often the
+thread pool. Marshal native work to the thread that owns the window, as the GTK 4
+host does through its GTK main-loop dispatcher and `RunicWebView` through the WPF
+`Dispatcher`, and run it inline when the caller is already on that thread. The
+events `Closed`, `StateChanged` and `FilesDropped` may be raised on the owning
+thread; Runic Desktop raises `DesktopWindow`'s own events on the thread pool. A toolkit that
+must own the process main thread implements `IDesktopEventLoopWindowHostFactory`:
+`DesktopEventLoop.Run` calls `PrepareEventLoop()` on the main thread and, when it
+reports nothing, `RunEventLoop(application)`, which runs the application while the
+toolkit's loop runs and returns its exit code. When `PrepareEventLoop()` reports
+reasons, such as a missing display, the plain loop runs instead and the factory
+reports `IsSupported` as `false` from then on. The GTK 4 factory works this way.
+A host that implements `IDesktopNativeDispatchWindowHost` lets
+`DesktopWindow.InvokeNativeAsync` and the Runic platform services (file
+dialogs, clipboard) run on its window's thread: a cancelled token only withdraws
+work that has not started.
+
+**Lifetime.** `OpenAsync(url, options)` creates and shows the window, applies the
+initial `DesktopWindowHostOptions` and starts navigating to `url`; it completes
+when the window exists. A failed or cancelled `OpenAsync` releases what it
+created. `Closed` is raised exactly once after the window has closed, whether the
+user or `CloseAsync` closed it; `IsOpen` is `false` from then on, and
+`NativeHandle` is zero whenever the window is not open. `CloseAsync` closes
+without asking `DesktopWindowHostOptions.CloseRequested`. A host whose
+`SupportsCloseConfirmation` is `true` calls `CloseRequested`, when it is set,
+instead of closing on a user close request. After `Closed`, or after a failed
+open, Runic Desktop disposes the host once; `DisposeAsync` closes a window that
+is still open and releases every native resource. Report the handle kind of
+`NativeHandle`, such as an `HWND` or a `GtkWindow*`, in your own documentation,
+or zero when the window is not top-level: `RunicWebView` is a child of a WPF
+window, so it reports zero and leaves out `NativeHandle`.
+
+**The credential rule.** Each surface has a session credential that only its own
+pages may read. Return `true` from `SupportsDocumentStartScript` and add
+`DesktopWindowHostOptions.DocumentStartScript` before the first navigation, so
+that it runs in every frame's document before the page's scripts: the GTK 4 host
+adds it as an all-frames user script at document start, and `RunicWebView`
+through WebView2's `AddScriptToExecuteOnDocumentCreated`. The script checks the
+origin itself. The surface then keeps the credential out of the bootstrap
+scripts it serves. A host that reports `false` makes the surface write the
+credential into those scripts instead, which any client that can fetch them can
+read; report `false` only when the WebView cannot run document-start scripts.
+The script carries the credential: never log it, store it or expose it to page
+content.
+
+**Capabilities and optional interfaces.** Runic Desktop calls a window operation
+(`FocusAsync`, `MinimizeAsync`, `ToggleMaximizedAsync`, `ResizeAsync`,
+`MoveAsync`, `AnnounceAsync`) only when the open window's `Capabilities` include
+its flag, and otherwise fails it with `window-capability-unavailable`. Report
+only the flags you implement, and return a task faulted with
+`NotSupportedException` from the others, as `RunicWebView` does for the window
+operations WPF owns. Never throw synchronously from `BeginMoveAsync`: Runic
+Desktop ignores its faulted task, but an exception ends the session's receive loop.
+The optional interfaces each add one feature:
+
+| Interface | Adds | Report |
+| --- | --- | --- |
+| `IDesktopNativeDispatchWindowHost` | `DesktopWindow.InvokeNativeAsync` and the platform services' owner thread | `SupportsNativeDispatch` |
+| `IDesktopWindowStateHost` | `DesktopWindow.State`, `StateChanged` and restoring `DesktopWindowHostOptions.Placement` ([Window state and restore](#window-state-and-restore)) | `DesktopWindowCapabilities.State` |
+| `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
+| `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
+| `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
+
+The GTK 4 host implements the first three and its factory the last two;
+`RunicWebView` implements `IDesktopFileDropWindowHost`. A host that reports
+`DesktopWindowCapabilities.Announcements` implements `AnnounceAsync`
+([Accessibility](#accessibility)). Report events of an open window, such as a
+crashed web process, through `DesktopWindowHostOptions.DiagnosticSink`, from any
+thread.
+
+**Linux toolkits.** One process can load only one GTK version. A Linux factory
+implements `ILinuxDesktopWindowHostFactory`, and `DesktopHostOptions.Linux.EmbeddedBackend`
+must equal its `Backend`, or `DesktopHost.StartAsync` throws. Call
+`LinuxDesktopRuntime.ClaimBackend(Backend)` before the toolkit initializes; it
+throws when another toolkit already has the process. Report `IsSupported` as
+`false` while `LinuxDesktopRuntime.CanUse(Backend)` is `false`, and use
+`LinuxDesktopRuntime.IsLibraryAvailable` to look for native libraries without
+loading them.
+
+The [provider contract of Runic.Platform.Runtime](../Runic.Platform.Runtime/README.md#provider-contract)
+describes the window owner the platform services receive for a window.
+
 ## MSBuild properties
 
 | Property | Default | Effect |
@@ -703,18 +812,18 @@ as in Safari.
 
 ## Experimental APIs
 
-Two API families of this package are experimental: using them is a compile
-error until the project suppresses their ID, and they may change in a minor
-release. Applications that open windows through `DesktopHost`, select GTK 4 with
-`WithGtk4()` or use Runic Windows and Views need neither.
+One API family of this package is experimental: using it is a compile error
+until the project suppresses its ID, and it may change in a minor release.
+Applications that open windows through `DesktopHost`, use custom window hosts or
+use Runic Windows and Views do not need it.
 
 | ID | Family |
 | --- | --- |
-| `RUNICDESK100` | Custom window hosts: `IDesktopWindowHostFactory`, `IDesktopWindowHost` and its optional interfaces, `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`, `LinuxDesktopRuntime.ClaimBackend` and `IsLibraryAvailable` |
 | `RUNICDESK101` | The low-level presentation transport of `DesktopSurface`: `RegisterCapability`, `SubscribeConnectionEvents`, `ConnectionCount`, `RunJavaScriptAsync`, `ExecuteJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types |
 
-See [Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md)
-for their status and how to suppress an ID.
+`RUNICDESK100`, the custom window hosts, graduated in 0.10.0; remove its
+suppressions. See [Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md)
+for the status and how to suppress an ID.
 
 `ExecuteJavaScriptAsync(script, cancellationToken)` returns the script's result
 from one connected session and never cuts it: a result larger than 16 MiB of

@@ -51,4 +51,4 @@ Runic.Application.Views.Wpf.RunicViewHost.StartPage.set -> void
 Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.OpenAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Wpf.RunicViewHost.ReloadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 static Runic.Application.Views.Wpf.WpfPlatformServices.ForWindow(System.Windows.Window! window) -> Runic.Platform.IWindowPlatformServices!
-[RUNICDESK100]Runic.Application.Views.Wpf.RunicWebView.CreateWindowHostFactory() -> Runic.Desktop.IDesktopWindowHostFactory!
+Runic.Application.Views.Wpf.RunicWebView.CreateWindowHostFactory() -> Runic.Desktop.IDesktopWindowHostFactory!

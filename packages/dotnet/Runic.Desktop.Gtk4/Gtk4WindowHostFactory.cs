@@ -225,12 +225,11 @@ internal static partial class Gtk4Application
 
 /// <summary>Creates explicitly selected GTK 4 and WebKitGTK 6 window hosts.</summary>
 /// <remarks>
-/// Select it with <see cref="Gtk4DesktopHostOptionsExtensions.WithGtk4(DesktopHostOptions)"/>, which needs no
-/// suppression. The class itself belongs to the experimental custom window host family, like
-/// <see cref="DesktopHostOptions.WindowHostFactory"/>.
+/// Select it with <see cref="Gtk4DesktopHostOptionsExtensions.WithGtk4(DesktopHostOptions)"/>, which also selects
+/// <see cref="LinuxEmbeddedBackend.Gtk4WebKit6"/>, or set it as <see cref="DesktopHostOptions.WindowHostFactory"/>
+/// together with that backend.
 /// </remarks>
 [SupportedOSPlatform("linux")]
-[System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK100", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDesktopEventLoopWindowHostFactory
 {
     private readonly string? _applicationId;

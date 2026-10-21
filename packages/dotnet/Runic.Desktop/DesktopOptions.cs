@@ -77,7 +77,6 @@ public sealed record DesktopHostOptions
     public string? BrowserFolder { get; init; }
 
     /// <summary>Gets the embedded-window factory, or the platform default when omitted.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public IDesktopWindowHostFactory? WindowHostFactory { get; init; }
 
     /// <summary>Gets whether opening a window waits for bridge authentication.</summary>
