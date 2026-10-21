@@ -128,8 +128,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
           "ReactiveUI.WPF": "[26.0.1, )",
-          "Runic.Navigation.ReactiveUI": "[0.8.0-preview.6, )",
-          "Runic.Navigation.Wpf": "[0.8.0-preview.6, )"
+          "Runic.Navigation.ReactiveUI": "[0.9.0-preview.1, )",
+          "Runic.Navigation.Wpf": "[0.9.0-preview.1, )"
         }
       },
       "runic.navigation": {
@@ -146,7 +146,7 @@
           "ReactiveUI.Binding": "[9.1.0, 10.0.0)",
           "ReactiveUI.Disposables": "[9.0.0, 10.0.0)",
           "ReactiveUI.Primitives": "[9.0.0, 10.0.0)",
-          "Runic.Navigation": "[0.8.0-preview.6, )"
+          "Runic.Navigation": "[0.9.0-preview.1, )"
         }
       },
       "runic.navigation.wpf": {
@@ -154,7 +154,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.8.0-preview.6, )"
+          "Runic.Navigation": "[0.9.0-preview.1, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection": {

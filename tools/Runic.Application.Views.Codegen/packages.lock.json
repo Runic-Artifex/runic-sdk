@@ -41,14 +41,14 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.8.0-preview.6, )"
+          "Runic.Navigation": "[0.9.0-preview.1, )"
         }
       },
       "runic.application.views.codegen.reactiveui": {
         "type": "Project",
         "dependencies": {
           "ReactiveUI": "[26.0.1, 27.0.0)",
-          "Runic.Application.Views": "[0.8.0-preview.6, )"
+          "Runic.Application.Views": "[0.9.0-preview.1, )"
         }
       },
       "runic.application.views.codegen.toolkit": {
