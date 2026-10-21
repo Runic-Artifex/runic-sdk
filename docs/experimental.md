@@ -6,9 +6,8 @@ type or member as an error with that ID, and the message links to the entry on
 this page for the release you use. Suppressing the ID is the opt-in: it says
 your project accepts changes to that API before it is supported.
 
-| ID | API family | Packages |
-|---|---|---|
-| [`RUNICASSETS001`](#RUNICASSETS001) | Linux development-directory asset source | `Runic.Assets` |
+No .NET API is experimental. When one is, it is listed here with its ID, API
+family and packages.
 
 An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
 that names no other diagnostics numbers its experimental families from `001`,
@@ -22,20 +21,21 @@ experimental Desktop families number from `RUNICDESK100`.
 ## Suppressing a diagnostic
 
 Suppress the ID for a whole project, for example in its `.csproj` or a
-`Directory.Build.props` that also covers its test project:
+`Directory.Build.props` that also covers its test project. With the ID
+`RUNICDBUS100`, which an experimental D-Bus family would have:
 
 ```xml
 <PropertyGroup>
-  <NoWarn>$(NoWarn);RUNICASSETS001</NoWarn>
+  <NoWarn>$(NoWarn);RUNICDBUS100</NoWarn>
 </PropertyGroup>
 ```
 
 Or suppress it where you use the API, for a file or a region of one:
 
 ```csharp
-#pragma warning disable RUNICASSETS001 // The development-directory source is experimental.
-using var source = new DevelopmentDirectoryAssetSource(frontendDirectory, "index.html");
-#pragma warning restore RUNICASSETS001
+#pragma warning disable RUNICDBUS100 // The API is experimental.
+// The code that uses the experimental API.
+#pragma warning restore RUNICDBUS100
 ```
 
 <a id="retired"></a>
@@ -46,10 +46,11 @@ When a family graduates, its attribute is removed and its API is supported like
 the rest of its package. Its ID is retired and never names another family, so a
 leftover suppression is harmless; remove it.
 
-<a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
+<a id="RUNICASSETS001"></a><a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
 
 | ID | API family | Graduated in |
 |---|---|---|
+| `RUNICASSETS001` | Development-directory asset source (`Runic.Assets`): `DevelopmentDirectoryAssetSource`, `IAssetSourceChangeNotifier`, `AssetWatchOptions` and `AssetSourceChangedEventArgs`, now on Linux, Windows and macOS. `Refresh` became `RefreshAsync`; `StartWatching(options)` returns nothing and the watch runs until the source is disposed, so `IAssetWatch` was removed. `dotnet runic dev` uses it when no Vite or Angular development server runs: the Runic Desktop window serves the frontend output directory and reloads when it changes ([dotnet-runic](../tools/dotnet-runic/README.md)). | 0.10.0 |
 | `RUNICDESK101` | Low-level presentation transport (`Runic.Desktop`), partly graduated and the rest made internal. Stable: `DesktopSurface.ExecuteJavaScriptAsync` (now returning `ValueTask<string>`), `DesktopSurface.ConnectionCount` and `DesktopSurface.SubscribeConnectionEvents`, whose handler receives the new `DesktopConnectionEvent` (`Kind`, `Surface`) with `DesktopConnectionEventKind` instead of `PresentationInvocation`. Internal: `RegisterCapability`, `RunJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types; calls between JavaScript and .NET go through [Runic Windows and Views](../packages/dotnet/Runic.Application.Views.Desktop/README.md). | 0.10.0 |
 | `RUNICDESK100` | Custom window hosts (`Runic.Desktop`, `Runic.Desktop.Gtk4`, `Runic.Application.Views.Wpf`): `IDesktopWindowHostFactory`, `IDesktopWindowHost`, `IDesktopEventLoopWindowHostFactory`, `ILinuxDesktopWindowHostFactory`, `IDesktopNativeDispatchWindowHost`, `IDesktopWindowStateHost`, `IDesktopFileDropWindowHost`, `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`, `LinuxDesktopRuntime.ClaimBackend`, `LinuxDesktopRuntime.IsLibraryAvailable`, `Gtk4WindowHostFactory` and `RunicWebView.CreateWindowHostFactory()`. What a host must do is in the Runic.Desktop README, [Custom window hosts](../packages/dotnet/Runic.Desktop/README.md#custom-window-hosts). | 0.10.0 |
 | `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined `RUNICDESK100`, the custom window-host family it belongs to. | 0.9.0 |
@@ -58,22 +59,6 @@ leftover suppression is harmless; remove it.
 `Runic.Platform.Administration.Windows` is no longer experimental as of 0.10.0.
 Its experimental status was stated only in its README; it never had a diagnostic
 ID, so there is no suppression to remove.
-
-<a id="RUNICASSETS001"></a>
-
-## RUNICASSETS001
-
-**Covers:** the Linux development-directory source of `Runic.Assets`:
-`DevelopmentDirectoryAssetSource`, `IAssetSourceChangeNotifier`, `IAssetWatch`,
-`AssetWatchOptions` and `AssetSourceChangedEventArgs`.
-
-**Status:** experimental since 0.9.0. The source refreshes a local
-directory for a development inner loop, but no Runic host or tool uses it yet:
-`dotnet runic dev` serves the frontend from its development server. Its shape,
-such as the synchronous `Refresh`, the two ways to stop a watch and the
-Linux-only name, may change once a host consumes it. It graduates when a Runic
-host uses it. Embedded and archive sources (`EmbeddedAssetSource`,
-`AssetArchiveSource`) are stable.
 
 <a id="npm-packages"></a>
 

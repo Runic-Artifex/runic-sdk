@@ -490,6 +490,19 @@ renders, instead of assuming that a call lands; `@runic-artifex/vite-plugin-runi
 pre-bundles its development client, so a cold Vite dependency cache no longer
 reloads the first page.
 
+Without a Vite or Angular development server, `dotnet runic dev` sets
+`RUNIC_APPLICATION_DEVELOPMENT_ASSETS` to the frontend output directory, such
+as `Frontend/dist`, which the frontend watcher rewrites. In a `Development`
+environment, and when `RunicDesktopHostOptions.SurfaceOptions` is not set,
+each window then serves that directory before its `www/` folder (which still
+supplies `runic-views.js`) and reloads when the directory changes: it navigates
+to the last HTML page it loaded, or to its start page, without the page's
+query, hash or `history.pushState` route, and its Bridge reconnects as after
+any reload. Outside `Development` the host ignores the variable. Events 2005 to
+2007 report it. The
+[dotnet-runic README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)
+describes the frontend modes.
+
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to drive the unchanged application from a
 browser test, with the same contract as on
 [CS-WebUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md).

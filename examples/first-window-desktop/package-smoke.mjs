@@ -24,6 +24,9 @@ const projects = [
   ["Runic.Platform.Linux.Portal", "Runic.Platform.Linux.Portal"],
   ["Runic.Platform.Linux", "Runic.Platform.Linux"],
   ["Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Gtk4"],
+  // dotnet runic dev without a development server serves the frontend output through Runic.Assets.Desktop.
+  ["Runic.Assets", "Runic.Assets"],
+  ["Runic.Assets.Desktop", "Runic.Assets.Desktop"],
   ["Runic.Application.Views.Desktop", "Runic.Application.Views.Desktop"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;
@@ -51,6 +54,8 @@ try {
   await run("dotnet", ["build", "examples/first-window-desktop/FirstWindowDesktop.csproj", "-c", "Release"]);
   // The example builds only the net10.0 assembly; the package also has the net10.0-windows one.
   await run("dotnet", ["build", "packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj", "-c", "Release"]);
+  // The Runic.Assets package carries the packer, which packing with --no-build does not build.
+  await run("dotnet", ["build", "tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj", "-c", "Release"]);
   await mkdir(feed);
   for (const [identity, project] of projects) {
     await run("dotnet", ["pack", `packages/dotnet/${project}/${project}.csproj`,

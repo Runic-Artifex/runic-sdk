@@ -4,22 +4,32 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using Runic.Assets.Internal;
 
 namespace Runic.Assets;
 
 /// <summary>
-/// Exposes a refreshable Linux development directory pinned to one no-follow root handle.
-/// Every refresh publishes an immutable manifest from that same root identity.
+/// Exposes a refreshable local development directory, such as a frontend's build output. Every refresh publishes an
+/// immutable manifest, every file is served with <see cref="AssetCacheMode.NoStore"/>, and reads are verified
+/// against the manifest digest.
 /// </summary>
-[System.Diagnostics.CodeAnalysis.Experimental(AssetsExperimental.DevelopmentDirectoryId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-[System.Runtime.Versioning.SupportedOSPlatform("linux")]
+/// <remarks>
+/// <para>
+/// No path component below the root may be a symbolic link or reparse point. On Linux and macOS the source pins the
+/// root with one no-follow directory handle and opens every file relative to it, so replacing the root or an
+/// ancestor directory cannot redirect a published source. Windows checks each component for a reparse point before
+/// it opens a file, but does not pin the root: a directory moved into the root's place is read from then on.
+/// </para>
+/// <para>
+/// Call <see cref="StartWatching"/> once to refresh after file changes, and dispose the source to stop.
+/// </para>
+/// </remarks>
 public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSourceChangeNotifier, IDisposable
 {
-    private readonly string _root;
     private readonly string _entryPoint;
-    private readonly LinuxAssetRoot _rootHandle;
-    private readonly object _refreshGate = new();
+    private readonly AssetDirectoryRoot _rootHandle;
+    // One refresh at a time. No subscriber runs while it is held: notifications are dispatched after it is released.
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly object _stateGate = new();
     private readonly object _notificationGate = new();
     private AssetManifest _manifest;
     private IReadOnlyList<string> _skippedEntries = Array.Empty<string>();
@@ -33,21 +43,23 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
     private bool _disposeCompleted;
 
     /// <summary>Scans a local development directory and creates its first manifest snapshot.</summary>
+    /// <param name="rootDirectory">The directory, absolute or relative to the current directory.</param>
+    /// <param name="entryPointRelativePath">The entry document, relative to <paramref name="rootDirectory"/>, such as <c>index.html</c>.</param>
+    /// <exception cref="InvalidDataException">The directory contains a symbolic link or reparse point.</exception>
+    /// <exception cref="ArgumentException">The directory does not contain the entry point.</exception>
+    /// <exception cref="PlatformNotSupportedException">The operating system is not Linux, Windows or macOS.</exception>
     public DevelopmentDirectoryAssetSource(string rootDirectory, string entryPointRelativePath)
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            throw new PlatformNotSupportedException(
-                "DevelopmentDirectoryAssetSource is supported on Linux only because it requires no-follow directory handles.");
-        }
-
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
-        _root = Path.GetFullPath(rootDirectory);
+        string root = Path.GetFullPath(rootDirectory);
         _entryPoint = AssetPath.Normalize(entryPointRelativePath);
-        _rootHandle = new LinuxAssetRoot(_root);
+        _rootHandle = AssetDirectoryRoot.Open(root);
         try
         {
-            _manifest = Scan(CancellationToken.None, out _skippedEntries);
+            // The synchronous scan completes before it returns.
+            ValueTask<(AssetManifest Manifest, IReadOnlyList<string> Skipped)> scan =
+                ScanAsync(synchronous: true, CancellationToken.None);
+            (_manifest, _skippedEntries) = scan.IsCompleted ? scan.Result : scan.AsTask().GetAwaiter().GetResult();
         }
         catch
         {
@@ -87,25 +99,25 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
     }
 
     /// <summary>
-    /// Starts the source's sole debounced filesystem watcher. File changes are coalesced into one
-    /// refresh after the configured quiet period and successful replacement snapshots publish
-    /// through <see cref="Changed"/>. Dispose the returned lease or cancel the token to stop it.
+    /// Starts the source's filesystem watcher. File changes are coalesced into one refresh after the configured quiet
+    /// period, and each replacement manifest is published through <see cref="Changed"/>. Subscribe before calling it.
+    /// The watch runs until the source is disposed.
     /// </summary>
-    public IAssetWatch StartWatching(
-        AssetWatchOptions? options = null,
-        CancellationToken cancellationToken = default)
+    /// <param name="options">The debounce and retry bounds; <see langword="null"/> uses the defaults.</param>
+    /// <exception cref="InvalidOperationException">The source is already watching.</exception>
+    /// <exception cref="ObjectDisposedException">The source is disposed.</exception>
+    public void StartWatching(AssetWatchOptions? options = null)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         options ??= new AssetWatchOptions();
         ValidateWatchOptions(options);
 
         DevelopmentAssetWatch watch;
-        lock (_refreshGate)
+        lock (_stateGate)
         {
             ThrowIfDisposed();
             if (_watch is not null)
             {
-                throw new InvalidOperationException("A development asset source has exactly one active filesystem watcher.");
+                throw new InvalidOperationException("A development asset source has exactly one filesystem watcher.");
             }
 
             watch = new DevelopmentAssetWatch(
@@ -119,26 +131,43 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
 
         try
         {
-            watch.Start(cancellationToken);
-            return watch;
+            watch.Start();
         }
         catch
         {
-            watch.Dispose();
+            lock (_stateGate)
+            {
+                if (ReferenceEquals(_watch, watch))
+                {
+                    _watch = null;
+                }
+            }
+
+            watch.Dispose(waitForRefresh: true);
             throw;
         }
     }
 
-    /// <summary>Atomically replaces the manifest with a fresh deterministic directory scan.</summary>
-    public AssetManifest Refresh(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Scans the directory again and atomically replaces the manifest when its assets changed, then raises
+    /// <see cref="Changed"/>. Refreshes run one at a time.
+    /// </summary>
+    /// <returns>The current manifest: the replacement, or the previous one when nothing changed.</returns>
+    /// <exception cref="ArgumentException">The directory no longer contains the entry point.</exception>
+    /// <exception cref="InvalidDataException">The directory contains a symbolic link or reparse point.</exception>
+    /// <exception cref="ObjectDisposedException">The source is disposed.</exception>
+    public async ValueTask<AssetManifest> RefreshAsync(CancellationToken cancellationToken = default)
     {
-        AssetSourceChangedEventArgs? change = null;
+        ThrowIfDisposed();
+        await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         AssetManifest result;
         bool dispatch;
-        lock (_refreshGate)
+        try
         {
             ThrowIfDisposed();
-            AssetManifest replacement = Scan(cancellationToken, out IReadOnlyList<string> skipped);
+            (AssetManifest replacement, IReadOnlyList<string> skipped) =
+                await ScanAsync(synchronous: false, cancellationToken).ConfigureAwait(false);
+            ThrowIfDisposed();
             Volatile.Write(ref _skippedEntries, skipped);
             AssetManifest previous = Manifest;
             if (HasSameAssets(previous, replacement))
@@ -147,9 +176,12 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
             }
 
             Interlocked.Exchange(ref _manifest, replacement);
-            change = new AssetSourceChangedEventArgs(previous, replacement);
             result = replacement;
-            dispatch = QueueChange(change);
+            dispatch = QueueChange(new AssetSourceChangedEventArgs(previous, replacement));
+        }
+        finally
+        {
+            _refreshGate.Release();
         }
 
         if (dispatch)
@@ -161,55 +193,47 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
     }
 
     /// <inheritdoc />
-    public ValueTask ValidateAsync(CancellationToken cancellationToken = default)
+    public async ValueTask ValidateAsync(CancellationToken cancellationToken = default)
     {
-        lock (_refreshGate)
+        ThrowIfDisposed();
+        AssetManifest snapshot = Manifest;
+        foreach (AssetDescriptor descriptor in snapshot.Assets)
         {
-            ThrowIfDisposed();
-            AssetManifest snapshot = Manifest;
-            foreach (AssetDescriptor descriptor in snapshot.Assets)
+            cancellationToken.ThrowIfCancellationRequested();
+            FileStream stream = OpenFile(descriptor.RelativePath);
+            await using (stream.ConfigureAwait(false))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                using FileStream stream = OpenFile(descriptor.RelativePath);
-                AssetHashing.Verify(descriptor, stream);
+                await AssetHashing.VerifyAsync(descriptor, stream, cancellationToken).ConfigureAwait(false);
             }
         }
-
-        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
-    public ValueTask<AssetReadSnapshot> OpenAsync(
+    public async ValueTask<AssetReadSnapshot> OpenAsync(
         string relativePath,
         CancellationToken cancellationToken = default)
     {
-        AssetDescriptor? descriptor;
-        FileStream input;
-        // Only the handle-relative open needs the gate that keeps the root handle alive; copying and
-        // hashing the opened file outside it keeps concurrent requests from serializing.
-        lock (_refreshGate)
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+        string path = AssetPath.Normalize(relativePath);
+        if (!Manifest.TryGetAsset(path, out AssetDescriptor? descriptor))
         {
-            ThrowIfDisposed();
-            cancellationToken.ThrowIfCancellationRequested();
-            string path = AssetPath.Normalize(relativePath);
-            AssetManifest manifest = Manifest;
-            if (!manifest.TryGetAsset(path, out descriptor))
-            {
-                throw new FileNotFoundException("The requested asset is not declared by the current manifest.", path);
-            }
-
-            input = OpenFile(descriptor!.RelativePath);
+            throw new FileNotFoundException("The requested asset is not declared by the current manifest.", path);
         }
 
-        using (input)
+        // The root keeps its handle open while the file opens; copying and hashing run outside any gate, so
+        // concurrent requests do not serialize.
+        FileStream input = OpenFile(descriptor.RelativePath);
+        await using (input.ConfigureAwait(false))
         {
-            return ValueTask.FromResult(new AssetReadSnapshot(
-                descriptor!,
-                OpenSnapshot(input, descriptor!, cancellationToken)));
+            Stream content = await OpenSnapshotAsync(input, descriptor, cancellationToken).ConfigureAwait(false);
+            return new AssetReadSnapshot(descriptor, content);
         }
     }
 
-    private AssetManifest Scan(CancellationToken cancellationToken, out IReadOnlyList<string> skippedEntries)
+    private async ValueTask<(AssetManifest Manifest, IReadOnlyList<string> Skipped)> ScanAsync(
+        bool synchronous,
+        CancellationToken cancellationToken)
     {
         var descriptors = new List<AssetDescriptor>();
         var skipped = new List<string>();
@@ -237,18 +261,20 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
                     continue;
                 }
 
-                using FileStream stream = OpenFile(relativePath);
-                descriptors.Add(AssetHashing.Describe(
-                    relativePath,
-                    stream,
-                    mediaType: null,
-                    StringComparer.Ordinal.Equals(relativePath, _entryPoint),
-                    AssetCacheMode.NoStore));
+                bool isEntryPoint = StringComparer.Ordinal.Equals(relativePath, _entryPoint);
+                FileStream stream = OpenFile(relativePath);
+                await using (stream.ConfigureAwait(false))
+                {
+                    descriptors.Add(synchronous
+                        ? AssetHashing.Describe(relativePath, stream, mediaType: null, isEntryPoint, AssetCacheMode.NoStore)
+                        : await AssetHashing.DescribeAsync(
+                            relativePath, stream, mediaType: null, isEntryPoint, AssetCacheMode.NoStore, cancellationToken)
+                            .ConfigureAwait(false));
+                }
             }
         }
 
-        skippedEntries = skipped.ToArray();
-        return new AssetManifest(descriptors);
+        return (new AssetManifest(descriptors), skipped.ToArray());
     }
 
     private static bool TryNormalizeEntry(string relativePath, string name, out string normalized)
@@ -275,7 +301,10 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
         return _rootHandle.OpenRead(AssetPath.Normalize(relativePath));
     }
 
-    private static Stream OpenSnapshot(FileStream input, AssetDescriptor descriptor, CancellationToken cancellationToken)
+    private static async ValueTask<Stream> OpenSnapshotAsync(
+        FileStream input,
+        AssetDescriptor descriptor,
+        CancellationToken cancellationToken)
     {
         string temporaryPath = Path.Combine(
             Path.GetTempPath(),
@@ -290,7 +319,7 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
                 FileShare.Read,
                 bufferSize: 81_920,
                 FileOptions.DeleteOnClose | FileOptions.SequentialScan);
-            CopyAndVerifySnapshot(input, snapshot, descriptor, cancellationToken);
+            await CopyAndVerifySnapshotAsync(input, snapshot, descriptor, cancellationToken).ConfigureAwait(false);
             snapshot.Position = 0;
             Stream result = new ReadOnlySnapshotStream(snapshot);
             snapshot = null;
@@ -298,11 +327,14 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
         }
         finally
         {
-            snapshot?.Dispose();
+            if (snapshot is not null)
+            {
+                await snapshot.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
-    private static void CopyAndVerifySnapshot(
+    private static async ValueTask CopyAndVerifySnapshotAsync(
         Stream input,
         Stream output,
         AssetDescriptor descriptor,
@@ -312,16 +344,15 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
         byte[] buffer = new byte[81_920];
         long total = 0;
         int read;
-        while ((read = input.Read(buffer, 0, buffer.Length)) != 0)
+        while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             if (read > descriptor.Length - total)
             {
                 throw new InvalidDataException($"Asset '{descriptor.RelativePath}' changed while its snapshot was read.");
             }
 
             hash.AppendData(buffer, 0, read);
-            output.Write(buffer, 0, read);
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             total += read;
         }
 
@@ -353,25 +384,35 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
     }
 
     /// <summary>
-    /// Stops future refreshes and notification admission. Queued notifications are discarded and
-    /// every external or repeated disposal call waits until callbacks admitted before disposal have
-    /// finished. Disposal called by the active callback returns without waiting for itself; a later
-    /// external disposal still waits for that callback. Subscriber exceptions are isolated and never
-    /// affect a published refresh. Notifications are delivered in refresh order by one dispatcher;
-    /// handlers may unsubscribe or refresh reentrantly, and changes queued by reentrancy run afterward.
+    /// Stops the watch, future refreshes and notification admission; it is the only way to stop watching. A refresh
+    /// in progress finishes first. Queued notifications are discarded and every external or repeated disposal call
+    /// waits until callbacks admitted before disposal have finished. Disposal called by the active callback returns
+    /// without waiting for itself; a later external disposal still waits for that callback. Subscriber exceptions are
+    /// isolated and never affect a published refresh. Notifications are delivered in refresh order by one
+    /// dispatcher; handlers may unsubscribe or refresh reentrantly, and changes queued by reentrancy run afterward.
     /// </summary>
     public void Dispose()
     {
         DevelopmentAssetWatch? watch;
-        lock (_refreshGate)
+        lock (_stateGate)
         {
             _disposed = true;
             watch = _watch;
             _watch = null;
         }
 
-        watch?.Dispose();
+        bool fromCallback;
+        lock (_notificationGate)
+        {
+            fromCallback = _activeCallbacks != 0 && _callbackThreadId == Environment.CurrentManagedThreadId;
+        }
 
+        // A callback of the watch's own refresh cannot wait for that refresh to end.
+        watch?.Dispose(waitForRefresh: !fromCallback);
+
+        // No subscriber runs under the refresh gate, so a refresh in progress always finishes.
+        _refreshGate.Wait();
+        _refreshGate.Release();
         _rootHandle.Dispose();
 
         lock (_notificationGate)
@@ -511,17 +552,6 @@ public sealed class DevelopmentDirectoryAssetSource : IAssetSource, IAssetSource
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-    }
-
-    internal void DetachWatch(DevelopmentAssetWatch watch)
-    {
-        lock (_refreshGate)
-        {
-            if (ReferenceEquals(_watch, watch))
-            {
-                _watch = null;
-            }
-        }
     }
 
     private static void ValidateWatchOptions(AssetWatchOptions options)

@@ -48,6 +48,9 @@ namespace Runic.Application.Views.Desktop;
 /// <c>Embedded</c> or <c>Chrome</c>, is written to standard output. It is an automation switch for applications
 /// shaped like the <c>runic-app</c> template, which exit when their one window's
 /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns; other applications may keep running or reopen windows.
+/// When <c>dotnet runic dev</c> runs without a development server, it sets <c>RUNIC_APPLICATION_DEVELOPMENT_ASSETS</c> to
+/// the frontend output directory. In a <c>Development</c> environment, and when <see cref="SurfaceOptions"/> is not
+/// set, every window serves that directory before its content root and reloads when the directory changes.
 /// </remarks>
 public sealed class RunicDesktopHost : IRunicWindowHost
 {
@@ -358,17 +361,25 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         WindowContentSession? content = null;
         IDisposable? connectionBinding = null;
         DesktopBridgeWindow<TViewModel>? owner = null;
+        DevelopmentAssets.Window? development = null;
         try
         {
             var viewModel = opening.ViewModel;
             var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
+            var contentRoot = opening.Options.ResolveContentRoot();
+            // dotnet runic dev without a development server: the frontend output directory, live (DevelopmentAssets).
+            if (DevelopmentAssets.ResolveDirectory(ReadEnvironment, SurfaceOptions is not null) is { } live)
+                development = _developmentAssets.Open(live, opening.Options.StartPage, contentRoot,
+                    (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
+                    ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             var surfaceOptions = SurfaceOptions ?? new DesktopSurfaceOptions
             {
-                Content = new DesktopContent.Directory(opening.Options.ResolveContentRoot(), opening.Options.StartPage),
+                Content = development?.Content ?? new DesktopContent.Directory(contentRoot, opening.Options.StartPage),
             };
             if (Resources is { } chooseResources && chooseResources(opening.Window) is { } resources)
                 surfaceOptions = surfaceOptions with { Resources = resources };
             surface = await Desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
+            development?.Attach(surface);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
             content = new WindowContentSession(transport, new WindowContentSessionOptions
             {
@@ -379,11 +390,14 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
             });
             var session = content;
-            connectionBinding = surface.SubscribeConnectionEvents(connection =>
+            var connections = surface.SubscribeConnectionEvents(connection =>
             {
                 if (connection.Kind == DesktopConnectionEventKind.Disconnected)
                     session.ReleaseConnection(connection.SessionId.ToString(CultureInfo.InvariantCulture));
             });
+            // The window releases its live development content when it closes, with its connection events.
+            connectionBinding = development is null ? connections : new Bindings(connections, development);
+            development = null;
             owner = new DesktopBridgeWindow<TViewModel>(scope, surface, transport, content, connectionBinding, viewModel);
             var attachment = opening.AttachBridge(transport, content);
             try { owner.Attach(attachment); }
@@ -427,6 +441,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             else
             {
                 connectionBinding?.Dispose();
+                development?.Dispose();
                 content?.Dispose();
                 transport?.Dispose();
                 if (surface is not null) await surface.DisposeAsync().ConfigureAwait(false);
@@ -436,6 +451,20 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (error is DesktopConfigurationException configuration)
                 throw new RunicWindowConfigurationException([.. configuration.Diagnostics.Select(ToWindowDiagnostic)], configuration);
             throw;
+        }
+    }
+
+    private readonly DevelopmentAssets _developmentAssets = new();
+
+    // The process environment; tests replace it.
+    internal Func<string, string?> ReadEnvironment { get; init; } = Environment.GetEnvironmentVariable;
+
+    private sealed class Bindings(IDisposable first, IDisposable second) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { first.Dispose(); }
+            finally { second.Dispose(); }
         }
     }
 

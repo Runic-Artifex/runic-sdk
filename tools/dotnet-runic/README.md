@@ -54,6 +54,40 @@ it. A restart after a C# or frontend compiler edit gets the same grace;
 `dev` sets `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS=5000` for `dotnet watch`
 unless you set it yourself.
 
+Without a Vite or Angular development server, `dev` runs the frontend watcher
+instead: the `RunicApplicationFrontendDevWatchTarget` MSBuild target, or the
+frontend's `dev` script (for example `vite build --watch`), which writes the
+frontend output directory (`RunicApplicationFrontendOutputDirectory`, by
+default `Frontend/dist`). With `--no-frontend-watch` the build writes it once.
+A Runic Desktop window (`Runic.Application.Views.Desktop`) then serves that
+directory live, before the `www/` copy of the initial build, and reloads after
+each change, so frontend edits reach the window without a rebuild:
+
+```text
+[dev] Assets: /path/to/App/Frontend/dist (served live; windows reload on change)
+```
+
+A window reloads the last HTML page it loaded, such as `settings.html`, or
+else its start page; the page's query, hash and `history.pushState` route are
+not kept. The Bridge reconnects as after any reload. On Linux and macOS the
+window keeps serving the directory it opened, so a frontend build that deletes
+and recreates the output directory itself, rather than its contents as
+`vite build --watch` does, needs `dev` to be restarted. A CS-WebUI window keeps
+the initial build, and `dev` prints
+`[dev] Assets: the CS-WebUI host shows the initial build; restart to see frontend changes`.
+An application that sets `RunicDesktopHostOptions.SurfaceOptions` serves its
+own content in `dev` too.
+
+`dev` passes these variables to the Window process:
+
+| Variable | Value |
+| --- | --- |
+| `DOTNET_ENVIRONMENT` | `Development`, unless you set it or `ASPNETCORE_ENVIRONMENT` |
+| `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS` | `5000`, unless you set it |
+| `DOTNET_WATCH_RESTART_ON_RUDE_EDIT` | `1` |
+| `RUNIC_APPLICATION_DEVELOPMENT_ASSETS` | Without a development server, the absolute frontend output directory; cleared while one runs. An internal contract with the Runic Desktop host, which reads it only in a `Development` environment. |
+| `RUNIC_APPLICATION_VITE_*`, `RUNIC_APPLICATION_FRONTEND_*`, `RUNIC_APPLICATION_DEV_PROJECT` | The development server's address, entry and compiler integration while one runs; cleared otherwise. Internal. |
+
 `doctor` checks the Views Window opt-in, the .NET SDK, the declared JavaScript
 runtime and package manager, the matching lock file, the configured
 development-server inputs, and, once the project is restored, that every Runic

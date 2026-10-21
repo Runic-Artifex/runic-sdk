@@ -453,7 +453,7 @@ public static class AssetArchive
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private sealed class DirectoryArchiveSource : IAssetSource, IDisposable
     {
-        private readonly LinuxAssetRoot _root;
+        private readonly PosixAssetRoot _root;
         private readonly HashSet<string> _excludedPaths;
 
         internal DirectoryArchiveSource(
@@ -469,7 +469,7 @@ public static class AssetArchive
             }
 
             ArgumentException.ThrowIfNullOrWhiteSpace(sourceDirectory);
-            _root = new LinuxAssetRoot(Path.GetFullPath(sourceDirectory));
+            _root = new PosixAssetRoot(Path.GetFullPath(sourceDirectory));
             string entryPoint = AssetPath.Normalize(entryPointRelativePath);
             _excludedPaths = new HashSet<string>(StringComparer.Ordinal);
             if (excludedPaths is not null)

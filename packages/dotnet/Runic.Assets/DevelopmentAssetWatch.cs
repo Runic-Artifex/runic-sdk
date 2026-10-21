@@ -1,12 +1,12 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Runic.Assets;
 
-/// <summary>Coalesces local filesystem signals into one source-owned refresh loop.</summary>
-[System.Runtime.Versioning.SupportedOSPlatform("linux")]
-internal sealed class DevelopmentAssetWatch : IAssetWatch
+/// <summary>Coalesces local filesystem signals into one source-owned refresh loop; the source owns its lifetime.</summary>
+internal sealed class DevelopmentAssetWatch : IDisposable
 {
     private readonly DevelopmentDirectoryAssetSource _source;
     private readonly FileSystemWatcher _watcher;
@@ -16,14 +16,12 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
     private readonly int _maxRetryAttempts;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _refreshCancellation = new();
-    private CancellationTokenRegistration _cancellationRegistration;
     private bool _disposed;
     private bool _disposeCompleted;
     private bool _refreshing;
     private bool _pending;
     private int _retryAttempts;
     private TimeSpan _nextRefreshDelay;
-    private int _callbackThreadId;
 
     internal DevelopmentAssetWatch(
         DevelopmentDirectoryAssetSource source,
@@ -57,61 +55,39 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
-    public bool IsWatching
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return !_disposed;
-            }
-        }
-    }
-
-    internal void Start(CancellationToken cancellationToken)
+    internal void Start()
     {
         lock (_gate)
         {
-            ThrowIfDisposed();
+            ObjectDisposedException.ThrowIf(_disposed, this);
             _watcher.EnableRaisingEvents = true;
         }
-
-        _cancellationRegistration = cancellationToken.Register(static state =>
-            ((DevelopmentAssetWatch)state!).Dispose(), this);
     }
 
-    public void Dispose()
+    public void Dispose() => Dispose(waitForRefresh: true);
+
+    // waitForRefresh is false when a subscriber of this watch's own refresh disposes the source.
+    internal void Dispose(bool waitForRefresh)
     {
-        bool waitForRefresh;
+        bool wait;
         lock (_gate)
         {
             if (_disposed)
             {
-                if (!_disposeCompleted
-                    && _callbackThreadId != Environment.CurrentManagedThreadId)
-                {
-                    while (!_disposeCompleted)
-                    {
-                        Monitor.Wait(_gate);
-                    }
-                }
-
                 return;
             }
 
             _disposed = true;
             _pending = false;
-            waitForRefresh = _refreshing
-                && _callbackThreadId != Environment.CurrentManagedThreadId;
+            wait = _refreshing && waitForRefresh;
             _watcher.EnableRaisingEvents = false;
         }
 
         _refreshCancellation.Cancel();
-        _cancellationRegistration.Dispose();
         _watcher.Dispose();
         _timer.Dispose();
 
-        if (waitForRefresh)
+        if (wait)
         {
             lock (_gate)
             {
@@ -122,7 +98,6 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
             }
         }
 
-        _source.DetachWatch(this);
         CompleteDisposeIfReady();
     }
 
@@ -152,39 +127,42 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
     {
         lock (_gate)
         {
-            if (_disposed || !_pending)
-            {
-                return;
-            }
-
-            if (_refreshing)
+            if (_disposed || !_pending || _refreshing)
             {
                 return;
             }
 
             _pending = false;
             _refreshing = true;
-            _callbackThreadId = Environment.CurrentManagedThreadId;
         }
 
+        _ = RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
         try
         {
-            _ = _source.Refresh(_refreshCancellation.Token);
+            _ = await _source.RefreshAsync(_refreshCancellation.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException)
         {
+            // A frontend build can leave the directory half written, for example without its entry point for a moment.
             ScheduleRetry();
         }
         catch (OperationCanceledException) when (_refreshCancellation.IsCancellationRequested)
         {
-            // Disposal cancels an in-flight directory scan before waiting for this callback.
+            // Disposal cancels an in-flight directory scan before waiting for this refresh.
+        }
+        catch (ObjectDisposedException)
+        {
+            // The source was disposed during the refresh.
         }
         finally
         {
             lock (_gate)
             {
                 _refreshing = false;
-                _callbackThreadId = 0;
                 if (!_disposed && _pending)
                 {
                     _timer.Change(_nextRefreshDelay, Timeout.InfiniteTimeSpan);
@@ -209,7 +187,6 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
             _retryAttempts++;
             _pending = true;
             _nextRefreshDelay = _retryDelay;
-            _timer.Change(_nextRefreshDelay, Timeout.InfiniteTimeSpan);
         }
     }
 
@@ -222,7 +199,6 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
             {
                 _disposeCompleted = true;
                 disposeCancellation = true;
-                Monitor.PulseAll(_gate);
             }
         }
 
@@ -231,6 +207,4 @@ internal sealed class DevelopmentAssetWatch : IAssetWatch
             _refreshCancellation.Dispose();
         }
     }
-
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }

@@ -28,6 +28,16 @@
           "Runic.Navigation": "[0.9.1, )"
         }
       },
+      "runic.assets": {
+        "type": "Project"
+      },
+      "runic.assets.desktop": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Assets": "[0.9.1, )",
+          "Runic.Desktop": "[0.9.1, )"
+        }
+      },
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
@@ -139,6 +149,16 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
           "Runic.Navigation": "[0.9.1, )"
+        }
+      },
+      "runic.assets": {
+        "type": "Project"
+      },
+      "runic.assets.desktop": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Assets": "[0.9.1, )",
+          "Runic.Desktop": "[0.9.1, )"
         }
       },
       "runic.desktop": {

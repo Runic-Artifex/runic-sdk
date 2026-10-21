@@ -65,6 +65,17 @@ sealed class DesktopWireClient : IDisposable
         }
     }
 
+    // Waits for the next server command of one kind, such as Navigation (0xFB), and returns its text.
+    public async Task<string> WaitForCommandAsync(byte command, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var packet = await ReceiveAsync(cancellationToken);
+            if (packet.Length >= HeaderSize && packet[7] == command)
+                return Encoding.UTF8.GetString(packet.AsSpan(HeaderSize)).TrimEnd('\0');
+        }
+    }
+
     public void Dispose() => _socket.Dispose();
 
     private Task SendAsync(ushort id, byte command, byte[] payload, CancellationToken cancellationToken)

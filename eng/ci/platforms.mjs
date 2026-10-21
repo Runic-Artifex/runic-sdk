@@ -40,7 +40,7 @@ export const releaseJobs = [
 ];
 
 // Path rules, first match wins. A path names a file or directory; a trailing `*` matches any
-// path that starts with the rest. Owned files without a rule (web packages, templates, assets,
+// path that starts with the rest. Owned files without a rule (web packages, templates, the asset adapters,
 // the ReactiveUI adapters, examples and documentation) need no Windows or macOS leg; unowned files
 // need every leg unless they are neutral.
 const all = platforms;
@@ -55,11 +55,15 @@ export const platformRules = [
     "eng/build/desktop.props", "eng/branding/desktop", "tools/Runic.Application.Templates/content/runic-app/packaging",
     "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs", "tools/Runic.Application.Templates/content/runic-app/icons",
     "tests/native/Runic.Packaging.Probe"] },
-  // The managed Windows and View runtime, its NativeAOT apps, probes and file watching, and the test host whose tests
+  // The managed Windows and View runtime, its NativeAOT apps, probes and file watching, the development asset source,
+  // and the test host whose tests
   // run there (Runic.Application.Views.Wpf.Windows.Tests references it too): x64 Windows and macOS.
   { platforms: ["win-x64", "osx-arm64"], paths: ["packages/dotnet/Runic.Application.Views", "packages/dotnet/Runic.Application.Views.Desktop",
     "packages/dotnet/Runic.Application.Views.CsWebUi", "examples/first-window", "tests/fixtures/application/cswebui-window-probes",
-    "packages/dotnet/Runic.Application.Testing", "tests/dotnet/Runic.Application.Testing.Tests"] },
+    "packages/dotnet/Runic.Application.Testing", "tests/dotnet/Runic.Application.Testing.Tests",
+    // The development-directory source's per-OS root and watcher, tested in the native job's Windows and macOS step,
+    // and its Desktop adapter, which the Runic Desktop Views host references.
+    "packages/dotnet/Runic.Assets", "packages/dotnet/Runic.Assets.Desktop", "tests/dotnet/Runic.Assets.Tests"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },

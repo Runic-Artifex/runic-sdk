@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- `dotnet runic dev` without a Vite or Angular development server: a frontend watcher (the `dev` script) writes
+       Frontend/dist, and the Runic Desktop host serves it live and reloads the window (dev-smoke.mjs). -->
+  <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
+    <RunicApplicationFrontendCompositionType>DevLiveAssets.RunicViewsComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
+    <!-- The page uses no generated client; keep the generated TypeScript out of the source tree. -->
+    <RunicApplicationFrontendGeneratedDirectory>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicApplicationFrontendGeneratedDirectory>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+  <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
+</Project>

@@ -19,10 +19,11 @@ using Microsoft.Extensions.Logging;
 using Runic.Assets.AspNetCore;
 using TUnit.Core;
 
-[assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
-
 namespace Runic.Assets.Tests;
 
+// Linux only: the directory archive compiler and the packer need no-follow directory handles. The development-directory
+// source runs on every operating system in DevelopmentDirectoryTests.
+[System.Runtime.Versioning.SupportedOSPlatform("linux")]
 internal sealed class AssetsTests
 {
     [Test, DisplayName("paths reject traversal and ambiguous syntax")]
@@ -37,7 +38,7 @@ internal sealed class AssetsTests
         return Task.CompletedTask;
     }
 
-    [Test, DisplayName("one source interface opens snapshots; the development-directory family is experimental")]
+    [Test, DisplayName("one source interface opens snapshots; no Runic.Assets API is experimental")]
     public void PublicShape()
     {
         Assembly assets = typeof(IAssetSource).Assembly;
@@ -51,17 +52,11 @@ internal sealed class AssetsTests
             True(source.GetMethod("OpenReadAsync") is null && source.GetMethod("OpenSnapshotAsync") is null);
         True(typeof(AssetArchiveInspection).GetMethod("ToDeterministicReport") is null);
 
-        var experimental = assets.GetExportedTypes()
-            .Where(static type => type.GetCustomAttribute<System.Diagnostics.CodeAnalysis.ExperimentalAttribute>() is not null)
-            .ToDictionary(static type => type.Name, static type => type.GetCustomAttribute<System.Diagnostics.CodeAnalysis.ExperimentalAttribute>()!);
-        SequenceEqual(
-            new[] { "AssetSourceChangedEventArgs", "AssetWatchOptions", "DevelopmentDirectoryAssetSource", "IAssetSourceChangeNotifier", "IAssetWatch" },
-            experimental.Keys.Order(StringComparer.Ordinal));
-        foreach (var attribute in experimental.Values)
-        {
-            Equal("RUNICASSETS001", attribute.DiagnosticId);
-            True(attribute.UrlFormat?.EndsWith("docs/experimental.md#{0}", StringComparison.Ordinal) == true);
-        }
+        // RUNICASSETS001 graduated in 0.10.0.
+        True(assets.GetExportedTypes().All(static type =>
+            type.GetCustomAttribute<System.Diagnostics.CodeAnalysis.ExperimentalAttribute>() is null
+            && type.GetMembers().All(static member =>
+                member.GetCustomAttribute<System.Diagnostics.CodeAnalysis.ExperimentalAttribute>() is null)));
     }
 
     [Test, DisplayName("lookups return false for invalid paths")]
@@ -174,27 +169,6 @@ internal sealed class AssetsTests
         True((await reader.ReadToEndAsync().ConfigureAwait(false)).Contains("Asset boundary", StringComparison.Ordinal));
         await ThrowsAsync<FileNotFoundException>(
             async () => await source.OpenAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
-    }
-
-    [Test, DisplayName("development documents replace only a bounded immutable entry")]
-    public async Task DevelopmentDocument()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("dev.html", "<html>Vite entry</html>");
-        var original = NewEmbeddedSource();
-        var source = original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "dev.html"));
-        directory.Write("dev.html", "changed after loading");
-        Equal(AssetCacheMode.NoStore, source.Manifest.EntryPoint.CacheMode);
-        await using var entry = await source.OpenAsync("index.html");
-        using var reader = new StreamReader(entry.Content);
-        Equal("<html>Vite entry</html>", await reader.ReadToEndAsync());
-        Equal(original.Manifest.Assets.Count, source.Manifest.Assets.Count);
-        await using var css = await source.OpenAsync("assets/app.css");
-        True(css.Descriptor.MediaType == "text/css");
-        await ThrowsAsync<FileNotFoundException>(async () => await source.OpenAsync("dev.html"));
-        Throws<ArgumentException>(() => original.WithDevelopmentDocument("relative.html"));
-        directory.Write("large.html", new string('x', 1024 * 1024 + 1));
-        Throws<InvalidDataException>(() => original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "large.html")));
     }
 
     [Test, DisplayName("portable archives round-trip deterministic metadata")]
@@ -494,413 +468,6 @@ internal sealed class AssetsTests
         }
     }
 
-    [Test, DisplayName("ASP.NET Core delivery binds metadata and bytes from one source snapshot")]
-    public async Task AspNetCoreSnapshotIntegration()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        AssetDescriptor stale = source.Manifest.EntryPoint;
-        directory.Write("index.html", "two");
-
-        var context = new DefaultHttpContext();
-        context.Response.Body = new MemoryStream();
-        await ThrowsAsync<InvalidDataException>(
-            async () => await RunicAssetEndpointExtensions
-                .WriteAssetAsync(context, source, stale)
-                .ConfigureAwait(false)).ConfigureAwait(false);
-        source.Refresh();
-        await RunicAssetEndpointExtensions.WriteAssetAsync(context, source, stale).ConfigureAwait(false);
-        Equal(StatusCodes.Status200OK, context.Response.StatusCode);
-        Equal(source.Manifest.EntryPoint.EntityTag, context.Response.Headers.ETag.ToString());
-        Equal("two", Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray()));
-
-        // Development snapshots are seekable, so a range starts without reading the prefix.
-        directory.Write("index.html", "0123456789");
-        source.Refresh();
-        var range = new DefaultHttpContext();
-        range.Response.Body = new MemoryStream();
-        range.Request.Headers.Range = "bytes=6-8";
-        await RunicAssetEndpointExtensions.WriteAssetAsync(range, source, source.Manifest.EntryPoint).ConfigureAwait(false);
-        Equal(StatusCodes.Status206PartialContent, range.Response.StatusCode);
-        Equal("678", Encoding.UTF8.GetString(((MemoryStream)range.Response.Body).ToArray()));
-    }
-
-    [Test, DisplayName("development directory skips names that are not asset paths")]
-    public async Task DirectorySkipsInvalidNames()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "entry");
-        directory.Write("assets/app.js", "app");
-        foreach (string name in new[] { "notes:draft.txt", "what?.txt", "back\\slash.txt", "%2e%2e.txt" })
-        {
-            await File.WriteAllTextAsync(System.IO.Path.Combine(directory.Path, name), "odd").ConfigureAwait(false);
-        }
-
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        SequenceEqual(new[] { "assets/app.js", "index.html" }, source.Manifest.Assets.Select(static asset => asset.RelativePath));
-        SequenceEqual(
-            new[] { "%2e%2e.txt", "back\\slash.txt", "notes:draft.txt", "what?.txt" },
-            source.SkippedEntries.Order(StringComparer.Ordinal));
-
-        File.Delete(System.IO.Path.Combine(directory.Path, "what?.txt"));
-        source.Refresh();
-        Equal(3, source.SkippedEntries.Count);
-    }
-
-    [Test, DisplayName("development directory refresh preserves immutable snapshots")]
-    public async Task DirectoryRefresh()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        directory.Write("assets/app.js", "first");
-        var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        AssetManifest first = source.Manifest;
-        Equal(AssetCacheMode.NoStore, first.EntryPoint.CacheMode);
-        SequenceEqual(
-            new[] { "assets/app.js", "index.html" },
-            first.Assets.Select(static asset => asset.RelativePath));
-
-        directory.Write("index.html", "two");
-        directory.Write("assets/extra.css", "body{}");
-        AssetManifest second = source.Refresh();
-        True(!ReferenceEquals(first, second));
-        Equal(2, first.Assets.Count);
-        Equal(3, second.Assets.Count);
-        await source.ValidateAsync().ConfigureAwait(false);
-        await using Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
-        using var reader = new StreamReader(content);
-        Equal("two", await reader.ReadToEndAsync().ConfigureAwait(false));
-    }
-
-    [Test, DisplayName("development directory snapshots remain digest-verified while files change")]
-    public async Task DirectorySnapshot()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        await using Stream snapshot = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
-        directory.Write("index.html", "two");
-        using (var reader = new StreamReader(snapshot, leaveOpen: true))
-        {
-            Equal("one", await reader.ReadToEndAsync().ConfigureAwait(false));
-        }
-
-        await ThrowsAsync<InvalidDataException>(
-            async () => await source.OpenAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
-        source.Refresh();
-        await using Stream refreshed = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
-        using var refreshedReader = new StreamReader(refreshed);
-        Equal("two", await refreshedReader.ReadToEndAsync().ConfigureAwait(false));
-    }
-
-    [Test, DisplayName("development directory watcher coalesces one owned refresh")]
-    public async Task DirectoryWatch()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        directory.Write("assets/app.css", "body{color:black}");
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        var observed = new TaskCompletionSource<AssetSourceChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
-        int notifications = 0;
-        ((IAssetSourceChangeNotifier)source).Changed += (_, change) =>
-        {
-            Interlocked.Increment(ref notifications);
-            observed.TrySetResult(change);
-        };
-
-        using var cancellation = new CancellationTokenSource();
-        IAssetWatch watch = source.StartWatching(
-            new AssetWatchOptions { DebounceDelay = TimeSpan.FromMilliseconds(100) },
-            cancellation.Token);
-        True(watch.IsWatching);
-        Throws<InvalidOperationException>(() => source.StartWatching());
-        directory.Write("index.html", "two");
-        directory.Write("assets/app.css", "body{color:green}");
-        AssetSourceChangedEventArgs change = await observed.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-        Equal("two", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
-        Equal(2, change.Current.Assets.Count);
-        Equal(1, notifications);
-
-        cancellation.Cancel();
-        True(!watch.IsWatching);
-        AssetManifest stopped = source.Manifest;
-        directory.Write("index.html", "three");
-        await Task.Delay(150).ConfigureAwait(false);
-        True(ReferenceEquals(stopped, source.Manifest));
-    }
-
-    [Test, DisplayName("concurrent watcher disposal waits for the active refresh")]
-    public async Task DirectoryWatchDispose()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        using var callbackEntered = new ManualResetEventSlim();
-        using var releaseCallback = new ManualResetEventSlim();
-        ((IAssetSourceChangeNotifier)source).Changed += (_, _) =>
-        {
-            callbackEntered.Set();
-            releaseCallback.Wait();
-        };
-
-        IAssetWatch watch = source.StartWatching(
-            new AssetWatchOptions { DebounceDelay = TimeSpan.FromMilliseconds(25) });
-        directory.Write("index.html", "two");
-        True(callbackEntered.Wait(TimeSpan.FromSeconds(5)));
-        Task first = Task.Run(watch.Dispose);
-        Task second = Task.Run(watch.Dispose);
-        await Task.Delay(100).ConfigureAwait(false);
-        True(!first.IsCompleted);
-        True(!second.IsCompleted);
-        releaseCallback.Set();
-        await first.ConfigureAwait(false);
-        await second.ConfigureAwait(false);
-        True(!watch.IsWatching);
-    }
-
-    [Test, DisplayName("development watcher follows the pinned root after path replacement")]
-    public async Task DirectoryPinnedWatch()
-    {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
-
-        using var directory = new TemporaryDirectory();
-        string root = Path.Combine(directory.Path, "assets");
-        Directory.CreateDirectory(root);
-        string pinnedIndex = Path.Combine(root, "index.html");
-        await File.WriteAllTextAsync(pinnedIndex, "one").ConfigureAwait(false);
-        using var source = new DevelopmentDirectoryAssetSource(root, "index.html");
-        var changed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        ((IAssetSourceChangeNotifier)source).Changed += (_, _) => changed.TrySetResult(true);
-        using IAssetWatch watch = source.StartWatching(
-            new AssetWatchOptions { DebounceDelay = TimeSpan.FromMilliseconds(25) });
-
-        string moved = Path.Combine(directory.Path, "moved-assets");
-        Directory.Move(root, moved);
-        Directory.CreateDirectory(root);
-        await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "replacement").ConfigureAwait(false);
-        await File.WriteAllTextAsync(Path.Combine(moved, "index.html"), "two").ConfigureAwait(false);
-        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-        Equal("two", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
-    }
-
-    [Test, DisplayName("development directory publishes owned immutable change snapshots")]
-    public Task DirectoryChangeNotifications()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        AssetManifest first = source.Manifest;
-        AssetSourceChangedEventArgs? observed = null;
-        int notifications = 0;
-        EventHandler<AssetSourceChangedEventArgs> throwing = (_, _) => throw new InvalidOperationException();
-        ((IAssetSourceChangeNotifier)source).Changed += throwing;
-        ((IAssetSourceChangeNotifier)source).Changed += (_, change) =>
-        {
-            notifications++;
-            observed = change;
-        };
-
-        directory.Write("index.html", "two");
-        AssetManifest second = source.Refresh();
-        Equal(1, notifications);
-        True(observed is not null);
-        True(ReferenceEquals(first, observed!.Previous));
-        True(ReferenceEquals(second, observed.Current));
-        True(!StringComparer.Ordinal.Equals(first.EntryPoint.Sha256, second.EntryPoint.Sha256));
-        Throws<NotSupportedException>(() => ((IList<AssetDescriptor>)second.Assets).Add(second.EntryPoint));
-
-        source.Refresh();
-        Equal(1, notifications);
-        File.Delete(System.IO.Path.Combine(directory.Path, "index.html"));
-        Throws<ArgumentException>(() => source.Refresh());
-        Equal(1, notifications);
-        True(ReferenceEquals(second, source.Manifest));
-        ((IAssetSourceChangeNotifier)source).Changed -= throwing;
-        source.Dispose();
-        Throws<ObjectDisposedException>(() => source.Refresh());
-        Throws<ObjectDisposedException>(() => ((IAssetSourceChangeNotifier)source).Changed += (_, _) => { });
-        return Task.CompletedTask;
-    }
-
-    [Test, DisplayName("development notifications serialize reentrant and unsubscribed handlers")]
-    public async Task DirectoryNotificationDispatch()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        int calls = 0;
-        bool concurrentRefreshCompleted = false;
-        EventHandler<AssetSourceChangedEventArgs>? reentrant = null;
-        reentrant = (_, _) =>
-        {
-            calls++;
-            if (calls == 1)
-            {
-                Task<AssetManifest> concurrentRefresh = Task.Run(() => source.Refresh());
-                concurrentRefreshCompleted = concurrentRefresh.Wait(TimeSpan.FromSeconds(2));
-                if (concurrentRefreshCompleted)
-                {
-                    _ = concurrentRefresh.GetAwaiter().GetResult();
-                }
-                directory.Write("index.html", "three");
-                source.Refresh();
-            }
-        };
-        ((IAssetSourceChangeNotifier)source).Changed += reentrant;
-
-        directory.Write("index.html", "two");
-        source.Refresh();
-        Equal(2, calls);
-        True(concurrentRefreshCompleted);
-        await using Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content;
-        using var reader = new StreamReader(content);
-        Equal("three", await reader.ReadToEndAsync().ConfigureAwait(false));
-
-        int removedCalls = 0;
-        EventHandler<AssetSourceChangedEventArgs> removed = (_, _) => removedCalls++;
-        ((IAssetSourceChangeNotifier)source).Changed += removed;
-        ((IAssetSourceChangeNotifier)source).Changed -= removed;
-        directory.Write("index.html", "four");
-        source.Refresh();
-        Equal(0, removedCalls);
-        Equal(3, calls);
-    }
-
-    [Test, DisplayName("development disposal closes callback admission before returning")]
-    public async Task DirectoryDisposeDispatch()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        using var callbackEntered = new ManualResetEventSlim();
-        using var releaseCallback = new ManualResetEventSlim();
-        int secondCallbackCalls = 0;
-        ((IAssetSourceChangeNotifier)source).Changed += (_, _) =>
-        {
-            source.Dispose();
-            callbackEntered.Set();
-            releaseCallback.Wait();
-        };
-        ((IAssetSourceChangeNotifier)source).Changed += (_, _) => secondCallbackCalls++;
-
-        directory.Write("index.html", "two");
-        Task<AssetManifest> refresh = Task.Run(() => source.Refresh());
-        True(callbackEntered.Wait(TimeSpan.FromSeconds(2)));
-        Task firstDispose = Task.Run(source.Dispose);
-        Task secondDispose = Task.Run(source.Dispose);
-        await Task.Delay(100).ConfigureAwait(false);
-        True(!firstDispose.IsCompleted);
-        True(!secondDispose.IsCompleted);
-        releaseCallback.Set();
-        await firstDispose.ConfigureAwait(false);
-        await secondDispose.ConfigureAwait(false);
-        await refresh.ConfigureAwait(false);
-        Equal(0, secondCallbackCalls);
-        Throws<ObjectDisposedException>(() => source.Refresh());
-    }
-
-    [Test, DisplayName("development directory detects content drift")]
-    public async Task DirectoryDrift()
-    {
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        directory.Write("index.html", "changed");
-        await ThrowsAsync<InvalidDataException>(
-            async () => await source.ValidateAsync().ConfigureAwait(false)).ConfigureAwait(false);
-    }
-
-    [Test, DisplayName("development directory rejects symbolic links")]
-    public Task DirectoryLinks()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return Task.CompletedTask;
-        }
-
-        using var directory = new TemporaryDirectory();
-        directory.Write("index.html", "one");
-        string target = directory.Write("target.css", "body{}");
-        string link = System.IO.Path.Combine(directory.Path, "linked.css");
-        File.CreateSymbolicLink(link, target);
-        Throws<InvalidDataException>(
-            () => _ = new DevelopmentDirectoryAssetSource(directory.Path, "index.html"));
-        return Task.CompletedTask;
-    }
-
-    [Test, DisplayName("development reads reject symlink replacement races")]
-    public async Task DirectoryLinkSwap()
-    {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
-
-        using var directory = new TemporaryDirectory();
-        string index = directory.Write("index.html", "safe");
-        string outside = directory.Write("outside.html", "outside");
-        using var source = new DevelopmentDirectoryAssetSource(directory.Path, "index.html");
-        for (int attempt = 0; attempt != 20; attempt++)
-        {
-            string replacement = Path.Combine(directory.Path, "replacement.html");
-            File.WriteAllText(replacement, "safe");
-            File.Move(replacement, index, overwrite: true);
-            await using (Stream content = (await source.OpenAsync("index.html").ConfigureAwait(false)).Content)
-            using (var reader = new StreamReader(content))
-            {
-                Equal("safe", await reader.ReadToEndAsync().ConfigureAwait(false));
-            }
-
-            File.Delete(index);
-            File.CreateSymbolicLink(index, outside);
-            await ThrowsAsync<InvalidDataException>(
-                async () => await source.OpenAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
-            File.Delete(index);
-            File.WriteAllText(index, "safe");
-        }
-    }
-
-    [Test, DisplayName("development source pins its root across root and ancestor swaps")]
-    public async Task DirectoryRootPinning()
-    {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
-
-        using var directory = new TemporaryDirectory();
-        string ancestor = Path.Combine(directory.Path, "ancestor");
-        string root = Path.Combine(ancestor, "assets");
-        Directory.CreateDirectory(root);
-        string index = Path.Combine(root, "index.html");
-        await File.WriteAllTextAsync(index, "pinned").ConfigureAwait(false);
-        using var source = new DevelopmentDirectoryAssetSource(root, "index.html");
-
-        string movedAncestor = Path.Combine(directory.Path, "moved-ancestor");
-        Directory.Move(ancestor, movedAncestor);
-        Directory.CreateDirectory(root);
-        await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "replacement").ConfigureAwait(false);
-
-        Equal("pinned", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
-        source.Refresh();
-        Equal("pinned", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
-
-        string movedRoot = Path.Combine(directory.Path, "moved-root");
-        Directory.Move(Path.Combine(movedAncestor, "assets"), movedRoot);
-        Directory.CreateDirectory(Path.Combine(movedAncestor, "assets"));
-        await File.WriteAllTextAsync(
-            Path.Combine(movedAncestor, "assets", "index.html"),
-            "replacement-two").ConfigureAwait(false);
-
-        Equal("pinned", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
-        source.Refresh();
-        Equal("pinned", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
-    }
-
     [Test, DisplayName("sources honor cancellation")]
     public async Task Cancellation()
     {
@@ -923,13 +490,6 @@ internal sealed class AssetsTests
             || name.Contains("CsWebUi", StringComparison.OrdinalIgnoreCase)
             || name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase)));
         return Task.CompletedTask;
-    }
-
-    private static async Task<string> ReadTextAsync(DevelopmentDirectoryAssetSource source, string path)
-    {
-        await using Stream content = (await source.OpenAsync(path).ConfigureAwait(false)).Content;
-        using var reader = new StreamReader(content);
-        return await reader.ReadToEndAsync().ConfigureAwait(false);
     }
 
     private static EmbeddedAssetSource NewEmbeddedSource() =>

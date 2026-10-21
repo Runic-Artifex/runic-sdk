@@ -231,7 +231,8 @@
       "dependsOn": [
         "desktop",
         "platform",
-        "navigation"
+        "navigation",
+        "assets"
       ],
       "paths": [
         "packages/dotnet/Runic.Application.Views",
@@ -354,7 +355,8 @@
         "examples/Directory.Build.targets",
         "examples/Directory.Packages.props",
         "examples/NuGet.config",
-        "tests/fixtures/application/dynamicdata"
+        "tests/fixtures/application/dynamicdata",
+        "tests/fixtures/application/dev-live-assets"
       ]
     },
     "platform": {

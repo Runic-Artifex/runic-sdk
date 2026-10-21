@@ -140,6 +140,8 @@ internal sealed class ToolTests
                 <RunicApplicationFrontendDirectory>Client</RunicApplicationFrontendDirectory>
                 <RunicApplicationFrontendOutputDirectory>build</RunicApplicationFrontendOutputDirectory>
                 <RunicApplicationFrontendWebRoot>wwwroot</RunicApplicationFrontendWebRoot>
+                <!-- What the CS-WebUI host's build targets add once the project is restored. -->
+                <_RunicApplicationHostNames>;cswebui</_RunicApplicationHostNames>
               </PropertyGroup>
             </Project>
             """);
@@ -151,6 +153,9 @@ internal sealed class ToolTests
         Equal(configuration.WorkspaceRoot, configuration.FrontendPackageDirectory);
         Equal(Path.Combine(configuration.WorkspaceRoot, "build"), configuration.FrontendOutputDirectory);
         Equal("wwwroot", Path.GetFileName(configuration.RuntimeWebRoot));
+        // The Views host decides whether the frontend output is served live.
+        SequenceEqual(["cswebui"], configuration.ApplicationHosts);
+        True(configuration.RunsOnCsWebUiOnly, "A CS-WebUI project was taken for a Runic Desktop one.");
     }
 
     [Test, DisplayName("Views Window watch restarts the native process")]
@@ -549,10 +554,39 @@ internal sealed class ToolTests
         workspace.Write("Frontend/pages/settings.html", "<html></html>");
         DevProjectConfiguration applied = await ViteBuildInputs.ApplyAsync(configuration, CancellationToken.None);
         SequenceEqual(["index.html", "pages/settings.html"], applied.DevelopmentServerDocuments);
-        // The host's development entry document stays index.html.
-        IReadOnlyDictionary<string, string?> environment = HostProcessController.CreateDevelopmentEnvironment(
-            applied, new Dictionary<string, string?> { ["RUNIC_APPLICATION_VITE_DEV_SERVER"] = "http://127.0.0.1:5173/" });
-        Equal(Path.Combine(applied.RuntimeWebRoot, "index.html"), environment["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"]);
+    }
+
+    [Test, DisplayName("without a development server the Desktop host serves the frontend output live")]
+    public void DevelopmentAssetsFollowTheFrontendMode()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        // Mode 1: a Vite or Angular development server serves the frontend, so the variable is cleared.
+        IReadOnlyDictionary<string, string?> server = HostProcessController.CreateDevelopmentEnvironment(
+            configuration, new Dictionary<string, string?> { ["RUNIC_APPLICATION_VITE_DEV_SERVER"] = "http://127.0.0.1:5173/" });
+        True(server.ContainsKey(HostProcessController.DevelopmentAssetsVariable), "Mode 1 did not clear the variable.");
+        Equal(null, server[HostProcessController.DevelopmentAssetsVariable]);
+        // The development document of earlier releases is no longer passed.
+        True(!server.ContainsKey("RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"), "RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT is still set.");
+        Equal("[dev] Assets: " + configuration.FrontendOutputDirectory,
+            DevApplication.DescribeAssets(configuration, new DevOptions(null, "Debug", true, true, true, false, [])));
+
+        // Modes 2 and 3: a frontend watcher, or --no-frontend-watch, writes the output directory.
+        IReadOnlyDictionary<string, string?> watcher = HostProcessController.CreateDevelopmentEnvironment(
+            configuration, new Dictionary<string, string?>());
+        Equal(Path.GetFullPath(configuration.FrontendOutputDirectory), watcher[HostProcessController.DevelopmentAssetsVariable]);
+        var staticFrontend = new DevOptions(null, "Debug", true, false, true, false, []);
+        Equal($"[dev] Assets: {configuration.FrontendOutputDirectory} (served live; windows reload on change)",
+            DevApplication.DescribeAssets(configuration, staticFrontend));
+        var noServer = CreateConfiguration(workspace, string.Empty) with { ApplicationHosts = ["desktop"] };
+        var watching = new DevOptions(null, "Debug", true, true, true, false, []);
+        Equal($"[dev] Assets: {noServer.FrontendOutputDirectory} (served live; windows reload on change)",
+            DevApplication.DescribeAssets(noServer, watching));
+        // Both hosts referenced: Runic Desktop serves it live.
+        Equal($"[dev] Assets: {noServer.FrontendOutputDirectory} (served live; windows reload on change)",
+            DevApplication.DescribeAssets(noServer with { ApplicationHosts = ["cswebui", "desktop"] }, watching));
+        Equal("[dev] Assets: the CS-WebUI host shows the initial build; restart to see frontend changes",
+            DevApplication.DescribeAssets(noServer with { ApplicationHosts = ["cswebui"] }, watching));
     }
 
     [Test, DisplayName("size inventory counts every file and preserves hashes")]

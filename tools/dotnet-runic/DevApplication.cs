@@ -129,9 +129,8 @@ internal static class DevApplication
 
         using var monitorStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken monitorToken = monitorStop.Token;
-        // Runic Views owns source contract generation; the CLI coordinates
-        // the frontend and native Window process only.
-        Task assetMonitor = Task.Delay(Timeout.InfiniteTimeSpan, monitorToken);
+        // Runic Views owns source contract generation; the CLI coordinates the frontend and native Window process
+        // only. Without a development server, the Runic Desktop host serves the frontend output directory live.
         var compilerReloadMonitors = new List<Task>();
         if (compilerReload is not null)
         {
@@ -166,7 +165,6 @@ internal static class DevApplication
         var observed = new List<Task>
         {
             host.Completion,
-            assetMonitor,
             frontendCompilerMonitor,
             cancellation,
         };
@@ -192,8 +190,7 @@ internal static class DevApplication
                 return Program.Cancelled;
             }
 
-            if (completed == assetMonitor ||
-                compilerReloadMonitors.Contains(completed) ||
+            if (compilerReloadMonitors.Contains(completed) ||
                 completed == frontendCompilerMonitor)
             {
                 await completed.ConfigureAwait(false);
@@ -224,7 +221,6 @@ internal static class DevApplication
             monitorStop.Cancel();
             var monitors = new List<Task>
             {
-                assetMonitor,
                 frontendCompilerMonitor,
                 cancellation,
             };
@@ -540,6 +536,20 @@ internal static class DevApplication
             ? host
             : "dotnet";
 
+    /// <summary>
+    /// The assets line: with a development server, the directory it builds into; without one, Runic Desktop serves the
+    /// directory live (RUNIC_APPLICATION_DEVELOPMENT_ASSETS), and CS-WebUI keeps the initial build.
+    /// </summary>
+    internal static string? DescribeAssets(DevProjectConfiguration configuration, DevOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(configuration.FrontendOutputDirectory)) return null;
+        if (options.WatchFrontend && configuration.HasDevelopmentServer)
+            return $"[dev] Assets: {configuration.FrontendOutputDirectory}";
+        return configuration.RunsOnCsWebUiOnly
+            ? "[dev] Assets: the CS-WebUI host shows the initial build; restart to see frontend changes"
+            : $"[dev] Assets: {configuration.FrontendOutputDirectory} (served live; windows reload on change)";
+    }
+
     private static void WriteConfiguration(
         DevProjectConfiguration configuration,
         DevOptions options)
@@ -555,9 +565,9 @@ internal static class DevApplication
                 : configuration.HasNodeWorkspace
                 ? $"[dev] Frontend: JavaScript workspace {configuration.Workspace}"
                 : "[dev] Frontend: external compiler/static assets");
-        if (!string.IsNullOrWhiteSpace(configuration.FrontendOutputDirectory))
+        if (DescribeAssets(configuration, options) is { } assets)
         {
-            Console.WriteLine($"[dev] Assets: {configuration.FrontendOutputDirectory}");
+            Console.WriteLine(assets);
         }
         Console.WriteLine($"[dev] Runtime web root: {configuration.RuntimeWebRoot}");
         if (configuration.HasFrontendCompiler)

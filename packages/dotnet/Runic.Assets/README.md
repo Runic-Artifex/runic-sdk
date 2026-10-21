@@ -13,7 +13,10 @@ Runic has two ways to ship a frontend, and they do not share settings:
 - **Runic.Application.Views** applications build `RunicApplicationFrontendDirectory`
   and copy its `dist/` as loose files to `www/` next to the executable; the
   Views host serves that folder. This is the default for Runic Views apps, and
-  `dotnet runic dev` works with it.
+  `dotnet runic dev` works with it. Without a Vite or Angular development
+  server, `dev` has the Runic Desktop host serve `dist/` itself through
+  `DevelopmentDirectoryAssetSource`, before `www/`, and reload its windows when
+  `dist/` changes.
 - **Runic.Assets** packs `RunicAssetsDist` into one validated archive and embeds
   it in the assembly. Use it for ASP.NET Core and for Runic Desktop applications
   without Views, or wherever a single-file or NativeAOT deployment must carry
@@ -24,8 +27,9 @@ A Views application can serve an embedded archive instead of `www/` by setting
 `RunicDesktopHost.SurfaceOptions` to a `DesktopSurfaceOptions` whose `Content`
 is `new DesktopContent.Handler(assets.ToDesktopContentHandler())`. The archive
 must then hold everything the build copies to `www/`, including the host's
-`runic-views.js` client. A build property that connects the two pipelines is
-planned for a later 1.x release.
+`runic-views.js` client, and `dotnet runic dev` then serves it instead of the
+live `dist/`. A build property that connects the two pipelines is planned for a
+later 1.x release.
 
 ## Install
 
@@ -104,26 +108,41 @@ var assets = new EmbeddedAssetSource(
     ]);
 ```
 
-Use `DevelopmentDirectoryAssetSource` only for the Linux development inner loop.
-It and its watch types (`IAssetSourceChangeNotifier`, `IAssetWatch`,
-`AssetWatchOptions` and `AssetSourceChangedEventArgs`) are
-[experimental](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICASSETS001)
-(`RUNICASSETS001`): no Runic host uses them yet, and their shape may change in a
-minor release. The source
-it requires Linux no-follow directory handles so root and ancestor replacement
-cannot redirect a published source. It refreshes local files and marks them
-`no-store`. Entries whose names are not valid asset paths (for example
+Use `DevelopmentDirectoryAssetSource` for a development inner loop on Linux,
+Windows or macOS. `dotnet runic dev` uses it when no Vite or Angular
+development server runs: the Runic Desktop window serves the frontend output
+directory and reloads when it changes
+([dotnet-runic](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)).
+The source refreshes local files and marks them `no-store`. No path component
+below the root may be a symbolic link or reparse point. On Linux and macOS the
+source pins its root with one no-follow directory handle and opens every file
+relative to it, so replacing the root or an ancestor cannot redirect a
+published source. Windows checks each path component for a reparse point
+before it opens a file, but does not pin the root: a directory moved into the
+root's place is read from then on. That is enough for a development source that
+serves your own build output. Entries whose names are not valid asset paths (for example
 containing `:`, `?`, `#` or a backslash) are skipped and listed in
-`SkippedEntries` instead of failing the scan. Call `StartWatching` once to
-coalesce filesystem signals into source-owned refreshes, then dispose its
-`IAssetWatch` lease (or cancel its token) to stop it. Subscribe to
-`IAssetSourceChangeNotifier.Changed` when a host needs to react to a successful
-refresh; the source is the single publisher and each event contains immutable
+`SkippedEntries` instead of failing the scan.
+
+```csharp
+using var source = new DevelopmentDirectoryAssetSource(frontendDirectory, "index.html");
+source.Changed += (_, change) => Reload(change.Current);
+source.StartWatching(new AssetWatchOptions { DebounceDelay = TimeSpan.FromMilliseconds(100) });
+// Dispose the source to stop watching.
+```
+
+Subscribe to `Changed` (`IAssetSourceChangeNotifier`) first, then call
+`StartWatching` once: it coalesces filesystem signals into source-owned
+refreshes and runs until the source is disposed, which is the only way to stop
+it; a second call throws `InvalidOperationException`. `RefreshAsync` scans
+the directory on demand and returns the current manifest; refreshes run one at
+a time. The source is the single publisher and each event contains immutable
 previous/current manifest snapshots. Notifications are serialized and coalesced
 after refresh, subscriber failures are isolated, and disposal stops future
 refreshes. The watcher uses one fixed 8 KiB native event buffer and retries from
-the authoritative directory scan after overflow, with at most three retries per
-change burst. Reads materialize a verified temporary-file snapshot, so content that
+the authoritative directory scan after overflow, or after a scan that fails
+because a build left the directory half written, with at most three retries per
+change burst by default (`AssetWatchOptions.MaxRetryAttempts`). Reads materialize a verified temporary-file snapshot, so content that
 changes after publication is rejected rather than delivered under the old digest.
 Use an embedded source or an archive for a
 reproducible deployed bundle.

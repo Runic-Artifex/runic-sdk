@@ -17,6 +17,12 @@ internal sealed class HostProcessController : IAsyncDisposable
     /// <summary>How long the application has to close its windows and release its work before it is killed.</summary>
     internal static readonly TimeSpan StopGracePeriod = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// The internal tool-to-host contract that RunicDesktopHost (Runic.Application.Views.Desktop) reads in a Development
+    /// environment: the frontend output directory to serve live.
+    /// </summary>
+    internal const string DevelopmentAssetsVariable = "RUNIC_APPLICATION_DEVELOPMENT_ASSETS";
+
     /// <summary>Makes dotnet watch give the application the same grace when a C# edit restarts it.</summary>
     internal const string WatchCleanupTimeoutVariable = "DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS";
 
@@ -209,8 +215,11 @@ internal sealed class HostProcessController : IAsyncDisposable
         readEnvironment ??= Environment.GetEnvironmentVariable;
         var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
-            ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = developmentEnvironment.Count == 0 ? null :
-                System.IO.Path.GetFullPath(configuration.DevelopmentServerDocuments[0], configuration.RuntimeWebRoot),
+            // Without a development server (its environment is empty), the Runic Desktop host serves the frontend
+            // output directory live and reloads its windows on change. With one, the variable is cleared.
+            [DevelopmentAssetsVariable] = developmentEnvironment.Count == 0
+                ? System.IO.Path.GetFullPath(configuration.FrontendOutputDirectory)
+                : null,
             ["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"] = "1",
             [ViteDevelopmentServer.ServerEnvironmentVariable] = null,
             [ViteDevelopmentServer.EntryEnvironmentVariable] = null,
