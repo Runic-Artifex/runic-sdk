@@ -4,7 +4,7 @@ import { spawnSync, execFileSync } from "node:child_process";
 import { packNpm } from "./release/pack-npm.mjs";
 import { authority, scan } from "./release/artifacts.mjs";
 import { stageAndPromote } from "./release/stage.mjs";
-import { packageVersion } from "./version.mjs";
+import { packageVersion, separateVersions } from "./version.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,7 +88,9 @@ function build() {
   web("build", ["@runic-artifex/views"]);
 }
 export const packages = resolve(root, "artifacts/packages");
-// Each NuGet package packs at its own version (eng/version.mjs packageVersion).
+// Each NuGet package packs at its own version (eng/version.mjs packageVersion). A package
+// with a version of its own gets it through its eng/Versions.props property: a global
+// PackageVersion would also reach its project references and pin them to that version.
 export function nugetPackArguments(workspace, p, { built, nuget, npm, selectedConfiguration = configuration }) {
   return [
     "pack",
@@ -98,7 +100,7 @@ export function nugetPackArguments(workspace, p, { built, nuget, npm, selectedCo
     ...(built ? ["--no-build"] : ["--no-restore"]),
     "-o",
     nuget,
-    `-p:PackageVersion=${packageVersion(workspace, p.name)}`,
+    `-p:${separateVersions[p.name] ?? "PackageVersion"}=${packageVersion(workspace, p.name)}`,
     ...(p.name.endsWith(".Templates") ? [`-p:RunicTemplateNpmDirectory=${npm}`] : []),
   ];
 }
