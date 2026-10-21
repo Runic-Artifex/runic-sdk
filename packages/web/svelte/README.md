@@ -1,8 +1,8 @@
 # `@runic-artifex/svelte`
 
 Svelte 5 Application Views helpers. `@runic-artifex/svelte` exports `useView`,
-`ViewOutlet`, `ViewRegistry`, `useCommand` and `useOperation` for generated
-Window/View clients, and `@runic-artifex/svelte/experimental` exports
+`ViewOutlet`, `ViewRegistry`, `useCommand`, `useOperation` and `useLatestOperation`
+for generated Window/View clients, and `@runic-artifex/svelte/experimental` exports
 `useCollectionViewport`. The `@runic-artifex/svelte/views` entry of earlier
 previews is gone: import from `@runic-artifex/svelte`.
 
@@ -155,32 +155,42 @@ or command availability that outlives the invocation wrapper. By default the hel
 uses the operation's public `wait()` and `outcome()`; the desktop transport keeps
 Cancel and other callbacks responsive during observation.
 
-For rapid read selection, compose the framework-neutral
-[`createLatestOperationController`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
-with Svelte state. It coalesces latest intent across delayed receipts and orders
-the next admission after terminal observation and any application drain barrier:
+## `useLatestOperation()`
+
+For rapid read selection, `useLatestOperation()` wraps the framework-neutral
+[latest-operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
+for the component's lifetime. It coalesces the latest intent across delayed receipts
+and orders the next admission after terminal observation and any application drain
+barrier:
 
 ```svelte
 <script lang="ts">
-  import { createLatestOperationController } from "@runic-artifex/views/experimental";
+  import { useLatestOperation, useView } from "@runic-artifex/svelte";
+  import { connectCatalog } from "./generated/catalog.js";
 
-  const selections = createLatestOperationController<void>();
-  let selection = $state.raw(selections.current);
-  const unsubscribe = selections.subscribe(() => { selection = selections.current; });
-  $effect.pre(() => () => { unsubscribe(); selections.dispose(); });
-  // Event handlers call selections.run({ start, cancel, isCurrent, waitForCompletion? }).
-  // Capture the original client/session in each intent. On application-owned
-  // session replacement, call selections.clear("replace") to detach old intent.
+  const catalog = useView(() => ({ connect: connectCatalog }));
+  const load = useLatestOperation<Item>();
+  function select(id: string) {
+    const client = catalog.client;
+    if (client) void load.run({ start: () => client.startLoad(id), isCurrent: () => catalog.client === client });
+  }
 </script>
 
-{#if selection.blocked}<p role="alert">Selection completion is uncertain. Reconnect or replace the session before retrying.</p>{/if}
+{#if load.outcome?.ok}<ItemView item={load.outcome.value} />{/if}
+{#if load.blocked}<p role="alert">Selection completion is uncertain. Reconnect or replace the session before retrying.</p>{/if}
 ```
 
+The result has the `useOperation` properties plus `blocked`, with `run(intent)` and
+`clear(mode?)`, which never reject. Capture the original client/session in each intent
+(`start`, and optionally `cancel`, `waitForCompletion` and `isCurrent`).
 `clear()` drops queued input and cancels the captured read; `clear("replace")`
 detaches it without cancellation and permits fresh admission. The application must
 establish that replacement boundary and own the old work's drain. Lost terminal
 observation blocks further Starts instead of retrying blindly, with its reason in
-`current.error`; ordinary Cancel does not clear this block.
+`error`; ordinary Cancel does not clear this block. Component destruction settles
+observation without cancelling accepted work. The
+[operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer)
+runs this hook against the packed packages and the desktop transport.
 
 ## Errors
 

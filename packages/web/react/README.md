@@ -173,6 +173,33 @@ before the unmount ends there. The optional
 `cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
 controller's options.
 
+## `useLatestOperation()`
+
+Admits only the newest of several reads, for example loading the item the user
+selected last, through the framework-neutral
+[latest-operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection).
+Each `run(intent)` replaces the queued intent and cancels the active read; the next
+read starts only after the previous one reaches its terminal status and the intent's
+optional `waitForCompletion` barrier:
+
+```tsx
+const load = useLatestOperation<Item>();
+// `client` comes from useView; the intent captures the one it starts on.
+const select = (id: string) => { if (client) void load.run({ start: () => client.startLoad(id) }); };
+{load.outcome?.ok && <ItemView item={load.outcome.value} />}
+{load.blocked && <p role="alert">Reconnect before selecting again.</p>}
+```
+
+The result has the `useOperation` fields plus `blocked`, with `run(intent)` and
+`clear(mode?)`, which never reject. The intent carries `start` and the optional
+`cancel`, `waitForCompletion` and `isCurrent` callbacks, so it captures the client or
+session it belongs to. `blocked` means admission is uncertain, for example after a
+lost Start reply; only `clear("replace")`, called after the application has
+established a fresh session, clears it. `clear()` drops the queued intent and cancels
+the active read. Unmounting disposes the controller like `useOperation`: pending runs
+resolve to `undefined` and accepted work is never cancelled. StrictMode's simulated
+unmount starts a fresh controller.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

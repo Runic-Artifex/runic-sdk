@@ -1,9 +1,12 @@
 import "@angular/compiler";
-import { Component, effect, Injector, NgZone, signal } from "@angular/core";
+import { Component, createEnvironmentInjector, effect, EnvironmentInjector, Injector, NgZone, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
-import { injectCommand, injectOperation, injectView, RunicViewOutlet, ViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
+import {
+  injectCommand, injectLatestOperation, injectOperation, injectView, RunicViewOutlet, ViewOutlet,
+  type LatestOperationHandle, type ViewRegistry,
+} from "../dist/esm/index.js";
 import { injectCollectionViewport } from "../dist/esm/experimental.js";
 import * as root from "../dist/esm/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
@@ -305,5 +308,73 @@ describe("injectOperation", () => {
     }
     operation.reset();
     expect(operation.error()).toBeUndefined();
+  });
+});
+
+describe("injectLatestOperation", () => {
+  const drain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  test("admits only the newest selection after the previous read finishes; fields are signals", async () => {
+    const latest = TestBed.runInInjectionContext(() => injectLatestOperation<number>());
+    expectTypeOf(latest).toEqualTypeOf<LatestOperationHandle<number>>();
+    expectTypeOf(latest.blocked()).toEqualTypeOf<boolean>();
+    expectTypeOf(latest.run).returns.resolves.toEqualTypeOf<BridgeOutcome<number, never> | undefined>();
+    const first = fakeOperation("first");
+    const second = fakeOperation("second");
+    const started: string[] = [];
+    const intent = (current: ReturnType<typeof fakeOperation>) =>
+      ({ start: () => { started.push(current.operation.requestId); return current.operation; } });
+    const a = latest.run(intent(first));
+    expect(latest.pending()).toBe(true);
+    await drain();
+    const b = latest.run(intent(second));
+    await drain();
+    expect(first.cancels()).toBe(1);
+    expect(started).toEqual(["first"]);
+    first.finish({ contract: "test", requestId: "first", kind: "cancelled" });
+    expect(await a).toBeUndefined();
+    await drain();
+    expect(started).toEqual(["first", "second"]);
+    second.finish({ contract: "test", requestId: "second", kind: "succeeded", result: 2 });
+    expect(await b).toEqual(bridgeSuccess(2));
+    expect(latest.outcome()).toEqual(bridgeSuccess(2));
+    expect(latest.pending()).toBe(false);
+  });
+
+  test("blocks after uncertain admission until clear(\"replace\")", async () => {
+    const latest = TestBed.runInInjectionContext(() => injectLatestOperation<number>());
+    await latest.run({ start: () => Promise.reject(new Error("lost Start reply")) });
+    expect(latest.blocked()).toBe(true);
+    let started = 0;
+    const next = fakeOperation("next");
+    expect(await latest.run({ start: () => { started++; return next.operation; } })).toBeUndefined();
+    expect(started).toBe(0);
+    latest.clear("replace");
+    expect(latest.blocked()).toBe(false);
+    const run = latest.run({ start: () => { started++; return next.operation; } });
+    next.finish({ contract: "test", requestId: "next", kind: "succeeded", result: 1 });
+    expect(await run).toEqual(bridgeSuccess(1));
+    expect(started).toBe(1);
+  });
+
+  test("destruction settles observation without cancelling accepted work", async () => {
+    const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+    const latest = injectLatestOperation<number>({ injector });
+    const current = fakeOperation("lifetime");
+    let completions = 0;
+    const run = latest.run({ start: () => current.operation, waitForCompletion: () => { completions++; } });
+    await drain();
+    expect(latest.pending()).toBe(true);
+    injector.destroy();
+    expect(await run).toBeUndefined();
+    current.finish({ contract: "test", requestId: "lifetime", kind: "succeeded", result: 1 });
+    await drain();
+    expect(completions).toBe(0);
+    expect(current.cancels()).toBe(0);
+    expect(latest.outcome()).toBeUndefined();
+  });
+
+  test("requires an injection context or an injector", () => {
+    expect(() => injectLatestOperation()).toThrow();
   });
 });

@@ -30,7 +30,11 @@ export {
 } from "./controller.js";
 export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
 export {
+  createLatestOperationController,
   createOperationController,
+  type LatestOperationController,
+  type LatestOperationIntent,
+  type LatestOperationState,
   type OperationState,
   type OperationController,
   type OperationControllerOptions,

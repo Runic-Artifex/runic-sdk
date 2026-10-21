@@ -3,7 +3,7 @@
 This fixture is copied outside the SDK and built from the packed NuGet and npm
 archives. It uses the shipped MSBuild bootstrap, generated composition/client,
 `DesktopHost`, `DesktopBridgeTransport`, scoped ReactiveUI model and Svelte
-operation binding. There are no source references or workspace symlinks.
+operation bindings. There are no source references or workspace symlinks.
 
 Run after `bun run pack`, using the locked development environment:
 
@@ -21,11 +21,14 @@ The existing Linux package-consumer CI job runs these focused journeys:
   and Cancel callbacks through the real desktop transport. The shipped Svelte
   `useOperation` renders pending and cancellation state, and a cancelled run ends
   in its `cancelled` state without an error.
-- `createLatestOperationController` coalesces choices before a delayed real Start
-  receipt, waits for actual accepted read completion before admitting the newest
-  choice, and drops stale intents/cancellation across repository replacement.
-- The generated recovery API reports unknown admission; the helper blocks new
-  intent until the application explicitly replaces that uncertain boundary.
+- The shipped Svelte `useLatestOperation` coalesces choices before a delayed real
+  Start receipt, waits for actual accepted read completion before admitting the
+  newest choice, renders the selected result, and drops stale intents/cancellation
+  across repository replacement. This fixture is the reference consumer of
+  `useLatestOperation`; the React, Vue and Angular READMEs show the same hook.
+- The generated recovery API reports unknown admission; the hook blocks new
+  intent until the application explicitly replaces that uncertain boundary, and
+  renders the blocked state.
 - Destroying the Svelte component detaches observation while accepted work remains
   active. The application requests cancellation separately.
 - A cancelled generated invocation drains its content session while model recovery

@@ -1524,6 +1524,10 @@ cleanup.subscribe(state => {
 });
 ```
 
+In a component, the adapter's `useLatestOperation()` (React, Vue, Svelte) or
+`injectLatestOperation()` (Angular) wraps the same controller and disposes it with
+the component.
+
 A question that takes parameters works the same way. There is no query route
 that returns a computed value: run a command with the parameters, and read the
 answer from the state it publishes. `await cleanup.estimate({ retention: 5 })`

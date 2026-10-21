@@ -5,8 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import {
-  useCommand, useOperation, useView, ViewOutlet,
-  type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry,
+  useCommand, useLatestOperation, useOperation, useView, ViewOutlet,
+  type CommandHandle, type LatestOperationHandle, type OperationHandle, type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
 import { retrySuspenseView, useCollectionViewport, useSuspenseView, type CollectionViewportHandle } from "../dist/experimental.js";
 import * as root_ from "../dist/index.js";
@@ -663,5 +663,92 @@ describe("useOperation", () => {
     }
     await act(async () => { handle!.reset(); });
     expect(text()).toBe("false:false:");
+  });
+});
+
+describe("useLatestOperation", () => {
+  async function mount(Runner: () => ReactNode) {
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(StrictMode, null, createElement(Runner)));
+    });
+  }
+
+  test("admits only the newest selection after the previous read finishes, in StrictMode", async () => {
+    let handle: LatestOperationHandle<number> | undefined;
+    function Runner(): ReactNode {
+      handle = useLatestOperation<number>();
+      return createElement("output", null, `${handle.pending}:${handle.outcome?.ok ? handle.outcome.value : ""}`);
+    }
+    await mount(Runner);
+    expectTypeOf(handle!.blocked).toEqualTypeOf<boolean>();
+    expectTypeOf(handle!.run).returns.resolves.toEqualTypeOf<BridgeOutcome<number, never> | undefined>();
+    expectTypeOf(handle!.clear).parameter(0).toEqualTypeOf<"cancel" | "replace" | undefined>();
+    const first = fakeOperation("first");
+    const second = fakeOperation("second");
+    const third = fakeOperation("third");
+    const started: string[] = [];
+    const intent = (current: ReturnType<typeof fakeOperation>) =>
+      ({ start: () => { started.push(current.operation.requestId); return current.operation; } });
+    let a: Promise<unknown> | undefined, b: Promise<unknown> | undefined, c: Promise<unknown> | undefined;
+    await act(async () => { a = handle!.run(intent(first)); });
+    expect(text()).toBe("true:");
+    await act(async () => { b = handle!.run(intent(second)); c = handle!.run(intent(third)); });
+    // The active read is cancelled once, the middle intent is dropped, and nothing else starts yet.
+    expect(first.cancels()).toBe(1);
+    expect(started).toEqual(["first"]);
+    expect(await b).toBeUndefined();
+    await act(async () => { first.finish({ contract: "test", requestId: "first", kind: "cancelled" }); await a; });
+    expect(started).toEqual(["first", "third"]);
+    await act(async () => { third.finish({ contract: "test", requestId: "third", kind: "succeeded", result: 3 }); await c; });
+    expect(await c).toEqual(bridgeSuccess(3));
+    expect(text()).toBe("false:3");
+    expect(second.cancels()).toBe(0);
+  });
+
+  test("blocks after uncertain admission until clear(\"replace\")", async () => {
+    let handle: LatestOperationHandle<number> | undefined;
+    function Runner(): ReactNode {
+      handle = useLatestOperation<number>();
+      return createElement("output", null, `${handle.blocked}`);
+    }
+    await mount(Runner);
+    await act(async () => { await handle!.run({ start: () => Promise.reject(new Error("lost Start reply")) }); });
+    expect(text()).toBe("true");
+    expect((handle!.error as Error).message).toBe("lost Start reply");
+    const next = fakeOperation("next");
+    let started = 0;
+    await act(async () => { expect(await handle!.run({ start: () => { started++; return next.operation; } })).toBeUndefined(); });
+    expect(started).toBe(0);
+    await act(async () => { handle!.clear("replace"); });
+    expect(text()).toBe("false");
+    let result: Promise<unknown> | undefined;
+    await act(async () => { result = handle!.run({ start: () => { started++; return next.operation; } }); });
+    await act(async () => { next.finish({ contract: "test", requestId: "next", kind: "succeeded", result: 1 }); await result; });
+    expect(started).toBe(1);
+    expect(await result).toEqual(bridgeSuccess(1));
+  });
+
+  test("unmounting settles observation without cancelling accepted work", async () => {
+    let handle: LatestOperationHandle<number> | undefined;
+    function Runner(): ReactNode {
+      handle = useLatestOperation<number>();
+      return createElement("output", null, `${handle.pending}`);
+    }
+    await mount(Runner);
+    const current = fakeOperation("lifetime");
+    let completions = 0;
+    let result: Promise<unknown> | undefined;
+    await act(async () => {
+      result = handle!.run({ start: () => current.operation, waitForCompletion: () => { completions++; } });
+    });
+    expect(text()).toBe("true");
+    await act(async () => root?.unmount());
+    root = undefined;
+    expect(await result).toBeUndefined();
+    current.finish({ contract: "test", requestId: "lifetime", kind: "succeeded", result: 1 });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(completions).toBe(0);
+    expect(current.cancels()).toBe(0);
   });
 });

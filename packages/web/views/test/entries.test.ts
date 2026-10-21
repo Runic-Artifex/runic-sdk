@@ -22,9 +22,10 @@ test("every entry resolves for import, require-style default and types", () => {
 
 test("experimental, binding and generator APIs are not in the application entries", async () => {
   const root = await import("@runic-artifex/views");
-  for (const name of ["createLatestOperationController", "createCollectionViewportController", "collectionViewport",
-    "viewSourceIdentity", "isViewClient"])
+  for (const name of ["createCollectionViewportController", "collectionViewport", "viewSourceIdentity", "isViewClient"])
     assert.equal(name in root, false, `${name} must not be exported from the root entry`);
+  // Graduated in 0.10 (docs/experimental.md).
+  assert.equal(typeof root.createLatestOperationController, "function");
   const experimental = await import("@runic-artifex/views/experimental");
   assert.deepEqual(Object.keys(experimental).sort(),
     ["collectionViewport", "createCollectionViewportController", "createLatestOperationController"]);

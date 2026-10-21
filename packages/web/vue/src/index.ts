@@ -12,10 +12,13 @@ import {
 } from "vue";
 import {
   createCommandController,
+  createLatestOperationController,
   createOperationController,
   createViewController,
   type BridgeOperation,
   type BridgeOutcomeFailure,
+  type LatestOperationController,
+  type LatestOperationState,
   type OperationController,
   type OperationControllerOptions,
   type OperationState,
@@ -197,4 +200,39 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   });
   releaseWithScope("useOperation", () => controller.dispose());
   return { ...refs, run: controller.run, cancel: controller.cancel, reset: controller.reset } as OperationHandle<TArgs, TResult, TFailure>;
+}
+
+/** Each {@link LatestOperationState} field as a shallow ref, with the controller's `run` and `clear`. */
+export type LatestOperationHandle<TResult, TFailure = never> = {
+  readonly [K in keyof LatestOperationState<TResult, TFailure>]-?: Readonly<Ref<LatestOperationState<TResult, TFailure>[K]>>;
+} & Pick<LatestOperationController<TResult, TFailure>, "run" | "clear">;
+
+/**
+ * Admits only the newest selection, for reads such as "load the selected item": each
+ * `run(intent)` replaces the queued intent and cancels the active read, and the next read
+ * starts only after the previous one has finished (including `waitForCompletion`). Each
+ * state field is a shallow ref, so the handle can be destructured. `blocked` means
+ * admission is uncertain; only `clear("replace")`, after the application has established a
+ * fresh session, clears it. Scope disposal settles run promises without cancelling accepted
+ * work. Call it in `setup()` or `effectScope().run()`: outside an effect scope it is never
+ * released (development builds warn).
+ *
+ * ```vue
+ * const load = useLatestOperation<Item>();
+ * <li @click="load.run({ start: () => client.value?.startLoad(id) })">…</li>
+ * <ItemView v-if="load.outcome.value?.ok" :item="load.outcome.value.value" />
+ * ```
+ */
+export function useLatestOperation<TResult = void, TFailure = never>(): LatestOperationHandle<TResult, TFailure> {
+  const controller = createLatestOperationController<TResult, TFailure>();
+  type State = LatestOperationState<TResult, TFailure>;
+  const refs = {} as { [K in keyof State]-?: Ref<State[K]> };
+  const keys = Object.keys(controller.current) as (keyof State)[];
+  for (const key of keys) (refs as Record<keyof State, Ref<unknown>>)[key] = shallowRef(controller.current[key]);
+  controller.subscribe(() => {
+    const current = controller.current;
+    for (const key of keys) (refs as Record<keyof State, Ref<unknown>>)[key].value = current[key];
+  });
+  releaseWithScope("useLatestOperation", () => controller.dispose());
+  return { ...refs, run: controller.run, clear: controller.clear } as LatestOperationHandle<TResult, TFailure>;
 }

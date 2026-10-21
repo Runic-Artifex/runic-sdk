@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   BridgeError, BridgeOperationUncertainError, bridgeFailure, bridgeSuccess,
-  createOperationController, onBridgeDiagnostic,
+  createLatestOperationController, createOperationController, onBridgeDiagnostic,
   type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
 } from "../dist/index.js";
-import { createLatestOperationController } from "../dist/experimental.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

@@ -158,6 +158,40 @@ without an `error`; `failed` and `timed-out` statuses are still `error`. `pendin
 stays true after a Cancel response until the operation reaches its terminal status.
 Disposing the effect scope settles run promises without cancelling accepted work.
 
+## `useLatestOperation()`
+
+Admits only the newest of several reads, for example loading the item the user
+selected last, through the framework-neutral
+[latest-operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection),
+and returns each state field as a shallow ref, with `run` and `clear`. Each
+`run(intent)` replaces the queued intent and cancels the active read; the next read
+starts only after the previous one reaches its terminal status and the intent's
+optional `waitForCompletion` barrier:
+
+```vue
+<script setup lang="ts">
+const { run: load, outcome, blocked } = useLatestOperation<Item>();
+function select(id: string) {
+  const current = client.value;
+  if (current) void load({ start: () => current.startLoad(id), isCurrent: () => client.value === current });
+}
+</script>
+
+<template>
+  <ItemView v-if="outcome?.ok" :item="outcome.value" />
+  <p v-if="blocked" role="alert">Reconnect before selecting again.</p>
+</template>
+```
+
+The result has the `useOperation` fields plus `blocked`, with `run(intent)` and
+`clear(mode?)`, which never reject. The intent carries `start` and the optional
+`cancel`, `waitForCompletion` and `isCurrent` callbacks, so it captures the client or
+session it belongs to. `blocked` means admission is uncertain, for example after a
+lost Start reply; only `clear("replace")`, called after the application has
+established a fresh session, clears it. `clear()` drops the queued intent and cancels
+the active read. Disposing the effect scope settles run promises without cancelling
+accepted work.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

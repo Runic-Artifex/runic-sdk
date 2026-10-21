@@ -2,7 +2,7 @@
 
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
-import { useCommand, useOperation, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
+import { useCommand, useLatestOperation, useOperation, useView, ViewOutlet, type LatestOperationHandle, type ViewRegistry } from "../dist/index.js";
 import { useCollectionViewport } from "../dist/experimental.js";
 import * as root from "../dist/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
@@ -219,8 +219,10 @@ describe("effect scope", () => {
     useView({ connect: () => new Promise<FakeClient>(() => {}) });
     useCommand(() => 1);
     useOperation(() => undefined);
+    useLatestOperation();
     useCollectionViewport({ totalCount: 0, rowHeight: 20 });
-    expect(warn.mock.calls.map(call => String(call[0]).split(" ")[0])).toEqual(["useView", "useCommand", "useOperation", "useCollectionViewport"]);
+    expect(warn.mock.calls.map(call => String(call[0]).split(" ")[0]))
+      .toEqual(["useView", "useCommand", "useOperation", "useLatestOperation", "useCollectionViewport"]);
     expect(String(warn.mock.calls[0]![0])).toContain("outside an active effect scope");
   });
 
@@ -231,6 +233,7 @@ describe("effect scope", () => {
       useView({ connect: () => new Promise<FakeClient>(() => {}) });
       useCommand(() => 1);
       useOperation(() => undefined);
+      useLatestOperation();
       useCollectionViewport({ totalCount: 0, rowHeight: 20 });
     });
     scope.stop();
@@ -316,5 +319,79 @@ describe("useOperation", () => {
     operation.reset();
     expect(operation.error.value).toBeUndefined();
     scope.stop();
+  });
+});
+
+describe("useLatestOperation", () => {
+  const drain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  test("admits only the newest selection after the previous read finishes; fields are shallow refs", async () => {
+    const scope = effectScope();
+    const outcomes: unknown[] = [];
+    const latest = scope.run(() => {
+      const handle = useLatestOperation<number>();
+      watchEffect(() => { outcomes.push(handle.outcome.value); });
+      return handle;
+    })!;
+    expectTypeOf(latest).toEqualTypeOf<LatestOperationHandle<number>>();
+    expectTypeOf(latest.blocked.value).toEqualTypeOf<boolean>();
+    expectTypeOf(latest.run).returns.resolves.toEqualTypeOf<BridgeOutcome<number, never> | undefined>();
+    const first = fakeOperation("first");
+    const second = fakeOperation("second");
+    const started: string[] = [];
+    const intent = (current: ReturnType<typeof fakeOperation>) =>
+      ({ start: () => { started.push(current.operation.requestId); return current.operation; } });
+    const a = latest.run(intent(first));
+    expect(latest.pending.value).toBe(true);
+    await drain();
+    const b = latest.run(intent(second));
+    await drain();
+    expect(first.cancels()).toBe(1);
+    expect(started).toEqual(["first"]);
+    first.finish({ contract: "test", requestId: "first", kind: "cancelled" });
+    expect(await a).toBeUndefined();
+    await drain();
+    expect(started).toEqual(["first", "second"]);
+    second.finish({ contract: "test", requestId: "second", kind: "succeeded", result: 2 });
+    expect(await b).toEqual(bridgeSuccess(2));
+    await nextTick();
+    expect(latest.pending.value).toBe(false);
+    expect(outcomes.at(-1)).toEqual(bridgeSuccess(2));
+    scope.stop();
+  });
+
+  test("blocks after uncertain admission until clear(\"replace\")", async () => {
+    const scope = effectScope();
+    const latest = scope.run(() => useLatestOperation<number>())!;
+    await latest.run({ start: () => Promise.reject(new Error("lost Start reply")) });
+    expect(latest.blocked.value).toBe(true);
+    let started = 0;
+    const next = fakeOperation("next");
+    expect(await latest.run({ start: () => { started++; return next.operation; } })).toBeUndefined();
+    expect(started).toBe(0);
+    latest.clear("replace");
+    expect(latest.blocked.value).toBe(false);
+    const run = latest.run({ start: () => { started++; return next.operation; } });
+    next.finish({ contract: "test", requestId: "next", kind: "succeeded", result: 1 });
+    expect(await run).toEqual(bridgeSuccess(1));
+    expect(started).toBe(1);
+    scope.stop();
+  });
+
+  test("scope disposal settles observation without cancelling accepted work", async () => {
+    const scope = effectScope();
+    const latest = scope.run(() => useLatestOperation<number>())!;
+    const current = fakeOperation("lifetime");
+    let completions = 0;
+    const run = latest.run({ start: () => current.operation, waitForCompletion: () => { completions++; } });
+    await drain();
+    expect(latest.pending.value).toBe(true);
+    scope.stop();
+    expect(await run).toBeUndefined();
+    current.finish({ contract: "test", requestId: "lifetime", kind: "succeeded", result: 1 });
+    await drain();
+    expect(completions).toBe(0);
+    expect(current.cancels()).toBe(0);
+    expect(latest.outcome.value).toBeUndefined();
   });
 });

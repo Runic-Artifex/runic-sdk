@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import {
+  createLatestOperationController,
   waitForBridge,
   type BridgeDiagnostic,
   type BridgeDiagnosticCode,
@@ -7,6 +8,10 @@ import {
   type BridgeOperationStartOptions,
   type BridgeOperationStatusKind,
   type BridgeOperationStreamPage,
+  type BridgeOutcome,
+  type LatestOperationController,
+  type LatestOperationIntent,
+  type LatestOperationState,
   type PageReference,
 } from "../dist/index.js";
 
@@ -27,4 +32,21 @@ test("the public types have their 1.0 shapes", () => {
   // @ts-expect-error waitForBridge takes an options object only.
   const numeric = () => waitForBridge(5);
   void [timedOut, camel, code, typo, page, delivery, start, reference, numeric];
+});
+
+// The latest-operation controller graduated to the root entry in 0.10 (docs/experimental.md).
+test("the latest-operation controller has its graduated shape", () => {
+  const latest: LatestOperationController<number, string> = createLatestOperationController<number, string>();
+  const blocked: boolean = latest.current.blocked;
+  const state: LatestOperationState<number, string> = latest.current;
+  const intent: LatestOperationIntent<number, string> = { start: () => undefined, isCurrent: () => true };
+  const run: Promise<BridgeOutcome<number, string> | undefined> = latest.run(intent);
+  latest.clear();
+  latest.clear("replace");
+  // @ts-expect-error clear takes "cancel" or "replace".
+  latest.clear("reset");
+  // @ts-expect-error An intent needs start.
+  const missing: LatestOperationIntent<number> = { isCurrent: () => true };
+  latest.dispose();
+  void [blocked, state, run, missing];
 });
