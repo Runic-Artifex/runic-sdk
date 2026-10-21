@@ -59,7 +59,7 @@ public sealed class EmbeddedHostTests
             window.SetKiosk(true);
             window.SetHighContrast(true);
             window.SetIconFile(icon);
-            window.SetCustomParameters("--custom=value");
+            window.SetBrowserArguments("--custom=value");
 
             var firstUrl = await window.ShowWebViewAsync("first");
             var host = Assert.IsType<RecordingHost>(factory.Host);
@@ -80,7 +80,7 @@ public sealed class EmbeddedHostTests
             Assert.True(host.Options.Kiosk);
             Assert.True(host.Options.HighContrast);
             Assert.Equal(Path.GetFullPath(icon), host.Options.IconFile);
-            Assert.Equal("--custom=value", host.Options.CustomParameters);
+            Assert.Equal("--custom=value", host.Options.BrowserArguments);
 
             await window.ShowWebViewAsync("second");
             Assert.Equal(1, host.NavigateCount);

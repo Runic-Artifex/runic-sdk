@@ -398,7 +398,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         }
         if (options.BrowserArguments is { } arguments)
         {
-            _engine.SetCustomParameters(arguments);
+            _engine.SetBrowserArguments(arguments);
         }
         _engine.SetAllowedPermissions(options.AllowedPermissions);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
@@ -469,8 +469,8 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     private async Task OpenCheckedAsync(BrowserKind browser, CancellationToken cancellationToken)
     {
-        var availability = _host.FindAvailability(browser);
-        if (availability is null || !availability.IsAvailable)
+        var availability = _host.GetPresentation(browser);
+        if (!availability.IsAvailable)
         {
             var diagnostic = availability is { Diagnostics: [var first, ..] } ? first : DesktopHost.Unavailable(browser).Diagnostics[0];
             var correlationId = Guid.NewGuid().ToString("N");
@@ -523,7 +523,7 @@ public sealed class DesktopSurface : IAsyncDisposable
                 "The selected presentation could not be started.",
                 Retryable: true,
                 correlationId,
-                "Review DesktopPlatform.GetAvailability(), install missing prerequisites, or select another presentation."));
+                "Run DesktopHost.Validate(windowOptions) for the missing prerequisites, install them, or select another presentation."));
             throw new DesktopException(
                 DesktopErrorCategory.Unavailable,
                 "presentation-start-failed",

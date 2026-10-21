@@ -1,1 +1,12 @@
 #nullable enable
+*REMOVED*Runic.Desktop.DesktopHost.GetAvailability() -> Runic.Desktop.DesktopAvailabilityResult!
+*REMOVED*static Runic.Desktop.DesktopPlatform.GetAvailability(string? browserFolder = null) -> Runic.Desktop.DesktopAvailabilityResult!
+*REMOVED*static Runic.Desktop.DesktopPlatform.GetAvailability(string? browserFolder, Runic.Desktop.LinuxDesktopOptions! linux) -> Runic.Desktop.DesktopAvailabilityResult!
+*REMOVED*static Runic.Desktop.DesktopPlatform.GetLinuxEmbeddedBackends() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.LinuxEmbeddedBackendAvailability!>!
+*REMOVED*static Runic.Desktop.DesktopPlatform.IsBrowserAvailable(Runic.Desktop.BrowserKind browser, string? browserFolder = null) -> bool
+*REMOVED*static Runic.Desktop.DesktopPlatform.IsEmbeddedWindowAvailable.get -> bool
+Runic.Desktop.DesktopAvailabilityResult.Embedded.get -> Runic.Desktop.DesktopPresentationAvailability!
+Runic.Desktop.DesktopAvailabilityResult.GetPresentation(Runic.Desktop.BrowserKind browser) -> Runic.Desktop.DesktopPresentationAvailability!
+Runic.Desktop.DesktopAvailabilityResult.LinuxBackends.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.LinuxEmbeddedBackendAvailability!>!
+Runic.Desktop.DesktopAvailabilityResult.LinuxBackends.init -> void
+static Runic.Desktop.DesktopPlatform.GetAvailability(Runic.Desktop.DesktopHostOptions? options = null) -> Runic.Desktop.DesktopAvailabilityResult!

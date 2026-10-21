@@ -109,9 +109,36 @@ once: a GTK4 selection without its provider, for example, lists
 `graphical-session-missing` together. A custom `IDesktopWindowHostFactory` can do
 the same by overriding `GetAvailabilityDiagnostics()`.
 
+To check a configuration before a host exists, for example before
+`DesktopEventLoop.Run` chooses its loop, pass the options you will start with to
+`DesktopPlatform.GetAvailability(options)`. It reads `BrowserFolder`, `Linux` and
+`WindowHostFactory`, so `WithGtk4()` or a WPF `RunicWebView` factory reports its own
+window host, and it returns the same presentations the preflight uses:
+
+```csharp
+var options = new DesktopHostOptions().WithGtk4();
+var availability = DesktopPlatform.GetAvailability(options);
+if (!availability.Embedded.IsAvailable)
+{
+    foreach (var diagnostic in availability.Embedded.Diagnostics)
+        Console.Error.WriteLine($"{diagnostic.Code}: {diagnostic.Remediation}");
+}
+var browser = availability.GetPresentation(BrowserKind.Any); // the browser a fallback would open
+```
+
+`Presentations` lists the discoverable browsers and the embedded WebView; match
+entries by `Browser`, since the list can grow. `GetPresentation` resolves `Any`
+and `ChromiumBased` as a window would. On Linux, `LinuxBackends` says which
+toolkit's libraries are installed. The call is synchronous; on Linux its first
+call reads the loader cache, which can take up to a second. The embedded entry's
+`Capabilities` leave out what the toolkit decides only once loaded; an open
+window's `Capabilities` are authoritative, and opening it is the final check.
+The set of codes can grow: treat an unknown code on an unavailable presentation
+as unavailable.
+
 | Code | Severity | Reported when |
 | --- | --- | --- |
-| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
+| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability(options)` lists them). |
 | `browser-unsupported` | Error | `Browser` is Safari or Opera. These values are detection-only: Runic Desktop neither discovers nor launches them. |
 | `window-option-invalid` | Error | An option has an undefined value, or a size that is not a positive number of pixels. |
 | `close-confirmation-unavailable` | Error or Warning | `ConfirmCloseAsync` is set for an explicitly selected browser (Error; opening throws a `DesktopException` with this code), or an `EmbeddedThenBrowser` fallback opens without close confirmation (Warning). |
@@ -148,7 +175,7 @@ startup example before introducing a top-level `await`.
 Runic Windows and Views pass the same `DesktopHostOptions` to `RunicDesktopHost.Run`
 from `Runic.Application.Views.Desktop`, which starts the host.
 No Linux toolkit is selected by default. Browser-only applications need no GTK
-selection. `DesktopPlatform.GetLinuxEmbeddedBackends()` inspects both library sets
+selection. `DesktopPlatform.GetAvailability().LinuxBackends` inspects both library sets
 without loading either toolkit; `host.GetPresentationPreflight(...)` evaluates the
 configured provider. A process cannot change GTK versions after claiming a backend.
 `EmbeddedThenBrowser` remains an explicit browser fallback, never a GTK3/GTK4 retry.

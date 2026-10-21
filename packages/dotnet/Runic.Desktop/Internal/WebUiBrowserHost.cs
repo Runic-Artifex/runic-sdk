@@ -6,7 +6,7 @@ internal sealed record WebUiBrowserLaunchOptions(
     string? ProfileName,
     string? ProfilePath,
     string? ProxyServer,
-    IReadOnlyList<string> CustomArguments,
+    IReadOnlyList<string> BrowserArguments,
     bool Kiosk,
     bool Hidden,
     uint? Width,
@@ -79,7 +79,7 @@ internal static class WebUiBrowserHost
                 arguments.Add($"--user-data-dir={options.ProfilePath}");
             }
 
-            if (options.CustomArguments.Count == 0)
+            if (options.BrowserArguments.Count == 0)
             {
                 arguments.AddRange(ChromiumDefaults);
             }
@@ -110,12 +110,12 @@ internal static class WebUiBrowserHost
             {
                 arguments.Add($"--proxy-server={options.ProxyServer}");
             }
-            else if (options.CustomArguments.Count == 0)
+            else if (options.BrowserArguments.Count == 0)
             {
                 arguments.Add("--no-proxy-server");
             }
 
-            arguments.AddRange(options.CustomArguments);
+            arguments.AddRange(options.BrowserArguments);
             arguments.Add($"--app={url.AbsoluteUri}");
             return arguments;
         }
@@ -133,7 +133,7 @@ internal static class WebUiBrowserHost
             arguments.Add(options.ProfileName);
         }
 
-        if (options.CustomArguments.Count == 0)
+        if (options.BrowserArguments.Count == 0)
         {
             arguments.Add("-purgecaches");
         }
@@ -153,7 +153,7 @@ internal static class WebUiBrowserHost
             arguments.Add(firefoxHeight.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
-        arguments.AddRange(options.CustomArguments);
+        arguments.AddRange(options.BrowserArguments);
         arguments.Add("--new-window");
         arguments.Add(url.AbsoluteUri);
         return arguments;

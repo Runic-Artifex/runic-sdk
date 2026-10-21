@@ -130,7 +130,7 @@ public sealed partial class RunicWebView : HwndHost
                 initializing = await WindowsWebView2Controller.CreateAsync(view._child, new WebUiEmbeddedHostOptions
                 {
                     ProfilePath = options.ProfilePath,
-                    CustomParameters = options.BrowserArguments,
+                    BrowserArguments = options.BrowserArguments,
                 });
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);

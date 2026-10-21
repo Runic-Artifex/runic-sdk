@@ -134,7 +134,7 @@ internal sealed record WebUiEmbeddedHostOptions
 
     public string? ProfilePath { get; init; }
 
-    public string? CustomParameters { get; init; }
+    public string? BrowserArguments { get; init; }
 
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 

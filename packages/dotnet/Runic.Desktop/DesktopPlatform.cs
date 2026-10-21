@@ -17,15 +17,6 @@ public static class DesktopPlatform
         BrowserKind.Yandex,
     ];
 
-    /// <summary>Gets whether the built-in embedded WebView presentation is available to this process.</summary>
-    public static bool IsEmbeddedWindowAvailable => GetEmbeddedDiagnostic() is null;
-
-    /// <summary>Gets whether a requested installed or embedded browser is available.</summary>
-    public static bool IsBrowserAvailable(BrowserKind browser, string? browserFolder = null) =>
-        browser == BrowserKind.Embedded
-            ? IsEmbeddedWindowAvailable
-            : WebUiBrowserDiscovery.Find(ToCompatibilityBrowser(browser), browserFolder) is not null;
-
     /// <summary>Gets whether the operating system currently uses a high-contrast theme.</summary>
     /// <remarks>
     /// A synchronous probe of the current setting, which decides a window's initial theme when
@@ -35,16 +26,60 @@ public static class DesktopPlatform
     /// </remarks>
     public static bool IsHighContrast => WebUiSystemTheme.IsHighContrast;
 
-    /// <summary>Inspects installed browsers and embedded-WebView prerequisites without opening a window.</summary>
-    public static DesktopAvailabilityResult GetAvailability(string? browserFolder = null) => GetAvailability(browserFolder, new LinuxDesktopOptions());
-
-    /// <summary>Inspects presentations for an explicit Linux backend.</summary>
-    public static DesktopAvailabilityResult GetAvailability(string? browserFolder, LinuxDesktopOptions linux)
+    /// <summary>
+    /// Inspects the installed browsers and the embedded presentation of a host configuration without starting a host
+    /// or opening a window.
+    /// </summary>
+    /// <param name="options">
+    /// The options the host will start with; <see langword="null"/> for <c>new DesktopHostOptions()</c>. Their
+    /// <see cref="DesktopHostOptions.BrowserFolder"/>, <see cref="DesktopHostOptions.Linux"/> and
+    /// <see cref="DesktopHostOptions.WindowHostFactory"/> are read, so a configuration such as
+    /// <c>new DesktopHostOptions().WithGtk4()</c> or a WPF <c>RunicWebView</c> factory reports its own window host.
+    /// </param>
+    /// <returns>
+    /// One entry per discoverable browser, then <see cref="DesktopAvailabilityResult.Embedded"/>, and on Linux the
+    /// toolkit libraries in <see cref="DesktopAvailabilityResult.LinuxBackends"/>.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <see cref="DesktopHost.GetPresentationPreflight"/> and <see cref="DesktopHost.Validate"/> evaluate a window request
+    /// with this result for the host's own options, so a check before <see cref="DesktopEventLoop"/> chooses its loop
+    /// gives the same answer as the host. Opening a window remains the final check: a window host may still fail, for
+    /// example when the GTK 4 loop finds no display.
+    /// </para>
+    /// <para>
+    /// Without <see cref="DesktopHostOptions.WindowHostFactory"/>, the embedded entry describes the built-in WebView2,
+    /// WKWebView or WebKitGTK host, and its <see cref="DesktopPresentationAvailability.Capabilities"/> leave out what
+    /// is known only once the native toolkit has loaded; an open window's <see cref="DesktopWindow.Capabilities"/> is
+    /// authoritative. With a factory, the entry has the factory's <see cref="IDesktopWindowHostFactory.IsSupported"/>
+    /// and <see cref="IDesktopWindowHostFactory.Capabilities"/>, and when it is not supported, the Linux selection
+    /// problems and <see cref="IDesktopWindowHostFactory.GetAvailabilityDiagnostics"/>, or
+    /// <c>custom-window-host-unavailable</c> when neither reports one.
+    /// </para>
+    /// <para>
+    /// The call is synchronous: it checks files, asks the WebView2 loader and, on Linux, reads the loader cache once
+    /// per process, which can take up to one second the first time. On macOS the embedded entry reports
+    /// <c>macos-main-thread-required</c> when called off the main thread before a Desktop event loop runs.
+    /// Diagnostic codes are an open set: treat an unknown code on an unavailable presentation as unavailable, and
+    /// match entries by <see cref="DesktopPresentationAvailability.Browser"/>, since the list can grow.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <see cref="DesktopHostOptions.Linux"/> is <see langword="null"/>, or a Linux window host factory's backend differs
+    /// from <see cref="LinuxDesktopOptions.EmbeddedBackend"/>, which <see cref="DesktopHost.StartAsync"/> rejects too.
+    /// </exception>
+    public static DesktopAvailabilityResult GetAvailability(DesktopHostOptions? options = null)
     {
+        options ??= new DesktopHostOptions();
+        var linux = options.Linux ?? throw new ArgumentException("DesktopHostOptions.Linux cannot be null.", nameof(options));
+        var factory = options.WindowHostFactory;
+        if (factory is ILinuxDesktopWindowHostFactory linuxFactory && linux.EmbeddedBackend != linuxFactory.Backend)
+            throw new ArgumentException("Linux.EmbeddedBackend must match the configured Linux window host factory.", nameof(options));
+
         var presentations = new List<DesktopPresentationAvailability>();
         foreach (var browser in DiscoverableBrowsers)
         {
-            var installation = WebUiBrowserDiscovery.Find(ToCompatibilityBrowser(browser), browserFolder);
+            var installation = WebUiBrowserDiscovery.Find(ToCompatibilityBrowser(browser), options.BrowserFolder);
             presentations.Add(new DesktopPresentationAvailability(
                 browser,
                 installation is not null,
@@ -52,27 +87,67 @@ public static class DesktopPlatform
                 DesktopWindowCapabilities.None,
                 installation is null ? [MissingBrowser(browser)] : []));
         }
-
-        var embeddedDiagnostics = GetEmbeddedDiagnostics(linux);
-        var embeddedAvailable = embeddedDiagnostics.Count == 0;
-        presentations.Add(new DesktopPresentationAvailability(
-            BrowserKind.Embedded,
-            embeddedAvailable,
-            ExecutablePath: null,
-            embeddedAvailable
-                ? DesktopWindowCapabilities.NativeHandle |
-                  DesktopWindowCapabilities.Focus |
-                  DesktopWindowCapabilities.Minimize |
-                  DesktopWindowCapabilities.Maximize |
-                  DesktopWindowCapabilities.Resize |
-                  DesktopWindowCapabilities.Move
-                : DesktopWindowCapabilities.None,
-            embeddedDiagnostics));
-        return new DesktopAvailabilityResult(GetPlatformName(), presentations);
+        presentations.Add(factory is null ? GetBuiltInEmbeddedAvailability(linux) : GetCustomEmbeddedAvailability(linux, factory));
+        return new DesktopAvailabilityResult(GetPlatformName(), presentations)
+        {
+            LinuxBackends = OperatingSystem.IsLinux() ? GetLinuxEmbeddedBackends() : [],
+        };
     }
 
-    /// <summary>Inspects both Linux runtime candidates without choosing or loading either toolkit.</summary>
-    public static IReadOnlyList<LinuxEmbeddedBackendAvailability> GetLinuxEmbeddedBackends() =>
+    // The operations the built-in host advertises before opening: each host's own KnownCapabilities, without a flag it
+    // decides only after loading its toolkit (State and FileDrop of GTK 3, FileDrop of WKWebView).
+    internal static DesktopWindowCapabilities BuiltInEmbeddedCapabilities =>
+        OperatingSystem.IsWindows() ? WindowsWebView2Host.KnownCapabilities :
+        OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.KnownCapabilities :
+        OperatingSystem.IsLinux() ? LinuxWebKitGtkHost.KnownCapabilities :
+        DesktopWindowCapabilities.None;
+
+    private static DesktopPresentationAvailability GetBuiltInEmbeddedAvailability(LinuxDesktopOptions linux)
+    {
+        var diagnostics = GetEmbeddedDiagnostics(linux);
+        var available = diagnostics.Count == 0;
+        return new DesktopPresentationAvailability(
+            BrowserKind.Embedded,
+            available,
+            ExecutablePath: null,
+            available ? BuiltInEmbeddedCapabilities : DesktopWindowCapabilities.None,
+            diagnostics);
+    }
+
+    private static DesktopPresentationAvailability GetCustomEmbeddedAvailability(LinuxDesktopOptions linux, IDesktopWindowHostFactory factory)
+    {
+        List<DesktopDiagnostic> diagnostics = OperatingSystem.IsLinux() && factory is ILinuxDesktopWindowHostFactory
+            ? GetLinuxSelectionDiagnostics(linux, factory)
+            : [];
+        var available = diagnostics.Count == 0 && factory.IsSupported;
+        if (!available)
+        {
+            // The selection and the factory can both report a prerequisite, such as a toolkit conflict; list each code once.
+            if (!factory.IsSupported)
+            {
+                foreach (var diagnostic in factory.GetAvailabilityDiagnostics())
+                {
+                    if (!diagnostics.Exists(existing => existing.Code == diagnostic.Code)) diagnostics.Add(diagnostic);
+                }
+            }
+            if (diagnostics.Count == 0)
+                diagnostics.Add(new DesktopDiagnostic(
+                    DesktopErrorCategory.Unavailable,
+                    "custom-window-host-unavailable",
+                    "The configured embedded-window host is unavailable.",
+                    Retryable: false,
+                    Remediation: "Install its platform prerequisites or select an installed browser."));
+        }
+        return new DesktopPresentationAvailability(
+            BrowserKind.Embedded,
+            available,
+            ExecutablePath: null,
+            available ? factory.Capabilities : DesktopWindowCapabilities.None,
+            available ? [] : diagnostics);
+    }
+
+    // Both Linux toolkit candidates, without choosing or loading either.
+    private static IReadOnlyList<LinuxEmbeddedBackendAvailability> GetLinuxEmbeddedBackends() =>
     [
         Inspect(LinuxEmbeddedBackend.Gtk3WebKit41, Gtk3NativeLibraries.Gtk, Gtk3NativeLibraries.WebKit),
         Inspect(LinuxEmbeddedBackend.Gtk4WebKit6, Gtk4NativeLibraries.Gtk, Gtk4NativeLibraries.WebKit[0]),

@@ -26,7 +26,7 @@ public interface IDesktopWindowHostFactory
 
     /// <summary>Reports each missing prerequisite while <see cref="IsSupported"/> is <see langword="false"/>.</summary>
     /// <remarks>
-    /// <see cref="DesktopHost.GetAvailability"/> and <see cref="DesktopHost.Validate"/> list these instead of a generic
+    /// <see cref="DesktopPlatform.GetAvailability"/> and <see cref="DesktopHost.Validate"/> list these instead of a generic
     /// <c>custom-window-host-unavailable</c> diagnostic, so users see every missing native library or service at once.
     /// Keep the check cheap: do not load native libraries. The default reports none.
     /// </remarks>
@@ -359,7 +359,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             HighContrast = options.HighContrast,
             IconFile = options.IconFile,
             ProfilePath = options.ProfilePath,
-            BrowserArguments = options.CustomParameters,
+            BrowserArguments = options.BrowserArguments,
             AllowedPermissions = options.AllowedPermissions,
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,

@@ -49,7 +49,7 @@ of Runic Desktop; its former experimental ID `RUNICDESK100` is retired since
 0.10.0, so remove its suppressions. On Windows and macOS it
 keeps the platform's own embedded host. It throws `ArgumentException` when the
 options already carry another factory. When the profile cannot run,
-`DesktopHost.Validate` and `GetAvailability` list every missing library
+`DesktopHost.Validate` and `DesktopPlatform.GetAvailability(options)` list every missing library
 (`gtk4-runtime-missing`, `webkitgtk6-runtime-missing`) rather than only the
 first. `dotnet runic doctor` adds a `gtk4-profile` check that also names a
 missing `Runic.Application.Views.Desktop`, which creates the GTK 4 window services.

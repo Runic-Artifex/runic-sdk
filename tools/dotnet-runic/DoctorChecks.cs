@@ -337,7 +337,7 @@ internal static class DoctorChecks
     /// </summary>
     /// <remarks>
     /// The sonames come from Runic.Desktop's Gtk3NativeLibraries, which LinuxWebKitGtkHost and
-    /// DesktopPlatform.GetLinuxEmbeddedBackends use, and the probe mirrors LinuxDesktopRuntime.IsLibraryAvailable.
+    /// DesktopPlatform.GetAvailability's LinuxBackends use, and the probe mirrors LinuxDesktopRuntime.IsLibraryAvailable.
     /// </remarks>
     private static async Task CheckDesktopRuntimeAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
         IDoctorRuntime runtime, CancellationToken cancellationToken)

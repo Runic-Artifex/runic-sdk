@@ -194,7 +194,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
     {
         var environmentCompletion = new WebViewCompletion();
         using var environmentHandler = new WebViewComReference<IWebViewEnvironmentCompleted>(environmentCompletion);
-        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(options.CustomParameters));
+        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(options.BrowserArguments));
         WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, environmentHandler.Pointer);
         var environment = await environmentCompletion.Task;
         nint controller = 0;

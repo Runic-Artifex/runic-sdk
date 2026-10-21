@@ -163,7 +163,7 @@ public sealed class BrowserHostTests
         Trace.Listeners.Add(relaunches);
         await using var window = new WebUiWindow();
         window.SetHidden(true);
-        window.SetCustomParameters("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
+        window.SetBrowserArguments("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
         try
         {
             var serverOnlyUrl = await window.StartServerAsync(Page("server-only"), timeout.Token);
@@ -567,7 +567,7 @@ public sealed class BrowserHostTests
             File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             WebUiApplication.SetBrowserFolder(folder.FullName);
             WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, false);
-            window.SetCustomParameters($"--gate=\"{folder.FullName}\"");
+            window.SetBrowserArguments($"--gate=\"{folder.FullName}\"");
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await window.ShowInBrowserAsync(Page("helper"), WebUiBrowser.Chrome, timeout.Token);
             var profile = window.GeneratedProfilePath;
@@ -623,7 +623,7 @@ public sealed class BrowserHostTests
         var destroyed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var window = new WebUiWindow();
         window.SetHidden(true);
-        window.SetCustomParameters("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
+        window.SetBrowserArguments("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
         window.Bind("destroy", e =>
         {
             e.Window.Dispose();

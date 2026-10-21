@@ -76,8 +76,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string? _profilePath;
     private string? _generatedProfilePath;
     private string? _proxyServer;
-    private IReadOnlyList<string> _customBrowserArguments = [];
-    private string? _customBrowserParameters;
+    private IReadOnlyList<string> _browserArgumentList = [];
+    private string? _browserArguments;
     private DesktopPermissionGrant _allowedPermissions;
     private string? _embeddedHtml;
     private string? _entryFile;
@@ -446,7 +446,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             _profileName,
             profilePath,
             _proxyServer,
-            _customBrowserArguments,
+            _browserArgumentList,
             _kiosk,
             _hidden,
             _width,
@@ -891,12 +891,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sets additional command-line parameters passed to the browser.</summary>
-    public void SetCustomParameters(string parameters)
+    public void SetBrowserArguments(string parameters)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(parameters);
-        _customBrowserParameters = parameters.Length == 0 ? null : parameters;
-        _customBrowserArguments = WebUiCommandLine.Split(parameters);
+        _browserArguments = parameters.Length == 0 ? null : parameters;
+        _browserArgumentList = WebUiCommandLine.Split(parameters);
     }
 
     internal void SetAllowedPermissions(DesktopPermissionGrant permissions) => _allowedPermissions = permissions;
@@ -1284,8 +1284,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _profileName = null;
         _profilePath = null;
         _proxyServer = null;
-        _customBrowserArguments = [];
-        _customBrowserParameters = null;
+        _browserArgumentList = [];
+        _browserArguments = null;
     }
 
     // The saved placement the next embedded window restores; ApplyWindowOptions already set its size and position.
@@ -1641,7 +1641,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             HighContrast = _highContrast ?? WebUiSystemTheme.IsHighContrast,
             IconFile = _iconFile,
             ProfilePath = profilePath,
-            CustomParameters = _customBrowserParameters,
+            BrowserArguments = _browserArguments,
             AllowedPermissions = _allowedPermissions,
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,

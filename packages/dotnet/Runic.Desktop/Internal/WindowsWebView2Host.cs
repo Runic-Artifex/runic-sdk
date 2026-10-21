@@ -67,10 +67,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private bool _maximizeWhenShown;
 
     public bool SupportsCloseConfirmation => true;
-    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+    // Known before WebView2 loads; DesktopPlatform.GetAvailability advertises the same set.
+    internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop;
+    public DesktopWindowCapabilities Capabilities => KnownCapabilities;
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
 
