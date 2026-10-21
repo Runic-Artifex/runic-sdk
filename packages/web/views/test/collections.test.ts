@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
-import { collectionViewport } from "../dist/experimental.js";
+import { collectionViewport, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
 import { connectView, defineCollection, defineCollections } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { applyCollectionDelta } from "../dist/collections.js";

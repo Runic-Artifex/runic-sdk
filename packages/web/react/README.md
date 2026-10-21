@@ -88,18 +88,13 @@ export function CounterPage({ page }: { page: CounterPageReference }) {
 The control shows the ViewModel's value, so it reverts when the setter throws
 or keeps a different value.
 
-## `useSuspenseView(source)` (experimental)
-
-`useSuspenseView` and `retrySuspenseView` are exported from
-`@runic-artifex/react/experimental`: the module-wide connection cache and its
-ten-second timeout may change in a minor release (see
-[experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#npm-packages)).
+## `useSuspenseView(source, options?)`
 
 Suspends the component until a reference connects, then returns
 `{ state, client }` without `undefined`. A failed connection is thrown to the
 nearest error boundary. Call `retrySuspenseView(reference)` when the boundary
 resets, so the next render connects again; an unretried failure is forgotten
-after ten seconds:
+after `releaseTimeout`:
 
 ```tsx
 <ErrorBoundary fallback={<p role="alert">Offline</p>} onReset={() => retrySuspenseView(page)}>
@@ -115,6 +110,20 @@ function Counter({ page }: { page: CounterPageReference }) {
 Components that pass a reference with the same `connect` function share one
 client, which is disposed after the last of them unmounts. The reference must
 be stable: a `connect` function created during render never resolves.
+
+The connections live in a module-wide cache until a component claims them,
+because Suspense discards the state of a component that never mounted.
+`options.releaseTimeout` is how many milliseconds a connection that no mounted
+component has claimed, or a failure that no `retrySuspenseView` has cleared,
+stays cached. It defaults to 10000 (ten seconds); `Infinity` keeps the entry
+until it is claimed or retried. Other values must be whole numbers from 1 to
+2147483647, or the hook throws a `RangeError`. It is not a connection timeout.
+Components that share a `connect` function share one entry, which keeps the
+largest `releaseTimeout` any of them passed:
+
+```tsx
+const { state } = useSuspenseView(page, { releaseTimeout: 30_000 });
+```
 
 ## `ViewOutlet`
 
@@ -262,13 +271,10 @@ the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## `useCollectionViewport(options)` (experimental)
-
-Exported from `@runic-artifex/react/experimental`, like the
-`@runic-artifex/views/experimental` controller it wraps.
+## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, ref }`.
-`viewport` is the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
+`viewport` is the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
 range for the container; it changes only when the range or sizes change. Send
 the range to the ViewModel from an effect:
 

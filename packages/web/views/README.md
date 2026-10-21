@@ -69,7 +69,6 @@ controllers in [Framework bindings](#framework-bindings).
 | Entry | For |
 | --- | --- |
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
-| `@runic-artifex/views/experimental` | APIs whose shape may change in a minor release: `createCollectionViewportController` and `collectionViewport` ([experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#npm-packages)) |
 | `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `mockFailure` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
@@ -77,7 +76,8 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
 
 Every entry has `types`, `import` and `default` conditions; the package is ESM
-only. Application code imports the root entry, `/experimental` and `/mock`. The
+only. Application code imports the root entry and `/mock`. The `/experimental`
+entry of 0.9 was removed in 0.10: its APIs graduated to the root entry. The
 `/bindings` and `/generated*` entries are versioned with the generator and the
 .NET packages: code that a release generated keeps working with the runtime of
 any later release of the same major, but their shape is not for hand-written
@@ -134,9 +134,7 @@ the collections, as `defineCollections({ log: defineText() })`; `nullable`
 accepts `null` for a `string?`. A change whose length does not match the
 client's text is unusable, and the client reads a fresh snapshot.
 
-### `collectionViewport(options)` (experimental)
-
-Exported from `@runic-artifex/views/experimental`.
+### `collectionViewport(options)`
 
 ```ts
 function collectionViewport(options: {
@@ -158,7 +156,7 @@ The ViewModel owns the windowed collection; the page sends the requested range
 through a command and renders the rows it receives:
 
 ```ts
-import { collectionViewport } from "@runic-artifex/views/experimental";
+import { collectionViewport } from "@runic-artifex/views";
 import { connectRows } from "./generated/rows.js";
 
 const view = await connectRows();
@@ -201,8 +199,8 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   `failure` is the declared failure of the latest run; `error` stays the
   unexpected failure. Starting a run and `reset()` clear both, and a run
   superseded by a later run or by `reset()` sets neither.
-- `createCollectionViewportController({ totalCount, rowHeight, overscan? })`
-  (`@runic-artifex/views/experimental`) has `attach(element)`, which follows the element's scroll position (once per
+- `createCollectionViewportController({ totalCount, rowHeight, overscan? })` has
+  `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the
   `collectionViewport` range and changes only when the range or sizes change.
 - `createOperationController(start, options?)` observes generated `start<Command>()`

@@ -1,7 +1,6 @@
 // The app-facing API. Generated clients import their runtime from
 // `@runic-artifex/views/generated`; framework bindings import their plumbing from
-// `@runic-artifex/views/bindings`; APIs whose shape may still change are in
-// `@runic-artifex/views/experimental` (docs/experimental.md).
+// `@runic-artifex/views/bindings`.
 export {
   BridgeError,
   BridgeOperationUncertainError,
@@ -55,6 +54,13 @@ export type {
   BridgeStreamOperation,
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
+export {
+  collectionViewport,
+  createCollectionViewportController,
+  type CollectionViewport,
+  type CollectionViewportController,
+  type CollectionViewportOptions,
+} from "./viewport.js";
 
 /**
  * A generated content reference: a logical .NET View presented in a ViewModel slot, the

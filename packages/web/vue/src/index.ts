@@ -236,3 +236,5 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   releaseWithScope("useLatestOperation", () => controller.dispose());
   return { ...refs, run: controller.run, clear: controller.clear } as LatestOperationHandle<TResult, TFailure>;
 }
+
+export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";

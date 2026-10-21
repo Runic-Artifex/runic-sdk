@@ -263,13 +263,11 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## Collection viewports (experimental)
+## Collection viewports
 
-`injectCollectionViewport(element, options)`, exported from
-`@runic-artifex/angular/experimental` like the `@runic-artifex/views/experimental`
-controller it wraps, follows a fixed-row-height scroll
+`injectCollectionViewport(element, options)` follows a fixed-row-height scroll
 container and returns a signal with its
-[`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
+[`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
 range. Pass the container as a signal, such as a `viewChild`, and the options as
 a function or signal, then send the range to the ViewModel from an effect:
 

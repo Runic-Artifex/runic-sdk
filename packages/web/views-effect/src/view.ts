@@ -1,8 +1,7 @@
 import {
   isBridgeOutcome, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
-  type ViewClient, type ViewConnector,
+  type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
 } from "@runic-artifex/views";
-import type { CollectionViewport, CollectionViewportController } from "@runic-artifex/views/experimental";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";

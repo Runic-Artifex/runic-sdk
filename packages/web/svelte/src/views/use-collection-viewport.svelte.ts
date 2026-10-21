@@ -1,6 +1,6 @@
 import { untrack } from "svelte";
 import type { Attachment } from "svelte/attachments";
-import { createCollectionViewportController, type CollectionViewport, type CollectionViewportOptions } from "@runic-artifex/views/experimental";
+import { createCollectionViewportController, type CollectionViewport, type CollectionViewportOptions } from "@runic-artifex/views";
 
 export interface CollectionViewportHandle {
   /** The rows to request and the sizes to render. */

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  createCollectionViewportController,
   createCommandController,
   createViewController,
   type ViewControllerState,
 } from "../dist/index.js";
 import { isViewClient, viewSourceIdentity } from "../dist/bindings.js";
-import { createCollectionViewportController } from "../dist/experimental.js";
 
 type State = { readonly count: number };
 

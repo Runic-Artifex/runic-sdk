@@ -1,5 +1,5 @@
 import { assertInInjectionContext, DestroyRef, effect, ElementRef, inject, Injector, NgZone, signal, untracked, type Signal } from "@angular/core";
-import { createCollectionViewportController, type CollectionViewport, type CollectionViewportOptions } from "@runic-artifex/views/experimental";
+import { createCollectionViewportController, type CollectionViewport, type CollectionViewportOptions } from "@runic-artifex/views";
 
 export interface InjectCollectionViewportOptions {
   /** Required outside an injection context. */

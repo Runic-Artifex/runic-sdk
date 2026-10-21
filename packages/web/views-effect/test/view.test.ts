@@ -1,5 +1,7 @@
-import { BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOperation, type ViewClient } from "@runic-artifex/views";
-import type { CollectionViewport, CollectionViewportController } from "@runic-artifex/views/experimental";
+import {
+  BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOperation, type CollectionViewport,
+  type CollectionViewportController, type ViewClient,
+} from "@runic-artifex/views";
 import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
@@ -7,10 +9,9 @@ import { Cause, Effect, Exit, Fiber, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  catchCase, command, connect, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
-  type ViewError, type ViewOperationError,
+  catchCase, command, connect, followViewport, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
+  type ViewError, type ViewOperationError, type ViewportRange,
 } from "../dist/index.js";
-import { followViewport, type ViewportRange } from "../dist/experimental.js";
 
 const contract = "Tests.CounterViewModel:fingerprint";
 const contractId = `${contract}:counter`;
@@ -328,6 +329,13 @@ describe("followViewport", () => {
     };
     return { controller, listeners, move(next: Partial<CollectionViewport>) { current = { ...current, ...next }; for (const listener of [...listeners]) listener(); } };
   }
+
+  test("is exported from the root entry (graduated in 0.10)", async () => {
+    const root = await import("../dist/index.js");
+    expect(typeof root.followViewport).toBe("function");
+    expect(typeof root.viewportChanges).toBe("function");
+    expectTypeOf(root.viewportChanges).returns.toEqualTypeOf<Stream.Stream<CollectionViewport>>();
+  });
 
   test("requests the latest range and interrupts a stale request", async () => {
     const viewport = fakeViewport();

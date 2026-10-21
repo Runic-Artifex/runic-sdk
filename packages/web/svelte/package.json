@@ -24,12 +24,6 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./experimental": {
-      "types": "./dist/experimental.d.ts",
-      "svelte": "./dist/experimental.js",
-      "import": "./dist/experimental.js",
-      "default": "./dist/experimental.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -1,10 +1,11 @@
 # `@runic-artifex/svelte`
 
 Svelte 5 Application Views helpers. `@runic-artifex/svelte` exports `useView`,
-`ViewOutlet`, `ViewRegistry`, `useCommand`, `useOperation` and `useLatestOperation`
-for generated Window/View clients, and `@runic-artifex/svelte/experimental` exports
-`useCollectionViewport`. The `@runic-artifex/svelte/views` entry of earlier
-previews is gone: import from `@runic-artifex/svelte`.
+`ViewOutlet`, `ViewRegistry`, `useCommand`, `useOperation`, `useLatestOperation`
+and `useCollectionViewport` for generated Window/View clients. The
+`@runic-artifex/svelte/views` entry of earlier previews and the
+`@runic-artifex/svelte/experimental` entry of 0.9 are gone: import from
+`@runic-artifex/svelte`.
 
 Generated View clients import `@runic-artifex/views`, which this package also
 builds on, so a Views application installs both packages:
@@ -250,13 +251,10 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## `useCollectionViewport(options)` (experimental)
-
-Exported from `@runic-artifex/svelte/experimental`, like the
-`@runic-artifex/views/experimental` controller it wraps.
+## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
-`viewport` is the reactive [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
+`viewport` is the reactive [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
 range; `attach` is an attachment for the container. Call it during component
 initialization and send the range to the ViewModel from an effect:
 

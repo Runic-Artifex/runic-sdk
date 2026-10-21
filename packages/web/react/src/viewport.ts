@@ -3,9 +3,7 @@ import {
   createCollectionViewportController,
   type CollectionViewport,
   type CollectionViewportOptions,
-} from "@runic-artifex/views/experimental";
-
-// Experimental (`@runic-artifex/react/experimental`), like the views viewport controller it wraps.
+} from "@runic-artifex/views";
 
 export interface CollectionViewportHandle {
   /** The rows to request and the sizes to render. */

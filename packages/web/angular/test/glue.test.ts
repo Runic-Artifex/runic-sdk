@@ -4,10 +4,9 @@ import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
 import {
-  injectCommand, injectLatestOperation, injectOperation, injectView, RunicViewOutlet, ViewOutlet,
+  injectCollectionViewport, injectCommand, injectLatestOperation, injectOperation, injectView, RunicViewOutlet, ViewOutlet,
   type LatestOperationHandle, type ViewRegistry,
 } from "../dist/esm/index.js";
-import { injectCollectionViewport } from "../dist/esm/experimental.js";
 import * as root from "../dist/esm/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
@@ -136,8 +135,8 @@ describe("ViewOutlet", () => {
     expect(element.querySelector(".fallback")?.textContent).toBe("Loading");
   });
 
-  test("injectCollectionViewport is only in @runic-artifex/angular/experimental", () => {
-    expect("injectCollectionViewport" in root).toBe(false);
+  test("injectCollectionViewport is a root export (graduated in 0.10)", () => {
+    expect(typeof root.injectCollectionViewport).toBe("function");
   });
 
   test("the deprecated RunicViewOutlet alias renders the same outlet", () => {

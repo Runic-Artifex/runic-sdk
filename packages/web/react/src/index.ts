@@ -311,3 +311,6 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   const current = useSyncExternalStore(controller.subscribe, read, read);
   return { ...current, run: controller.run, clear: controller.clear };
 }
+
+export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
+export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";

@@ -97,23 +97,25 @@ change. It graduates with that redesign.
 
 ## npm packages
 
-An npm package has no diagnostic ID: its experimental APIs are exported only
-from its `./experimental` subpath, so importing one is the opt-in. They may
+An npm package has no diagnostic ID: an experimental API is exported only from
+the package's `./experimental` subpath, so importing one is the opt-in. It may
 change or be removed in a minor release, and no stable export names an
-experimental type. Graduation moves the export to the package's root entry; the
-experimental path is then removed in the next major. The APIs today:
+experimental type. Graduation moves the export to the package's root entry.
+Before 1.0 it is removed from `./experimental` in the same minor release; from
+1.0 the experimental export remains as a deprecated alias until the next major.
 
-| Package | `./experimental` exports | Status |
+No npm API is experimental, and no package has an `./experimental` entry. The
+APIs below graduated in 0.10.0, which removed the `./experimental` entries of all
+six packages. Import them from the package root: an `./experimental` import fails
+with `ERR_PACKAGE_PATH_NOT_EXPORTED` (Node) or TS2307 (TypeScript).
+
+| Package | Graduated exports | Graduated in |
 |---|---|---|
-| `@runic-artifex/views` | `createCollectionViewportController`, `collectionViewport`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions` | The fixed-row-height viewport model has one consumer, the [DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata); variable row heights may change its shape. |
-| `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | Effect helpers of the viewport controller; they follow its status. |
-| `@runic-artifex/react` | `useCollectionViewport`, `CollectionViewportHandle` | Wraps the viewport controller; follows its status. |
-| `@runic-artifex/react` | `useSuspenseView`, `retrySuspenseView`, `SuspenseViewHandle` | The module-wide connection cache and its fixed ten-second timeout may change; no sample uses it yet. |
-| `@runic-artifex/vue`, `@runic-artifex/svelte` | `useCollectionViewport`, `CollectionViewportHandle` | Wrap the viewport controller; follow its status. |
-| `@runic-artifex/angular` | `injectCollectionViewport`, `InjectCollectionViewportOptions` | Wraps the viewport controller; follows its status. |
+| `@runic-artifex/views` | `collectionViewport`, `createCollectionViewportController`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions`. The viewport keeps a fixed row height; variable heights would be a separate factory. | 0.10.0 |
+| `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState`. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation` wrap it, and the [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer) is its sample. | 0.10.0 |
+| `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | 0.10.0 |
+| `@runic-artifex/react` | `useCollectionViewport`, `CollectionViewportHandle` | 0.10.0 |
+| `@runic-artifex/react` | `useSuspenseView`, `retrySuspenseView`, `SuspenseViewHandle`. `useSuspenseView` takes a new `{ releaseTimeout }` option (`SuspenseViewOptions`) instead of the fixed ten seconds. | 0.10.0 |
+| `@runic-artifex/vue`, `@runic-artifex/svelte` | `useCollectionViewport`, `CollectionViewportHandle` | 0.10.0 |
+| `@runic-artifex/angular` | `injectCollectionViewport`, `InjectCollectionViewportOptions` | 0.10.0 |
 
-Graduated npm APIs, now exported from the package root:
-
-| Package | Exports | Graduated in |
-|---|---|---|
-| `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState`. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation` wrap it, and the [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer) is its sample. The `./experimental` entry re-exports it until that entry is removed in 0.10.0. | 0.10.0 |
