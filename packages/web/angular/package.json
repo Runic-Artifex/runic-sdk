@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/angular",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "exports": {
     ".": {
@@ -17,7 +17,7 @@
   },
   "peerDependencies": {
     "@angular/core": ">=22.0.0 <23",
-    "@runic-artifex/views": "0.9.0"
+    "@runic-artifex/views": "0.9.1"
   },
   "description": "Angular outlet and signals for Runic Views",
   "license": "MIT",
