@@ -36,7 +36,8 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           committed=$(node -p 'require("./eng/workspace.json").version')
-          if [[ "$committed" != "$VERSION" || ! "$committed" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+          # A preview is any 0.y.z release or a prerelease of a later version (eng/release/README.md).
+          if [[ "$committed" != "$VERSION" || ! "$committed" =~ ^(0\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+)$ ]]; then
             echo "Commit the requested preview version before publishing" >&2
             exit 1
           fi
