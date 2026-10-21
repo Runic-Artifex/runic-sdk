@@ -57,8 +57,9 @@ of the Runic.Application.Views guide links here.
 | [`RUNICBRIDGE020`](#runicbridge020) | Warning | Generator | Types were skipped because an assembly they need could not be loaded |
 | [`RUNICBRIDGE021`](#runicbridge021) | Error | Build targets | The external `node_modules` could not be linked |
 | [`RUNICBRIDGE022`](#runicbridge022) | Error | Build targets | `NoBuild=true` finds no generated Bridge code to reuse |
-| [`RUNICBRIDGE023`](#runicbridge023) | Error | `Runic.Application.Views.ReactiveUI.Reactive` build targets | The application references both ReactiveUI flavors |
+| [`RUNICBRIDGE023`](#runicbridge023) | Error | Build targets | The application references Runic ReactiveUI adapters of both ReactiveUI flavors |
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
+| [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
 
 ### RUNICBRIDGE001
 
@@ -369,14 +370,21 @@ without `--no-build`.
 
 ### RUNICBRIDGE023
 
-The `Runic.Application.Views.ReactiveUI.Reactive` build targets report this
-error. The project references `Runic.Application.Views.ReactiveUI.Reactive`,
-which uses ReactiveUI's System.Reactive flavor, together with
-`Runic.Application.Views.ReactiveUI` or `Runic.Navigation.ReactiveUI`, which use
-the ReactiveUI.Primitives flavor. An application uses one flavor.
+The `Runic.Application.Views` build targets report this error. The project's
+resolved references, direct or through another package or project, combine
+Runic ReactiveUI adapters of both flavors: `Runic.Application.Views.ReactiveUI.Reactive`
+or `Runic.Navigation.ReactiveUI.Reactive`, which use ReactiveUI's System.Reactive
+flavor, with `Runic.Application.Views.ReactiveUI` or `Runic.Navigation.ReactiveUI`,
+which use ReactiveUI.Primitives. An application uses one flavor. Until 0.9 the
+`Runic.Application.Views.ReactiveUI.Reactive` targets checked only the project's
+own references, and not `Runic.Navigation.ReactiveUI.Reactive` with
+`Runic.Application.Views.ReactiveUI`.
 
-**Fix:** keep one flavor. With the System.Reactive flavor, replace
-`Runic.Navigation.ReactiveUI` with `Runic.Navigation.ReactiveUI.Reactive`.
+**Fix:** keep one flavor: with the System.Reactive flavor, reference
+`Runic.Application.Views.ReactiveUI.Reactive` and `Runic.Navigation.ReactiveUI.Reactive`;
+otherwise `Runic.Application.Views.ReactiveUI` and `Runic.Navigation.ReactiveUI`.
+The message names the pair; a reference that arrives through another project
+or package is changed there.
 
 ### RUNICBRIDGE024
 
@@ -390,6 +398,24 @@ this was part of `RUNICBRIDGE001`.
 **Fix:** this is a bug in the generator. Report it with the ViewModel that
 triggers it and the build output, including the stack trace. Until it is
 fixed, changing the member the stack trace points at may avoid it.
+
+### RUNICBRIDGE025
+
+A ViewModel exposes a ReactiveUI command (`IReactiveCommand<TParam, TResult>`)
+or interaction (`ReactiveUI.Binding.IInteraction<TInput, TOutput>` or its
+System.Reactive counterpart), but the project the Bridge is generated for
+references no Runic ReactiveUI adapter, whose helpers the generated Bridge
+calls. The build takes the ReactiveUI flavor from the adapter it references, so
+the error also reports an interaction whose interface is of the other flavor
+than the adapter. Until 0.9 both were C# compile errors in the generated code.
+
+**Fix:** reference `Runic.Application.Views.ReactiveUI`, or
+`Runic.Application.Views.ReactiveUI.Reactive` for ReactiveUI's System.Reactive
+flavor, in the project that generates the Bridge. For a flavor mismatch, use
+the interaction interface of the adapter's flavor
+(`ReactiveUI.Binding.IInteraction` with `Runic.Application.Views.ReactiveUI`,
+`ReactiveUI.Binding.Reactive.IInteraction` with
+`Runic.Application.Views.ReactiveUI.Reactive`).
 
 ## dotnet runic
 

@@ -1111,7 +1111,9 @@ from the Runic ReactiveUI adapter the project compiles against, by package or
 project reference, directly or transitively: System.Reactive with
 `Runic.Application.Views.ReactiveUI.Reactive`, otherwise ReactiveUI.Primitives. A
 project that still sets `RunicApplicationFrontendReactiveUiFlavor`, removed in
-0.10, fails with `RUNICBRIDGE017`.
+0.10, fails with `RUNICBRIDGE017`. A ReactiveUI command or interaction without either adapter
+is `RUNICBRIDGE025`, and adapters of both flavors, including
+`Runic.Navigation.ReactiveUI*`, are `RUNICBRIDGE023`.
 
 These are not settings and not part of the compatibility promise: the generator's
 command line (`--generate`, `--composition-stub`, `--reactiveui-flavor`,

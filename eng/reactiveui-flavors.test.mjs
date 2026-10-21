@@ -2,7 +2,7 @@
 // of each adapter package declares the same public API as the default flavor, apart from its namespace and the
 // ReactiveUI types that differ between the distributions.
 import { test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { root } from './run.mjs';
 
@@ -45,13 +45,16 @@ test('the flavor mapping changes only flavor spellings', () => {
 
 // I-004: the generated code's ReactiveUI flavor is inferred from the Runic ReactiveUI adapter the project compiles
 // against, not set. The removed RunicApplicationFrontendReactiveUiFlavor property is reported as RUNICBRIDGE017.
+// Without an adapter the generator gets "none" and reports ReactiveUI members as RUNICBRIDGE025.
 test('the ReactiveUI flavor is inferred from the referenced adapter', () => {
   const views = readFileSync(resolve(root, 'packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets'), 'utf8');
   expect(views).toMatch(/<_RunicBridgeReactiveUiReactiveAdapter Include="@\(ReferencePath\)" Condition="'%\(Filename\)' == 'Runic\.Application\.Views\.ReactiveUI\.Reactive'"/);
   expect(views).toMatch(/<_RunicApplicationFrontendRemovedName Include="RunicApplicationFrontendReactiveUiFlavor"/);
   expect(views).toContain('--reactiveui-flavor $(_RunicBridgeReactiveUiFlavor)');
   expect(views).not.toContain('--reactiveui-flavor &quot;$(RunicApplicationFrontendReactiveUiFlavor)');
-  const reactive = readFileSync(resolve(root,
-    'packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets'), 'utf8');
-  expect(reactive).not.toContain('<RunicApplicationFrontendReactiveUiFlavor');
+  expect(views).toContain('<_RunicBridgeReactiveUiFlavor>none</_RunicBridgeReactiveUiFlavor>');
+  // RUNICBRIDGE023 moved to the Views targets, on the resolved references; the adapter ships no targets of its own.
+  expect(views).toMatch(/<Target Name="RunicViewsRejectMixedReactiveUiFlavors" AfterTargets="ResolveAssemblyReferences"/);
+  expect(existsSync(resolve(root,
+    'packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets'))).toBe(false);
 });

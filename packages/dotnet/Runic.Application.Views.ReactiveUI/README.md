@@ -456,7 +456,9 @@ The two packages expose distinct ReactiveUI namespaces and must not be mixed in
 one application. The generated bridge calls the command helpers of the adapter
 the project references, so a command typed as ReactiveUI's shared
 `IReactiveCommand<TInput, TOutput>` interface works with either flavor; there is
-no flavor property to set.
+no flavor property to set. The build fails with `RUNICBRIDGE023` when adapters of
+both flavors arrive, directly or through another package or project, including
+`Runic.Navigation.ReactiveUI.Reactive` with this package.
 
 See the upstream [Binding migration guide](https://www.reactiveui.net/documentation/reactiveui/upgrading/reactiveui-binding-migration/)
 for ReactiveUI's application-level migration details.

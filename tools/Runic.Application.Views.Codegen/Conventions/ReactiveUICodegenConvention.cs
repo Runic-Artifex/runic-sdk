@@ -21,6 +21,13 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
     /// </summary>
     internal ReactiveUiFlavor Flavor { get; private set; } = ReactiveUiFlavor.Default;
 
+    // "none": the build found no Runic ReactiveUI adapter, so a ReactiveUI member has no helpers to call.
+    private bool _noAdapter;
+
+    // The build named the adapter's flavor, so an interaction of the other flavor is a mix. A direct
+    // invocation without the option keeps the primitives default and checks nothing.
+    private bool _declared;
+
     internal override Assembly PluginAssembly => typeof(ReactiveCommandInspector).Assembly;
 
     internal override IReadOnlyList<string> Options => [FlavorOption];
@@ -30,19 +37,45 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         if (option != FlavorOption) base.ApplyOption(option, value);
         Flavor = value switch
         {
-            "primitives" => ReactiveUiFlavor.Default,
+            "primitives" or "none" => ReactiveUiFlavor.Default,
             "reactive" => ReactiveUiFlavor.SystemReactive,
-            _ => throw new ArgumentException($"Unsupported ReactiveUI flavor '{value}'. Expected 'primitives' or 'reactive'."),
+            _ => throw new ArgumentException($"Unsupported ReactiveUI flavor '{value}'. Expected 'primitives', 'reactive' or 'none'."),
         };
+        _noAdapter = value == "none";
+        _declared = true;
     }
 
-    internal override IEnumerable<string> CacheArguments => [$"reactiveui={Flavor}"];
+    internal override IEnumerable<string> CacheArguments => [$"reactiveui={(_noAdapter ? "none" : Flavor.ToString())}"];
 
-    internal override MvvmCommand? InspectCommand(PropertyInfo command) =>
-        ReactiveCommandInspector.InspectContract(command, Flavor) is { } contract ? new Command(contract) : null;
+    internal override MvvmCommand? InspectCommand(PropertyInfo command)
+    {
+        if (ReactiveCommandInspector.InspectContract(command, Flavor) is not { } contract) return null;
+        if (_noAdapter)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ReactiveUiAdapter,
+                $"{command.ReflectedType?.Name}.{command.Name} is a ReactiveUI command, but the project references no Runic ReactiveUI adapter, whose helpers the generated Bridge calls. Reference Runic.Application.Views.ReactiveUI, or Runic.Application.Views.ReactiveUI.Reactive for ReactiveUI's System.Reactive flavor.",
+                command);
+        return new Command(contract);
+    }
 
-    internal override MvvmInteraction? InspectInteraction(PropertyInfo property) =>
-        ReactiveInteractionInspector.InspectContract(property) is { } contract ? new Interaction(contract) : null;
+    internal override MvvmInteraction? InspectInteraction(PropertyInfo property)
+    {
+        if (ReactiveInteractionInspector.InspectContract(property) is not { } contract) return null;
+        if (_noAdapter)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ReactiveUiAdapter,
+                $"{property.ReflectedType?.Name}.{property.Name} is a ReactiveUI interaction, but the project references no Runic ReactiveUI adapter, whose helpers the generated Bridge calls. Reference {AdapterFor(contract.Flavor)}.",
+                property);
+        if (_declared && contract.Flavor != Flavor)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ReactiveUiAdapter,
+                $"{property.ReflectedType?.Name}.{property.Name} is a {FlavorName(contract.Flavor)} ReactiveUI interaction, but the project references {AdapterFor(Flavor)}, which uses {FlavorName(Flavor)}. Use one ReactiveUI flavor: reference {AdapterFor(contract.Flavor)} instead, or declare the interaction with the {FlavorName(Flavor)} ReactiveUI.Binding interface.",
+                property);
+        return new Interaction(contract);
+    }
+
+    private static string AdapterFor(ReactiveUiFlavor flavor) => flavor is ReactiveUiFlavor.SystemReactive
+        ? "Runic.Application.Views.ReactiveUI.Reactive" : "Runic.Application.Views.ReactiveUI";
+
+    private static string FlavorName(ReactiveUiFlavor flavor) => flavor is ReactiveUiFlavor.SystemReactive
+        ? "System.Reactive" : "ReactiveUI.Primitives";
 
     private static string Helper(ReactiveUiFlavor flavor) => flavor is ReactiveUiFlavor.SystemReactive
         ? "global::Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution"

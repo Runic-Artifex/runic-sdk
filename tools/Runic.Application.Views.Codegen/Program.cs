@@ -1602,6 +1602,8 @@ static class BridgeDiagnosticCodes
     internal const string SkippedTypes = "RUNICBRIDGE020";
     /// <summary>An internal generator error: an exception that is not one of the diagnostics above.</summary>
     internal const string Internal = "RUNICBRIDGE024";
+    /// <summary>A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor.</summary>
+    internal const string ReactiveUiAdapter = "RUNICBRIDGE025";
     // RUNICBRIDGE014 to 019, 021 and 022 are reported by Runic.Application.Views.targets,
     // as are RUNICBRIDGE001 for a missing generator and RUNICBRIDGE024 for a generator run
     // that failed without reporting an error (docs/diagnostics.md lists each code with its

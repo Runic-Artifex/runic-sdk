@@ -325,6 +325,28 @@
     </PropertyGroup>
   </Target>
 
+  <!-- An application uses one ReactiveUI flavor. The resolved references show the Runic adapters that arrive
+       directly, through packages or through other projects, so a mix fails here whatever brought it. -->
+  <Target Name="RunicViewsRejectMixedReactiveUiFlavors" AfterTargets="ResolveAssemblyReferences"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <ItemGroup>
+      <_RunicReactiveUiAdapterReference Include="@(ReferencePath->'%(Filename)')" />
+      <_RunicViewsReactiveUiPrimitives Include="@(_RunicReactiveUiAdapterReference)" Condition="'%(Identity)' == 'Runic.Application.Views.ReactiveUI'" />
+      <_RunicViewsReactiveUiReactive Include="@(_RunicReactiveUiAdapterReference)" Condition="'%(Identity)' == 'Runic.Application.Views.ReactiveUI.Reactive'" />
+      <_RunicNavigationReactiveUiPrimitives Include="@(_RunicReactiveUiAdapterReference)" Condition="'%(Identity)' == 'Runic.Navigation.ReactiveUI'" />
+      <_RunicNavigationReactiveUiReactive Include="@(_RunicReactiveUiAdapterReference)" Condition="'%(Identity)' == 'Runic.Navigation.ReactiveUI.Reactive'" />
+    </ItemGroup>
+    <Error Code="RUNICBRIDGE023" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge023" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicViewsReactiveUiReactive)' != '' and '@(_RunicViewsReactiveUiPrimitives)' != ''"
+           Text="$(MSBuildProjectName) references both Runic.Application.Views.ReactiveUI.Reactive, which uses ReactiveUI's System.Reactive flavor, and Runic.Application.Views.ReactiveUI, directly or through another package or project. Select one ReactiveUI flavor for the application." />
+    <Error Code="RUNICBRIDGE023" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge023" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicViewsReactiveUiReactive)' != '' and '@(_RunicNavigationReactiveUiPrimitives)' != ''"
+           Text="$(MSBuildProjectName) references Runic.Application.Views.ReactiveUI.Reactive, which uses ReactiveUI's System.Reactive flavor, with Runic.Navigation.ReactiveUI, directly or through another package or project. Reference Runic.Navigation.ReactiveUI.Reactive instead and select one ReactiveUI flavor for the application." />
+    <Error Code="RUNICBRIDGE023" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge023" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicViewsReactiveUiPrimitives)' != '' and '@(_RunicNavigationReactiveUiReactive)' != ''"
+           Text="$(MSBuildProjectName) references Runic.Application.Views.ReactiveUI, which uses ReactiveUI.Primitives, with Runic.Navigation.ReactiveUI.Reactive, directly or through another package or project. Reference Runic.Navigation.ReactiveUI instead and select one ReactiveUI flavor for the application." />
+  </Target>
+
   <Target Name="RunicViewsReportRenamedProperties" BeforeTargets="PrepareForBuild"
           Condition="('@(_RunicApplicationFrontendRenamedName)' != '' or '@(_RunicApplicationFrontendRemovedName)' != '') and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <!-- ErrorAndContinue reports every old name, not only the first. -->
@@ -518,12 +540,15 @@
     <!-- The generated code calls the command helpers of the Runic ReactiveUI adapter that this project compiles
          against, so that adapter's flavor is the generator's. Package, transitive package and project references
          all resolve to ReferencePath, which ResolveReferences has filled before CoreCompile and before WPF's
-         markup passes. Without the System.Reactive adapter the generator uses its default (primitives). -->
+         markup passes. Without either adapter the generator reports a ReactiveUI command or interaction as
+         RUNICBRIDGE025. -->
     <ItemGroup>
       <_RunicBridgeReactiveUiReactiveAdapter Include="@(ReferencePath)" Condition="'%(Filename)' == 'Runic.Application.Views.ReactiveUI.Reactive'" />
+      <_RunicBridgeReactiveUiPrimitivesAdapter Include="@(ReferencePath)" Condition="'%(Filename)' == 'Runic.Application.Views.ReactiveUI'" />
     </ItemGroup>
     <PropertyGroup>
-      <_RunicBridgeReactiveUiFlavor>primitives</_RunicBridgeReactiveUiFlavor>
+      <_RunicBridgeReactiveUiFlavor>none</_RunicBridgeReactiveUiFlavor>
+      <_RunicBridgeReactiveUiFlavor Condition="'@(_RunicBridgeReactiveUiPrimitivesAdapter)' != ''">primitives</_RunicBridgeReactiveUiFlavor>
       <_RunicBridgeReactiveUiFlavor Condition="'@(_RunicBridgeReactiveUiReactiveAdapter)' != ''">reactive</_RunicBridgeReactiveUiFlavor>
       <_RunicBridgeReactiveUiFlavorArgument>--reactiveui-flavor $(_RunicBridgeReactiveUiFlavor)</_RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>

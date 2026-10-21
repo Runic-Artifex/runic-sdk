@@ -85,5 +85,36 @@ internal sealed partial class CodegenDiagnosticsTests
             && !internalOutput.Contains("error RUNICBRIDGE024: Fixture.HealthyViewModel", StringComparison.Ordinal)
             && internalLines.Any(line => line.TrimStart().StartsWith("at Diagnostics.InjectInternalErrorForTests", StringComparison.Ordinal)),
             $"An internal generator error was not RUNICBRIDGE024 with its stack trace:\n{internalOutput}");
+
+        // Q7 (D031.2): without a Runic ReactiveUI adapter (the build passes "none"), a ReactiveUI command or
+        // interaction is RUNICBRIDGE025, not a C# error in the generated code; so is an interaction of the other
+        // flavor than the adapter's. A model without ReactiveUI members builds with "none".
+        const string ReactiveCommand = """
+            public sealed class GoViewModel : FixtureModel { public ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, ReactiveUI.Primitives.RxVoid> GoCommand { get; } = null!; }
+            public sealed partial class GoWindow : RunicWindow<GoViewModel>;
+            """;
+        const string ReactiveInteraction = """
+            public sealed class AskViewModel : FixtureModel { public ReactiveUI.Binding.Interaction<string, bool> Confirm { get; } = new(); }
+            public sealed partial class AskWindow : RunicWindow<AskViewModel>;
+            """;
+        foreach (var (name, source, flavor, expected) in new[]
+        {
+            ("NoAdapterCommand", ReactiveCommand, "none", "GoViewModel.GoCommand is a ReactiveUI command, but the project references no Runic ReactiveUI adapter"),
+            ("NoAdapterInteraction", ReactiveInteraction, "none", "AskViewModel.Confirm is a ReactiveUI interaction, but the project references no Runic ReactiveUI adapter"),
+            ("MixedInteraction", ReactiveInteraction, "reactive", "AskViewModel.Confirm is a ReactiveUI.Primitives ReactiveUI interaction, but the project references Runic.Application.Views.ReactiveUI.Reactive"),
+        })
+        {
+            var (adapterExit, adapterOutput, adapterDirectory) = await RunGeneratorAsync(generator, temporaryRoot, name, Preamble + source,
+                "--reactiveui-flavor", flavor).ConfigureAwait(false);
+            var adapterError = adapterOutput.Split('\n').SingleOrDefault(line => line.Contains("error RUNICBRIDGE025: ", StringComparison.Ordinal));
+            Require(adapterExit != 0 && adapterError is not null && adapterError.Contains(expected, StringComparison.Ordinal)
+                    && adapterError.StartsWith($"{Path.Combine(adapterDirectory, "Fixture.cs")}(", StringComparison.Ordinal)
+                    && adapterError.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE025")}", StringComparison.Ordinal),
+                $"{name}: expected a located RUNICBRIDGE025 '{expected}':\n{adapterOutput}");
+        }
+        _ = await GenerateValidAsync(generator, temporaryRoot, "NoAdapterPlain", Preamble + CompositionModel, "--reactiveui-flavor", "none")
+            .ConfigureAwait(false);
+        _ = await GenerateValidAsync(generator, temporaryRoot, "PrimitivesInteraction", Preamble + ReactiveInteraction,
+            "--reactiveui-flavor", "primitives").ConfigureAwait(false);
     }
 }

@@ -307,6 +307,44 @@ test("an old property name no longer applies and fails with RUNICBRIDGE017", () 
   assert.ok(!reported.some(line => /RunicApplicationName/.test(line)), output);
 });
 
+// Q7 (D031.2): RUNICBRIDGE023 checks the resolved references, so a mix of ReactiveUI flavors fails however it
+// arrives (directly, transitively, or as a navigation adapter of the other flavor), and one flavor builds.
+test("RUNICBRIDGE023 rejects Runic ReactiveUI adapters of both flavors in the resolved references", () => {
+  const cases = [
+    { name: "views-mix", references: ["Runic.Application.Views.ReactiveUI", "Runic.Application.Views.ReactiveUI.Reactive"], message: /references both Runic\.Application\.Views\.ReactiveUI\.Reactive, which uses ReactiveUI's System\.Reactive flavor, and Runic\.Application\.Views\.ReactiveUI/ },
+    { name: "reactive-views-primitives-navigation", references: ["Runic.Application.Views.ReactiveUI.Reactive", "Runic.Navigation.ReactiveUI"], message: /Reference Runic\.Navigation\.ReactiveUI\.Reactive instead/ },
+    { name: "primitives-views-reactive-navigation", references: ["Runic.Application.Views.ReactiveUI", "Runic.Navigation.ReactiveUI.Reactive"], message: /Reference Runic\.Navigation\.ReactiveUI instead/ },
+    { name: "primitives", references: ["Runic.Application.Views.ReactiveUI", "Runic.Navigation.ReactiveUI"] },
+    { name: "reactive", references: ["Runic.Application.Views.ReactiveUI.Reactive", "Runic.Navigation.ReactiveUI.Reactive"] },
+  ];
+  for (const { name, references, message } of cases) {
+    const project = join(directory, `flavors-${name}`);
+    mkdirSync(project, { recursive: true });
+    // ReferencePath is what ResolveAssemblyReferences produces from direct, package and transitive references.
+    writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup><Configuration>Debug</Configuration><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+${references.map(reference => `    <ReferencePath Include="$(MSBuildProjectDirectory)/refs/${reference}.dll" />`).join("\n")}
+    <ReferencePath Include="$(MSBuildProjectDirectory)/refs/ReactiveUI.dll" />
+  </ItemGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+    const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsRejectMixedReactiveUiFlavors",
+      "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+    const output = `${result.stdout}${result.stderr}`;
+    const reported = errors(output).filter(line => / error RUNICBRIDGE023:/.test(line));
+    if (message) {
+      assert.notEqual(result.status, 0, `${name}: ${output}`);
+      assert.equal(reported.length, 1, `${name}: ${output}`);
+      assert.match(reported[0], message, name);
+    } else {
+      assert.equal(result.status, 0, `${name}: ${output}`);
+      assert.equal(reported.length, 0, `${name}: ${output}`);
+    }
+  }
+});
+
 // W319-003 D16: build and publish copy the frontend's output directory to the web root that dev serves.
 test("build copies RunicApplicationFrontendOutputDirectory to RunicApplicationFrontendWebRoot", () => {
   const app = fixture("output-directory", { name: "app", private: true });
