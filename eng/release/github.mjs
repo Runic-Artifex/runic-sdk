@@ -5,6 +5,7 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { REPOSITORY, VERSION, sha256 } from './artifacts.mjs';
+import { packageVersion } from '../version.mjs';
 import { tagCommit, releaseFor } from './tags.mjs';
 // describe <packages> <release>: writes the release assets locally (no network): the package
 //   bundle, a CycloneDX SBOM of the packages and SHA256SUMS. Both are deterministic for a commit.
@@ -25,8 +26,12 @@ if (command === 'describe' && args.length === 2 && !dryRun) {
     '--mode=u=rwX,go=rX', '--format=gnu', '-cf', '-', '-C', packages, 'nuget', 'npm'], {maxBuffer: 2 ** 31 - 1});
   writeFileSync(join(output, archive), gzipSync(tar, {level: 9}));
   const files = ['nuget', 'npm'].flatMap(registry => readdirSync(join(packages, registry)).sort().map(file => join(packages, registry, file)));
+  // A NuGet package that ships on a version of its own declares it to the SBOM.
+  const workspace = JSON.parse(readFileSync(new URL('../workspace.json', import.meta.url), 'utf8'));
+  const ownVersions = workspace.nuget.map(p => [p.name, packageVersion(workspace, p.name)]).filter(([, version]) => version !== VERSION)
+    .flatMap(([name, version]) => ['--artifact-version', `${name}.${version}.nupkg=${version}`]);
   execFileSync(process.platform === 'win32' ? 'python' : 'python3', [fileURLToPath(new URL('./sbom.py', import.meta.url)),
-    '--repository', REPOSITORY, '--version', VERSION, '--source', source, '--epoch', epoch, '--output', join(output, sbom), ...files], {stdio: 'inherit'});
+    '--repository', REPOSITORY, '--version', VERSION, '--source', source, '--epoch', epoch, '--output', join(output, sbom), ...ownVersions, ...files], {stdio: 'inherit'});
   writeFileSync(join(output, sums), [archive, sbom].map(name => `${sha256(readFileSync(join(output, name)))}  ${name}\n`).join(''));
   console.log(`Described ${tag}: ${assets.join(', ')}`);
   process.exit(0);
