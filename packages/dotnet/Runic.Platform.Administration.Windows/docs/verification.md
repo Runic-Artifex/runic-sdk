@@ -1,9 +1,15 @@
 # Native verification status
 
-Recorded for the initial Windows x64 implementation on 2026-09-10. These results
-apply to the local development machine, not an AD/server test environment.
+The package is supported as of 0.10.0. The sections below record what was
+verified, on which fixtures, and which implemented features fall outside the
+verified scope. Windows CI runs the read-only native checks (JIT and NativeAOT)
+on every change; the local write, denied-access and domain suites need the
+disposable VMs and run manually (see "Rerunning the suites" below).
 
-## Executed
+## Initial implementation (2026-09-10)
+
+These results apply to the local development machine, not an AD/server test
+environment.
 
 - Release build with Runic verification analyzers; no warnings.
 - Windows x64 NativeAOT publish with the entire administration assembly rooted;
@@ -196,12 +202,45 @@ Limits:
   controller or site, cross-domain trusts, other Windows Server versions, and
   remote DNS servers that are not domain controllers.
 
-## Not natively accepted
+## 0.10 typed models and graduation (2026-10-21, W319-010)
+
+The W319-009 fixture (snapshots `clean-promoted` and the joined client) was run again
+on the 0.10 shape: typed task boundaries, `WindowsSecurityDescriptor` for share
+security, `FirewallProtocol`, `ServiceAcceptedControls`, and
+`ActiveDirectoryObjectIdentity` returned by the AD create methods. The verifier was
+built on the client with .NET SDK 10.0.401 as NativeAOT (no warnings) and as JIT.
+
+| Run | Identity and logon | Command | NativeAOT | JIT |
+| --- | --- | --- | --- | --- |
+| Unit tests | — | `Runic.Platform.Administration.Windows.Tests` | 33 passed | 33 passed |
+| Local writes | elevated | `local --allow-changes` | 19 passed, exit 0 | 19 passed, exit 0 |
+| Local denied | non-elevated | `local --expect-denied --only services,tasks,firewall,shares` | 8 passed, exit 0 | same |
+| Domain writes | delegate, own logon (scheduled task) | `domain … --allow-changes` | 39 passed, 2 skipped (Basic binds need an explicit credential), exit 0 | same |
+| Domain writes | delegate, explicit `NetworkCredential` | `domain … --allow-changes --only ldap,dns --credential-stdin` | 33 passed, exit 0 | same |
+| Denied writes | restricted, own logon | `domain … --expect-denied` | 11 passed, 2 skipped, exit 0 | same |
+| Denied writes | restricted, explicit credential | `domain … --expect-denied --credential-stdin` | 13 passed, exit 0 | same |
+
+New in these runs:
+
+- The create methods returned the stored DN and a distinct non-empty `objectGUID` for
+  the user, group and computer. The renamed user's `objectGUID` equals the GUID
+  `CreateUserAsync` returned.
+- The share ACL roundtrip compares `WindowsSecurityDescriptor` values; a
+  metadata-only update and a repeated security update kept the exact binary form.
+- `services.lifecycle` passed under JIT as well, after the I-080 test-service fix.
+
+Independent cleanup check afterwards: `OU=RunicTests` had no children, the test
+zone held only SOA/NS, only the two default GPOs existed, and the client had no
+`RunicVerify-*` service, task, firewall rule or share. Both VMs were reverted to
+their snapshots.
+
+## Outside the verified scope
 
 Local service, task, firewall and share writes, and the domain scenarios, are
-accepted above. The following remain **implemented but not natively accepted**:
+accepted above. The following are implemented and supported, but were not run
+on a fixture. Report problems with them like any other defect:
 
-| Stage | Fixture work still required |
+| Stage | Not run on a fixture |
 | --- | --- |
 | Services/processes | Failure actions other than none; reboot actions; timeouts; per-service denied rights beyond SCM creation; remote SCM. |
 | Tasks/firewall | Preservation of unsupported XML/native settings; password principals; trigger executions; effective Group Policy restrictions; firewall protocol transitions. |
@@ -209,7 +248,9 @@ accepted above. The following remain **implemented but not natively accepted**:
 | System/networks/shares | ACE order/inheritance retention beyond the tested descriptors; remote shares and remote denied rights. Broader hardware/OS comparisons and malformed/unsupported firmware data. |
 | DNS | Non-DC DNS servers, file-backed zones, unsupported record reporting, TXT text that contains quotes (the provider cannot delete it), and sibling-record concurrency. |
 | GPMC | Real WMI-filter association, migration tables, multiple controllers, and report generation under a network-only logon (not supported by GPMC). |
-| Interop | Required domain-operation thread affinity, repeated server mutations and failure cleanup on the fixtures; other architectures not accepted. |
+| Interop | Required domain-operation thread affinity, repeated server mutations and failure cleanup on the fixtures. Other architectures are not supported (x64 only, by policy). |
+
+## Rerunning the suites
 
 Use snapshot-restorable Windows x64 VMs, a dedicated test domain/OU, a dedicated
 existing DNS zone, a test file-server directory, and unique resource names. Test

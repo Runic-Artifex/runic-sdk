@@ -1,29 +1,31 @@
 # Runic.Platform.Administration.Windows
 
-Network snapshots include `AdapterIds` from Network List Manager connections. Consumers can match these IDs to `System.Net.NetworkInformation.NetworkInterface.Id` to determine which adapters belong to a domain-authenticated network; network category alone does not establish adapter membership.
-
 Host-independent Windows administration for .NET 10. Construct a capability client
 directly; no Runic Desktop, Application host, UI framework, dependency injection,
 automatic elevation or helper process is required.
 
-This is an experimental package under native validation. Local administrative
-writes have been accepted on a disposable Windows 11 x64 VM (2026-10-07). That run
-covered create, read, update and delete of an owned service, scheduled task,
-firewall rule and SMB share, and denial of the same writes to a non-elevated
-process. The service lifecycle is accepted with JIT and NativeAOT verifiers.
-**Domain scenarios (LDAP/AD, DNS, Group Policy) have not been accepted on
-disposable fixtures.** See
-[verification](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md) for the distinction between implementation,
-executed checks and remaining acceptance work. Do not infer production readiness
-from a successful pack or NativeAOT publish.
+## Support
+
+The package is supported and follows the Runic compatibility rules
+([support policy](https://github.com/Runic-Artifex/runic-sdk/blob/main/eng/release/README.md)).
+Its behaviour is accepted on disposable fixtures: local writes and denied
+writes on Windows 11 x64, and LDAP/AD, DNS and Group Policy against a Windows
+Server 2025 domain controller with a delegated and a restricted identity, under
+NativeAOT and JIT. [Verification](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md)
+lists the accepted scenarios and the implemented features that fall outside
+them, such as remote SCM and remote shares, reboot failure actions, multiple
+domain controllers and non-DC DNS servers.
+
+- **Architecture: Windows x64 only, by policy.** No arm64 or x86 support is
+  planned. The COM-based clients (tasks, firewall, networks, DNS and Group Policy)
+  throw `PlatformNotSupportedException` in a process of another architecture; the
+  others are not supported there either. On Windows on Arm, publish for `win-x64`,
+  which runs under emulation.
+- **Operating systems:** Windows 10/11 and Windows Server 2016 or later, within the
+  versions the consuming .NET 10 runtime supports. Not every server version and
+  role combination is tested.
 
 ## Capabilities and prerequisites
-
-The initial supported architecture is Windows x64. Automation COM bindings reject
-other architectures. Other native bindings have not been verified on ARM64/x86.
-The intended OS baseline is Windows 10/11 or Windows Server 2016 and later, subject
-to the consuming .NET 10 runtime's supported OS versions; this is not a claim that
-every server/version combination has been tested.
 
 | Namespace / client | Implemented scope | Target and privileges |
 | --- | --- | --- |
@@ -41,9 +43,14 @@ every server/version combination has been tested.
 | Dns / WindowsDnsClient | Zones/AD integration; A, AAAA, CNAME, PTR, MX, TXT, SRV and NS record operations | Explicit Windows DNS server; MicrosoftDNS WMI provider, DCOM/WMI access and DNS administration rights. No zone/server configuration writes. |
 | GroupPolicy / WindowsGroupPolicyClient | GUID-based GPO operations; GPMC backup/import/restore/report; links/order/inheritance; permissions and WMI-filter associations | Explicit domain/controller, caller identity; GPMC/RSAT installed and delegated AD/GPO/SYSVOL permissions. |
 
-System.DirectoryServices.Protocols 10.0.10 is the only package dependency. Its native
-transport initialized and reported an unavailable endpoint from a NativeAOT
-consumer. LDAP paging/authentication/write behavior still needs the domain fixture.
+System.DirectoryServices.Protocols 10.0.10 is the only package dependency. All other
+Windows interop uses private CsWin32 bindings generated at build time; no Windows SDK
+or generated type appears in the public API.
+
+Network snapshots include `AdapterIds` from Network List Manager connections. Match
+them to `System.Net.NetworkInformation.NetworkInterface.Id` to find the adapters of a
+domain-authenticated network; the network category alone does not establish adapter
+membership.
 
 ## API semantics
 
@@ -94,14 +101,24 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
   Native RPC/COM calls can outlive a cancellation request; LDAP timeouts and WMI
   query wait bounds are not universal hard deadlines.
 - Process IDs are `int`, as in `System.Diagnostics.Process`. Raw native numbers
-  carry a `Native` prefix (`NativeFlags`, `NativeAddressType`, `NativeAcceptedControls`,
-  `NativeRecordClass`); `FirewallRuleSpecification.Protocol` is the IANA protocol number.
+  carry a `Native` prefix (`NativeFlags`, `NativeAddressType`, `NativeRecordClass`).
+  Native values that have a typed form use an enum that passes unknown values
+  through: `ServiceStatus.AcceptedControls` is the `[Flags]` enum
+  `ServiceAcceptedControls`, and `FirewallRuleSpecification.Protocol` is
+  `FirewallProtocol`, an open enum of IANA protocol numbers with `Any` (256); cast
+  other numbers, for example `(FirewallProtocol)47`.
 - Group Policy times (`GroupPolicySnapshot.CreationTime`/`ModificationTime`,
   `GroupPolicyBackup.Timestamp`) are `DateTimeOffset` values in the local time zone of
   the computer running the client, where GPMC runs. Task Scheduler times
   (`ScheduledTaskSnapshot.LastRunTime`/`NextRunTime`) are `DateTime` wall-clock times
   of the target machine with `Kind=Unspecified`; for a remote machine their offset is
   not known.
+- Task trigger boundaries (`TaskTrigger.StartBoundary`/`EndBoundary`) are `DateTime`
+  values with whole seconds, and their `Kind` selects how Task Scheduler reads them:
+  `Unspecified` is a wall-clock time of the target machine, written without an offset
+  (Task Scheduler's default); `Utc` is written with `Z`, and `Local` with the offset of
+  the computer running the client at that time. Both are points in time ("synchronize
+  across time zones").
 - GetOperatingSystem exposes RegistryProductName verbatim; Windows can retain a Windows 10 compatibility label on Windows 11. GetOperatingSystemNameAsync reads the display name from native Windows inventory.
 - Service BinaryCommandLine is the configured command line, not an executable path.
   Writes require a quoted executable path when the command line contains
@@ -120,13 +137,23 @@ consumer. LDAP paging/authentication/write behavior still needs the domain fixtu
   not replace sibling records. Unsupported types are returned as Unsupported with
   native class and text; they cannot be written through the curated typed API.
   TXT data follows the DNS WMI provider's quoted textual representation.
-- Share security descriptors retain SID/ACE information and ordering as native
-  self-relative bytes. They represent share permissions, never filesystem ACLs.
+- Share security descriptors are `WindowsSecurityDescriptor` values: immutable,
+  compared by their self-relative binary form, with `Sddl`, `FromSddl`,
+  `FromBinaryForm`, `From(RawSecurityDescriptor)` and `ToRawSecurityDescriptor()`.
+  They keep SID/ACE information and ordering exactly. They represent share
+  permissions, never filesystem ACLs.
+- The Active Directory create methods return the new object's
+  `ActiveDirectoryObjectIdentity` (stored distinguished name and `objectGUID`), read on
+  the same connection after the add. If that read fails, the exception's operation is
+  "Read created directory object" and the object exists.
 - GPMC operations return `GroupPolicyOperationOutcome<T>`, a success value with
   GPMC's detailed status collection; a failed overall HRESULT throws
   `GroupPolicyOperationException`. Import overwrites settings in an explicitly selected destination GPO;
   restore uses the backup's original identity. No backup-selection heuristics,
   migration orchestration or SYSVOL file-copy implementation is included.
+- `WindowsGroupPolicyClient.EnumerateBackupsAsync(directory)` enumerates all GPMC
+  backups in a directory, with IDs, display names, timestamps and comments. It needs
+  local GPMC but no domain connection. Pass the selected backup's ID to `ImportAsync`.
 - Link reordering uses an LDAP assertion against the read gpLink value, preserving
   each entry's flags and rejecting concurrent changes instead of overwriting them.
 
@@ -159,69 +186,3 @@ dotnet run --project examples/dotnet/Runic.Administration.Console --no-restore -
 verification roots the entire administration
 assembly so unexecuted public capabilities still receive AOT analysis. That
 analysis does not substitute for executing those capabilities on their fixtures.
-
-Implementation provenance: new SDK implementations against Microsoft Windows SDK
-headers and documentation. Application repositories supplied behavioral
-requirements; application source/dependencies were not copied or modified.
-
-## Generated Windows bindings
-
-All public capability clients now use CsWin32 for their Win32/COM interop: shell
-links, services/processes, tasks, firewall, domain discovery, inventory, networks,
-shares, internal WMI (including DNS), and GPMC. LDAP transport remains
-`System.DirectoryServices.Protocols`; generated Win32 declarations do not replace
-an LDAP transport. Runic's public models, validation and exception contracts remain
-handwritten and unchanged by this migration.
-
-`NativeMethods.txt` lists the requested APIs. `NativeMethods.json` selects internal,
-unmanaged bindings with preserved HRESULTs. CsWin32 0.3.346 is a private build
-dependency. Generated source stays in build output and does not expose Windows
-SDK types in the public API. Calls use named methods, native structures and safe
-handle ownership; no runtime COM wrappers or warning suppressions were added.
-
-There is no handwritten interop fallback. Shared validation, security-descriptor
-interpretation and COM initialization remain part of the generated-client paths.
-
-The GPMC migration also corrects collection `get_Item` outputs to native VARIANTs,
-queries returned objects for their expected interface, and passes trustee strings
-to `RemoveTrustee`. These paths still require domain fixture execution.
-
-Verification after migration: managed native checks and the 115-type public API
-baseline pass. The Windows x64 NativeAOT verifier publishes without warnings and
-its local inspection run passed 9 checks, with 5 administrative checks
-explicitly skipped. On 2026-10-07 the NativeAOT verifier also passed the local
-write suite elevated (19 checks) and the denied-access suite non-elevated
-(13 checks) on the Windows 11 VM. GPO/LDAP/DNS fixture operations remain
-unaccepted until executed on a disposable domain.
-
-## Applicability to Runic.Platform.Windows
-
-The sibling package now uses the same centrally pinned generator and private
-unmanaged bindings for `WindowsFilePicker`, preserving owner STA dispatch,
-cancellation and modal lifetime behavior.
-
-Keep generation local to each package instead of adding an administration
-reference or exporting a shared low-level binding assembly. Share the dependency
-version and conventions, not unrelated capability implementations.
-
-`WindowsDesktopNotifications` and its activation callback implement Windows Runtime
-interfaces. Microsoft's
-[CsWinRT](https://github.com/microsoft/CsWinRT) is the corresponding WinRT projection
-project; CsWin32 does not replace that projection.
-
-### Application adoption additions
-
-`WindowsGroupPolicyClient.EnumerateBackupsAsync(directory)` enumerates all GPMC backups,
-including older backups, with IDs, display names, timestamps and comments. It needs
-local GPMC but no domain connection. The application selects a backup and passes its
-ID to `ImportAsync`; application naming and recency rules remain outside Runic.
-
-DNS creation retains its explicit one-hour default. Set
-`DnsRecordSpecification.TimeToLive = null` to omit TTL and let the
-Windows DNS provider select it, matching callers that previously omitted the optional
-[native TTL argument](https://learn.microsoft.com/en-us/windows/win32/dns/microsoftdns-cnametype-createinstancefrompropertydata).
-This affects creation only; updates preserve the existing TTL unless changed.
-
-NativeAOT checks cover backup cancellation and missing GPMC. Enumeration of populated
-backup directories and server-default DNS TTL require the disposable domain/DNS fixture;
-the verification CLI includes those checks. They have not been accepted on a domain VM yet.

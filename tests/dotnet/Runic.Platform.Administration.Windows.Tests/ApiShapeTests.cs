@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.Versioning;
 using Runic.Platform.Administration.Windows.DirectoryServices;
 using Runic.Platform.Administration.Windows.Dns;
+using Runic.Platform.Administration.Windows.Firewall;
 using Runic.Platform.Administration.Windows.Internal;
 using Runic.Platform.Administration.Windows.Services;
 using Runic.Platform.Administration.Windows.Shares;
@@ -179,5 +180,53 @@ internal sealed class ApiShapeTests
         Check(ActiveDirectoryClient.ReadText(values).SequenceEqual(["CN=User", "HTTP/host"]), "Directory text values were not decoded.");
         try { _ = ActiveDirectoryClient.ReadText([new DirectoryValue.Binary([0xff, 0xfe])]); throw new InvalidOperationException("Invalid UTF-8 accepted."); }
         catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.InvalidData, "Invalid UTF-8 must be InvalidData."); }
+    }
+
+    // 0.10 typed models (I-013).
+    [Test]
+    public void TaskBoundaryKindSelectsTheSchedulerFormat()
+    {
+        Check(TaskXml.Boundary(new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Unspecified)) == "2030-01-02T03:04:05", "A wall-clock boundary must have no offset.");
+        Check(TaskXml.Boundary(new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc)) == "2030-01-02T03:04:05Z", "A UTC boundary must end in Z.");
+        var local = new DateTime(2030, 7, 2, 3, 4, 5, DateTimeKind.Local);
+        var offset = TimeZoneInfo.Local.GetUtcOffset(local);
+        var expected = "2030-07-02T03:04:05" + (offset < TimeSpan.Zero ? "-" : "+") + offset.Duration().ToString("hh':'mm", System.Globalization.CultureInfo.InvariantCulture);
+        Check(TaskXml.Boundary(local) == expected, "A local boundary must carry this computer's offset: " + TaskXml.Boundary(local));
+        try { _ = TaskXml.Boundary(new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc).AddMilliseconds(1)); throw new InvalidOperationException("A fractional second was accepted."); }
+        catch (ArgumentException) { }
+        var xml = TaskXml.Create(new(new("SYSTEM", TaskLogonType.ServiceAccount), [new(@"C:\Windows\System32\cmd.exe")],
+            [new TimeTaskTrigger { StartBoundary = new DateTime(2030, 1, 1, 12, 0, 0, DateTimeKind.Utc), EndBoundary = new DateTime(2030, 1, 2, 12, 0, 0) }]));
+        Check(xml.Contains("<StartBoundary>2030-01-01T12:00:00Z</StartBoundary>", StringComparison.Ordinal)
+            && xml.Contains("<EndBoundary>2030-01-02T12:00:00</EndBoundary>", StringComparison.Ordinal), "Task XML boundaries changed.");
+    }
+
+    [Test]
+    public void FirewallProtocolIsAnOpenEnum()
+    {
+        var rule = new FirewallRuleSpecification("RunicTest", FirewallDirection.Outbound, FirewallAction.Block);
+        Check(rule.Protocol == FirewallProtocol.Any && (int)FirewallProtocol.Any == 256, "The default protocol must be Any (256).");
+        Check((int)FirewallProtocol.IcmpV4 == 1 && (int)FirewallProtocol.Tcp == 6 && (int)FirewallProtocol.Udp == 17 && (int)FirewallProtocol.IcmpV6 == 58,
+            "Protocol values must be the IANA numbers.");
+        FirewallContract.Validate(rule with { Protocol = (FirewallProtocol)47 });
+        FirewallContract.Validate(rule with { Protocol = FirewallProtocol.Tcp, LocalPorts = "80" });
+        FirewallContract.Validate(rule with { Protocol = FirewallProtocol.IcmpV6, IcmpTypesAndCodes = "128:*" });
+        foreach (var invalid in new[] { rule with { Protocol = (FirewallProtocol)257 }, rule with { Protocol = (FirewallProtocol)(-1) },
+            rule with { Protocol = (FirewallProtocol)47, LocalPorts = "80" }, rule with { Protocol = FirewallProtocol.Tcp, IcmpTypesAndCodes = "8:*" } })
+        {
+            try { FirewallContract.Validate(invalid); throw new InvalidOperationException("Invalid protocol settings accepted: " + invalid.Protocol); }
+            catch (ArgumentException) { }
+        }
+    }
+
+    [Test]
+    public void AcceptedControlsAreNativeFlags()
+    {
+        Check(typeof(ServiceAcceptedControls).IsDefined(typeof(FlagsAttribute), false), "ServiceAcceptedControls must be a flags enum.");
+        // SERVICE_ACCEPT_STOP, _PAUSE_CONTINUE, _SHUTDOWN, _PRESHUTDOWN, _SYSTEMLOWRESOURCES.
+        Check((int)ServiceAcceptedControls.Stop == 0x1 && (int)ServiceAcceptedControls.PauseContinue == 0x2 && (int)ServiceAcceptedControls.Shutdown == 0x4
+            && (int)ServiceAcceptedControls.Preshutdown == 0x100 && (int)ServiceAcceptedControls.SystemLowResources == 0x4000, "SERVICE_ACCEPT_* values changed.");
+        var status = new global::Windows.Win32.System.Services.SERVICE_STATUS_PROCESS { dwCurrentState = (global::Windows.Win32.System.Services.SERVICE_STATUS_CURRENT_STATE)4, dwControlsAccepted = 0x1005 }.Snapshot();
+        Check(status.AcceptedControls == (ServiceAcceptedControls.Stop | ServiceAcceptedControls.Shutdown | (ServiceAcceptedControls)0x1000),
+            "Unnamed native bits must pass through.");
     }
 }

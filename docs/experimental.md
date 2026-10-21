@@ -55,6 +55,10 @@ leftover suppression is harmless; remove it.
 | `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined [`RUNICDESK100`](#RUNICDESK100), the custom window-host family it belongs to. | 0.9.0 |
 | `RUNICNAV001` | Navigation (`Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`) | 0.7.0-preview.7 |
 
+`Runic.Platform.Administration.Windows` is no longer experimental as of 0.10.0.
+Its experimental status was stated only in its README; it never had a diagnostic
+ID, so there is no suppression to remove.
+
 <a id="RUNICASSETS001"></a>
 
 ## RUNICASSETS001

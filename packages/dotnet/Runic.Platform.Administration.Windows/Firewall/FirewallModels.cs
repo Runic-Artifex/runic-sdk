@@ -30,6 +30,23 @@ public enum FirewallProfiles
     /// <summary>All profiles, including future profiles.</summary>
     All = int.MaxValue
 }
+/// <summary>IP protocol of a firewall rule: an IANA protocol number, or <see cref="Any"/>.</summary>
+/// <remarks>This set is open: a minor release may name more protocols. The named values are the protocols with protocol-specific settings; other IANA protocol
+/// numbers from 0 to 255 are cast, for example <c>(FirewallProtocol)47</c> for GRE, and rules read from Windows can
+/// return them.</remarks>
+public enum FirewallProtocol
+{
+    /// <summary>ICMP for IPv4 (1). Allows <see cref="FirewallRuleSpecification.IcmpTypesAndCodes"/>.</summary>
+    IcmpV4 = 1,
+    /// <summary>TCP (6). Allows local and remote ports.</summary>
+    Tcp = 6,
+    /// <summary>UDP (17). Allows local and remote ports.</summary>
+    Udp = 17,
+    /// <summary>ICMP for IPv6 (58). Allows <see cref="FirewallRuleSpecification.IcmpTypesAndCodes"/>.</summary>
+    IcmpV6 = 58,
+    /// <summary>Any protocol (Windows Firewall's native value 256).</summary>
+    Any = 256
+}
 /// <summary>Observed native identity fields, not a display label or an invented persistent GUID.</summary>
 /// <remarks>Mutations reject duplicate native names even if other identity fields differ.</remarks>
 public sealed record FirewallRuleIdentity(string Name, string Grouping, string ApplicationPath, string ServiceName, FirewallDirection Direction);
@@ -45,17 +62,17 @@ public sealed record FirewallRuleSpecification(string Name, FirewallDirection Di
     public string ApplicationPath { get; init; } = "";
     /// <summary>Service name; empty applies to all services.</summary>
     public string ServiceName { get; init; } = "";
-    /// <summary>IP protocol number, or 256 for any.</summary>
-    public int Protocol { get; init; } = 256;
-    /// <summary>TCP/UDP local port expression.</summary>
+    /// <summary>IP protocol; <see cref="FirewallProtocol.Any"/> by default. Other IANA numbers (0-255) are cast to <see cref="FirewallProtocol"/>.</summary>
+    public FirewallProtocol Protocol { get; init; } = FirewallProtocol.Any;
+    /// <summary>Local port expression; requires <see cref="FirewallProtocol.Tcp"/> or <see cref="FirewallProtocol.Udp"/>.</summary>
     public string LocalPorts { get; init; } = "";
-    /// <summary>TCP/UDP remote port expression.</summary>
+    /// <summary>Remote port expression; requires <see cref="FirewallProtocol.Tcp"/> or <see cref="FirewallProtocol.Udp"/>.</summary>
     public string RemotePorts { get; init; } = "";
     /// <summary>Local address expression.</summary>
     public string LocalAddresses { get; init; } = "*";
     /// <summary>Remote address expression.</summary>
     public string RemoteAddresses { get; init; } = "*";
-    /// <summary>ICMP type/code expression, for protocol 1 or 58.</summary>
+    /// <summary>ICMP type/code expression; requires <see cref="FirewallProtocol.IcmpV4"/> or <see cref="FirewallProtocol.IcmpV6"/>.</summary>
     public string IcmpTypesAndCodes { get; init; } = "";
     /// <summary>Native interface names; empty applies to all interfaces.</summary>
     public ImmutableArray<string> Interfaces { get; init; } = [];
@@ -80,8 +97,8 @@ public sealed record FirewallRuleUpdate
     public string? ApplicationPath { get; init; }
     /// <summary>Replacement service name.</summary>
     public string? ServiceName { get; init; }
-    /// <summary>Replacement protocol number.</summary>
-    public int? Protocol { get; init; }
+    /// <summary>Replacement protocol.</summary>
+    public FirewallProtocol? Protocol { get; init; }
     /// <summary>Replacement local ports.</summary>
     public string? LocalPorts { get; init; }
     /// <summary>Replacement remote ports.</summary>

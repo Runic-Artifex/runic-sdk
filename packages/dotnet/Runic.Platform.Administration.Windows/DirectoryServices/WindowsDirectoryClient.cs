@@ -146,6 +146,12 @@ public sealed class WindowsDirectoryClient
     /// <summary>Creates an object. objectClass and all required schema attributes must be supplied explicitly.</summary>
     public Task CreateAsync(string distinguishedName, ImmutableDictionary<string, ImmutableArray<DirectoryValue>> attributes, CancellationToken cancellationToken = default)
     {
+        var request = AddRequest(distinguishedName, attributes);
+        return Send(request, "Create directory object", cancellationToken);
+    }
+
+    private static AddRequest AddRequest(string distinguishedName, ImmutableDictionary<string, ImmutableArray<DirectoryValue>> attributes)
+    {
         NativeError.Text(distinguishedName, nameof(distinguishedName));
         ArgumentNullException.ThrowIfNull(attributes);
         var request = new AddRequest(distinguishedName);
@@ -156,7 +162,34 @@ public sealed class WindowsDirectoryClient
             AddValues(attribute, pair.Value);
             request.Attributes.Add(attribute);
         }
-        return Send(request, "Create directory object", cancellationToken);
+        return request;
+    }
+
+    // Creates an object and reads its identity on the same connection. Once the add succeeds, cancellation is no
+    // longer observed; a failed read reports that the object exists.
+    internal Task<ActiveDirectoryObjectIdentity> CreateAndIdentifyAsync(string distinguishedName,
+        ImmutableDictionary<string, ImmutableArray<DirectoryValue>> attributes, CancellationToken cancellationToken)
+    {
+        var request = AddRequest(distinguishedName, attributes);
+        return Execute(connection =>
+        {
+            _ = connection.SendRequest(request);
+            const string operation = "Read created directory object";
+            try
+            {
+                var response = (SearchResponse)connection.SendRequest(new SearchRequest(distinguishedName, "(objectClass=*)", SearchScope.Base, "objectGUID"));
+                if (response.Entries.Count == 1 && response.Entries[0].Attributes["objectGUID"]?.GetValues(typeof(byte[])) is [byte[] { Length: 16 } guid])
+                    return new ActiveDirectoryObjectIdentity(response.Entries[0].DistinguishedName, new Guid(guid));
+                throw new WindowsAdministrationException(operation, AdministrationErrorCategory.InvalidData, NativeErrorDomain.Win32, 13,
+                    $"{operation} failed: the object {distinguishedName} was created, but its objectGUID could not be read.");
+            }
+            catch (Exception error) when (error is DirectoryOperationException or LdapException)
+            {
+                var code = error is DirectoryOperationException operationError ? (int)(operationError.Response?.ResultCode ?? ResultCode.Other) : ((LdapException)error).ErrorCode;
+                throw new WindowsAdministrationException(operation, Categorize(code), NativeErrorDomain.Ldap, code,
+                    $"{operation} failed (LDAP: {code}): the object {distinguishedName} was created, but its identity could not be read.", error);
+            }
+        }, "Create directory object", cancellationToken);
     }
 
     /// <summary>Applies explicit LDAP modifications in one server request.</summary>

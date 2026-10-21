@@ -74,3 +74,7 @@ public enum DirectoryModificationKind
 }
 /// <summary>An explicit modification retaining LDAP multi-value semantics.</summary>
 public sealed record DirectoryModification(string AttributeName, DirectoryModificationKind Kind, ImmutableArray<DirectoryValue> Values);
+
+/// <summary>The identity of an Active Directory object: its distinguished name as the server stores it and its <c>objectGUID</c>.</summary>
+/// <remarks>The GUID stays the same when the object is renamed or moved; the distinguished name does not.</remarks>
+public sealed record ActiveDirectoryObjectIdentity(string DistinguishedName, Guid ObjectGuid);

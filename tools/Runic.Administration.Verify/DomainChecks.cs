@@ -119,11 +119,18 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
         var userDn = "CN=User," + parent; var groupDn = "CN=Group," + parent;
         try
         {
-            await ad.CreateUserAsync(parent, "User", "rvu" + shortId, cancellationToken: token); owned.Add(userDn);
-            await ad.CreateGroupAsync(parent, "Group", "rvg" + shortId, ActiveDirectoryGroupScope.Global, true, cancellationToken: token); owned.Add(groupDn);
+            var user = await ad.CreateUserAsync(parent, "User", "rvu" + shortId, cancellationToken: token); owned.Add(userDn);
+            var group = await ad.CreateGroupAsync(parent, "Group", "rvg" + shortId, ActiveDirectoryGroupScope.Global, true, cancellationToken: token); owned.Add(groupDn);
             var computerDn = "CN=Computer," + parent;
-            await ad.CreateComputerAsync(parent, "Computer", "rvc" + shortId + "$", token); owned.Add(computerDn);
+            var computer = await ad.CreateComputerAsync(parent, "Computer", "rvc" + shortId + "$", token); owned.Add(computerDn);
             foreach (var dn in owned) report.Resource("AD object: " + dn);
+            // The create methods return the stored DN and objectGUID of the new object.
+            ActiveDirectoryObjectIdentity[] identities = [user, group, computer];
+            Require(identities.Select(identity => identity.DistinguishedName).SequenceEqual(owned, StringComparer.OrdinalIgnoreCase),
+                "Created object identities do not name the created DNs.");
+            Require(identities.All(identity => identity.ObjectGuid != Guid.Empty) && identities.Select(identity => identity.ObjectGuid).Distinct().Count() == 3,
+                "Created object identities lack distinct object GUIDs.");
+            report.Resource("Created user identity: " + user.DistinguishedName + " {" + user.ObjectGuid + "}");
             var rows = await directory.SearchAsync(new(parent, "(objectClass=*)", DirectorySearchScope.OneLevel, ["distinguishedName", "objectClass"]) { PageSize = 1 }, token);
             Require(rows.Length == 3, "Paging did not return all three fixture objects.");
             await ad.AddMemberAsync(groupDn, userDn, token);
@@ -144,7 +151,9 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             report.Resource("Read value types: description " + snapshot!.Attributes["description"][0].GetType().Name + ", objectSid " + snapshot.Attributes["objectSid"][0].GetType().Name);
             Require(snapshot.Attributes["description"][0] == new DirectoryValue.Text("Grüße"), "The Unicode description was not read back as text.");
             var typed = await directory.FindAsync(renamed, ["objectGUID", "whenCreated", "userAccountControl", "nTSecurityDescriptor", "distinguishedName"], token);
-            Require(typed!.Attributes["objectGUID"][0] is DirectoryValue.Binary && typed.Attributes["whenCreated"][0] is DirectoryValue.Text
+            Require(typed!.Attributes["objectGUID"][0] is DirectoryValue.Binary guid && new Guid(guid.Value.AsSpan()) == user.ObjectGuid,
+                "The renamed user's objectGUID differs from the GUID CreateUserAsync returned.");
+            Require(typed.Attributes["objectGUID"][0] is DirectoryValue.Binary && typed.Attributes["whenCreated"][0] is DirectoryValue.Text
                 && typed.Attributes["userAccountControl"][0] is DirectoryValue.Text && typed.Attributes["distinguishedName"][0] is DirectoryValue.Text
                 && (!typed.Attributes.TryGetValue("nTSecurityDescriptor", out var descriptor) || descriptor[0] is DirectoryValue.Binary),
                 "Read value types do not follow the schema syntaxes.");

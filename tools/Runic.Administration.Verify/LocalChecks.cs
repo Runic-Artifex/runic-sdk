@@ -206,7 +206,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         var client = new WindowsFirewallClient();
         var spec = new FirewallRuleSpecification(report.Prefix, FirewallDirection.Inbound, FirewallAction.Block)
         {
-            Enabled = false, ApplicationPath = Executable, Protocol = 6, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
+            Enabled = false, ApplicationPath = Executable, Protocol = FirewallProtocol.Tcp, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
             Grouping = report.Prefix, Description = "fixture"
         };
         var identity = new FirewallRuleIdentity(spec.Name, spec.Grouping, spec.ApplicationPath, spec.ServiceName, spec.Direction);
@@ -308,7 +308,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         var client = new WindowsFirewallClient();
         var spec = new FirewallRuleSpecification(report.Prefix, FirewallDirection.Inbound, FirewallAction.Block)
         {
-            Enabled = false, ApplicationPath = Executable, Protocol = 6, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
+            Enabled = false, ApplicationPath = Executable, Protocol = FirewallProtocol.Tcp, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
             Grouping = report.Prefix, Description = "fixture"
         };
         Require(await client.FindAsync(spec.Name, token) is null, "Fixture firewall name already exists; refusing to touch it.");
@@ -360,24 +360,14 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         report.Resource("  write unexpectedly succeeded; " + outcome);
         throw new InvalidOperationException("The non-elevated write unexpectedly succeeded; " + outcome + ".");
     }
-    private static System.Collections.Immutable.ImmutableArray<byte> Descriptor(string sddl)
-    {
-        var descriptor = new System.Security.AccessControl.RawSecurityDescriptor(sddl);
-        var bytes = new byte[descriptor.BinaryLength];
-        descriptor.GetBinaryForm(bytes, 0);
-        return [.. bytes];
-    }
+    private static WindowsSecurityDescriptor Descriptor(string sddl) => WindowsSecurityDescriptor.FromSddl(sddl);
     private static void CheckDescriptor(ShareSnapshot share, string expected)
     {
-        var bytes = share.SecurityDescriptor ?? throw new InvalidOperationException("Explicit share security descriptor missing.");
-        var actual = new System.Security.AccessControl.RawSecurityDescriptor(bytes.ToArray(), 0);
-        var desired = new System.Security.AccessControl.RawSecurityDescriptor(expected);
-        Require(actual.GetSddlForm(System.Security.AccessControl.AccessControlSections.All) ==
-            desired.GetSddlForm(System.Security.AccessControl.AccessControlSections.All), "Explicit share ACL did not roundtrip.");
+        var actual = share.SecurityDescriptor ?? throw new InvalidOperationException("Explicit share security descriptor missing.");
+        Require(actual.Sddl == WindowsSecurityDescriptor.FromSddl(expected).Sddl, "Explicit share ACL did not roundtrip.");
     }
-    private static bool SameDescriptor(System.Collections.Immutable.ImmutableArray<byte>? left,
-        System.Collections.Immutable.ImmutableArray<byte>? right) =>
-        left is { } a ? right is { } b && a.AsSpan().SequenceEqual(b.AsSpan()) : right is null;
+    // WindowsSecurityDescriptor compares the exact binary form: SIDs, ACE order and flags.
+    private static bool SameDescriptor(WindowsSecurityDescriptor? left, WindowsSecurityDescriptor? right) => left == right;
     internal static async Task Conflict(Func<Task> action)
     {
         try { await action(); throw new InvalidOperationException("Duplicate creation unexpectedly succeeded."); }

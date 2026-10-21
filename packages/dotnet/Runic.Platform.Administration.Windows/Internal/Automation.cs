@@ -21,7 +21,7 @@ internal static class Automation
     {
         NativeError.Windows();
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
-            throw new PlatformNotSupportedException("This administration COM binding currently supports Windows x64.");
+            throw new PlatformNotSupportedException("Windows administration supports only Windows x64.");
     }
 
     internal static unsafe ComObject GetObject(ComObject value, int slot, string operation)

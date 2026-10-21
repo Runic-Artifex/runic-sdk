@@ -8,13 +8,13 @@ internal static class FirewallContract
         foreach (var text in new[] { value.Description, value.ApplicationPath, value.ServiceName, value.LocalPorts,
             value.RemotePorts, value.LocalAddresses, value.RemoteAddresses, value.IcmpTypesAndCodes, value.InterfaceTypes, value.Grouping })
             NativeError.Text(text, nameof(value), true);
-        if (!Enum.IsDefined(value.Action) || !Enum.IsDefined(value.Direction) || value.Protocol is < 0 or > 256)
+        if (!Enum.IsDefined(value.Action) || !Enum.IsDefined(value.Direction) || (int)value.Protocol is < 0 or > 256)
             throw new ArgumentOutOfRangeException(nameof(value));
         var profiles = (int)value.Profiles;
         if (profiles != int.MaxValue && (profiles <= 0 || (profiles & ~7) != 0)) throw new ArgumentOutOfRangeException(nameof(value));
-        if (value.Protocol is not (6 or 17) && (value.LocalPorts.Length != 0 || value.RemotePorts.Length != 0))
+        if (value.Protocol is not (FirewallProtocol.Tcp or FirewallProtocol.Udp) && (value.LocalPorts.Length != 0 || value.RemotePorts.Length != 0))
             throw new ArgumentException("Ports require TCP or UDP.", nameof(value));
-        if (value.Protocol is not (1 or 58) && value.IcmpTypesAndCodes.Length != 0)
+        if (value.Protocol is not (FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6) && value.IcmpTypesAndCodes.Length != 0)
             throw new ArgumentException("ICMP type/code settings require ICMP.", nameof(value));
         if (value.Interfaces.IsDefault) throw new ArgumentException("Interfaces must be initialized.", nameof(value));
         foreach (var name in value.Interfaces) NativeError.Text(name, nameof(value));
@@ -25,7 +25,7 @@ internal static class FirewallContract
     {
         if (value.Direction != FirewallDirection.Inbound || value.Action != FirewallAction.Allow) return;
         if (value.ApplicationPath.Length != 0 || value.ServiceName is not ("" or "*") || value.LocalPorts is not ("" or "*") ||
-            value.Protocol is 1 or 58) return;
+            value.Protocol is FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6) return;
         throw new ArgumentException("A new inbound allow rule requires a program, service, local port or ICMP protocol.", nameof(value));
     }
 

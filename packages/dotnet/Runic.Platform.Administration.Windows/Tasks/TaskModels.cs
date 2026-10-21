@@ -42,15 +42,27 @@ public sealed record TaskExecutableAction(string Path, string Arguments = "", st
 /// <summary>Task identity. Passwords are supplied only to registration operations.</summary>
 public sealed record TaskPrincipal(string Identity, TaskLogonType LogonType, bool HighestPrivileges = false);
 
-/// <summary>Common trigger settings. Boundaries use the Task Scheduler date/time format, including optional timezone offset.</summary>
-/// <remarks>The set of trigger types is closed: only the ten trigger records in this namespace derive from it.</remarks>
+/// <summary>Common trigger settings.</summary>
+/// <remarks>
+/// <para>The set of trigger types is closed: only the ten trigger records in this namespace derive from it.</para>
+/// <para>A boundary's <see cref="DateTime.Kind"/> selects how Task Scheduler interprets it:</para>
+/// <list type="bullet">
+/// <item><description><see cref="DateTimeKind.Unspecified"/>: a wall-clock time of the target machine, written without
+/// an offset. This is Task Scheduler's default: the trigger follows that machine's time zone and daylight saving time.</description></item>
+/// <item><description><see cref="DateTimeKind.Utc"/>: a point in time, written with <c>Z</c> (Task Scheduler's
+/// "synchronize across time zones").</description></item>
+/// <item><description><see cref="DateTimeKind.Local"/>: a point in time, written with the UTC offset that the computer
+/// running this client has at that time.</description></item>
+/// </list>
+/// <para>Boundaries have whole seconds; a value with a fraction of a second is rejected with an <see cref="ArgumentException"/>.</para>
+/// </remarks>
 public abstract record TaskTrigger
 {
     private protected TaskTrigger() { }
-    /// <summary>Optional start boundary.</summary>
-    public string? StartBoundary { get; init; }
-    /// <summary>Optional end boundary.</summary>
-    public string? EndBoundary { get; init; }
+    /// <summary>Optional start boundary; its <see cref="DateTime.Kind"/> selects local wall-clock or synchronized time.</summary>
+    public DateTime? StartBoundary { get; init; }
+    /// <summary>Optional end boundary; its <see cref="DateTime.Kind"/> selects local wall-clock or synchronized time.</summary>
+    public DateTime? EndBoundary { get; init; }
     /// <summary>Whether the trigger is enabled.</summary>
     public bool Enabled { get; init; } = true;
 }
