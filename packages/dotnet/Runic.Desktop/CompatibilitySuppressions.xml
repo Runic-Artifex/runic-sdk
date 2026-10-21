@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopHost.GetAvailability</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopPlatform.get_IsEmbeddedWindowAvailable</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopPlatform.GetAvailability(System.String,Runic.Desktop.LinuxDesktopOptions)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopPlatform.GetAvailability(System.String)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopPlatform.GetLinuxEmbeddedBackends</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopPlatform.IsBrowserAvailable(Runic.Desktop.BrowserKind,System.String)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

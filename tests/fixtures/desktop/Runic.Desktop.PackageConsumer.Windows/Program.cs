@@ -2,8 +2,8 @@ using Runic.Desktop;
 
 if (args.Contains("--expect-missing-loader", StringComparer.Ordinal))
 {
-    var embedded = DesktopPlatform.GetAvailability().Presentations.Single(p => p.Browser == BrowserKind.Embedded);
-    if (embedded.IsAvailable || embedded.Diagnostic?.Code != "webview2-loader-unavailable")
+    var embedded = DesktopPlatform.GetAvailability().Embedded;
+    if (embedded.IsAvailable || embedded.Diagnostics is not [{ Code: "webview2-loader-unavailable" }, ..])
         throw new InvalidOperationException($"Expected a loader-specific diagnostic, got {embedded}.");
     Console.WriteLine("Missing loader correctly distinguished from missing Edge runtime.");
     return;

@@ -18,7 +18,7 @@ using var watchdog = new Timer(static _ =>
 try
 {
     SmokeSoak.Watchdog = watchdog;
-    if (!DesktopPlatform.GetAvailability(null, CreateHostOptions().Linux).Presentations.Any(static presentation => presentation.Browser == BrowserKind.Embedded && presentation.IsAvailable))
+    if (!DesktopPlatform.GetAvailability(CreateHostOptions()).Embedded.IsAvailable)
     {
         throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
     }

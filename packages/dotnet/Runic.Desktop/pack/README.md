@@ -105,6 +105,9 @@ presentation. It logs the diagnostics through `DesktopHostOptions.LoggerFactory`
 `ThrowIfInvalid` throws a `DesktopConfigurationException` that lists the
 errors; warnings name options the presentation ignores. `GetPresentationPreflight`
 returns the same checks as typed results.
+Before a host exists, `DesktopPlatform.GetAvailability(options)` reports the
+browsers and the embedded presentation of the options you will start with,
+including a GTK 4 or other custom window host.
 
 The default `RequestedOnly` policy never changes presentation mode. Applications
 that deliberately prefer a WebView but can continue in a browser can select

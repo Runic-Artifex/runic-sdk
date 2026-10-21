@@ -584,7 +584,7 @@ public sealed class DesktopApiTests
     [Test]
     public void AvailabilityReportsConcretePresentationsAndActionableFailures()
     {
-        var availability = DesktopPlatform.GetAvailability(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        var availability = DesktopPlatform.GetAvailability(new() { BrowserFolder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")) });
 
         Assert.False(string.IsNullOrWhiteSpace(availability.Platform));
         Assert.Contains(availability.Presentations, static item => item.Browser == BrowserKind.Embedded);

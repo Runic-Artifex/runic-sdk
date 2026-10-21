@@ -206,7 +206,7 @@ public enum BrowserKind
 
     /// <summary>Apple Safari: detection only.</summary>
     /// <remarks>
-    /// Not a presentation: Runic Desktop neither discovers nor launches it, and <see cref="DesktopPlatform.GetAvailability(string?)"/>
+    /// Not a presentation: Runic Desktop neither discovers nor launches it, and <see cref="DesktopPlatform.GetAvailability"/>
     /// does not list it. Requesting it reports <c>browser-unsupported</c> naming this browser, so a configured value,
     /// such as one read from settings, is recognized and reported precisely instead of being rejected as unknown.
     /// </remarks>
@@ -217,7 +217,7 @@ public enum BrowserKind
 
     /// <summary>Opera: detection only.</summary>
     /// <remarks>
-    /// Not a presentation: Runic Desktop neither discovers nor launches it, and <see cref="DesktopPlatform.GetAvailability(string?)"/>
+    /// Not a presentation: Runic Desktop neither discovers nor launches it, and <see cref="DesktopPlatform.GetAvailability"/>
     /// does not list it. Requesting it reports <c>browser-unsupported</c> naming this browser, so a configured value,
     /// such as one read from settings, is recognized and reported precisely instead of being rejected as unknown.
     /// </remarks>

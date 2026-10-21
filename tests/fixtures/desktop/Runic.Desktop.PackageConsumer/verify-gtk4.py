@@ -52,7 +52,8 @@ if (args.Contains("--missing-runtime"))
 {
     return DesktopEventLoop.Run(options, host =>
     {
-        var embedded = host.GetAvailability().Presentations.Single(static item => item.Browser == BrowserKind.Embedded);
+        // The same answer before the loop: DesktopPlatform.GetAvailability(options) needs no host.
+        var embedded = DesktopPlatform.GetAvailability(options).Embedded;
         if (embedded.IsAvailable || !embedded.Diagnostics.Any(static item => item.Code == "gtk4-runtime-missing"))
             throw new Exception("Missing runtime was not diagnosed.");
         Console.WriteLine("PASS actionable missing-native-runtime diagnostic");

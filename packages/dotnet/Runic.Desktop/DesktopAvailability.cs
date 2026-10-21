@@ -117,25 +117,147 @@ public sealed record DesktopValidationResult(IReadOnlyList<DesktopDiagnostic> Di
 }
 
 /// <summary>Reports the presentation hosts and prerequisites visible to the current process.</summary>
+/// <param name="Platform">The operating system: <c>windows</c>, <c>macos</c>, <c>linux</c> or <c>unsupported</c>.</param>
+/// <param name="Presentations">
+/// One entry per presentation, matched by <see cref="DesktopPresentationAvailability.Browser"/>; the list can grow.
+/// </param>
+/// <remarks>
+/// <see cref="DesktopPlatform.GetAvailability"/> creates it. Two results are equal when their members are, with the
+/// lists compared by value and order.
+/// </remarks>
 public sealed record DesktopAvailabilityResult(
     string Platform,
     IReadOnlyList<DesktopPresentationAvailability> Presentations)
 {
+    private readonly DesktopPresentationAvailability[] _presentations = Copy(Presentations, nameof(Presentations));
+    private readonly LinuxEmbeddedBackendAvailability[] _linuxBackends = [];
+
+    /// <summary>Gets one entry per presentation, matched by <see cref="DesktopPresentationAvailability.Browser"/>; the list can grow.</summary>
+    public IReadOnlyList<DesktopPresentationAvailability> Presentations
+    {
+        get => Array.AsReadOnly(_presentations);
+        init => _presentations = Copy(value, nameof(Presentations));
+    }
+
+    /// <summary>
+    /// Gets the GTK 3 and GTK 4 library discovery on Linux, to choose <see cref="LinuxDesktopOptions.EmbeddedBackend"/>;
+    /// empty on other platforms. It does not depend on the options passed to <see cref="DesktopPlatform.GetAvailability"/>.
+    /// </summary>
+    public IReadOnlyList<LinuxEmbeddedBackendAvailability> LinuxBackends
+    {
+        get => Array.AsReadOnly(_linuxBackends);
+        init => _linuxBackends = Copy(value, nameof(LinuxBackends));
+    }
+
     /// <summary>Gets whether at least one presentation host is available.</summary>
-    public bool IsReady => Presentations.Any(static presentation => presentation.IsAvailable);
+    public bool IsReady => _presentations.Any(static presentation => presentation.IsAvailable);
 
     /// <summary>Gets every actionable missing-prerequisite diagnostic.</summary>
-    public IReadOnlyList<DesktopDiagnostic> Diagnostics => Presentations
+    public IReadOnlyList<DesktopDiagnostic> Diagnostics => _presentations
         .SelectMany(static presentation => presentation.Diagnostics)
         .ToArray();
+
+    /// <summary>Gets the embedded WebView presentation: the configured window host's, or the built-in one.</summary>
+    /// <remarks>The same as <c>GetPresentation(BrowserKind.Embedded)</c>.</remarks>
+    public DesktopPresentationAvailability Embedded => GetPresentation(BrowserKind.Embedded);
+
+    /// <summary>Gets the presentation a window requesting <paramref name="browser"/> would use.</summary>
+    /// <param name="browser">The requested presentation, as in <see cref="DesktopWindowOptions.Browser"/>.</param>
+    /// <returns>
+    /// The entry of <see cref="BrowserKind.Embedded"/> or a concrete browser. For <see cref="BrowserKind.Any"/>, the first
+    /// available installed browser; for <see cref="BrowserKind.ChromiumBased"/>, the first available Chromium-based one.
+    /// When there is none, an unavailable entry for <paramref name="browser"/>: <c>browser-unsupported</c> for Safari and
+    /// Opera, which Runic Desktop does not launch, otherwise <c>presentation-unavailable</c>. Never <see langword="null"/>.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="browser"/> is not a defined value.</exception>
+    public DesktopPresentationAvailability GetPresentation(BrowserKind browser)
+    {
+        if (!Enum.IsDefined(browser)) throw new ArgumentOutOfRangeException(nameof(browser), browser, "The browser kind is not defined.");
+        DesktopPresentationAvailability? found = browser switch
+        {
+            BrowserKind.Any => Array.Find(_presentations, static candidate =>
+                candidate.Browser != BrowserKind.Embedded && candidate.IsAvailable),
+            BrowserKind.ChromiumBased => Array.Find(_presentations, static candidate =>
+                candidate.IsAvailable && candidate.Browser is BrowserKind.Chrome or BrowserKind.Edge or
+                    BrowserKind.Chromium or BrowserKind.Brave or BrowserKind.Vivaldi or BrowserKind.Epic or
+                    BrowserKind.Yandex),
+            _ => Array.Find(_presentations, candidate => candidate.Browser == browser),
+        };
+        return found ?? DesktopHost.Unavailable(browser);
+    }
+
+    /// <summary>Compares every member, and the lists by value and order.</summary>
+    public bool Equals(DesktopAvailabilityResult? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        string.Equals(Platform, other.Platform, StringComparison.Ordinal) &&
+        _presentations.AsSpan().SequenceEqual(other._presentations) &&
+        _linuxBackends.AsSpan().SequenceEqual(other._linuxBackends);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        HashCode hash = new();
+        hash.Add(Platform, StringComparer.Ordinal);
+        foreach (var presentation in _presentations) hash.Add(presentation);
+        foreach (var backend in _linuxBackends) hash.Add(backend);
+        return hash.ToHashCode();
+    }
+
+    private static T[] Copy<T>(IReadOnlyList<T> value, string name) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(value, name);
+        T[] items = [.. value];
+        if (Array.IndexOf(items, null) >= 0) throw new ArgumentException($"{name} cannot contain null.", name);
+        return items;
+    }
 }
 
 /// <summary>Reports native library discovery for one Linux toolkit without loading it.</summary>
 /// <param name="Backend">The toolkit.</param>
 /// <param name="LibrariesDiscovered">Whether its GTK and WebKitGTK libraries are in the native loader search path.</param>
 /// <param name="Diagnostics">What is missing; empty when the libraries were discovered.</param>
-/// <remarks>Library discovery is not proof of a compatible ABI, graphical session, or registered provider.</remarks>
+/// <remarks>
+/// Library discovery is not proof of a compatible ABI, graphical session, or registered provider. Two entries are
+/// equal when their members are, with the diagnostics compared by value and order.
+/// </remarks>
 public sealed record LinuxEmbeddedBackendAvailability(
     LinuxEmbeddedBackend Backend,
     bool LibrariesDiscovered,
-    IReadOnlyList<DesktopDiagnostic> Diagnostics);
+    IReadOnlyList<DesktopDiagnostic> Diagnostics)
+{
+    private readonly DesktopDiagnostic[] _diagnostics = Copy(Diagnostics);
+
+    /// <summary>Gets what is missing; empty when the libraries were discovered.</summary>
+    public IReadOnlyList<DesktopDiagnostic> Diagnostics
+    {
+        get => Array.AsReadOnly(_diagnostics);
+        init => _diagnostics = Copy(value);
+    }
+
+    private static DesktopDiagnostic[] Copy(IReadOnlyList<DesktopDiagnostic> value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        DesktopDiagnostic[] diagnostics = [.. value];
+        if (Array.IndexOf(diagnostics, null) >= 0) throw new ArgumentException("Diagnostics cannot contain null.", nameof(value));
+        return diagnostics;
+    }
+
+    /// <summary>Compares every member, and the diagnostics by value and order.</summary>
+    public bool Equals(LinuxEmbeddedBackendAvailability? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        Backend == other.Backend &&
+        LibrariesDiscovered == other.LibrariesDiscovered &&
+        _diagnostics.AsSpan().SequenceEqual(other._diagnostics);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        HashCode hash = new();
+        hash.Add(Backend);
+        hash.Add(LibrariesDiscovered);
+        foreach (var diagnostic in _diagnostics) hash.Add(diagnostic);
+        return hash.ToHashCode();
+    }
+}
