@@ -180,13 +180,15 @@ A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 Pages that load `runic-cswebui.js` keep working. The script adapts
 `window.webui` to the generated client's transport contract.
 
-Native WebUI before the build that CsWebUi 2.5.0-beta.4.7 bundles could assign
-one event slot to two calls that arrive together, and one of them then never
-received a reply (webui-dev/webui#721). The script therefore sends the next
-Bridge call only after .NET reports the previous one as received, or after it
-settles, which also covers an older WebUI loaded through
-`CSWEBUI_NATIVE_LIBRARY`. Concurrent calls are sent one server round trip apart. Applications
-that keep their own copy of `runic-cswebui.js` should update it.
+The script sends each Bridge call as soon as the page makes it, so several
+calls can reach WebUI at once. Runic relies on WebUI's fix for concurrent calls
+(webui-dev/webui#721): before it, native WebUI could assign one event slot to
+two calls that arrive together, and one of them then never received a reply.
+CsWebUi 2.5.0-beta.4.7, the lowest version this package accepts, bundles WebUI
+nightly `efac0e24dd4e6199dd7308c485906c90fb8816a2`, which includes the fix. An
+application that loads its own WebUI through `CSWEBUI_NATIVE_LIBRARY` needs that
+commit or a later one; with an older WebUI, Bridge replies can be lost.
+Applications that keep their own copy of `runic-cswebui.js` should update it.
 
 The window binds all WebUI events because only that binding delivers
 disconnects. The script stops WebUI from also sending a click event for every

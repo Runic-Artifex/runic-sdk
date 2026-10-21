@@ -40,8 +40,8 @@ try {
   };
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
-  // WebUI sends a click event for each element with an id it has not marked,
-  // and those collide with Bridge calls (#53); runic-cswebui.js marks them first.
+  // WebUI sends a click event for each element with an id it has not marked.
+  // Runic does not use them, so runic-cswebui.js marks the elements first.
   const expectClickEventsSuppressed = async moment => {
     const unmarked = await query('Array.from(document.querySelectorAll("[id]:not([data-webui_click_is_set])"), element => element.id)');
     if (unmarked.length !== 0)
@@ -59,9 +59,9 @@ try {
   });
   await expectClickEventsSuppressed("after connecting");
   if (verifyCallBurst) {
-    // Native WebUI can give two calls that arrive together one event slot, and
-    // one of them then never receives a reply (#53). Unless the client sends
-    // calls one admission at a time, a burst this size loses some.
+    // Native WebUI before webui#721 could give two calls that arrive together
+    // one event slot, and one of them then never received a reply. The client
+    // sends every call at once, so a burst this size would lose some there.
     const count = 2000;
     const settled = await evaluate(`(async () => {
       let settled = 0;
@@ -292,10 +292,8 @@ try {
   const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
   if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
 
-  // WebUI never settles calls in flight when its WebSocket closes. A call the
-  // admission timeout released is late; a reconnect must forget it, or its
-  // missing admission swallows the admission of a call sent afterwards.
-  const admissions = () => query("window.__runicBridgeAdmissionState()");
+  // WebUI never settles calls in flight when its WebSocket closes, so the
+  // client rejects them when it observes the loss.
   await evaluate(`(() => {
     const webui = window.webui;
     const call = webui.call;
@@ -306,7 +304,6 @@ try {
     window.__runicLostProbe = window.__runicBridge.call("__runicLostProbe").then(() => "resolved", error => error.message);
     return true;
   })()`);
-  await retry(async () => (await admissions()).late === 1);
   const { result: prototype } = await command("Runtime.evaluate", { expression: "WebSocket.prototype" });
   const { objects } = await command("Runtime.queryObjects", { prototypeObjectId: prototype.objectId });
   const closed = await command("Runtime.callFunctionOn", {
@@ -316,15 +313,9 @@ try {
   if (closed.result.value !== 1) throw new Error(`Expected one open WebUI WebSocket, closed ${closed.result.value}.`);
   await retry(async () => await query("window.webui.isConnected()") === false);
   await retry(async () => await query("window.webui.isConnected()") === true);
-  // Generated clients resume with their own calls; wait until .NET admitted them.
-  await retry(async () => !(await admissions()).waiting);
-  // A regression check only, and timing-dependent: it relies on the 250 ms
-  // connection poll seeing the closed socket before WebUI reconnects (after
-  // 500 ms). The host-client-scripts unit tests are the real guard.
-  const afterLoss = await admissions();
-  if (afterLoss.late !== 0)
-    throw new Error(`A reconnect kept admissions from the lost connection: ${JSON.stringify(afterLoss)}`);
-  // The lost connection also rejects the call it never answered.
+  // The lost connection rejects the call it never answered. This relies on the
+  // 250 ms connection poll seeing the closed socket before WebUI reconnects
+  // (after 500 ms); the host-client-scripts unit tests are the real guard.
   const probe = await evaluate("window.__runicLostProbe");
   if (probe !== "The CS-WebUI connection was lost before the call completed.")
     throw new Error(`A call in flight on the lost connection did not reject: ${probe}`);
