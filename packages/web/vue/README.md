@@ -258,13 +258,10 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
-## `useCollectionViewport(options)` (experimental)
-
-Exported from `@runic-artifex/vue/experimental`, like the
-`@runic-artifex/views/experimental` controller it wraps.
+## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
-`viewport` is a shallow ref with the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions-experimental)
+`viewport` is a shallow ref with the [`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
 range; `attach` is a function ref for the container. Bind it to a native element
 such as a `<div>`: a component instance (`:ref="attach"` on a component) or a
 non-HTML element detaches the viewport, and development builds warn. Pass a getter for the

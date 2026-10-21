@@ -2,8 +2,9 @@
 
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
-import { useCommand, useLatestOperation, useOperation, useView, ViewOutlet, type LatestOperationHandle, type ViewRegistry } from "../dist/index.js";
-import { useCollectionViewport } from "../dist/experimental.js";
+import {
+  useCollectionViewport, useCommand, useLatestOperation, useOperation, useView, ViewOutlet, type LatestOperationHandle, type ViewRegistry,
+} from "../dist/index.js";
 import * as root from "../dist/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
@@ -167,8 +168,8 @@ describe("useCommand", () => {
 });
 
 describe("useCollectionViewport", () => {
-  test("is only in @runic-artifex/vue/experimental", () => {
-    expect("useCollectionViewport" in root).toBe(false);
+  test("is a root export (graduated in 0.10)", () => {
+    expect(typeof root.useCollectionViewport).toBe("function");
   });
 
   test("measures the attached container and follows the options getter", async () => {

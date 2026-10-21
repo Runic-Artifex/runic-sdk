@@ -33,7 +33,7 @@ try {
   assert.ok(viewFiles.includes("package/dist/views/view-registry.d.ts"));
   const svelteManifest = JSON.parse((await execFile("tar", ["-xOf", svelte, "package/package.json"])).stdout);
   assert.equal(svelteManifest.name, "@runic-artifex/svelte");
-  assert.deepEqual(Object.keys(svelteManifest.exports), [".", "./experimental", "./package.json"]);
+  assert.deepEqual(Object.keys(svelteManifest.exports), [".", "./package.json"]);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module" }), "utf8");
   await execFile("npm", [
     "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--legacy-peer-deps",

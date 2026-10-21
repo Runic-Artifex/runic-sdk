@@ -3,10 +3,8 @@ import {
   createCollectionViewportController,
   type CollectionViewport,
   type CollectionViewportOptions,
-} from "@runic-artifex/views/experimental";
+} from "@runic-artifex/views";
 import { releaseWithScope } from "./scope.js";
-
-// Experimental (`@runic-artifex/vue/experimental`), like the views viewport controller it wraps.
 
 // Vue's bundler builds require bundlers to define process.env.NODE_ENV too.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };

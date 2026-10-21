@@ -7,4 +7,4 @@ export {
   type InjectLatestOperationOptions,
   type LatestOperationHandle,
 } from "./inject-latest-operation.js";
-
+export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";

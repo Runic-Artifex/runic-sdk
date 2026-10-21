@@ -513,7 +513,8 @@ requirement, not a consumer one.
   `RUNICDESK101` (the Desktop presentation transport, partly graduated and the
   rest internal in 0.10.0). An npm package exports its
   experimental APIs only from its `./experimental` subpath, which may change in
-  a minor release; graduation moves an export to the root entry.
+  a minor release; graduation moves an export to the root entry. No npm API is
+  experimental since 0.10.0, which removed every `./experimental` entry.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each stable release on a
   prerelease version and may change in any release. `RunicCsWebUiPackageVersion`

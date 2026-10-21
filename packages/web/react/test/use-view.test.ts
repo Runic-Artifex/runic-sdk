@@ -5,10 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import {
-  useCommand, useLatestOperation, useOperation, useView, ViewOutlet,
-  type CommandHandle, type LatestOperationHandle, type OperationHandle, type ViewHandle, type ViewRegistry,
+  retrySuspenseView, useCollectionViewport, useCommand, useLatestOperation, useOperation, useSuspenseView, useView, ViewOutlet,
+  type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
+  type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
-import { retrySuspenseView, useCollectionViewport, useSuspenseView, type CollectionViewportHandle } from "../dist/experimental.js";
 import * as root_ from "../dist/index.js";
 
 // React 18.3.0, the lowest supported React, exports act only as unstable_act.
@@ -214,9 +214,9 @@ describe("useView options", () => {
     expect(reference.clients.every(client => client.disposed === 0)).toBe(true);
   });
 
-  test("experimental hooks are only in @runic-artifex/react/experimental", () => {
-    for (const name of ["useSuspenseView", "retrySuspenseView", "useCollectionViewport"])
-      expect(name in root_).toBe(false);
+  test("the hooks that graduated in 0.10 are root exports", () => {
+    for (const name of ["useSuspenseView", "retrySuspenseView", "useCollectionViewport", "useLatestOperation"])
+      expect(typeof (root_ as Record<string, unknown>)[name]).toBe("function");
   });
 });
 
@@ -320,13 +320,16 @@ class Boundary extends Component<{ readonly children: ReactNode }, { readonly er
 }
 
 describe("useSuspenseView", () => {
-  function SuspenseProbe({ source }: { readonly source: { connect(): Promise<FakeClient> } | FakeClient }): ReactNode {
-    const { state } = useSuspenseView(source);
+  type Source = { connect(): Promise<FakeClient> } | FakeClient;
+  function SuspenseProbe({ source, options }: { readonly source: Source; readonly options?: SuspenseViewOptions }): ReactNode {
+    const { state } = useSuspenseView(source, options);
     return createElement("output", null, state.count);
   }
-  async function renderSuspense(source: { connect(): Promise<FakeClient> } | FakeClient, strict = false) {
+  async function renderSuspense(source: Source, strict = false, ...options: (SuspenseViewOptions | undefined)[]) {
+    const probes = (options.length ? options : [undefined]).map((option, index) =>
+      createElement(SuspenseProbe, { key: index, source, ...(option ? { options: option } : {}) }));
     const tree = createElement(Boundary, null,
-      createElement(Suspense, { fallback: createElement("output", null, "suspended") }, createElement(SuspenseProbe, { source })));
+      createElement(Suspense, { fallback: createElement("output", null, "suspended") }, ...probes));
     await act(async () => {
       root ??= createRoot(document.body.appendChild(document.createElement("div")));
       root.render(strict ? createElement(StrictMode, null, tree) : tree);
@@ -383,6 +386,86 @@ describe("useSuspenseView", () => {
       vi.advanceTimersByTime(1);
       expect(reference.clients[0]!.disposed).toBe(1);
     } finally { vi.useRealTimers(); }
+  });
+
+  // Renders, abandons the render before it mounts, then connects with fake timers.
+  async function abandonedConnection(...options: SuspenseViewOptions[]) {
+    const reference = fakeReference();
+    await renderSuspense(reference, false, ...options);
+    expect(text()).toBe("suspended");
+    await act(async () => root?.unmount());
+    root = undefined;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    reference.resolveAll();
+    for (let turn = 0; turn < 5; turn++) await Promise.resolve();
+    expect(reference.clients).toHaveLength(1);
+    return reference.clients[0]!;
+  }
+
+  test("releaseTimeout sets how long an unclaimed connection stays cached", async () => {
+    expectTypeOf(useSuspenseView<FakeClient>).parameter(1).toEqualTypeOf<SuspenseViewOptions | undefined>();
+    try {
+      const client = await abandonedConnection({ releaseTimeout: 50 });
+      vi.advanceTimersByTime(49);
+      expect(client.disposed).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(client.disposed).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test("components that share a connect function keep the largest releaseTimeout", async () => {
+    try {
+      const client = await abandonedConnection({ releaseTimeout: 20 }, { releaseTimeout: 100 });
+      vi.advanceTimersByTime(99);
+      expect(client.disposed).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(client.disposed).toBe(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test("releaseTimeout Infinity sets no timer", async () => {
+    try {
+      const client = await abandonedConnection({ releaseTimeout: Infinity });
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(2 ** 31);
+      expect(client.disposed).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test("an unretried failure is forgotten after releaseTimeout", async () => {
+    const reference = fakeReference(3);
+    reference.failNext();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await renderSuspense(reference, false, { releaseTimeout: 30 });
+      await act(async () => { reference.resolveAll(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      expect(text()).toBe("failed:offline");
+      await new Promise(resolve => setTimeout(resolve, 60));
+      // The failure was forgotten, so resetting the boundary connects again without retrySuspenseView.
+      await act(async () => boundary!.reset());
+      expect(text()).toBe("suspended");
+      await act(async () => { reference.resolveAll(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      expect(text()).toBe("3");
+    } finally { error.mockRestore(); }
+  });
+
+  test("an invalid releaseTimeout throws a RangeError", async () => {
+    const reference = fakeReference();
+    const caught: unknown[] = [];
+    function Invalid({ releaseTimeout }: { readonly releaseTimeout: number }): ReactNode {
+      try { useSuspenseView(reference, { releaseTimeout }); } catch (error) { caught.push(error); }
+      return null;
+    }
+    for (const releaseTimeout of [0, -1, Number.NaN, 2 ** 31, 1.5, -Infinity]) {
+      caught.length = 0;
+      await act(async () => {
+        root ??= createRoot(document.body.appendChild(document.createElement("div")));
+        root.render(createElement(Invalid, { releaseTimeout }));
+      });
+      expect(caught[0], String(releaseTimeout)).toBeInstanceOf(RangeError);
+    }
+    expect(reference.clients).toHaveLength(0);
+    expect(() => retrySuspenseView(reference)).not.toThrow();
   });
 
   test("renders a connected client without suspending", async () => {

@@ -65,3 +65,19 @@ test("the WPF Views package graduated: no experimental attribute and no suppress
       .map(([, id, member]) => `${file.split("/").pop()} ${member} ${id}`));
   assert.deepEqual(marked, []);
 });
+
+// D029.4: every npm `./experimental` export graduated in 0.10.0. A new npm experiment adds the
+// subpath and its docs/experimental.md entry together; until then no package has one.
+test("no npm package has an ./experimental entry, and the docs say so", () => {
+  const manifests = execFileSync("git", ["ls-files", "packages/web/*/package.json"], { cwd: root, encoding: "utf8" })
+    .trim().split("\n");
+  assert.ok(manifests.length >= 6);
+  for (const file of manifests) {
+    const manifest = JSON.parse(readFileSync(resolve(root, file), "utf8"));
+    assert.equal("./experimental" in (manifest.exports ?? {}), false, `${file} still exports ./experimental`);
+    const source = resolve(root, file.replace(/package\.json$/, "src/experimental.ts"));
+    assert.equal(execFileSync("git", ["ls-files", source], { cwd: root, encoding: "utf8" }).trim(), "", `${source} still exists`);
+  }
+  const section = docs.slice(docs.indexOf('<a id="npm-packages"></a>'));
+  assert.match(section, /No npm API is experimental/);
+});
