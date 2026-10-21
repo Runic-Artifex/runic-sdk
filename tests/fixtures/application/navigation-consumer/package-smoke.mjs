@@ -7,18 +7,21 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileS
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packageVersion } from "../../../../eng/version.mjs";
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const fixture = fileURLToPath(new URL(".", import.meta.url));
 const args = process.argv.slice(2);
 const keep = args.includes("--keep");
 const feed = resolve(args.find(arg => !arg.startsWith("--")) ?? join(root, "artifacts/packages/nuget"));
-const { version } = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "utf8"));
+const workspace = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "utf8"));
+// Runic.Application.Views.CsWebUi may ship on a version of its own (eng/workspace.json).
+const version = packageVersion(workspace, "Runic.Application.Views.CsWebUi");
 const packages = readFileSync(join(root, "Directory.Packages.props"), "utf8");
 const dependencyInjection = packages.match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
 assert.ok(dependencyInjection, "The Microsoft.Extensions.DependencyInjection version was not found.");
 for (const id of ["Runic.Application.Views", "Runic.Application.Views.CsWebUi"])
-  assert.ok(existsSync(join(feed, `${id}.${version}.nupkg`)), `Pack ${id} ${version} into ${feed} first.`);
+  assert.ok(existsSync(join(feed, `${id}.${packageVersion(workspace, id)}.nupkg`)), `Pack ${id} ${packageVersion(workspace, id)} into ${feed} first.`);
 
 // The temporary tree has no parent workspace and its own package cache, so
 // only the packed Runic packages can satisfy the references.
