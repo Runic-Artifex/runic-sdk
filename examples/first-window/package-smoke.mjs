@@ -50,7 +50,7 @@ try {
   const toolkit = packages.match(/<PackageVersion Include="CommunityToolkit.Mvvm" Version="([^"]+)"/)?.[1];
   const dependencyInjection = packages.match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
   if (!baseVersion || !toolkit || !dependencyInjection) throw new Error("SDK, CommunityToolkit or dependency injection version was not found.");
-  testVersion = `${baseVersion}.packagetest${process.pid}${Date.now()}`;
+  testVersion = `${baseVersion}${baseVersion.includes("-") ? "." : "-"}packagetest${process.pid}${Date.now()}`;
 
   await run("dotnet", ["build", "examples/first-window/FirstWindow.csproj", "-c", "Release"]);
   await mkdir(feed);
