@@ -8,18 +8,14 @@ Runic.Navigation.Wpf.DispatcherModelContext.Dispose() -> void
 Runic.Navigation.Wpf.DispatcherModelContext.InvokeAsync(System.Action! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.Wpf.DispatcherModelContext.InvokeAsync<T>(System.Func<T>! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
 Runic.Navigation.Wpf.DispatcherModelContext.IsExecuting.get -> bool
-Runic.Navigation.Wpf.DispatcherModelContext.RunHookAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! hook, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<T>!
 Runic.Navigation.Wpf.DispatcherModelContext.TryPost(System.Action! turn) -> bool
-Runic.Navigation.Wpf.DispatcherModelContext.UnhandledTurnException -> System.Action<System.Exception!>?
 Runic.Navigation.Wpf.INavigationViewLocator
-Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.INavigationEntry! entry) -> System.Windows.FrameworkElement?
 Runic.Navigation.Wpf.NavigationDialogHost
 Runic.Navigation.Wpf.NavigationDialogHost.CloseOnEscape.get -> bool
 Runic.Navigation.Wpf.NavigationDialogHost.CloseOnEscape.set -> void
 Runic.Navigation.Wpf.NavigationDialogHost.Modality.get -> Runic.Navigation.Wpf.NavigationDialogModality
 Runic.Navigation.Wpf.NavigationDialogHost.Modality.set -> void
 Runic.Navigation.Wpf.NavigationDialogHost.NavigationDialogHost() -> void
-Runic.Navigation.Wpf.NavigationDialogHost.Region.get -> Runic.Navigation.INavigationRegion?
 Runic.Navigation.Wpf.NavigationDialogHost.Region.set -> void
 Runic.Navigation.Wpf.NavigationDialogHost.ViewLocator.get -> Runic.Navigation.Wpf.INavigationViewLocator?
 Runic.Navigation.Wpf.NavigationDialogHost.ViewLocator.set -> void
@@ -35,7 +31,6 @@ Runic.Navigation.Wpf.NavigationHost.HandlesBrowseBack.get -> bool
 Runic.Navigation.Wpf.NavigationHost.HandlesBrowseBack.set -> void
 Runic.Navigation.Wpf.NavigationHost.IsTransitioning.get -> bool
 Runic.Navigation.Wpf.NavigationHost.NavigationHost() -> void
-Runic.Navigation.Wpf.NavigationHost.Region.get -> Runic.Navigation.INavigationRegion?
 Runic.Navigation.Wpf.NavigationHost.Region.set -> void
 Runic.Navigation.Wpf.NavigationHost.ViewLocator.get -> Runic.Navigation.Wpf.INavigationViewLocator?
 Runic.Navigation.Wpf.NavigationHost.ViewLocator.set -> void
@@ -66,8 +61,6 @@ static Runic.Navigation.Wpf.RunicWpfNavigationServiceCollectionExtensions.AddRun
 Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(object! content, System.IServiceProvider! services) -> System.Windows.FrameworkElement?
 Runic.Navigation.Wpf.NavigationSelector
 static readonly Runic.Navigation.Wpf.NavigationSelector.RegionProperty -> System.Windows.DependencyProperty!
-static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.INavigationRegion?
-static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.INavigationRegion? region) -> void
 Runic.Navigation.Wpf.ViewHost
 Runic.Navigation.Wpf.ViewHost.ViewHost() -> void
 Runic.Navigation.Wpf.ViewHost.Content.get -> object?
@@ -84,9 +77,16 @@ Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.set -> void
 static readonly Runic.Navigation.Wpf.NavigationHost.GuardWindowCloseProperty -> System.Windows.DependencyProperty!
 Runic.Navigation.Wpf.NavigationHost.IsBusy.get -> bool
 static readonly Runic.Navigation.Wpf.NavigationHost.IsBusyProperty -> System.Windows.DependencyProperty!
-Runic.Navigation.Wpf.DispatcherModelContext.YieldToPresentationAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.Wpf.NavigationHost.RetainViews.get -> bool
 Runic.Navigation.Wpf.NavigationHost.RetainViews.set -> void
 static Runic.Navigation.Wpf.NavigationHost.GetRetainViews(System.Windows.DependencyObject! element) -> bool
 static Runic.Navigation.Wpf.NavigationHost.SetRetainViews(System.Windows.DependencyObject! element, bool value) -> void
 static readonly Runic.Navigation.Wpf.NavigationHost.RetainViewsProperty -> System.Windows.DependencyProperty!
+Runic.Navigation.Wpf.DispatcherModelContext.UnhandledTurnException -> System.EventHandler<Runic.Navigation.RunicModelTurnExceptionEventArgs!>?
+Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.NavigationEntry! entry) -> System.Windows.FrameworkElement?
+Runic.Navigation.Wpf.NavigationDialogHost.Region.get -> Runic.Navigation.NavigationRegion?
+Runic.Navigation.Wpf.NavigationHost.Region.get -> Runic.Navigation.NavigationRegion?
+static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.NavigationRegion?
+static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.NavigationRegion? region) -> void
+static Runic.Navigation.Wpf.ViewHost.GetServices(System.Windows.DependencyObject! element) -> System.IServiceProvider?
+static Runic.Navigation.Wpf.ViewHost.SetServices(System.Windows.DependencyObject! element, System.IServiceProvider? services) -> void

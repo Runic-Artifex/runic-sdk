@@ -235,9 +235,6 @@ Runic.Platform.ISaveFileLease.BeginWriteAsync(Runic.Platform.FileWritePolicy pol
 Runic.Platform.ISaveFileLease.DisplayName.get -> string!
 Runic.Platform.ITextClipboard
 Runic.Platform.ITextClipboard.ReadTextAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
-Runic.Platform.IUiDispatcher
-Runic.Platform.IUiDispatcher.CheckAccess() -> bool
-Runic.Platform.IUiDispatcher.InvokeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Platform.OpenFileOptions
 Runic.Platform.OpenFileOptions.<Clone>$() -> Runic.Platform.OpenFileOptions!
 Runic.Platform.OpenFileOptions.Deconstruct(out Runic.Platform.OwnerPolicy OwnerPolicy) -> void
@@ -349,11 +346,7 @@ Runic.Platform.CapabilityStatus.Unavailable.Deconstruct(out Runic.Platform.Platf
 Runic.Platform.CapabilityStatus.Unavailable.Reason.get -> Runic.Platform.PlatformUnavailableReason
 Runic.Platform.CapabilityStatus.Unavailable.Unavailable(Runic.Platform.PlatformUnavailableReason Reason) -> void
 Runic.Platform.FileCommitResult.CommitUnknown.Code.get -> Runic.Platform.PlatformFailureCode
-Runic.Platform.FileCommitResult.CommitUnknown.CommitUnknown(Runic.Platform.PlatformFailureCode Code) -> void
-Runic.Platform.FileCommitResult.CommitUnknown.Deconstruct(out Runic.Platform.PlatformFailureCode Code) -> void
 Runic.Platform.FileCommitResult.NotCommitted.Code.get -> Runic.Platform.PlatformFailureCode
-Runic.Platform.FileCommitResult.NotCommitted.Deconstruct(out Runic.Platform.PlatformFailureCode Code) -> void
-Runic.Platform.FileCommitResult.NotCommitted.NotCommitted(Runic.Platform.PlatformFailureCode Code) -> void
 Runic.Platform.IDesktopFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.IDesktopNotifications.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.IDesktopNotifications.RequestPermissionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
@@ -361,8 +354,6 @@ Runic.Platform.IDesktopNotifications.ShowAsync(Runic.Platform.DesktopNotificatio
 Runic.Platform.ILaunchableFileLease.LaunchAsync(Runic.Platform.IDesktopFileLauncher! launcher, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.ITextClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.PickerResult<T>.Failed.Code.get -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PickerResult<T>.Failed.Deconstruct(out Runic.Platform.PlatformFailureCode Code) -> void
-Runic.Platform.PickerResult<T>.Failed.Failed(Runic.Platform.PlatformFailureCode Code) -> void
 Runic.Platform.PickerResult<T>.Unavailable.Deconstruct(out Runic.Platform.PlatformUnavailableReason Reason) -> void
 Runic.Platform.PickerResult<T>.Unavailable.Reason.get -> Runic.Platform.PlatformUnavailableReason
 Runic.Platform.PickerResult<T>.Unavailable.Unavailable(Runic.Platform.PlatformUnavailableReason Reason) -> void
@@ -378,13 +369,6 @@ Runic.Platform.PlatformDiagnostic.Message.get -> string?
 Runic.Platform.PlatformDiagnostic.Message.init -> void
 Runic.Platform.PlatformDiagnostic.PlatformDiagnostic(string! Domain, long Code, string? Message = null) -> void
 Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.Conflict = 5 -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.InvalidData = 2 -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.IoError = 4 -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.PermissionDenied = 0 -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.ResourceBusy = 1 -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.TooLarge = 3 -> Runic.Platform.PlatformFailureCode
-Runic.Platform.PlatformFailureCode.UserDismissed = 6 -> Runic.Platform.PlatformFailureCode
 Runic.Platform.PlatformResult<T>.Failed.Code.get -> Runic.Platform.PlatformFailureCode
 Runic.Platform.PlatformResult<T>.Failed.Deconstruct(out Runic.Platform.PlatformFailureCode Code, out Runic.Platform.PlatformDiagnostic? Diagnostic) -> void
 Runic.Platform.PlatformResult<T>.Failed.Diagnostic.get -> Runic.Platform.PlatformDiagnostic?
@@ -533,16 +517,10 @@ Runic.Platform.DesktopIcon.Images.get -> System.Collections.Immutable.ImmutableA
 Runic.Platform.DesktopIcon.Images.init -> void
 Runic.Platform.DesktopIconImage.Width.get -> int
 Runic.Platform.DesktopIconImage.Width.init -> void
-Runic.Platform.DesktopIcon.ThemeName.get -> string?
-Runic.Platform.DesktopIcon.ThemeName.init -> void
 Runic.Platform.DesktopLoginStartup
 Runic.Platform.DesktopMenuCommand
-Runic.Platform.DesktopMenuCommand.Checked.get -> bool?
-Runic.Platform.DesktopMenuCommand.Checked.init -> void
 Runic.Platform.DesktopMenuCommand.Deconstruct(out string! Id, out string! Label) -> void
 Runic.Platform.DesktopMenuCommand.DesktopMenuCommand(string! Id, string! Label) -> void
-Runic.Platform.DesktopMenuCommand.Enabled.get -> bool
-Runic.Platform.DesktopMenuCommand.Enabled.init -> void
 Runic.Platform.DesktopMenuCommand.Equals(Runic.Platform.DesktopMenuCommand? other) -> bool
 Runic.Platform.DesktopMenuCommand.Id.get -> string!
 Runic.Platform.DesktopMenuCommand.Id.init -> void
@@ -556,8 +534,6 @@ Runic.Platform.DesktopMenuSeparator.Equals(Runic.Platform.DesktopMenuSeparator? 
 Runic.Platform.DesktopMenuSubmenu
 Runic.Platform.DesktopMenuSubmenu.Deconstruct(out string! Label, out System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuItem!> Items) -> void
 Runic.Platform.DesktopMenuSubmenu.DesktopMenuSubmenu(string! Label, System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuItem!> Items) -> void
-Runic.Platform.DesktopMenuSubmenu.Enabled.get -> bool
-Runic.Platform.DesktopMenuSubmenu.Enabled.init -> void
 Runic.Platform.DesktopMenuSubmenu.Equals(Runic.Platform.DesktopMenuSubmenu? other) -> bool
 Runic.Platform.DesktopMenuSubmenu.Items.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuItem!>
 Runic.Platform.DesktopMenuSubmenu.Items.init -> void
@@ -578,7 +554,6 @@ Runic.Platform.DesktopStatusIconActivation.MenuItemId.get -> string?
 Runic.Platform.DesktopStatusIconActivation.MenuItemId.init -> void
 Runic.Platform.DesktopStatusIconActivation.PlatformContext.get -> Runic.Platform.DesktopActivationContext?
 Runic.Platform.DesktopStatusIconActivation.PlatformContext.init -> void
-Runic.Platform.DesktopStatusIcons
 Runic.Platform.DesktopStatusIconState
 Runic.Platform.DesktopStatusIconState.AttentionIcon.get -> Runic.Platform.DesktopIcon?
 Runic.Platform.DesktopStatusIconState.AttentionIcon.init -> void
@@ -645,7 +620,6 @@ static Runic.Platform.DesktopStatusIconActivation.operator !=(Runic.Platform.Des
 static Runic.Platform.DesktopStatusIconActivation.operator ==(Runic.Platform.DesktopStatusIconActivation? left, Runic.Platform.DesktopStatusIconActivation? right) -> bool
 static Runic.Platform.DesktopStatusIconState.operator !=(Runic.Platform.DesktopStatusIconState? left, Runic.Platform.DesktopStatusIconState? right) -> bool
 static Runic.Platform.DesktopStatusIconState.operator ==(Runic.Platform.DesktopStatusIconState? left, Runic.Platform.DesktopStatusIconState? right) -> bool
-static Runic.Platform.DesktopStatusIcons.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopStatusIcon!
 static Runic.Platform.LoginStartupRequest.operator !=(Runic.Platform.LoginStartupRequest? left, Runic.Platform.LoginStartupRequest? right) -> bool
 static Runic.Platform.LoginStartupRequest.operator ==(Runic.Platform.LoginStartupRequest? left, Runic.Platform.LoginStartupRequest? right) -> bool
 virtual Runic.Platform.ApplicationInstanceClaim.EqualityContract.get -> System.Type!
@@ -791,12 +765,9 @@ Runic.Platform.IDesktopSecretStore
 Runic.Platform.IDesktopSecretStore.DeleteAsync(string! service, string! account, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<bool>!>
 Runic.Platform.IDesktopSecretStore.GetAsync(string! service, string! account, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
 Runic.Platform.IDesktopSecretStore.SetAsync(string! service, string! account, string! secret, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
-Runic.Platform.PlatformFailureCode.Locked = 7 -> Runic.Platform.PlatformFailureCode
 static Runic.Platform.DesktopSecretStore.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopSecretStore!
 Runic.Platform.DesktopOpenOptions
 Runic.Platform.DesktopOpenOptions.DesktopOpenOptions(System.Collections.Immutable.ImmutableArray<string!> UrlSchemes) -> void
-Runic.Platform.DesktopOpenOptions.Files.get -> bool
-Runic.Platform.DesktopOpenOptions.Files.init -> void
 Runic.Platform.DesktopOpenOptions.UrlSchemes.get -> System.Collections.Immutable.ImmutableArray<string!>
 Runic.Platform.DesktopOpenOptions.UrlSchemes.init -> void
 Runic.Platform.DesktopOpenRequest
@@ -829,7 +800,6 @@ static Runic.Platform.DesktopOpenRequest.operator ==(Runic.Platform.DesktopOpenR
 Runic.Platform.DesktopTrash
 Runic.Platform.IDesktopTrash
 Runic.Platform.IDesktopTrash.MoveToTrashAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
-Runic.Platform.PlatformFailureCode.NotFound = 8 -> Runic.Platform.PlatformFailureCode
 static Runic.Platform.DesktopTrash.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopTrash!
 Runic.Platform.DesktopFileTransfers
 Runic.Platform.FileConflictAction
@@ -1065,8 +1035,6 @@ Runic.Platform.DesktopApplicationInfo.Description.get -> string?
 Runic.Platform.DesktopApplicationInfo.Description.init -> void
 Runic.Platform.DesktopApplicationInfo.DesktopApplicationInfo(string! Id, string! Name) -> void
 Runic.Platform.DesktopApplicationInfo.Equals(Runic.Platform.DesktopApplicationInfo? other) -> bool
-Runic.Platform.DesktopApplicationInfo.Hidden.get -> bool
-Runic.Platform.DesktopApplicationInfo.Hidden.init -> void
 Runic.Platform.DesktopApplicationInfo.IconName.get -> string?
 Runic.Platform.DesktopApplicationInfo.IconName.init -> void
 Runic.Platform.DesktopApplicationInfo.Id.get -> string!
@@ -1142,8 +1110,6 @@ Runic.Platform.DesktopIconRequest
 Runic.Platform.DesktopIconRequest.<Clone>$() -> Runic.Platform.DesktopIconRequest!
 Runic.Platform.DesktopIconRequest.Equals(Runic.Platform.DesktopIconRequest? other) -> bool
 Runic.Platform.DesktopIconRequest.IconName.get -> string?
-const Runic.Platform.DesktopIconRequest.MaximumScale = 16 -> int
-const Runic.Platform.DesktopIconRequest.MaximumSize = 4096 -> int
 override Runic.Platform.DesktopIconRequest.Equals(object? obj) -> bool
 override Runic.Platform.DesktopIconRequest.GetHashCode() -> int
 override Runic.Platform.DesktopIconRequest.ToString() -> string!
@@ -1163,10 +1129,50 @@ Runic.Platform.DesktopThumbnail.Width.init -> void
 Runic.Platform.DesktopThumbnails
 Runic.Platform.IDesktopThumbnails
 Runic.Platform.IDesktopThumbnails.GetThumbnailAsync(string! path, int size, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopThumbnail?>!>
-const Runic.Platform.DesktopThumbnails.MaximumSize = 1024 -> int
 override Runic.Platform.DesktopThumbnail.Equals(object? obj) -> bool
 override Runic.Platform.DesktopThumbnail.GetHashCode() -> int
 override Runic.Platform.DesktopThumbnail.ToString() -> string!
 static Runic.Platform.DesktopThumbnail.operator !=(Runic.Platform.DesktopThumbnail? left, Runic.Platform.DesktopThumbnail? right) -> bool
 static Runic.Platform.DesktopThumbnail.operator ==(Runic.Platform.DesktopThumbnail? left, Runic.Platform.DesktopThumbnail? right) -> bool
 static Runic.Platform.DesktopThumbnails.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopThumbnails!
+Runic.Platform.IDesktopFileLauncher.LaunchUriAsync(System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.DesktopApplicationInfo.IsHidden.get -> bool
+Runic.Platform.DesktopApplicationInfo.IsHidden.init -> void
+Runic.Platform.DesktopIcon.IconName.get -> string?
+Runic.Platform.DesktopIcon.IconName.init -> void
+Runic.Platform.DesktopMenuCommand.IsChecked.get -> bool?
+Runic.Platform.DesktopMenuCommand.IsChecked.init -> void
+Runic.Platform.DesktopMenuCommand.IsEnabled.get -> bool
+Runic.Platform.DesktopMenuCommand.IsEnabled.init -> void
+Runic.Platform.DesktopMenuSubmenu.IsEnabled.get -> bool
+Runic.Platform.DesktopMenuSubmenu.IsEnabled.init -> void
+Runic.Platform.DesktopOpenOptions.IncludeFiles.get -> bool
+Runic.Platform.DesktopOpenOptions.IncludeFiles.init -> void
+Runic.Platform.DesktopStatusIcon
+Runic.Platform.FileCommitResult.CommitUnknown.CommitUnknown(Runic.Platform.PlatformFailureCode Code, Runic.Platform.PlatformDiagnostic? Diagnostic = null) -> void
+Runic.Platform.FileCommitResult.CommitUnknown.Deconstruct(out Runic.Platform.PlatformFailureCode Code, out Runic.Platform.PlatformDiagnostic? Diagnostic) -> void
+Runic.Platform.FileCommitResult.CommitUnknown.Diagnostic.get -> Runic.Platform.PlatformDiagnostic?
+Runic.Platform.FileCommitResult.CommitUnknown.Diagnostic.init -> void
+Runic.Platform.FileCommitResult.NotCommitted.Deconstruct(out Runic.Platform.PlatformFailureCode Code, out Runic.Platform.PlatformDiagnostic? Diagnostic) -> void
+Runic.Platform.FileCommitResult.NotCommitted.Diagnostic.get -> Runic.Platform.PlatformDiagnostic?
+Runic.Platform.FileCommitResult.NotCommitted.Diagnostic.init -> void
+Runic.Platform.FileCommitResult.NotCommitted.NotCommitted(Runic.Platform.PlatformFailureCode Code, Runic.Platform.PlatformDiagnostic? Diagnostic = null) -> void
+Runic.Platform.PickerResult<T>.Failed.Deconstruct(out Runic.Platform.PlatformFailureCode Code, out Runic.Platform.PlatformDiagnostic? Diagnostic) -> void
+Runic.Platform.PickerResult<T>.Failed.Diagnostic.get -> Runic.Platform.PlatformDiagnostic?
+Runic.Platform.PickerResult<T>.Failed.Diagnostic.init -> void
+Runic.Platform.PickerResult<T>.Failed.Failed(Runic.Platform.PlatformFailureCode Code, Runic.Platform.PlatformDiagnostic? Diagnostic = null) -> void
+Runic.Platform.PlatformFailureCode.Conflict = 6 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.IOError = 5 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.InvalidData = 3 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.Locked = 8 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.NotFound = 9 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.Other = 10 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.PermissionDenied = 1 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.ResourceBusy = 2 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.TooLarge = 4 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.Unknown = 0 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.UserDismissed = 7 -> Runic.Platform.PlatformFailureCode
+static Runic.Platform.DesktopIconRequest.MaximumScale.get -> int
+static Runic.Platform.DesktopIconRequest.MaximumSize.get -> int
+static Runic.Platform.DesktopStatusIcon.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopStatusIcon!
+static Runic.Platform.DesktopThumbnails.MaximumSize.get -> int

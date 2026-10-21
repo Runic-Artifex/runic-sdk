@@ -1,29 +1,12 @@
 #nullable enable
-abstract Runic.Platform.Runtime.DesktopSettingsSource.ReadCoreAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopAppearance!>!>
-abstract Runic.Platform.Runtime.PortalParentLease.DisposeAsync() -> System.Threading.Tasks.ValueTask
-abstract Runic.Platform.Runtime.PortalParentLease.Identifier.get -> string!
 override Runic.Platform.Runtime.NativeFileSelection.Equals(object? obj) -> bool
 override Runic.Platform.Runtime.NativeFileSelection.GetHashCode() -> int
 override Runic.Platform.Runtime.NativeFileSelection.ToString() -> string!
-Runic.Platform.Runtime.DesktopServiceValidation
-Runic.Platform.Runtime.DesktopSettingsSource
-Runic.Platform.Runtime.DesktopSettingsSource.DesktopSettingsSource() -> void
-Runic.Platform.Runtime.DesktopSettingsSource.DisposeAsync() -> System.Threading.Tasks.ValueTask
-Runic.Platform.Runtime.DesktopSettingsSource.ReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopAppearance!>!>
-Runic.Platform.Runtime.DesktopSettingsSource.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopAppearance!>!>!
 Runic.Platform.Runtime.INativeFilePicker
-Runic.Platform.Runtime.INativeFilePicker.SelectAsync(bool save, string? suggestedName, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.NativeFileSelection?>
 Runic.Platform.Runtime.INativeFilePicker.SupportsAtomicReplace.get -> bool
-Runic.Platform.Runtime.INativePickerOwner
-Runic.Platform.Runtime.INativePickerOwner.Generation.get -> System.Guid
-Runic.Platform.Runtime.INativePickerOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Platform.Runtime.INativePickerOwner.IsAvailable.get -> bool
-Runic.Platform.Runtime.InhibitionValidation
 Runic.Platform.Runtime.IPickerBackend
 Runic.Platform.Runtime.IPickerBackend.IsAvailable.get -> bool
 Runic.Platform.Runtime.IPickerBackend.SupportsAtomicReplace.get -> bool
-Runic.Platform.Runtime.IPortalWindowOwner
-Runic.Platform.Runtime.IPortalWindowOwner.ExportParentAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.PortalParentLease!>
 Runic.Platform.Runtime.NativeBackendUnavailableException
 Runic.Platform.Runtime.NativeBackendUnavailableException.NativeBackendUnavailableException() -> void
 Runic.Platform.Runtime.NativeFileSelection
@@ -39,50 +22,13 @@ Runic.Platform.Runtime.NativeFileSelection.Path.get -> string!
 Runic.Platform.Runtime.NativeFileSelection.Path.init -> void
 Runic.Platform.Runtime.NativePickerBackend
 Runic.Platform.Runtime.NativePickerBackend.IsAvailable.get -> bool
-Runic.Platform.Runtime.NativePickerBackend.NativePickerBackend(Runic.Platform.Runtime.INativePickerOwner! owner, Runic.Platform.Runtime.INativeFilePicker! picker) -> void
 Runic.Platform.Runtime.NativePickerBackend.OpenFileAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLease!>!>
 Runic.Platform.Runtime.NativePickerBackend.SaveFileAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.ISaveFileLease!>!>
 Runic.Platform.Runtime.NativePickerBackend.SupportsAtomicReplace.get -> bool
 Runic.Platform.Runtime.OwnerClosedException
 Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException() -> void
-Runic.Platform.Runtime.PortalParentLease
-Runic.Platform.Runtime.PortalParentLease.PortalParentLease() -> void
-Runic.Platform.Runtime.PresentationClipboard
-Runic.Platform.Runtime.PresentationClipboard.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
-Runic.Platform.Runtime.PresentationClipboard.PresentationClipboard(Runic.Platform.Runtime.PresentationLifetime! lifetime, Runic.Platform.ITextClipboard? backend = null) -> void
-Runic.Platform.Runtime.PresentationClipboard.ReadTextAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
-Runic.Platform.Runtime.PresentationDispatcher
-Runic.Platform.Runtime.PresentationDispatcher.CheckAccess() -> bool
-Runic.Platform.Runtime.PresentationDispatcher.InvokeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Platform.Runtime.PresentationDispatcher.PresentationDispatcher(Runic.Platform.Runtime.PresentationLifetime! lifetime, System.Func<bool>! checkAccess, System.Action<System.Action!>! post) -> void
-Runic.Platform.Runtime.PresentationFileLauncher
-Runic.Platform.Runtime.PresentationFileLauncher.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
-Runic.Platform.Runtime.PresentationFileLauncher.PresentationFileLauncher(Runic.Platform.Runtime.PresentationLifetime! lifetime, Runic.Platform.IDesktopFileLauncher? backend = null) -> void
-Runic.Platform.Runtime.PresentationFiles
-Runic.Platform.Runtime.PresentationFiles.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
-Runic.Platform.Runtime.PresentationFiles.OpenFileAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLease!>!>
-Runic.Platform.Runtime.PresentationFiles.PresentationFiles(Runic.Platform.Runtime.PresentationLifetime! lifetime, Runic.Platform.Runtime.IPickerBackend? backend = null) -> void
-Runic.Platform.Runtime.PresentationFiles.SaveFileAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.ISaveFileLease!>!>
-Runic.Platform.Runtime.PresentationLifetime
-Runic.Platform.Runtime.PresentationLifetime.DisposeAsync() -> System.Threading.Tasks.ValueTask
-Runic.Platform.Runtime.PresentationLifetime.Generation.get -> System.Guid
-Runic.Platform.Runtime.PresentationLifetime.HasOwner.get -> bool
-Runic.Platform.Runtime.PresentationLifetime.IsClosing.get -> bool
-Runic.Platform.Runtime.PresentationLifetime.PresentationLifetime(System.Func<bool>? ownerAvailable = null, System.Guid? generation = null) -> void
-Runic.Platform.Runtime.PresentationLifetime.Shutdown.get -> System.Threading.CancellationToken
-Runic.Platform.Runtime.PresentationLifetime.StopAsync() -> System.Threading.Tasks.ValueTask
-Runic.Platform.Runtime.PresentationLifetime.TryBeginOperation() -> System.IDisposable?
-static Runic.Platform.Runtime.DesktopServiceValidation.FilePath(string! path, Runic.Platform.DesktopFileOperation operation) -> string!
-static Runic.Platform.Runtime.DesktopServiceValidation.Identifier(string! id) -> void
-static Runic.Platform.Runtime.DesktopServiceValidation.Notification(Runic.Platform.DesktopNotification! notification) -> void
-static Runic.Platform.Runtime.InhibitionValidation.Validate(Runic.Platform.DesktopInhibitionEffects effects, string! reason) -> void
 static Runic.Platform.Runtime.NativeFileSelection.operator !=(Runic.Platform.Runtime.NativeFileSelection? left, Runic.Platform.Runtime.NativeFileSelection? right) -> bool
 static Runic.Platform.Runtime.NativeFileSelection.operator ==(Runic.Platform.Runtime.NativeFileSelection? left, Runic.Platform.Runtime.NativeFileSelection? right) -> bool
-virtual Runic.Platform.Runtime.DesktopSettingsSource.CloseCoreAsync() -> System.Threading.Tasks.ValueTask
-virtual Runic.Platform.Runtime.DesktopSettingsSource.NextChange() -> System.Threading.Tasks.Task?
-virtual Runic.Platform.Runtime.PortalParentLease.OwnerClosed.get -> System.Threading.CancellationToken
-Runic.Platform.Runtime.PresentationClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
-Runic.Platform.Runtime.PresentationFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 override Runic.Platform.Runtime.NativeDirectorySelection.Equals(object? obj) -> bool
 override Runic.Platform.Runtime.NativeDirectorySelection.GetHashCode() -> int
 override Runic.Platform.Runtime.NativeDirectorySelection.ToString() -> string!
@@ -98,11 +44,9 @@ Runic.Platform.Runtime.NativeDirectorySelection.Path.init -> void
 static Runic.Platform.Runtime.NativeDirectorySelection.operator !=(Runic.Platform.Runtime.NativeDirectorySelection? left, Runic.Platform.Runtime.NativeDirectorySelection? right) -> bool
 static Runic.Platform.Runtime.NativeDirectorySelection.operator ==(Runic.Platform.Runtime.NativeDirectorySelection? left, Runic.Platform.Runtime.NativeDirectorySelection? right) -> bool
 Runic.Platform.Runtime.INativeDirectoryPicker
-Runic.Platform.Runtime.INativeDirectoryPicker.SelectDirectoryAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.NativeDirectorySelection?>
 Runic.Platform.Runtime.IPickerBackend.SupportsDirectorySelection.get -> bool
 Runic.Platform.Runtime.NativePickerBackend.SupportsDirectorySelection.get -> bool
 Runic.Platform.Runtime.NativePickerBackend.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>
-Runic.Platform.Runtime.PresentationFiles.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>
 Runic.Platform.Runtime.NativeFileLocation
 Runic.Platform.Runtime.NativeFileLocation.DocumentPortal = 1 -> Runic.Platform.Runtime.NativeFileLocation
 Runic.Platform.Runtime.NativeFileLocation.Host = 0 -> Runic.Platform.Runtime.NativeFileLocation
@@ -110,7 +54,6 @@ Runic.Platform.Runtime.NativeFileSelection.Location.get -> Runic.Platform.Runtim
 Runic.Platform.Runtime.NativeFileSelection.Location.init -> void
 Runic.Platform.Runtime.ApplicationInstance
 static Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string! applicationId, Runic.Platform.ApplicationLaunch! launch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.ApplicationInstanceClaim!>!>
-static Runic.Platform.Runtime.DesktopServiceValidation.StatusIcon(Runic.Platform.DesktopStatusIconState! state) -> void
 Runic.Platform.Runtime.ApplicationInstanceOptions
 Runic.Platform.Runtime.ApplicationInstanceOptions.ApplicationInstanceOptions() -> void
 Runic.Platform.Runtime.ApplicationInstanceOptions.ReplyToLaunches.get -> bool
@@ -149,15 +92,17 @@ Runic.Platform.Runtime.NativeFileDialogRequest.SuggestedName.get -> string?
 Runic.Platform.Runtime.NativeFileDialogRequest.SuggestedName.init -> void
 Runic.Platform.Runtime.NativePickerBackend.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
 Runic.Platform.Runtime.NativePickerBackend.SupportsMultipleSelection.get -> bool
-Runic.Platform.Runtime.PresentationFiles.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
 static Runic.Platform.Runtime.NativeFileDialogRequest.operator !=(Runic.Platform.Runtime.NativeFileDialogRequest? left, Runic.Platform.Runtime.NativeFileDialogRequest? right) -> bool
 static Runic.Platform.Runtime.NativeFileDialogRequest.operator ==(Runic.Platform.Runtime.NativeFileDialogRequest? left, Runic.Platform.Runtime.NativeFileDialogRequest? right) -> bool
-Runic.Platform.Runtime.SecretStoreValidation
-const Runic.Platform.Runtime.SecretStoreValidation.MaximumSecretBytes = 2560 -> int
-static Runic.Platform.Runtime.SecretStoreValidation.DecodeSecret(System.ReadOnlySpan<byte> stored) -> string?
-static Runic.Platform.Runtime.SecretStoreValidation.EncodeSecret(string! secret) -> byte[]?
-static Runic.Platform.Runtime.SecretStoreValidation.Validate(string! service, string! account) -> void
-static Runic.Platform.Runtime.ApplicationInstance.CreateOpenRequests(Runic.Platform.IApplicationInstance? instance, Runic.Platform.ApplicationLaunch! launch, Runic.Platform.DesktopOpenOptions! options) -> Runic.Platform.IDesktopOpenRequests!
-static Runic.Platform.Runtime.DesktopServiceValidation.ItemPath(string! path) -> string!
 Runic.Platform.Runtime.LocalFileTransfers
 static Runic.Platform.Runtime.LocalFileTransfers.Create() -> Runic.Platform.IDesktopFileTransfers!
+Runic.Platform.Runtime.INativeWindowOwner
+Runic.Platform.Runtime.INativeWindowOwner.Generation.get -> System.Guid
+Runic.Platform.Runtime.INativeWindowOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Platform.Runtime.INativeWindowOwner.IsAvailable.get -> bool
+Runic.Platform.Runtime.NativeBackendUnavailableException.NativeBackendUnavailableException(string? message) -> void
+Runic.Platform.Runtime.NativeBackendUnavailableException.NativeBackendUnavailableException(string? message, System.Exception? innerException) -> void
+Runic.Platform.Runtime.NativePickerBackend.NativePickerBackend(Runic.Platform.Runtime.INativeWindowOwner! owner, Runic.Platform.Runtime.INativeFilePicker! picker) -> void
+Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException(string? message) -> void
+Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException(string? message, System.Exception? innerException) -> void
+static Runic.Platform.Runtime.ApplicationInstance.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!

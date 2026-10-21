@@ -18,3 +18,11 @@ RUNICDBUS008 | Runic.Platform.Linux.DBus | Error | DBusSourceGenerator
 RUNICDBUS009 | Runic.Platform.Linux.DBus | Error | DBusSourceGenerator
 RUNICDBUS010 | Runic.Platform.Linux.DBus | Error | DBusSourceGenerator
 RUNICDBUS011 | Runic.Platform.Linux.DBus | Error | DBusSourceGenerator
+
+## Release 0.9.0
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+RUNICDBUS012 | Runic.Platform.Linux.DBus | Error | DBusSourceGenerator
