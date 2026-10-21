@@ -60,6 +60,7 @@ of the Runic.Application.Views guide links here.
 | [`RUNICBRIDGE023`](#runicbridge023) | Error | Build targets | The application references Runic ReactiveUI adapters of both ReactiveUI flavors |
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
+| [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
 
 ### RUNICBRIDGE001
 
@@ -416,6 +417,26 @@ the interaction interface of the adapter's flavor
 (`ReactiveUI.Binding.IInteraction` with `Runic.Application.Views.ReactiveUI`,
 `ReactiveUI.Binding.Reactive.IInteraction` with
 `Runic.Application.Views.ReactiveUI.Reactive`).
+
+### RUNICBRIDGE026
+
+The `Runic.Application.Views` build targets report this error before the
+frontend install runs. The frontend's `package.json` declares dependencies, the
+build would install them with the default command, and the selected package
+manager has no lock file: `package-lock.json` or `npm-shrinkwrap.json` for npm,
+`pnpm-lock.yaml` for pnpm, `bun.lock` or `bun.lockb` for Bun. Without a lock
+file every build, including CI, would resolve the declared version ranges afresh,
+so a newly published version of a dependency, malicious or not, would run in the
+frontend build. `--ignore-scripts` stops only install scripts, not a build plugin.
+Until 0.10 the build fell back to an unlocked `npm install`.
+
+**Fix:** run the package manager's install once (`npm install`, `pnpm install`
+or `bun install`) and commit the lock file it writes. To install without a lock
+file anyway, set `RunicApplicationFrontendAllowUnlockedInstall` to `true`, which
+runs `npm install`, `pnpm install` or `bun install` with `--ignore-scripts`. A
+project that sets `RunicApplicationFrontendInstallCommand`,
+`RunicApplicationFrontendNodeModulesDirectory` or
+`RunicApplicationFrontendInstallEnabled=false` is not checked.
 
 ## dotnet runic
 

@@ -251,10 +251,22 @@
     <RunicApplicationFrontendBuildCommand Condition="'$(RunicApplicationFrontendBuildCommand)' == ''">npm run build</RunicApplicationFrontendBuildCommand>
     <!-- A project may still set its own command after importing these targets. -->
     <_RunicBridgeDefaultFrontendBuildCommand Condition="'$(_RunicBridgeDefaultFrontendBuild)' == 'true'">$(RunicApplicationFrontendBuildCommand)</_RunicBridgeDefaultFrontendBuildCommand>
+    <!-- The default install is locked: without the package manager's lock file it is RUNICBRIDGE026, unless
+         RunicApplicationFrontendAllowUnlockedInstall=true allows resolving the declared ranges afresh. -->
+    <_RunicBridgeDefaultFrontendInstall Condition="'$(RunicApplicationFrontendInstallCommand)' == ''">true</_RunicBridgeDefaultFrontendInstall>
+    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'pnpm' and Exists('$(RunicApplicationFrontendDirectory)/pnpm-lock.yaml')">true</_RunicBridgeFrontendLocked>
+    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun' and (Exists('$(RunicApplicationFrontendDirectory)/bun.lock') or Exists('$(RunicApplicationFrontendDirectory)/bun.lockb'))">true</_RunicBridgeFrontendLocked>
+    <_RunicBridgeFrontendLocked Condition="'$(RunicApplicationFrontendPackageManager)' == 'npm' and (Exists('$(RunicApplicationFrontendDirectory)/package-lock.json') or Exists('$(RunicApplicationFrontendDirectory)/npm-shrinkwrap.json'))">true</_RunicBridgeFrontendLocked>
+    <_RunicBridgeFrontendUnlockedInstall Condition="'$(_RunicBridgeFrontendLocked)' != 'true' and '$(RunicApplicationFrontendAllowUnlockedInstall)' == 'true'">true</_RunicBridgeFrontendUnlockedInstall>
+    <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'pnpm' and '$(_RunicBridgeFrontendUnlockedInstall)' == 'true'">pnpm install --ignore-scripts</RunicApplicationFrontendInstallCommand>
     <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'pnpm'">pnpm install --frozen-lockfile --ignore-scripts</RunicApplicationFrontendInstallCommand>
+    <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'bun' and '$(_RunicBridgeFrontendUnlockedInstall)' == 'true'">bun install --ignore-scripts</RunicApplicationFrontendInstallCommand>
     <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(RunicApplicationFrontendPackageManager)' == 'bun'">bun install --frozen-lockfile --ignore-scripts</RunicApplicationFrontendInstallCommand>
-    <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package-lock.json')">npm ci --ignore-scripts</RunicApplicationFrontendInstallCommand>
-    <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == ''">npm install --ignore-scripts</RunicApplicationFrontendInstallCommand>
+    <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == '' and '$(_RunicBridgeFrontendUnlockedInstall)' == 'true'">npm install --ignore-scripts</RunicApplicationFrontendInstallCommand>
+    <RunicApplicationFrontendInstallCommand Condition="'$(RunicApplicationFrontendInstallCommand)' == ''">npm ci --ignore-scripts</RunicApplicationFrontendInstallCommand>
+    <_RunicBridgeFrontendLockFileName Condition="'$(RunicApplicationFrontendPackageManager)' == 'pnpm'">pnpm-lock.yaml</_RunicBridgeFrontendLockFileName>
+    <_RunicBridgeFrontendLockFileName Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'">bun.lock</_RunicBridgeFrontendLockFileName>
+    <_RunicBridgeFrontendLockFileName Condition="'$(_RunicBridgeFrontendLockFileName)' == ''">package-lock.json</_RunicBridgeFrontendLockFileName>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -837,6 +849,11 @@
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend" DependsOnTargets="_RunicViewsIntermediatePaths"
           Inputs="@(_RunicBridgeFrontendInstallInput)" Outputs="$(_RunicBridgeFrontendInstallStamp)"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+    <!-- An install without a lock file resolves the declared version ranges afresh on every machine and build,
+         so a newly published version, malicious or not, runs in the frontend build. -->
+    <Error Code="RUNICBRIDGE026" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge026"
+           Condition="'$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(_RunicBridgeFrontendLocked)' != 'true' and '$(_RunicBridgeFrontendUnlockedInstall)' != 'true' and '$(_RunicBridgeFrontendHasDependencies)' == 'true'"
+           Text="$([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) declares dependencies but has no $(_RunicBridgeFrontendLockFileName), so the frontend install would not be locked. Create the lock file with '$(RunicApplicationFrontendPackageManager) install' and commit it, or set RunicApplicationFrontendAllowUnlockedInstall=true to install without one." />
     <Message Importance="high"
              Text="Installing frontend dependencies in $(RunicApplicationFrontendDirectory) with $(RunicApplicationFrontendPackageManager). Set RunicApplicationFrontendInstallEnabled=false to install them yourself." />
     <Exec Command="$(RunicApplicationFrontendInstallCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
