@@ -39,7 +39,7 @@ internal sealed class UriLauncherTests
             // The public launcher refuses the registered test scheme and paths: none reaches the owner's thread.
             var owner = new CountingOwner();
             var launcher = MacOSPlatformProvider.CreateFileLauncher(owner);
-            foreach (var uri in new[] { new Uri(scheme + ":refused"), new Uri(bundle), new Uri("file://" + bundle), new Uri("/bin/sh") })
+            foreach (var uri in new[] { new Uri(scheme + ":refused"), new Uri(bundle), new Uri("file://" + bundle), new Uri("/bin/sh"), new Uri("ms-settings:windowsupdate-action"), new Uri("ms-settings:display?x=1") })
             {
                 try { await launcher.LaunchUriAsync(uri); throw new InvalidOperationException($"LaunchUriAsync accepted {uri}"); }
                 catch (ArgumentException) { }

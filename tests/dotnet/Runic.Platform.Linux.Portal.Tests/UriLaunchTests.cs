@@ -4,7 +4,7 @@ using TUnit.Core;
 
 // IDesktopFileLauncher.LaunchUriAsync on Linux is the OpenURI portal request. A
 // rejected URI never reaches the portal (W319-003 desktop-05, plat-16), and a
-// Windows Settings URI is unavailable without a portal request (D028.5).
+// valid Windows Settings URI is unavailable without a portal request (D028.5, D031.6).
 internal sealed class UriLaunchTests
 {
     private static Uri[] Rejected() =>
@@ -18,6 +18,9 @@ internal sealed class UriLaunchTests
         new("ftp://example.org/file"),
         new("runic-test:open"),
         new("ms-settingsx:display"),
+        new("ms-settings:../../usr/bin/xterm"),
+        new("ms-settings:display?x=1"),
+        new("ms-settings:windowsupdate-action"),
     ];
 
     [Test, DisplayName("URI launch: the launcher asks the OpenURI portal for accepted URIs only, and maps its responses")]
@@ -49,7 +52,7 @@ internal sealed class UriLaunchTests
         Check(await new PortalFileLauncher(owner, uriTransport: mail).LaunchUriAsync(new Uri("mailto:someone@example.org")) is PlatformResult<PlatformUnit>.Success
             && mail.Argument == "mailto:someone@example.org", "mailto");
         var settings = new FakeTransport(new(0, []));
-        foreach (var text in new[] { "ms-settings:display", "ms-settings:../../usr/bin/xterm" })
+        foreach (var text in new[] { "ms-settings:display", "MS-SETTINGS:DefaultApps" })
             Check(await new PortalFileLauncher(owner, uriTransport: settings).LaunchUriAsync(new Uri(text))
                 is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, text);
         Check(settings.Requests == 0, "a Settings URI reached the portal");

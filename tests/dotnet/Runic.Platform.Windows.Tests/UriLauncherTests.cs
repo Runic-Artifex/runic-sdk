@@ -59,19 +59,21 @@ internal sealed class UriLauncherTests
             Console.WriteLine($"Unregistered scheme: {unregistered}; {ApplicationsTests.Choosers()} Open With choosers closed");
             Check(File.ReadAllLines(log).Length == lines.Count, "nothing else reached the probe");
 
-            // Windows Settings (D028.5): the public launcher hands ms-settings:display to the shell, which opens the
-            // Settings app. Odd values (a path after the scheme, a long page name) go to the Settings app's protocol handler
-            // or fail; nothing runs the path.
-            var commandShells = Processes("cmd");
-            foreach (var text in new[] { "ms-settings:display", "ms-settings:../../Windows/System32/cmd.exe", "ms-settings:" + new string('a', 4000) })
+            // Windows Settings (D028.5, D031.6): the public launcher hands ms-settings:display to the shell, which opens the
+            // Settings app. Values outside the page rule (a path, a long page, a query, a fragment, an -action page) are
+            // refused before the owner's thread.
+            int before = owner.Dispatches;
+            foreach (var text in new[] { "ms-settings:../../Windows/System32/cmd.exe", "ms-settings:" + new string('a', 4000), "ms-settings:display?x=1",
+                "ms-settings:display#top", "ms-settings:windowsupdate-action" })
             {
-                var settings = await launcher.LaunchUriAsync(new Uri(text));
-                Console.WriteLine($"LaunchUriAsync {text[..Math.Min(text.Length, 60)]}: {settings}");
-                // Only the Settings page itself is asserted; the shell's answer to odd values is recorded.
-                Check(settings is PlatformResult<PlatformUnit>.Success || text != "ms-settings:display", "the shell opened ms-settings:display");
+                try { await launcher.LaunchUriAsync(new Uri(text)); throw new InvalidOperationException($"LaunchUriAsync accepted {text[..Math.Min(text.Length, 60)]}"); }
+                catch (ArgumentException) { }
             }
+            Check(owner.Dispatches == before, "a refused Settings URI reached the owner's thread");
+            var settings = await launcher.LaunchUriAsync(new Uri("ms-settings:display"));
+            Console.WriteLine($"LaunchUriAsync ms-settings:display: {settings}");
+            Check(settings is PlatformResult<PlatformUnit>.Success && owner.Dispatches == before + 1, "the shell opened ms-settings:display");
             await Task.Delay(3000);
-            Check(!Processes("cmd").Except(commandShells).Any(), "an ms-settings: URI started a command shell");
             int closed = CloseSettings();
             Console.WriteLine($"{closed} Settings processes closed");
             Console.WriteLine("PASS Windows URI launcher: refusals before dispatch, ShellExecuteEx through the URL association.");
@@ -87,13 +89,6 @@ internal sealed class UriLauncherTests
                 catch (IOException) { await Task.Delay(500); } // The probe may still hold the log.
             }
         }
-    }
-
-    private static HashSet<int> Processes(string name)
-    {
-        var processes = System.Diagnostics.Process.GetProcessesByName(name);
-        try { return [.. processes.Select(static process => process.Id)]; }
-        finally { foreach (var process in processes) process.Dispose(); }
     }
 
     // Closes the Settings app the ms-settings: launches opened (SystemSettings.exe on Windows 10 and 11, and Server).

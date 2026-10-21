@@ -165,10 +165,15 @@ on.
 Success means the desktop accepted the URI, not that an application showed it.
 
 `ms-settings:` URIs, such as `ms-settings:display` or `ms-settings:defaultapps`,
-open the Windows Settings app through the same shell call. Linux and macOS
-accept them too and return `Unavailable(BackendUnavailable)` without a native
-call, so cross-platform code can offer a Settings link on Windows and handle
-the result elsewhere:
+open the Windows Settings app through the same shell call. The URI must be
+exactly `ms-settings:<page>`, where the page is 1 to 64 letters, digits or
+hyphens (compared lower-case), with no path, query, fragment or percent-escapes.
+Pages ending in `-action`, such as `windowsupdate-action`, start an action
+instead of showing a page and are refused. Other values throw
+`ArgumentException` on every platform. Linux and macOS accept a valid page and
+return `Unavailable(BackendUnavailable)` without a native call, so
+cross-platform code can offer a Settings link on Windows and handle the result
+elsewhere:
 
 ```csharp
 var result = await launcher.LaunchUriAsync(new Uri("ms-settings:defaultapps"));

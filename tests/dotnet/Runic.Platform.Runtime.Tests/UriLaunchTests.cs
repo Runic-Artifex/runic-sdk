@@ -4,18 +4,37 @@ using TUnit.Core;
 
 // IDesktopFileLauncher.LaunchUriAsync: only absolute http, https, mailto and ms-settings URIs reach native dispatch; a
 // relative string, a path or any other scheme is rejected before it, on every implementation (W319-003 desktop-05,
-// plat-16, D028.5). ms-settings: reaches only the Windows shell; macOS and Linux report it unavailable.
+// plat-16, D028.5). ms-settings: is exactly ms-settings:<page> on every platform (D031.6); it reaches only the Windows
+// shell, and macOS and Linux report it unavailable.
 internal sealed class UriLaunchTests
 {
     internal static readonly string[] Accepted = ["https://example.org/a?b=c#d", "http://example.org", "HTTPS://EXAMPLE.ORG/", "mailto:someone@example.org?subject=Hi"];
 
-    // Windows Settings pages, and odd values: the scheme alone routes the URI to the Settings app's protocol handler,
-    // whatever follows it, so the policy passes them unchanged and never treats them as a path.
-    internal static readonly string[] Settings =
+    // Windows Settings pages: the scheme in any case, a page of letters, digits and hyphens, compared lower-case.
+    internal static readonly (string Text, string Target)[] Settings =
     [
-        "ms-settings:display", "MS-SETTINGS:privacy-webcam", "ms-settings:",
-        "ms-settings:../../Windows/System32/cmd.exe", @"ms-settings:..\..\Windows\System32\cmd.exe",
-        "ms-settings:display?x=%22%20/c%20calc", "ms-settings:" + new string('a', 8000),
+        ("ms-settings:display", "ms-settings:display"), ("MS-SETTINGS:Privacy-Webcam", "ms-settings:privacy-webcam"),
+        ("ms-settings:defaultapps", "ms-settings:defaultapps"), ("ms-settings:" + new string('a', 64), "ms-settings:" + new string('a', 64)),
+    ];
+
+    // Settings URIs outside the page rule (SEC-08): a path, escapes, a query, a fragment, an empty or long page,
+    // non-ASCII letters, and -action pages, which act instead of showing a page.
+    internal static Uri[] RejectedSettings() =>
+    [
+        new("ms-settings:"),
+        new("ms-settings:../../Windows/System32/cmd.exe"),
+        new(@"ms-settings:..\..\Windows\System32\cmd.exe"),
+        new("ms-settings:display/advanced"),
+        new("ms-settings:display?x=1"),
+        new("ms-settings:display#top"),
+        new("ms-settings:%64isplay"),
+        new("ms-settings:dis play"),
+        new("ms-settings:" + new string('a', 65)),
+        new("ms-settings:" + new string('a', 8000)),
+        new("ms-settings:windowsupdate-action"),
+        new("MS-SETTINGS:WindowsUpdate-Action"),
+        new("ms-settings:dis\u212Aplay"),
+        new("ms-settings://display"),
     ];
 
     internal static Uri[] Rejected() =>
@@ -42,6 +61,7 @@ internal sealed class UriLaunchTests
         new("ftp://example.org/file"),
         new("tel:+15550100"),
         new("runic-test:open"),
+        .. RejectedSettings(),
     ];
 
     [Test, DisplayName("URI launch: the scheme and path policy runs before native dispatch on every launcher")]
@@ -50,17 +70,17 @@ internal sealed class UriLaunchTests
         foreach (var uri in Rejected())
         {
             Throws<ArgumentException>(() => DesktopUriPolicy.Require(uri), uri.OriginalString);
-            Check(!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto" or "ms-settings"), $"a rejected case has an allowed scheme: {uri}");
+            Check(!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https" or "mailto"), $"a rejected case has an allowed scheme: {uri}");
         }
         Throws<ArgumentNullException>(() => DesktopUriPolicy.Require(null!), "null");
         foreach (var text in Accepted)
             Check(DesktopUriPolicy.Require(new Uri(text)) == new Uri(text).AbsoluteUri && !DesktopUriPolicy.IsWindowsOnly(new Uri(text)), $"accepted {text}");
-        foreach (var text in Settings)
+        foreach (var (text, target) in Settings)
+            Check(DesktopUriPolicy.Require(new Uri(text)) == target && DesktopUriPolicy.IsWindowsOnly(new Uri(text)), $"accepted Settings URI {text}");
+        foreach (var uri in RejectedSettings())
         {
-            var uri = new Uri(text);
-            string target = DesktopUriPolicy.Require(uri);
-            Check(target.StartsWith("ms-settings:", StringComparison.Ordinal) && !uri.IsFile && !uri.IsUnc && DesktopUriPolicy.IsWindowsOnly(uri),
-                $"accepted Settings URI {text[..Math.Min(text.Length, 60)]}: {target[..Math.Min(target.Length, 60)]}");
+            try { DesktopUriPolicy.Require(uri); throw new InvalidOperationException($"accepted {uri.OriginalString}"); }
+            catch (ArgumentException error) { Check(error.Message.StartsWith(DesktopUriPolicy.SettingsRejectedMessage, StringComparison.Ordinal), $"the page rule names {uri.OriginalString}"); }
         }
 
         // The Windows and macOS launchers: a rejected URI never reaches the owner's thread; an accepted one does.
@@ -81,20 +101,20 @@ internal sealed class UriLaunchTests
 
         // ms-settings: reaches the Windows shell; macOS reports it unavailable without reaching the owner's thread.
         var windows = new Runic.Platform.Windows.WindowsFileLauncher(owner);
-        foreach (var text in Settings)
+        foreach (var (text, _) in Settings)
             Check(await windows.LaunchUriAsync(new Uri(text)) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed },
                 $"Windows dispatches {text[..Math.Min(text.Length, 60)]}");
         Check(owner.Dispatches == Settings.Length, "Windows dispatched every Settings URI once");
         owner.Dispatches = 0;
         var mac = new Runic.Platform.MacOS.MacDesktopFileLauncher(owner);
-        foreach (var text in Settings)
+        foreach (var (text, _) in Settings)
             Check(await mac.LaunchUriAsync(new Uri(text)) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
                 $"macOS reports {text[..Math.Min(text.Length, 60)]} unavailable");
         Check(owner.Dispatches == 0, "macOS dispatched a Settings URI");
         using (var cancelledSettings = new CancellationTokenSource())
         {
             cancelledSettings.Cancel();
-            await ThrowsAsync<OperationCanceledException>(() => mac.LaunchUriAsync(new Uri(Settings[0]), cancelledSettings.Token).AsTask(), "macOS Settings URI, cancelled");
+            await ThrowsAsync<OperationCanceledException>(() => mac.LaunchUriAsync(new Uri(Settings[0].Text), cancelledSettings.Token).AsTask(), "macOS Settings URI, cancelled");
         }
 
         // The window services' lifetime wrapper: the policy, then the lifetime, then the backend.
@@ -107,7 +127,7 @@ internal sealed class UriLaunchTests
             Check(backend.Uris.Count == 0, "the presentation launcher passed a rejected URI to its backend");
             Check(await launcher.LaunchUriAsync(new Uri(Accepted[0])) is PlatformResult<PlatformUnit>.Success && backend.Uris.SequenceEqual([new Uri(Accepted[0])]),
                 "an accepted URI reaches the backend");
-            Check(await launcher.LaunchUriAsync(new Uri(Settings[0])) is PlatformResult<PlatformUnit>.Success && backend.Uris.Count == 2, "a Settings URI reaches the backend");
+            Check(await launcher.LaunchUriAsync(new Uri(Settings[0].Text)) is PlatformResult<PlatformUnit>.Success && backend.Uris.Count == 2, "a Settings URI reaches the backend");
             Check(launcher.GetSnapshot().Statuses[PlatformCapabilityIds.UrisLaunch] is CapabilityStatus.Available, "the URI capability is available with an owner");
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
@@ -131,7 +151,7 @@ internal sealed class UriLaunchTests
             await ThrowsAsync<ArgumentException>(() => unavailable.FileLauncher.LaunchUriAsync(uri).AsTask(), "unavailable " + uri.OriginalString);
         Check(await unavailable.FileLauncher.LaunchUriAsync(new Uri(Accepted[3])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable },
             "unavailable services report their reason");
-        Check(await unavailable.FileLauncher.LaunchUriAsync(new Uri(Settings[0])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable },
+        Check(await unavailable.FileLauncher.LaunchUriAsync(new Uri(Settings[0].Text)) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable },
             "unavailable services report their reason for a Settings URI");
     }
 
