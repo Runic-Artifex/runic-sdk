@@ -105,8 +105,6 @@ public static class ReactiveNavigationEntryExtensions
     /// scheduler, as in <see cref="ReactiveNavigationRegionExtensions.CreateBackCommand{TContent}"/>.
     /// </param>
     /// <returns>The command, which the entry disposes when it retires.</returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped as ReactiveNavigationEntry.CreateCompleteCommand; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         Func<CancellationToken, Task<TResult>> produce, IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
@@ -137,8 +135,6 @@ public static class ReactiveNavigationEntryExtensions
     /// scheduler.
     /// </param>
     /// <returns>The command, which the entry disposes when it retires.</returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped as ReactiveNavigationEntry.CreateCompleteCommand; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ReactiveCommand<TResult, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {

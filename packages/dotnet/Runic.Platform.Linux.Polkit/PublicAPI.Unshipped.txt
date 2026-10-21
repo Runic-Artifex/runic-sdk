@@ -1,4 +1,1 @@
 #nullable enable
-*REMOVED*static Runic.Platform.Linux.Polkit.PolkitHelper.WatchStandardInput() -> System.Threading.CancellationToken
-static Runic.Platform.Linux.Polkit.PolkitHelper.WatchCancellation() -> System.Threading.CancellationToken
-*REMOVED*Runic.Platform.Linux.Polkit.PolkitPrivilegedActions.RunAsync(Runic.Platform.PrivilegedActionRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PrivilegedActionCompletion!>!>

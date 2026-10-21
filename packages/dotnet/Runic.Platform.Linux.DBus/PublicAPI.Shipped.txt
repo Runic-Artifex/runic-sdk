@@ -87,15 +87,9 @@ Runic.Platform.Linux.DBus.DBusObject.Path.get -> Runic.Platform.Linux.DBus.DBusO
 Runic.Platform.Linux.DBus.DBusObjectPath.Value.get -> string!
 Runic.Platform.Linux.DBus.DBusPropertyChanges
 Runic.Platform.Linux.DBus.DBusPropertyChanges.Changed.get -> System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>!
-Runic.Platform.Linux.DBus.DBusPropertyChanges.Changed.init -> void
-Runic.Platform.Linux.DBus.DBusPropertyChanges.<Clone>$() -> Runic.Platform.Linux.DBus.DBusPropertyChanges!
-Runic.Platform.Linux.DBus.DBusPropertyChanges.DBusPropertyChanges(string! Interface, System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>! Changed, System.Collections.Immutable.ImmutableArray<string!> Invalidated) -> void
-Runic.Platform.Linux.DBus.DBusPropertyChanges.Deconstruct(out string! Interface, out System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>! Changed, out System.Collections.Immutable.ImmutableArray<string!> Invalidated) -> void
 Runic.Platform.Linux.DBus.DBusPropertyChanges.Equals(Runic.Platform.Linux.DBus.DBusPropertyChanges? other) -> bool
 Runic.Platform.Linux.DBus.DBusPropertyChanges.Interface.get -> string!
-Runic.Platform.Linux.DBus.DBusPropertyChanges.Interface.init -> void
 Runic.Platform.Linux.DBus.DBusPropertyChanges.Invalidated.get -> System.Collections.Immutable.ImmutableArray<string!>
-Runic.Platform.Linux.DBus.DBusPropertyChanges.Invalidated.init -> void
 Runic.Platform.Linux.DBus.DBusProxy
 Runic.Platform.Linux.DBus.DBusProxy.CallAsync(string! interfaceName, string! member, System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue> arguments = default(System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue>), Runic.Platform.Linux.DBus.DBusCallOptions options = Runic.Platform.Linux.DBus.DBusCallOptions.None, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue>>
 Runic.Platform.Linux.DBus.DBusProxy.Connection.get -> Runic.Platform.Linux.DBus.DBusConnection!
@@ -122,10 +116,6 @@ Runic.Platform.Linux.DBus.DBusRequestNameReply.PrimaryOwner = 1 -> Runic.Platfor
 Runic.Platform.Linux.DBus.DBusServiceCollectionExtensions
 Runic.Platform.Linux.DBus.DBusSignal
 Runic.Platform.Linux.DBus.DBusSignal.Arguments.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue>
-Runic.Platform.Linux.DBus.DBusSignal.Arguments.init -> void
-Runic.Platform.Linux.DBus.DBusSignal.<Clone>$() -> Runic.Platform.Linux.DBus.DBusSignal!
-Runic.Platform.Linux.DBus.DBusSignal.DBusSignal(string? Sender, Runic.Platform.Linux.DBus.DBusObjectPath Path, string! Interface, string! Member, System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue> Arguments) -> void
-Runic.Platform.Linux.DBus.DBusSignal.Deconstruct(out string? Sender, out Runic.Platform.Linux.DBus.DBusObjectPath Path, out string! Interface, out string! Member, out System.Collections.Immutable.ImmutableArray<Runic.Platform.Linux.DBus.DBusValue> Arguments) -> void
 Runic.Platform.Linux.DBus.DBusSignal.Equals(Runic.Platform.Linux.DBus.DBusSignal? other) -> bool
 Runic.Platform.Linux.DBus.DBusSignalFilter
 Runic.Platform.Linux.DBus.DBusSignalFilter.Arg0.get -> string?
@@ -144,13 +134,9 @@ Runic.Platform.Linux.DBus.DBusSignalFilter.PathNamespace.init -> void
 Runic.Platform.Linux.DBus.DBusSignalFilter.Sender.get -> string?
 Runic.Platform.Linux.DBus.DBusSignalFilter.Sender.init -> void
 Runic.Platform.Linux.DBus.DBusSignal.Interface.get -> string!
-Runic.Platform.Linux.DBus.DBusSignal.Interface.init -> void
 Runic.Platform.Linux.DBus.DBusSignal.Member.get -> string!
-Runic.Platform.Linux.DBus.DBusSignal.Member.init -> void
 Runic.Platform.Linux.DBus.DBusSignal.Path.get -> Runic.Platform.Linux.DBus.DBusObjectPath
-Runic.Platform.Linux.DBus.DBusSignal.Path.init -> void
 Runic.Platform.Linux.DBus.DBusSignal.Sender.get -> string?
-Runic.Platform.Linux.DBus.DBusSignal.Sender.init -> void
 Runic.Platform.Linux.DBus.DBusSignalSubscription
 Runic.Platform.Linux.DBus.DBusSignalSubscription.DisposeAsync() -> System.Threading.Tasks.ValueTask
 Runic.Platform.Linux.DBus.DBusSignalSubscription.GetAsyncEnumerator(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerator<Runic.Platform.Linux.DBus.DBusSignal!>!
@@ -164,7 +150,6 @@ Runic.Platform.Linux.DBus.DBusValue
 Runic.Platform.Linux.DBus.DBusValue.DBusValue() -> void
 Runic.Platform.Linux.DBus.DBusValue.Equals(Runic.Platform.Linux.DBus.DBusValue other) -> bool
 Runic.Platform.Linux.DBus.DBusValue.GetBoolean() -> bool
-Runic.Platform.Linux.DBus.DBusValue.GetByteArray() -> byte[]!
 Runic.Platform.Linux.DBus.DBusValue.GetByte() -> byte
 Runic.Platform.Linux.DBus.DBusValue.GetDouble() -> double
 Runic.Platform.Linux.DBus.DBusValue.GetEntries() -> System.Collections.Immutable.ImmutableArray<System.Collections.Generic.KeyValuePair<Runic.Platform.Linux.DBus.DBusValue, Runic.Platform.Linux.DBus.DBusValue>>
@@ -184,7 +169,6 @@ Runic.Platform.Linux.DBus.DBusValue.GetUInt64() -> ulong
 Runic.Platform.Linux.DBus.DBusValue.GetUnixFd() -> System.Runtime.InteropServices.SafeHandle!
 Runic.Platform.Linux.DBus.DBusValue.GetVariantDictionary() -> System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>!
 Runic.Platform.Linux.DBus.DBusValue.GetVariant() -> Runic.Platform.Linux.DBus.DBusValue
-Runic.Platform.Linux.DBus.DBusValue.IsEmpty.get -> bool
 Runic.Platform.Linux.DBus.DBusValue.Signature.get -> Runic.Platform.Linux.DBus.DBusSignature
 Runic.Platform.Linux.DBus.IDBusConnections
 Runic.Platform.Linux.DBus.IDBusConnections.GetAsync(Runic.Platform.Linux.DBus.DBusBus bus, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Linux.DBus.DBusConnection!>!>
@@ -234,3 +218,5 @@ virtual Runic.Platform.Linux.DBus.DBusObject.GetAllPropertiesAsync(string! inter
 virtual Runic.Platform.Linux.DBus.DBusObject.GetPropertyAsync(string! interfaceName, string! name, Runic.Platform.Linux.DBus.DBusMethodContext! context) -> System.Threading.Tasks.ValueTask<Runic.Platform.Linux.DBus.DBusValue>
 virtual Runic.Platform.Linux.DBus.DBusObject.IntrospectionXml.get -> string!
 virtual Runic.Platform.Linux.DBus.DBusObject.SetPropertyAsync(string! interfaceName, string! name, Runic.Platform.Linux.DBus.DBusValue value, Runic.Platform.Linux.DBus.DBusMethodContext! context) -> System.Threading.Tasks.ValueTask
+Runic.Platform.Linux.DBus.DBusValue.GetByteArray() -> System.Collections.Immutable.ImmutableArray<byte>
+Runic.Platform.Linux.DBus.DBusValue.IsDefault.get -> bool

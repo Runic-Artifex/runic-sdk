@@ -1,3 +1,1 @@
 #nullable enable
-*REMOVED*static Runic.Assets.Desktop.DesktopAssetExtensions.ToDesktopContentHandler(this Runic.Assets.IAssetSnapshotSource! source, Runic.Assets.AssetRoutingOptions? routing = null) -> Runic.Desktop.ContentHandler!
-static Runic.Assets.Desktop.DesktopAssetExtensions.ToDesktopContentHandler(this Runic.Assets.IAssetSource! source, Runic.Assets.AssetRoutingOptions? routing = null) -> Runic.Desktop.ContentHandler!

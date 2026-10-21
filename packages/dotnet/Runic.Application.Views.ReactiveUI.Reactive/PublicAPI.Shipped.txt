@@ -1,16 +1,7 @@
 #nullable enable
 override Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.DataContext.get -> TViewModel?
 override Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.DataContext.set -> void
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveInteractionDescriptor
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.Current.get -> TViewModel?
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.Dispose() -> void
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.Reactive.RoutingState! router) -> void
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnWebMounted() -> void
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnWebUnmounted() -> void
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.ReactiveRunicView() -> void
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.ViewModel.get -> TViewModel?
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.ViewModel.set -> void
@@ -18,30 +9,32 @@ Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicViewLocator
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicViewLocator.Locate<TView, TViewModel>() -> TView!
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicViewLocator.Locate<TView, TViewModel>(string? contract) -> TView!
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicViewLocator.ReactiveRunicViewLocator(ReactiveUI.Binding.Reactive.IViewLocator! locator) -> void
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.CanExecute<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input) -> bool
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.Execute<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<TResult>!
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.ExecuteCompletion<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.ExecuteLast<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<TResult>!
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.ExecuteStream<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, Runic.Application.Views.BridgeOperationStream! stream, System.Func<TResult, string!>! encode, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.IsExecuting<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command) -> bool
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.Observe<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, System.Action! changed) -> System.IDisposable!
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveInteractionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, ReactiveUI.Binding.Reactive.IInteraction<TInput, TOutput>!>! getInteraction, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput, System.TimeSpan? timeout = null) -> Runic.Application.Views.BridgeInteractionDescriptor<TModel!>!
 virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnAttached() -> void
 virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnDetached() -> void
-Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions
-static Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions.BatchBridgeSnapshots<T>(this System.IObservable<T>! source, object! model) -> System.IObservable<T>!
-Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.Reactive.RoutingState! router, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void
-Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveExceptions
-static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, Microsoft.Extensions.Logging.ILogger! logger, string? sourceName = null) -> System.IDisposable!
-static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, System.Action<System.Exception!>! onUnexpected) -> System.IDisposable!
-Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider
-Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions
-Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider
-Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
-Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.RunicReactiveSchedulerProvider() -> void
 static Runic.Application.Views.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
-static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
-static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.ObserveFailures<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, Microsoft.Extensions.Logging.ILogger! logger, string! source) -> System.IDisposable!
-Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveUIBuilderExtensions
-static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveUIBuilderExtensions.WithRunicModelContext(this ReactiveUI.Reactive.Builder.IReactiveUIBuilder! builder) -> ReactiveUI.Reactive.Builder.IReactiveUIBuilder!
+Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.CanExecute<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input) -> bool
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.Execute<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<TResult>!
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.ExecuteCompletion<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.ExecuteLast<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<TResult>!
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.ExecuteStream<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, Runic.Application.Views.Generated.BridgeOperationStream! stream, System.Func<TResult, string!>! encode, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<Runic.Application.Views.Generated.BridgeOperationResult!>!
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.IsExecuting<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command) -> bool
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.Observe<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, System.Action! changed) -> System.IDisposable!
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveCommandExecution.ObserveFailures<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, Microsoft.Extensions.Logging.ILogger! logger, string! source) -> System.IDisposable!
+Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveInteractionDescriptor
+static Runic.Application.Views.ReactiveUI.Reactive.Generated.ReactiveInteractionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, ReactiveUI.Binding.Reactive.IInteraction<TInput, TOutput>!>! getInteraction, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput, System.TimeSpan? timeout = null) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+Runic.Application.Views.ReactiveUI.Reactive.IReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.Reactive.IReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveBridgeExceptionExtensions
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveBridgeExceptionExtensions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, Microsoft.Extensions.Logging.ILogger! logger, string? sourceName = null) -> System.IDisposable!
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveBridgeExceptionExtensions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, System.Action<System.Exception!>! onUnexpected) -> System.IDisposable!
+virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnWebMounted() -> void
+virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnWebUnmounted() -> void
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulers
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulers.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulers.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveUIBuilderExtensions
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveUIBuilderExtensions.WithRunicModelContext(this ReactiveUI.Reactive.Builder.IReactiveUIBuilder! builder) -> ReactiveUI.Reactive.Builder.IReactiveUIBuilder!

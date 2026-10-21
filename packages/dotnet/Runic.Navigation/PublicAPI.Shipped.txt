@@ -4,7 +4,6 @@ Runic.Navigation.IRunicModelContext.InvokeAsync(System.Action! turn, System.Thre
 Runic.Navigation.IRunicModelContext.InvokeAsync<T>(System.Func<T>! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
 Runic.Navigation.IRunicModelContext.IsExecuting.get -> bool
 Runic.Navigation.IRunicModelContext.TryPost(System.Action! turn) -> bool
-Runic.Navigation.IRunicModelContext.UnhandledTurnException -> System.Action<System.Exception!>?
 Runic.Navigation.IRunicModelContextLease
 Runic.Navigation.IRunicModelContextLease.Context.get -> Runic.Navigation.IRunicModelContext!
 Runic.Navigation.RunicModelContext
@@ -15,7 +14,6 @@ Runic.Navigation.RunicModelContext.IsExecuting.get -> bool
 Runic.Navigation.RunicModelContext.RunicModelContext() -> void
 Runic.Navigation.RunicModelContext.RunicModelContext(Microsoft.Extensions.Logging.ILogger<Runic.Navigation.RunicModelContext!>? logger) -> void
 Runic.Navigation.RunicModelContext.TryPost(System.Action! turn) -> bool
-Runic.Navigation.RunicModelContext.UnhandledTurnException -> System.Action<System.Exception!>?
 Runic.Navigation.RunicModelContextRegistry
 Runic.Navigation.RunicModelContextRegistry.Acquire(System.Func<Runic.Navigation.IRunicModelContext!>! createContext, params object![]! models) -> Runic.Navigation.IRunicModelContextLease!
 Runic.Navigation.RunicModelContextRegistry.Bind(Runic.Navigation.IRunicModelContext! context, params object![]! models) -> Runic.Navigation.IRunicModelContextLease!
@@ -23,12 +21,6 @@ Runic.Navigation.RunicModelContextRegistry.GetRequired(object! model) -> Runic.N
 Runic.Navigation.RunicModelContextRegistry.TryGet(object! model, out Runic.Navigation.IRunicModelContext? context) -> bool
 Runic.Navigation.INavigationDepartureGuard
 Runic.Navigation.INavigationDepartureGuard.CanDepartAsync(Runic.Navigation.NavigationDeparture! departure, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>
-Runic.Navigation.INavigationEntry
-Runic.Navigation.INavigationEntry.Content.get -> object!
-Runic.Navigation.INavigationEntry.Id.get -> Runic.Navigation.NavigationEntryId
-Runic.Navigation.INavigationEntry.Ownership.get -> Runic.Navigation.NavigationOwnership
-Runic.Navigation.INavigationEntry.Services.get -> System.IServiceProvider!
-Runic.Navigation.INavigationEntry.State.get -> Runic.Navigation.NavigationEntryState
 Runic.Navigation.INavigationInitialize
 Runic.Navigation.INavigationInitialize.InitializeAsync(Runic.Navigation.NavigationEntryContext! entry, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.INavigationInitialize<TInput>
@@ -36,18 +28,7 @@ Runic.Navigation.INavigationInitialize<TInput>.InitializeAsync(Runic.Navigation.
 Runic.Navigation.INavigationInputInitialize
 Runic.Navigation.INavigationPresentation
 Runic.Navigation.INavigationPresentation.Forget(object! content) -> void
-Runic.Navigation.INavigationRegion
-Runic.Navigation.INavigationRegion.BackAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
-Runic.Navigation.INavigationRegion.CanGoBack.get -> bool
-Runic.Navigation.INavigationRegion.ClearAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
-Runic.Navigation.INavigationRegion.ContentType.get -> System.Type!
-Runic.Navigation.INavigationRegion.Current.get -> object?
-Runic.Navigation.INavigationRegion.CurrentEntry.get -> Runic.Navigation.INavigationEntry?
-Runic.Navigation.INavigationRegion.History.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.INavigationEntry!>!
-Runic.Navigation.INavigationRegion.IsTransitioning.get -> bool
-Runic.Navigation.INavigationRegion.Navigator.get -> Runic.Navigation.RunicNavigator!
 Runic.Navigation.INavigationResume
-Runic.Navigation.INavigationResume.ResumeAsync(Runic.Navigation.NavigationResume! resume, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.INavigationTarget<TContent>
 Runic.Navigation.IRunicModelContextLifetime
 Runic.Navigation.IRunicModelContextLifetime.Closed.get -> System.Threading.CancellationToken
@@ -82,10 +63,6 @@ Runic.Navigation.NavigationDepartureKind.Retain = 0 -> Runic.Navigation.Navigati
 Runic.Navigation.NavigationDepartureKind.Retire = 1 -> Runic.Navigation.NavigationDepartureKind
 Runic.Navigation.NavigationEntry<TContent>
 Runic.Navigation.NavigationEntry<TContent>.Content.get -> TContent!
-Runic.Navigation.NavigationEntry<TContent>.Id.get -> Runic.Navigation.NavigationEntryId
-Runic.Navigation.NavigationEntry<TContent>.Ownership.get -> Runic.Navigation.NavigationOwnership
-Runic.Navigation.NavigationEntry<TContent>.Services.get -> System.IServiceProvider!
-Runic.Navigation.NavigationEntry<TContent>.State.get -> Runic.Navigation.NavigationEntryState
 Runic.Navigation.NavigationEntryContext
 Runic.Navigation.NavigationEntryContext.BackAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
 Runic.Navigation.NavigationEntryContext.CompleteAsync<TResult>(TResult result, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
@@ -124,15 +101,11 @@ Runic.Navigation.NavigationPhase.Preparing = 1 -> Runic.Navigation.NavigationPha
 Runic.Navigation.NavigationRegion<TContent>
 Runic.Navigation.NavigationRegion<TContent>.BackAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
 Runic.Navigation.NavigationRegion<TContent>.BackToAsync(Runic.Navigation.NavigationEntryId entry, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
-Runic.Navigation.NavigationRegion<TContent>.CanGoBack.get -> bool
 Runic.Navigation.NavigationRegion<TContent>.ClearAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
 Runic.Navigation.NavigationRegion<TContent>.ClearHistoryAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
 Runic.Navigation.NavigationRegion<TContent>.Current.get -> TContent?
 Runic.Navigation.NavigationRegion<TContent>.CurrentEntry.get -> Runic.Navigation.NavigationEntry<TContent!>?
 Runic.Navigation.NavigationRegion<TContent>.History.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntry<TContent!>!>!
-Runic.Navigation.NavigationRegion<TContent>.IsTransitioning.get -> bool
-Runic.Navigation.NavigationRegion<TContent>.Navigator.get -> Runic.Navigation.RunicNavigator!
-Runic.Navigation.NavigationRegion<TContent>.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
 Runic.Navigation.NavigationRegion<TContent>.PushAsync(Runic.Navigation.INavigationTarget<TContent!>! target, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
 Runic.Navigation.NavigationRegion<TContent>.PushAsync<TViewModel, TInput>(TInput input, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
 Runic.Navigation.NavigationRegion<TContent>.PushAsync<TViewModel>(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
@@ -193,15 +166,6 @@ Runic.Navigation.NavigationResult<TContent>.Superseded.Superseded() -> void
 Runic.Navigation.NavigationResultRequest<TContent, TResult>
 Runic.Navigation.NavigationResultRequest<TContent, TResult>.Completion.get -> System.Threading.Tasks.Task<Runic.Navigation.NavigationCompletion<TResult>!>!
 Runic.Navigation.NavigationResultRequest<TContent, TResult>.Transition.get -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<TContent!>!>
-Runic.Navigation.NavigationResume
-Runic.Navigation.NavigationResume.<Clone>$() -> Runic.Navigation.NavigationResume!
-Runic.Navigation.NavigationResume.Deconstruct(out Runic.Navigation.NavigationEntryId Entry, out Runic.Navigation.NavigationOperation Operation) -> void
-Runic.Navigation.NavigationResume.Entry.get -> Runic.Navigation.NavigationEntryId
-Runic.Navigation.NavigationResume.Entry.init -> void
-Runic.Navigation.NavigationResume.Equals(Runic.Navigation.NavigationResume? other) -> bool
-Runic.Navigation.NavigationResume.NavigationResume(Runic.Navigation.NavigationEntryId Entry, Runic.Navigation.NavigationOperation Operation) -> void
-Runic.Navigation.NavigationResume.Operation.get -> Runic.Navigation.NavigationOperation
-Runic.Navigation.NavigationResume.Operation.init -> void
 Runic.Navigation.NavigationTarget
 Runic.Navigation.RunicNavigationServiceCollectionExtensions
 Runic.Navigation.RunicNavigator
@@ -243,7 +207,6 @@ override Runic.Navigation.NavigationCompletion<TResult>.Equals(object? obj) -> b
 override Runic.Navigation.NavigationCompletion<TResult>.GetHashCode() -> int
 override Runic.Navigation.NavigationCompletion<TResult>.ToString() -> string!
 override Runic.Navigation.NavigationDeparture.ToString() -> string!
-override Runic.Navigation.NavigationEntry<TContent>.ToString() -> string!
 override Runic.Navigation.NavigationEntryId.GetHashCode() -> int
 override Runic.Navigation.NavigationRegion<TContent>.ToString() -> string!
 override Runic.Navigation.NavigationRegionOptions.Equals(object? obj) -> bool
@@ -267,16 +230,12 @@ override Runic.Navigation.NavigationResult<TContent>.Superseded.Equals(object? o
 override Runic.Navigation.NavigationResult<TContent>.Superseded.GetHashCode() -> int
 override Runic.Navigation.NavigationResult<TContent>.Superseded.ToString() -> string!
 override Runic.Navigation.NavigationResult<TContent>.ToString() -> string!
-override Runic.Navigation.NavigationResume.Equals(object? obj) -> bool
-override Runic.Navigation.NavigationResume.GetHashCode() -> int
-override Runic.Navigation.NavigationResume.ToString() -> string!
 override sealed Runic.Navigation.NavigationCompletion<TResult>.Completed.Equals(Runic.Navigation.NavigationCompletion<TResult>? other) -> bool
 override sealed Runic.Navigation.NavigationCompletion<TResult>.Dismissed.Equals(Runic.Navigation.NavigationCompletion<TResult>? other) -> bool
 override sealed Runic.Navigation.NavigationResult<TContent>.Committed.Equals(Runic.Navigation.NavigationResult<TContent!>? other) -> bool
 override sealed Runic.Navigation.NavigationResult<TContent>.Failed.Equals(Runic.Navigation.NavigationResult<TContent!>? other) -> bool
 override sealed Runic.Navigation.NavigationResult<TContent>.Rejected.Equals(Runic.Navigation.NavigationResult<TContent!>? other) -> bool
 override sealed Runic.Navigation.NavigationResult<TContent>.Superseded.Equals(Runic.Navigation.NavigationResult<TContent!>? other) -> bool
-static Runic.Navigation.LeaveConfirmation.InDialog<TDialog>(Runic.Navigation.NavigationRegion<TDialog!>! dialogs, System.Func<Runic.Navigation.INavigationTarget<TDialog!>!>! dialog, System.Func<bool>! hasUnsavedChanges, System.Action? discard = null) -> Runic.Navigation.LeaveConfirmation!
 static Runic.Navigation.NavigationCompletion<TResult>.Completed.operator !=(Runic.Navigation.NavigationCompletion<TResult>.Completed? left, Runic.Navigation.NavigationCompletion<TResult>.Completed? right) -> bool
 static Runic.Navigation.NavigationCompletion<TResult>.Completed.operator ==(Runic.Navigation.NavigationCompletion<TResult>.Completed? left, Runic.Navigation.NavigationCompletion<TResult>.Completed? right) -> bool
 static Runic.Navigation.NavigationCompletion<TResult>.Dismissed.operator !=(Runic.Navigation.NavigationCompletion<TResult>.Dismissed? left, Runic.Navigation.NavigationCompletion<TResult>.Dismissed? right) -> bool
@@ -289,8 +248,6 @@ static Runic.Navigation.NavigationRegionOptions.operator !=(Runic.Navigation.Nav
 static Runic.Navigation.NavigationRegionOptions.operator ==(Runic.Navigation.NavigationRegionOptions? left, Runic.Navigation.NavigationRegionOptions? right) -> bool
 static Runic.Navigation.NavigationRequestOptions.operator !=(Runic.Navigation.NavigationRequestOptions? left, Runic.Navigation.NavigationRequestOptions? right) -> bool
 static Runic.Navigation.NavigationRequestOptions.operator ==(Runic.Navigation.NavigationRequestOptions? left, Runic.Navigation.NavigationRequestOptions? right) -> bool
-static Runic.Navigation.NavigationResume.operator !=(Runic.Navigation.NavigationResume? left, Runic.Navigation.NavigationResume? right) -> bool
-static Runic.Navigation.NavigationResume.operator ==(Runic.Navigation.NavigationResume? left, Runic.Navigation.NavigationResume? right) -> bool
 static Runic.Navigation.NavigationTarget.Borrow<T>(T! content) -> Runic.Navigation.INavigationTarget<T!>!
 static Runic.Navigation.NavigationTarget.Create<T, TInput>(System.Func<System.IServiceProvider!, T!>! factory, TInput input) -> Runic.Navigation.INavigationTarget<T!>!
 static Runic.Navigation.NavigationTarget.Create<T, TInput>(TInput input) -> Runic.Navigation.INavigationTarget<T!>!
@@ -327,7 +284,6 @@ static Runic.Navigation.RunicModelContextRegistry.Shared.get -> Runic.Navigation
 ~static Runic.Navigation.NavigationResult<TContent>.operator !=(Runic.Navigation.NavigationResult<TContent>? left, Runic.Navigation.NavigationResult<TContent>? right) -> bool
 ~static Runic.Navigation.NavigationResult<TContent>.operator ==(Runic.Navigation.NavigationResult<TContent>? left, Runic.Navigation.NavigationResult<TContent>? right) -> bool
 ~virtual Runic.Navigation.NavigationResult<TContent>.Equals(Runic.Navigation.NavigationResult<TContent>? other) -> bool
-Runic.Navigation.INavigationRegion.ReplaceBorrowedAsync(object! content, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
 Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
 static Runic.Navigation.RunicModelContext.Current.get -> Runic.Navigation.RunicModelContext?
 override Runic.Navigation.NavigationOutcome.Equals(object? obj) -> bool
@@ -357,7 +313,6 @@ override Runic.Navigation.NavigationExit.GetHashCode() -> int
 override Runic.Navigation.NavigationExit.ToString() -> string!
 Runic.Navigation.INavigationAware
 Runic.Navigation.INavigationAware.OnNavigatedFrom(Runic.Navigation.NavigationExit! exit) -> void
-Runic.Navigation.INavigationAware.OnNavigatedTo(Runic.Navigation.NavigationResume! arrival) -> void
 Runic.Navigation.NavigationEntryContext.StateChanged -> System.EventHandler<Runic.Navigation.NavigationEntryStateChangedEventArgs!>?
 Runic.Navigation.NavigationEntryContext.State.get -> Runic.Navigation.NavigationEntryState
 Runic.Navigation.NavigationEntryStateChangedEventArgs
@@ -382,42 +337,21 @@ static Runic.Navigation.NavigationTarget.Create<T>(System.Func<System.IServicePr
 static Runic.Navigation.NavigationTarget.Create<T, TInput>(System.Func<System.IServiceProvider!, Runic.Navigation.NavigationEntryContext!, T!>! factory, TInput input) -> Runic.Navigation.INavigationTarget<T!>!
 static Runic.Navigation.RunicNavigator.HookCancellationToken.get -> System.Threading.CancellationToken
 Runic.Navigation.NavigationRegion<TContent>.Start(Runic.Navigation.INavigationTarget<TContent!>! target) -> void
-Runic.Navigation.INavigationActivated
-Runic.Navigation.INavigationActivated.OnActivatedAsync(Runic.Navigation.NavigationEntryContext! entry, Runic.Navigation.NavigationResume! arrival, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
-Runic.Navigation.INavigationActivated<TInput>
-Runic.Navigation.INavigationActivated<TInput>.OnActivatedAsync(Runic.Navigation.NavigationEntryContext! entry, Runic.Navigation.NavigationResume! arrival, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.INavigationInput<TInput>
-Runic.Navigation.INavigationRegion.AddDepartureGuard(Runic.Navigation.INavigationRegionGuard! guard, Runic.Navigation.NavigationRegionGuardOptions? options = null) -> System.IDisposable!
-Runic.Navigation.INavigationRegion.Admission.get -> Runic.Navigation.NavigationAdmission
-Runic.Navigation.INavigationRegion.IsBusy.get -> bool
-Runic.Navigation.INavigationRegion.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.INavigationRegionGuard
-Runic.Navigation.INavigationRegionGuard.CanLeaveAsync(Runic.Navigation.NavigationRegionDeparture! departure, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>
 Runic.Navigation.IRunicModelPresentationYield
 Runic.Navigation.IRunicModelPresentationYield.YieldToPresentationAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
-Runic.Navigation.NavigationActivationState
-Runic.Navigation.NavigationActivationState.Cancelled = 3 -> Runic.Navigation.NavigationActivationState
-Runic.Navigation.NavigationActivationState.Completed = 1 -> Runic.Navigation.NavigationActivationState
-Runic.Navigation.NavigationActivationState.Failed = 2 -> Runic.Navigation.NavigationActivationState
-Runic.Navigation.NavigationActivationState.None = 0 -> Runic.Navigation.NavigationActivationState
 Runic.Navigation.NavigationAdmission
 Runic.Navigation.NavigationAdmission.RejectWhileBusy = 1 -> Runic.Navigation.NavigationAdmission
 Runic.Navigation.NavigationAdmission.Supersede = 0 -> Runic.Navigation.NavigationAdmission
 Runic.Navigation.NavigationDeparture.ContentContinues.get -> bool
-Runic.Navigation.NavigationOutcome.Activation.get -> Runic.Navigation.NavigationActivationState
-Runic.Navigation.NavigationOutcome.Activation.init -> void
 Runic.Navigation.NavigationOwnership.Shared = 2 -> Runic.Navigation.NavigationOwnership
-Runic.Navigation.NavigationRegion<TContent>.AddDepartureGuard(Runic.Navigation.INavigationRegionGuard! guard, Runic.Navigation.NavigationRegionGuardOptions? options = null) -> System.IDisposable!
-Runic.Navigation.NavigationRegion<TContent>.Admission.get -> Runic.Navigation.NavigationAdmission
-Runic.Navigation.NavigationRegion<TContent>.IsBusy.get -> bool
-Runic.Navigation.NavigationRegion<TContent>.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.NavigationRegionDeparture
 Runic.Navigation.NavigationRegionDeparture.Entries.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntryId>!
 Runic.Navigation.NavigationRegionDeparture.Kind.get -> Runic.Navigation.NavigationDepartureKind
 Runic.Navigation.NavigationRegionDeparture.ModelContext.get -> Runic.Navigation.IRunicModelContext!
 Runic.Navigation.NavigationRegionDeparture.OnCommitted(System.Action! action) -> void
 Runic.Navigation.NavigationRegionDeparture.Operation.get -> Runic.Navigation.NavigationOperation
-Runic.Navigation.NavigationRegionDeparture.Region.get -> Runic.Navigation.INavigationRegion!
 Runic.Navigation.NavigationRegionGuardOptions
 Runic.Navigation.NavigationRegionGuardOptions.<Clone>$() -> Runic.Navigation.NavigationRegionGuardOptions!
 Runic.Navigation.NavigationRegionGuardOptions.AskOnClearHistory.get -> bool
@@ -431,10 +365,6 @@ Runic.Navigation.NavigationRegionOptions.Admission.init -> void
 Runic.Navigation.NavigationRejection.Busy = 7 -> Runic.Navigation.NavigationRejection
 Runic.Navigation.NavigationRequestOptions.Admission.get -> Runic.Navigation.NavigationAdmission?
 Runic.Navigation.NavigationRequestOptions.Admission.init -> void
-Runic.Navigation.NavigationResult<TContent>.Committed.Activation.get -> Runic.Navigation.NavigationActivationState
-Runic.Navigation.NavigationResult<TContent>.Committed.Activation.init -> void
-Runic.Navigation.NavigationResult<TContent>.Committed.ActivationError.get -> System.Exception?
-Runic.Navigation.NavigationResult<TContent>.Committed.ActivationError.init -> void
 Runic.Navigation.RunicNavigator.AddDepartureGuard(Runic.Navigation.INavigationRegionGuard! guard, Runic.Navigation.NavigationRegionGuardOptions? options = null) -> System.IDisposable!
 override Runic.Navigation.NavigationRegionDeparture.ToString() -> string!
 override Runic.Navigation.NavigationRegionGuardOptions.Equals(object? obj) -> bool
@@ -448,3 +378,66 @@ Runic.Navigation.NavigationRegionGuardOptions.Order.init -> void
 Runic.Navigation.NavigationRegionGuardOrder
 Runic.Navigation.NavigationRegionGuardOrder.AfterEntries = 0 -> Runic.Navigation.NavigationRegionGuardOrder
 Runic.Navigation.NavigationRegionGuardOrder.BeforeEntries = 1 -> Runic.Navigation.NavigationRegionGuardOrder
+Runic.Navigation.INavigationArrived
+Runic.Navigation.INavigationArrived.OnArrivedAsync(Runic.Navigation.NavigationEntryContext! entry, Runic.Navigation.NavigationArrival! arrival, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.INavigationArrived<TInput>
+Runic.Navigation.INavigationArrived<TInput>.OnArrivedAsync(Runic.Navigation.NavigationEntryContext! entry, Runic.Navigation.NavigationArrival! arrival, TInput input, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.INavigationAware.OnNavigatedTo(Runic.Navigation.NavigationArrival! arrival) -> void
+Runic.Navigation.INavigationRegionGuard.CanDepartAsync(Runic.Navigation.NavigationRegionDeparture! departure, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Navigation.INavigationResume.ResumeAsync(Runic.Navigation.NavigationArrival! resume, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.IRunicModelContext.UnhandledTurnException -> System.EventHandler<Runic.Navigation.RunicModelTurnExceptionEventArgs!>?
+Runic.Navigation.NavigationArrival
+Runic.Navigation.NavigationArrival.<Clone>$() -> Runic.Navigation.NavigationArrival!
+Runic.Navigation.NavigationArrival.Deconstruct(out Runic.Navigation.NavigationEntryId Entry, out Runic.Navigation.NavigationOperation Operation) -> void
+Runic.Navigation.NavigationArrival.Entry.get -> Runic.Navigation.NavigationEntryId
+Runic.Navigation.NavigationArrival.Entry.init -> void
+Runic.Navigation.NavigationArrival.Equals(Runic.Navigation.NavigationArrival? other) -> bool
+Runic.Navigation.NavigationArrival.NavigationArrival(Runic.Navigation.NavigationEntryId Entry, Runic.Navigation.NavigationOperation Operation) -> void
+Runic.Navigation.NavigationArrival.Operation.get -> Runic.Navigation.NavigationOperation
+Runic.Navigation.NavigationArrival.Operation.init -> void
+Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationArrivalState.Cancelled = 3 -> Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationArrivalState.Completed = 1 -> Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationArrivalState.Failed = 2 -> Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationArrivalState.None = 0 -> Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationEntry
+Runic.Navigation.NavigationEntry.Content.get -> object!
+Runic.Navigation.NavigationEntry.Id.get -> Runic.Navigation.NavigationEntryId
+Runic.Navigation.NavigationEntry.Ownership.get -> Runic.Navigation.NavigationOwnership
+Runic.Navigation.NavigationEntry.Services.get -> System.IServiceProvider!
+Runic.Navigation.NavigationEntry.State.get -> Runic.Navigation.NavigationEntryState
+Runic.Navigation.NavigationOutcome.Arrival.get -> Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationOutcome.Arrival.init -> void
+Runic.Navigation.NavigationRegion
+Runic.Navigation.NavigationRegion.AddDepartureGuard(Runic.Navigation.INavigationRegionGuard! guard, Runic.Navigation.NavigationRegionGuardOptions? options = null) -> System.IDisposable!
+Runic.Navigation.NavigationRegion.Admission.get -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationRegion.BackAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.NavigationRegion.CanGoBack.get -> bool
+Runic.Navigation.NavigationRegion.ClearAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.NavigationRegion.ContentType.get -> System.Type!
+Runic.Navigation.NavigationRegion.Current.get -> object?
+Runic.Navigation.NavigationRegion.CurrentEntry.get -> Runic.Navigation.NavigationEntry?
+Runic.Navigation.NavigationRegion.History.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntry!>!
+Runic.Navigation.NavigationRegion.IsBusy.get -> bool
+Runic.Navigation.NavigationRegion.IsTransitioning.get -> bool
+Runic.Navigation.NavigationRegion.Navigator.get -> Runic.Navigation.RunicNavigator!
+Runic.Navigation.NavigationRegion.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Navigation.NavigationRegion.ReplaceBorrowedAsync(object! content, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.NavigationRegion.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.NavigationRegionDeparture.Region.get -> Runic.Navigation.NavigationRegion!
+Runic.Navigation.NavigationResult<TContent>.Committed.Arrival.get -> Runic.Navigation.NavigationArrivalState
+Runic.Navigation.NavigationResult<TContent>.Committed.Arrival.init -> void
+Runic.Navigation.NavigationResult<TContent>.Committed.ArrivalError.get -> System.Exception?
+Runic.Navigation.NavigationResult<TContent>.Committed.ArrivalError.init -> void
+Runic.Navigation.RunicModelContext.UnhandledTurnException -> System.EventHandler<Runic.Navigation.RunicModelTurnExceptionEventArgs!>?
+Runic.Navigation.RunicModelTurnExceptionEventArgs
+Runic.Navigation.RunicModelTurnExceptionEventArgs.Dropped.get -> bool
+Runic.Navigation.RunicModelTurnExceptionEventArgs.Exception.get -> System.Exception!
+Runic.Navigation.RunicModelTurnExceptionEventArgs.RunicModelTurnExceptionEventArgs(System.Exception! exception, bool dropped) -> void
+override Runic.Navigation.NavigationArrival.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationArrival.GetHashCode() -> int
+override Runic.Navigation.NavigationArrival.ToString() -> string!
+override Runic.Navigation.NavigationEntry.ToString() -> string!
+static Runic.Navigation.LeaveConfirmation.InDialog<TDialog>(Runic.Navigation.NavigationRegion<TDialog!>! dialogs, System.Func<Runic.Navigation.INavigationTarget<TDialog!>!>! dialog, System.Func<bool>! hasUnsavedChanges, System.Action? discard = null, bool askOnRetain = false) -> Runic.Navigation.LeaveConfirmation!
+static Runic.Navigation.NavigationArrival.operator !=(Runic.Navigation.NavigationArrival? left, Runic.Navigation.NavigationArrival? right) -> bool
+static Runic.Navigation.NavigationArrival.operator ==(Runic.Navigation.NavigationArrival? left, Runic.Navigation.NavigationArrival? right) -> bool

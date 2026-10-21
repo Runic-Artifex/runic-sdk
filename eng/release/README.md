@@ -26,7 +26,9 @@ releases and their evidence remain historical records.
    move each library's `PublicAPI.Unshipped.txt` entries into
    `PublicAPI.Shipped.txt`. A `*REMOVED*` entry is not moved: delete it together
    with the Shipped line it names. Then set `RunicPackageValidationBaselineVersion`
-   in `eng/Versions.props` to the published version and delete the
+   in `eng/Versions.props` to the published version, and
+   `RunicCsWebUiPackageValidationBaselineVersion` to the version
+   `Runic.Application.Views.CsWebUi` was published as, then delete the
    `CompatibilitySuppressions.xml` files, which describe breaks from the old baseline.
    Remove `<RunicPackageValidationBaselineMissing>` and `<RunicPackageFirstReleaseVersion>`
    from each package published for the first time (for example `Runic.Navigation` after

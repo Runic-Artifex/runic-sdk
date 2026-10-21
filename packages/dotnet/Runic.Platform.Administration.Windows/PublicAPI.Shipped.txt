@@ -53,10 +53,6 @@ override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.<Clone>$() -
 override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.Equals(object? obj) -> bool
 override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.GetHashCode() -> int
 override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.ToString() -> string!
-override Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup!
-override Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.Equals(object? obj) -> bool
-override Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.GetHashCode() -> int
-override Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.ToString() -> string!
 override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv!
 override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.Equals(object? obj) -> bool
 override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.GetHashCode() -> int
@@ -109,9 +105,6 @@ override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOpti
 override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink.Equals(object? obj) -> bool
 override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink.GetHashCode() -> int
 override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink.ToString() -> string!
-override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Equals(object? obj) -> bool
-override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.GetHashCode() -> int
-override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.ToString() -> string!
 override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.Equals(object? obj) -> bool
 override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.GetHashCode() -> int
 override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.ToString() -> string!
@@ -246,7 +239,6 @@ override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Equ
 override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.CName.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
 override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Mx.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
 override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
-override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
 override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
 override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Txt.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
 override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Unsupported.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
@@ -261,11 +253,6 @@ override sealed Runic.Platform.Administration.Windows.Tasks.SessionStateTaskTrig
 override sealed Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger.Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger? other) -> bool
 override sealed Runic.Platform.Administration.Windows.Tasks.WeeklyTaskTrigger.Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger? other) -> bool
 Runic.Platform.Administration.Windows.AdministrationErrorCategory
-Runic.Platform.Administration.Windows.AdministrationErrorCategory.AccessDenied = 0 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
-Runic.Platform.Administration.Windows.AdministrationErrorCategory.Conflict = 2 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
-Runic.Platform.Administration.Windows.AdministrationErrorCategory.InvalidData = 3 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
-Runic.Platform.Administration.Windows.AdministrationErrorCategory.NativeFailure = 4 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
-Runic.Platform.Administration.Windows.AdministrationErrorCategory.Unavailable = 1 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.ActiveDirectoryClient(Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient! directory) -> void
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.AddMemberAsync(string! groupDistinguishedName, string! memberDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
@@ -275,8 +262,6 @@ Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.Cr
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.CreateGroupAsync(string! parentDistinguishedName, string! commonName, string! accountName, Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryGroupScope scope, bool securityEnabled, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.CreateOrganizationalUnitAsync(string! parentDistinguishedName, string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.CreateUserAsync(string! parentDistinguishedName, string! commonName, string! accountName, string? userPrincipalName = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.GetMembersAsync(string! groupDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue!>>!
-Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.GetServicePrincipalNamesAsync(string! distinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.DirectoryServices.DirectoryValue!>>!
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.RemoveMemberAsync(string! groupDistinguishedName, string! memberDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.RemoveServicePrincipalNamesAsync(string! distinguishedName, System.Collections.Immutable.ImmutableArray<string!> names, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.ResetPasswordAsync(string! distinguishedName, string! newPassword, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
@@ -376,14 +361,10 @@ Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.<Clone>$() -> Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo!
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.Address.get -> string!
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.Address.init -> void
-Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.AddressType.get -> uint
-Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.AddressType.init -> void
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.ClientSite.get -> string!
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.ClientSite.init -> void
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.ControllerSite.get -> string!
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.ControllerSite.init -> void
-Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.Deconstruct(out string! Name, out string! Address, out uint AddressType, out System.Guid DomainId, out string! DomainName, out string! ForestName, out uint NativeFlags, out string! ControllerSite, out string! ClientSite) -> void
-Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.DomainControllerInfo(string! Name, string! Address, uint AddressType, System.Guid DomainId, string! DomainName, string! ForestName, uint NativeFlags, string! ControllerSite, string! ClientSite) -> void
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.DomainId.get -> System.Guid
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.DomainId.init -> void
 Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.DomainName.get -> string!
@@ -422,21 +403,12 @@ Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient.R
 Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient.SearchAsync(Runic.Platform.Administration.Windows.DirectoryServices.DirectorySearch! search, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.DirectoryServices.DirectoryObject!>>!
 Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient.WindowsDirectoryClient(Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions! options, System.Net.NetworkCredential? credential = null) -> void
 Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient
-Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.DiscoverController(string? domainName = null, bool requirePrimary = false, bool requireWritable = true) -> Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo!
-Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.GetMembership() -> Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership!
-Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.WindowsDomainClient(string? computerName = null) -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordData
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.A
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.A(string! Address) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.Address.get -> string!
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.Address.init -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.Deconstruct(out string! Address) -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData.A? other) -> bool
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Aaaa(string! Address) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Address.get -> string!
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Address.init -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Deconstruct(out string! Address) -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa? other) -> bool
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.CName
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.CName.CName(string! Target) -> void
@@ -459,12 +431,6 @@ Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.Equals(Runic.Platform
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.Host.get -> string!
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.Host.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.Ns(string! Host) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.Deconstruct(out string! Target) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup? other) -> bool
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.ReverseLookup(string! Target) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.Target.get -> string!
-Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.Target.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.Deconstruct(out ushort Priority, out ushort Weight, out ushort Port, out string! Target) -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv? other) -> bool
@@ -504,34 +470,20 @@ Runic.Platform.Administration.Windows.Dns.DnsRecordKey.Zone.get -> string!
 Runic.Platform.Administration.Windows.Dns.DnsRecordKey.Zone.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot
 Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot!
-Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key, out uint TimeToLiveSeconds, out uint RecordClass) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.DnsRecordSnapshot(Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key, uint TimeToLiveSeconds, uint RecordClass) -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot? other) -> bool
 Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.Key.get -> Runic.Platform.Administration.Windows.Dns.DnsRecordKey!
 Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.Key.init -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.RecordClass.get -> uint
-Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.RecordClass.init -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.TimeToLiveSeconds.get -> uint
-Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.TimeToLiveSeconds.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification
 Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification!
-Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key, out uint TimeToLiveSeconds) -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.DnsRecordSpecification(Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key, uint TimeToLiveSeconds = 3600) -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification? other) -> bool
 Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.Key.get -> Runic.Platform.Administration.Windows.Dns.DnsRecordKey!
 Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.Key.init -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.TimeToLiveSeconds.get -> uint
-Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.TimeToLiveSeconds.init -> void
-Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.UseServerDefaultTimeToLive.get -> bool
-Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.UseServerDefaultTimeToLive.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate
 Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate!
 Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.Data.get -> Runic.Platform.Administration.Windows.Dns.DnsRecordData?
 Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.Data.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.DnsRecordUpdate() -> void
 Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate? other) -> bool
-Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.TimeToLiveSeconds.get -> uint?
-Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.TimeToLiveSeconds.init -> void
 Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot
 Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot!
 Runic.Platform.Administration.Windows.Dns.DnsZoneSnapshot.ActiveDirectoryIntegrated.get -> bool
@@ -683,13 +635,6 @@ Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate.RemotePorts.ge
 Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate.RemotePorts.init -> void
 Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate.ServiceName.get -> string?
 Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate.ServiceName.init -> void
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient.CreateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification! specification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient.DeleteAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity! identity, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient.EnumerateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot!>>!
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient.FindAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Firewall.FirewallRuleSnapshot?>!
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient.GetProfilesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Firewall.FirewallProfileSnapshot!>>!
-Runic.Platform.Administration.Windows.Firewall.IWindowsFirewallClient.UpdateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity! identity, Runic.Platform.Administration.Windows.Firewall.FirewallRuleUpdate! update, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient
 Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient.CreateAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleSpecification! specification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient.DeleteAsync(Runic.Platform.Administration.Windows.Firewall.FirewallRuleIdentity! identity, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
@@ -704,7 +649,6 @@ Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.BackupId.get
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.BackupId.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Comment.get -> string!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Comment.init -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Deconstruct(out System.Guid BackupId, out System.Guid GroupPolicyId, out string! DomainName, out string! DisplayName, out System.DateTime Timestamp, out string! Comment, out string! Directory) -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Directory.get -> string!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Directory.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.DisplayName.get -> string!
@@ -712,10 +656,8 @@ Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.DisplayName.
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.DomainName.get -> string!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.DomainName.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup? other) -> bool
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.GroupPolicyBackup(System.Guid BackupId, System.Guid GroupPolicyId, string! DomainName, string! DisplayName, System.DateTime Timestamp, string! Comment, string! Directory) -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.GroupPolicyId.get -> System.Guid
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.GroupPolicyId.init -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Timestamp.get -> System.DateTime
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Timestamp.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions.<Clone>$() -> Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions!
@@ -744,15 +686,6 @@ Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink.Order.init -> 
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationException
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationException.GroupPolicyOperationException(string! operation, int hresult, System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!> messages) -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationException.Messages.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!>
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.<Clone>$() -> Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>!
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Deconstruct(out T Value, out System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!> Messages) -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>? other) -> bool
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.GroupPolicyOperationResult(T Value, System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!> Messages) -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Messages.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!>
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Messages.init -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Value.get -> T
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.Value.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.<Clone>$() -> Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.Deconstruct(out string! TrusteeSid, out string! TrusteeName, out string! TrusteeDomain, out int NativePermission, out bool Inherited, out bool Inheritable, out bool Denied) -> void
@@ -784,9 +717,7 @@ Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.<Clone>$() -> Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.ComputerEnabled.get -> bool
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.ComputerEnabled.init -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.CreationTime.get -> System.DateTime
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.CreationTime.init -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.Deconstruct(out System.Guid Id, out string! DisplayName, out string! DomainName, out string! DirectoryPath, out System.DateTime CreationTime, out System.DateTime ModificationTime, out bool UserEnabled, out bool ComputerEnabled, out string? WmiFilterPath) -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.DirectoryPath.get -> string!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.DirectoryPath.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.DisplayName.get -> string!
@@ -794,10 +725,8 @@ Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.DisplayNam
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.DomainName.get -> string!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.DomainName.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot? other) -> bool
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.GroupPolicySnapshot(System.Guid Id, string! DisplayName, string! DomainName, string! DirectoryPath, System.DateTime CreationTime, System.DateTime ModificationTime, bool UserEnabled, bool ComputerEnabled, string? WmiFilterPath) -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.Id.get -> System.Guid
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.Id.init -> void
-Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.ModificationTime.get -> System.DateTime
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.ModificationTime.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.UserEnabled.get -> bool
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.UserEnabled.init -> void
@@ -821,22 +750,18 @@ Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage.Opera
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage.SettingsName.get -> string!
 Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage.SettingsName.init -> void
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient
-Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.BackupAsync(System.Guid id, string! directory, string! comment = "", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup!>!>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.CreateAsync(string! displayName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.CreateLinkAsync(System.Guid id, string! targetDistinguishedName, int order = -1, bool enabled = true, bool enforced = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.DeleteAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.DeleteLinkAsync(System.Guid id, string! targetDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.EnumerateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!>>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.FindAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot?>!
-Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.GenerateReportAsync(System.Guid id, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyReportFormat format, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<string!>!>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.GetInheritanceBlockedAsync(string! targetDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.GetLinksAsync(string! targetDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink!>>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.GetPermissionsAsync(System.Guid id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry!>>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.GrantPermissionAsync(System.Guid id, string! trustee, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionLevel level, bool inheritable = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.ImportAsync(System.Guid destinationId, string! backupDirectory, System.Guid backupId, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!>!>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.RemoveTrusteePermissionsAsync(System.Guid id, string! trustee, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.RenameAsync(System.Guid id, string! displayName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.RestoreAsync(string! backupDirectory, System.Guid backupId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!>!>!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.SetEnabledAsync(System.Guid id, bool? userEnabled = null, bool? computerEnabled = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.SetInheritanceBlockedAsync(string! targetDistinguishedName, bool blocked, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.SetLinkOrderAsync(string! targetDistinguishedName, System.Collections.Immutable.ImmutableArray<System.Guid> highestPrecedenceFirst, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
@@ -847,8 +772,6 @@ Runic.Platform.Administration.Windows.NativeErrorDomain
 Runic.Platform.Administration.Windows.NativeErrorDomain.HResult = 1 -> Runic.Platform.Administration.Windows.NativeErrorDomain
 Runic.Platform.Administration.Windows.NativeErrorDomain.Ldap = 2 -> Runic.Platform.Administration.Windows.NativeErrorDomain
 Runic.Platform.Administration.Windows.NativeErrorDomain.Win32 = 0 -> Runic.Platform.Administration.Windows.NativeErrorDomain
-Runic.Platform.Administration.Windows.Networks.IWindowsNetworkClient
-Runic.Platform.Administration.Windows.Networks.IWindowsNetworkClient.EnumerateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot!>>!
 Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory
 Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory.DomainAuthenticated = 2 -> Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory
 Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory.Private = 1 -> Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory
@@ -879,25 +802,15 @@ Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot.NativeConn
 Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot.NativeDomainType.get -> int
 Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot.NativeDomainType.init -> void
 Runic.Platform.Administration.Windows.Networks.WindowsNetworkSnapshot.WindowsNetworkSnapshot(System.Guid Id, string! Name, string! Description, Runic.Platform.Administration.Windows.Networks.WindowsNetworkCategory Category, int NativeDomainType, int NativeConnectivity, bool Connected, bool InternetConnected) -> void
-Runic.Platform.Administration.Windows.Processes.IWindowsProcessClient
-Runic.Platform.Administration.Windows.Processes.IWindowsProcessClient.Enumerate() -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!>
-Runic.Platform.Administration.Windows.Processes.IWindowsProcessClient.Find(uint processId) -> Runic.Platform.Administration.Windows.Processes.ProcessSnapshot?
-Runic.Platform.Administration.Windows.Processes.IWindowsProcessClient.GetChildren(uint parentProcessId) -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!>
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.<Clone>$() -> Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!
-Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.Deconstruct(out uint ProcessId, out uint ParentProcessId, out string! ExecutableName) -> void
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.Equals(Runic.Platform.Administration.Windows.Processes.ProcessSnapshot? other) -> bool
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ExecutableName.get -> string!
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ExecutableName.init -> void
-Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ParentProcessId.get -> uint
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ParentProcessId.init -> void
-Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ProcessId.get -> uint
 Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ProcessId.init -> void
-Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ProcessSnapshot(uint ProcessId, uint ParentProcessId, string! ExecutableName) -> void
 Runic.Platform.Administration.Windows.Processes.WindowsProcessClient
 Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.Enumerate() -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!>
-Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.Find(uint processId) -> Runic.Platform.Administration.Windows.Processes.ProcessSnapshot?
-Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.GetChildren(uint parentProcessId) -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!>
 Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.WindowsProcessClient() -> void
 Runic.Platform.Administration.Windows.Services.ServiceFailureAction
 Runic.Platform.Administration.Windows.Services.ServiceFailureAction.<Clone>$() -> Runic.Platform.Administration.Windows.Services.ServiceFailureAction!
@@ -998,17 +911,12 @@ Runic.Platform.Administration.Windows.Services.ServiceState.Stopped = 1 -> Runic
 Runic.Platform.Administration.Windows.Services.ServiceState.StopPending = 3 -> Runic.Platform.Administration.Windows.Services.ServiceState
 Runic.Platform.Administration.Windows.Services.ServiceStatus
 Runic.Platform.Administration.Windows.Services.ServiceStatus.<Clone>$() -> Runic.Platform.Administration.Windows.Services.ServiceStatus!
-Runic.Platform.Administration.Windows.Services.ServiceStatus.AcceptedControls.get -> uint
-Runic.Platform.Administration.Windows.Services.ServiceStatus.AcceptedControls.init -> void
 Runic.Platform.Administration.Windows.Services.ServiceStatus.CheckPoint.get -> uint
 Runic.Platform.Administration.Windows.Services.ServiceStatus.CheckPoint.init -> void
-Runic.Platform.Administration.Windows.Services.ServiceStatus.Deconstruct(out Runic.Platform.Administration.Windows.Services.ServiceState State, out uint ProcessId, out uint AcceptedControls, out uint Win32ExitCode, out uint ServiceSpecificExitCode, out uint CheckPoint, out System.TimeSpan WaitHint) -> void
 Runic.Platform.Administration.Windows.Services.ServiceStatus.Equals(Runic.Platform.Administration.Windows.Services.ServiceStatus? other) -> bool
-Runic.Platform.Administration.Windows.Services.ServiceStatus.ProcessId.get -> uint
 Runic.Platform.Administration.Windows.Services.ServiceStatus.ProcessId.init -> void
 Runic.Platform.Administration.Windows.Services.ServiceStatus.ServiceSpecificExitCode.get -> uint
 Runic.Platform.Administration.Windows.Services.ServiceStatus.ServiceSpecificExitCode.init -> void
-Runic.Platform.Administration.Windows.Services.ServiceStatus.ServiceStatus(Runic.Platform.Administration.Windows.Services.ServiceState State, uint ProcessId, uint AcceptedControls, uint Win32ExitCode, uint ServiceSpecificExitCode, uint CheckPoint, System.TimeSpan WaitHint) -> void
 Runic.Platform.Administration.Windows.Services.ServiceStatus.State.get -> Runic.Platform.Administration.Windows.Services.ServiceState
 Runic.Platform.Administration.Windows.Services.ServiceStatus.State.init -> void
 Runic.Platform.Administration.Windows.Services.ServiceStatus.WaitHint.get -> System.TimeSpan
@@ -1047,16 +955,6 @@ Runic.Platform.Administration.Windows.Services.ServiceUpdate.ServiceUpdate() -> 
 Runic.Platform.Administration.Windows.Services.ServiceUpdate.StartMode.get -> Runic.Platform.Administration.Windows.Services.ServiceStartMode?
 Runic.Platform.Administration.Windows.Services.ServiceUpdate.StartMode.init -> void
 Runic.Platform.Administration.Windows.Services.WindowsServiceClient
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Continue(string! name) -> void
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Create(Runic.Platform.Administration.Windows.Services.ServiceSpecification! specification, string? password = null) -> void
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Delete(string! name) -> bool
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Enumerate() -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Services.ServiceSummary!>
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Find(string! name) -> Runic.Platform.Administration.Windows.Services.ServiceSnapshot?
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.FindStatus(string! name) -> Runic.Platform.Administration.Windows.Services.ServiceStatus?
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Pause(string! name) -> void
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Start(string! name) -> void
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Stop(string! name) -> void
-Runic.Platform.Administration.Windows.Services.WindowsServiceClient.Update(string! name, Runic.Platform.Administration.Windows.Services.ServiceUpdate! update, string? password = null) -> void
 Runic.Platform.Administration.Windows.Services.WindowsServiceClient.WaitForStateAsync(string! name, Runic.Platform.Administration.Windows.Services.ServiceState state, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Services.ServiceStatus!>!
 Runic.Platform.Administration.Windows.Services.WindowsServiceClient.WindowsServiceClient(string? machineName = null) -> void
 Runic.Platform.Administration.Windows.Shares.ShareSnapshot
@@ -1115,17 +1013,6 @@ Runic.Platform.Administration.Windows.Shares.ShareUpdate.SecurityDescriptor.get 
 Runic.Platform.Administration.Windows.Shares.ShareUpdate.SecurityDescriptor.init -> void
 Runic.Platform.Administration.Windows.Shares.ShareUpdate.ShareUpdate() -> void
 Runic.Platform.Administration.Windows.Shares.WindowsShareClient
-Runic.Platform.Administration.Windows.Shares.WindowsShareClient.Create(Runic.Platform.Administration.Windows.Shares.ShareSpecification! specification) -> void
-Runic.Platform.Administration.Windows.Shares.WindowsShareClient.Delete(string! name) -> bool
-Runic.Platform.Administration.Windows.Shares.WindowsShareClient.Enumerate() -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Shares.ShareSummary!>
-Runic.Platform.Administration.Windows.Shares.WindowsShareClient.Find(string! name) -> Runic.Platform.Administration.Windows.Shares.ShareSnapshot?
-Runic.Platform.Administration.Windows.Shares.WindowsShareClient.Update(string! name, Runic.Platform.Administration.Windows.Shares.ShareUpdate! update) -> void
-Runic.Platform.Administration.Windows.Shares.WindowsShareClient.WindowsShareClient(string? server = null) -> void
-Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient
-Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient.CreateAsync(string! path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSpecification! specification, bool replaceExisting = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient.FindAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot?>!
-Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient.ResolveAsync(string! path, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot!>!
-Runic.Platform.Administration.Windows.Shortcuts.IWindowsShellLinkClient.UpdateAsync(string! path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate! update, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon.<Clone>$() -> Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon.Deconstruct(out string! Path, out int Index) -> void
@@ -1143,7 +1030,6 @@ Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.<Clone>$() -> Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Arguments.get -> string!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Arguments.init -> void
-Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Deconstruct(out string! TargetPath, out string! Arguments, out string! WorkingDirectory, out string! Description, out Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon! Icon, out int ShowState, out ushort Hotkey) -> void
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Description.get -> string!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Description.init -> void
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Equals(Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot? other) -> bool
@@ -1151,8 +1037,6 @@ Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Hotkey.get -> 
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Hotkey.init -> void
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Icon.get -> Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Icon.init -> void
-Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.ShellLinkSnapshot(string! TargetPath, string! Arguments, string! WorkingDirectory, string! Description, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon! Icon, int ShowState, ushort Hotkey) -> void
-Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.ShowState.get -> int
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.ShowState.init -> void
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.TargetPath.get -> string!
 Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.TargetPath.init -> void
@@ -1201,11 +1085,6 @@ Runic.Platform.Administration.Windows.Shortcuts.WindowsShellLinkClient.FindAsync
 Runic.Platform.Administration.Windows.Shortcuts.WindowsShellLinkClient.ResolveAsync(string! path, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot!>!
 Runic.Platform.Administration.Windows.Shortcuts.WindowsShellLinkClient.UpdateAsync(string! path, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkUpdate! update, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Platform.Administration.Windows.Shortcuts.WindowsShellLinkClient.WindowsShellLinkClient() -> void
-Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient
-Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient.GetBiosInformation() -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo!>
-Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient.GetDomainMembership() -> Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership!
-Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient.GetOperatingSystem() -> Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo!
-Runic.Platform.Administration.Windows.SystemInformation.IWindowsSystemInformationClient.GetOperatingSystemNameAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
 Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo
 Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo.<Clone>$() -> Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo!
 Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo.Deconstruct(out string! Vendor, out string! Version, out string! ReleaseDateText, out System.DateOnly? ReleaseDate) -> void
@@ -1240,7 +1119,6 @@ Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemIn
 Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo.WindowsOperatingSystemInfo(System.Version! Version, string! RegistryProductName, string! DisplayVersion, ushort OperatingSystemLanguage, byte NativeProductType, ushort NativeSuiteMask, uint? UpdateBuildRevision) -> void
 Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient
 Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient.GetBiosInformation() -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.SystemInformation.WindowsBiosInfo!>
-Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient.GetDomainMembership() -> Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership!
 Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient.GetOperatingSystem() -> Runic.Platform.Administration.Windows.SystemInformation.WindowsOperatingSystemInfo!
 Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient.GetOperatingSystemNameAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
 Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient.WindowsSystemInformationClient() -> void
@@ -1420,7 +1298,6 @@ Runic.Platform.Administration.Windows.Tasks.TaskTrigger.EndBoundary.get -> strin
 Runic.Platform.Administration.Windows.Tasks.TaskTrigger.EndBoundary.init -> void
 Runic.Platform.Administration.Windows.Tasks.TaskTrigger.StartBoundary.get -> string?
 Runic.Platform.Administration.Windows.Tasks.TaskTrigger.StartBoundary.init -> void
-Runic.Platform.Administration.Windows.Tasks.TaskTrigger.TaskTrigger() -> void
 Runic.Platform.Administration.Windows.Tasks.TaskTrigger.TaskTrigger(Runic.Platform.Administration.Windows.Tasks.TaskTrigger! original) -> void
 Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger
 Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger.Equals(Runic.Platform.Administration.Windows.Tasks.TimeTaskTrigger? other) -> bool
@@ -1487,8 +1364,6 @@ static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.operator !=(Ru
 static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns.operator ==(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ns? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.DnsRecordData.operator !=(Runic.Platform.Administration.Windows.Dns.DnsRecordData? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.DnsRecordData.operator ==(Runic.Platform.Administration.Windows.Dns.DnsRecordData? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData? right) -> bool
-static Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.operator !=(Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup? right) -> bool
-static Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup.operator ==(Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.ReverseLookup? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.operator !=(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv.operator ==(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.Srv? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Txt.operator !=(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Txt? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.Txt? right) -> bool
@@ -1521,8 +1396,6 @@ static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOption
 static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions.operator ==(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions? right) -> bool
 static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink.operator !=(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink? right) -> bool
 static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink.operator ==(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyLink? right) -> bool
-static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.operator !=(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>? right) -> bool
-static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>.operator ==(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationResult<T>? right) -> bool
 static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.operator !=(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry? right) -> bool
 static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry.operator ==(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyPermissionEntry? right) -> bool
 static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.operator !=(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot? right) -> bool
@@ -1611,3 +1484,105 @@ virtual Runic.Platform.Administration.Windows.Dns.DnsRecordData.PrintMembers(Sys
 virtual Runic.Platform.Administration.Windows.Tasks.TaskTrigger.EqualityContract.get -> System.Type!
 virtual Runic.Platform.Administration.Windows.Tasks.TaskTrigger.Equals(Runic.Platform.Administration.Windows.Tasks.TaskTrigger? other) -> bool
 virtual Runic.Platform.Administration.Windows.Tasks.TaskTrigger.PrintMembers(System.Text.StringBuilder! builder) -> bool
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.AccessDenied = 1 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.Conflict = 4 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.InvalidData = 5 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.NativeFailure = 6 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.NotFound = 2 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.Unavailable = 3 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.Unknown = 0 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.GetMembersAsync(string! groupDistinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<string!>>!
+Runic.Platform.Administration.Windows.DirectoryServices.ActiveDirectoryClient.GetServicePrincipalNamesAsync(string! distinguishedName, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<string!>>!
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.Deconstruct(out string! Name, out string! Address, out uint NativeAddressType, out System.Guid DomainId, out string! DomainName, out string! ForestName, out uint NativeFlags, out string! ControllerSite, out string! ClientSite) -> void
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.DomainControllerInfo(string! Name, string! Address, uint NativeAddressType, System.Guid DomainId, string! DomainName, string! ForestName, uint NativeFlags, string! ControllerSite, string! ClientSite) -> void
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.NativeAddressType.get -> uint
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo.NativeAddressType.init -> void
+Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.DiscoverControllerAsync(string? domainName = null, bool requirePrimary = false, bool requireWritable = true, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo!>!
+Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.GetMembershipAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership!>!
+Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.WindowsDomainClient(string? machineName = null) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.A(System.Net.IPAddress! Address) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.Address.get -> System.Net.IPAddress!
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.A.Deconstruct(out System.Net.IPAddress! Address) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Aaaa(System.Net.IPAddress! Address) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Address.get -> System.Net.IPAddress!
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Aaaa.Deconstruct(out System.Net.IPAddress! Address) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Deconstruct(out string! Target) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr? other) -> bool
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Ptr(string! Target) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Target.get -> string!
+Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Target.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key, out System.TimeSpan TimeToLive, out uint NativeRecordClass) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.DnsRecordSnapshot(Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key, System.TimeSpan TimeToLive, uint NativeRecordClass) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.NativeRecordClass.get -> uint
+Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.NativeRecordClass.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.TimeToLive.get -> System.TimeSpan
+Runic.Platform.Administration.Windows.Dns.DnsRecordSnapshot.TimeToLive.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.DnsRecordSpecification(Runic.Platform.Administration.Windows.Dns.DnsRecordKey! Key) -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.TimeToLive.get -> System.TimeSpan?
+Runic.Platform.Administration.Windows.Dns.DnsRecordSpecification.TimeToLive.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.TimeToLive.get -> System.TimeSpan?
+Runic.Platform.Administration.Windows.Dns.DnsRecordUpdate.TimeToLive.init -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Deconstruct(out System.Guid BackupId, out System.Guid GroupPolicyId, out string! DomainName, out string! DisplayName, out System.DateTimeOffset Timestamp, out string! Comment, out string! Directory) -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.GroupPolicyBackup(System.Guid BackupId, System.Guid GroupPolicyId, string! DomainName, string! DisplayName, System.DateTimeOffset Timestamp, string! Comment, string! Directory) -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup.Timestamp.get -> System.DateTimeOffset
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.<Clone>$() -> Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>!
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Deconstruct(out T Value, out System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!> Messages) -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Equals(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>? other) -> bool
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.GroupPolicyOperationOutcome(T Value, System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!> Messages) -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Messages.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyStatusMessage!>
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Messages.init -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Value.get -> T
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Value.init -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.CreationTime.get -> System.DateTimeOffset
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.Deconstruct(out System.Guid Id, out string! DisplayName, out string! DomainName, out string! DirectoryPath, out System.DateTimeOffset CreationTime, out System.DateTimeOffset ModificationTime, out bool UserEnabled, out bool ComputerEnabled, out string? WmiFilterPath) -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.GroupPolicySnapshot(System.Guid Id, string! DisplayName, string! DomainName, string! DirectoryPath, System.DateTimeOffset CreationTime, System.DateTimeOffset ModificationTime, bool UserEnabled, bool ComputerEnabled, string? WmiFilterPath) -> void
+Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot.ModificationTime.get -> System.DateTimeOffset
+Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.BackupAsync(System.Guid id, string! directory, string! comment = "", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyBackup!>!>!
+Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.GenerateReportAsync(System.Guid id, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyReportFormat format, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<string!>!>!
+Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.ImportAsync(System.Guid destinationId, string! backupDirectory, System.Guid backupId, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyImportOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!>!>!
+Runic.Platform.Administration.Windows.GroupPolicy.WindowsGroupPolicyClient.RestoreAsync(string! backupDirectory, System.Guid backupId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicySnapshot!>!>!
+Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.Deconstruct(out int ProcessId, out int ParentProcessId, out string! ExecutableName) -> void
+Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ParentProcessId.get -> int
+Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ProcessId.get -> int
+Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ProcessSnapshot(int ProcessId, int ParentProcessId, string! ExecutableName) -> void
+Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.Find(int processId) -> Runic.Platform.Administration.Windows.Processes.ProcessSnapshot?
+Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.GetChildren(int parentProcessId) -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!>
+Runic.Platform.Administration.Windows.Services.ServiceStatus.Deconstruct(out Runic.Platform.Administration.Windows.Services.ServiceState State, out int ProcessId, out uint NativeAcceptedControls, out uint Win32ExitCode, out uint ServiceSpecificExitCode, out uint CheckPoint, out System.TimeSpan WaitHint) -> void
+Runic.Platform.Administration.Windows.Services.ServiceStatus.NativeAcceptedControls.get -> uint
+Runic.Platform.Administration.Windows.Services.ServiceStatus.NativeAcceptedControls.init -> void
+Runic.Platform.Administration.Windows.Services.ServiceStatus.ProcessId.get -> int
+Runic.Platform.Administration.Windows.Services.ServiceStatus.ServiceStatus(Runic.Platform.Administration.Windows.Services.ServiceState State, int ProcessId, uint NativeAcceptedControls, uint Win32ExitCode, uint ServiceSpecificExitCode, uint CheckPoint, System.TimeSpan WaitHint) -> void
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.ContinueAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.CreateAsync(Runic.Platform.Administration.Windows.Services.ServiceSpecification! specification, string? password = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.DeleteAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.EnumerateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Services.ServiceSummary!>>!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.FindAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Services.ServiceSnapshot?>!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.FindStatusAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Services.ServiceStatus?>!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.PauseAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.StartAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.StopAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.UpdateAsync(string! name, Runic.Platform.Administration.Windows.Services.ServiceUpdate! update, string? password = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Shares.WindowsShareClient.CreateAsync(Runic.Platform.Administration.Windows.Shares.ShareSpecification! specification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Shares.WindowsShareClient.DeleteAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Platform.Administration.Windows.Shares.WindowsShareClient.EnumerateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Shares.ShareSummary!>>!
+Runic.Platform.Administration.Windows.Shares.WindowsShareClient.FindAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Shares.ShareSnapshot?>!
+Runic.Platform.Administration.Windows.Shares.WindowsShareClient.UpdateAsync(string! name, Runic.Platform.Administration.Windows.Shares.ShareUpdate! update, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Platform.Administration.Windows.Shares.WindowsShareClient.WindowsShareClient(string? machineName = null) -> void
+Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.Deconstruct(out string! TargetPath, out string! Arguments, out string! WorkingDirectory, out string! Description, out Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon! Icon, out Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState ShowState, out ushort Hotkey) -> void
+Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.ShellLinkSnapshot(string! TargetPath, string! Arguments, string! WorkingDirectory, string! Description, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkIcon! Icon, Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState ShowState, ushort Hotkey) -> void
+Runic.Platform.Administration.Windows.Shortcuts.ShellLinkSnapshot.ShowState.get -> Runic.Platform.Administration.Windows.Shortcuts.ShellLinkShowState
+override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr!
+override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.ToString() -> string!
+override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.ToString() -> string!
+override sealed Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.Equals(Runic.Platform.Administration.Windows.Dns.DnsRecordData? other) -> bool
+static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.operator !=(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr? right) -> bool
+static Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr.operator ==(Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr? left, Runic.Platform.Administration.Windows.Dns.DnsRecordData.Ptr? right) -> bool
+static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.operator !=(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>? right) -> bool
+static Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>.operator ==(Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>? left, Runic.Platform.Administration.Windows.GroupPolicy.GroupPolicyOperationOutcome<T>? right) -> bool

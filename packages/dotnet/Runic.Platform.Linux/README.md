@@ -1,7 +1,7 @@
 # Runic.Platform.Linux (GTK 3)
 
 The GTK 3 window services for Linux x64: portal file dialogs and file handoff with
-GTK 3 parenting, GTK's own file dialogs, and the GTK 3 text clipboard. The package has
+GTK 3 parenting, and the GTK 3 text clipboard. The package has
 no public API. Runic.Application.Views.Desktop selects it for GTK 3 windows from
 `DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()`, and never in a
 GTK 4 process, which `Runic.Platform.Linux.Gtk4` serves. The package references the
@@ -13,12 +13,8 @@ The desktop chooses the portal backend, so Plasma can show KDE's picker. A faile
 parent export never opens an unparented window, and a missing portal never triggers
 an implicit toolkit fallback.
 
-The GTK-native chooser is an explicit compatibility path for unsandboxed applications.
-It applies filters as case-insensitive patterns, multiple selection and the initial
-folder to the GTK chooser. Inside Flatpak or Snap it reports every dialog
-`Unavailable(BackendUnavailable)`, as the other services report an environment they
-cannot serve; use the portal dialogs there. Both save atomically, including through a
-Flatpak document view; see [portal behavior](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md).
+The portal dialogs also serve Flatpak and Snap applications. Saves are atomic, including
+through a Flatpak document view; see [portal behavior](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md).
 A session bus, GTK3, a display and the appropriate portal backend must be installed.
 
 The clipboard serves UTF-8 text with GTK selection ownership.

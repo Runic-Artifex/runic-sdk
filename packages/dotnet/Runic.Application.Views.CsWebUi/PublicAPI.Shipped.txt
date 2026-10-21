@@ -2,26 +2,36 @@
 Runic.Application.Views.CsWebUi.CsWebUiBridgeExtensions
 Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>
 Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.DisposeAsync() -> System.Threading.Tasks.ValueTask
-Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.NativeWindow.get -> CsWebUi.WebUiWindow!
 Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.ViewModel.get -> TViewModel!
-Runic.Application.Views.CsWebUi.RebindableBridgeTransport
-Runic.Application.Views.CsWebUi.RebindableBridgeTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
-Runic.Application.Views.CsWebUi.RebindableBridgeTransport.BindAsync(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<string!>>! handler) -> System.IDisposable!
-Runic.Application.Views.CsWebUi.RebindableBridgeTransport.Dispose() -> void
-Runic.Application.Views.CsWebUi.RebindableBridgeTransport.Publish(string! name, string! stateJson) -> void
-Runic.Application.Views.CsWebUi.RebindableBridgeTransport.RebindableBridgeTransport(Runic.Application.Views.IBridgeTransport! inner) -> void
-static Runic.Application.Views.CsWebUi.CsWebUiBridgeExtensions.CreateBridgeSession(this CsWebUi.WebUiWindow! window) -> Runic.Application.Views.CsWebUi.RebindableBridgeTransport!
-Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.CsWebUi.CsWebUiPlatformServiceCollectionExtensions
 static Runic.Application.Views.CsWebUi.CsWebUiPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost.ConfigureWindow.get -> System.Action<CsWebUi.WebUiWindow!>?
-Runic.Application.Views.CsWebUi.RunicCsWebUiHost.ConfigureWindow.init -> void
 static Runic.Application.Views.CsWebUi.RunicCsWebUiHost.Run(System.IServiceProvider! services, System.Func<Runic.Application.Views.CsWebUi.RunicCsWebUiHost!, System.Threading.Tasks.Task<int>!>! application) -> int
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost.RunicCsWebUiHost(System.IServiceProvider! services) -> void
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost.Services.get -> System.IServiceProvider!
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost.ShowWindow.get -> System.Action<CsWebUi.WebUiWindow!, string!>?
-Runic.Application.Views.CsWebUi.RunicCsWebUiHost.ShowWindow.init -> void
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost.UseWebView.get -> bool
-Runic.Application.Views.CsWebUi.RunicCsWebUiHost.UseWebView.init -> void
+Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicWindowCloseResult!>
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions
+override Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.ToString() -> string!
+static Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.operator !=(Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions? left, Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions? right) -> bool
+static Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.operator ==(Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions? left, Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions? right) -> bool
+override Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.GetHashCode() -> int
+override Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Equals(object? obj) -> bool
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Equals(Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions? other) -> bool
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.<Clone>$() -> Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions!
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.RunicCsWebUiHostOptions() -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.UseWebView.get -> bool
+static Runic.Application.Views.CsWebUi.CsWebUiBridgeExtensions.CreateBridgeSession(this CsWebUi.WebUiWindow! window) -> Runic.Application.Views.IBridgeTransport!
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.UseWebView.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.ConfigureWindow.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.ConfigureWindow.get -> System.Action<CsWebUi.WebUiWindow!>?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.ShowWindow.get -> System.Action<CsWebUi.WebUiWindow!, string!>?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.IncludeFailureDetail.get -> bool?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.IncludeFailureDetail.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHost.RunicCsWebUiHost(System.IServiceProvider! services, Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions! options) -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.ShowWindow.init -> void
+static Runic.Application.Views.CsWebUi.RunicCsWebUiHost.Run(System.IServiceProvider! services, Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions! options, System.Func<Runic.Application.Views.CsWebUi.RunicCsWebUiHost!, System.Threading.Tasks.Task<int>!>! application) -> int
+Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow<TViewModel>.Window.get -> CsWebUi.WebUiWindow!

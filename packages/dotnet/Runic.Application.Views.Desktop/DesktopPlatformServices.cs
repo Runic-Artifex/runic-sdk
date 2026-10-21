@@ -572,8 +572,6 @@ public static partial class DesktopPlatformServices
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
     /// <see cref="PlatformUnavailableReason.OwnerClosed"/>.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped as PlatformServices.PresentAsync; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopNativeOwner owner, DesktopActivationContext? context = null,
         CancellationToken cancellationToken = default)
     {
@@ -616,8 +614,6 @@ public static partial class DesktopPlatformServices
     /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
     // The overloads differ in their first parameter, which no call omits, so the optional ones cannot make a call
     // ambiguous or bind to the other overload.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped as PlatformServices.PresentAsync; the class was renamed. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(IRunicWindow window, DesktopActivationContext? context = null,
         CancellationToken cancellationToken = default)
     {
