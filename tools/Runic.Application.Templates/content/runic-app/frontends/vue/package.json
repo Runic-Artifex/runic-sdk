@@ -21,7 +21,7 @@
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
     "@vitejs/plugin-vue": "6.0.9",
     "typescript": "6.0.3",
-    "vite": "8.3.2",
+    "vite": "8.3.4",
     "vue-tsc": "3.3.12"
   }
 }

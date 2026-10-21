@@ -47,7 +47,7 @@
     "@vitejs/devtools": "0.7.6",
     "@vitejs/devtools-kit": "0.7.6",
     "typescript": "6.0.3",
-    "vite": "8.3.2"
+    "vite": "8.3.4"
   },
   "engines": {
     "node": ">=24.18.0 <25"

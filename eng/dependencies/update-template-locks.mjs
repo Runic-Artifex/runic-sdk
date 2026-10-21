@@ -2,7 +2,7 @@
 // Regenerate maintained starter locks against this checkout's package candidates.
 // Never publishes. Final archive hashes are stamped into staged locks at packaging.
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
@@ -46,6 +46,8 @@ try {
       manifest.packageManager = `${manager}@${toolchain[manager]}`;
       await writeFile(join(directory, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
       await writeFile(join(directory, ".npmrc"), `@runic-artifex:registry=${address}\n`);
+      // pnpm reads overrides only from pnpm-workspace.yaml.
+      if (manager === "pnpm") await copyFile(join(source, "pnpm-workspace.yaml"), join(directory, "pnpm-workspace.yaml")).catch(error => { if (error.code !== "ENOENT") throw error; });
       run(manager, args, directory, nodeCompatibility().env);
       let lock = await readFile(join(directory, filename), "utf8");
       for (const entry of workspace.npm) {

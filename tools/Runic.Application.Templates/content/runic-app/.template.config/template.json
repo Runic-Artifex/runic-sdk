@@ -72,7 +72,7 @@
       "condition": "(frontend == 'angular')",
       "modifiers": [
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
-        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml", "pnpm-workspace.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
       ]
     }
