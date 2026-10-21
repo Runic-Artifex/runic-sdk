@@ -156,6 +156,13 @@ starts a program; open local files with `LaunchAsync`. The URI comes from
 trusted application code: validate links a web page supplies before passing them
 on.
 
+`LaunchAsync(path)` opens a local file in its default application. On Windows and
+macOS, `DesktopFileOperation.Open` returns `Failed(PermissionDenied)` instead of
+running programs, scripts, installers, shortcuts and disk images; Linux applies
+the desktop portal's policy. The block lists are best effort, so do not `Open`
+files from untrusted sources, such as downloads or names a page supplies: use
+`DesktopFileOperation.Reveal` or `DesktopFileOperation.ChooseApplication` instead.
+
 | Platform | Mechanism | Outcomes |
 | --- | --- | --- |
 | Linux (GTK 3 and GTK 4, also in Flatpak and Snap) | The OpenURI desktop portal | The portal may let the user choose an application; cancelling is `Failed(UserDismissed)` |

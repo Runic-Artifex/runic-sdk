@@ -150,6 +150,7 @@ IEnumAssocHandlers
 IAssocHandler
 ASSOC_FILTER
 AssocQueryString
+AssocIsDangerous
 ASSOCF
 ASSOCSTR
 SHCreateShellItemArrayFromIDLists

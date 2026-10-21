@@ -22,8 +22,9 @@ internal static unsafe class WindowsShellAssociations
 
     private const int S_OK = 0;
 
-    // AssocQueryString for an association: the string, or null when the association has none.
-    internal static string? Query(Association association, ASSOCSTR kind)
+    // AssocQueryString for an association, with the verb or other extra string `kind` takes: the string, or null when the
+    // association has none.
+    internal static string? Query(Association association, ASSOCSTR kind, string? extra = null)
     {
         ASSOCF flags = association.Kind switch
         {
@@ -33,13 +34,14 @@ internal static unsafe class WindowsShellAssociations
         };
         uint length = 0;
         fixed (char* name = association.Name)
+        fixed (char* verb = extra)
         {
             // Without a buffer the call reports the length, including the terminator, with S_FALSE.
-            if (PInvoke.AssocQueryString(flags, kind, name, default, default, &length).Value < 0 || length is 0 or > 32768) return null;
+            if (PInvoke.AssocQueryString(flags, kind, name, verb, default, &length).Value < 0 || length is 0 or > 32768) return null;
             char[] buffer = new char[length];
             fixed (char* output = buffer)
             {
-                if (PInvoke.AssocQueryString(flags | ASSOCF.ASSOCF_NOTRUNCATE, kind, name, default, output, &length).Value < 0) return null;
+                if (PInvoke.AssocQueryString(flags | ASSOCF.ASSOCF_NOTRUNCATE, kind, name, verb, output, &length).Value < 0) return null;
             }
             string value = new string(buffer, 0, (int)Math.Min(length, (uint)buffer.Length)).TrimEnd('\0');
             return value.Length == 0 ? null : value;

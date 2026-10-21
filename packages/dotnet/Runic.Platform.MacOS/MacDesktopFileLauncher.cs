@@ -80,12 +80,14 @@ internal sealed class MacDesktopFileLauncher(INativeWindowOwner owner) : IDeskto
             if (panel != 0 || applicationUrl != 0) await MacOsMainQueue.InvokeAsync(() => { Release(panel); Release(applicationUrl); }).ConfigureAwait(false);
         }
     }
-    // LaunchServices runs applications, Terminal scripts, workflows, installers and
-    // extensionless executables, and follows location files. Opening a document must never execute code.
+    // LaunchServices runs applications, Terminal scripts, workflows, shortcuts, installers, plug-ins and extensionless
+    // executables, mounts disk images that hold them, and follows location files. Opening a document must never execute
+    // code. The list is best effort: an application must not open files from untrusted sources.
     private static readonly HashSet<string> ProgramExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".app", ".command", ".tool", ".terminal", ".workflow", ".action", ".jar", ".pkg", ".mpkg",
-        ".prefpane", ".saver", ".mobileconfig", ".webloc", ".inetloc", ".fileloc",
+        ".app", ".command", ".tool", ".terminal", ".workflow", ".action", ".shortcut", ".jar", ".jnlp", ".pkg", ".mpkg",
+        ".prefpane", ".saver", ".osax", ".kext", ".plugin", ".bundle", ".appex", ".xpc", ".mobileconfig", ".webloc", ".inetloc",
+        ".fileloc", ".dmg", ".iso", ".img", ".cdr", ".sparseimage", ".sparsebundle",
     };
     internal static bool StartsProgram(string path)
     {
