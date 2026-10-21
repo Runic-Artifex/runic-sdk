@@ -94,22 +94,13 @@ public static class DesktopPlatform
         };
     }
 
-    // The operations the built-in hosts advertise before opening. A flag the host decides only after loading its
-    // toolkit is left out: State and FileDrop of GTK 3, which need GTK symbols, and FileDrop of WKWebView, which
-    // needs its Objective-C class.
-    internal static DesktopWindowCapabilities BuiltInEmbeddedCapabilities
-    {
-        get
-        {
-            const DesktopWindowCapabilities common = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
-                DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
-                DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
-            if (OperatingSystem.IsWindows()) return common | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop;
-            if (OperatingSystem.IsMacOS()) return common | DesktopWindowCapabilities.State;
-            if (OperatingSystem.IsLinux()) return common;
-            return DesktopWindowCapabilities.None;
-        }
-    }
+    // The operations the built-in host advertises before opening: each host's own KnownCapabilities, without a flag it
+    // decides only after loading its toolkit (State and FileDrop of GTK 3, FileDrop of WKWebView).
+    internal static DesktopWindowCapabilities BuiltInEmbeddedCapabilities =>
+        OperatingSystem.IsWindows() ? WindowsWebView2Host.KnownCapabilities :
+        OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.KnownCapabilities :
+        OperatingSystem.IsLinux() ? LinuxWebKitGtkHost.KnownCapabilities :
+        DesktopWindowCapabilities.None;
 
     private static DesktopPresentationAvailability GetBuiltInEmbeddedAvailability(LinuxDesktopOptions linux)
     {

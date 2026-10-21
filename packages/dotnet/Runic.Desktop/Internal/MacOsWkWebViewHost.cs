@@ -80,10 +80,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private const ulong StyleFullScreen = 1UL << 14;
 
     public bool SupportsCloseConfirmation => true;
-    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+    // Known before WebKit loads; DesktopPlatform.GetAvailability advertises these. FileDrop needs the
+    // Objective-C WebView subclass.
+    internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.State | (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
+        DesktopWindowCapabilities.State;
+    public DesktopWindowCapabilities Capabilities => KnownCapabilities |
+        (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
 

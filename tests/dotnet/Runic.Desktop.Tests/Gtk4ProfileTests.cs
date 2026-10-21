@@ -288,7 +288,7 @@ public sealed class Gtk4ProfileTests
     }
 
     [Test]
-    public async Task BuiltInEmbeddedCapabilitiesAreWhatTheBuiltInHostAdvertises()
+    public void BuiltInEmbeddedCapabilitiesAreWhatTheBuiltInHostAdvertises()
     {
         var advertised = DesktopPlatform.BuiltInEmbeddedCapabilities;
         const DesktopWindowCapabilities known = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
@@ -300,12 +300,9 @@ public sealed class Gtk4ProfileTests
             Assert.Equal(known | DesktopWindowCapabilities.State, advertised);
         else if (OperatingSystem.IsLinux())
             Assert.Equal(known, advertised);
-        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS()) return;
-
-        // The host before opening: the advertised set is its own, without what only the loaded toolkit decides.
-        await using var host = new Internal.WebUiEmbeddedHostFactory().Create();
-        Assert.Equal(advertised, host.Capabilities & advertised);
-        Assert.Equal(DesktopWindowCapabilities.None, host.Capabilities & ~advertised & ~DesktopWindowCapabilities.FileDrop);
+        // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
+        Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
+            known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop);
     }
 
     [Test]

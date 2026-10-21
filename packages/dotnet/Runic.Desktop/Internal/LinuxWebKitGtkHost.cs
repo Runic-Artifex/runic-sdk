@@ -32,9 +32,12 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     public bool SupportsCloseConfirmation => true;
 
-    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+    // Known before GTK loads; DesktopPlatform.GetAvailability advertises these. State and FileDrop need GTK symbols.
+    internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
-        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
+
+    public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (Api.CanReportState ? DesktopWindowCapabilities.State : DesktopWindowCapabilities.None) |
         (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
