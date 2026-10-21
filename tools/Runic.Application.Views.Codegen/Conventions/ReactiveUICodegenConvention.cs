@@ -14,7 +14,11 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
 
     private const string FlavorOption = "--reactiveui-flavor";
 
-    /// <summary>The flavour the application declared; a System.Reactive contract selects its own.</summary>
+    /// <summary>
+    /// The flavour of the Runic ReactiveUI adapter the project references, which the build passes. A command's type
+    /// does not reveal it: both distributions share ReactiveUI.Core's IReactiveCommand. Interactions take theirs from
+    /// their own interface (ReactiveUI.Binding or ReactiveUI.Binding.Reactive).
+    /// </summary>
     internal ReactiveUiFlavor Flavor { get; private set; } = ReactiveUiFlavor.Default;
 
     internal override Assembly PluginAssembly => typeof(ReactiveCommandInspector).Assembly;
