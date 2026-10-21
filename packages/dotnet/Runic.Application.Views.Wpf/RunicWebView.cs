@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -28,10 +27,8 @@ public sealed partial class RunicWebView : HwndHost
 
     /// <summary>Creates a Desktop host factory that presents one surface at a time in this control.</summary>
     /// <remarks>
-    /// For <see cref="DesktopHostOptions.WindowHostFactory"/>, as <see cref="RunicViewHost"/> uses it. It belongs to the
-    /// experimental custom window-host family <c>RUNICDESK100</c> of Runic.Desktop.
+    /// For <see cref="DesktopHostOptions.WindowHostFactory"/>, as <see cref="RunicViewHost"/> uses it.
     /// </remarks>
-    [Experimental("RUNICDESK100", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public IDesktopWindowHostFactory CreateWindowHostFactory() => new HostFactory(this);
 
     /// <inheritdoc />

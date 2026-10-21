@@ -27,7 +27,6 @@ public sealed record LinuxDesktopOptions
 }
 
 /// <summary>An optional Linux provider identifying its native toolkit.</summary>
-[System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface ILinuxDesktopWindowHostFactory : IDesktopWindowHostFactory
 {
     /// <summary>Gets the toolkit and WebKit ABI that this factory's window hosts load.</summary>
@@ -53,7 +52,6 @@ public static class LinuxDesktopRuntime
     /// a miss while the ldconfig cache could not be read is not cached. Native initialization remains the final
     /// runtime check.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public static bool IsLibraryAvailable(string libraryName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(libraryName);
@@ -107,7 +105,6 @@ public static class LinuxDesktopRuntime
     }
 
     /// <summary>Claims the toolkit before native initialization. A process cannot switch toolkits.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.WindowHostId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public static void ClaimBackend(LinuxEmbeddedBackend backend)
     {
         if (!Enum.IsDefined(backend)) throw new ArgumentOutOfRangeException(nameof(backend));

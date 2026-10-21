@@ -9,7 +9,6 @@ your project accepts changes to that API before it is supported.
 | ID | API family | Packages |
 |---|---|---|
 | [`RUNICASSETS001`](#RUNICASSETS001) | Linux development-directory asset source | `Runic.Assets` |
-| [`RUNICDESK100`](#RUNICDESK100) | Custom window host providers | `Runic.Desktop`, `Runic.Desktop.Gtk4` |
 | [`RUNICDESK101`](#RUNICDESK101) | Low-level presentation transport | `Runic.Desktop` |
 
 An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
@@ -19,7 +18,7 @@ diagnostics numbers them from `100`, so the two never share a number: the D-Bus
 source generator reports `RUNICDBUS001` to `RUNICDBUS012`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
 Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
-experimental Desktop families are `RUNICDESK100` and `RUNICDESK101`.
+experimental Desktop families number from `RUNICDESK100`.
 
 ## Suppressing a diagnostic
 
@@ -48,11 +47,12 @@ When a family graduates, its attribute is removed and its API is supported like
 the rest of its package. Its ID is retired and never names another family, so a
 leftover suppression is harmless; remove it.
 
-<a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
+<a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
 
 | ID | API family | Graduated in |
 |---|---|---|
-| `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined [`RUNICDESK100`](#RUNICDESK100), the custom window-host family it belongs to. | 0.9.0 |
+| `RUNICDESK100` | Custom window hosts (`Runic.Desktop`, `Runic.Desktop.Gtk4`, `Runic.Application.Views.Wpf`): `IDesktopWindowHostFactory`, `IDesktopWindowHost`, `IDesktopEventLoopWindowHostFactory`, `ILinuxDesktopWindowHostFactory`, `IDesktopNativeDispatchWindowHost`, `IDesktopWindowStateHost`, `IDesktopFileDropWindowHost`, `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`, `LinuxDesktopRuntime.ClaimBackend`, `LinuxDesktopRuntime.IsLibraryAvailable`, `Gtk4WindowHostFactory` and `RunicWebView.CreateWindowHostFactory()`. What a host must do is in the Runic.Desktop README, [Custom window hosts](../packages/dotnet/Runic.Desktop/README.md#custom-window-hosts). | 0.10.0 |
+| `RUNICWPF001` | WPF child web presentation (`Runic.Application.Views.Wpf`): `RunicViewHost`, `RunicViewHostState`, `RunicWebView`, `WpfBridgeView<TViewModel>`, `WpfBridgeViewExtensions` and `WpfPlatformServices`. `RunicWebView.CreateWindowHostFactory()` joined `RUNICDESK100`, the custom window-host family it belongs to. | 0.9.0 |
 | `RUNICNAV001` | Navigation (`Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`) | 0.7.0-preview.7 |
 
 `Runic.Platform.Administration.Windows` is no longer experimental as of 0.10.0.
@@ -74,31 +74,6 @@ such as the synchronous `Refresh`, the two ways to stop a watch and the
 Linux-only name, may change once a host consumes it. It graduates when a Runic
 host uses it. Embedded and archive sources (`EmbeddedAssetSource`,
 `AssetArchiveSource`) are stable.
-
-<a id="RUNICDESK100"></a>
-
-## RUNICDESK100
-
-**Covers:** custom window hosts for Runic Desktop, the provider interface that the
-GTK 4 provider and the WPF control implement: `IDesktopWindowHostFactory`,
-`IDesktopWindowHost`, `IDesktopEventLoopWindowHostFactory`,
-`ILinuxDesktopWindowHostFactory`, `IDesktopNativeDispatchWindowHost`,
-`IDesktopWindowStateHost`, `IDesktopFileDropWindowHost`,
-`DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`,
-`LinuxDesktopRuntime.ClaimBackend` and `LinuxDesktopRuntime.IsLibraryAvailable`
-in `Runic.Desktop`, `Gtk4WindowHostFactory` in `Runic.Desktop.Gtk4`, and
-`RunicWebView.CreateWindowHostFactory()` in `Runic.Application.Views.Wpf`.
-
-**Status:** experimental since 0.9.0. Applications that use the
-built-in windows, or select GTK 4 with `WithGtk4()`, do not use this family and
-need no suppression; `LinuxDesktopRuntime.CanUse` stays stable. Neither do WPF
-applications that use `RunicViewHost`; only composing a `RunicWebView` with your
-own `DesktopHost` uses this family. A window host
-must follow threading and credential rules that are still changing:
-`DocumentStartScript` carries the session credential, and each new window
-capability so far has been another optional interface. The family graduates
-once a window host outside Runic exists, or the CS-WebUI and WPF hosts have
-settled the interface.
 
 <a id="RUNICDESK101"></a>
 

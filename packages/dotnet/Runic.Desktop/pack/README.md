@@ -74,8 +74,9 @@ Tailwind page, as a list to a screen reader; add `role="list"` to it. See
 
 Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or
-lifecycle. The window host interfaces (`RUNICDESK100`) and the low-level
-presentation transport of `DesktopSurface` (`RUNICDESK101`) are
+lifecycle; see
+[custom window hosts](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop#custom-window-hosts).
+The low-level presentation transport of `DesktopSurface` (`RUNICDESK101`) is
 [experimental](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md).
 
 Windows open in the embedded WebView unless `DesktopWindowOptions.Browser`
