@@ -1045,7 +1045,7 @@ public sealed class DesktopApiTests
 
         // The token, not a separate timeout, ends the wait.
         using var stop = new CancellationTokenSource();
-        var pending = surface.ExecuteJavaScriptAsync("return never;", stop.Token);
+        var pending = surface.ExecuteJavaScriptAsync("return never;", stop.Token).AsTask();
         _ = await ReceiveScriptAsync("return never;");
         await stop.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);

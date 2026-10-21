@@ -390,58 +390,49 @@ dropped files while the application runs. WebKitGTK reports a file drag as
 instead of navigating it; its drop reports no paths and raises no event.
 Dragging files out of a window is not supported yet.
 
-## Callback concurrency and ordering
+## Calls, connection events and ordering
 
-The capabilities, connection events and scripts of this section are the
-low-level presentation transport, an experimental API (`RUNICDESK101`, see
-[Experimental APIs](#experimental-apis)); Runic Windows and Views use it for you.
+A page calls .NET through Runic Windows and Views (`Runic.Application.Views.Desktop`),
+whose Bridge runs over the surface's internal capability transport. Each browser
+connection admits one call or event at a time, but an asynchronous handler holds
+that turn only until it first awaits an incomplete task, so a long command or
+operation wait leaves Cancel, draft edits and other control calls available. For
+one connection:
 
-Each browser connection admits one callback or event at a time, but an
-asynchronous callback holds that turn only until its handler first awaits an
-incomplete task. This applies to `DesktopSurface.RegisterCapability` handlers,
-including the Bridge calls of Runic Windows and Views (`Runic.Application.Views.Desktop`).
-A long command or operation wait therefore leaves Cancel, draft edits and other
-control callbacks available. For one connection:
-
-- The part of a capability handler before its first incomplete await runs one
-  at a time, never overlapping another handler's synchronous part or a
-  connection event.
-- The rest of a capability handler can run concurrently with other capability
-  handlers and with connection events, including `Connected`.
-- Connection events (`SubscribeConnectionEvents`) run one at a time. Every
-  subscription receives each event, in subscription order, and subscribing does
-  not change how the page navigates or reloads.
+- The part of a call's handler before its first incomplete await runs one at a
+  time, never overlapping another handler's synchronous part or a connection
+  event.
+- The rest of a handler can run concurrently with other calls and with
+  connection events, including `Connected`.
+- Connection events (`DesktopSurface.SubscribeConnectionEvents`) run one at a
+  time, on the thread pool. Every subscription receives each
+  `DesktopConnectionEvent`, in subscription order, and subscribing does not
+  change how the page navigates or reloads.
 - Admission is not guaranteed to follow arrival order, and replies are sent as
   handlers complete, so they can arrive out of order. The page matches each reply
   to its call.
-- `Disconnected` is dispatched after every capability call the connection
-  accepted has completed, and no call or event of that connection follows it.
+- `Disconnected` is dispatched after every call the connection accepted has
+  completed, and no call or event of that connection follows it.
+
+Separate connections, such as several admitted clients, are independent.
 
 `DesktopSurface.ConnectionCount` is the number of connections between their
 `Connected` and `Disconnected` events, and a connection event's handler
-already sees it with that event. A connection whose `Connected` event was never
-dispatched, because it lost its admission first, is not counted. A served
-surface can therefore end with its last browser tab: on a `Disconnected` event
-that leaves the count at zero, wait a moment, since a reload can disconnect
-before the page connects again, and check the count again.
+already sees it with that event (`DesktopConnectionEvent.Surface.ConnectionCount`).
+A connection whose `Connected` event was never dispatched, because it lost its
+admission first, is not counted. A served surface can therefore end with its
+last browser tab: on a `Disconnected` event that leaves the count at zero, wait
+a moment, since a reload can disconnect before the page connects again, and
+check the count again. `DesktopConnectionEventKind` is open: ignore a kind you
+do not handle.
 
-Separate connections, such as several admitted clients, are independent. A
-handler that needs exclusive access across awaits must serialize itself, for
-example with a `SemaphoreSlim` held for the whole handler:
-
-```csharp
-private readonly SemaphoreSlim _saveGate = new(1, 1);
-
-surface.RegisterCapability("save", async (invocation, cancellationToken) =>
-{
-    await _saveGate.WaitAsync(cancellationToken);
-    try { return await SaveAsync(invocation, cancellationToken); }
-    finally { _saveGate.Release(); }
-});
-```
-
-Do not hold such a gate across work that waits for another callback, such as a
-Cancel request, or that callback can never run.
+`DesktopSurface.ExecuteJavaScriptAsync(script, cancellationToken)` runs script in
+a connected page and returns the value of its `return` as a string, for example
+from an in-process test or to ask the page before a window closes. While several
+pages are connected, which one answers is not specified. The result is never
+cut: one larger than 16 MiB of UTF-8 fails with `DesktopException`
+(`LimitExceeded`, code `script-result-too-large`). Bound the wait with the
+token, for example from a `CancellationTokenSource` created with a delay.
 
 ## Calls to unregistered capabilities
 
@@ -839,24 +830,13 @@ describes the window owner the platform services receive for a window.
 
 ## Experimental APIs
 
-One API family of this package is experimental: using it is a compile error
-until the project suppresses its ID, and it may change in a minor release.
-Applications that open windows through `DesktopHost`, use custom window hosts or
-use Runic Windows and Views do not need it.
-
-| ID | Family |
-| --- | --- |
-| `RUNICDESK101` | The low-level presentation transport of `DesktopSurface`: `RegisterCapability`, `SubscribeConnectionEvents`, `ConnectionCount`, `RunJavaScriptAsync`, `ExecuteJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types |
-
-`RUNICDESK100`, the custom window hosts, graduated in 0.10.0; remove its
-suppressions. See [Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md)
-for the status and how to suppress an ID.
-
-`ExecuteJavaScriptAsync(script, cancellationToken)` returns the script's result
-from one connected session and never cuts it: a result larger than 16 MiB of
-UTF-8 fails with `DesktopException` (`LimitExceeded`, code
-`script-result-too-large`). Bound the wait with the token, for example from a
-`CancellationTokenSource` created with a delay.
+No API of this package is experimental. Its former IDs are retired, so remove
+their suppressions: `RUNICDESK100` (custom window hosts) graduated in 0.10.0, and
+`RUNICDESK101` (the low-level presentation transport) was split in 0.10.0:
+`ExecuteJavaScriptAsync`, `ConnectionCount` and `SubscribeConnectionEvents`, with
+`DesktopConnectionEvent` and `DesktopConnectionEventKind`, are stable, and the
+rest is internal to Runic Desktop and Runic Windows and Views. See
+[Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#retired).
 
 ## Security notes
 

@@ -40,8 +40,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// <see cref="SemaphoreSlim"/>. <see cref="PresentationEventKind.Disconnected"/> follows the completion
     /// of every invocation the connection accepted.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public PresentationCapabilityRegistration RegisterCapability(
+    internal PresentationCapabilityRegistration RegisterCapability(
         string capability,
         PresentationCapabilityHandler handler)
     {
@@ -74,31 +73,31 @@ public sealed class DesktopSurface : IAsyncDisposable
         return new PresentationCapabilityRegistration(binding);
     }
 
-    /// <summary>Observes authenticated connection and disconnection events for this surface.</summary>
+    /// <summary>Observes the pages that connect to this surface and disconnect from it.</summary>
+    /// <param name="handler">Called for each event, on a thread-pool thread.</param>
+    /// <returns>A subscription; dispose it to stop observing.</returns>
     /// <remarks>
-    /// Events of one connection run one at a time and never overlap the synchronous part of a capability
-    /// handler, but they can overlap a capability handler that is awaiting. A disconnection event follows
-    /// the completion of every invocation the connection accepted. See <see cref="RegisterCapability"/>.
-    /// Every subscription receives every event, in subscription order. Subscribing does not change how the
-    /// page navigates or reloads.
+    /// A page connects once it has authenticated with the surface's session credential. The events of one page run
+    /// one at a time, <see cref="DesktopConnectionEventKind.Connected"/> before
+    /// <see cref="DesktopConnectionEventKind.Disconnected"/>, and its disconnection follows every call of that page
+    /// the surface accepted, such as a Bridge call of Runic Windows and Views. Every subscription receives every
+    /// event, in subscription order. Subscribing does not change how the page navigates or reloads.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public IDisposable SubscribeConnectionEvents(Action<PresentationInvocation> handler)
+    public IDisposable SubscribeConnectionEvents(Action<DesktopConnectionEvent> handler)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(handler);
-        return _engine.ObserveConnections(webUiEvent => handler(new PresentationInvocation(this, webUiEvent)));
+        return _engine.ObserveConnections(webUiEvent => handler(new DesktopConnectionEvent(this, webUiEvent)));
     }
 
     /// <summary>Gets the number of pages connected to this surface.</summary>
     /// <remarks>
-    /// A page counts from its <see cref="PresentationEventKind.Connected"/> event until its
-    /// <see cref="PresentationEventKind.Disconnected"/> event, and a handler of either event already sees the count
+    /// A page counts from its <see cref="DesktopConnectionEventKind.Connected"/> event until its
+    /// <see cref="DesktopConnectionEventKind.Disconnected"/> event, and a handler of either event already sees the count
     /// with that change. A window's page, every tab of a served surface and each reload count separately. A reload
     /// can disconnect before or after the reloaded page connects, so the count can drop to zero for a moment: to
     /// end serving when the last browser tab closes, wait a short time after it reaches zero and check again.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public int ConnectionCount => _engine.ConnectedSessionCount;
 
     /// <summary>Opens this surface in one installed browser or embedded WebView.</summary>
@@ -185,8 +184,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     }
 
     /// <summary>Runs JavaScript in every authenticated presentation session.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
+    internal Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
         _engine.RunJavaScriptAsync(script, cancellationToken);
 
     /// <summary>Runs JavaScript and returns its string result from an authenticated presentation session.</summary>
@@ -196,28 +194,26 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// <returns>The whole result.</returns>
     /// <remarks>
     /// The script runs in one authenticated session. While several are connected, such as browser tabs of a served
-    /// surface, which one answers is not specified; <see cref="RunJavaScriptAsync"/> runs a script in all of them. A
-    /// result is never cut: one larger than 16 MiB of UTF-8 fails instead.
+    /// surface, which one answers is not specified. A result is never cut: one larger than 16 MiB of UTF-8 fails
+    /// instead. Typical callers are in-process tests of an embedded View and an application asking its page before
+    /// it closes.
     /// </remarks>
     /// <exception cref="DesktopException">The result is larger than 16 MiB
     /// (<see cref="DesktopErrorCategory.LimitExceeded"/>, code <c>script-result-too-large</c>).</exception>
     /// <exception cref="InvalidOperationException">No authenticated session is connected, or the script failed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public Task<string> ExecuteJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
-        _engine.ExecuteJavaScriptAsync(script, timeout: null, MaximumScriptResultBytes, cancellationToken);
+    public ValueTask<string> ExecuteJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
+        new(_engine.ExecuteJavaScriptAsync(script, timeout: null, MaximumScriptResultBytes, cancellationToken));
 
     // The largest result ExecuteJavaScriptAsync returns, in UTF-8 bytes; documented on the method.
     internal const int MaximumScriptResultBytes = 16 * 1024 * 1024;
 
     /// <summary>Navigates every authenticated presentation session.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public Task NavigateAsync(string url, CancellationToken cancellationToken = default) =>
+    internal Task NavigateAsync(string url, CancellationToken cancellationToken = default) =>
         _engine.NavigateAsync(url, cancellationToken);
 
     /// <summary>Sends opaque bytes to every authenticated presentation session.</summary>
-    [System.Diagnostics.CodeAnalysis.Experimental(DesktopExperimental.PresentationTransportId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public Task SendAsync(
+    internal Task SendAsync(
         string function,
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default) =>

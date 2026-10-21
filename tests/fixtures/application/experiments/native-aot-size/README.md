@@ -5,9 +5,13 @@ This experiment compares two matched minimal desktop applications:
 - `CsWebUiBaseline` uses cs-webui and its native WebUI library.
 - `RunicDesktopBaseline` uses Runic Desktop and its ASP.NET Core/Kestrel host.
 
-Both compile the same HTML, open it in an installed browser, perform the same
-JavaScript-to-.NET `ping` call, verify the returned value in JavaScript, notify
-the backend of completion, and close automatically.
+Both open their page in an installed browser, make one `ping` round trip
+between JavaScript and .NET, verify the returned value, and close
+automatically. `CsWebUiBaseline` calls a bound .NET function from JavaScript.
+Runic Desktop keeps its capability transport internal since 0.10.0, so
+`RunicDesktopBaseline` runs the page's `ping` from .NET with
+`ExecuteJavaScriptAsync` once the page has connected. The September 3 result
+below was measured with the earlier JavaScript-to-.NET version.
 
 `AspNetCoreDiagnostic` is not a third comparison candidate. It is a diagnostic
 Minimal API host used only to estimate how much of the Runic executable is the

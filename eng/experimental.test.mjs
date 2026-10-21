@@ -25,7 +25,7 @@ test("docs/experimental.md has an entry for every experimental diagnostic ID", (
     ...[...text.matchAll(/const string \w*Id = "(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
     ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
   ]));
-  assert.deepEqual([...ids].sort(), ["RUNICASSETS001", "RUNICDESK101"]);
+  assert.deepEqual([...ids].sort(), ["RUNICASSETS001"]);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.
     assert.ok(docs.includes(`<a id="${id}"></a>`), `docs/experimental.md has no anchor for ${id}`);
@@ -41,7 +41,7 @@ test("experimental help links name the release tag, not main", () => {
 });
 
 // A graduated family's ID is never reused: it stays listed as retired and no source marks an API with it.
-const retired = ["RUNICDESK100", "RUNICNAV001", "RUNICWPF001"];
+const retired = ["RUNICDESK100", "RUNICDESK101", "RUNICNAV001", "RUNICWPF001"];
 
 test("graduated diagnostic IDs are retired, not reused", () => {
   const section = docs.slice(docs.indexOf('<a id="retired"></a>'));

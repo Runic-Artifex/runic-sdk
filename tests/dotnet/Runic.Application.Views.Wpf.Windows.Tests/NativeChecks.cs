@@ -80,9 +80,9 @@ internal sealed class NativeChecks
             {
                 lock (connectionIds)
                 {
-                    events.Add($"{invocation.Kind} {invocation.Session.Id}");
-                    if (invocation.Kind != PresentationEventKind.Connected) return;
-                    connectionIds.Add(invocation.Session.Id);
+                    events.Add($"{invocation.Kind} {invocation.SessionId}");
+                    if (invocation.Kind != DesktopConnectionEventKind.Connected) return;
+                    connectionIds.Add(invocation.SessionId);
                     connected.TrySetResult();
                     if (connectionIds.Count > 1) reconnected.TrySetResult();
                 }

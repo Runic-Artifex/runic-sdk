@@ -7,8 +7,7 @@
     <Title>Runic Desktop</Title>
     <Description>A managed .NET runtime for web-powered desktop applications.</Description>
     <PackageTags>runic-artifex;dotnet;managed;kestrel;desktop;webview</PackageTags>
-    <!-- The package uses its own experimental presentation transport (docs/experimental.md). -->
-    <NoWarn>$(NoWarn);CA1720;RUNICDESK101</NoWarn>
+    <NoWarn>$(NoWarn);CA1720</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- Packs buildTransitive/$(PackageId).props with the diagnostics help links (eng/build/release-links.targets). -->
@@ -22,6 +21,13 @@
     <PackageReference Include="Microsoft.Web.WebView2" IncludeAssets="native" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
+    <!-- The Bridge of Runic Windows and Views runs over the internal presentation transport: capabilities, scripts in
+         every session and the connection identity (D029.2). The exact-version package reference keeps the two in step. -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
+    <!-- The native smokes drive pages through the transport. -->
+    <InternalsVisibleTo Include="Runic.Desktop.WebViewSmoke" />
+    <InternalsVisibleTo Include="Runic.Desktop.Gtk4.Smoke" />
     <EmbeddedResource Include="Internal/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />
     <!-- The optional WPF presentation reuses our native WebView2 controller. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf" />

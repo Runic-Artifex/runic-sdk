@@ -2,6 +2,48 @@
 <!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Desktop.PresentationCapabilityHandler</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Desktop.PresentationCapabilityRegistration</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Desktop.PresentationEventKind</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Desktop.PresentationInvocation</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Desktop.PresentationResult</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Desktop.PresentationSession</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Desktop.DesktopHost.GetAvailability</Target>
     <Left>lib/net10.0/Runic.Desktop.dll</Left>
@@ -39,6 +81,48 @@
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Desktop.DesktopPlatform.IsBrowserAvailable(Runic.Desktop.BrowserKind,System.String)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurface.ExecuteJavaScriptAsync(System.String,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurface.NavigateAsync(System.String,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurface.RegisterCapability(System.String,Runic.Desktop.PresentationCapabilityHandler)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurface.RunJavaScriptAsync(System.String,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurface.SendAsync(System.String,System.ReadOnlyMemory{System.Byte},System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurface.SubscribeConnectionEvents(System.Action{Runic.Desktop.PresentationInvocation})</Target>
     <Left>lib/net10.0/Runic.Desktop.dll</Left>
     <Right>lib/net10.0/Runic.Desktop.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

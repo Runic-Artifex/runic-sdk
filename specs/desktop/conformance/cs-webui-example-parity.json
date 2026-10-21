@@ -9,7 +9,7 @@
       "id": "cs-webui.basic-sample",
       "disposition": "desktop-sample",
       "target": "../../../tests/fixtures/desktop/samples/Runic.Desktop.Sample/Program.cs",
-      "rationale": "The Desktop sample owns the minimal managed window, local content, and lifecycle path."
+      "rationale": "The Desktop sample owns the minimal managed window, local content, connection events, managed-to-JavaScript script and lifecycle path; calls from JavaScript to .NET belong to Runic Windows and Views."
     },
     {
       "id": "cs-webui.high-level-sample",
@@ -33,7 +33,7 @@
       "id": "webui.call-native-from-javascript",
       "disposition": "automated-behavioral-equivalent",
       "target": "../../../tests/dotnet/Runic.Desktop.Tests/BrowserBridgeTests.cs",
-      "rationale": "A real Chromium bridge invokes typed managed capabilities and validates their results."
+      "rationale": "A real Chromium bridge invokes typed managed capabilities and validates their results; applications reach them through the Bridge of Runic Windows and Views."
     },
     {
       "id": "webui.call-javascript-from-native",

@@ -12,8 +12,6 @@
     <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
     <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- The control carries its Bridge over Runic.Desktop's experimental presentation transport. -->
-    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />

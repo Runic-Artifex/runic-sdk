@@ -10,3 +10,63 @@ Runic.Desktop.DesktopAvailabilityResult.GetPresentation(Runic.Desktop.BrowserKin
 Runic.Desktop.DesktopAvailabilityResult.LinuxBackends.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.LinuxEmbeddedBackendAvailability!>!
 Runic.Desktop.DesktopAvailabilityResult.LinuxBackends.init -> void
 static Runic.Desktop.DesktopPlatform.GetAvailability(Runic.Desktop.DesktopHostOptions? options = null) -> Runic.Desktop.DesktopAvailabilityResult!
+*REMOVED*[RUNICDESK101]Runic.Desktop.DesktopSurface.ExecuteJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
+*REMOVED*[RUNICDESK101]Runic.Desktop.DesktopSurface.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.DesktopSurface.RegisterCapability(string! capability, Runic.Desktop.PresentationCapabilityHandler! handler) -> Runic.Desktop.PresentationCapabilityRegistration!
+*REMOVED*[RUNICDESK101]Runic.Desktop.DesktopSurface.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.DesktopSurface.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.DesktopSurface.SubscribeConnectionEvents(System.Action<Runic.Desktop.PresentationInvocation!>! handler) -> System.IDisposable!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationCapabilityHandler
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration.Capability.get -> string!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration.Dispose() -> void
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationEventKind.Click = 2 -> Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationEventKind.Connected = 1 -> Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationEventKind.Disconnected = 0 -> Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationEventKind.Invocation = 4 -> Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationEventKind.Navigation = 3 -> Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.ArgumentCount.get -> int
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.Capability.get -> string!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.CloseSessionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.CorrelationId.get -> string!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetBoolean(int index = 0) -> bool
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetBytes(int index = 0) -> System.ReadOnlyMemory<byte>
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetDouble(int index = 0) -> double
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetInt64(int index = 0) -> long
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetString(int index = 0) -> string!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.InvocationId.get -> ulong
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.Kind.get -> Runic.Desktop.PresentationEventKind
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.Session.get -> Runic.Desktop.PresentationSession!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.SessionId.get -> ulong
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationInvocation.Surface.get -> Runic.Desktop.DesktopSurface!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationResult.PresentationResult() -> void
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationSession
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationSession.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationSession.Id.get -> ulong
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationSession.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationSession.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]Runic.Desktop.PresentationSession.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.FromBoolean(bool value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.FromDouble(double value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.FromInt64(long value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.FromString(string? value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.None.get -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(bool value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(double value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(long value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(string! value) -> Runic.Desktop.PresentationResult
+*REMOVED*[RUNICDESK101]virtual Runic.Desktop.PresentationCapabilityHandler.Invoke(Runic.Desktop.PresentationInvocation! invocation, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Desktop.PresentationResult>
+Runic.Desktop.DesktopConnectionEvent
+Runic.Desktop.DesktopConnectionEvent.Kind.get -> Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopConnectionEvent.Surface.get -> Runic.Desktop.DesktopSurface!
+Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopConnectionEventKind.Connected = 1 -> Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopConnectionEventKind.Disconnected = 0 -> Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopSurface.ExecuteJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string!>
+Runic.Desktop.DesktopSurface.SubscribeConnectionEvents(System.Action<Runic.Desktop.DesktopConnectionEvent!>! handler) -> System.IDisposable!
