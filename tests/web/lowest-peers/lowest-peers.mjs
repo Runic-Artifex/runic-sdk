@@ -1,12 +1,14 @@
-// Runs the tests of the React, Vue and Svelte adapters and of @runic-artifex/views-effect against the
-// lowest framework version their peer range accepts. Each package's tracked files are copied to a
-// temporary directory, its framework dev dependencies are set to that floor, @runic-artifex/views is
-// linked from the workspace build, and the package's own `test` script (build, type check, Vitest) runs
-// there. Usage: bun tests/web/lowest-peers/lowest-peers.mjs [package...]; package names are directory
+// Runs the tests of the React, Vue, Svelte and Angular adapters, of @runic-artifex/views-effect, and of
+// the Vite plugin and the SvelteKit adapter against the lowest framework (or Vite) version their peer
+// range accepts. Each package's tracked files are copied to a temporary directory, its framework dev
+// dependencies are set to that floor, @runic-artifex/views is linked from the workspace build when the
+// package uses it, and the package's own `test` script (build, type check, tests) runs there. The Vite
+// plugin runs only its plugin tests: its browser and packed-consumer tests do not depend on the Vite
+// version. Usage: bun tests/web/lowest-peers/lowest-peers.mjs [package...]; package names are directory
 // names under packages/web, and names without a lowest-peer run are ignored. Without arguments the
 // packages come from RUNIC_LOWEST_PEER_PACKAGES, a JSON array (CI passes the plan's web list), or are all.
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,12 +22,22 @@ const frameworks = {
   "views-effect": "react",
   vue: "vue",
   svelte: "svelte",
+  "vite-plugin-runic": "vite",
+  sveltekit: "vite",
+  angular: "@angular/core",
+};
+// The commands run in the copied package; the default is its `test` script.
+const commands = {
+  "vite-plugin-runic": [["run", "--bun", "build"], ["test", "--timeout", "120000", "test/plugin.test.mjs"]],
 };
 const companions = {
   // react-dom has the same version as react; the type packages follow its minor.
   react: floor => ({ "react-dom": floor, "@types/react": tilde(floor), "@types/react-dom": tilde(floor) }),
   vue: () => ({}),
   svelte: () => ({}),
+  vite: () => ({}),
+  // The Angular packages are released together with one version.
+  "@angular/core": floor => Object.fromEntries(["common", "compiler", "compiler-cli", "platform-browser"].map(name => [`@angular/${name}`, floor])),
 };
 
 export function lowestVersion(range) {
@@ -47,7 +59,7 @@ export function lowestPeerDevDependencies(manifest, framework) {
   const versions = { [framework]: floor, ...companions[framework](floor) };
   const devDependencies = { ...manifest.devDependencies };
   for (const [name, version] of Object.entries(versions)) if (name in devDependencies) devDependencies[name] = version;
-  devDependencies["@runic-artifex/views"] = `file:${views}`;
+  if ("@runic-artifex/views" in devDependencies) devDependencies["@runic-artifex/views"] = `file:${views}`;
   return { floor, devDependencies };
 }
 
@@ -88,6 +100,8 @@ function main(names) {
   const bun = process.execPath;
   const temporary = mkdtempSync(join(tmpdir(), "runic-lowest-peers-"));
   try {
+    // The copies sit side by side like packages/web, so a test that reads `../views/dist` finds the workspace build.
+    symlinkSync(views, join(temporary, "views"), "dir");
     for (const name of selected) {
       const started = Date.now();
       const target = join(temporary, name);
@@ -98,7 +112,7 @@ function main(names) {
       writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, devDependencies }, null, 2)}\n`);
       console.log(`::group::${manifest.name} with ${frameworks[name]} ${floor}`);
       run(bun, ["install", "--no-save"], target);
-      run(bun, ["run", "--bun", "test"], target);
+      for (const command of commands[name] ?? [["run", "--bun", "test"]]) run(bun, command, target);
       console.log("::endgroup::");
       console.log(`${manifest.name} passed with ${frameworks[name]} ${floor} in ${Math.round((Date.now() - started) / 1000)} s.`);
     }

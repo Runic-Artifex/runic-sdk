@@ -166,6 +166,32 @@ accepted work. The options also take the controller's `cancel(operation)` and
 `waitForCompletion(operation, status)` callbacks, and `injector` outside an injection
 context.
 
+`injectLatestOperation(options?)` admits only the newest of several reads, for example
+loading the item the user selected last, through the framework-neutral
+[latest-operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection).
+Each `run(intent)` replaces the queued intent and cancels the active read; the next
+read starts only after the previous one reaches its terminal status and the intent's
+optional `waitForCompletion` barrier:
+
+```ts
+readonly load = injectLatestOperation<Item>();
+select(id: string) {
+  const client = this.items.client();
+  if (client) void this.load.run({ start: () => client.startLoad(id), isCurrent: () => this.items.client() === client });
+}
+// @if (load.outcome()?.ok) { <item-view [item]="load.outcome()!.value" /> }
+// @if (load.blocked()) { <p role="alert">Reconnect before selecting again.</p> }
+```
+
+It returns the `injectOperation` signals plus `blocked`, with `run(intent)` and
+`clear(mode?)`, which never reject. The intent carries `start` and the optional
+`cancel`, `waitForCompletion` and `isCurrent` callbacks, so it captures the client or
+session it belongs to. `blocked` means admission is uncertain, for example after a
+lost Start reply; only `clear("replace")`, called after the application has
+established a fresh session, clears it. `clear()` drops the queued intent and cancels
+the active read. Destroying the injection context settles run promises without
+cancelling accepted work. Pass `injector` outside an injection context.
+
 ## Errors
 
 The `error()` signal of `injectView` and of a command or operation is typed

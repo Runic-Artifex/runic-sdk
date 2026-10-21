@@ -284,7 +284,7 @@ jobs:
         run: bun tests/web/svelte-package-consumers/package-consumers.mjs
       # The adapters' tests at the lowest framework version each peer range accepts (eng/ci/README.md).
       - name: Test framework adapters at their lowest peers
-        if: ${{ !cancelled() && steps.restore.outcome == 'success' && (contains(fromJSON(needs.plan.outputs.web), 'react') || contains(fromJSON(needs.plan.outputs.web), 'vue') || contains(fromJSON(needs.plan.outputs.web), 'svelte') || contains(fromJSON(needs.plan.outputs.web), 'views-effect')) }}
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && (contains(fromJSON(needs.plan.outputs.web), 'react') || contains(fromJSON(needs.plan.outputs.web), 'vue') || contains(fromJSON(needs.plan.outputs.web), 'svelte') || contains(fromJSON(needs.plan.outputs.web), 'views-effect') || contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') || contains(fromJSON(needs.plan.outputs.web), 'sveltekit') || contains(fromJSON(needs.plan.outputs.web), 'angular')) }}
         env:
           RUNIC_LOWEST_PEER_PACKAGES: ${{ needs.plan.outputs.web }}
         run: bun tests/web/lowest-peers/lowest-peers.mjs

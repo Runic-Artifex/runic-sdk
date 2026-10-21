@@ -69,7 +69,7 @@ controllers in [Framework bindings](#framework-bindings).
 | Entry | For |
 | --- | --- |
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
-| `@runic-artifex/views/experimental` | APIs whose shape may change in a minor release: `createCollectionViewportController`, `collectionViewport` and `createLatestOperationController` ([experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#npm-packages)) |
+| `@runic-artifex/views/experimental` | APIs whose shape may change in a minor release: `createCollectionViewportController` and `collectionViewport` ([experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#npm-packages)) |
 | `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `mockFailure` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
@@ -213,8 +213,9 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   Angular `injectOperation` expose the same state. `reset()` clears
   feedback while retaining pending work and its cancellation identity; `dispose()`
   detaches feedback and settles UI observation promises without cancelling work.
-- `createLatestOperationController<TResult, TFailure>()`
-  (`@runic-artifex/views/experimental`) serializes superseding read intent. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
+- `createLatestOperationController<TResult, TFailure>()` serializes superseding read
+  intent. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation`
+  wrap it. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
 
 ## Operation feedback and latest selection
 
@@ -267,10 +268,12 @@ Host shutdown still owns and awaits accepted work; UI disposal is not a drain he
 
 Read selection often needs a different policy from mutation buttons: remember the
 newest click, cancel the previous read, and await terminal admission before starting
-the newest one. A queue can cover several generated read commands:
+the newest one. A queue can cover several generated read commands. In a component, use
+the adapter's `useLatestOperation()` (React, Vue, Svelte) or `injectLatestOperation()`
+(Angular), which disposes the controller with its owner:
 
 ```ts
-import { createLatestOperationController } from "@runic-artifex/views/experimental";
+import { createLatestOperationController } from "@runic-artifex/views";
 
 const selections = createLatestOperationController<void>();
 function selectCommit(oid: string) {

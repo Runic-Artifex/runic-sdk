@@ -1,16 +1,16 @@
 import { mount, unmount } from "svelte";
 import { createOperationController, BridgeError, BridgeOperationUncertainError,
   type BridgeOperation } from "@runic-artifex/views";
-import { createLatestOperationController } from "@runic-artifex/views/experimental";
-import type { OperationHandle } from "@runic-artifex/svelte";
+import type { LatestOperationHandle, OperationHandle } from "@runic-artifex/svelte";
 import OperationFeedback from "./OperationFeedback.svelte";
 import { connectOperations } from "./generated/operations";
 
 const client = await connectOperations();
-const feedback = deferred<OperationHandle<[], string>>();
+const feedback = deferred<{ operation: OperationHandle<[], string>; latest: LatestOperationHandle<string> }>();
 const component = mount(OperationFeedback, { target: document.querySelector("#operation")!,
   props: { client, ready: feedback.resolve } });
-const svelteOperation = await feedback.promise;
+// The shipped Svelte bindings own both controllers for the component's lifetime.
+const { operation: svelteOperation, latest } = await feedback.promise;
 const output = document.querySelector<HTMLOutputElement>("#journey")!;
 const passed: string[] = [];
 let running: Promise<string[]> | undefined;
@@ -69,7 +69,6 @@ async function journeys(): Promise<string[]> {
   require(document.querySelector("#terminal")?.textContent === "cancelled", "Svelte cancelled feedback did not render.");
   pass("responsive-wait-and-binding");
 
-  const latest = createLatestOperationController<string>();
   let session = 0;
   const completionBarrier = async () => {
     await client.waitReadDrained();
@@ -115,6 +114,7 @@ async function journeys(): Promise<string[]> {
   require(result?.ok && result.value === "newest" && client.snapshot.selected === "newest",
     "The final selection was not published.");
   require(client.snapshot.readAccepted.join("|") === "held:first|newest", "Intermediate selections reached the model.");
+  await until(() => document.querySelector("#selection")?.textContent === "newest", "Svelte latest-selection feedback");
   const cancelActive = latest.run(intent("held:explicit-cancel"));
   await until(() => client.snapshot.readActive, "read before explicit Cancel");
   const cancelQueued = latest.run(intent("discarded-by-cancel"));
@@ -122,7 +122,7 @@ async function journeys(): Promise<string[]> {
   await until(() => client.snapshot.cancelReadCalls === 2, "explicit queued selection cancellation");
   await client.releaseRead();
   await bounded(Promise.all([cancelActive, cancelQueued]), "cleared selection observations");
-  await until(() => !latest.current.pending, "cleared selection drain");
+  await until(() => !latest.pending, "cleared selection drain");
   require(!client.snapshot.readAccepted.includes("discarded-by-cancel"), "Explicit Cancel retained a queued choice.");
   pass("latest-delayed-receipt-and-drain");
 
@@ -155,8 +155,9 @@ async function journeys(): Promise<string[]> {
   // The real generated recovery API cannot establish admission for an unknown
   // request. The queue must stop until the application explicitly replaces it.
   await latest.run({ start: () => client.recoverRead("never-accepted-package-consumer") });
-  require(latest.current.blocked && latest.current.error instanceof BridgeOperationUncertainError,
+  require(latest.blocked && latest.error instanceof BridgeOperationUncertainError,
     "Unknown admission did not block the latest-selection policy.");
+  await until(() => document.querySelector("#selection")?.textContent === "blocked", "Svelte blocked-selection feedback");
   const acceptedBeforeBlocked = client.snapshot.readAccepted.length;
   await latest.run(intent("blocked"));
   await client.setDraft("uncertain-boundary");
@@ -164,7 +165,6 @@ async function journeys(): Promise<string[]> {
   latest.clear("replace");
   const afterReplacement = await latest.run(intent("after-explicit-replacement"));
   require(afterReplacement?.ok && afterReplacement.value === "after-explicit-replacement", "Explicit replacement did not reset uncertainty.");
-  latest.dispose();
   const successfulOperation = createOperationController((label: string) => client.startRead(label), {
     waitForCompletion: completionBarrier,
   });

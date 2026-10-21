@@ -12,10 +12,13 @@ import {
 } from "react";
 import {
   createCommandController,
+  createLatestOperationController,
   createOperationController,
   createViewController,
   type BridgeOperation,
   type BridgeOutcomeFailure,
+  type LatestOperationController,
+  type LatestOperationState,
   type OperationController,
   type OperationControllerOptions,
   type OperationState,
@@ -282,4 +285,29 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   const read = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, read, read);
   return { ...current, run: controller.run, cancel: controller.cancel, reset: controller.reset };
+}
+
+export interface LatestOperationHandle<TResult, TFailure = never>
+  extends LatestOperationState<TResult, TFailure>, Pick<LatestOperationController<TResult, TFailure>, "run" | "clear"> {}
+
+/**
+ * Admits only the newest selection, for reads such as "load the selected item": each
+ * `run(intent)` replaces the queued intent and cancels the active read, and the next read
+ * starts only after the previous one has finished (including `waitForCompletion`). The
+ * intent carries `start`, `cancel`, `waitForCompletion` and `isCurrent`, so it may close over
+ * the current client. `blocked` means admission is uncertain; only `clear("replace")`, after
+ * the application has established a fresh session, clears it. Unmounting disposes the
+ * controller: pending runs resolve to undefined, but accepted work is never cancelled.
+ *
+ * ```tsx
+ * const load = useLatestOperation<Item>();
+ * <li onClick={() => load.run({ start: () => client?.startLoad(id) })}>…</li>
+ * {load.outcome?.ok && <ItemView item={load.outcome.value} />}
+ * ```
+ */
+export function useLatestOperation<TResult = void, TFailure = never>(): LatestOperationHandle<TResult, TFailure> {
+  const controller = useMountedController(() => createLatestOperationController<TResult, TFailure>());
+  const read = useCallback(() => controller.current, [controller]);
+  const current = useSyncExternalStore(controller.subscribe, read, read);
+  return { ...current, run: controller.run, clear: controller.clear };
 }

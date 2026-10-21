@@ -106,9 +106,14 @@ experimental path is then removed in the next major. The APIs today:
 | Package | `./experimental` exports | Status |
 |---|---|---|
 | `@runic-artifex/views` | `createCollectionViewportController`, `collectionViewport`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions` | The fixed-row-height viewport model has one consumer, the [DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata); variable row heights may change its shape. |
-| `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState` | No framework adapter wraps it yet, and its shape differs from `createOperationController` (`run(intent)`, `clear(mode)`). It graduates once an adapter and a sample use it. |
 | `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | Effect helpers of the viewport controller; they follow its status. |
 | `@runic-artifex/react` | `useCollectionViewport`, `CollectionViewportHandle` | Wraps the viewport controller; follows its status. |
 | `@runic-artifex/react` | `useSuspenseView`, `retrySuspenseView`, `SuspenseViewHandle` | The module-wide connection cache and its fixed ten-second timeout may change; no sample uses it yet. |
 | `@runic-artifex/vue`, `@runic-artifex/svelte` | `useCollectionViewport`, `CollectionViewportHandle` | Wrap the viewport controller; follow its status. |
 | `@runic-artifex/angular` | `injectCollectionViewport`, `InjectCollectionViewportOptions` | Wraps the viewport controller; follows its status. |
+
+Graduated npm APIs, now exported from the package root:
+
+| Package | Exports | Graduated in |
+|---|---|---|
+| `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState`. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation` wrap it, and the [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer) is its sample. The `./experimental` entry re-exports it until that entry is removed in 0.10.0. | 0.10.0 |
