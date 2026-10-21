@@ -42,3 +42,16 @@ test('the flavor mapping changes only flavor spellings', () => {
     .toBe('static Runic.Navigation.ReactiveUI.X.F(ReactiveUI.Primitives.Concurrency.ISequencer? s) -> ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, Runic.Navigation.NavigationOutcome!>!');
   expect(toDefaultFlavor('Runic.Navigation.NavigationArrival')).toBe('Runic.Navigation.NavigationArrival');
 });
+
+// I-004: the generated code's ReactiveUI flavor is inferred from the Runic ReactiveUI adapter the project compiles
+// against, not set. The removed RunicApplicationFrontendReactiveUiFlavor property is reported as RUNICBRIDGE017.
+test('the ReactiveUI flavor is inferred from the referenced adapter', () => {
+  const views = readFileSync(resolve(root, 'packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets'), 'utf8');
+  expect(views).toMatch(/<_RunicBridgeReactiveUiReactiveAdapter Include="@\(ReferencePath\)" Condition="'%\(Filename\)' == 'Runic\.Application\.Views\.ReactiveUI\.Reactive'"/);
+  expect(views).toMatch(/<_RunicApplicationFrontendRemovedName Include="RunicApplicationFrontendReactiveUiFlavor"/);
+  expect(views).toContain('--reactiveui-flavor $(_RunicBridgeReactiveUiFlavor)');
+  expect(views).not.toContain('--reactiveui-flavor &quot;$(RunicApplicationFrontendReactiveUiFlavor)');
+  const reactive = readFileSync(resolve(root,
+    'packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets'), 'utf8');
+  expect(reactive).not.toContain('<RunicApplicationFrontendReactiveUiFlavor');
+});

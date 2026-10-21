@@ -7,7 +7,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
-    <RunicApplicationFrontendReactiveUiFlavor>reactive</RunicApplicationFrontendReactiveUiFlavor>
     <RunicApplicationFrontendGeneratedDirectory>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicApplicationFrontendGeneratedDirectory>
     <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)</RunicApplicationFrontendDirectory>
     <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>

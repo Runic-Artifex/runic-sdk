@@ -279,6 +279,7 @@ test("an old property name no longer applies and fails with RUNICBRIDGE017", () 
     <RunicApplicationId>org.example.app</RunicApplicationId>
     <RunicApplicationName>App</RunicApplicationName>
     <ApplicationTitle>App</ApplicationTitle>
+    <RunicApplicationFrontendReactiveUiFlavor>reactive</RunicApplicationFrontendReactiveUiFlavor>
     <Configuration>Debug</Configuration>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -296,10 +297,12 @@ test("an old property name no longer applies and fails with RUNICBRIDGE017", () 
   const output = `${result.stdout}${result.stderr}`;
   assert.notEqual(result.status, 0, output);
   const reported = errors(output).filter(line => / error RUNICBRIDGE017:/.test(line));
-  assert.equal(reported.length, 3, output);
+  assert.equal(reported.length, 4, output);
   assert.ok(reported.some(line => /RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory\. The old name no longer applies/.test(line)), output);
   assert.ok(reported.some(line => /RunicBridgeBuildFrontend is renamed to RunicApplicationFrontendBuildEnabled/.test(line)), output);
   assert.ok(reported.some(line => /property RunicApplicationId is renamed to ApplicationId/.test(line)), output);
+  // I-004: the ReactiveUI flavor property is removed; the build infers the flavor from the referenced adapter.
+  assert.ok(reported.some(line => /property RunicApplicationFrontendReactiveUiFlavor is removed\. The ReactiveUI flavor is now inferred from the referenced Runic ReactiveUI adapter; remove the property/.test(line)), output);
   // RunicApplicationName is left alone next to ApplicationTitle, as a project may keep its own name.
   assert.ok(!reported.some(line => /RunicApplicationName/.test(line)), output);
 });

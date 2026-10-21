@@ -35,10 +35,17 @@ The constructors take the ViewModel and the attachment directly, for a window th
 not composed with dependency injection:
 
 ```csharp
+using Runic.Application.Views.Generated.Bridges;   // the generated ShellBridge
+
 using var host = new RunicWindowTestHost<ShellViewModel>(shell,
     (transport, content, vm) => new ShellBridge(transport, vm, content: content),
     new RunicWindowTestHostOptions { ViewLocator = locator, TimeProvider = clock });
 ```
+
+The generated bridges are internal, so this needs `InternalsVisibleTo` from the
+application to the test project. A test project that sees two applications' internals
+can find the same bridge name in both: name one by an `extern alias` of its reference,
+or create the host with `RunicWindowTestHost.Create` instead.
 
 Then drive the Window by ViewModel member, as the generated TypeScript client does:
 

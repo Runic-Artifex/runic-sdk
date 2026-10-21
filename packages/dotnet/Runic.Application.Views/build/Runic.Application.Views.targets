@@ -19,7 +19,6 @@
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeBuildEnabled" NewName="RunicApplicationFrontendGenerationEnabled" Kind="property" Condition="'$(RunicBridgeBuildEnabled)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeCompositionType" NewName="RunicApplicationFrontendCompositionType" Kind="property" Condition="'$(RunicBridgeCompositionType)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeModelAssembly" NewName="RunicApplicationFrontendModelAssembly" Kind="property" Condition="'$(RunicBridgeModelAssembly)' != ''" />
-    <_RunicApplicationFrontendRenamedName Include="RunicBridgeReactiveUiFlavor" NewName="RunicApplicationFrontendReactiveUiFlavor" Kind="property" Condition="'$(RunicBridgeReactiveUiFlavor)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeDocumentation" NewName="RunicApplicationFrontendDocumentationEnabled" Kind="property" Condition="'$(RunicBridgeDocumentation)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicViewsWindowProject" NewName="RunicApplicationFrontendWindowProject" Kind="property" Condition="'$(RunicViewsWindowProject)' != ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicBridgeFrontendInput" NewName="RunicApplicationFrontendInput" Kind="item" Condition="'@(RunicBridgeFrontendInput)' != ''" />
@@ -28,6 +27,10 @@
          is left alone. -->
     <_RunicApplicationFrontendRenamedName Include="RunicApplicationId" NewName="ApplicationId" Kind="property" Condition="'$(RunicApplicationId)' != '' and '$(ApplicationId)' == ''" />
     <_RunicApplicationFrontendRenamedName Include="RunicApplicationName" NewName="ApplicationTitle" Kind="property" Condition="'$(RunicApplicationName)' != '' and '$(ApplicationTitle)' == ''" />
+    <!-- Removed properties whose value the build now infers. The ReactiveUI flavor of the generated code is the
+         flavor of the Runic ReactiveUI adapter the project references (see _RunicViewsReactiveUiFlavor). -->
+    <_RunicApplicationFrontendRemovedName Include="RunicApplicationFrontendReactiveUiFlavor" Reason="The ReactiveUI flavor is now inferred from the referenced Runic ReactiveUI adapter" Condition="'$(RunicApplicationFrontendReactiveUiFlavor)' != ''" />
+    <_RunicApplicationFrontendRemovedName Include="RunicBridgeReactiveUiFlavor" Reason="The ReactiveUI flavor is now inferred from the referenced Runic ReactiveUI adapter" Condition="'$(RunicBridgeReactiveUiFlavor)' != ''" />
   </ItemGroup>
   <PropertyGroup>
     <_RunicBridgeNoViewsMarker>RunicBridge.NoViews.marker</_RunicBridgeNoViewsMarker>
@@ -323,10 +326,14 @@
   </Target>
 
   <Target Name="RunicViewsReportRenamedProperties" BeforeTargets="PrepareForBuild"
-          Condition="'@(_RunicApplicationFrontendRenamedName)' != '' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+          Condition="('@(_RunicApplicationFrontendRenamedName)' != '' or '@(_RunicApplicationFrontendRemovedName)' != '') and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <!-- ErrorAndContinue reports every old name, not only the first. -->
     <Error Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicApplicationFrontendRenamedName)' != ''"
            Text="The Runic build %(_RunicApplicationFrontendRenamedName.Kind) %(_RunicApplicationFrontendRenamedName.Identity) is renamed to %(_RunicApplicationFrontendRenamedName.NewName). The old name no longer applies; rename it in $(MSBuildProjectFile), its imports or the command line." />
+    <Error Code="RUNICBRIDGE017" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge017" ContinueOnError="ErrorAndContinue"
+           Condition="'@(_RunicApplicationFrontendRemovedName)' != ''"
+           Text="The Runic build property %(_RunicApplicationFrontendRemovedName.Identity) is removed. %(_RunicApplicationFrontendRemovedName.Reason); remove the property from $(MSBuildProjectFile), its imports or the command line." />
   </Target>
 
   <!-- Generation turns on for a project that references Runic.Application.Views
@@ -507,7 +514,18 @@
     <PropertyGroup>
       <_RunicBridgeOptionalArgument Condition="'$(_RunicBridgeOptional)' == 'true'">--optional</_RunicBridgeOptionalArgument>
       <_RunicBridgeSkipped>false</_RunicBridgeSkipped>
-      <_RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicApplicationFrontendReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicApplicationFrontendReactiveUiFlavor)&quot;</_RunicBridgeReactiveUiFlavorArgument>
+    </PropertyGroup>
+    <!-- The generated code calls the command helpers of the Runic ReactiveUI adapter that this project compiles
+         against, so that adapter's flavor is the generator's. Package, transitive package and project references
+         all resolve to ReferencePath, which ResolveReferences has filled before CoreCompile and before WPF's
+         markup passes. Without the System.Reactive adapter the generator uses its default (primitives). -->
+    <ItemGroup>
+      <_RunicBridgeReactiveUiReactiveAdapter Include="@(ReferencePath)" Condition="'%(Filename)' == 'Runic.Application.Views.ReactiveUI.Reactive'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicBridgeReactiveUiFlavor>primitives</_RunicBridgeReactiveUiFlavor>
+      <_RunicBridgeReactiveUiFlavor Condition="'@(_RunicBridgeReactiveUiReactiveAdapter)' != ''">reactive</_RunicBridgeReactiveUiFlavor>
+      <_RunicBridgeReactiveUiFlavorArgument>--reactiveui-flavor $(_RunicBridgeReactiveUiFlavor)</_RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
     <!-- The shared frameworks the application uses, directly or through a
          package (Runic.Desktop references Microsoft.AspNetCore.App). The
@@ -523,7 +541,7 @@
     <Delete Files="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" Condition="'$(_RunicBridgeReuseGenerated)' != 'true'" />
     <!-- The generator reports its diagnostics in canonical form. They are
          logged once with their codes (see RunicViewsReportCommandResult);
-         a failure that reported none is RUNICBRIDGE001. -->
+         a failure that reported none is RUNICBRIDGE024, an internal error. -->
     <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
           Condition="'$(_RunicBridgeReuseGenerated)' != 'true'">
@@ -535,8 +553,8 @@
     </PropertyGroup>
     <RunicViewsReportCommandResult Condition="'$(_RunicBridgeReuseGenerated)' != 'true' and ('$(_RunicBridgeCodegenExitCode)' != '0' or '$(_RunicBridgeCodegenDiagnostics)' == 'true')"
         Lines="@(_RunicBridgeCodegenOutputLine)" ExitCode="$(_RunicBridgeCodegenExitCode)"
-        FailureCode="RUNICBRIDGE001" FailureFile="$(MSBuildProjectFullPath)"
-        FailureText="The Runic Bridge generator exited with code $(_RunicBridgeCodegenExitCode) without reporting an error while inspecting $(_RunicBridgeInputAssembly). Its output is above." />
+        FailureCode="RUNICBRIDGE024" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The Runic Bridge generator exited with code $(_RunicBridgeCodegenExitCode) without reporting an error while inspecting $(_RunicBridgeInputAssembly), an internal generator error. Its output is above; include it when you report the problem." />
     <PropertyGroup>
       <_RunicBridgeSkipped Condition="Exists('$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
     </PropertyGroup>

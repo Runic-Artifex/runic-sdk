@@ -719,7 +719,7 @@ in `PackageReference` and `Directory.Packages.props`; namespaces are unchanged.
 | `RunicBridgeBuildEnabled` | `RunicApplicationFrontendGenerationEnabled` |
 | `RunicBridgeCompositionType` | `RunicApplicationFrontendCompositionType` |
 | `RunicBridgeModelAssembly` | `RunicApplicationFrontendModelAssembly` |
-| `RunicBridgeReactiveUiFlavor` | `RunicApplicationFrontendReactiveUiFlavor` |
+| `RunicBridgeReactiveUiFlavor` | removed; the ReactiveUI flavor is inferred (see `RunicApplicationFrontendReactiveUiFlavor` below) |
 | `RunicBridgeDocumentation` | `RunicApplicationFrontendDocumentationEnabled` |
 | `RunicBridgeBootstrap` (set in the bootstrap pass) | `RunicApplicationFrontendBootstrap`; the bootstrap pass no longer sets the old name |
 | `RunicViewsWindowProject` | `RunicApplicationFrontendWindowProject` |
@@ -937,6 +937,14 @@ hand-written code. Generated files name them with `global::`, so regenerating
 is the only migration; hand-written code that names them, such as a test Bridge,
 adds `using Runic.Application.Views.Generated;`.
 
+Each ViewModel's generated bridge is an internal class `<Name>Bridge`, such as
+`CounterBridge` for `CounterViewModel`, in the `Runic.Application.Views.Generated.Bridges`
+namespace of the application's assembly, not beside the ViewModel, so no
+application type collides with it. Code in that assembly, or in a test project it
+grants `InternalsVisibleTo`, that constructs a bridge adds
+`using Runic.Application.Views.Generated.Bridges;` (see
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md)).
+
 ### Wire types
 
 State, DTO members, command arguments and results use these TypeScript types in
@@ -1054,8 +1062,8 @@ When `svelte-check` fails, its errors and warnings are logged at their file, lin
 column too, without a code, from its default output or `--output machine`; warnings
 of a check that passes stay in the command output. A
 failed command that reports no such error gets one summary error instead:
-`RUNICBRIDGE001` for the generator, `RUNICBRIDGE016` for the frontend
-commands.
+`RUNICBRIDGE024` (an internal generator error) for the generator,
+`RUNICBRIDGE016` for the frontend commands.
 
 ## Build properties
 
@@ -1093,11 +1101,17 @@ an extension point.
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
 | `RunicApplicationFrontendCompositionType` | `<RootNamespace>.RunicViewsComposition` (host adapters), with the namespace made a valid C# name | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
-| `RunicApplicationFrontendReactiveUiFlavor` | `reactive` with `Runic.Application.Views.ReactiveUI.Reactive`, otherwise inferred | `primitives` or `reactive`: which ReactiveUI flavor's command helpers the generated code calls. `Runic.Application.Views.ReactiveUI.Reactive` sets it; set it yourself only for a model assembly that references ReactiveUI but neither adapter package (see the [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md)). |
 | `RunicApplicationFrontendGenerationEnabled` | see below | `true` requires Bridge generation, `false` turns it off. |
 | `RunicApplicationFrontendDocumentationEnabled` | `true` | `false` skips the XML documentation file that the bootstrap pass writes for comments in the generated TypeScript. |
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
 | `RunicApplicationFrontendBootstrap` | set by the targets (read-only) | `true` only in the bootstrap pass (see below). A project reads it, for example to leave a reference out of that pass; it does not set it. |
+
+The ReactiveUI flavor of the generated code is not a setting. The build infers it
+from the Runic ReactiveUI adapter the project compiles against, by package or
+project reference, directly or transitively: System.Reactive with
+`Runic.Application.Views.ReactiveUI.Reactive`, otherwise ReactiveUI.Primitives. A
+project that still sets `RunicApplicationFrontendReactiveUiFlavor`, removed in
+0.10, fails with `RUNICBRIDGE017`.
 
 These are not settings and not part of the compatibility promise: the generator's
 command line (`--generate`, `--composition-stub`, `--reactiveui-flavor`,

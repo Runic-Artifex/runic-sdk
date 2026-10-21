@@ -35,7 +35,7 @@ of the Runic.Application.Views guide links here.
 
 | ID | Severity | Reported by | Problem |
 | --- | --- | --- | --- |
-| [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator is missing or fails without reporting an error | Invalid generator invocation or build configuration, a missing generator, or an internal generator error |
+| [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator is missing | Invalid generator invocation or build configuration, generated output that cannot be written, or a missing generator |
 | [`RUNICBRIDGE002`](#runicbridge002) | Error | Generator | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish |
 | [`RUNICBRIDGE003`](#runicbridge003) | Error | Generator | A value type that is not a supported bridge value |
 | [`RUNICBRIDGE004`](#runicbridge004) | Error | Generator | Two generated names collide, or a command's client member is reserved in TypeScript |
@@ -58,16 +58,19 @@ of the Runic.Application.Views guide links here.
 | [`RUNICBRIDGE021`](#runicbridge021) | Error | Build targets | The external `node_modules` could not be linked |
 | [`RUNICBRIDGE022`](#runicbridge022) | Error | Build targets | `NoBuild=true` finds no generated Bridge code to reuse |
 | [`RUNICBRIDGE023`](#runicbridge023) | Error | `Runic.Application.Views.ReactiveUI.Reactive` build targets | The application references both ReactiveUI flavors |
+| [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
 
 ### RUNICBRIDGE001
 
-The generator invocation or build configuration is invalid, the generator is
-missing from the `Runic.Application.Views` package, or the generator failed
-internally. An example is a malformed `RunicApplicationFrontendCompositionType`.
+The generator invocation or build configuration is invalid, the generator cannot
+write its output, or the generator is missing from the `Runic.Application.Views`
+package. An example is a malformed `RunicApplicationFrontendCompositionType`.
+Before 0.10 this code also covered internal generator errors, which are now
+[`RUNICBRIDGE024`](#runicbridge024).
 
-**Fix:** correct the build property. A missing generator means an incomplete
-restore: restore the project again. Report an internal error with the ViewModel
-that triggers it.
+**Fix:** correct the build property, or make the generated directories
+writable. A missing generator means an incomplete restore: restore the project
+again.
 
 ### RUNICBRIDGE002
 
@@ -93,9 +96,10 @@ A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
 Two generated names collide: ViewModel names, presentation kinds, state wire
 names, the reserved `revision` and `validation` fields, interactions, routes,
 client members, or generated files (including a hand-written `types.ts`). A
-type named like a generated bridge (`CounterBridge` beside `CounterViewModel`)
-collides with it, and so would a generated TypeScript module that declares one
-name twice.
+generated TypeScript module that declares one name twice would collide too.
+Since 0.10 the generated C# bridges are in the
+`Runic.Application.Views.Generated.Bridges` namespace, so a type of yours named
+like one (`CounterBridge` beside `CounterViewModel`) no longer collides.
 
 A command whose client member is reserved in a TypeScript object collides with
 the object itself: `new` (a construct signature), `then` (a thenable client),
@@ -272,11 +276,17 @@ property or item by a former name, which no longer applies:
   declared. The application's identity is MSBuild's `ApplicationId` and
   `ApplicationTitle`, which the template sets since 0.9 and which
   `Runic.Platform.MacOS` and `Runic.Platform.Linux.Polkit` read.
+- `RunicApplicationFrontendReactiveUiFlavor` (and its former name
+  `RunicBridgeReactiveUiFlavor`), removed in 0.10. The build infers the
+  ReactiveUI flavor from the Runic ReactiveUI adapter the project references:
+  System.Reactive with `Runic.Application.Views.ReactiveUI.Reactive`, otherwise
+  ReactiveUI.Primitives.
 
 Until 0.9 this was a warning and the old name still applied. The message names
 the new property.
 
-**Fix:** rename the property or item, for example
+**Fix:** remove `RunicApplicationFrontendReactiveUiFlavor`. Rename any other
+property or item, for example
 `<RunicBridgeFrontendDir>` to `<RunicApplicationFrontendDirectory>` or
 `<RunicApplicationId>` to `<ApplicationId>`. A condition on
 `RunicBridgeBootstrap` should read `RunicApplicationFrontendBootstrap`; the
@@ -367,6 +377,19 @@ the ReactiveUI.Primitives flavor. An application uses one flavor.
 
 **Fix:** keep one flavor. With the System.Reactive flavor, replace
 `Runic.Navigation.ReactiveUI` with `Runic.Navigation.ReactiveUI.Reactive`.
+
+### RUNICBRIDGE024
+
+The generator failed internally: it threw an exception that is not one of the
+diagnostics above, or it exited with an error without reporting one, which the
+`Runic.Application.Views` build targets then report. The message names the
+ViewModel the generator was inspecting, when it knows it, and the exception
+type; the stack trace follows on the next lines of the build output. Until 0.9
+this was part of `RUNICBRIDGE001`.
+
+**Fix:** this is a bug in the generator. Report it with the ViewModel that
+triggers it and the build output, including the stack trace. Until it is
+fixed, changing the member the stack trace points at may avoid it.
 
 ## dotnet runic
 

@@ -107,7 +107,7 @@ internal sealed partial class CodegenDiagnosticsTests
     {
         var compilation = Compile(name, source, additionalReferences: additionalReferences).AddSyntaxTrees(
             Directory.GetFiles(directory, "*.g.cs").Select(path => CSharpSyntaxTree.ParseText(File.ReadAllText(path),
-                new CSharpParseOptions(LanguageVersion.Latest), path)).Append(CSharpSyntaxTree.ParseText(probe,
+                new CSharpParseOptions(LanguageVersion.Latest), path)).Append(CSharpSyntaxTree.ParseText("using Runic.Application.Views.Generated.Bridges;\n" + probe,
                 new CSharpParseOptions(LanguageVersion.Latest))));
         using var image = new MemoryStream();
         var emitted = compilation.Emit(image);
@@ -324,7 +324,7 @@ internal sealed partial class CodegenDiagnosticsTests
             public static string Run()
             {
                 using var defaultHost = new Runic.Application.Testing.RunicWindowTestHost<SharedModels.MixedDefaultViewModel>(new(),
-                    (transport, content, vm) => new SharedModels.MixedDefaultBridge(transport, vm, content: content),
+                    (transport, content, vm) => new MixedDefaultBridge(transport, vm, content: content),
                     new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "mixedDefault" });
                 using var optedInHost = new Runic.Application.Testing.RunicWindowTestHost<MixedJsonIgnoreViewModel>(new(),
                     (transport, content, vm) => new MixedJsonIgnoreBridge(transport, vm, content: content),

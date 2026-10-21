@@ -55,5 +55,35 @@ internal sealed partial class CodegenDiagnosticsTests
         Require(aotExit != 0 && aot.Contains("RUNICBRIDGE002", StringComparison.Ordinal),
             $"An ObservableValidator ViewModel in an AOT publish was not RUNICBRIDGE002:\n{aot}");
         _ = await GenerateValidAsync(generator, temporaryRoot, "ValidatorJit", Preamble + Validator).ConfigureAwait(false);
+
+        // I-002: an exception that no diagnostic covers is RUNICBRIDGE024, not RUNICBRIDGE001, names the ViewModel
+        // and the exception type, and is followed by its stack trace. The other ViewModels are still generated.
+        const string Internal = """
+            public sealed class BrokenViewModel : FixtureModel { public int Count { get; } }
+            public sealed partial class BrokenWindow : RunicWindow<BrokenViewModel>;
+            public sealed class HealthyViewModel : FixtureModel { public int Count { get; } }
+            public sealed partial class HealthyWindow : RunicWindow<HealthyViewModel>;
+            """;
+        Environment.SetEnvironmentVariable("RUNIC_BRIDGE_CODEGEN_TEST_INTERNAL_ERROR", "Fixture.BrokenViewModel");
+        int internalExit;
+        string internalOutput;
+        try
+        {
+            (internalExit, internalOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "InternalError", Preamble + Internal)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("RUNIC_BRIDGE_CODEGEN_TEST_INTERNAL_ERROR", null);
+        }
+        var internalLines = internalOutput.Split('\n');
+        var internalError = internalLines.SingleOrDefault(line => line.Contains("error RUNICBRIDGE024: ", StringComparison.Ordinal));
+        Require(internalExit != 0 && internalError is not null
+            && internalError.Contains("Fixture.BrokenViewModel: internal generator error: System.InvalidOperationException: Injected internal error.", StringComparison.Ordinal)
+            && internalError.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE024")}", StringComparison.Ordinal)
+            && !internalOutput.Contains("RUNICBRIDGE001", StringComparison.Ordinal)
+            && !internalOutput.Contains("error RUNICBRIDGE024: Fixture.HealthyViewModel", StringComparison.Ordinal)
+            && internalLines.Any(line => line.TrimStart().StartsWith("at Diagnostics.InjectInternalErrorForTests", StringComparison.Ordinal)),
+            $"An internal generator error was not RUNICBRIDGE024 with its stack trace:\n{internalOutput}");
     }
 }

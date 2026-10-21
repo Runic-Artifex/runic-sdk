@@ -453,10 +453,10 @@ Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
 `System.Reactive.Unit`, or `IScheduler` should instead reference
 [`Runic.Application.Views.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/README.md).
 The two packages expose distinct ReactiveUI namespaces and must not be mixed in
-one application. If a generic interface command does not reveal its flavor to
-the compiled-model generator, set
-`RunicApplicationFrontendReactiveUiFlavor=reactive` in the project that generates the
-bridge.
+one application. The generated bridge calls the command helpers of the adapter
+the project references, so a command typed as ReactiveUI's shared
+`IReactiveCommand<TInput, TOutput>` interface works with either flavor; there is
+no flavor property to set.
 
 See the upstream [Binding migration guide](https://www.reactiveui.net/documentation/reactiveui/upgrading/reactiveui-binding-migration/)
 for ReactiveUI's application-level migration details.

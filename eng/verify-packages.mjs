@@ -313,6 +313,7 @@ async function verifyConsumers(directory, packageName) {
       p.name === "Runic.Application.Testing"
         ? `using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated.Bridges;
 using PackageConsumer;
 var model = new ConsumerViewModel();
 var window = new ConsumerWindow { DataContext = model };
