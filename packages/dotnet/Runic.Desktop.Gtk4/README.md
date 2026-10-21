@@ -43,10 +43,10 @@ in the callback.
 
 `WithGtk4()` applies the GTK 4 profile in one step: it selects
 `LinuxEmbeddedBackend.Gtk4WebKit6` and sets `WindowHostFactory` to a
-`Gtk4WindowHostFactory`, so the two cannot disagree. The factory class belongs
-to the experimental custom window host family (`RUNICDESK100`, see
-[Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md));
-`WithGtk4()` needs no suppression. On Windows and macOS it
+`Gtk4WindowHostFactory`, so the two cannot disagree. The factory is a
+[custom window host](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#custom-window-hosts)
+of Runic Desktop; its former experimental ID `RUNICDESK100` is retired since
+0.10.0, so remove its suppressions. On Windows and macOS it
 keeps the platform's own embedded host. It throws `ArgumentException` when the
 options already carry another factory. When the profile cannot run,
 `DesktopHost.Validate` and `GetAvailability` list every missing library

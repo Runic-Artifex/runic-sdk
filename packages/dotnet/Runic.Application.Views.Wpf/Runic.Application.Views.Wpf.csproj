@@ -9,14 +9,11 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.Wpf</PackageId>
-    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
-    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
-    <RunicReleaseLinksNamespace>Runic.Application.Views.Wpf</RunicReleaseLinksNamespace>
     <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
     <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- The control implements Runic.Desktop's experimental window host SPI over its presentation transport. -->
-    <NoWarn>$(NoWarn);RUNICDESK100;RUNICDESK101</NoWarn>
+    <!-- The control carries its Bridge over Runic.Desktop's experimental presentation transport. -->
+    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />

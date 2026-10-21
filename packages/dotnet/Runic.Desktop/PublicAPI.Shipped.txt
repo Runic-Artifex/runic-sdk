@@ -600,27 +600,27 @@ Runic.Desktop.LinuxEmbeddedBackendAvailability.Deconstruct(out Runic.Desktop.Lin
 Runic.Desktop.LinuxEmbeddedBackendAvailability.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
 Runic.Desktop.LinuxEmbeddedBackendAvailability.Diagnostics.init -> void
 Runic.Desktop.DesktopPresentationAvailability.Deconstruct(out Runic.Desktop.BrowserKind Browser, out bool IsAvailable, out string? ExecutablePath, out Runic.Desktop.DesktopWindowCapabilities Capabilities, out System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! Diagnostics) -> void
-[RUNICDESK100]Runic.Desktop.IDesktopNativeDispatchWindowHost
-[RUNICDESK100]Runic.Desktop.IDesktopFileDropWindowHost.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
-[RUNICDESK100]Runic.Desktop.IDesktopFileDropWindowHost
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHostFactory
-[RUNICDESK100]Runic.Desktop.IDesktopWindowStateHost.StateChanged -> System.EventHandler?
-[RUNICDESK100]Runic.Desktop.IDesktopWindowStateHost
-[RUNICDESK100]Runic.Desktop.IDesktopEventLoopWindowHostFactory
-[RUNICDESK100]Runic.Desktop.ILinuxDesktopWindowHostFactory
+Runic.Desktop.IDesktopNativeDispatchWindowHost
+Runic.Desktop.IDesktopFileDropWindowHost.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
+Runic.Desktop.IDesktopFileDropWindowHost
+Runic.Desktop.IDesktopWindowHostFactory
+Runic.Desktop.IDesktopWindowStateHost.StateChanged -> System.EventHandler?
+Runic.Desktop.IDesktopWindowStateHost
+Runic.Desktop.IDesktopEventLoopWindowHostFactory
+Runic.Desktop.ILinuxDesktopWindowHostFactory
 [RUNICDESK101]Runic.Desktop.PresentationCapabilityHandler
 [RUNICDESK101]virtual Runic.Desktop.PresentationCapabilityHandler.Invoke(Runic.Desktop.PresentationInvocation! invocation, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Desktop.PresentationResult>
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.Closed -> System.EventHandler?
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions
-[RUNICDESK100]override Runic.Desktop.DesktopWindowHostOptions.ToString() -> string!
-[RUNICDESK100]static Runic.Desktop.DesktopWindowHostOptions.operator !=(Runic.Desktop.DesktopWindowHostOptions? left, Runic.Desktop.DesktopWindowHostOptions? right) -> bool
-[RUNICDESK100]static Runic.Desktop.DesktopWindowHostOptions.operator ==(Runic.Desktop.DesktopWindowHostOptions? left, Runic.Desktop.DesktopWindowHostOptions? right) -> bool
-[RUNICDESK100]override Runic.Desktop.DesktopWindowHostOptions.GetHashCode() -> int
-[RUNICDESK100]override Runic.Desktop.DesktopWindowHostOptions.Equals(object? obj) -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Equals(Runic.Desktop.DesktopWindowHostOptions? other) -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.<Clone>$() -> Runic.Desktop.DesktopWindowHostOptions!
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.DesktopWindowHostOptions() -> void
+Runic.Desktop.IDesktopWindowHost.Closed -> System.EventHandler?
+Runic.Desktop.IDesktopWindowHost
+Runic.Desktop.DesktopWindowHostOptions
+override Runic.Desktop.DesktopWindowHostOptions.ToString() -> string!
+static Runic.Desktop.DesktopWindowHostOptions.operator !=(Runic.Desktop.DesktopWindowHostOptions? left, Runic.Desktop.DesktopWindowHostOptions? right) -> bool
+static Runic.Desktop.DesktopWindowHostOptions.operator ==(Runic.Desktop.DesktopWindowHostOptions? left, Runic.Desktop.DesktopWindowHostOptions? right) -> bool
+override Runic.Desktop.DesktopWindowHostOptions.GetHashCode() -> int
+override Runic.Desktop.DesktopWindowHostOptions.Equals(object? obj) -> bool
+Runic.Desktop.DesktopWindowHostOptions.Equals(Runic.Desktop.DesktopWindowHostOptions? other) -> bool
+Runic.Desktop.DesktopWindowHostOptions.<Clone>$() -> Runic.Desktop.DesktopWindowHostOptions!
+Runic.Desktop.DesktopWindowHostOptions.DesktopWindowHostOptions() -> void
 [RUNICDESK101]Runic.Desktop.PresentationResult
 [RUNICDESK101]Runic.Desktop.PresentationResult.PresentationResult() -> void
 [RUNICDESK101]Runic.Desktop.PresentationInvocation
@@ -637,87 +637,87 @@ Runic.Desktop.LinuxEmbeddedBackendAvailability.LinuxEmbeddedBackendAvailability(
 Runic.Desktop.DesktopWindowOptions.Width.get -> int
 Runic.Desktop.DesktopWindowOptions.Height.get -> int
 Runic.Desktop.DesktopWindowOptions.MinimumWidth.get -> int?
-[RUNICDESK100]Runic.Desktop.DesktopHostOptions.WindowHostFactory.get -> Runic.Desktop.IDesktopWindowHostFactory?
+Runic.Desktop.DesktopHostOptions.WindowHostFactory.get -> Runic.Desktop.IDesktopWindowHostFactory?
 Runic.Desktop.DesktopWindowOptions.MinimumHeight.get -> int?
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHostFactory.IsSupported.get -> bool
-[RUNICDESK100]Runic.Desktop.IDesktopEventLoopWindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
-[RUNICDESK100]Runic.Desktop.IDesktopNativeDispatchWindowHost.SupportsNativeDispatch.get -> bool
-[RUNICDESK100]Runic.Desktop.IDesktopWindowStateHost.State.get -> Runic.Desktop.DesktopWindowState?
-[RUNICDESK100]Runic.Desktop.IDesktopNativeDispatchWindowHost.InvokeNativeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopEventLoopWindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-[RUNICDESK100]Runic.Desktop.DesktopHostOptions.WindowHostFactory.init -> void
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHostFactory.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHostFactory.Create() -> Runic.Desktop.IDesktopWindowHost!
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.SupportsDocumentStartScript.get -> bool
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.SupportsCloseConfirmation.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.CloseRequested.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Width.get -> int
+Runic.Desktop.IDesktopWindowHostFactory.IsSupported.get -> bool
+Runic.Desktop.IDesktopEventLoopWindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
+Runic.Desktop.IDesktopNativeDispatchWindowHost.SupportsNativeDispatch.get -> bool
+Runic.Desktop.IDesktopWindowStateHost.State.get -> Runic.Desktop.DesktopWindowState?
+Runic.Desktop.IDesktopNativeDispatchWindowHost.InvokeNativeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopEventLoopWindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.DesktopHostOptions.WindowHostFactory.init -> void
+Runic.Desktop.IDesktopWindowHostFactory.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.IDesktopWindowHostFactory.Create() -> Runic.Desktop.IDesktopWindowHost!
+Runic.Desktop.IDesktopWindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.IDesktopWindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.IDesktopWindowHost.SupportsDocumentStartScript.get -> bool
+Runic.Desktop.IDesktopWindowHost.SupportsCloseConfirmation.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.CloseRequested.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Width.get -> int
 [RUNICDESK101]Runic.Desktop.DesktopSurface.RegisterCapability(string! capability, Runic.Desktop.PresentationCapabilityHandler! handler) -> Runic.Desktop.PresentationCapabilityRegistration!
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Width.init -> void
-[RUNICDESK100]Runic.Desktop.IDesktopNativeDispatchWindowHost.CheckNativeAccess() -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Height.get -> int
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.MinimumWidth.get -> int?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Height.init -> void
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.MinimumWidth.init -> void
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.IsOpen.get -> bool
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.NativeHandle.get -> nint
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.MinimumHeight.get -> int?
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.OpenAsync(System.Uri! url, Runic.Desktop.DesktopWindowHostOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.ToggleMaximizedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.ResizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.BeginMoveAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.MinimumHeight.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.X.get -> int?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.X.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Centered.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Y.get -> int?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Y.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Centered.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Placement.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Placement.get -> Runic.Desktop.DesktopWindowPlacement?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Resizable.get -> bool
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.AnnounceAsync(string! message, Runic.Desktop.DesktopAnnouncementPriority priority, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.CloseRequested.get -> System.Action?
+Runic.Desktop.DesktopWindowHostOptions.Width.init -> void
+Runic.Desktop.IDesktopNativeDispatchWindowHost.CheckNativeAccess() -> bool
+Runic.Desktop.DesktopWindowHostOptions.Height.get -> int
+Runic.Desktop.DesktopWindowHostOptions.MinimumWidth.get -> int?
+Runic.Desktop.DesktopWindowHostOptions.Height.init -> void
+Runic.Desktop.IDesktopWindowHost.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowHostOptions.MinimumWidth.init -> void
+Runic.Desktop.IDesktopWindowHost.IsOpen.get -> bool
+Runic.Desktop.IDesktopWindowHost.NativeHandle.get -> nint
+Runic.Desktop.DesktopWindowHostOptions.MinimumHeight.get -> int?
+Runic.Desktop.IDesktopWindowHost.OpenAsync(System.Uri! url, Runic.Desktop.DesktopWindowHostOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.ToggleMaximizedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.ResizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.BeginMoveAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowHostOptions.MinimumHeight.init -> void
+Runic.Desktop.DesktopWindowHostOptions.X.get -> int?
+Runic.Desktop.DesktopWindowHostOptions.X.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Centered.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.Y.get -> int?
+Runic.Desktop.DesktopWindowHostOptions.Y.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Centered.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Placement.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Placement.get -> Runic.Desktop.DesktopWindowPlacement?
+Runic.Desktop.DesktopWindowHostOptions.Resizable.get -> bool
+Runic.Desktop.IDesktopWindowHost.AnnounceAsync(string! message, Runic.Desktop.DesktopAnnouncementPriority priority, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowHostOptions.CloseRequested.get -> System.Action?
 Runic.Desktop.DesktopWindowState.Width.get -> int
 Runic.Desktop.DesktopWindowState.Height.get -> int
 [RUNICDESK101]Runic.Desktop.DesktopSurface.SubscribeConnectionEvents(System.Action<Runic.Desktop.PresentationInvocation!>! handler) -> System.IDisposable!
-[RUNICDESK100]Runic.Desktop.IDesktopWindowHost.NavigateAsync(System.Uri! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-[RUNICDESK100]Runic.Desktop.ILinuxDesktopWindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
+Runic.Desktop.IDesktopWindowHost.NavigateAsync(System.Uri! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.ILinuxDesktopWindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
 Runic.Desktop.DesktopWindowPlacement.Width.get -> int
 [RUNICDESK101]Runic.Desktop.DesktopSurface.ConnectionCount.get -> int
 Runic.Desktop.DesktopWindowPlacement.Height.get -> int
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Resizable.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Frameless.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Frameless.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Transparent.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Transparent.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Hidden.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Hidden.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Kiosk.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.HighContrast.get -> bool
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.Kiosk.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.HighContrast.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.IconFile.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.IconFile.get -> string?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.ProfilePath.get -> string?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.ProfilePath.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.BrowserArguments.get -> string?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.AllowedPermissions.get -> Runic.Desktop.DesktopPermissionGrant
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.BrowserArguments.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.DocumentStartScript.get -> string?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.DiagnosticSink.get -> System.Action<Runic.Desktop.DesktopDiagnostic!>?
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.DocumentStartScript.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.AllowedPermissions.init -> void
-[RUNICDESK100]Runic.Desktop.DesktopWindowHostOptions.DiagnosticSink.init -> void
-[RUNICDESK100]static Runic.Desktop.LinuxDesktopRuntime.IsLibraryAvailable(string! libraryName) -> bool
+Runic.Desktop.DesktopWindowHostOptions.Resizable.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Frameless.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.Frameless.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Transparent.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.Transparent.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Hidden.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.Hidden.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Kiosk.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.HighContrast.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.Kiosk.init -> void
+Runic.Desktop.DesktopWindowHostOptions.HighContrast.init -> void
+Runic.Desktop.DesktopWindowHostOptions.IconFile.init -> void
+Runic.Desktop.DesktopWindowHostOptions.IconFile.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.ProfilePath.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.ProfilePath.init -> void
+Runic.Desktop.DesktopWindowHostOptions.BrowserArguments.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.AllowedPermissions.get -> Runic.Desktop.DesktopPermissionGrant
+Runic.Desktop.DesktopWindowHostOptions.BrowserArguments.init -> void
+Runic.Desktop.DesktopWindowHostOptions.DocumentStartScript.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.DiagnosticSink.get -> System.Action<Runic.Desktop.DesktopDiagnostic!>?
+Runic.Desktop.DesktopWindowHostOptions.DocumentStartScript.init -> void
+Runic.Desktop.DesktopWindowHostOptions.AllowedPermissions.init -> void
+Runic.Desktop.DesktopWindowHostOptions.DiagnosticSink.init -> void
+static Runic.Desktop.LinuxDesktopRuntime.IsLibraryAvailable(string! libraryName) -> bool
 [RUNICDESK101]Runic.Desktop.DesktopSurface.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 [RUNICDESK101]Runic.Desktop.DesktopSurface.ExecuteJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
 [RUNICDESK101]Runic.Desktop.DesktopSurface.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
@@ -755,7 +755,7 @@ Runic.Desktop.DesktopWindowPlacement.Height.get -> int
 [RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration.Dispose() -> void
 [RUNICDESK101]Runic.Desktop.PresentationInvocation.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 [RUNICDESK101]Runic.Desktop.PresentationInvocation.CloseSessionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK100]static Runic.Desktop.LinuxDesktopRuntime.ClaimBackend(Runic.Desktop.LinuxEmbeddedBackend backend) -> void
+static Runic.Desktop.LinuxDesktopRuntime.ClaimBackend(Runic.Desktop.LinuxEmbeddedBackend backend) -> void
 Runic.Desktop.DesktopWindow.IsFallback.get -> bool
 Runic.Desktop.DesktopWindow.ProcessId.get -> int
 Runic.Desktop.DesktopWindow.ResizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

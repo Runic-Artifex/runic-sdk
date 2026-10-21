@@ -4,8 +4,8 @@
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
-    <!-- Uses the experimental Desktop APIs (docs/experimental.md). -->
-    <NoWarn>$(NoWarn);RUNICDESK100;RUNICDESK101</NoWarn>
+    <!-- Uses the experimental presentation transport of Runic.Desktop (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK101</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
