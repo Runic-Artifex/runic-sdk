@@ -5,7 +5,7 @@ public sealed class AppRegions
 {
     public AppRegions(RunicNavigator navigator)
     {
-        // Created empty: an initial NotesListViewModel that injects AppRegions would be a DI cycle, so App resets Main.
+        // Created empty: an initial NotesListViewModel that injects AppRegions would be a DI cycle, so App starts Main.
         Main = navigator.CreateRegion<object>(this);
         Dialog = navigator.CreateRegion<object>(this); // [S2]
     }

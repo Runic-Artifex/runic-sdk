@@ -18,13 +18,13 @@ public partial class App : Application
         .AddSingleton<NoteStore>()
         .AddSingleton<AppRegions>();
 
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         _services = AddNotes(new ServiceCollection()).BuildServiceProvider();
         var regions = _services.GetRequiredService<AppRegions>();
+        regions.Main.Start(NavigationTarget.Create<NotesListViewModel>()); // throws if the list can't be created
         new MainWindow { DataContext = regions }.Show();
-        await regions.Main.ResetAsync<NotesListViewModel>();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -10,8 +10,8 @@ namespace Runic.Navigation;
 /// <remarks>
 /// <para>
 /// <see cref="CurrentEntry"/> and <see cref="History"/> return the region's typed entries. The entry in a
-/// <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/>, <see cref="ClearAsync"/> or
-/// <see cref="ReplaceBorrowedAsync"/> is a <see cref="NavigationEntry{TContent}"/> of <see cref="object"/>, a different
+/// <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/>, <see cref="BackToAsync"/>,
+/// <see cref="ClearHistoryAsync"/>, <see cref="ClearAsync"/> or <see cref="ReplaceBorrowedAsync"/> is a <see cref="NavigationEntry{TContent}"/> of <see cref="object"/>, a different
 /// instance from the typed entry. Compare entries by <see cref="NavigationEntry.Id"/>, not by reference.
 /// </para>
 /// <para>
@@ -136,6 +136,18 @@ public abstract class NavigationRegion : INotifyPropertyChanged
     public ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
         NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Back, null, null, options, cancellationToken));
+
+    /// <summary>Retires every entry above <paramref name="entry"/> and resumes it.</summary>
+    /// <remarks>Compare the result's entry with this region's entries by <see cref="NavigationEntry.Id"/>.</remarks>
+    public ValueTask<NavigationResult<object>> BackToAsync(NavigationEntryId entry,
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default) =>
+        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.BackTo, null, entry, options, cancellationToken));
+
+    /// <summary>Retires every retained entry. The current entry stays.</summary>
+    /// <remarks>Compare the result's entry with this region's entries by <see cref="NavigationEntry.Id"/>.</remarks>
+    public ValueTask<NavigationResult<object>> ClearHistoryAsync(NavigationRequestOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.ClearHistory, null, null, options, cancellationToken));
 
     /// <summary>Retires every entry. The region becomes empty.</summary>
     /// <remarks>Compare the result's entry with this region's entries by <see cref="NavigationEntry.Id"/>.</remarks>
@@ -290,7 +302,7 @@ public sealed class NavigationRegion<TContent> : NavigationRegion where TContent
         Run(NavigationOperation.Back, null, null, options, cancellationToken);
 
     /// <summary>Retires every entry above <paramref name="entry"/> and resumes it.</summary>
-    public ValueTask<NavigationResult<TContent>> BackToAsync(NavigationEntryId entry,
+    public new ValueTask<NavigationResult<TContent>> BackToAsync(NavigationEntryId entry,
         NavigationRequestOptions? options = null, CancellationToken cancellationToken = default) =>
         Run(NavigationOperation.BackTo, null, entry, options, cancellationToken);
 
@@ -392,7 +404,7 @@ public sealed class NavigationRegion<TContent> : NavigationRegion where TContent
         Run(NavigationOperation.Reset, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
 
     /// <summary>Retires every retained entry. The current entry stays.</summary>
-    public ValueTask<NavigationResult<TContent>> ClearHistoryAsync(NavigationRequestOptions? options = null,
+    public new ValueTask<NavigationResult<TContent>> ClearHistoryAsync(NavigationRequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
         Run(NavigationOperation.ClearHistory, null, null, options, cancellationToken);
 

@@ -62,6 +62,66 @@ internal sealed partial class NavigationTests
         await Wait(fixture.Navigator.WhenIdleAsync());
     }
 
+    // I-030: the base region's BackToAsync and ClearHistoryAsync, for hosts typed NavigationRegion, behave like the typed
+    // members (OperationsAsync), which hide them with the same parameters.
+    [Test]
+    public async Task BaseRegionBackToAndClearHistoryMatchTheTypedRegionAsync()
+    {
+        foreach (var name in new[] { nameof(NavigationRegion.BackToAsync), nameof(NavigationRegion.ClearHistoryAsync) })
+        {
+            var baseMethod = typeof(NavigationRegion).GetMethod(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            var typedMethod = typeof(NavigationRegion<Page>).GetMethod(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            Require(baseMethod is { ReturnType: var baseReturn } && baseReturn == typeof(ValueTask<NavigationResult<object>>)
+                    && typedMethod is { ReturnType: var typedReturn } && typedReturn == typeof(ValueTask<NavigationResult<Page>>)
+                    && baseMethod.GetParameters().Select(parameter => (parameter.ParameterType, parameter.Name, parameter.HasDefaultValue))
+                        .SequenceEqual(typedMethod.GetParameters().Select(parameter => (parameter.ParameterType, parameter.Name, parameter.HasDefaultValue))),
+                $"The base region's {name} does not mirror the typed member.");
+        }
+
+        await using var fixture = new Fixture();
+        var a = new Page("a");
+        var typed = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(a));
+        NavigationRegion region = typed;
+        var b = new Page("b");
+        var c = new Page("c");
+        var d = new Page("d");
+        await Wait(typed.PushAsync(NavigationTarget.Own(b)));
+        var bId = typed.CurrentEntry!.Id;
+        await Wait(typed.PushAsync(NavigationTarget.Own(c)));
+        await Wait(typed.PushAsync(NavigationTarget.Own(d)));
+
+        var backTo = await Wait(region.BackToAsync(bId));
+        Require(backTo is NavigationResult<object>.Committed { Retired: [{ Value: 4 }, { Value: 3 }], Current: { Id: var backToId, Content: var backToContent } }
+                && backToId == bId && ReferenceEquals(backToContent, b) && Names(typed) == "a,b"
+                && d.Disposed == 1 && c.Disposed == 1 && b.Resumed == 1,
+            $"The base region's BackTo did not retire top-down: {backTo} {Names(typed)}");
+        var same = await Wait(region.BackToAsync(bId));
+        Require(same is NavigationResult<object>.Committed { Retired.Count: 0 } && Names(typed) == "a,b",
+            "The base region's BackTo the current entry changed history.");
+        var missing = await Wait(region.BackToAsync(new NavigationEntryId(99)));
+        Require(missing is NavigationResult<object>.Rejected { Reason: NavigationRejection.EntryNotFound },
+            $"The base region's BackTo a missing entry gave {missing}.");
+        var stale = await Wait(region.BackToAsync(typed.History[0].Id, new() { ExpectedCurrent = new NavigationEntryId(99) }));
+        Require(stale is NavigationResult<object>.Rejected { Reason: NavigationRejection.NotCurrent } && Names(typed) == "a,b",
+            $"The base region's BackTo ignored its options: {stale}.");
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            Require(await Wait(region.BackToAsync(typed.History[0].Id, cancellationToken: cancelled.Token))
+                    is NavigationResult<object>.Rejected { Reason: NavigationRejection.Cancelled } && Names(typed) == "a,b",
+                "The base region's BackTo ignored its cancellation token.");
+            Require(await Wait(region.ClearHistoryAsync(cancellationToken: cancelled.Token))
+                    is NavigationResult<object>.Rejected { Reason: NavigationRejection.Cancelled } && Names(typed) == "a,b",
+                "The base region's ClearHistory ignored its cancellation token.");
+        }
+
+        var cleared = await Wait(region.ClearHistoryAsync());
+        Require(cleared is NavigationResult<object>.Committed { Retired: [{ Value: 1 }], Current.Content: var current }
+                && ReferenceEquals(current, b) && Names(typed) == "b" && !region.CanGoBack && a.Disposed == 0,
+            $"The base region's ClearHistory did not keep only the current entry: {cleared} {Names(typed)}");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+    }
+
     // D24: one vocabulary for the guard verb, the arrival record and the arrival hook.
     [Test]
     public void NavigationVocabularyIsArrivalAndDeparture()

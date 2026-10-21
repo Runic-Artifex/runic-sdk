@@ -550,6 +550,28 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
+    /// Gets whether a transition of any region of this navigator is in flight or a retirement is running: it is
+    /// <see langword="false"/> exactly when <see cref="WhenIdleAsync"/> would complete at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It counts what <see cref="WhenIdleAsync"/> waits for: every region's transitions until their tasks complete,
+    /// retirements that no request awaits, and the guard of a Back whose callers have all cancelled, until that guard
+    /// returns. It can therefore stay <see langword="true"/> after every region's <see cref="NavigationRegion.IsBusy"/> is
+    /// <see langword="false"/>.
+    /// </para>
+    /// <para>
+    /// The value is a snapshot and raises no change notification. Bind a progress indicator to
+    /// <see cref="NavigationRegion.IsBusy"/>, which reports its changes through <see cref="NavigationRegion.PropertyChanged"/>,
+    /// and await <see cref="WhenIdleAsync"/> to wait for the navigator.
+    /// </para>
+    /// </remarks>
+    public bool IsBusy
+    {
+        get { lock (Gate) return _running.Count > 0 || _retirements.Count > 0; }
+    }
+
+    /// <summary>
     /// Completes when no transition of any region of this navigator is in flight and no retirement is running. A
     /// transition counts until its task completes: its guards, preparation, commit, the retirement of the departed entries
     /// and the arrival hook of the arrived entry (<see cref="INavigationArrived"/>).

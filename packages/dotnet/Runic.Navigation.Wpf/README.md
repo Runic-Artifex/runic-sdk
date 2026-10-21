@@ -40,7 +40,7 @@ public partial class App : Application
 {
     private ServiceProvider? _services;
 
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         _services = new ServiceCollection()
@@ -49,8 +49,8 @@ public partial class App : Application
             .AddSingleton<AppRegions>()
             .BuildServiceProvider();
         var regions = _services.GetRequiredService<AppRegions>();
+        regions.Main.Start(NavigationTarget.Create<NotesViewModel>()); // throws if the page can't be created
         new MainWindow { DataContext = regions }.Show();
-        await regions.Main.ResetAsync<NotesViewModel>();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -64,7 +64,7 @@ public partial class App : Application
 **2. A region and its host.** A region is a navigation stack. ViewModels
 inject `AppRegions` to navigate, and the window binds to it. The regions start
 empty, because an initial ViewModel that injects `AppRegions` would be a DI
-cycle; `App` resets `Main` instead.
+cycle; `App` starts `Main` instead.
 
 ```csharp
 public sealed class AppRegions
