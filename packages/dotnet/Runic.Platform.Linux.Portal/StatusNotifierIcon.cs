@@ -285,7 +285,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         finally { writer.Dispose(); }
     }
 
-    private void Raise(DesktopStatusIconActivationKind kind, string? menuItemId = null)
+    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null)
     {
         (string Token, long Timestamp)? token;
         lock (_lock) { token = _activationToken; _activationToken = null; }
@@ -295,7 +295,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             try { context = new DesktopActivationContext(activationToken: fresh.Token); }
             catch (ArgumentException) { /* An unusable token cannot raise a window; activate without it. */ }
         }
-        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, menuItemId) { PlatformContext = context });
+        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId) { PlatformContext = context });
     }
 
     private async Task PumpAsync()
@@ -572,8 +572,8 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         private void Choose(Menu menu, int id, string kind)
         {
             // Hosts also report "hovered", "opened" and "closed"; only a click chooses.
-            if (kind == "clicked" && menu.Nodes[id].Item is DesktopMenuCommand { IsEnabled: true } command)
-                icon.Raise(DesktopStatusIconActivationKind.MenuItem, command.Id);
+            if (kind == "clicked" && menu.Nodes[id].Item is DesktopMenuItem { IsEnabled: true } command)
+                icon.Raise(DesktopStatusIconActivationKind.MenuItem, command.CommandId);
         }
 
         private static void UnknownId(MethodContext context, int id) =>
@@ -630,7 +630,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     // separators and submenus by their place among their parent's entries of the same kind. IDs are never reused.
     private sealed class Menu
     {
-        internal sealed record Node(int Id, DesktopMenuItem? Item, ImmutableArray<int> Children);
+        internal sealed record Node(int Id, DesktopMenuEntry? Item, ImmutableArray<int> Children);
         internal Dictionary<int, Node> Nodes { get; } = [];
         internal static Menu Empty { get; } = Build([], new Ids());
 
@@ -641,31 +641,34 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             internal int For(string key) => _ids.TryGetValue(key, out int id) ? id : _ids[key] = _next++;
         }
 
-        internal static Menu Build(ImmutableArray<DesktopMenuItem> items, Ids ids)
+        internal static Menu Build(ImmutableArray<DesktopMenuEntry> items, Ids ids)
         {
             var menu = new Menu();
             menu.Add(0, "", null, items, ids);
             return menu;
         }
 
-        private void Add(int id, string path, DesktopMenuItem? item, ImmutableArray<DesktopMenuItem> children, Ids ids)
+        private void Add(int id, string path, DesktopMenuEntry? item, ImmutableArray<DesktopMenuEntry> children, Ids ids)
         {
             var childIds = ImmutableArray.CreateBuilder<int>(children.Length);
             int separators = 0;
             var submenus = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var child in children)
             {
-                string key = child switch
+                string? key = child switch
                 {
-                    DesktopMenuCommand command => "command:" + command.Id,
-                    DesktopMenuSubmenu submenu => $"{path}/submenu:{submenu.Label}#{(submenus[submenu.Label] = submenus.GetValueOrDefault(submenu.Label) + 1)}",
-                    _ => $"{path}/separator#{++separators}",
+                    DesktopMenuItem command => "command:" + command.CommandId,
+                    DesktopMenu submenu => $"{path}/submenu:{submenu.Title}#{(submenus[submenu.Title] = submenus.GetValueOrDefault(submenu.Title) + 1)}",
+                    DesktopMenuSeparator => $"{path}/separator#{++separators}",
+                    // An entry kind of a later release.
+                    _ => null,
                 };
+                if (key is null) continue;
                 int childId = ids.For(key);
                 childIds.Add(childId);
-                Add(childId, key, child, child is DesktopMenuSubmenu nested ? nested.Items : [], ids);
+                Add(childId, key, child, child is DesktopMenu nested ? nested.Items : [], ids);
             }
-            Nodes[id] = new Node(id, item, childIds.MoveToImmutable());
+            Nodes[id] = new Node(id, item, childIds.ToImmutable());
         }
 
         internal void WriteLayout(ref MessageWriter writer, Node node, int depth)
@@ -703,10 +706,10 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         {
             (null, "children-display") => true,
             (DesktopMenuSeparator, "type") => true,
-            (DesktopMenuCommand, "label") or (DesktopMenuSubmenu, "label") => true,
-            (DesktopMenuCommand { IsEnabled: false }, "enabled") or (DesktopMenuSubmenu { IsEnabled: false }, "enabled") => true,
-            (DesktopMenuCommand { IsChecked: not null }, "toggle-type" or "toggle-state") => true,
-            (DesktopMenuSubmenu, "children-display") => true,
+            (DesktopMenuItem, "label") or (DesktopMenu, "label") => true,
+            (DesktopMenuItem { IsEnabled: false }, "enabled") or (DesktopMenu { IsEnabled: false }, "enabled") => true,
+            (DesktopMenuItem { IsChecked: not null }, "toggle-type" or "toggle-state") => true,
+            (DesktopMenu, "children-display") => true,
             _ => false,
         };
 
@@ -717,19 +720,19 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 case "type": writer.WriteVariantString(node.Item is DesktopMenuSeparator ? "separator" : "standard"); return true;
                 // An underscore marks dbusmenu's access key; double it to show it literally.
                 case "label": writer.WriteVariantString(Label(node.Item).Replace("_", "__", StringComparison.Ordinal)); return true;
-                case "enabled": writer.WriteVariantBool(node.Item switch { DesktopMenuCommand c => c.IsEnabled, DesktopMenuSubmenu s => s.IsEnabled, _ => true }); return true;
+                case "enabled": writer.WriteVariantBool(node.Item switch { DesktopMenuItem c => c.IsEnabled, DesktopMenu s => s.IsEnabled, _ => true }); return true;
                 case "visible": writer.WriteVariantBool(true); return true;
-                case "toggle-type": writer.WriteVariantString(node.Item is DesktopMenuCommand { IsChecked: not null } ? "checkmark" : ""); return true;
-                case "toggle-state": writer.WriteVariantInt32(node.Item is DesktopMenuCommand { IsChecked: true } ? 1 : 0); return true;
-                case "children-display": writer.WriteVariantString(node.Item is null or DesktopMenuSubmenu ? "submenu" : ""); return true;
+                case "toggle-type": writer.WriteVariantString(node.Item is DesktopMenuItem { IsChecked: not null } ? "checkmark" : ""); return true;
+                case "toggle-state": writer.WriteVariantInt32(node.Item is DesktopMenuItem { IsChecked: true } ? 1 : 0); return true;
+                case "children-display": writer.WriteVariantString(node.Item is null or DesktopMenu ? "submenu" : ""); return true;
                 default: return false;
             }
         }
 
-        private static string Label(DesktopMenuItem? item) => item switch
+        private static string Label(DesktopMenuEntry? item) => item switch
         {
-            DesktopMenuCommand command => command.Label,
-            DesktopMenuSubmenu submenu => submenu.Label,
+            DesktopMenuItem command => command.Title,
+            DesktopMenu submenu => submenu.Title,
             _ => "",
         };
     }

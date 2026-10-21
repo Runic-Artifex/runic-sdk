@@ -80,6 +80,12 @@ export const packageLayouts = {
   "Runic.Application.Views.Desktop": { includes: ["buildTransitive/Runic.Application.Views.Desktop.props"] },
   "Runic.Application.Views.CsWebUi": { includes: ["buildTransitive/Runic.Application.Views.CsWebUi.props"] },
   "Runic.Application.Views.Wpf": { includes: ["buildTransitive/Runic.Application.Views.Wpf.props"] },
+  // Runic Desktop shares its menu model (DesktopMenu, DesktopMenuItem, DesktopShortcut) with status icons through
+  // Runic.Platform, whose internal menu rules it uses (D031.2). Runic.Platform itself has no dependencies.
+  "Runic.Desktop": {
+    dependencies: ["Microsoft.Web.WebView2", "Runic.Platform"],
+    exactDependencies: ["Runic.Platform"],
+  },
   // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
   // carry their help links (W300-004).
   "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets"] },

@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Runic.Desktop;
 using Runic.Navigation;
+using Runic.Platform;
 
 namespace Runic.Application.Views.Desktop;
 
@@ -48,17 +49,19 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         return binding;
     }
 
-    public bool CanExecute(string commandId)
+    public bool CanExecute(DesktopMenuItem item)
     {
-        lock (_gate) return !_disposed && _entries.TryGetValue(commandId, out var entry) && entry.CanExecute;
+        ArgumentNullException.ThrowIfNull(item);
+        lock (_gate) return !_disposed && _entries.TryGetValue(item.CommandId, out var entry) && entry.CanExecute;
     }
 
-    public void Execute(string commandId)
+    public void Execute(DesktopMenuItem item)
     {
+        ArgumentNullException.ThrowIfNull(item);
         Entry? entry;
         lock (_gate)
         {
-            if (_disposed || !_entries.TryGetValue(commandId, out entry)) return;
+            if (_disposed || !_entries.TryGetValue(item.CommandId, out entry)) return;
         }
         _ = RunAsync(entry);
     }
@@ -131,7 +134,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         {
             foreach (var entry in entries)
             {
-                if (entry is DesktopMenuBarItem item) ids.Add(item.CommandId);
+                if (entry is DesktopMenuItem item) ids.Add(item.CommandId);
                 else if (entry is DesktopMenu submenu) Collect(submenu.Items);
             }
         }

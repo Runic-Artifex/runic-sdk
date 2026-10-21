@@ -5,19 +5,23 @@ using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
+using Runic.Platform;
 using TUnit.Core;
 
 // W315-002: the menu bar's command ids reach a Window's root ViewModel (IRunicMenuCommandSource) and the application's
 // commands; availability follows CanExecuteChanged, and a failing command is logged.
 internal sealed class MenuCommandChecks
 {
+    // The command target receives the item; the binding routes it by CommandId.
+    private static DesktopMenuItem Item(string commandId) => new(commandId, commandId);
+
     private static readonly IReadOnlyList<DesktopMenu> Bar =
     [
-        new("File", [new DesktopMenuBarItem("New", "file.new"), new DesktopMenuBarItem("Save", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
+        new("File", [new DesktopMenuItem("New", "file.new"), new DesktopMenuItem("Save", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
         {
             Role = DesktopMenuRole.File,
         },
-        new("Tools", [new DesktopMenu("Danger", [new DesktopMenuBarItem("Explode", "tools.explode")])]),
+        new("Tools", [new DesktopMenu("Danger", [new DesktopMenuItem("Explode", "tools.explode")])]),
     ];
 
     [Test, NotInParallel(Order = 19)]
@@ -41,8 +45,8 @@ internal sealed class MenuCommandChecks
         });
         using var menu = host.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });
         var application = desktop.MenuCommands ?? throw new InvalidOperationException("The application commands were not bound.");
-        Require(application.CanExecute("file.new") && !application.CanExecute("file.save"), "The application's commands were not bound by id.");
-        application.Execute("file.new");
+        Require(application.CanExecute(Item("file.new")) && !application.CanExecute(Item("file.save")), "The application's commands were not bound by id.");
+        application.Execute(Item("file.new"));
         await newCommand.Executed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var window = await host.OpenWindowAsync<MenuWindow>();
@@ -51,22 +55,22 @@ internal sealed class MenuCommandChecks
             var viewModel = window.ViewModel;
             var target = ((DesktopBridgeWindow<MenuViewModel>)window.Host).Window.MenuCommands
                 ?? throw new InvalidOperationException("The Window's root ViewModel did not become the window's menu command target.");
-            Require(target.CanExecute("file.save") && target.CanExecute("tools.explode") && !target.CanExecute("file.new"),
+            Require(target.CanExecute(Item("file.save")) && target.CanExecute(Item("tools.explode")) && !target.CanExecute(Item("file.new")),
                 "The ViewModel's commands were not bound, also from a submenu.");
             viewModel.Save.Enabled = false;
-            Require(!target.CanExecute("file.save"), "CanExecuteChanged did not update the item's availability.");
+            Require(!target.CanExecute(Item("file.save")), "CanExecuteChanged did not update the item's availability.");
             viewModel.Save.Enabled = true;
-            target.Execute("file.save");
+            target.Execute(Item("file.save"));
             await viewModel.Save.Executed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            target.Execute("tools.explode");
+            target.Execute(Item("tools.explode"));
             await WaitAsync(() => logs.Messages.Any(static message => message.Contains("The menu command tools.explode failed with System.InvalidOperationException", StringComparison.Ordinal)),
                 "A failing menu command was not logged as DesktopMenuCommandFailed.");
 
             // A new menu bar binds its ids again, for example after a language change.
-            desktop.SetMenuBar([new DesktopMenu("Werkzeuge", [new DesktopMenuBarItem("Sichern", "file.save.as")])]);
-            await WaitAsync(() => target.CanExecute("file.save.as") && !target.CanExecute("file.save"), "The new menu bar was not bound.");
-            await WaitAsync(() => application.CanExecute("file.new") == false, "The application's commands kept the old menu bar.");
+            desktop.SetMenuBar([new DesktopMenu("Werkzeuge", [new DesktopMenuItem("Sichern", "file.save.as")])]);
+            await WaitAsync(() => target.CanExecute(Item("file.save.as")) && !target.CanExecute(Item("file.save")), "The new menu bar was not bound.");
+            await WaitAsync(() => application.CanExecute(Item("file.new")) == false, "The application's commands kept the old menu bar.");
         }
         finally
         {
@@ -89,7 +93,7 @@ internal sealed class MenuCommandChecks
         var newCommand = new TestCommand();
         var menu = first.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });
         var bound = desktop.MenuCommands ?? throw new InvalidOperationException("The application commands were not bound.");
-        Require(newCommand.Subscribers == 1 && bound.CanExecute("file.new"), "The commands were not bound when UseApplicationMenu returned.");
+        Require(newCommand.Subscribers == 1 && bound.CanExecute(Item("file.new")), "The commands were not bound when UseApplicationMenu returned.");
 
         var replacement = new TestCommand();
         try
@@ -102,7 +106,7 @@ internal sealed class MenuCommandChecks
             "A second host replaced the application's commands or kept its own subscriptions.");
 
         menu.Dispose();
-        Require(desktop.MenuCommands is null && newCommand.Subscribers == 0 && !bound.CanExecute("file.new"),
+        Require(desktop.MenuCommands is null && newCommand.Subscribers == 0 && !bound.CanExecute(Item("file.new")),
             "Disposing the application menu kept its commands or their CanExecuteChanged subscriptions.");
         menu.Dispose();
         using var again = second.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });

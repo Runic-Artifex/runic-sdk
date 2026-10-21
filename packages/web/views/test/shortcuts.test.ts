@@ -1,4 +1,4 @@
-// The shortcut cases shared with Runic.Desktop's DesktopShortcut (specs/desktop/fixtures/shortcuts.json).
+// The shortcut cases shared with Runic.Platform's DesktopShortcut (specs/desktop/fixtures/shortcuts.json).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";

@@ -26,7 +26,7 @@ internal sealed record MacMenuEntry(MacMenuEntryKind Kind, string Label, bool En
 // The NSMenu built from a state when the menu opens, with the command IDs its tags route to.
 internal sealed record MacStatusMenu(ImmutableArray<MacMenuEntry> Entries, ImmutableArray<string> Commands)
 {
-    internal static MacStatusMenu Build(ImmutableArray<DesktopMenuItem> items)
+    internal static MacStatusMenu Build(ImmutableArray<DesktopMenuEntry> items)
     {
         var commands = ImmutableArray.CreateBuilder<string>();
         var entries = Add(items, commands);
@@ -36,26 +36,29 @@ internal sealed record MacStatusMenu(ImmutableArray<MacMenuEntry> Entries, Immut
     // The command a menu item's tag routes to, or null for a tag from no command of this menu.
     internal string? CommandFor(long tag) => tag >= 1 && tag <= Commands.Length ? Commands[(int)tag - 1] : null;
 
-    private static ImmutableArray<MacMenuEntry> Add(ImmutableArray<DesktopMenuItem> items, ImmutableArray<string>.Builder commands)
+    private static ImmutableArray<MacMenuEntry> Add(ImmutableArray<DesktopMenuEntry> items, ImmutableArray<string>.Builder commands)
     {
         var entries = ImmutableArray.CreateBuilder<MacMenuEntry>(items.Length);
         foreach (var item in items)
         {
             switch (item)
             {
-                case DesktopMenuCommand command:
-                    commands.Add(command.Id);
-                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Command, command.Label, command.IsEnabled, command.IsChecked, commands.Count, []));
+                case DesktopMenuItem command:
+                    commands.Add(command.CommandId);
+                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Command, command.Title, command.IsEnabled, command.IsChecked, commands.Count, []));
                     break;
-                case DesktopMenuSubmenu submenu:
-                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Submenu, submenu.Label, submenu.IsEnabled, null, 0, Add(submenu.Items, commands)));
+                case DesktopMenu submenu:
+                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Submenu, submenu.Title, submenu.IsEnabled, null, 0, Add(submenu.Items, commands)));
+                    break;
+                case DesktopMenuSeparator:
+                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Separator, "", true, null, 0, []));
                     break;
                 default:
-                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Separator, "", true, null, 0, []));
+                    // An entry kind of a later release.
                     break;
             }
         }
-        return entries.MoveToImmutable();
+        return entries.ToImmutable();
     }
 }
 

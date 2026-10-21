@@ -208,7 +208,8 @@
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Web.WebView2": "[1.0.4258.31, )"
+          "Microsoft.Web.WebView2": "[1.0.4258.31, )",
+          "Runic.Platform": "[0.9.1, )"
         }
       },
       "runic.desktop.gtk4": {
@@ -218,6 +219,9 @@
           "GirCore.WebKit-6.0": "[0.8.1, )",
           "Runic.Desktop": "[0.9.1, )"
         }
+      },
+      "runic.platform": {
+        "type": "Project"
       },
       "GirCore.Gtk-4.0": {
         "type": "CentralTransitive",

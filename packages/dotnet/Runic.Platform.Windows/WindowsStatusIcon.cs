@@ -436,8 +436,8 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
         if (icon.Owned && icon.Handle != default) PInvoke.DestroyIcon(icon.Handle);
     }
 
-    private void Raise(DesktopStatusIconActivationKind kind, string? menuItemId = null) =>
-        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, menuItemId));
+    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null) =>
+        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId));
 
     private async Task PumpAsync()
     {

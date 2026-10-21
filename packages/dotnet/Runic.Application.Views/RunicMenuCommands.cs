@@ -21,7 +21,8 @@ namespace Runic.Application.Views;
 ///     };
 /// }
 /// </code>
-/// An item follows its command's <see cref="ICommand.CanExecute"/>, read with a <see langword="null"/> parameter and
+/// An item follows its command's <see cref="ICommand.CanExecute"/> (and stays disabled when the menu bar declares it
+/// disabled), read with a <see langword="null"/> parameter and
 /// updated on <see cref="ICommand.CanExecuteChanged"/>, and runs <see cref="ICommand.Execute"/> in the model turn. A
 /// command with a required parameter cannot be a menu command. An id the ViewModel returns <see langword="null"/>
 /// for falls to the application's commands (<c>RunicDesktopHost.UseApplicationMenu</c>), and is disabled without one.

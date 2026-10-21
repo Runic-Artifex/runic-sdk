@@ -16,14 +16,14 @@ internal sealed partial class StatusIconTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
-    private static ImmutableArray<DesktopMenuItem> Menu(bool checkedDaily, params DesktopMenuItem[] extra) =>
+    private static ImmutableArray<DesktopMenuEntry> Menu(bool checkedDaily, params DesktopMenuItem[] extra) =>
     [
         .. extra,
-        new DesktopMenuCommand("open", "Open & show"),
-        new DesktopMenuCommand("daily", "Check daily") { IsChecked = checkedDaily },
+        new DesktopMenuItem("Open & show", "open"),
+        new DesktopMenuItem("Check daily", "daily") { IsChecked = checkedDaily },
         new DesktopMenuSeparator(),
-        new DesktopMenuSubmenu("More", [new DesktopMenuCommand("about", "About"), new DesktopMenuCommand("off", "Off") { IsEnabled = false }]),
-        new DesktopMenuCommand("quit", "Quit"),
+        new DesktopMenu("More", [new DesktopMenuItem("About", "about"), new DesktopMenuItem("Off", "off") { IsEnabled = false }]),
+        new DesktopMenuItem("Quit", "quit"),
     ];
 
     [Test]
@@ -36,7 +36,7 @@ internal sealed partial class StatusIconTests
         Check(open != 0 && first.Commands.Count == 5, "every command has a nonzero ID");
         Check(first.Commands.Keys.Distinct().Count() == 5, "IDs are distinct");
         // A new entry before the others, and a changed check state, leave the existing IDs alone.
-        var second = Model.BuildMenu(Menu(true, new DesktopMenuCommand("new", "New")), ids);
+        var second = Model.BuildMenu(Menu(true, new DesktopMenuItem("New", "new")), ids);
         Check(second.Commands.Single(c => c.Value.CommandId == "open").Key == open
             && second.Commands.Single(c => c.Value.CommandId == "about").Key == about, "IDs stay with their commands");
         Check(second.Commands.Single(c => c.Value.CommandId == "new").Key > about, "a new command gets a new ID");
@@ -132,7 +132,7 @@ internal sealed partial class StatusIconTests
 
         // The shell's callbacks, as NOTIFYICON_VERSION_4 sends them: the event in the low word of lParam.
         Post(window, WindowsStatusIcon.CallbackMessage, 0, WindowsShellInterop.NIN_SELECT | WindowsStatusIcon.IconId << 16);
-        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.Primary, MenuItemId: null }, "a click is the primary action");
+        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.Primary, CommandId: null }, "a click is the primary action");
         Post(window, WindowsStatusIcon.CallbackMessage, 0, WindowsShellInterop.NIN_KEYSELECT | WindowsStatusIcon.IconId << 16);
         Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.Primary }, "Space or Enter is the primary action");
         Post(window, WindowsStatusIcon.CallbackMessage, 0, PInvoke.WM_MBUTTONUP | WindowsStatusIcon.IconId << 16);
@@ -144,7 +144,7 @@ internal sealed partial class StatusIconTests
         Check(popup != 0, "the context menu opens");
         Post(popup, WM_KEYDOWN, VK_DOWN, 0);
         Post(popup, WM_KEYDOWN, VK_RETURN, 0);
-        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.MenuItem, MenuItemId: "open" }, "a menu choice raises its command");
+        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open" }, "a menu choice raises its command");
         Check(await WaitForAsync(() => FindWindowW("#32768", null) == 0 ? 1 : 0) == 1, "the menu closes");
 
         if (shown is PlatformResult<PlatformUnit>.Success)

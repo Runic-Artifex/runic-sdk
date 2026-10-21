@@ -31,15 +31,15 @@ DesktopStatusIconState State() => new(icon, "Runic status icon smoke")
     Tooltip = status == DesktopStatusIconStatus.NeedsAttention ? "Needs attention" : "All quiet",
     Menu =
     [
-        new DesktopMenuCommand("open", "Open window"),
-        new DesktopMenuCommand("daily", "Check daily") { IsChecked = daily },
+        new DesktopMenuItem("Open window", "open"),
+        new DesktopMenuItem("Check daily", "daily") { IsChecked = daily },
         new DesktopMenuSeparator(),
-        new DesktopMenuSubmenu("More",
+        new DesktopMenu("More",
         [
-            new DesktopMenuCommand("attention", "Ask for attention"),
-            new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false },
+            new DesktopMenuItem("Ask for attention", "attention"),
+            new DesktopMenuItem("Unavailable", "disabled") { IsEnabled = false },
         ]),
-        new DesktopMenuCommand("quit", "Quit"),
+        new DesktopMenuItem("Quit", "quit"),
     ],
 };
 
@@ -48,8 +48,8 @@ var quit = new TaskCompletionSource();
 var updates = System.Threading.Channels.Channel.CreateUnbounded<string>();
 statusIcon.Activated += (_, activation) =>
 {
-    Log($"activated {activation.Kind} {activation.MenuItemId ?? "-"} token={(activation.PlatformContext?.ActivationToken is null ? "no" : "yes")}");
-    switch (activation.MenuItemId)
+    Log($"activated {activation.Kind} {activation.CommandId ?? "-"} token={(activation.PlatformContext?.ActivationToken is null ? "no" : "yes")}");
+    switch (activation.CommandId)
     {
         case "daily": daily = !daily; updates.Writer.TryWrite("daily"); break;
         case "attention": status = DesktopStatusIconStatus.NeedsAttention; updates.Writer.TryWrite("attention"); break;

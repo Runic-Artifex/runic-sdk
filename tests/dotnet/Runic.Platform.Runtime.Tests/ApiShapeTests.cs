@@ -81,13 +81,21 @@ internal sealed class ApiShapeTests
         Check(typeof(DesktopStatusIcon).IsAbstract && typeof(DesktopStatusIcon).IsSealed && DesktopStatusIcon.Unavailable(PlatformUnavailableReason.BackendUnavailable) is not null,
             "The status icon factory is the static class DesktopStatusIcon.");
         Check(new DesktopApplicationInfo("a", "A") { IsHidden = true }.IsHidden, "IsHidden");
-        var command = new DesktopMenuCommand("id", "Label") { IsChecked = true };
+        var command = new DesktopMenuItem("Label", "id") { IsChecked = true };
         Check(command.IsEnabled && command.IsChecked == true, "IsEnabled and IsChecked default and set.");
-        Check(new DesktopMenuSubmenu("Label", []).IsEnabled, "DesktopMenuSubmenu.IsEnabled");
+        Check(new DesktopMenu("Label", []).IsEnabled, "DesktopMenu.IsEnabled");
+        // One menu model for the menu bar and status icons: the title comes first, and the base is open (D031.2).
+        Check(ConstructorParameters(typeof(DesktopMenuItem), 2) is [{ Name: "Title" }, { Name: "CommandId" }], "DesktopMenuItem(Title, CommandId)");
+        Check(typeof(DesktopMenuItem).IsSealed && typeof(DesktopMenuItem).BaseType == typeof(DesktopMenuEntry)
+            && typeof(DesktopMenu).BaseType == typeof(DesktopMenuEntry) && typeof(DesktopMenuSeparator).BaseType == typeof(DesktopMenuEntry),
+            "DesktopMenuEntry is the base of every menu entry.");
+        Check(new DesktopStatusIconActivation(DesktopStatusIconActivationKind.MenuItem, "open").CommandId == "open", "DesktopStatusIconActivation.CommandId");
         Check(new DesktopOpenOptions(["org.example"]) { IncludeFiles = true }.IncludeFiles, "IncludeFiles");
         Check(new DesktopIcon { IconName = "folder" }.IconName == "folder", "DesktopIcon.IconName");
-        Check(!HasProperty(typeof(DesktopApplicationInfo), "Hidden") && !HasProperty(typeof(DesktopMenuCommand), "Enabled")
-            && !HasProperty(typeof(DesktopMenuCommand), "Checked") && !HasProperty(typeof(DesktopMenuSubmenu), "Enabled")
+        Check(!HasProperty(typeof(DesktopApplicationInfo), "Hidden") && !HasProperty(typeof(DesktopMenuItem), "Enabled")
+            && !HasProperty(typeof(DesktopMenuItem), "Checked") && !HasProperty(typeof(DesktopMenu), "Enabled")
+            && !HasProperty(typeof(DesktopMenuItem), "Label") && !HasProperty(typeof(DesktopMenuItem), "Id")
+            && !HasProperty(typeof(DesktopStatusIconActivation), "MenuItemId")
             && !HasProperty(typeof(DesktopOpenOptions), "Files") && !HasProperty(typeof(DesktopIcon), "ThemeName"), "The old names are gone.");
     }
 

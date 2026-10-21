@@ -209,7 +209,7 @@ await using var icon = portals.CreateStatusIcon();
 icon.Activated += (_, activation) => { /* worker thread: dispatch to the application */ };
 await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { IconName = "applications-system" }, "My app")
 {
-    Menu = [new DesktopMenuCommand("open", "Open window"), new DesktopMenuSeparator(), new DesktopMenuCommand("quit", "Quit")],
+    Menu = [new DesktopMenuItem("Open window", "open"), new DesktopMenuSeparator(), new DesktopMenuItem("Quit", "quit")],
 });
 ```
 

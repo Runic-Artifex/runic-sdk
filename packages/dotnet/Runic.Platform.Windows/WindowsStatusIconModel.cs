@@ -32,34 +32,37 @@ internal static class WindowsStatusIconModel
         internal string? Choose(uint id) => Commands.TryGetValue(id, out var command) && command.Enabled ? command.CommandId : null;
     }
 
-    internal static Menu BuildMenu(ImmutableArray<DesktopMenuItem> items, Ids ids)
+    internal static Menu BuildMenu(ImmutableArray<DesktopMenuEntry> items, Ids ids)
     {
         var commands = ImmutableDictionary.CreateBuilder<uint, Command>();
         var entries = Build(items, ids, commands);
         return new Menu(entries, commands.ToImmutable());
     }
 
-    private static ImmutableArray<Entry> Build(ImmutableArray<DesktopMenuItem> items, Ids ids, ImmutableDictionary<uint, Command>.Builder commands)
+    private static ImmutableArray<Entry> Build(ImmutableArray<DesktopMenuEntry> items, Ids ids, ImmutableDictionary<uint, Command>.Builder commands)
     {
         var entries = ImmutableArray.CreateBuilder<Entry>(items.Length);
         foreach (var item in items)
         {
             switch (item)
             {
-                case DesktopMenuCommand command:
-                    var entry = new Command(ids.For(command.Id), command.Id, MenuLabel(command.Label), command.IsEnabled, command.IsChecked);
+                case DesktopMenuItem command:
+                    var entry = new Command(ids.For(command.CommandId), command.CommandId, MenuLabel(command.Title), command.IsEnabled, command.IsChecked);
                     commands[entry.Id] = entry;
                     entries.Add(entry);
                     break;
-                case DesktopMenuSubmenu submenu:
-                    entries.Add(new Submenu(MenuLabel(submenu.Label), submenu.IsEnabled, Build(submenu.Items, ids, commands)));
+                case DesktopMenu submenu:
+                    entries.Add(new Submenu(MenuLabel(submenu.Title), submenu.IsEnabled, Build(submenu.Items, ids, commands)));
+                    break;
+                case DesktopMenuSeparator:
+                    entries.Add(new Separator());
                     break;
                 default:
-                    entries.Add(new Separator());
+                    // An entry kind of a later release.
                     break;
             }
         }
-        return entries.MoveToImmutable();
+        return entries.ToImmutable();
     }
 
     // Win32 menus read '&' as a mnemonic prefix; the label is shown as written.

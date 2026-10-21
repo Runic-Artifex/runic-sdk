@@ -44,15 +44,15 @@ internal sealed class StatusIconModelTests
     {
         var menu = MacStatusMenu.Build(
         [
-            new DesktopMenuCommand("open", "Open window"),
-            new DesktopMenuCommand("daily", "Check daily") { IsChecked = true },
+            new DesktopMenuItem("Open window", "open"),
+            new DesktopMenuItem("Check daily", "daily") { IsChecked = true },
             new DesktopMenuSeparator(),
-            new DesktopMenuSubmenu("More",
+            new DesktopMenu("More",
             [
-                new DesktopMenuCommand("attention", "Ask for attention") { IsChecked = false },
-                new DesktopMenuCommand("disabled", "Unavailable") { IsEnabled = false },
+                new DesktopMenuItem("Ask for attention", "attention") { IsChecked = false },
+                new DesktopMenuItem("Unavailable", "disabled") { IsEnabled = false },
             ]) { IsEnabled = false },
-            new DesktopMenuCommand("quit", "Quit_now"),
+            new DesktopMenuItem("Quit_now", "quit"),
         ]);
         Check(menu.Commands.SequenceEqual(["open", "daily", "attention", "disabled", "quit"]), string.Join(",", menu.Commands));
         Check(menu.Entries.Length == 5 && menu.Entries[2].Kind == MacMenuEntryKind.Separator, "Separator expected third.");
