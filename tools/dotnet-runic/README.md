@@ -98,6 +98,10 @@ tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
+The JavaScript runtime passes at the certified version and warns for a newer
+release of the same major version. Node 26 is supported as well, with a
+warning, since the starters and the Runic npm packages that run in Node declare
+`engines.node` `^24.18.0 || ^26.0.0` (0.11).
 
 Doctor checks every Views host adapter the project references, not only one.
 It reads the project's direct package and project references, with the

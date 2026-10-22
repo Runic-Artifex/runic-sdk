@@ -683,6 +683,25 @@ internal sealed class ToolTests
         Equal(DoctorStatus.Pass, report.Checks.Single(check => check.Name == "compatibility-set").Status);
     }
 
+    // D031.3: the starters and the npm packages that run in Node declare ^24.18.0 || ^26.0.0, so doctor accepts
+    // Node 26 with a warning, and still rejects Node 25 and an older Node 24.
+    [Test, DisplayName("doctor accepts Node 26 beside the certified Node 24")]
+    public void DoctorAcceptsNode26()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, null, out CompatibilitySetAuthority authority);
+        DoctorCheck Runtime(string node) => Check(DoctorChecks.InspectAsync(project, "dotnet",
+            new FakeDoctorRuntime(authority.Toolchain) { NodeVersion = node }, CancellationToken.None).GetAwaiter().GetResult(),
+            "javascript-runtime");
+        Equal(DoctorStatus.Pass, Runtime(authority.Toolchain.Node).Status);
+        DoctorCheck node26 = Runtime("v26.12.0");
+        Equal(DoctorStatus.Warning, node26.Status);
+        Contains(node26.Message, "26.12.0 is supported");
+        Equal(DoctorStatus.Failure, Runtime("25.2.0").Status);
+        Equal(DoctorStatus.Failure, Runtime("24.0.0").Status);
+        Contains(Runtime("27.0.0").Remediation ?? string.Empty, "Node 26");
+    }
+
     private static DoctorProjectConfiguration CreateDoctorProject(
         TestWorkspace workspace, string? hostPackage, out CompatibilitySetAuthority authority)
     {
@@ -1542,6 +1561,7 @@ internal sealed class ToolTests
         public Dictionary<string, string> Environment { get; init; } = [];
         public string? WebView2Version { get; init; }
         public string? Gtk4Version { get; init; }
+        public string? NodeVersion { get; init; }
         public HashSet<string> VisualStudioComponents { get; init; } = [];
         // No os-release by default, so remediation does not depend on the machine running the tests.
         public string OsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
@@ -1582,7 +1602,7 @@ internal sealed class ToolTests
             string version = executable switch
             {
                 "dotnet" => toolchain.DotNetSdk,
-                "node" => toolchain.Node,
+                "node" => NodeVersion ?? toolchain.Node,
                 "npm" => toolchain.Npm,
                 _ => throw new InvalidOperationException($"Unexpected executable {executable}"),
             };

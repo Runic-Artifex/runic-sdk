@@ -8,7 +8,7 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vite build && svelte-check --tsconfig ./tsconfig.json",
+    "build": "vite build && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "dev": "vite dev",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },

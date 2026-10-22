@@ -417,9 +417,13 @@ internal static class DoctorChecks
         }
         CommandResult result = await runtime.RunAsync(executable, project.ProjectDirectory, ["--version"], cancellationToken).ConfigureAwait(false);
         string version = result.StandardOutput.Trim().TrimStart('v');
-        if (result.ExitCode != 0 || !IsCompatibleToolVersion(version, baseline))
+        bool compatible = IsCompatibleToolVersion(version, baseline) ||
+            (executableName == "node" && IsCompatibleToolVersion(version, AdditionalNodeBaseline));
+        if (result.ExitCode != 0 || !compatible)
         {
-            checks.Add(Fail("javascript-runtime", $"{executableName} {version} is outside the supported range beginning at {baseline}.", $"Install {executableName} {baseline} or a newer release in the same major version."));
+            checks.Add(Fail("javascript-runtime", $"{executableName} {version} is outside the supported range beginning at {baseline}.", executableName == "node"
+                ? $"Install node {baseline} or a newer Node {baseline.Split('.')[0]} release, or Node {AdditionalNodeBaseline} or a newer Node {AdditionalNodeBaseline.Split('.')[0]} release."
+                : $"Install {executableName} {baseline} or a newer release in the same major version."));
             return null;
         }
         checks.Add(StringComparer.Ordinal.Equals(version, baseline)
@@ -784,6 +788,10 @@ internal static class DoctorChecks
         int separator = version.IndexOfAny(['-', '+']);
         return separator > 0 ? version[..separator] : version;
     }
+
+    // The Runic npm packages that run in Node and the runic-app starters declare engines.node ^24.18.0 || ^26.0.0
+    // (D031.3). The compatibility set certifies Node 24; Node 26 is supported too, with a warning that names it.
+    internal const string AdditionalNodeBaseline = "26.0.0";
 
     private static bool IsCompatibleToolVersion(string actual, string baseline) =>
         Version.TryParse(NormalizeVersion(actual), out Version? actualVersion) &&
