@@ -1,8 +1,32 @@
+using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Runic.Application.Views;
 using Runic.Platform;
 
 namespace Runic.Application.Views.CsWebUi;
+
+/// <summary>Reaches the CS-WebUI window of a Runic Window opened by <see cref="RunicCsWebUiHost"/>.</summary>
+public static class CsWebUiPlatformServices
+{
+    /// <summary>Gets the CS-WebUI window that presents a Runic Window, without naming its ViewModel type.</summary>
+    /// <param name="window">The Window, on any host. It must have opened; it may have closed since.</param>
+    /// <returns>
+    /// The <see cref="CsWebUiBridgeWindow{TViewModel}.Window"/> of <see cref="IRunicWindow.Host"/>, or
+    /// <see langword="null"/> for a Window on another host, such as Runic Desktop.
+    /// </returns>
+    /// <remarks>
+    /// The counterpart of <c>DesktopPlatformServices.GetWindow</c> on Runic Desktop, for code that holds an
+    /// <see cref="IRunicWindow"/>, such as a navigation service, and needs WebUI's own window API. The window
+    /// belongs to the host: do not close or dispose it; close the Runic Window instead.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
+    public static WebUiWindow? GetNativeWindow(IRunicWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return window.Host is ICsWebUiNativeWindowSource source ? source.NativeWindow : null;
+    }
+}
 
 /// <summary>Registers window platform services for CS-WebUI applications.</summary>
 public static class CsWebUiPlatformServiceCollectionExtensions

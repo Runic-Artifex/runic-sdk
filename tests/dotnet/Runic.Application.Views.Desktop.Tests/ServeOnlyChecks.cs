@@ -336,6 +336,12 @@ internal sealed class ServeOnlyChecks
                     ?? throw new InvalidOperationException($"GetSurface returned no surface ({mode}).");
                 Check(ReferenceEquals(surface, ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Surface),
                     $"GetSurface returned another surface than the Window's ({mode}).");
+                // I-022: the presentation without the ViewModel type; a served Window has none.
+                var presentation = DesktopPlatformServices.GetWindow(window);
+                Check(mode == "served"
+                        ? presentation is null
+                        : ReferenceEquals(presentation, ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Window),
+                    $"GetWindow returned {presentation?.ToString() ?? "null"} ({mode}).");
                 using var icon = await client.GetAsync(new Uri(surface.Url, "icons/app.svg"), deadline.Token);
                 Check(icon.IsSuccessStatusCode && icon.Content.Headers.ContentType?.MediaType == "image/svg+xml",
                     $"The Window did not serve its resource ({mode}): {icon.StatusCode}.");

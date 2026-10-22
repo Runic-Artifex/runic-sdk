@@ -483,6 +483,43 @@ internal sealed class WindowServiceChecks
     }
 
     // Reads the identity of portal notifications without making a request.
+    // I-023: the applicationId overloads pass the ID to the provider and check it as AddRunicPlatformServices does.
+    [Test]
+    public void SecretStoreAndApplicationDatabaseTakeAnApplicationId()
+    {
+        var store = DesktopPlatformServices.CreateSecretStore("org.example.Notes");
+        var applications = DesktopPlatformServices.CreateApplications("org.example.Notes");
+        Require(store.GetType() == DesktopPlatformServices.CreateSecretStore().GetType()
+            && applications.GetType() == DesktopPlatformServices.CreateApplications().GetType(),
+            $"The overloads created other providers: {store.GetType().FullName}, {applications.GetType().FullName}.");
+        if (OperatingSystem.IsLinux())
+        {
+            Require(PortalIdentity(store) == "org.example.Notes" && PortalIdentity(applications) == "org.example.Notes",
+                "The Linux secret store or application database did not use the application ID.");
+            Require(PortalIdentity(DesktopPlatformServices.CreateSecretStore()) is null
+                && PortalIdentity(DesktopPlatformServices.CreateApplications()) is null,
+                "The overloads without an ID did not leave the identity to the portal.");
+            Require(Catch(() => DesktopPlatformServices.CreateSecretStore("Notes")) is ArgumentException
+                && Catch(() => DesktopPlatformServices.CreateApplications("Notes")) is ArgumentException,
+                "Linux accepted an application ID that is not a reverse-DNS desktop ID.");
+        }
+        Require(Catch(() => DesktopPlatformServices.CreateSecretStore(" ")) is ArgumentException
+            && Catch(() => DesktopPlatformServices.CreateApplications("")) is ArgumentException
+            && Catch(() => DesktopPlatformServices.CreateSecretStore((string)null!)) is ArgumentNullException,
+            "An empty application ID was accepted.");
+    }
+
+    // The ApplicationId of the PortalApplication a Linux provider keeps.
+    private static string? PortalIdentity(object provider)
+    {
+        foreach (var field in provider.GetType().GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic))
+        {
+            if (field.FieldType.FullName == "Runic.Platform.Linux.Portal.PortalApplication")
+                return field.GetValue(provider)?.GetType().GetProperty("ApplicationId")?.GetValue(field.GetValue(provider)) as string;
+        }
+        throw new InvalidOperationException($"{provider.GetType().FullName} keeps no PortalApplication.");
+    }
+
     private static bool PortalApplicationId(IDesktopNotifications notifications, out string? id)
     {
         id = null;

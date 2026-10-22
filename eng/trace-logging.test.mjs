@@ -42,6 +42,9 @@ export const traceAllowList = [
   // A DesktopWindow.FilesDropped handler that threw (event 3012).
   { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
     fragment: 'TraceError($"A DesktopWindow.FilesDropped handler failed with' },
+  // A DesktopWindow.Closed handler that threw (event 3013).
+  { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
+    fragment: 'TraceError($"A DesktopWindow.Closed handler failed with' },
   ...[
     'TraceWarning($"{BridgeHandshakeExpiredCode}: Bridge WebSocket {connectionId} sent no token check',
     'TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.")',

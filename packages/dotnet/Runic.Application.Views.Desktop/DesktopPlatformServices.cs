@@ -301,14 +301,36 @@ public static partial class DesktopPlatformServices
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
-    public static IDesktopSecretStore CreateSecretStore() => CreateSecretStore(null);
+    public static IDesktopSecretStore CreateSecretStore() => CreateSecretStore((ILogger?)null);
 
-    internal static IDesktopSecretStore CreateSecretStore(ILogger? logger)
+    /// <summary>Creates secret storage for the application identified by <paramref name="applicationId"/>.</summary>
+    /// <param name="applicationId">
+    /// The application's identity, as for <see cref="CreateNotifications(string?)"/>: on Linux the reverse-DNS ID of its
+    /// installed desktop entry, which the provider's portal requests and diagnostics carry; on Windows its
+    /// AppUserModelID. The Windows and macOS stores do not use it today, and Linux stores secrets the same way with or
+    /// without it, so secrets stored through <see cref="CreateSecretStore()"/> stay readable.
+    /// </param>
+    /// <returns>A secret store; it holds no native resources between requests and needs no disposal.</returns>
+    /// <remarks>
+    /// Otherwise the same as <see cref="CreateSecretStore()"/>, which
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection, string)"/>
+    /// also registers; to register this one, add it to the services before calling that method.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
+    public static IDesktopSecretStore CreateSecretStore(string applicationId)
+    {
+        ValidateApplicationId(applicationId);
+        return CreateSecretStore(applicationId, null);
+    }
+
+    internal static IDesktopSecretStore CreateSecretStore(ILogger? logger) => CreateSecretStore(null, logger);
+
+    internal static IDesktopSecretStore CreateSecretStore(string? applicationId, ILogger? logger)
     {
         IDesktopSecretStore? store = null;
         if (OperatingSystem.IsWindows()) store = Optional(CreateWindowsSecretStore);
 #if RUNIC_PORTABLE_PLATFORMS
-        else if (OperatingSystem.IsLinux()) store = CreatePortalSecretStore(logger);
+        else if (OperatingSystem.IsLinux()) store = CreatePortalSecretStore(applicationId, logger);
         else if (OperatingSystem.IsMacOS()) store = CreateMacOSSecretStore();
 #endif
         return store ?? DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
@@ -326,14 +348,37 @@ public static partial class DesktopPlatformServices
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
-    public static IDesktopApplications CreateApplications() => CreateApplications(null);
+    public static IDesktopApplications CreateApplications() => CreateApplications((ILogger?)null);
 
-    internal static IDesktopApplications CreateApplications(ILogger? logger)
+    /// <summary>Creates the desktop's application database for the application identified by <paramref name="applicationId"/>.</summary>
+    /// <param name="applicationId">
+    /// The application's identity, as for <see cref="CreateNotifications(string?)"/>: on Linux the reverse-DNS ID of its
+    /// installed desktop entry, which the portal registers when a request first connects to it, as notifications do; on
+    /// Windows its AppUserModelID. The Windows and macOS providers do not use it today.
+    /// </param>
+    /// <returns>An application database; it holds no native resources between requests and needs no disposal.</returns>
+    /// <remarks>
+    /// Otherwise the same as <see cref="CreateApplications()"/>, which
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection, string)"/>
+    /// also registers; to register this one, add it to the services before calling that method. On Linux a portal
+    /// request then reports <c>portal-identity-registration-failed</c> when no matching desktop entry is installed;
+    /// during development use <see cref="CreateApplications()"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
+    public static IDesktopApplications CreateApplications(string applicationId)
+    {
+        ValidateApplicationId(applicationId);
+        return CreateApplications(applicationId, null);
+    }
+
+    internal static IDesktopApplications CreateApplications(ILogger? logger) => CreateApplications(null, logger);
+
+    internal static IDesktopApplications CreateApplications(string? applicationId, ILogger? logger)
     {
         IDesktopApplications? applications = null;
         if (OperatingSystem.IsWindows()) applications = Optional(CreateWindowsApplications);
 #if RUNIC_PORTABLE_PLATFORMS
-        else if (OperatingSystem.IsLinux()) applications = CreatePortalApplications(logger);
+        else if (OperatingSystem.IsLinux()) applications = CreatePortalApplications(applicationId, logger);
         else if (OperatingSystem.IsMacOS()) applications = CreateMacOSApplications();
 #endif
         return applications ?? DesktopApplications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
@@ -346,8 +391,8 @@ public static partial class DesktopPlatformServices
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopApplications CreatePortalApplications(ILogger? logger) =>
-        new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateApplications();
+    private static IDesktopApplications CreatePortalApplications(string? applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateApplications();
 
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -361,13 +406,24 @@ public static partial class DesktopPlatformServices
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopSecretStore CreatePortalSecretStore(ILogger? logger) =>
-        new PortalApplication(null, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateSecretStore();
+    private static IDesktopSecretStore CreatePortalSecretStore(string? applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateSecretStore();
 
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSecretStore CreateMacOSSecretStore() => MacOSPlatformProvider.CreateSecretStore();
 #endif
+
+    // The checks of AddRunicPlatformServices(services, applicationId) for the running operating system.
+    internal static void ValidateApplicationId(string applicationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        if (OperatingSystem.IsWindows() && (applicationId.Length > 128 || applicationId.Contains('\0')))
+            throw new ArgumentException("Supply the AppUserModelID the application registers, at most 128 characters.", nameof(applicationId));
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) ValidatePortalApplicationId(applicationId);
+#endif
+    }
 
     /// <summary>Creates the user's trash from the provider for the operating system.</summary>
     /// <returns>A trash; it holds no native resources between requests and needs no disposal.</returns>
@@ -623,6 +679,26 @@ public static partial class DesktopPlatformServices
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
             new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+    }
+
+    /// <summary>Gets the Desktop window that presents an open Runic Window, without naming its ViewModel type.</summary>
+    /// <param name="window">The Window, on any host. It must have opened; it may have closed since.</param>
+    /// <returns>
+    /// The <see cref="DesktopBridgeWindow{TViewModel}.Window"/> of <see cref="IRunicWindow.Host"/>: the embedded window, or
+    /// the installed browser after a fallback (<see cref="DesktopWindow.Browser"/> tells which). <see langword="null"/> for a
+    /// Window on another host, such as CS-WebUI, and for one served under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, which has
+    /// no presentation.
+    /// </returns>
+    /// <remarks>
+    /// For example, to hide the window, subscribe to <see cref="DesktopWindow.Closed"/> or read
+    /// <see cref="DesktopWindow.Capabilities"/>. After the window closes it is the closed presentation until the Window is
+    /// disposed. <see cref="RunicDesktopHost.GetSurface"/> returns the surface the same way.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
+    public static DesktopWindow? GetWindow(IRunicWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return window.Host is IDesktopNativeOwnerSource source ? source.WindowOrNull : null;
     }
 
     private static readonly PlatformResult<PlatformUnit> Presented = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
@@ -978,12 +1054,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services, string applicationId)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
-        if (OperatingSystem.IsWindows() && (applicationId.Length > 128 || applicationId.Contains('\0')))
-            throw new ArgumentException("Supply the AppUserModelID the application registers, at most 128 characters.", nameof(applicationId));
-#if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsLinux()) DesktopPlatformServices.ValidatePortalApplicationId(applicationId);
-#endif
+        DesktopPlatformServices.ValidateApplicationId(applicationId);
         return services.AddPlatformServices(applicationId);
     }
 

@@ -34,6 +34,14 @@ public sealed class ConfigurationValidationTests
     [SupportedOSPlatform("linux")]
     public async Task Gtk4PreflightReportsEachUnsupportedOption(string option, DesktopWindowOptions requested)
     {
+        // As on Wayland, where GTK 4 cannot position a window.
+        using var wayland = new GdkEnvironment("wayland", "wayland-0", null);
+        await Gtk4PreflightReportsUnsupportedOptionAsync(option, requested);
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static async Task Gtk4PreflightReportsUnsupportedOptionAsync(string option, DesktopWindowOptions requested)
+    {
         await using var host = await StartGtk4HostAsync();
         var options = requested with { HighContrast = requested.HighContrast ?? false };
 
@@ -51,6 +59,53 @@ public sealed class ConfigurationValidationTests
         Assert.Contains($"window-option-unsupported: {diagnostic.Message}", error.Message);
     }
 
+
+    // I-146: GTK 4 positions windows on X11, and on Wayland still rejects a position. Before GTK opens its display,
+    // validation follows GDK's backend order: GDK_BACKEND's entries, by default Wayland before X11.
+    [Test]
+    [SupportedOSPlatform("linux")]
+    public async Task Gtk4AcceptsAPositionOnlyOnX11()
+    {
+        using (new GdkEnvironment("wayland,x11", "wayland-0", ":0"))
+        await using (var host = await StartGtk4HostAsync())
+        {
+            Assert.False(new Gtk4WindowHostFactory().Capabilities.HasFlag(DesktopWindowCapabilities.Move));
+            Assert.Contains(host.GetPresentationPreflight(new DesktopWindowOptions { HighContrast = false, X = 10, Y = 20 }).OptionDiagnostics,
+                static item => item.Option == "DesktopWindowOptions.X" && item.Code == "window-option-unsupported");
+        }
+        // The X11 backend's exports and Xlib are needed, so this half runs where the GTK 4 runtime is installed.
+        if (!new Gtk4WindowHostFactory().IsSupported) return;
+        foreach (var (backends, wayland) in new[] { ((string?)null, (string?)null), ("x11", "wayland-0") })
+        {
+            using (new GdkEnvironment(backends, wayland, ":0"))
+            await using (var host = await StartGtk4HostAsync())
+            {
+                Assert.True(new Gtk4WindowHostFactory().Capabilities.HasFlag(DesktopWindowCapabilities.Move));
+                Assert.Empty(host.GetPresentationPreflight(new DesktopWindowOptions { HighContrast = false, X = 10, Y = 20 }).OptionDiagnostics);
+                // Centering stays the window manager's.
+                var centered = host.GetPresentationPreflight(new DesktopWindowOptions { HighContrast = false, Centered = true });
+                Assert.Equal("DesktopWindowOptions.Centered", Assert.Single(centered.OptionDiagnostics).Option);
+            }
+        }
+    }
+
+    // Sets the variables GDK chooses its backend by, for one case; the suite runs its cases one at a time.
+    private sealed class GdkEnvironment : IDisposable
+    {
+        private static readonly string[] Names = ["GDK_BACKEND", "WAYLAND_DISPLAY", "DISPLAY"];
+        private readonly string?[] _saved = Names.Select(Environment.GetEnvironmentVariable).ToArray();
+
+        internal GdkEnvironment(string? backends, string? waylandDisplay, string? display)
+        {
+            string?[] values = [backends, waylandDisplay, display];
+            for (var index = 0; index < Names.Length; index++) Environment.SetEnvironmentVariable(Names[index], values[index]);
+        }
+
+        public void Dispose()
+        {
+            for (var index = 0; index < Names.Length; index++) Environment.SetEnvironmentVariable(Names[index], _saved[index]);
+        }
+    }
 
     [Test]
     [SupportedOSPlatform("linux")]

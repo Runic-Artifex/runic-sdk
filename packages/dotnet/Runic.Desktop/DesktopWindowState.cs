@@ -50,8 +50,9 @@ public sealed record DesktopWindowPlacement
 /// reports it; <see cref="Width"/> and <see cref="Height"/> are the content size, without decorations. On Wayland the
 /// position is <see langword="null"/>: Wayland reports none.</description></item>
 /// <item><term>Linux, GTK 4</term><description>
-/// <see cref="Width"/> and <see cref="Height"/> are the content size in logical pixels. The position is always
-/// <see langword="null"/>: GTK 4 neither reports nor sets the position of a top-level window.</description></item>
+/// <see cref="Width"/> and <see cref="Height"/> are the content size in logical pixels. On X11 <see cref="X"/> and
+/// <see cref="Y"/> are the top-left corner of the visible frame in logical pixels, which Runic reads through Xlib; on
+/// Wayland the position is <see langword="null"/>: GTK 4 has no position API there.</description></item>
 /// </list>
 /// <para>
 /// A minimized window keeps the state it had before it was minimized.

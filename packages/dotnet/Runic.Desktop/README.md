@@ -217,11 +217,34 @@ pickers and clipboard, register the matching GTK platform provider and the
 [portal service](../Runic.Platform.Linux.Portal/README.md). Runic.Application.Views.Desktop
 selects the provider for the running backend from `services.AddRunicPlatformServices()`.
 
-## Showing a window and its native handle
+## Showing, hiding, closing and the native handle
 
 `DesktopWindowOptions.Hidden` opens an embedded window without showing it, and
-an installed browser headless. `DesktopWindow.FocusAsync` shows a hidden embedded
-window and gives it focus; `DesktopWindow` has no other show or hide member.
+an installed browser headless. `DesktopWindow.SetVisibleAsync(false)`, or
+`HideAsync`, hides an open embedded window and `SetVisibleAsync(true)` shows it
+again; `FocusAsync` shows it and gives it focus. Every embedded window reports
+`DesktopWindowCapabilities.Visibility`; an installed browser cannot be hidden.
+A hidden window stays open: its page keeps running, its Bridge stays connected,
+`IsOpen` stays `true` and `WaitForCloseAsync` keeps waiting. Only the
+application can show it again, so keep a way to reach it, such as a status icon.
+Whether showing also activates the window is up to the platform and window
+manager; `FocusAsync` always does.
+
+`DesktopWindow.Closed` is raised once after the window has closed, whatever
+closed it: the user, `RequestCloseAsync`, `CloseAsync`, disposing the surface or
+host, or the user closing an installed browser. It is the event counterpart of
+`WaitForCloseAsync`, like `Window.Closed` in WPF and Avalonia. It runs on the
+thread pool; `IsOpen` is then `false` and `State` holds the last state. A
+handler that throws is logged as event 3013, `WindowClosedHandlerFailed`.
+Watching starts when the first handler is added. `WaitForCloseAsync` also waits
+for the native window's resources to be released.
+
+```csharp
+var window = await surface.OpenWindowAsync(new DesktopWindowOptions());
+window.Closed += (_, _) => settings.Save(window.State?.Placement);
+await window.HideAsync();             // to the status icon
+await window.SetVisibleAsync(true);   // back
+```
 
 `DesktopWindow.NativeHandle` is the top-level window of an open embedded window,
 or zero for an installed browser or a closed window. Its kind depends on the
@@ -344,7 +367,8 @@ same place or size.
 | macOS WKWebView | AppKit points: the frame's bottom-left corner, measured up from the main screen's bottom, and the content size | Yes (zoomed) | Yes | The screens' visible frames (without the menu bar and Dock), title bar included |
 | Linux GTK 3 (X11) | Logical pixels: the frame's top-left corner and the content size | Yes | Yes | The GDK monitor work areas |
 | Linux GTK 3 (Wayland) | Content size only; the position is `null` | Yes | Yes | The largest monitor's work area, size only |
-| Linux GTK 4 | Content size only; the position is always `null` | Yes | Yes | The largest monitor, size only; see [Runic.Desktop.Gtk4](../Runic.Desktop.Gtk4/README.md) |
+| Linux GTK 4 (X11) | Logical pixels: the visible frame's top-left corner and the content size | Yes | Yes | The monitor work areas; see [Runic.Desktop.Gtk4](../Runic.Desktop.Gtk4/README.md) |
+| Linux GTK 4 (Wayland) | Content size only; the position is `null` | Yes | Yes | The largest monitor, size only |
 | Installed browser | None (`State` is `null`) | No | No | Not fitted: the saved size and position open as `Width`, `Height`, `X` and `Y`; `Validate` reports the ignored maximized state |
 | Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowStateHost` | Host-defined | Host-defined | Host-defined, from `DesktopWindowHostOptions.Placement` |
 
