@@ -184,8 +184,9 @@ public interface IDesktopVolumes : IAsyncDisposable
     /// <summary>Unlocks a locked encrypted volume with a passphrase and returns it unlocked.</summary>
     /// <param name="volumeId">The volume's <see cref="DesktopVolume.Id"/>; its <see cref="DesktopVolume.UnlockMethod"/>
     /// is <see cref="DesktopVolumeUnlockMethod.Passphrase"/>.</param>
-    /// <param name="passphrase">The passphrase. Runic copies it only into native buffers it clears after use; clear your
-    /// own copy once the call returns.</param>
+    /// <param name="passphrase">The passphrase. Runic keeps no copy after the call: macOS writes it to <c>diskutil</c>'s
+    /// standard input from a buffer Runic clears, Linux sends it to UDisks2 over the system bus. Clear your own copy
+    /// once the call returns.</param>
     /// <param name="cancellationToken">Cancels waiting for the result; an authorization prompt the desktop already showed may stay open.</param>
     /// <returns>
     /// The unlocked volume. On Linux this is the cleartext filesystem, whose <see cref="DesktopVolume.Id"/> differs from
