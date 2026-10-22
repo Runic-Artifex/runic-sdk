@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -18,7 +19,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 {
     private const string BridgePath = "/webui.js";
     private const string DesktopBootstrapPath = "/runic-desktop.js";
-    private const int ReleasedBindingMemory = 256;
+    // Released names are remembered in groups: the names released in one run, with no binding registered in between,
+    // such as all routes of a content tree a navigation released. A group is forgotten whole, oldest first, once more
+    // than ReleasedGroupMemory groups or ReleasedNameMemory names are remembered; the newest group is always kept.
+    internal const int ReleasedGroupMemory = 256;
+    internal const int ReleasedNameMemory = 16_384;
     // The reply to a late call of a recently released capability (Views protocol 3).
     internal const string ReleasedCapabilityReply =
         "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
@@ -34,10 +39,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private static readonly AsyncLocal<WebUiWindow?> CallbackWindow = new();
 
     private readonly ConcurrentDictionary<string, BindingRegistration> _bindings = new(StringComparer.Ordinal);
-    // Bindings released lately, by name. Only a call that races a release matters, so the memory is bounded.
+    // Bindings released lately, by name, and the group each was last released in. Only a call that races a release
+    // matters, so the memory is bounded; a late call to a forgotten name is reported as not admitted.
     private readonly object _releasedGate = new();
-    private readonly HashSet<string> _releasedBindings = new(StringComparer.Ordinal);
-    private readonly Queue<string> _releasedBindingOrder = new();
+    private readonly Dictionary<string, ReleasedGroup> _releasedBindings = new(StringComparer.Ordinal);
+    private readonly Queue<ReleasedGroup> _releasedGroups = new();
+    private ReleasedGroup? _openReleasedGroup;
+    // Names recorded by the remembered groups, including names released again in a newer group.
+    private int _releasedNameCount;
     // Connection observers are not bindings: the page never learns about them, so
     // observing connections does not turn on the bridge's all-events mode.
     private readonly object _connectionObserverGate = new();
@@ -1794,17 +1803,54 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         lock (_releasedGate)
         {
-            if (!_releasedBindings.Add(element)) return;
-            _releasedBindingOrder.Enqueue(element);
-            while (_releasedBindingOrder.Count > ReleasedBindingMemory)
-                _releasedBindings.Remove(_releasedBindingOrder.Dequeue());
+            // Every registration takes a new id, so an unchanged id means no binding was registered since the open
+            // group began: this release belongs to the same run, such as the cascade that releases one content tree.
+            var lastRegistration = Volatile.Read(ref _nextRegistrationId);
+            var group = _openReleasedGroup;
+            if (group is null || group.LastRegistration != lastRegistration)
+            {
+                group = new ReleasedGroup(lastRegistration);
+                _releasedGroups.Enqueue(group);
+                _openReleasedGroup = group;
+            }
+            ref var owner = ref CollectionsMarshal.GetValueRefOrAddDefault(_releasedBindings, element, out _);
+            if (ReferenceEquals(owner, group)) return;
+            // A name released again moves to the newest group; its entry in an older group no longer owns it.
+            owner = group;
+            group.Names.Add(element);
+            _releasedNameCount++;
+            // Whole groups are forgotten, oldest first; the newest is kept whatever its size, so one large release
+            // never forgets its own names. Its size is bounded by the bindings registered before the run began.
+            while (_releasedGroups.Count > ReleasedGroupMemory
+                || (_releasedNameCount > ReleasedNameMemory && _releasedGroups.Count > 1))
+            {
+                var forgotten = _releasedGroups.Dequeue();
+                _releasedNameCount -= forgotten.Names.Count;
+                foreach (var name in forgotten.Names)
+                {
+                    if (_releasedBindings.TryGetValue(name, out var current) && ReferenceEquals(current, forgotten))
+                        _releasedBindings.Remove(name);
+                }
+            }
         }
     }
 
-    // Only consulted for a name with no binding, so a rebound name is served by its new registration.
-    private bool WasRecentlyReleased(string element)
+    // Test seam: the remembered groups and names.
+    internal (int Groups, int Names) ReleasedMemory
     {
-        lock (_releasedGate) return _releasedBindings.Contains(element);
+        get { lock (_releasedGate) return (_releasedGroups.Count, _releasedBindings.Count); }
+    }
+
+    private sealed class ReleasedGroup(long lastRegistration)
+    {
+        public long LastRegistration { get; } = lastRegistration;
+        public List<string> Names { get; } = [];
+    }
+
+    // Only consulted for a name with no binding, so a rebound name is served by its new registration.
+    internal bool WasRecentlyReleased(string element)
+    {
+        lock (_releasedGate) return _releasedBindings.ContainsKey(element);
     }
 
     // The page chooses the name: keep it short and printable in a diagnostic.
