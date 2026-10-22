@@ -53,6 +53,7 @@ public static class RunicWindowTestHost
             TimeProvider = options.TimeProvider,
             CreateId = options.CreateId,
             IncludeFailureDetail = options.IncludeFailureDetail,
+            MaximumInputBytes = options.MaximumInputBytes,
             PublicationTimeout = options.PublicationTimeout,
         });
     }

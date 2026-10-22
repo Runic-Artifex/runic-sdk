@@ -150,12 +150,21 @@ Protocol 3 defines these reasons:
 | `reason` | `kind` | Sent when |
 | --- | --- | --- |
 | `unavailable` | `rejected` | A command's `CanExecute` is false. |
-| `invalid-input` | `rejected` | A setter value, checked write or command argument does not decode, including a number outside its type's range, a number string longer than 4 096 characters or a value longer than 64 KiB (65 536 UTF-16 code units), or the setter or command rejects it with `ArgumentException`, `FormatException` or `JsonException` (a setter also with `OverflowException`). |
+| `invalid-input` | `rejected` | A setter value, checked write or command argument does not decode, including a number outside its type's range, a number string longer than 4 096 characters or an input over the window's input limit (below), or the setter or command rejects it with `ArgumentException`, `FormatException` or `JsonException` (a setter also with `OverflowException`). |
 | `unresolved-key` | `rejected` | Reserved for a command parameter resolved from a wire key that resolves to nothing. No release sends it yet. |
 
 ```json
 { "ok": false, "state": { "revision": 12 }, "error": { "kind": "rejected", "message": "Delete is unavailable.", "reason": "unavailable" } }
 ```
+
+A window decodes Bridge inputs up to one input limit, counted in UTF-8 bytes:
+setter values, command arguments, checked writes, operation starts, and
+interaction requests and replies. The default is 1 MiB (1 048 576 bytes); a host
+or window can set it between 1 KiB and 64 MiB
+(`WindowContentSessionOptions.MaximumInputBytes`, `RunicWindowOptions.MaximumInputBytes`
+and the host options' default). A larger input is `invalid-input` (an operation
+start answers `rejected`, an interaction route `invalid-request`) and never
+reaches the model.
 
 Operation admissions keep their own `{kind, reason}` shape (see
 [Operations](#operations)), whose `reason` can be a sentence. In development (`IncludeFailureDetail`, a window option), an error caused by an exception
@@ -370,7 +379,7 @@ reaches the browser. A request ends when its scope's token or the navigation
 hook's token is cancelled, its presentation unmounts or disconnects, or the
 window closes; the awaiting interaction then fails. Interactions time out after
 two minutes by default (at most ten); a window holds at most 32 pending requests,
-8 per presentation, and payloads up to 64 KiB.
+8 per presentation, and payloads up to the window's input limit; a larger request or reply is `invalid-request`.
 
 ## Model context
 

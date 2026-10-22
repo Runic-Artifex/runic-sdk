@@ -1,3 +1,5 @@
 #nullable enable
 Runic.Application.Views.CsWebUi.CsWebUiPlatformServices
 static Runic.Application.Views.CsWebUi.CsWebUiPlatformServices.GetNativeWindow(Runic.Application.Views.IRunicWindow! window) -> CsWebUi.WebUiWindow?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumInputBytes.get -> int?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumInputBytes.init -> void

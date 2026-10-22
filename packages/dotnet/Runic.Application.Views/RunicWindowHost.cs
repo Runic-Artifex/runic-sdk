@@ -108,6 +108,13 @@ public sealed record RunicWindowOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// The largest Bridge input of the window, in UTF-8 bytes
+    /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>), between 1 KiB and 64 MiB.
+    /// <see langword="null"/>, the default, uses the host's default, or else 1 MiB. Hosts read it when the window opens.
+    /// </summary>
+    public int? MaximumInputBytes { get; init; }
+
+    /// <summary>
     /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
     /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
     /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
@@ -144,6 +151,7 @@ public sealed record RunicWindowOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(StartPage, nameof(StartPage));
         if (Width is <= 0) throw new ArgumentOutOfRangeException(nameof(Width), Width, "The width must be positive.");
         if (Height is <= 0) throw new ArgumentOutOfRangeException(nameof(Height), Height, "The height must be positive.");
+        BridgeInputLimit.ThrowIfInvalid(MaximumInputBytes, nameof(MaximumInputBytes));
     }
 }
 

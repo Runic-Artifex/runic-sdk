@@ -87,6 +87,7 @@ public sealed class WindowContentSession : IDisposable
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
+        MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
@@ -231,6 +232,9 @@ public sealed class WindowContentSession : IDisposable
 
     /// <summary>Whether this window's Bridge error replies carry exception detail, read once when it opens.</summary>
     internal bool IncludesFailureDetail { get; }
+
+    /// <summary>The largest Bridge input in UTF-8 bytes (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>).</summary>
+    internal int MaximumInputBytes { get; }
 
     // Content and interaction request ids. A custom source must keep them
     // unique, because an id names a route.

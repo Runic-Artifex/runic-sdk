@@ -11,3 +11,5 @@ Runic.Application.Testing.RunicOperationStreamPage.Kind.get -> Runic.Application
 Runic.Application.Testing.RunicPathWatchTester.Dispose() -> void
 Runic.Application.Testing.RunicTestOperation.ReadStream(long cursor = 0) -> Runic.Application.Testing.RunicOperationStreamPage!
 override Runic.Application.Testing.RunicOperationStreamPage.ToString() -> string!
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.get -> int?
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.init -> void

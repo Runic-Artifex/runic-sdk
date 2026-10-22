@@ -91,4 +91,11 @@ public sealed record RunicDesktopHostOptions
     /// precedence. Detail can contain file paths and application data. The host reads it when each Window opens.
     /// </remarks>
     public bool? IncludeFailureDetail { get; init; }
+
+    /// <summary>
+    /// The largest Bridge input, in UTF-8 bytes, of Windows whose <see cref="RunicWindowOptions.MaximumInputBytes"/>
+    /// is <see langword="null"/> (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>), between 1 KiB and
+    /// 64 MiB. <see langword="null"/>, the default, is 1 MiB. The host reads it when each Window opens.
+    /// </summary>
+    public int? MaximumInputBytes { get; init; }
 }

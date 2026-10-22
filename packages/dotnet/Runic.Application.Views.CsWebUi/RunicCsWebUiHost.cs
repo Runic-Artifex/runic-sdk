@@ -66,9 +66,15 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         ConfigureWindow = options.ConfigureWindow;
         ShowWindow = options.ShowWindow;
         _includeFailureDetail = options.IncludeFailureDetail;
+        // The range of WindowContentSessionOptions.MaximumInputBytes, checked before a Window opens.
+        if (options.MaximumInputBytes is < 1_024 or > 67_108_864)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
+                "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
+        _maximumInputBytes = options.MaximumInputBytes;
     }
 
     private readonly bool? _includeFailureDetail;
+    private readonly int? _maximumInputBytes;
 
     private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
 
@@ -198,6 +204,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
                 IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
+                MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
             });
             var session = content;
             // Only the all-events binding receives disconnects. runic-cswebui.js

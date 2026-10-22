@@ -6,25 +6,105 @@ namespace Runic.Application.Testing.Tests;
 
 internal sealed class BridgeLimitsTests
 {
-    private const int MaximumPayload = 64 * 1024;
+    private const int DefaultLimit = WindowContentSessionOptions.DefaultMaximumInputBytes;
 
     [Test]
-    public void OversizedSetterAndCommandValuesAreRejected()
+    public void SetterAndCommandValuesShareTheDefaultLimit()
     {
         var model = new BridgeLimitsViewModel();
         using var host = Host(model);
         var route = host.RootRoute;
-        var large = new string('x', MaximumPayload + 1);
+        var large = new string('x', DefaultLimit + 1);
 
         RequireRejected(host.Transport.Call($"{route}SetText", new(StringValue: large)), "invalid-input",
-            "A setter value over 64 KiB was not rejected.");
-        Require(model.Text.Length == 0, "A setter value over 64 KiB was applied.");
-        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('x', MaximumPayload))),
-            "A setter value of 64 KiB was refused.");
+            "A setter value over 1 MiB was not rejected.");
+        Require(model.Text.Length == 0, "A setter value over 1 MiB was applied.");
+        // The limit counts UTF-8 bytes: 600 000 two-byte characters are 1.2 MB.
+        RequireRejected(host.Transport.Call($"{route}SetText", new(StringValue: new string('é', 600_000))), "invalid-input",
+            "A setter value of 1.2 MB in UTF-8 was not rejected.");
+        // Above the former 64 KiB limit of checked writes.
+        RequireOk(host.Transport.Call($"{route}WriteText", new(StringValue: CheckedWrite(model.Text, new string('y', 100_000)))),
+            "A checked write of 100 KB was refused.");
+        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('x', DefaultLimit))),
+            "A setter value of 1 MiB was refused.");
+        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('y', 100_000))),
+            "A setter value of 100 KB was refused.");
 
         RequireRejected(host.Transport.Call($"{route}Echo", new(StringValue: JsonSerializer.Serialize(large))), "invalid-input",
-            "A command argument over 64 KiB was not rejected.");
-        Require(model.Text.Length == MaximumPayload, "A command argument over 64 KiB ran the command.");
+            "A command argument over 1 MiB was not rejected.");
+        Require(model.Text.Length == 100_000, "A command argument over 1 MiB ran the command.");
+    }
+
+    [Test]
+    public void ALoweredLimitAppliesToEveryInput()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model, maximumInputBytes: 4_096);
+        var route = host.RootRoute;
+        var over = new string('x', 4_097);
+
+        RequireRejected(host.Transport.Call($"{route}SetText", new(StringValue: over)), "invalid-input",
+            "A setter value over a lowered limit was not rejected.");
+        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('x', 4_096))),
+            "A setter value at a lowered limit was refused.");
+        RequireRejected(host.Transport.Call($"{route}WriteText", new(StringValue: CheckedWrite(model.Text, over))), "invalid-input",
+            "A checked write over a lowered limit was not rejected.");
+        RequireRejected(host.Transport.Call($"{route}Echo", new(StringValue: JsonSerializer.Serialize(over))), "invalid-input",
+            "A command argument over a lowered limit was not rejected.");
+        Require(model.Text.Length == 4_096, "An input over a lowered limit changed the model.");
+
+        // An interaction reply is limited too: invalid before its identity is looked at.
+        var reply = JsonSerializer.Serialize(new
+        {
+            kind = "answered", requestId = "unknown", route, presentationId = "page:1", ownerEpoch = 1, name = "confirm",
+            contract = "c", output = new string('z', 4_096),
+        });
+        Require(host.Transport.Call(BridgeInteractionRouter.ReplyRoute, new(StringValue: reply)).Contains("invalid-request"),
+            "An interaction reply over a lowered limit was not an invalid request.");
+        using var defaultHost = Host(new BridgeLimitsViewModel());
+        Require(!defaultHost.Transport.Call(BridgeInteractionRouter.ReplyRoute, new(StringValue: reply)).Contains("invalid-request"),
+            "An interaction reply under the default limit was an invalid request.");
+    }
+
+    [Test]
+    public void ARaisedLimitAcceptsLargerInputs()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model, maximumInputBytes: 4 * DefaultLimit);
+        var value = new string('x', 2 * DefaultLimit);
+        RequireOk(host.Transport.Call($"{host.RootRoute}SetText", new(StringValue: value)), "A setter value under a raised limit was refused.");
+        RequireOk(host.Transport.Call($"{host.RootRoute}Echo", new(StringValue: JsonSerializer.Serialize(value))),
+            "A command argument under a raised limit was refused.");
+        Require(model.Text.Length == value.Length, "A value under a raised limit was not applied.");
+    }
+
+    [Test]
+    public void LimitsOutsideTheRangeAreRefused()
+    {
+        foreach (var invalid in new[] { 0, 1_023, 64 * 1_048_576 + 1 })
+        {
+            using var transport = new InMemoryBridgeTransport();
+            RequireThrows<ArgumentOutOfRangeException>(() =>
+                new WindowContentSession(transport, new WindowContentSessionOptions { MaximumInputBytes = invalid }).Dispose(),
+                $"A session accepted the input limit {invalid}.");
+            RequireThrows<ArgumentOutOfRangeException>(() => new RunicWindowOptions { MaximumInputBytes = invalid }.ThrowIfInvalid(),
+                $"Window options accepted the input limit {invalid}.");
+        }
+        using var minimum = new InMemoryBridgeTransport();
+        new WindowContentSession(minimum, new WindowContentSessionOptions { MaximumInputBytes = 1_024 }).Dispose();
+        new RunicWindowOptions { MaximumInputBytes = 64 * 1_048_576 }.ThrowIfInvalid();
+    }
+
+    private static string CheckedWrite(string expected, string value) => JsonSerializer.Serialize(new
+    {
+        requestId = Guid.NewGuid().ToString("N"), expectedVersion = 0, expectedValue = expected, value,
+    });
+
+    private static void RequireThrows<TException>(Action action, string message) where TException : Exception
+    {
+        try { action(); }
+        catch (TException) { return; }
+        throw new InvalidOperationException(message);
     }
 
     [Test]
@@ -93,9 +173,12 @@ internal sealed class BridgeLimitsTests
         }
     }
 
-    private static RunicWindowTestHost<BridgeLimitsViewModel> Host(BridgeLimitsViewModel model) =>
+    private static RunicWindowTestHost<BridgeLimitsViewModel> Host(BridgeLimitsViewModel model, int? maximumInputBytes = null) =>
         new(model, (transport, content, vm) => new BridgeLimitsBridge(transport, vm, content: content),
-            new RunicWindowTestHostOptions { RootRoute = "bridgeLimits", ViewLocator = new TestViewLocator() });
+            new RunicWindowTestHostOptions
+            {
+                RootRoute = "bridgeLimits", ViewLocator = new TestViewLocator(), MaximumInputBytes = maximumInputBytes,
+            });
 
     private static void RequireOk(string reply, string message)
     {

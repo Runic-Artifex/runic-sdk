@@ -1721,6 +1721,23 @@ in one process can differ. A Bridge attached without a window session follows
 the environment. Detail can contain file paths and application data, so do not
 enable it for a distributed build.
 
+## Bridge input limit
+
+A window decodes each Bridge input up to one limit in UTF-8 bytes: a setter
+value, a command argument, a checked write, an operation start, and an
+interaction request or reply. A larger one is answered as invalid input
+(`rejected` with reason `invalid-input`) and does not reach the ViewModel. The
+default is 1 MiB. Raise it for a window that takes larger values, such as a text
+editor bound to a `string`, or lower it, with `RunicWindowOptions.MaximumInputBytes`
+(per Window), `RunicDesktopHostOptions.MaximumInputBytes` or
+`RunicCsWebUiHostOptions.MaximumInputBytes` (the host's default for Windows that
+set none), `WindowContentSessionOptions.MaximumInputBytes` for a session you
+create, or `RunicWindowTestHostOptions.MaximumInputBytes` in tests. A value must
+be between 1 KiB and 64 MiB; another one throws `ArgumentOutOfRangeException`.
+The WPF host uses the default. Independently of the limit, exact number strings
+(`long`, `ulong`, `BigInteger`, `decimal`) are at most 4 096 characters, and a
+window runs at most 64 awaited command calls at once.
+
 ## Declared failures
 
 A command declares its expected failure type with `[RunicFailure(typeof(SaveFailure))]`

@@ -97,9 +97,15 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Resources = options.Resources;
         Placement = options.Placement;
         _includeFailureDetail = options.IncludeFailureDetail;
+        // The range of WindowContentSessionOptions.MaximumInputBytes, checked before a Window opens.
+        if (options.MaximumInputBytes is < 1_024 or > 67_108_864)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
+                "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
+        _maximumInputBytes = options.MaximumInputBytes;
     }
 
     private readonly bool? _includeFailureDetail;
+    private readonly int? _maximumInputBytes;
 
     // A Window's own choice of Bridge failure detail, or else the application's default.
     internal bool? IncludeFailureDetailFor(RunicWindowOptions options) => options.IncludeFailureDetail ?? _includeFailureDetail;
@@ -388,6 +394,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = loggerFactory,
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
+                MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
             });
             var session = content;
             var connections = surface.SubscribeConnectionEvents(connection =>

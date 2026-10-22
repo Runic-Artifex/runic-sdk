@@ -308,7 +308,6 @@ internal interface IBridgeRegionSlots
 public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
     IBridgeSnapshotBatchParticipant, IBridgeRegionSlots where T : INotifyPropertyChanged
 {
-    private const int MaximumFieldWritePayloadLength = 64 * 1024;
     private const int MaximumFieldWriteRequestIdLength = 256;
     private readonly object _modelGate;
     private readonly BridgeSnapshotDelivery _delivery;
@@ -317,6 +316,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly WindowContentSession? _content;
     // Read from the window's options when it opened; a Bridge without a window uses the environment.
     private bool IncludesFailureDetail => _content?.IncludesFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
+    // The window's Bridge input limit; a bridge without a window session uses the default.
+    private int MaximumInputBytes => _content?.MaximumInputBytes ?? WindowContentSessionOptions.DefaultMaximumInputBytes;
     private readonly IBridgeTransport _transport;
     private readonly T _vm;
     private readonly string _name;
@@ -543,7 +544,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, property.Name);
             try
             {
-                property.Set(_vm, new BoundedBridgeArguments(e));
+                property.Set(_vm, new BoundedBridgeArguments(e, MaximumInputBytes));
                 var reply = EncodeTerminal();
                 call.Complete(BridgeCallOutcome.Ok);
                 return reply;
@@ -572,7 +573,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             try
             {
                 var payload = arguments.GetString();
-                if (payload.Length > MaximumFieldWritePayloadLength)
+                if (!BridgeInputLimit.Fits(payload, MaximumInputBytes))
                     throw new FormatException("The checked write payload is too large.");
                 using var document = JsonDocument.Parse(payload);
                 var root = document.RootElement;
@@ -835,7 +836,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 else
                 {
                     var payload = arguments.GetString();
-                    if (payload.Length > MaximumFieldWritePayloadLength) throw new FormatException("The command input is too large.");
+                    if (!BridgeInputLimit.Fits(payload, MaximumInputBytes)) throw new FormatException("The command input is too large.");
                     using var document = JsonDocument.Parse(payload);
                     requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
                     argument = ReadArgument(descriptor, new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
@@ -932,22 +933,22 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    // A generated reader decodes at most MaximumFieldWritePayloadLength characters, as a checked
-    // write or an operation start does. An out-of-range number is an invalid argument; an
+    // A generated reader decodes at most the window's input limit, as a checked write or an
+    // operation start does. An out-of-range number is an invalid argument; an
     // OverflowException from the command itself stays a failure.
-    private static object? ReadArgument(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
+    private object? ReadArgument(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
     {
         if (descriptor.ReadArgument is not { } read) return null;
-        try { return read(new BoundedBridgeArguments(arguments)); }
+        try { return read(new BoundedBridgeArguments(arguments, MaximumInputBytes)); }
         catch (OverflowException error) { throw new FormatException("The command argument is out of range.", error); }
     }
 
-    private sealed class BoundedBridgeArguments(IBridgeArguments source) : IBridgeArguments
+    private sealed class BoundedBridgeArguments(IBridgeArguments source, int maximumBytes) : IBridgeArguments
     {
         public string GetString()
         {
             var value = source.GetString();
-            return value is null || value.Length <= MaximumFieldWritePayloadLength
+            return value is null || BridgeInputLimit.Fits(value, maximumBytes)
                 ? value!
                 : throw new FormatException("The value is too large.");
         }

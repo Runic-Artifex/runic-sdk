@@ -6,6 +6,9 @@ namespace Runic.Application.Views;
 /// <summary>Configures a <see cref="WindowContentSession"/>.</summary>
 public sealed class WindowContentSessionOptions
 {
+    /// <summary>The default of <see cref="MaximumInputBytes"/>: 1 MiB.</summary>
+    public const int DefaultMaximumInputBytes = 1_048_576;
+
     /// <summary>Resolves .NET Views for presented content.</summary>
     public IRunicViewLocator? ViewLocator { get; init; }
 
@@ -46,4 +49,15 @@ public sealed class WindowContentSessionOptions
     /// the value once, when it is created.
     /// </summary>
     public bool? IncludeFailureDetail { get; init; }
+
+    /// <summary>
+    /// The largest Bridge input, in UTF-8 bytes, that this window decodes: a setter value, a command argument,
+    /// a checked write, an operation start, and an interaction request or reply. A larger one is answered as
+    /// invalid input (<c>rejected</c> with reason <c>invalid-input</c>, or the interaction routes'
+    /// <c>invalid-request</c>) and does not reach the model. <see langword="null"/>, the default, is
+    /// <see cref="DefaultMaximumInputBytes"/> (1 MiB). A value must be between 1 KiB (1 024) and 64 MiB
+    /// (67 108 864); the session throws <see cref="ArgumentOutOfRangeException"/> for another one. The
+    /// session reads the value once, when it is created.
+    /// </summary>
+    public int? MaximumInputBytes { get; init; }
 }
