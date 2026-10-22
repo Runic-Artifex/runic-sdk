@@ -100,6 +100,12 @@ internal sealed class PathWatcherTests
             stream.Write("{\"a\":2}"u8);
         var change = await EventAsync(tester, watcher);
         Require(change.Contains(target), $"Expected the file, got {Describe(change)}.");
+        RequireEntries(change, (RunicPathChangeKind.Changed, file));
+
+        File.Delete(file);
+        RequireEntries(await EventAsync(tester, watcher), (RunicPathChangeKind.Deleted, file));
+        File.WriteAllText(file, "{}");
+        RequireEntries(await EventAsync(tester, watcher), (RunicPathChangeKind.Created, file));
     }
 
     [Test]
@@ -116,6 +122,7 @@ internal sealed class PathWatcherTests
         File.WriteAllText(Path.Combine(profiles, "system-2-link"), "2");
         var added = await EventAsync(tester, watcher);
         Require(added.Contains(target), $"Expected the added entry, got {Describe(added)}.");
+        RequireEntries(added, (RunicPathChangeKind.Created, Path.Combine(profiles, "system-2-link")));
 
         // Entries that don't match the pattern, and writes to matching entries, are not reported.
         File.WriteAllText(Path.Combine(profiles, "unrelated"), "x");
@@ -127,6 +134,13 @@ internal sealed class PathWatcherTests
         File.Delete(Path.Combine(profiles, "system-1-link"));
         var removed = await EventAsync(tester, watcher);
         Require(removed.Contains(target), $"Expected the removed entry, got {Describe(removed)}.");
+        RequireEntries(removed, (RunicPathChangeKind.Deleted, Path.Combine(profiles, "system-1-link")));
+
+        // A rename is the old name removed and the new one added, in ordinal order of the names.
+        File.Move(Path.Combine(profiles, "system-2-link"), Path.Combine(profiles, "system-3-link"));
+        var renamed = await EventAsync(tester, watcher);
+        RequireEntries(renamed, (RunicPathChangeKind.Deleted, Path.Combine(profiles, "system-2-link")),
+            (RunicPathChangeKind.Created, Path.Combine(profiles, "system-3-link")));
     }
 
     // W310-003: a file manager watches the directory it shows while a transfer writes into it. The engine writes each
@@ -172,12 +186,18 @@ internal sealed class PathWatcherTests
         var rest = await tester.DrainAsync();
         var all = rest.Prepend(replaced).SelectMany(change => change.Targets).ToHashSet();
         Require(all.SetEquals([files]), $"Expected only the Files target for a replaced entry, got {string.Join(", ", all)}.");
+        // Its size and write time did not change, so the entry is the target itself.
+        RequireEntries(replaced, (RunicPathChangeKind.Changed, Path.GetFullPath(records)));
 
         // A write in place counts too, as for File.
         using (var stream = new FileStream(record, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
             stream.Write("{"u8);
         var written = await EventAsync(tester, watcher);
         Require(written.Contains(files) && !written.Contains(names), $"Expected the written entry, got {Describe(written)}.");
+        // The entry, or the target itself where the file system kept the write time.
+        Require(written.Entries.Count == 1 && written.Entries[0].Kind == RunicPathChangeKind.Changed
+                && (written.Entries[0].Path == record || written.Entries[0].Path == Path.GetFullPath(records)),
+            $"Expected the written entry changed, got {Describe(written)}.");
 
         // A new entry is reported by both, and files that don't match the pattern by neither.
         var added = Path.Combine(records, "2.json");
@@ -188,6 +208,10 @@ internal sealed class PathWatcherTests
         var created = await EventAsync(tester, watcher);
         all = (await tester.DrainAsync()).Prepend(created).SelectMany(change => change.Targets).ToHashSet();
         Require(all.SetEquals([names, files]), $"Expected both targets for a new entry, got {string.Join(", ", all)}.");
+        var entries = (await tester.DrainAsync()).Prepend(created).SelectMany(change => change.Entries).ToArray();
+        Require(entries.Length == 2 && entries.All(entry => entry.Kind == RunicPathChangeKind.Created && entry.Path == added)
+                && entries.Select(entry => entry.Target).ToHashSet().SetEquals([names, files]),
+            $"Expected the new entry created for both targets, got {string.Join(", ", entries.Select(entry => $"{entry.Target}: {entry}"))}.");
 
         // Without events, the backstop read compares each entry's size and write time.
         watcher.IgnoreEvents = true;
@@ -492,6 +516,36 @@ internal sealed class PathWatcherTests
     }
 
     [Test]
+    public async Task DisposingTheTesterStopsItsWatchers()
+    {
+        using var root = new TempDirectory();
+        var file = root.File("state", "1");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var calls = 0;
+        using var watcher = RunicPathWatcher.Start(context, [RunicWatchTarget.File(file)], _ => calls++, options: tester.Options);
+        Require(tester.ActiveWatchers == 1, "The tester did not see the watcher start.");
+
+        tester.Dispose();
+        Require(tester.ActiveWatchers == 0, "Disposing the tester did not stop its watcher.");
+        File.WriteAllText(file, "2");
+        await Task.Delay(Settle);
+        tester.Time.Advance(TimeSpan.FromMinutes(1));
+        await Task.Delay(Settle);
+        Require(calls == 0, $"A watcher of a disposed tester reported {calls} change(s).");
+        // Detached: a watcher started later with the options is not tracked.
+        using var later = RunicPathWatcher.Start(context, [RunicWatchTarget.File(file)], _ => { }, options: tester.Options);
+        Require(tester.ActiveWatchers == 0, "A disposed tester tracked a new watcher.");
+        try
+        {
+            await tester.NextChangeAsync();
+            throw new InvalidOperationException("NextChangeAsync of a disposed tester did not fail.");
+        }
+        catch (ObjectDisposedException) { }
+        tester.Dispose();
+    }
+
+    [Test]
     public async Task CallbacksRunInTheModelContextWithRealTime()
     {
         using var root = new TempDirectory();
@@ -617,7 +671,12 @@ internal sealed class PathWatcherTests
         Require(process.ExitCode == 0, $"{command} {string.Join(' ', arguments)} failed.");
     }
 
-    private static string Describe(RunicPathChange change) => string.Join(", ", change.Targets);
+    private static string Describe(RunicPathChange change) =>
+        $"{string.Join(", ", change.Targets)} [{string.Join(", ", change.Entries)}]";
+
+    private static void RequireEntries(RunicPathChange change, params (RunicPathChangeKind Kind, string Path)[] expected) =>
+        Require(change.Entries.Select(entry => (entry.Kind, entry.Path)).SequenceEqual(expected),
+            $"Expected entries [{string.Join(", ", expected.Select(entry => $"{entry.Kind} {entry.Path}"))}], got {Describe(change)}.");
 
     private static void Require(bool condition, string message)
     {

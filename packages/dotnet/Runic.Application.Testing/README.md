@@ -129,7 +129,7 @@ their debounce and polling run on its `FakeTimeProvider`, `Time`. Give the
 options to the ViewModel that starts the watcher:
 
 ```csharp
-var watching = new RunicPathWatchTester();
+using var watching = new RunicPathWatchTester();
 using var overview = new OverviewViewModel(context, watching.Options);
 
 File.WriteAllText(Path.Combine(checkout, "flake.lock"), lockText);
@@ -151,6 +151,10 @@ await watching.TriggerAsync("/run/current-system");
   reported meanwhile, to assert that a burst produced one change or nothing more.
 - `ActiveWatchers` counts the watchers that are started and not disposed, to
   check that a ViewModel stops its watcher.
+- `Dispose` stops the watchers that are still active and detaches the tester
+  from its options, so a watcher a test did not dispose does not outlive it.
+  Each change's `Entries` names the paths that changed (see
+  [Watching files](../Runic.Application.Views/README.md#watching-files)).
 
 ### Drivers
 
@@ -184,7 +188,11 @@ already have. A `RunicViewDriver<T>` has:
   has a `RunicOperationStatusKind` `Kind` (`Running`, `Succeeded`, `Failed`,
   `DomainFailed`, `Cancelled`, `Expired`, or `Unknown` for a request the window
   does not know), `Result`, `ErrorMessage` and, for a `DomainFailed` operation,
-  `Failure`.
+  `Failure`. `ReadStream(cursor)` reads a streamed operation's retained items
+  after `cursor` as the generated client's `stream(cursor)` does: a
+  `RunicOperationStreamPage` with the status `Kind`, the encoded `Items`, the
+  `Cursor` of the next page, `Completed`, and `DeliveryKind` and
+  `DeliveryMessage` when items were dropped (`stream-overflow`, ...).
 - `Write(vm => vm.Title, value, expectedVersion)` for a checked write. It uses the
   current value and version as the baseline unless `expectedVersion` is given, so a
   stale version tests the `Conflict` receipt. A receipt has a

@@ -223,7 +223,7 @@ producer published on the route. After a full state, the next frame's
 
 Full states coalesce: a newer state replaces any frames and states not yet
 delivered. Frames do not coalesce, because each depends on its predecessor. An
-`IAsyncBridgeTransport` acknowledges each delivery before the next one starts.
+`IAsyncBridgeTransport` or `IBridgeUtf8Transport` acknowledges each delivery before the next one starts.
 
 A full state is captured when the host takes it, not when it is requested, so
 a burst of changes behind a busy host serializes the state once. The captured

@@ -1,3 +1,4 @@
+using System.Text;
 using Runic.Application.Views;
 
 namespace Runic.Application.Testing;
@@ -22,7 +23,11 @@ public sealed record BridgeTestArguments(
 /// In-memory implementation of the same host-neutral route boundary used by
 /// browser adapters. Calls invoke real generated handlers; no native UI runs.
 /// </summary>
-public sealed class InMemoryBridgeTransport : IBridgeTransport, IDisposable
+/// <remarks>
+/// Like the Desktop transport, it receives state frames as UTF-8 through <see cref="PublishUtf8Async"/>, so tests
+/// run the Bridge's UTF-8 delivery path.
+/// </remarks>
+public sealed class InMemoryBridgeTransport : IBridgeUtf8Transport, IDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, Binding> _bindings = new(StringComparer.Ordinal);
@@ -62,6 +67,14 @@ public sealed class InMemoryBridgeTransport : IBridgeTransport, IDisposable
             _published.TrySetResult();
             _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+    }
+
+    /// <summary>Records a state publication, decoded from UTF-8, for <see cref="TakePublications"/>.</summary>
+    public ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Publish(name, Encoding.UTF8.GetString(stateUtf8.Span));
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>Calls a synchronous generated route.</summary>

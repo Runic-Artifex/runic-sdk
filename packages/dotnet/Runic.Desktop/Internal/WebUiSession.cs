@@ -256,6 +256,13 @@ internal sealed class WebUiSession : IAsyncDisposable
     public Task RunJavaScriptAsync(string script, CancellationToken cancellationToken)
         => SendTextCommandAsync(0, WebUiProtocol.JavaScriptQuick, script, cancellationToken);
 
+    // The same packet as RunJavaScriptAsync for the script's UTF-8 encoding. The packet is built before this returns.
+    public Task RunJavaScriptUtf8Async(ReadOnlySpan<byte> script, CancellationToken cancellationToken)
+    {
+        if (!IsAuthenticated) return Task.CompletedTask;
+        return SendPacketAsync(WebUiProtocol.CreatePacket(0, WebUiProtocol.JavaScriptQuick, script), cancellationToken);
+    }
+
     public async Task<byte[]> ExecuteJavaScriptAsync(
         string script,
         TimeSpan? timeout,

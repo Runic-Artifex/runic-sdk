@@ -169,6 +169,20 @@ internal sealed partial class DomainFailureTests
     // Classified by exception type, like success: a declared failure thrown
     // after cancellation was requested is still domain-failed.
     [Test]
+    public async Task TypedFailureExceptionsReplyWithTheirFailureAsync()
+    {
+        using var host = Host(new EditorModel(), out _);
+        host.ViewModel.NextFailure = () => new RunicFailureException<SaveFailure>(new TitleTaken("Todo"));
+        var reply = await host.Root.ExecuteAsync(vm => vm.SubmitCommand);
+        RequireDomainReply(reply.Json, "Submit", """{"$case":"titleTaken","existingTitle":"Todo"}""");
+
+        var typed = new RunicFailureException<TitleTaken>(new TitleTaken("Todo"), "Taken.");
+        RunicFailureException untyped = typed;
+        Require(typed.Failure.ExistingTitle == "Todo" && ReferenceEquals(untyped.Failure, typed.Failure) && typed.Message == "Taken.",
+            "RunicFailureException<T> did not expose its failure through both properties.");
+    }
+
+    [Test]
     public async Task CancellationRaceIsDomainFailedAsync()
     {
         using var host = Host(new EditorModel(), out _);
@@ -198,6 +212,15 @@ internal sealed partial class DomainFailureTests
             && stream.RootElement.GetProperty("items").GetArrayLength() == 2
             && stream.RootElement.GetProperty("items")[1].GetProperty("value").GetInt32() == 2,
             $"The published stream items were not readable after the domain failure: {page}");
+
+        // The typed accessor reads the same page.
+        var typed = operation.ReadStream();
+        Require(typed is { Kind: RunicOperationStatusKind.DomainFailed, Completed: true, DeliveryKind: null, Items.Count: 2 }
+                && typed.Items[0].GetInt32() == 1 && typed.Items[1].GetInt32() == 2 && typed.Json == page,
+            $"ReadStream did not expose the stream page: {typed}");
+        var next = operation.ReadStream(typed.Cursor);
+        Require(next is { Items.Count: 0, Completed: true } && next.Cursor == typed.Cursor,
+            $"ReadStream after the last cursor returned items: {next}");
     }
 
     [Test]

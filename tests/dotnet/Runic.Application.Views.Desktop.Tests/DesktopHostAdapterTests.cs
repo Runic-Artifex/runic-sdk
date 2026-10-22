@@ -102,6 +102,33 @@ internal sealed class DesktopBridgeTransportTests
         }
     }
 
+    // I-018: the UTF-8 path runs the same script bytes as the string path, without a string in between.
+    [Test, NotInParallel(Order = 4)]
+    public async Task Utf8PublicationRunsTheBytesOfTheStringScript()
+    {
+        await using var surface = await host.CreateSurfaceAsync();
+        var scripts = new List<string>();
+        var encoded = new List<byte[]>();
+        using var transport = new DesktopBridgeTransport(surface, script =>
+        {
+            lock (scripts) scripts.Add(script);
+            return Task.CompletedTask;
+        }, script =>
+        {
+            lock (encoded) encoded.Add(script.ToArray());
+            return Task.CompletedTask;
+        });
+        const string state = "{\"title\":\"Grüße 🎉 \\u2028\"}";
+        await transport.PublishAsync("näme", state);
+        await ((IBridgeUtf8Transport)transport).PublishUtf8Async("näme", System.Text.Encoding.UTF8.GetBytes(state));
+        Require(scripts.Count == 1 && encoded.Count == 1
+            && encoded[0].AsSpan().SequenceEqual(System.Text.Encoding.UTF8.GetBytes(scripts[0])),
+            $"The UTF-8 script differs from the string script: {scripts.FirstOrDefault()}");
+        transport.Dispose();
+        await transport.PublishUtf8Async("näme", System.Text.Encoding.UTF8.GetBytes(state));
+        Require(encoded.Count == 1, "A disposed transport delivered a UTF-8 frame.");
+    }
+
     [Test, NotInParallel(Order = 4)]
     public async Task DisposedTransportReleasesRoutesAndDelivery()
     {

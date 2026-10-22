@@ -1070,6 +1070,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             .Select(session => session.RunJavaScriptAsync(script, cancellationToken)));
     }
 
+    // RunJavaScriptAsync for a script encoded as UTF-8, for callers that already hold the bytes.
+    internal Task RunJavaScriptUtf8Async(ReadOnlyMemory<byte> script, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (script.IsEmpty) throw new ArgumentException("The script is empty.", nameof(script));
+        return Task.WhenAll(_sessions.Values
+            .Where(static session => session.IsAuthenticated)
+            .Select(session => session.RunJavaScriptUtf8Async(script.Span, cancellationToken)));
+    }
+
     /// <summary>Runs JavaScript in the connected browser and returns its UTF-8 result.</summary>
     public string ExecuteJavaScript(string script, TimeSpan? timeout = null, int responseBufferSize = 4 * 1024)
         => ExecuteJavaScriptAsync(script, timeout, responseBufferSize).GetAwaiter().GetResult();

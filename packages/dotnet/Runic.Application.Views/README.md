@@ -1756,6 +1756,17 @@ the generated mock encodes the failure. A ReactiveUI command also reports the
 failure on `ThrownExceptions`; the generated Bridge observes it there and does
 not log it, so the ViewModel needs no subscription.
 
+`RunicFailureException<TFailure>` derives from `RunicFailureException` and
+keeps the failure's type, so code that catches it, such as a test or a
+`ThrownExceptions` subscription, reads `Failure` without a cast. The Bridge
+treats both the same way:
+
+```csharp
+throw new RunicFailureException<SaveFailure>(new TitleTaken(existing.Title));
+
+catch (RunicFailureException<SaveFailure> error) when (error.Failure is TitleTaken taken) { /* ... */ }
+```
+
 ## Navigation
 
 Navigation comes from the
@@ -2081,6 +2092,26 @@ and `packed-refs` itself; it starts no `git` process. With the reftable format
 any update of the ref stack counts, of the repository's and, in a linked
 worktree, of the worktree's own, so other branches and fetches are reported
 too. To react to work-tree edits, add `Directory` or `File` targets for them.
+
+A change's `Targets` are the targets that changed; its `Entries` name the paths,
+each with its `Target` and a `RunicPathChangeKind`: `Created`, `Deleted` or
+`Changed` (the set is open; treat an unknown kind as `Changed`). A `File` target
+reports the file. A `Directory` or `Files` target reports the matching entries
+that were added or removed, a rename being both, in ordinal order of their
+names, and a `Files` target also those whose size, write time, kind or link
+target changed. Where the watcher cannot name what changed, as for `Link` and
+`GitHead`, an unreadable directory, or an event that named an entry whose
+metadata stayed the same, the entry is the target's own full path with
+`Changed`. Entries compare two readings, so an entry created and deleted again
+between them is not listed:
+
+```csharp
+change =>
+{
+    foreach (var entry in change.Entries)
+        if (entry.Kind == RunicPathChangeKind.Created) Records.Add(Load(entry.Path));
+}
+```
 
 Problems never throw on a watcher thread. They reach the `failed` callback,
 in a model turn, or `System.Diagnostics.Trace` (event 1015) without one, and the watcher

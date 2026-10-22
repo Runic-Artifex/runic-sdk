@@ -31,7 +31,10 @@ public sealed class RunicFailureAttribute(Type failure) : Attribute
 /// The Bridge sends <see cref="Failure"/> to the client as a <c>domain-failed</c> reply.
 /// A value that is not the declared type is reported as an unexpected failure.
 /// </summary>
-public sealed class RunicFailureException : Exception
+/// <remarks>
+/// <see cref="RunicFailureException{TFailure}"/> carries the same value with its declared type.
+/// </remarks>
+public class RunicFailureException : Exception
 {
     /// <summary>Creates the exception for <paramref name="failure"/>.</summary>
     public RunicFailureException(object failure)
@@ -55,6 +58,37 @@ public sealed class RunicFailureException : Exception
 
     /// <summary>The failure value, an instance of the command's declared failure type.</summary>
     public object Failure { get; }
+}
+
+/// <summary>
+/// Signals a declared failure of type <typeparamref name="TFailure"/> from a command that has
+/// <see cref="RunicFailureAttribute"/>. The Bridge treats it as <see cref="RunicFailureException"/>;
+/// <see cref="Failure"/> returns the value with its declared type.
+/// </summary>
+/// <typeparam name="TFailure">The command's declared failure type, or a type derived from it.</typeparam>
+public sealed class RunicFailureException<TFailure> : RunicFailureException where TFailure : notnull
+{
+    /// <summary>Creates the exception for <paramref name="failure"/>.</summary>
+    public RunicFailureException(TFailure failure)
+        : this(failure, null, null)
+    {
+    }
+
+    /// <summary>Creates the exception for <paramref name="failure"/> with a log message.</summary>
+    public RunicFailureException(TFailure failure, string? message)
+        : this(failure, message, null)
+    {
+    }
+
+    /// <summary>Creates the exception for <paramref name="failure"/> with a log message and the exception that caused it.</summary>
+    public RunicFailureException(TFailure failure, string? message, Exception? innerException)
+        : base(failure, message, innerException)
+    {
+        Failure = failure;
+    }
+
+    /// <summary>The failure value, an instance of the command's declared failure type.</summary>
+    public new TFailure Failure { get; }
 }
 
 // Thrown by the operation observer to the registry after a declared failure
