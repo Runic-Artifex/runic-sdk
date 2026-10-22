@@ -148,13 +148,20 @@ namespace ReactiveUiReactiveFlavorProof
     {
         private int _ended;
 
-        public FlavorRetirePageModel(IScheduler commandScheduler) =>
+        public FlavorRetirePageModel(IScheduler commandScheduler)
+        {
             UploadCommand = ReactiveCommand.CreateFromTask(async token =>
             {
                 Started.TrySetResult();
                 try { await Task.Delay(Timeout.Infinite, token); }
                 finally { Volatile.Write(ref _ended, 1); }
             }, outputScheduler: commandScheduler);
+            // The cancellation also reaches ThrownExceptions, possibly after the page's Bridge stopped observing it;
+            // without a subscriber ReactiveUI's default handler would end the process.
+            _thrown = UploadCommand.ThrownExceptions.Subscribe(_ => { });
+        }
+
+        private readonly IDisposable _thrown;
 
         [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
         public ReactiveCommand<Unit, Unit> UploadCommand { get; }

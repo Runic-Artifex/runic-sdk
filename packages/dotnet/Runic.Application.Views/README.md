@@ -1985,6 +1985,12 @@ public sealed partial class ExportViewModel : ObservableObject
   ends with its caller or the Window. On a synchronous command, a state
   property or a class without operations, the attribute has no effect and the
   generator warns (`RUNICBRIDGE028`).
+- A cancelled ReactiveUI command reports the cancellation on
+  `ThrownExceptions` when its work ends, which for `Cancel` is after the page's
+  Bridge stopped observing the command. In the System.Reactive flavor, whose
+  default exception handler ends the process, subscribe to `ThrownExceptions`
+  in the ViewModel (or use `ObserveBridgeExceptions`), as for any command
+  cancelled after its page detached.
 - Each operation that retirement cancels or waits for is logged at Debug
   (event 1017). The policy is not part of the contract: the generated
   TypeScript, the contract hash and the mocks do not change.
