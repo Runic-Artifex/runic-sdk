@@ -11,7 +11,7 @@ namespace Runic.Application.Views.ReactiveUI.Reactive;
 
 /// <summary>
 /// Provides System.Reactive schedulers bound to Runic model contexts, as a service: <see cref="ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext"/>
-/// registers it. Code without a container calls <see cref="ReactiveSchedulers.For"/>.
+/// registers it. Code without a container calls <see cref="ReactiveSchedulers.For(IRunicModelContext)"/>.
 /// </summary>
 public interface IReactiveSchedulerProvider
 {
@@ -32,6 +32,7 @@ public interface IReactiveSchedulerProvider
 public static class ReactiveSchedulers
 {
     private static readonly ConditionalWeakTable<IRunicModelContext, RunicModelContextScheduler> Schedulers = new();
+    private static readonly ConditionalWeakTable<object, ViewModelScheduler> ViewModelBound = new();
     private static readonly Lock InstallGate = new();
     // Whether an install was requested, whether Runic's scheduler was installed or given to ReactiveUI's builder,
     // and the scheduler it created last.
@@ -47,6 +48,38 @@ public static class ReactiveSchedulers
     {
         ArgumentNullException.ThrowIfNull(context);
         return Shared(context);
+    }
+
+    /// <summary>
+    /// Returns a scheduler that runs work on the model context that <paramref name="viewModel"/> is bound to when the work
+    /// is scheduled, for a ViewModel that observes a source outside model turns, such as a service's events or a timer,
+    /// without taking the context in its constructor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each call looks up <paramref name="viewModel"/> in <see cref="RunicModelContextRegistry.Shared"/>, where a window
+    /// binds the ViewModels it presents and a navigator the entries it owns, and schedules on that context's
+    /// scheduler, the one <see cref="For(IRunicModelContext)"/> returns, so work is ordered with the context's other work.
+    /// While the ViewModel is not bound, for example in its constructor before the window binds it or after it was
+    /// released, or when its context has closed, the work goes to <see cref="RxSchedulers.MainThreadScheduler"/>, read
+    /// at that time: with <see cref="InstallMainThreadScheduler"/>, the context of the running turn, or the replaced
+    /// scheduler with event 1043 (<c>ReactiveSchedulerOutsideModelTurn</c>). A source that replays when the constructor
+    /// subscribes therefore needs <see cref="For(IRunicModelContext)"/> with the injected context instead.
+    /// </para>
+    /// <para>
+    /// Every call returns the same scheduler for one ViewModel for as long as the ViewModel is alive; it does not keep the
+    /// ViewModel alive by itself. When <paramref name="viewModel"/> is an <see cref="IRunicModelContext"/>, this is
+    /// <see cref="For(IRunicModelContext)"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="viewModel">The ViewModel, or any object a window or navigator binds to a model context.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
+        Justification = "The same name as IReactiveSchedulerProvider.For.")]
+    public static IScheduler For(object viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (viewModel is IRunicModelContext context) return Shared(context);
+        return ViewModelBound.GetValue(viewModel, static model => new ViewModelScheduler(model));
     }
 
     /// <summary>
@@ -152,13 +185,20 @@ public static class ReactiveSchedulers
         ReactiveSchedulerReports.NotInEffect(loggerFactory, current.GetType(), replaced);
     }
 
+    // The open context a ViewModel is bound to, for For(object viewModel).
+    internal static IRunicModelContext? BoundContext(object viewModel) =>
+        RunicModelContextRegistry.Shared.TryGet(viewModel, out var context)
+            && context is not null and not IRunicModelContextLifetime { Closed.IsCancellationRequested: true }
+            ? context
+            : null;
+
     internal static IScheduler Shared(IRunicModelContext context) =>
         Schedulers.GetValue(context, static context => new RunicModelContextScheduler(context));
 }
 
 /// <summary>
 /// The <see cref="IReactiveSchedulerProvider"/> that <see cref="ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext"/>
-/// registers. It returns <see cref="ReactiveSchedulers.For"/>.
+/// registers. It returns <see cref="ReactiveSchedulers.For(IRunicModelContext)"/>.
 /// </summary>
 public sealed class ReactiveSchedulerProvider : IReactiveSchedulerProvider
 {
@@ -203,6 +243,30 @@ internal sealed class ModelContextMainThreadScheduler(IScheduler fallback) : ISc
         if (ModelTurnFlow.Current is { } context) return ReactiveSchedulers.Shared(context);
         _outside.Report(Logger, work, fallback.GetType().Name);
         return fallback;
+    }
+}
+
+// ReactiveSchedulers.For(object viewModel): each call targets the shared scheduler of the open context the ViewModel is
+// bound to, or ReactiveUI's main-thread scheduler while it has none.
+internal sealed class ViewModelScheduler(object viewModel) : IScheduler
+{
+    public DateTimeOffset Now => Target().Now;
+
+    public IDisposable Schedule<TState>(TState state, Func<IScheduler, TState, IDisposable> action) =>
+        Target().Schedule(state, action);
+
+    public IDisposable Schedule<TState>(TState state, TimeSpan dueTime, Func<IScheduler, TState, IDisposable> action) =>
+        Target().Schedule(state, dueTime, action);
+
+    public IDisposable Schedule<TState>(TState state, DateTimeOffset dueTime, Func<IScheduler, TState, IDisposable> action) =>
+        Target().Schedule(state, dueTime, action);
+
+    private IScheduler Target()
+    {
+        if (ReactiveSchedulers.BoundContext(viewModel) is { } context) return ReactiveSchedulers.Shared(context);
+        var main = RxSchedulers.MainThreadScheduler;
+        // An application that made this scheduler ReactiveUI's main-thread scheduler gets the task pool instead.
+        return ReferenceEquals(main, this) ? TaskPoolScheduler.Default : main;
     }
 }
 

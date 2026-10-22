@@ -235,7 +235,22 @@ has the details.
 For an explicit scheduler, for example an `ObserveOn` in a DynamicData
 pipeline, inject `ISequencer` or call `ReactiveSchedulers.For(context)`.
 Both return the context's own sequencer, one per context, which the main-thread
-scheduler also uses. The injected sequencer is resolved from the window's scope
+scheduler also uses. A ViewModel that observes a source outside model turns, such as a
+service's events or a timer, and does not take the context in its constructor,
+can call `ReactiveSchedulers.For(this)` (since 0.11): each scheduled item goes to
+the context the ViewModel is bound to at that time, through that context's
+sequencer. While the ViewModel is not bound, for example in its constructor
+before the window binds it or after the window released it, and when its
+context has closed, the work goes to `RxSchedulers.MainThreadScheduler`, so
+work from outside any turn is logged as event 1043 there.
+
+```csharp
+public ClockViewModel(IClock clock) =>
+    clock.Ticks.ObserveOn(ReactiveSchedulers.For(this)).Subscribe(time => Now = time);
+```
+
+Use the injected sequencer instead for a source that replays when the
+constructor subscribes. The injected sequencer is resolved from the window's scope
 before the ViewModel is constructed, so a source that replays when the
 constructor subscribes is already observed on the right context; a scheduler
 that looked up the ViewModel's context could not, because the host binds the
@@ -258,8 +273,8 @@ context the ViewModels run on as its `ModelContext`; otherwise the window
 creates a context of its own and commands and replies are not ordered with each
 other.
 
-`ReactiveSchedulers` is the static entry point: `For(context)` and
-`InstallMainThreadScheduler()`. `IReactiveSchedulerProvider` is the same lookup
+`ReactiveSchedulers` is the static entry point: `For(context)`, `For(viewModel)`
+and `InstallMainThreadScheduler()`. `IReactiveSchedulerProvider` is the same lookup
 as a service, for code that takes it by injection; the extension registers
 `ReactiveSchedulerProvider`, which has no public constructor.
 
@@ -296,10 +311,11 @@ holds nothing, so a failure during a long stream is logged when it happens.
 Runic cannot tell an execution whose hand-written caller received and handled
 the exception from a fire-and-forget one: ReactiveUI does not report which
 observer received an error. So event 1042 is still logged when hand-written
-code awaits a bridged command and handles the exception itself, and when it runs
-a bridged command outside any Bridge call, for example in a model turn, and
-handles the exception. Observe that command with `ObserveBridgeExceptions` to
-take over its logging there.
+code awaits a bridged command with a plain `Execute` and handles the exception
+itself, and when it runs a bridged command that way outside any Bridge call, for
+example in a model turn, and handles the exception. Run the command with
+`RunAsync` there (see [Which call to use](#which-call-to-use)), or observe it
+with `ObserveBridgeExceptions` to take over its logging.
 
 Two Bridges that present one ViewModel log an exception once. The Bridge
 unsubscribes when it detaches; a command that no Bridge presents, such as one
@@ -327,6 +343,51 @@ An unexpected exception of a Bridge call is still logged by the Views runtime
 subscription does not stop the Bridge's logging. Dispose the returned
 subscription only when the command outlives the handler's owner. The helper
 works on any `IHandleObservableErrors`, such as a `ReactiveObject`.
+
+## Which call to use
+
+Hand-written code sometimes runs a command on behalf of a Bridge call or inside
+a model turn, for example a wrapper command that a Bridge presents and that runs
+a native command whose input has no wire form:
+
+```csharp
+using Runic.Application.Views.ReactiveUI;
+
+public ItemsViewModel()
+{
+    DeleteItemCommand = ReactiveCommand.CreateFromTask<Item>(DeleteAsync);
+    // Presented by the Bridge; DeleteItemCommand's input has no wire form.
+    DeleteItemByIdCommand = ReactiveCommand.CreateFromTask<ulong>(
+        (id, cancellationToken) => DeleteItemCommand.RunAsync(FindItem(id), cancellationToken));
+}
+```
+
+`RunAsync(input, cancellationToken)` (namespace `Runic.Application.Views.ReactiveUI`,
+since 0.11) runs a command the way a generated Bridge call runs a command
+without a result:
+
+- It completes when the execution completes, after zero or more values, so a
+  command that produces no value does not fail as `ToTask()` does. The values
+  are not returned.
+- Cancelling the token disposes the execution, which cancels a token-taking
+  `CreateFromTask` body, and the task is cancelled.
+- A failure is rethrown unchanged and counted as received by the caller, so it
+  is never logged as `ReactiveCommandFailed` (event 1042), inside or outside a
+  Bridge call, whether the code lets it propagate, wraps it or handles it.
+- The command's notifications follow the model turn that started it, as for any
+  execution started in a turn.
+
+| Situation | Call |
+| --- | --- |
+| Inside a Bridge call, the exception propagates or is wrapped, and the result is needed | `await command.Execute(input)`: the Bridge call receives the exception |
+| The code handles the failure itself, or runs outside any Bridge call, for example in a model turn or a service | `await command.RunAsync(input, cancellationToken)` |
+| Completion is needed and the command may produce no value | `await command.RunAsync(input, cancellationToken)` |
+| Fire and forget, with failures logged | `command.Execute(input).Subscribe()` or `InvokeCommand`; event 1042 reports failures |
+| A command that runs only from .NET and handles its own failures | `ObserveBridgeExceptions` on that command |
+
+`RunAsync` is not the generated-code helper `ReactiveCommandExecution`
+(namespace `….Generated`), which hand-written code should not use. Both have the
+same semantics for a command without a result.
 
 ## Command disposal
 

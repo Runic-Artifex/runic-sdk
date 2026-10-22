@@ -53,7 +53,9 @@ SaveCommand = ReactiveCommand.Create(Save);
 ```
 
 For an explicit `IScheduler`, for example in an `ObserveOn`, inject it or call
-`ReactiveSchedulers.For(context)`. Generated command and interaction
+`ReactiveSchedulers.For(context)`, or `ReactiveSchedulers.For(this)` in a
+ViewModel, which schedules on the context the ViewModel is bound to when the
+work is scheduled (since 0.11). Generated command and interaction
 contracts use this flavor's adapters, with the same typed data, operation
 results, cancellation, and browser interaction support as the default flavor.
 
@@ -80,3 +82,10 @@ exceptions in the same way. See
 [Declared failures and ThrownExceptions](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#declared-failures-and-thrownexceptions).
 Place it after `ObserveOn(modelScheduler)` and before collection binding; see
 the [DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/).
+
+Hand-written code that runs a command on behalf of a Bridge call or inside a
+model turn calls `command.RunAsync(input, cancellationToken)` from this
+adapter's namespace (since 0.11). It completes after zero or more values,
+disposes the execution when cancelled, and rethrows a failure without it being
+logged as event 1042. See
+[Which call to use](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#which-call-to-use).

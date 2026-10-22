@@ -143,7 +143,8 @@ internal sealed class PlainExecuteTests
         var failures = new List<string>();
         foreach (var scheduler in new[] { "main-thread", "context", "immediate" })
         {
-            foreach (var caller in new[] { "propagates", "wraps", "wraps-aggregate", "handles", "fire-and-forget", "helper-propagates", "helper-handles" })
+            foreach (var caller in new[] { "propagates", "wraps", "wraps-aggregate", "handles", "fire-and-forget", "helper-propagates",
+                "helper-handles", "run-async-propagates", "run-async-wraps", "run-async-handles" })
             {
                 // Logged: the remaining case (the caller handled it, which Runic cannot tell from fire-and-forget) and a
                 // fire-and-forget failure, when the Bridge call ends.
@@ -152,7 +153,13 @@ internal sealed class PlainExecuteTests
                 if (logged != expected) failures.Add($"{scheduler}/{caller}: logged={logged}");
             }
             // The remaining case outside any Bridge call: a plain Execute in a turn whose caller handles the exception.
-            if (!await OutsideBridgeCallAsync(context, scheduler)) failures.Add($"{scheduler}/outside-call-handles: logged=False");
+            if (!await OutsideBridgeCallAsync(context, scheduler, runAsync: false, inTurn: true))
+                failures.Add($"{scheduler}/outside-call-handles: logged=False");
+            // RunAsync (#471) covers it, in a turn and outside any turn.
+            if (await OutsideBridgeCallAsync(context, scheduler, runAsync: true, inTurn: true))
+                failures.Add($"{scheduler}/outside-call-run-async-handles: logged=True");
+            if (await OutsideBridgeCallAsync(context, scheduler, runAsync: true, inTurn: false))
+                failures.Add($"{scheduler}/outside-turn-run-async-handles: logged=True");
             if (!await InStreamCallAsync(context, scheduler)) failures.Add($"{scheduler}/fire-and-forget-in-stream: not logged while the stream ran");
         }
         Require(failures.Count == 0, "Event 1042 for the native command differs: " + string.Join("; ", failures));
@@ -207,6 +214,17 @@ internal sealed class PlainExecuteTests
                     try { await ReactiveCommandExecution.ExecuteCompletion(native, id, CancellationToken.None); }
                     catch (InvalidOperationException) { }
                     break;
+                case "run-async-propagates":
+                    await native.RunAsync(id);
+                    break;
+                case "run-async-wraps":
+                    try { await native.RunAsync(id); }
+                    catch (InvalidOperationException error) { throw new InvalidOperationException("Could not delete the item.", error); }
+                    break;
+                case "run-async-handles":
+                    try { await native.RunAsync(id); }
+                    catch (InvalidOperationException) { }
+                    break;
                 default:
                     ((ICommand)native).Execute(id);
                     await Task.Delay(50);
@@ -228,14 +246,15 @@ internal sealed class PlainExecuteTests
         }
     }
 
-    private static async Task<bool> OutsideBridgeCallAsync(RunicModelContext context, string scheduler)
+    private static async Task<bool> OutsideBridgeCallAsync(RunicModelContext context, string scheduler, bool runAsync, bool inTurn)
     {
         var native = Native(context, scheduler);
         var nativeLog = new RecordingLogger();
         using (ReactiveCommandExecution.ObserveFailures(native, nativeLog, "Native"))
         {
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            await context.InvokeAsync(() => _ = HandleAsync());
+            if (inTurn) await context.InvokeAsync(() => _ = HandleAsync());
+            else _ = Task.Run(HandleAsync);
             await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await Task.Delay(150);
             await context.InvokeAsync(() => { });
@@ -243,7 +262,11 @@ internal sealed class PlainExecuteTests
 
             async Task HandleAsync()
             {
-                try { await PlainAwait(native.Execute(3)); }
+                try
+                {
+                    if (runAsync) await native.RunAsync(3);
+                    else await PlainAwait(native.Execute(3));
+                }
                 catch (InvalidOperationException) { }
                 done.TrySetResult();
             }
