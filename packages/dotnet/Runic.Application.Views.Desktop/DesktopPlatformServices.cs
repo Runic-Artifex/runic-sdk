@@ -303,7 +303,9 @@ public static partial class DesktopPlatformServices
     /// <remarks>
     /// Nothing is written until <see cref="IDesktopOpenRegistration.RegisterAsync"/>, which an application calls when
     /// the user agrees; it never makes the application the default. macOS checks that the bundle's <c>Info.plist</c>
-    /// declares each item and registers the bundle with Launch Services. A packaged or sandboxed process, whose package
+    /// declares each item and registers the bundle with Launch Services; Windows writes the user's
+    /// <c>HKEY_CURRENT_USER\Software\Classes</c> keys and lists the application in Settings, Default apps. A packaged
+    /// or sandboxed process, whose package
     /// declares what it opens, reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>; elsewhere every
     /// request reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection, string)"/>
@@ -319,11 +321,16 @@ public static partial class DesktopPlatformServices
     internal static IDesktopOpenRegistration CreateOpenRegistration(string applicationId, ILogger? logger)
     {
         IDesktopOpenRegistration? registration = null;
+        if (OperatingSystem.IsWindows()) registration = Optional(() => OperatingSystem.IsWindows() ? CreateWindowsOpenRegistration(applicationId) : null);
 #if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsMacOS()) registration = CreateMacOSOpenRegistration();
+        else if (OperatingSystem.IsMacOS()) registration = CreateMacOSOpenRegistration();
 #endif
         return registration ?? DesktopOpenRegistrations.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
+
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopOpenRegistration CreateWindowsOpenRegistration(string applicationId) => WindowsPlatformProvider.CreateOpenRegistration(applicationId);
 
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("macos")]
@@ -357,14 +364,19 @@ public static partial class DesktopPlatformServices
     /// <param name="arguments">The process's arguments, as <c>Main</c> receives them.</param>
     /// <returns>The launch to pass to <c>ApplicationInstance.ClaimAsync</c> and <see cref="CreateOpenRequests"/>.</returns>
     /// <remarks>
-    /// The same as <see cref="ApplicationLaunch.FromProcess"/>, except where the operating system passes activation
-    /// outside the arguments, such as an MSIX package on Windows.
+    /// The same as <see cref="ApplicationLaunch.FromProcess"/>, except in an MSIX package on Windows, where the
+    /// activation's protocol URI or files (several at once in one process) become arguments too
+    /// (<c>WindowsPlatformProvider.GetLaunch</c>).
     /// </remarks>
     public static ApplicationLaunch GetLaunch(IEnumerable<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        return ApplicationLaunch.FromProcess(arguments);
+        return OperatingSystem.IsWindows() ? GetWindowsLaunch(arguments) : ApplicationLaunch.FromProcess(arguments);
     }
+
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ApplicationLaunch GetWindowsLaunch(IEnumerable<string> arguments) => WindowsPlatformProvider.GetLaunch(arguments);
 
     /// <summary>Creates file bookmarks, which keep access to files across launches, from the provider for the operating
     /// system.</summary>

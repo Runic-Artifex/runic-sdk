@@ -1,1 +1,3 @@
 #nullable enable
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateOpenRegistration(string! applicationId) -> Runic.Platform.IDesktopOpenRegistration!
+static Runic.Platform.Windows.WindowsPlatformProvider.GetLaunch(System.Collections.Generic.IEnumerable<string!>! arguments) -> Runic.Platform.ApplicationLaunch!

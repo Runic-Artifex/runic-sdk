@@ -1294,7 +1294,8 @@ jobs:
   # W315-014: the runic-app template's packaging/package.mjs packages tests/native/Runic.Packaging.Probe on each OS
   # without the maintainers' signing credentials: an MSIX signed with a test certificate, an ad-hoc signed .app with
   # the hardened runtime in a disk image, and an unsigned Flatpak. Each package is installed and opened through its
-  # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs).
+  # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs):
+  # in the MSIX also its protocol activation, its startup task turned on and off, and two files activated at once.
   packaging:
     name: Packaging / ${{ matrix.target }}
     needs: plan
@@ -1355,6 +1356,38 @@ jobs:
             if (-not (Test-Path $receipt)) { throw 'Opening the URL scheme did not start the packaged probe' }
             bun eng/ci/packaging-probe-check.mjs $receipt windows
             if ($LASTEXITCODE -ne 0) { throw 'The packaged receipt failed' }
+
+            # Two files activated together, as Explorer opens a multiple selection: one process gets both through
+            # GetLaunch (MultiSelectModel="Player"). IApplicationActivationManager takes the selection as a shell item array.
+            Add-Type -TypeDefinition @'
+          using System; using System.Runtime.InteropServices;
+          [ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+          public interface IApplicationActivationManager {
+            [PreserveSig] int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string id, [MarshalAs(UnmanagedType.LPWStr)] string arguments, int options, out uint processId);
+            [PreserveSig] int ActivateForFile([MarshalAs(UnmanagedType.LPWStr)] string id, IntPtr items, [MarshalAs(UnmanagedType.LPWStr)] string verb, out uint processId);
+          }
+          [ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")] public class ApplicationActivationManager {}
+          public static class RunicActivation {
+            [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHParseDisplayName(string name, IntPtr context, out IntPtr list, uint query, out uint attributes);
+            [DllImport("shell32.dll")] static extern int SHCreateShellItemArrayFromIDLists(uint count, IntPtr[] lists, out IntPtr items);
+            public static uint Files(string id, string[] paths) {
+              var lists = new IntPtr[paths.Length];
+              for (int i = 0; i < paths.Length; i++) { uint attributes; Marshal.ThrowExceptionForHR(SHParseDisplayName(paths[i], IntPtr.Zero, out lists[i], 0, out attributes)); }
+              IntPtr items; Marshal.ThrowExceptionForHR(SHCreateShellItemArrayFromIDLists((uint)paths.Length, lists, out items));
+              uint processId; Marshal.ThrowExceptionForHR(((IApplicationActivationManager)new ApplicationActivationManager()).ActivateForFile(id, items, "open", out processId));
+              return processId;
+            }
+          }
+          '@
+            $files = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\files" -Force
+            'first' | Set-Content "$files\first.runicprobe"; 'second' | Set-Content "$files\second.runicprobe"
+            $family = (Get-AppxPackage -Name org.runic.tests.PackagingProbe).PackageFamilyName
+            [RunicActivation]::Files("$family!App", @("$files\first.runicprobe", "$files\second.runicprobe")) | Out-Null
+            $receipt = "$files\files-receipt.json"
+            for ($i = 0; $i -lt 60 -and -not (Test-Path $receipt); $i++) { Start-Sleep -Seconds 1 }
+            if (-not (Test-Path $receipt)) { throw 'Activating the package with two files did not start the probe' }
+            bun eng/ci/packaging-probe-check.mjs $receipt windows files
+            if ($LASTEXITCODE -ne 0) { throw 'The file activation receipt failed' }
           } finally {
             Get-AppxPackage -Name org.runic.tests.PackagingProbe | Remove-AppxPackage
           }

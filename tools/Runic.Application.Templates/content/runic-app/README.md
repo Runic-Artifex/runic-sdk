@@ -366,9 +366,9 @@ application ID is `FLATPAK_ID`, which `WithGtk4` accepts when it matches.
   the AppUserModelID `<package family name>!App` that notifications use; Runic
   uses it in the package. An unpackaged copy (a ZIP or another installer)
   registers its AppUserModelID itself, with a Start menu shortcut whose
-  `System.AppUserModel.ID` is the ID. Login startup in a package needs a
-  `desktop:StartupTask` extension in the manifest; Runic's login startup
-  reports it unavailable there.
+  `System.AppUserModel.ID` is the ID. The manifest declares a
+  `desktop:StartupTask` (`TaskId="LoginStartup"`, off until the application
+  turns it on), which Runic's login startup uses in the package.
 - **macOS**: the bundle identifier is the application ID, and the frontend is
   in `Contents/Resources/www`, where Runic finds it.
 - **Linux**: the desktop entry, the AppStream metadata and the icons are named
@@ -392,9 +392,11 @@ optionally, its MIME type. In `Info.plist` each becomes a document type with
 an exported uniform type identifier `<ApplicationId>.<extension>` that
 conforms to `public.data`, as the application's own type; for a standard type,
 such as Markdown, edit the generated entry to name the system's type instead.
-The MSIX manifest and the desktop entry keep commented examples: a
-`windows.fileTypeAssociation` extension, and a MIME type in the desktop entry
-with a shared-mime-info definition for a type of your own.
+In the MSIX manifest each becomes a `uap3:FileTypeAssociation` with
+`MultiSelectModel="Player"`, so files the user opens together reach one
+process; read them with `DesktopPlatformServices.GetLaunch(args)`. The desktop
+entry keeps a commented example: a MIME type with a shared-mime-info
+definition for a type of your own.
 
 `RunicApplicationWebLinkHosts` lists hosts, such as `notes.example.org`, whose
 `https` links open the application; pass the same hosts as
@@ -405,7 +407,10 @@ Apple Developer account embedded as `Contents/embedded.provisionprofile`, and
 serve `https://notes.example.org/.well-known/apple-app-site-association` with
 `{"applinks":{"details":[{"appIDs":["TEAMID.<ApplicationId>"],"components":[{"/":"/*"}]}]}}`.
 An ad-hoc signed bundle cannot carry the entitlement, so `package.mjs` does not
-add it. Treat opened URLs and files as untrusted input.
+add it. On Windows these are app URI handlers: the MSIX manifest lists each
+host in a `uap3:AppUriHandler`, and each host serves
+`https://notes.example.org/.well-known/windows-app-web-link` with
+`[{"packageFamilyName":"<family name>","paths":["*"]}]`. Treat opened URLs and files as untrusted input.
 <!--#endif -->
 <!--#if (nix) -->
 

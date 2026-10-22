@@ -21,6 +21,9 @@ internal static class Program
         // The running instance that a desktop registration starts, for the open-request test (OpenRequestsTests).
         if (args is ["--open-probe", var probeId, var probeScheme, .. var probeArguments])
             return OpenRequestsTests.RunProbeAsync(probeId, probeScheme, probeArguments).GetAwaiter().GetResult();
+        // Started by the Windows shell through the scheme the open-registration test registered (OpenRequestsTests).
+        if (args is [var opened] && OpenRequestsTests.RegisteredProbe(opened) is var (registeredId, registeredScheme))
+            return OpenRequestsTests.RunProbeAsync(registeredId, registeredScheme, args).GetAwaiter().GetResult();
         // Run from the bundles the CI scripts build around this executable: registration of the open probe with Launch
         // Services and its launches by LaunchServices (MacOpenEventsNativeTests), and bookmarks in the App Sandbox
         // fixture (MacBookmarksNativeTests). With other arguments, such as a filter, the bundle runs the tests.
