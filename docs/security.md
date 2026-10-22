@@ -153,6 +153,21 @@ diagnostics that report grants a presentation cannot apply.
 - Do not ship with `DOTNET_ENVIRONMENT=Development`, and ship without debug
   symbols.
 
+## Development server
+
+`dotnet runic dev` serves the application's entry page from a frontend
+development server on a free loopback port. On a shared machine, another user
+could bind that port first. Since 0.11, `dev` gives the server a random value
+for each start and accepts the server only when it answers with that value, so
+another process's page is never served as the application's entry.
+`@runic-artifex/vite-plugin-runic` answers it; every frontend that
+`dotnet new runic-app` generates, including SvelteKit and Angular, is set up
+for it. A project without the plugin, for example one created before 0.11, is
+not checked: `dev` then relies on the server exiting when its port is taken.
+Add the plugin as the
+[`dotnet runic dev` documentation](../tools/dotnet-runic/README.md) describes
+for your frontend.
+
 ## CS-WebUI windows
 
 `Runic.Application.Views.CsWebUi` adds no admission of its own. Who can connect

@@ -11,6 +11,7 @@
       },
       "devDependencies": {
         "@runic-artifex/sveltekit": "0.10.0",
+        "@runic-artifex/vite-plugin-runic": "0.10.0",
         "@sveltejs/adapter-static": "4.0.0",
         "@sveltejs/kit": "3.0.0",
         "@sveltejs/vite-plugin-svelte": "7.3.1",
@@ -67,11 +68,13 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/svelte": ["@runic-artifex/svelte@0.10.0", "", { "peerDependencies": { "@runic-artifex/views": "0.10.0", "svelte": ">=5.57.1 <6" } }, "sha512-eih64BVWzrygfKwbGTApfrc5KwILU5415QSIgeisoK8Whb5DbTZRhVux/ydhy8ah/Q9AXg/TySXnr0QnpDb7kw=="],
+    "@runic-artifex/svelte": ["@runic-artifex/svelte@0.10.0", "", { "peerDependencies": { "@runic-artifex/views": "0.10.0", "svelte": ">=5.57.1 <6" } }, "sha512-fAsG2OlQs6bTUJauoPBqPvkQiONxkgcnmBqCLYA0zvpvEpp9knf3HECgrnUHMJeTWWWB8NYv8Lh9av40fm+okg=="],
 
-    "@runic-artifex/sveltekit": ["@runic-artifex/sveltekit@0.10.0", "", { "peerDependencies": { "@sveltejs/adapter-static": ">=4 <5", "@sveltejs/kit": ">=3 <4", "@sveltejs/vite-plugin-svelte": ">=7 <8", "svelte": ">=5.57.1 <6", "vite": ">=8.3.3 <9" } }, "sha512-SuFvwPl0jPev/LwVJn0Trjb9y4dp0FWrCe8pwaDW4hWAlSA2W/HSA1wG6Khyp+zptVjyP5T5MetvET2CJydKDQ=="],
+    "@runic-artifex/sveltekit": ["@runic-artifex/sveltekit@0.10.0", "", { "peerDependencies": { "@sveltejs/adapter-static": ">=4 <5", "@sveltejs/kit": ">=3 <4", "@sveltejs/vite-plugin-svelte": ">=7 <8", "svelte": ">=5.57.1 <6", "vite": ">=8.3.3 <9" } }, "sha512-Fde+ByvRqqOPd2ZTsXk5knqFtzj5xkxMDP+f+iYdrX3th8eDMAzP8z/S/TQ8yewJ6raiohwGpam0ePTghjWoPg=="],
 
-    "@runic-artifex/views": ["@runic-artifex/views@0.10.0", "", {}, "sha512-bVFRdAMkYPWu1sTqrJKtCFTe4IEXgI25cD2gSCECrhMzfJaL7OfI4Wxn39v1gc0K/sOjrqb1A2hUebqxPPmfgw=="],
+    "@runic-artifex/views": ["@runic-artifex/views@0.10.0", "", {}, "sha512-eFMfwe0hSR+tJo1HbcHJZ1NjYLdUk1h+0vIsZfg0Fy5hEhpCVmgkXQlCuUsrPWRw77yLBWgKUjgJp2rVTE2A9Q=="],
+
+    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.10.0", "", { "peerDependencies": { "@vitejs/devtools": "^0.7.6", "vite": ">=8.3.3 <9" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-cyj1xjaMNAxRad2S5jYX6rXdt3qwo/PqvXiwCAypECqfQJhwmiG3/qvXFLx69qwmZ3bbr8DyEhYidJIukGuJvQ=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

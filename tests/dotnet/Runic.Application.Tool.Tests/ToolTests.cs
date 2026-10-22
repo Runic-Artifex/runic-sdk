@@ -461,6 +461,8 @@ internal sealed class ToolTests
         True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[],\"runic\":false}") == false, "A configuration without runic() is reported.");
         True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[]}") is null, "An older probe says nothing.");
         Contains(ViteBuildInputs.CreateProbe(""), "plugin?.name === \"runic\"");
+        // SvelteKit configurations use runicDevSession(), which only confirms the session.
+        Contains(ViteBuildInputs.CreateProbe(""), "plugin?.name === \"runic:dev-session\"");
 
         True(ViteDevelopmentServer.ConfirmsSession(configuration with { UsesRunicVitePlugin = true }), "The resolved configuration decides.");
         False(ViteDevelopmentServer.ConfirmsSession(configuration with { UsesRunicVitePlugin = false }), "Without runic() nothing can confirm.");
@@ -474,6 +476,56 @@ internal sealed class ToolTests
         // The Window never gets the value.
         Equal(false, HostProcessController.CreateDevelopmentEnvironment(configuration, new Dictionary<string, string?>())
             .ContainsKey(ViteDevelopmentServer.SessionEnvironmentVariable));
+    }
+
+    [Test, DisplayName("Angular readiness needs the dev session when the frontend declares vite-plugin-runic")]
+    public void AngularReadinessConfirmsTheSession() => VerifyAngularSessionAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyAngularSessionAsync()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "angular");
+        False(AngularDevelopmentServer.ConfirmsSession(configuration), "No package.json declares the plugin.");
+        workspace.Write("Frontend/package.json", """{"devDependencies":{"@runic-artifex/vite-plugin-runic":"0.11.0"}}""");
+        True(AngularDevelopmentServer.ConfirmsSession(configuration), "The template's proxyConfig answers with runicDevSessionProxy().");
+        string session = ViteDevelopmentServer.CreateSession();
+        Equal(session, AngularDevelopmentServer.CreateEnvironment(session)[ViteDevelopmentServer.SessionEnvironmentVariable]);
+
+        var origin = new Uri("http://127.0.0.1:12345/");
+        var running = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var own = new SessionHandler(session);
+        using (var client = new HttpClient(own))
+        {
+            await AngularDevelopmentServer.WaitUntilReadyAsync(origin, running.Task, client,
+                TimeSpan.FromSeconds(1), CancellationToken.None, session);
+        }
+        True(own.Paths.Contains("/__runic/state"), string.Join(", ", own.Paths));
+
+        // The Angular CLI answers unknown paths with index.html; without the header the server is never ready.
+        foreach (string? answer in new[] { null, ViteDevelopmentServer.CreateSession() })
+        {
+            using var client = new HttpClient(new SessionHandler(answer));
+            try
+            {
+                await AngularDevelopmentServer.WaitUntilReadyAsync(origin, running.Task, client,
+                    TimeSpan.FromMilliseconds(200), CancellationToken.None, session);
+                throw new InvalidOperationException("An Angular server without this session's value was accepted as ready.");
+            }
+            catch (DevDevelopmentException error)
+            {
+                Equal("RAPPDEV1007", error.Code);
+                Contains(error.Message, "confirm this dev session");
+                Contains(error.Message, "runicDevSessionProxy()");
+                DoesNotContain(error.Message, session);
+            }
+        }
+
+        // Without a session readiness stays as before.
+        using (var client = new HttpClient(new SessionHandler(null)))
+        {
+            await AngularDevelopmentServer.WaitUntilReadyAsync(origin, running.Task, client,
+                TimeSpan.FromSeconds(1), CancellationToken.None);
+        }
     }
 
     private sealed class SessionHandler(string? answer) : HttpMessageHandler

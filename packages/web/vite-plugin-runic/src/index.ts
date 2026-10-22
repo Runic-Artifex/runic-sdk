@@ -11,6 +11,9 @@ import type {
 import { isAbsolute, relative } from "node:path";
 import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
+import { devSessionHeader, devSessionValue, devSessionVariable } from "./dev-session.js";
+
+export { runicDevSession, runicDevSessionProxy } from "./dev-session.js";
 
 export type {
   RunicDiagnosticDetail,
@@ -28,10 +31,6 @@ const stateEvent = "runic:state";
 const diagnosticEvent = "runic:diagnostic";
 const connectionEvent = "runic:connection";
 const stateKey = "runic:state";
-// `dotnet runic dev` gives the Vite process a random session value and accepts the server as ready only when
-// /__runic/state answers with it, so another process that takes the port first is not mistaken for this server.
-const devSessionVariable = "RUNIC_APPLICATION_DEV_SESSION";
-const devSessionHeader = "X-Runic-Dev-Session";
 const defaultTimelineLimit = 200;
 const maximumTimelineLimit = 500;
 
@@ -251,11 +250,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       },
     },
   };
-}
-
-/** The session value `dotnet runic dev` set, when it has the shape the tool writes: 32 to 128 hex digits. */
-function devSessionValue(value: string | undefined): string | undefined {
-  return value !== undefined && /^[0-9a-f]{32,128}$/.test(value) ? value : undefined;
 }
 
 function resolveDesktopBootstrapUrl(

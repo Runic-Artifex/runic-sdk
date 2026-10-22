@@ -153,9 +153,11 @@ clipboard on the default Runic Desktop host (create the project without
 | `Frontend/src/App.tsx`, `Frontend/src/pages` | Connect generated clients with `useView` from `@runic-artifex/react` and render the page that `WorkspaceViewModel.Main` selects. |
 <!--#endif -->
 <!--#if (frontend == "sveltekit") -->
-| `Frontend/vite.config.ts` | Configures SvelteKit with `runicAdapter()` from `@runic-artifex/sveltekit`, which prerenders the page into `Frontend/dist`, the folder the build copies to `www/`. SvelteKit writes relative URLs, so the page runs below any path. |
-<!--#elif (frontend != "angular") -->
-| `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
+| `Frontend/vite.config.ts` | Configures SvelteKit with `runicAdapter()` from `@runic-artifex/sveltekit`, which prerenders the page into `Frontend/dist`, the folder the build copies to `www/`. SvelteKit writes relative URLs, so the page runs below any path. `runicDevSession()` from `@runic-artifex/vite-plugin-runic` lets `dotnet runic dev` confirm that the development server on its port is the one it started. |
+<!--#elif (frontend == "angular") -->
+| `Frontend/proxy.conf.mjs` | The development server's proxy configuration (`proxyConfig` in `angular.json`). `runicDevSessionProxy()` from `@runic-artifex/vite-plugin-runic` lets `dotnet runic dev` confirm that the development server on its port is the one it started; add your own proxy entries next to it. |
+<!--#else -->
+| `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics, and so that `dotnet runic dev` can confirm that the development server on its port is the one it started. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
 <!--#endif -->
 | `Frontend/src/generated` | Typed clients generated from the ViewModels. They import the shared `@runic-artifex/views` runtime. |
 <!--#if (tests) -->

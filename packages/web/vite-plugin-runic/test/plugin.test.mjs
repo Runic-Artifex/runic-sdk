@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
 import { build, createServer } from "vite";
-import { runic } from "../dist/index.js";
+import { runic, runicDevSession, runicDevSessionProxy } from "../dist/index.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -311,6 +311,45 @@ test("/__runic/state confirms the dotnet runic dev session", async () => {
         const page = await fetch(`${base}/`);
         assert.equal(page.headers.get("x-runic-dev-session"), null);
         await page.arrayBuffer();
+      } finally { await server.close(); }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.RUNIC_APPLICATION_DEV_SESSION;
+    else process.env.RUNIC_APPLICATION_DEV_SESSION = previous;
+  }
+});
+
+test("runicDevSessionProxy and runicDevSession confirm the session without runic()", async () => {
+  const previous = process.env.RUNIC_APPLICATION_DEV_SESSION;
+  const session = "fedcba9876543210".repeat(4);
+  try {
+    delete process.env.RUNIC_APPLICATION_DEV_SESSION;
+    assert.deepEqual(runicDevSessionProxy(), {}, "Without dotnet runic dev the proxy configuration is unchanged.");
+    process.env.RUNIC_APPLICATION_DEV_SESSION = "not a session value";
+    assert.deepEqual(runicDevSessionProxy(), {});
+    process.env.RUNIC_APPLICATION_DEV_SESSION = session;
+    // The Angular CLI passes its proxyConfig to Vite as server.proxy and adds no Vite plugins. SvelteKit takes
+    // runicDevSession(), which has no transformIndexHtml hook for SvelteKit to warn about.
+    const setups = [{ plugins: [], proxy: runicDevSessionProxy() }, { plugins: [runicDevSession()] }];
+    assert.equal("transformIndexHtml" in runicDevSession(), false);
+    for (const { plugins, proxy } of setups) {
+      const server = await createServer({ configFile: false, logLevel: "silent", plugins,
+        server: { host: "127.0.0.1", port: 0, strictPort: false, proxy } });
+      try {
+        await server.listen();
+        const base = `http://127.0.0.1:${serverPort(server)}`;
+        for (const path of ["/__runic/state", "/__runic/state?probe=1"]) {
+          const state = await fetch(`${base}${path}`);
+          assert.equal(state.status, 204, path);
+          assert.equal(state.headers.get("x-runic-dev-session"), session, path);
+          assert.equal(state.headers.get("cache-control"), "no-store", path);
+          await state.arrayBuffer();
+        }
+        for (const path of ["/", "/__runic/statex"]) {
+          const other = await fetch(`${base}${path}`);
+          assert.equal(other.headers.get("x-runic-dev-session"), null, path);
+          await other.arrayBuffer();
+        }
       } finally { await server.close(); }
     }
   } finally {

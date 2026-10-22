@@ -179,6 +179,9 @@ importers:
       '@runic-artifex/sveltekit':
         specifier: 0.10.0
         version: 0.10.0(@sveltejs/adapter-static@4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)))(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(vite@8.3.4)
+      '@runic-artifex/vite-plugin-runic':
+        specifier: 0.10.0
+        version: 0.10.0(vite@8.3.4)
       '@sveltejs/adapter-static':
         specifier: 4.0.0
         version: 4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))
@@ -322,13 +325,13 @@ packages:
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@runic-artifex/svelte@0.10.0':
-    resolution: {integrity: sha512-eih64BVWzrygfKwbGTApfrc5KwILU5415QSIgeisoK8Whb5DbTZRhVux/ydhy8ah/Q9AXg/TySXnr0QnpDb7kw==}
+    resolution: {integrity: sha512-fAsG2OlQs6bTUJauoPBqPvkQiONxkgcnmBqCLYA0zvpvEpp9knf3HECgrnUHMJeTWWWB8NYv8Lh9av40fm+okg==}
     peerDependencies:
       '@runic-artifex/views': 0.10.0
       svelte: '>=5.57.1 <6'
 
   '@runic-artifex/sveltekit@0.10.0':
-    resolution: {integrity: sha512-SuFvwPl0jPev/LwVJn0Trjb9y4dp0FWrCe8pwaDW4hWAlSA2W/HSA1wG6Khyp+zptVjyP5T5MetvET2CJydKDQ==}
+    resolution: {integrity: sha512-Fde+ByvRqqOPd2ZTsXk5knqFtzj5xkxMDP+f+iYdrX3th8eDMAzP8z/S/TQ8yewJ6raiohwGpam0ePTghjWoPg==}
     engines: {node: ^24.18.0 || ^26.0.0}
     peerDependencies:
       '@sveltejs/adapter-static': '>=4 <5'
@@ -338,7 +341,17 @@ packages:
       vite: '>=8.3.3 <9'
 
   '@runic-artifex/views@0.10.0':
-    resolution: {integrity: sha512-bVFRdAMkYPWu1sTqrJKtCFTe4IEXgI25cD2gSCECrhMzfJaL7OfI4Wxn39v1gc0K/sOjrqb1A2hUebqxPPmfgw==}
+    resolution: {integrity: sha512-eFMfwe0hSR+tJo1HbcHJZ1NjYLdUk1h+0vIsZfg0Fy5hEhpCVmgkXQlCuUsrPWRw77yLBWgKUjgJp2rVTE2A9Q==}
+
+  '@runic-artifex/vite-plugin-runic@0.10.0':
+    resolution: {integrity: sha512-cyj1xjaMNAxRad2S5jYX6rXdt3qwo/PqvXiwCAypECqfQJhwmiG3/qvXFLx69qwmZ3bbr8DyEhYidJIukGuJvQ==}
+    engines: {node: ^24.18.0 || ^26.0.0}
+    peerDependencies:
+      '@vitejs/devtools': ^0.7.6
+      vite: '>=8.3.3 <9'
+    peerDependenciesMeta:
+      '@vitejs/devtools':
+        optional: true
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -744,6 +757,10 @@ snapshots:
       vite: 8.3.4
 
   '@runic-artifex/views@0.10.0': {}
+
+  '@runic-artifex/vite-plugin-runic@0.10.0(vite@8.3.4)':
+    dependencies:
+      vite: 8.3.4
 
   '@standard-schema/spec@1.1.0': {}
 

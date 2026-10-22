@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,6 +57,9 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         CancellationToken cancellationToken)
     {
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
+        // A new value for each attempt: a server from an earlier attempt cannot answer for this one.
+        string session = ViteDevelopmentServer.CreateSession();
+        bool confirmSession = ConfirmsSession(configuration);
         JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
             configuration.WorkspaceRoot,
             configuration.FrontendPackageDirectory);
@@ -65,16 +69,12 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             packageManager.Executable,
             configuration.WorkspaceRoot,
             CreateArguments(configuration, port),
-            new Dictionary<string, string?>(StringComparer.Ordinal)
-            {
-                ["BROWSER"] = "none",
-                ["NG_CLI_ANALYTICS"] = "false",
-            },
+            CreateEnvironment(session),
             observeLine: conflict.Observe);
         var server = new AngularDevelopmentServer(process, origin);
         try
         {
-            await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
+            await server.WaitUntilReadyAsync(confirmSession ? session : null, cancellationToken).ConfigureAwait(false);
             using var client = new HttpClient();
             var documents = new List<(string Destination, string Document)>();
             foreach (string destination in configuration.DevelopmentServerDocuments)
@@ -92,6 +92,10 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                     origin,
                     destination,
                     document);
+            }
+            if (confirmSession)
+            {
+                Console.WriteLine("[dev] The Angular development server confirmed this dev session.");
             }
             Console.WriteLine($"[dev] Angular development server ready at {origin}");
             return server;
@@ -114,6 +118,25 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         }
     }
 
+    /// <summary>
+    /// Whether readiness requires the session confirmation: the Angular frontend declares vite-plugin-runic, whose
+    /// <c>runicDevSessionProxy()</c> the serve target's proxy configuration answers <c>/__runic/state</c> with, as the
+    /// runic-app template sets up. The Angular CLI loads no Vite plugins, so without it nothing can confirm the session,
+    /// and dev relies on the server exiting when the port is taken.
+    /// </summary>
+    internal static bool ConfirmsSession(DevProjectConfiguration configuration) =>
+        ViteDevelopmentServer.DeclaresPackage(
+            Path.Combine(configuration.FrontendPackageDirectory, "package.json"),
+            ViteDevelopmentServer.RunicVitePluginPackage);
+
+    internal static IReadOnlyDictionary<string, string?> CreateEnvironment(string? session = null) =>
+        new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            [ViteDevelopmentServer.SessionEnvironmentVariable] = session,
+            ["BROWSER"] = "none",
+            ["NG_CLI_ANALYTICS"] = "false",
+        };
+
     internal static IReadOnlyList<string> CreateArguments(
         DevProjectConfiguration configuration,
         int port)
@@ -134,24 +157,37 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             ]);
     }
 
-    private async Task WaitUntilReadyAsync(
-        CancellationToken cancellationToken)
+    private async Task WaitUntilReadyAsync(string? session, CancellationToken cancellationToken)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(45));
         using var client = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(2),
         };
+        await WaitUntilReadyAsync(Origin, Completion, client, TimeSpan.FromSeconds(45), cancellationToken, session)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits until the server serves the application, and, with a <paramref name="session"/>, answers
+    /// <c>/__runic/state</c> with it.
+    /// </summary>
+    internal static async Task WaitUntilReadyAsync(
+        Uri origin, Task<int> completion, HttpClient client, TimeSpan deadline,
+        CancellationToken cancellationToken, string? session = null)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeout.CancelAfter(deadline);
+        bool served = false;
+        string lastResponse = "no response";
         try
         {
             while (true)
             {
                 timeout.Token.ThrowIfCancellationRequested();
-                if (Completion.IsCompleted)
+                if (completion.IsCompleted)
                 {
-                    int exitCode = await Completion.ConfigureAwait(false);
+                    int exitCode = await completion.ConfigureAwait(false);
                     throw new DevDevelopmentException(
                         "RAPPDEV1007",
                         $"The Angular development server exited before readiness with code {exitCode}.");
@@ -159,12 +195,30 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
 
                 try
                 {
+                    served = false;
+                    lastResponse = "no response";
                     using HttpResponseMessage response = await client
-                        .GetAsync(Origin, timeout.Token)
+                        .GetAsync(origin, timeout.Token)
                         .ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
                     {
-                        return;
+                        if (session is null)
+                        {
+                            return;
+                        }
+                        served = true;
+                        using HttpResponseMessage stateResponse = await client
+                            .GetAsync(new Uri(origin, ViteDevelopmentServer.StatePath), timeout.Token)
+                            .ConfigureAwait(false);
+                        lastResponse = $"HTTP {(int)stateResponse.StatusCode}";
+                        if (stateResponse.IsSuccessStatusCode)
+                        {
+                            if (ViteDevelopmentServer.ConfirmsSession(stateResponse, session))
+                            {
+                                return;
+                            }
+                            lastResponse = $"no {ViteDevelopmentServer.SessionHeader} for this session";
+                        }
                     }
                 }
                 catch (Exception error) when (LoopbackPort.IsConnectionFailure(error))
@@ -182,8 +236,13 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         {
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
-                $"Timed out waiting for the Angular development server at {Origin}. " +
-                "Run 'dotnet runic doctor' and verify the Angular serve target.");
+                served
+                    ? $"Timed out waiting for the Angular development server to confirm this dev session (session confirmation: {lastResponse}). " +
+                      "The frontend declares @runic-artifex/vite-plugin-runic, so the serve target's proxyConfig must include runicDevSessionProxy() from it. " +
+                      "Otherwise another process may have taken the port, or the plugin is older than dotnet-runic: " +
+                      "run 'dotnet runic doctor' and use one release for both."
+                    : $"Timed out waiting for the Angular development server at {origin}. " +
+                      "Run 'dotnet runic doctor' and verify the Angular serve target.");
         }
     }
 

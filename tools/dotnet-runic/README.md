@@ -55,16 +55,29 @@ it. A restart after a C# or frontend compiler edit gets the same grace;
 unless you set it yourself.
 
 `dev` picks a free loopback port for the development server, and on a shared
-machine another process could take that port first. Since 0.11, when the Vite
-configuration uses `runic()` from `@runic-artifex/vite-plugin-runic`, as the
-generated React, Vue and Svelte projects do, `dev` passes the Vite process a
-random value for the session. It accepts the server as ready only when the
-plugin's `/__runic/state` answers with that value, so `dev` never writes a
-page that another process served into the web root. Without the plugin, and
-for Angular, `dev` relies on the server exiting when its port is taken. In
-every case, `dev` writes the development documents only while its own server
-process is still running. The plugin and the tool must come from the same
-release; an older plugin does not answer, and readiness times out with
+machine another process could take that port first. Since 0.11, `dev` passes
+the development server process a random value for the session and accepts the
+server as ready only when its `/__runic/state` answers with that value, so
+`dev` never writes a page that another process served into the web root.
+`@runic-artifex/vite-plugin-runic` answers it, and every frontend that
+`dotnet new runic-app` generates is set up for it:
+
+| Frontend | What answers `/__runic/state` | When `dev` requires the answer |
+| --- | --- | --- |
+| React, Vue, Svelte | `runic()` in `vite.config.ts` | The resolved Vite configuration has `runic()` or `runicDevSession()` |
+| SvelteKit | `runicDevSession()` in `vite.config.ts`, next to `sveltekit()` (SvelteKit warns about `runic()`, whose `transformIndexHtml` hook it does not support) | The same |
+| Angular | `runicDevSessionProxy()` in `proxy.conf.mjs`, the serve target's `proxyConfig` in `angular.json` (the Angular CLI loads no Vite plugins) | `package.json` declares `@runic-artifex/vite-plugin-runic` |
+
+A Vite project with the external frontend compiler, where `dev` does not
+resolve the Vite configuration, is also checked when `package.json` declares
+the plugin. The log says
+`[dev] The Vite development server confirmed this dev session.` (or `Angular`).
+A project set up without the plugin, for example one created before 0.11 or an
+Angular project without `runicDevSessionProxy()` and without the plugin
+dependency, is not checked: `dev` then relies on the server exiting when its
+port is taken. In every case, `dev` writes the development documents only while
+its own server process is still running. The plugin and the tool must come from
+the same release; an older plugin does not answer, and readiness times out with
 `RAPPDEV1007`.
 
 Without a Vite or Angular development server, `dev` runs the frontend watcher
