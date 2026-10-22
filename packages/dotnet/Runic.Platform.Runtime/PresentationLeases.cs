@@ -57,6 +57,25 @@ internal sealed class PresentationDirectoryLease(PresentationLifetime lifetime, 
     public string LocalPath { get { RequireOpen(); return lease.LocalPath; } }
 }
 
+// As PresentationReadLeaseList: each directory is checked against the list and the presentation.
+internal sealed class PresentationDirectoryLeaseList : PresentationLease, IDirectoryLeaseList
+{
+    private readonly IDirectoryLease[] _items;
+    public PresentationDirectoryLeaseList(PresentationLifetime lifetime, IDirectoryLeaseList leases) : base(lifetime, leases) =>
+        _items = leases.Select(lease => (IDirectoryLease)new ListedLease(this, lease)).ToArray();
+    public IDirectoryLease this[int index] => _items[index];
+    public int Count => _items.Length;
+    public IEnumerator<IDirectoryLease> GetEnumerator() => ((IEnumerable<IDirectoryLease>)_items).GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private sealed class ListedLease(PresentationDirectoryLeaseList list, IDirectoryLease lease) : IDirectoryLease
+    {
+        public string DisplayName { get { list.RequireOpen(); return lease.DisplayName; } }
+        public string LocalPath { get { list.RequireOpen(); return lease.LocalPath; } }
+        public ValueTask DisposeAsync() => lease.DisposeAsync();
+    }
+}
+
 internal sealed class PresentationSaveLease(PresentationLifetime lifetime, ISaveFileLease lease)
     : PresentationLease(lifetime, lease), ISaveFileLease, ILaunchableFileLease
 {

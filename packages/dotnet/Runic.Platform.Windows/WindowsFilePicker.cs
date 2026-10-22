@@ -18,6 +18,8 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
 
     public bool SupportsMultipleSelection => true;
 
+    public bool SupportsMultipleDirectorySelection => true;
+
     public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -31,10 +33,17 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
         return selections is [var selection] ? new(selection.Path, selection.Access) : null;
     }
 
+    public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
+    {
+        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory, AllowMultiple = true }, true,
+            cancellationToken).ConfigureAwait(false);
+        return selections is null ? null : [.. selections.Select(static selection => new NativeDirectorySelection(selection.Path, selection.Access))];
+    }
+
     private async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectCoreAsync(NativeFileDialogRequest request, bool directory, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows()) throw new NativeBackendUnavailableException();
-        bool save = request.Save, multiple = request.AllowMultiple && !save && !directory;
+        bool save = request.Save, multiple = request.AllowMultiple && !save;
         var generation = owner.Generation;
         nint dialog = 0;
         IReadOnlyList<NativeFileSelection>? selection = null;
@@ -62,7 +71,11 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
                     int result = Show(dialog, handle);
                     if (result == Cancelled) return;
                     Marshal.ThrowExceptionForHR(result);
-                    selection = multiple ? GetPaths(dialog) : [new(GetPath(dialog), null, true)];
+                    List<NativeFileSelection> paths = multiple ? GetPaths(dialog) : [new(GetPath(dialog), null, true)];
+                    // The file type the user left selected; Windows always shows the file type list.
+                    if (!directory && ChosenFilter(request.Filters, GetFileTypeIndex(dialog)) is { } chosen)
+                        paths[0] = paths[0] with { SelectedFilter = chosen };
+                    selection = paths;
                 }
                 finally { Release(dialog); dialog = 0; }
             }, cancellationToken).ConfigureAwait(false);
@@ -144,6 +157,17 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
     internal static (string Name, string Spec)[] FilterSpecs(ImmutableArray<FileDialogFilter> filters) => filters.IsDefaultOrEmpty ? []
         : [.. filters.Select(static filter => (filter.Name,
             filter.MatchesAllFiles ? "*.*" : string.Join(';', filter.Extensions.Select(static extension => "*." + extension))))];
+
+    // IFileDialog::GetFileTypeIndex is one-based; zero means no file type list.
+    internal static FileDialogFilter? ChosenFilter(ImmutableArray<FileDialogFilter> filters, uint index) =>
+        !filters.IsDefaultOrEmpty && index >= 1 && index <= filters.Length ? filters[(int)index - 1] : null;
+
+    private static unsafe uint GetFileTypeIndex(nint dialog)
+    {
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        uint index = 0;
+        return ((IFileDialog*)dialog)->GetFileTypeIndex(&index).Value < 0 ? 0 : index;
+    }
 
     private static unsafe IShellItem* CreateItem(string path)
     {

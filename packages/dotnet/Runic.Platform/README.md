@@ -103,7 +103,15 @@ if (await files.OpenFilesAsync(options) is PickerResult<IReadFileLeaseList>.Sele
 A `FileDialogFilter` names a file type and lists its extensions without the dot,
 such as `png` or `tar.gz`, or `*` for every file. The first filter is selected
 when the dialog opens; no filters offer every file. Extensions match without
-regard to case on every platform. Filters and the initial folder are hints to the
+regard to case on every platform. `MimeTypes`, such as `image/png` or `image/*`,
+widen a filter where the dialog matches content types: macOS maps them to uniform
+type identifiers and the Linux choosers match the file's MIME type. Windows filters
+by extension only, so a filter always lists its extensions:
+
+```csharp
+var pictures = new FileDialogFilter("Pictures", ["png", "jpg", "webp"]) { MimeTypes = ["image/*"] };
+```
+ Filters and the initial folder are hints to the
 dialog: a folder that does not exist is ignored, and the user can still choose or
 type a name that matches no filter on some platforms. Runic does not reject such
 a selection or add an extension to a saved name, so check the content you read.
@@ -115,17 +123,34 @@ opened, all are released and the result is `Failed`. Each lease holds its file
 open until it, the list or the presentation is disposed. A provider without
 multiple selection returns `Unavailable(BackendUnavailable)`, and the
 `platform.files.openMultiple` capability reports the same.
+`OpenDirectoriesAsync` selects several directories the same way and returns an
+`IDirectoryLeaseList`; the `platform.directories.openMultiple` capability reports
+whether the window's dialogs can.
+
+`PickerResult<T>.Selected.SelectedFilter` is the filter that was active when the
+user confirmed the dialog, so a save can add that filter's extension or an import
+can pick a parser. It is `null` without filters, for directories and where the
+dialog does not say. macOS shows a filter pop-up, and so reports the filter, only
+when `ShowsFilterChoice` is set on `OpenFileOptions` or `SaveFileOptions`:
+
+```csharp
+var options = new SaveFileOptions("drawing") { Filters = [png, svg], ShowsFilterChoice = true };
+if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected { SelectedFilter: var format } saved)
+    await using (saved.Value) { /* write the drawing as format ?? png */ }
+```
 
 | Option | Windows | macOS | Linux portal (GTK 3 and GTK 4) | Linux GTK 3 native chooser |
 | --- | --- | --- | --- | --- |
-| Filters | File type list (`SetFileTypes`) | The union of every filter restricts the panel (`allowedContentTypes`); no filter pop-up | FileChooser `filters` and `current_filter` | File type list |
+| Filters | File type list (`SetFileTypes`) | The union of every filter restricts the panel (`allowedContentTypes`); with `ShowsFilterChoice`, a pop-up below the panel selects one filter | FileChooser `filters` and `current_filter` | File type list |
+| MIME types | Ignored: extensions only | `UTType(mimeType:)`; `image/*`, `audio/*`, `video/*`, `text/*`, `font/*` and `model/*` map to their abstract types, other wildcards are skipped | Not yet sent: extensions only | Not yet added: extensions only |
+| Chosen filter (`SelectedFilter`) | `GetFileTypeIndex` | The pop-up's filter with `ShowsFilterChoice`, otherwise `null` | Not yet reported (`null`) | Not yet reported (`null`) |
 | Multiple selection | `FOS_ALLOWMULTISELECT` | `allowsMultipleSelection` | FileChooser `multiple` | `select-multiple` |
+| Multiple directories | `FOS_PICKFOLDERS` with `FOS_ALLOWMULTISELECT` | `canChooseDirectories` with `allowsMultipleSelection`, security scope per URL | Not yet (`Unavailable`) | Not yet (`Unavailable`) |
 | Initial folder | `SetFolder`, which overrides the folder Windows remembers | `directoryURL` | FileChooser `current_folder`; ignored when opening by portals before FileChooser version 4 | `current-folder` |
 | Suggested name | `SetFileName` | `nameFieldStringValue` | FileChooser `current_name` | `current-name` |
 
-On macOS a save panel with filters may add the first allowed extension to a
-name the user types without one. Applications that need the user to pick between
-filters on macOS can offer the choice in their own interface for now.
+On macOS a save panel with filters may add the first allowed extension, or with
+`ShowsFilterChoice` the chosen filter's, to a name the user types without one.
 
 ## Window services
 

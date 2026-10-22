@@ -26,13 +26,66 @@ public sealed record DesktopVolume(string Id, string DisplayName)
     /// <summary>Whether the operating system considers the volume part of the system; file managers usually list such volumes separately.</summary>
     public bool IsSystem { get; init; }
     /// <summary>Whether the volume is encrypted and locked; it cannot be mounted until it is unlocked.</summary>
+    /// <remarks>Windows lists a locked BitLocker volume and macOS a locked APFS volume with <see cref="CanMount"/>
+    /// <see langword="false"/>; Linux lists a LUKS container without a cleartext device.</remarks>
     public bool IsLocked { get; init; }
-    /// <summary>Whether <see cref="IDesktopVolumes.MountAsync"/> can mount it now.</summary>
+    /// <summary>Whether the volume is encrypted, locked or not, when the platform reports it: BitLocker on Windows,
+    /// encrypted APFS on macOS and LUKS on Linux.</summary>
+    public bool IsEncrypted { get; init; }
+    /// <summary>How <see cref="IDesktopVolumes.UnlockAsync(string, CancellationToken)"/> or its passphrase overload can
+    /// unlock the volume while it is <see cref="IsLocked"/>; <see cref="DesktopVolumeUnlockMethod.None"/> when it cannot
+    /// or is not locked.</summary>
+    public DesktopVolumeUnlockMethod UnlockMethod { get; init; }
+    /// <summary>Whether <see cref="IDesktopVolumes.MountAsync(string, CancellationToken)"/> can mount it now.</summary>
     public bool CanMount { get; init; }
     /// <summary>Whether <see cref="IDesktopVolumes.UnmountAsync"/> can unmount it now.</summary>
     public bool CanUnmount { get; init; }
     /// <summary>Whether <see cref="IDesktopVolumes.EjectAsync"/> can eject its media or drive.</summary>
     public bool CanEject { get; init; }
+}
+
+/// <summary>How a locked volume can be unlocked.</summary>
+/// <remarks>This set is open: a minor release may add methods, so treat unknown values as <see cref="None"/>.</remarks>
+public enum DesktopVolumeUnlockMethod
+{
+    /// <summary>Runic cannot unlock the volume, or it is not locked.</summary>
+    None = 0,
+    /// <summary>The operating system asks the user, as Windows Explorer does for BitLocker: call
+    /// <see cref="IDesktopVolumes.UnlockAsync(string, CancellationToken)"/>.</summary>
+    SystemPrompt = 1,
+    /// <summary>The application supplies the passphrase: call
+    /// <see cref="IDesktopVolumes.UnlockAsync(string, ReadOnlyMemory{char}, CancellationToken)"/>.</summary>
+    Passphrase = 2,
+}
+
+/// <summary>How <see cref="IDesktopVolumes.MountAsync(string, DesktopVolumeMountOptions, CancellationToken)"/> mounts a
+/// volume.</summary>
+/// <remarks>The default value, read-write without options, mounts as
+/// <see cref="IDesktopVolumes.MountAsync(string, CancellationToken)"/> does.</remarks>
+public sealed record DesktopVolumeMountOptions
+{
+    private readonly ImmutableArray<string> _options = [];
+
+    /// <summary>Whether to mount the volume read-only.</summary>
+    public bool ReadOnly { get; init; }
+
+    /// <summary>Platform mount options, such as <c>noexec</c> or <c>uid=1000</c> on Linux, or <c>nobrowse</c> on macOS;
+    /// empty by default.</summary>
+    /// <remarks>The options are passed to the platform as they are: UDisks2 accepts only the options its configuration
+    /// permits for the filesystem and reports others as <see cref="PlatformFailureCode.InvalidData"/>.</remarks>
+    /// <exception cref="ArgumentException">An option is empty or contains a comma, white space or NUL.</exception>
+    public ImmutableArray<string> Options { get => _options; init => _options = ValidOptions(value); }
+
+    internal bool IsDefault => !ReadOnly && _options.IsEmpty;
+
+    private static ImmutableArray<string> ValidOptions(ImmutableArray<string> options)
+    {
+        if (options.IsDefaultOrEmpty) return [];
+        foreach (string option in options)
+            if (string.IsNullOrEmpty(option) || option.AsSpan().IndexOfAny(",\0") >= 0 || option.Any(char.IsWhiteSpace) || option.Any(char.IsControl))
+                throw new ArgumentException($"Use one mount option per entry, such as \"noexec\": \"{option}\".", nameof(options));
+        return options;
+    }
 }
 
 /// <summary>A change that <see cref="IDesktopVolumes.WatchAsync"/> reports.</summary>
@@ -83,7 +136,75 @@ public interface IDesktopVolumes : IAsyncDisposable
     /// <summary>Mounts a volume and returns it with its mount path.</summary>
     /// <param name="volumeId">The volume's <see cref="DesktopVolume.Id"/>.</param>
     /// <param name="cancellationToken">Cancels waiting for the result; an authorization prompt the desktop already showed may stay open.</param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0027:API with optional parameter(s) should have the most parameters amongst its public overloads",
+        Justification = "The options overload takes a required token: an optional one would make MountAsync(id, default) ambiguous.")]
     ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default);
+
+    /// <summary>Mounts a volume with <paramref name="options"/> and returns it with its mount path.</summary>
+    /// <param name="volumeId">The volume's <see cref="DesktopVolume.Id"/>.</param>
+    /// <param name="options">Read-only and platform mount options.</param>
+    /// <param name="cancellationToken">Cancels waiting for the result; an authorization prompt the desktop already showed may stay open.</param>
+    /// <remarks>
+    /// Linux passes the options to UDisks2 (<c>ro</c> for <see cref="DesktopVolumeMountOptions.ReadOnly"/>) and macOS
+    /// to Disk Arbitration (<c>rdonly</c>). Windows mounts volumes itself and reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> for any options but the default. The token is required
+    /// so that <c>MountAsync(id, default)</c> keeps binding to <see cref="MountAsync(string, CancellationToken)"/>. The
+    /// default implementation calls that overload for the default options and otherwise reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, DesktopVolumeMountOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.IsDefault) return MountAsync(volumeId, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<DesktopVolume>>(new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
+
+    /// <summary>Unlocks a locked encrypted volume through the operating system's own prompt and returns it unlocked.</summary>
+    /// <param name="volumeId">The volume's <see cref="DesktopVolume.Id"/>; its <see cref="DesktopVolume.UnlockMethod"/>
+    /// is <see cref="DesktopVolumeUnlockMethod.SystemPrompt"/>.</param>
+    /// <param name="cancellationToken">Cancels waiting for the result; a prompt the system already showed may stay open.</param>
+    /// <returns>
+    /// The unlocked volume; a volume that is not locked succeeds. A dismissed prompt, or one that leaves the volume
+    /// locked, is <see cref="PlatformFailureCode.UserDismissed"/>. Where the system has no such prompt, such as on Linux
+    /// and macOS, the result is <see cref="PlatformUnavailableReason.BackendUnavailable"/>, as the default
+    /// implementation returns.
+    /// </returns>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0027:API with optional parameter(s) should have the most parameters amongst its public overloads",
+        Justification = "The passphrase overload takes a required token, as MountAsync's options overload does.")]
+    ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<DesktopVolume>>(new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
+
+    /// <summary>Unlocks a locked encrypted volume with a passphrase and returns it unlocked.</summary>
+    /// <param name="volumeId">The volume's <see cref="DesktopVolume.Id"/>; its <see cref="DesktopVolume.UnlockMethod"/>
+    /// is <see cref="DesktopVolumeUnlockMethod.Passphrase"/>.</param>
+    /// <param name="passphrase">The passphrase. Runic keeps no copy after the call: macOS writes it to <c>diskutil</c>'s
+    /// standard input from a buffer Runic clears, Linux sends it to UDisks2 over the system bus. Clear your own copy
+    /// once the call returns.</param>
+    /// <param name="cancellationToken">Cancels waiting for the result; an authorization prompt the desktop already showed may stay open.</param>
+    /// <returns>
+    /// The unlocked volume. On Linux this is the cleartext filesystem, whose <see cref="DesktopVolume.Id"/> differs from
+    /// the locked container's; a watch reports the container <see cref="DesktopVolumeChange.Removed"/> and the
+    /// filesystem <see cref="DesktopVolumeChange.Added"/>. A wrong passphrase is <see cref="PlatformFailureCode.Other"/>
+    /// with the native error, because UDisks2 and <c>diskutil</c> do not tell it apart from other failures; a refused
+    /// authorization is <see cref="PlatformFailureCode.PermissionDenied"/>. Windows, which needs an administrator for a
+    /// BitLocker passphrase, reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>, as the default
+    /// implementation does.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="passphrase"/> is empty.</exception>
+    ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        if (passphrase.IsEmpty) throw new ArgumentException("Supply the passphrase.", nameof(passphrase));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<DesktopVolume>>(new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
 
     /// <summary>Unmounts a volume from every mount path. A volume that is not mounted succeeds.</summary>
     /// <param name="volumeId">The volume's <see cref="DesktopVolume.Id"/>.</param>
@@ -131,6 +252,26 @@ public static class DesktopVolumes
         public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrEmpty(volumeId);
+            return Answer<DesktopVolume>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, DesktopVolumeMountOptions options, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(volumeId);
+            ArgumentNullException.ThrowIfNull(options);
+            return Answer<DesktopVolume>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(volumeId);
+            return Answer<DesktopVolume>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(volumeId);
+            if (passphrase.IsEmpty) throw new ArgumentException("Supply the passphrase.", nameof(passphrase));
             return Answer<DesktopVolume>(cancellationToken);
         }
 

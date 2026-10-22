@@ -70,7 +70,7 @@ public static class WindowsPlatformProvider
     /// <summary>Creates the computer's storage volumes, through the volume management API and the Configuration Manager.</summary>
     /// <remarks>
     /// Windows mounts every volume it recognizes itself, at its drive letters and mounted folders:
-    /// <see cref="IDesktopVolumes.MountAsync"/> returns a mounted volume as it is and
+    /// <see cref="IDesktopVolumes.MountAsync(string, CancellationToken)"/> returns a mounted volume as it is and
     /// <see cref="IDesktopVolumes.UnmountAsync"/> succeeds for a volume without a mount path; otherwise both report
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. <see cref="IDesktopVolumes.EjectAsync"/> safely
     /// removes the drive, as "Safely Remove Hardware" does; a program that keeps a file open on it is

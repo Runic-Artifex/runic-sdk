@@ -1084,6 +1084,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
 
     ValueTask<PickerResult<IDirectoryLease>> IFileDialogs.OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken) =>
         Current.FileDialogs.OpenDirectoryAsync(options, cancellationToken);
+    ValueTask<PickerResult<IDirectoryLeaseList>> IFileDialogs.OpenDirectoriesAsync(OpenDirectoryOptions options, CancellationToken cancellationToken) =>
+        Current.FileDialogs.OpenDirectoriesAsync(options, cancellationToken);
     ValueTask<PickerResult<IReadFileLease>> IFileDialogs.OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken) =>
         Current.FileDialogs.OpenFileAsync(options, cancellationToken);
     ValueTask<PickerResult<IReadFileLeaseList>> IFileDialogs.OpenFilesAsync(OpenFileOptions options, CancellationToken cancellationToken) =>

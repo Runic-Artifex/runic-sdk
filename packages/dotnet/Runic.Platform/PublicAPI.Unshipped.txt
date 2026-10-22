@@ -42,3 +42,76 @@ override Runic.Platform.DesktopContextMenuOptions.GetHashCode() -> int
 override Runic.Platform.DesktopContextMenuOptions.ToString() -> string!
 static Runic.Platform.DesktopContextMenuOptions.operator !=(Runic.Platform.DesktopContextMenuOptions? left, Runic.Platform.DesktopContextMenuOptions? right) -> bool
 static Runic.Platform.DesktopContextMenuOptions.operator ==(Runic.Platform.DesktopContextMenuOptions? left, Runic.Platform.DesktopContextMenuOptions? right) -> bool
+const Runic.Platform.PlatformCapabilityIds.DirectoriesOpenMultiple = "platform.directories.openMultiple" -> string!
+override Runic.Platform.DesktopTrashItem.Equals(object? obj) -> bool
+override Runic.Platform.DesktopTrashItem.GetHashCode() -> int
+override Runic.Platform.DesktopTrashItem.ToString() -> string!
+~override Runic.Platform.DesktopTrashProgress.Equals(object obj) -> bool
+override Runic.Platform.DesktopTrashProgress.GetHashCode() -> int
+~override Runic.Platform.DesktopTrashProgress.ToString() -> string
+override Runic.Platform.DesktopVolumeMountOptions.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolumeMountOptions.GetHashCode() -> int
+override Runic.Platform.DesktopVolumeMountOptions.ToString() -> string!
+Runic.Platform.DesktopTrashItem
+Runic.Platform.DesktopTrashItem.<Clone>$() -> Runic.Platform.DesktopTrashItem!
+Runic.Platform.DesktopTrashItem.Deconstruct(out string! Id, out string! OriginalPath) -> void
+Runic.Platform.DesktopTrashItem.DeletedAt.get -> System.DateTimeOffset?
+Runic.Platform.DesktopTrashItem.DeletedAt.init -> void
+Runic.Platform.DesktopTrashItem.DesktopTrashItem(string! Id, string! OriginalPath) -> void
+Runic.Platform.DesktopTrashItem.Equals(Runic.Platform.DesktopTrashItem? other) -> bool
+Runic.Platform.DesktopTrashItem.Id.get -> string!
+Runic.Platform.DesktopTrashItem.Id.init -> void
+Runic.Platform.DesktopTrashItem.IsDirectory.get -> bool
+Runic.Platform.DesktopTrashItem.IsDirectory.init -> void
+Runic.Platform.DesktopTrashItem.OriginalPath.get -> string!
+Runic.Platform.DesktopTrashItem.OriginalPath.init -> void
+Runic.Platform.DesktopTrashItem.Size.get -> long?
+Runic.Platform.DesktopTrashItem.Size.init -> void
+Runic.Platform.DesktopTrashProgress
+Runic.Platform.DesktopTrashProgress.Completed.get -> int
+Runic.Platform.DesktopTrashProgress.Completed.init -> void
+Runic.Platform.DesktopTrashProgress.Deconstruct(out int Completed, out int Total) -> void
+Runic.Platform.DesktopTrashProgress.DesktopTrashProgress(int Completed, int Total) -> void
+Runic.Platform.DesktopTrashProgress.DesktopTrashProgress() -> void
+Runic.Platform.DesktopTrashProgress.Equals(Runic.Platform.DesktopTrashProgress other) -> bool
+Runic.Platform.DesktopTrashProgress.Total.get -> int
+Runic.Platform.DesktopTrashProgress.Total.init -> void
+Runic.Platform.DesktopVolume.IsEncrypted.get -> bool
+Runic.Platform.DesktopVolume.IsEncrypted.init -> void
+Runic.Platform.DesktopVolumeMountOptions
+Runic.Platform.DesktopVolumeMountOptions.<Clone>$() -> Runic.Platform.DesktopVolumeMountOptions!
+Runic.Platform.DesktopVolumeMountOptions.DesktopVolumeMountOptions() -> void
+Runic.Platform.DesktopVolumeMountOptions.Equals(Runic.Platform.DesktopVolumeMountOptions? other) -> bool
+Runic.Platform.DesktopVolumeMountOptions.Options.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopVolumeMountOptions.Options.init -> void
+Runic.Platform.DesktopVolumeMountOptions.ReadOnly.get -> bool
+Runic.Platform.DesktopVolumeMountOptions.ReadOnly.init -> void
+Runic.Platform.DesktopVolumeUnlockMethod
+Runic.Platform.DesktopVolume.UnlockMethod.get -> Runic.Platform.DesktopVolumeUnlockMethod
+Runic.Platform.DesktopVolume.UnlockMethod.init -> void
+Runic.Platform.DesktopVolumeUnlockMethod.None = 0 -> Runic.Platform.DesktopVolumeUnlockMethod
+Runic.Platform.DesktopVolumeUnlockMethod.Passphrase = 2 -> Runic.Platform.DesktopVolumeUnlockMethod
+Runic.Platform.DesktopVolumeUnlockMethod.SystemPrompt = 1 -> Runic.Platform.DesktopVolumeUnlockMethod
+Runic.Platform.FileDialogFilter.MimeTypes.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.FileDialogFilter.MimeTypes.init -> void
+Runic.Platform.IDesktopTrash.EmptyAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopTrash.ListAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopTrashItem!>>!>
+Runic.Platform.IDesktopTrash.MoveAllToTrashAsync(System.Collections.Generic.IReadOnlyList<string!>! paths, System.IProgress<Runic.Platform.DesktopTrashProgress>? progress = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Immutable.ImmutableArray<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>>
+Runic.Platform.IDesktopTrash.RestoreAsync(string! itemId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopVolumes.MountAsync(string! volumeId, Runic.Platform.DesktopVolumeMountOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopVolume!>!>
+Runic.Platform.IDesktopVolumes.UnlockAsync(string! volumeId, System.ReadOnlyMemory<char> passphrase, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopVolume!>!>
+Runic.Platform.IDesktopVolumes.UnlockAsync(string! volumeId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopVolume!>!>
+Runic.Platform.IDirectoryLeaseList
+Runic.Platform.IFileDialogs.OpenDirectoriesAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLeaseList!>!>
+Runic.Platform.OpenFileOptions.ShowsFilterChoice.get -> bool
+Runic.Platform.OpenFileOptions.ShowsFilterChoice.init -> void
+Runic.Platform.PickerResult<T>.Selected.SelectedFilter.get -> Runic.Platform.FileDialogFilter?
+Runic.Platform.PickerResult<T>.Selected.SelectedFilter.init -> void
+Runic.Platform.SaveFileOptions.ShowsFilterChoice.get -> bool
+Runic.Platform.SaveFileOptions.ShowsFilterChoice.init -> void
+static Runic.Platform.DesktopTrashItem.operator !=(Runic.Platform.DesktopTrashItem? left, Runic.Platform.DesktopTrashItem? right) -> bool
+static Runic.Platform.DesktopTrashItem.operator ==(Runic.Platform.DesktopTrashItem? left, Runic.Platform.DesktopTrashItem? right) -> bool
+static Runic.Platform.DesktopTrashProgress.operator !=(Runic.Platform.DesktopTrashProgress left, Runic.Platform.DesktopTrashProgress right) -> bool
+static Runic.Platform.DesktopTrashProgress.operator ==(Runic.Platform.DesktopTrashProgress left, Runic.Platform.DesktopTrashProgress right) -> bool
+static Runic.Platform.DesktopVolumeMountOptions.operator !=(Runic.Platform.DesktopVolumeMountOptions? left, Runic.Platform.DesktopVolumeMountOptions? right) -> bool
+static Runic.Platform.DesktopVolumeMountOptions.operator ==(Runic.Platform.DesktopVolumeMountOptions? left, Runic.Platform.DesktopVolumeMountOptions? right) -> bool

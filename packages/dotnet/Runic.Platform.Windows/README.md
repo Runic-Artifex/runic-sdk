@@ -19,7 +19,9 @@ package does not discover providers or depend on Desktop.
 
 File dialogs require an owner, use filesystem-only Common Item Dialogs and retain
 the shared runtime's atomic replacement policy. Filters become the dialog's file type list, the first
-selected; `OpenFilesAsync` uses `FOS_ALLOWMULTISELECT`; and the initial folder
+selected, and the type the user left selected (`GetFileTypeIndex`) is the result's `SelectedFilter`;
+MIME types are ignored, since the dialog filters by extension. `OpenFilesAsync` uses `FOS_ALLOWMULTISELECT`
+and `OpenDirectoriesAsync` `FOS_PICKFOLDERS` with it; and the initial folder
 uses `SetFolder`, which takes precedence over the folder Windows remembers for the
 application. Clipboard reads distinguish absent
 text (`null`) from empty text, reject over-limit payloads and return typed busy,

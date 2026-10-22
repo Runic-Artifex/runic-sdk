@@ -18,11 +18,14 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         CapabilityStatus multiple = files is CapabilityStatus.Available && backend?.SupportsMultipleSelection != true
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
+        CapabilityStatus multipleDirectories = files is CapabilityStatus.Available && backend?.SupportsMultipleDirectorySelection != true
+            ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
             .Add(PlatformCapabilityIds.FilesOpen, files).Add(PlatformCapabilityIds.FilesSave, save)
             .Add(PlatformCapabilityIds.DirectoriesOpen, directories)
             .Add(PlatformCapabilityIds.DialogsOwned, files)
-            .Add(PlatformCapabilityIds.FilesOpenMultiple, multiple));
+            .Add(PlatformCapabilityIds.FilesOpenMultiple, multiple)
+            .Add(PlatformCapabilityIds.DirectoriesOpenMultiple, multipleDirectories));
     }
 
     /// <inheritdoc />
@@ -31,6 +34,15 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
         ArgumentNullException.ThrowIfNull(options);
         return PickAsync(options.OwnerPolicy, token => OpenBackendDirectoryAsync(backend!, options, token),
             value => new PresentationDirectoryLease(lifetime, value), cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<IDirectoryLeaseList>> OpenDirectoriesAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return PickAsync(options.OwnerPolicy, token => backend!.SupportsMultipleDirectorySelection ? backend.OpenDirectoriesAsync(options, token)
+                : ValueTask.FromResult<PickerResult<IDirectoryLeaseList>>(new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable)),
+            value => new PresentationDirectoryLeaseList(lifetime, value), cancellationToken);
     }
 
     // The backend's OpenDirectoryAsync is the only selection behavior; its
@@ -117,7 +129,7 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
                     await owned.DisposeAsync().ConfigureAwait(false);
                     return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed);
                 }
-                return new PickerResult<T>.Selected((T)(IAsyncDisposable)owned);
+                return new PickerResult<T>.Selected((T)(IAsyncDisposable)owned) { SelectedFilter = selectedResult.SelectedFilter };
             }
             return result;
         }

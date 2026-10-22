@@ -12,6 +12,9 @@ public sealed record NativeFileSelection(string Path, IAsyncDisposable? Access, 
 {
     /// <summary>The filesystem view that holds the path. It selects how a save stages and replaces the file.</summary>
     public NativeFileLocation Location { get; init; }
+    /// <summary>The request's filter that was active when the user confirmed the dialog, or null when the dialog does
+    /// not report it. The first selection of a dialog carries it; a filter that is not one of the request's is ignored.</summary>
+    public FileDialogFilter? SelectedFilter { get; init; }
 }
 /// <summary>The filesystem view through which a native selection is reached.</summary>
 public enum NativeFileLocation
@@ -36,6 +39,9 @@ public sealed record NativeFileDialogRequest(bool Save, string? SuggestedName)
     public string? InitialDirectory { get; init; }
     /// <summary>Whether an open dialog lets the user select more than one file. Never set for a save dialog.</summary>
     public bool AllowMultiple { get; init; }
+    /// <summary>Whether the dialog should offer a choice between <see cref="Filters"/> where it does not by itself, as
+    /// <see cref="OpenFileOptions.ShowsFilterChoice"/> asks.</summary>
+    public bool ShowsFilterChoice { get; init; }
 }
 /// <summary>Optional directory-selection support for a native file picker.</summary>
 public interface INativeDirectoryPicker
@@ -43,6 +49,14 @@ public interface INativeDirectoryPicker
     /// <summary>Shows one owned directory dialog that opens in <paramref name="initialDirectory"/> where supported;
     /// null means dismissal. Acquired access transfers to the caller.</summary>
     ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken);
+    /// <summary>Shows one owned directory dialog that lets the user select several directories; null or an empty list
+    /// means dismissal. Acquired access transfers to the caller.</summary>
+    /// <remarks>The default throws <see cref="NativeBackendUnavailableException"/>. A picker that implements it also
+    /// returns <see langword="true"/> from <see cref="SupportsMultipleDirectorySelection"/>.</remarks>
+    ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        throw new NativeBackendUnavailableException();
+    /// <summary>Whether <see cref="SelectDirectoriesAsync"/> is implemented.</summary>
+    bool SupportsMultipleDirectorySelection => false;
 }
 /// <summary>A statically selected native picker which returns acquired access.</summary>
 public interface INativeFilePicker
@@ -78,40 +92,85 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
     public bool SupportsMultipleSelection => picker.SupportsMultipleSelection;
 
     /// <inheritdoc />
+    public bool SupportsMultipleDirectorySelection => picker is INativeDirectoryPicker { SupportsMultipleDirectorySelection: true };
+
+    /// <inheritdoc />
     public async ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
         cancellationToken.ThrowIfCancellationRequested();
-        if (!IsAvailable) return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        return await OpenDirectoriesCoreAsync(options, multiple: false, cancellationToken).ConfigureAwait(false) switch
+        {
+            PickerResult<DirectoryLeaseList>.Selected(var list) => new PickerResult<IDirectoryLease>.Selected(list[0]),
+            PickerResult<DirectoryLeaseList>.Dismissed => new PickerResult<IDirectoryLease>.Dismissed(),
+            PickerResult<DirectoryLeaseList>.Unavailable(var reason) => new PickerResult<IDirectoryLease>.Unavailable(reason),
+            PickerResult<DirectoryLeaseList>.Failed(var code, var diagnostic) => new PickerResult<IDirectoryLease>.Failed(code, diagnostic),
+            _ => throw new InvalidOperationException(),
+        };
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<PickerResult<IDirectoryLeaseList>> OpenDirectoriesAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsAvailable) return new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (!SupportsMultipleDirectorySelection) return new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        return await OpenDirectoriesCoreAsync(options, multiple: true, cancellationToken).ConfigureAwait(false) switch
+        {
+            PickerResult<DirectoryLeaseList>.Selected(var list) => new PickerResult<IDirectoryLeaseList>.Selected(list),
+            PickerResult<DirectoryLeaseList>.Dismissed => new PickerResult<IDirectoryLeaseList>.Dismissed(),
+            PickerResult<DirectoryLeaseList>.Unavailable(var reason) => new PickerResult<IDirectoryLeaseList>.Unavailable(reason),
+            PickerResult<DirectoryLeaseList>.Failed(var code, var diagnostic) => new PickerResult<IDirectoryLeaseList>.Failed(code, diagnostic),
+            _ => throw new InvalidOperationException(),
+        };
+    }
+
+    // Checks every selected directory before returning any: one that is not a directory releases all of them.
+    private async ValueTask<PickerResult<DirectoryLeaseList>> OpenDirectoriesCoreAsync(OpenDirectoryOptions options, bool multiple, CancellationToken cancellationToken)
+    {
+        if (!IsAvailable) return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         if (picker is not INativeDirectoryPicker directories)
-            return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-        NativeDirectorySelection? selection = null;
+            return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        IReadOnlyList<NativeDirectorySelection?>? selections = null;
+        bool transferred = false;
         try
         {
-            selection = await directories.SelectDirectoryAsync(options.InitialDirectory, cancellationToken).ConfigureAwait(false);
+            selections = multiple
+                ? await directories.SelectDirectoriesAsync(options.InitialDirectory, cancellationToken).ConfigureAwait(false)
+                : await directories.SelectDirectoryAsync(options.InitialDirectory, cancellationToken).ConfigureAwait(false) is { } one ? [one] : null;
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsAvailable) return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
-            if (selection is null) return new PickerResult<IDirectoryLease>.Dismissed();
-            if (!Path.IsPathFullyQualified(selection.Path) || selection.Path.Contains('\0'))
-                return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData);
-            if (!OperatingSystem.IsWindows()) _ = new System.Text.UTF8Encoding(false, true).GetByteCount(selection.Path);
-            // GetAttributes preserves operational failures; Directory.Exists would hide
-            // permission denial and a directory removed after native selection.
-            if ((File.GetAttributes(selection.Path) & FileAttributes.Directory) == 0)
-                return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData);
-            var lease = new DirectoryLease(selection.Path, selection.Access);
-            selection = null;
-            return new PickerResult<IDirectoryLease>.Selected(lease);
+            if (!IsAvailable) return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+            if (selections is null || selections.Count == 0) return new PickerResult<DirectoryLeaseList>.Dismissed();
+            foreach (var selection in selections)
+            {
+                if (selection is null || !Path.IsPathFullyQualified(selection.Path) || selection.Path.Contains('\0'))
+                    return new PickerResult<DirectoryLeaseList>.Failed(PlatformFailureCode.InvalidData);
+                if (!OperatingSystem.IsWindows()) _ = new System.Text.UTF8Encoding(false, true).GetByteCount(selection.Path);
+                // GetAttributes preserves operational failures; Directory.Exists would hide
+                // permission denial and a directory removed after native selection.
+                if ((File.GetAttributes(selection.Path) & FileAttributes.Directory) == 0)
+                    return new PickerResult<DirectoryLeaseList>.Failed(PlatformFailureCode.InvalidData);
+            }
+            var list = new DirectoryLeaseList([.. selections.Select(static selection => (IDirectoryLease)new DirectoryLease(selection!.Path, selection.Access))]);
+            transferred = true;
+            return new PickerResult<DirectoryLeaseList>.Selected(list);
         }
-        catch (OwnerClosedException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
-        catch (DllNotFoundException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException error) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
-        catch (ArgumentException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData); }
-        catch (IOException error) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
-        finally { if (selection?.Access is { } access) await access.DisposeAsync().ConfigureAwait(false); }
+        catch (OwnerClosedException) { return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (UnauthorizedAccessException error) { return new PickerResult<DirectoryLeaseList>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
+        catch (ArgumentException) { return new PickerResult<DirectoryLeaseList>.Failed(PlatformFailureCode.InvalidData); }
+        catch (IOException error) { return new PickerResult<DirectoryLeaseList>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
+        finally
+        {
+            if (!transferred && selections is not null)
+                foreach (var selection in selections)
+                    if (selection?.Access is { } access) await access.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc />
@@ -122,7 +181,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
         cancellationToken.ThrowIfCancellationRequested();
         return await OpenAsync(options, multiple: false, cancellationToken).ConfigureAwait(false) switch
         {
-            PickerResult<ReadFileLeaseList>.Selected(var list) => new PickerResult<IReadFileLease>.Selected(list[0]),
+            PickerResult<ReadFileLeaseList>.Selected { Value: var list } selected => new PickerResult<IReadFileLease>.Selected(list[0]) { SelectedFilter = selected.SelectedFilter },
             PickerResult<ReadFileLeaseList>.Dismissed => new PickerResult<IReadFileLease>.Dismissed(),
             PickerResult<ReadFileLeaseList>.Unavailable(var reason) => new PickerResult<IReadFileLease>.Unavailable(reason),
             PickerResult<ReadFileLeaseList>.Failed(var code, var diagnostic) => new PickerResult<IReadFileLease>.Failed(code, diagnostic),
@@ -140,7 +199,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
         if (!picker.SupportsMultipleSelection) return new PickerResult<IReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         return await OpenAsync(options, multiple: true, cancellationToken).ConfigureAwait(false) switch
         {
-            PickerResult<ReadFileLeaseList>.Selected(var list) => new PickerResult<IReadFileLeaseList>.Selected(list),
+            PickerResult<ReadFileLeaseList>.Selected { Value: var list } selected => new PickerResult<IReadFileLeaseList>.Selected(list) { SelectedFilter = selected.SelectedFilter },
             PickerResult<ReadFileLeaseList>.Dismissed => new PickerResult<IReadFileLeaseList>.Dismissed(),
             PickerResult<ReadFileLeaseList>.Unavailable(var reason) => new PickerResult<IReadFileLeaseList>.Unavailable(reason),
             PickerResult<ReadFileLeaseList>.Failed(var code, var diagnostic) => new PickerResult<IReadFileLeaseList>.Failed(code, diagnostic),
@@ -160,6 +219,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
             selections = await picker.SelectAsync(new NativeFileDialogRequest(false, null)
             {
                 Filters = options.Filters, InitialDirectory = options.InitialDirectory, AllowMultiple = multiple,
+                ShowsFilterChoice = options.ShowsFilterChoice,
             }, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsAvailable) return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -171,7 +231,10 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
                 leases.Add(new ReadFileLease(Path.GetFileName(selection.Path), stream, selection.Access));
             }
             transferred = true;
-            return new PickerResult<ReadFileLeaseList>.Selected(new ReadFileLeaseList([.. leases]));
+            return new PickerResult<ReadFileLeaseList>.Selected(new ReadFileLeaseList([.. leases]))
+            {
+                SelectedFilter = ChosenFilter(options.Filters, selections[0].SelectedFilter),
+            };
         }
         catch (OwnerClosedException) { return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
         catch (DllNotFoundException) { return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
@@ -206,7 +269,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
         {
             var selections = await picker.SelectAsync(new NativeFileDialogRequest(true, options.SuggestedName)
             {
-                Filters = options.Filters, InitialDirectory = options.InitialDirectory,
+                Filters = options.Filters, InitialDirectory = options.InitialDirectory, ShowsFilterChoice = options.ShowsFilterChoice,
             }, cancellationToken).ConfigureAwait(false);
             if (selections is { Count: > 1 })
             {
@@ -230,7 +293,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
             var lease = await SaveFileLease.CreateAsync(selection.Path,
                 selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement(selection.Location) : new NoAtomicReplacement(),
                 selection.Access, cancellationToken).ConfigureAwait(false);
-            return new PickerResult<ISaveFileLease>.Selected(lease);
+            return new PickerResult<ISaveFileLease>.Selected(lease) { SelectedFilter = ChosenFilter(options.Filters, selection.SelectedFilter) };
         }
         catch (OwnerClosedException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
         catch (DllNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
@@ -239,6 +302,10 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
         catch (UnauthorizedAccessException error) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
         catch (IOException error) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
     }
+
+    // Only one of the request's own filters is reported; a picker cannot invent one.
+    private static FileDialogFilter? ChosenFilter(System.Collections.Immutable.ImmutableArray<FileDialogFilter> filters, FileDialogFilter? chosen) =>
+        chosen is not null && !filters.IsDefaultOrEmpty && filters.Contains(chosen) ? chosen : null;
 
     // Opening a FIFO blocks until a writer appears, and special files may never end.
     // On Unix, open without blocking and accept only a seekable non-directory file.
