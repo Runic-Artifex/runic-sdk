@@ -110,6 +110,9 @@ public sealed class DBusException : Exception
     /// <summary>The error name of a call that got no reply in time: the call's <see cref="DBusMethodCall.Timeout"/>
     /// passed, or the bus gave up waiting for the service.</summary>
     public const string NoReply = "org.freedesktop.DBus.Error.NoReply";
+    /// <summary>The error name of a request over a limit, such as a call to an exported object that already has as many
+    /// calls as <see cref="DBusObject.MaxConcurrentCalls"/> allows running and waiting.</summary>
+    public const string LimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded";
 
     /// <summary>Creates an error with a D-Bus error name, such as <c>org.example.Error.NotFound</c>, and a message.</summary>
     /// <exception cref="ArgumentException"><paramref name="errorName"/> is not a valid D-Bus error name.</exception>

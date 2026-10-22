@@ -118,6 +118,7 @@ internal sealed class GeneratorTests
             "<method name=\"HandleMethod\"/>",                                          // HandleMethodAsync
             "<property name=\"ThingInterface\" type=\"s\" access=\"read\"/>",           // the interface constant
             "<property name=\"GetType\" type=\"s\" access=\"read\"/>",                  // object.GetType
+            "<property name=\"MaxConcurrentCalls\" type=\"i\" access=\"read\"/>",       // DBusObject.MaxConcurrentCalls
         })
             Expect("RUNICDBUS012", ("A.xml", Node(members), new() { ["RunicDBusMode"] = "Service", ["Namespace"] = "N" }));
         Expect("RUNICDBUS012", ("A.xml", "<node><interface name=\"a.b\"><method name=\"Do\"/></interface><interface name=\"c.d\"><method name=\"Do\"/></interface></node>",

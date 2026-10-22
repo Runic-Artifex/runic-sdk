@@ -373,6 +373,51 @@ internal sealed class BusTests
         Check(error is { ErrorName: DBusException.UnknownMethod }, $"a path without a manager replies with an error: {error?.ErrorName}");
     }
 
+    [Test, Explicit, Category("DBus"), DisplayName("an object runs at most MaxConcurrentCalls calls, starts them in order and refuses a flood with LimitsExceeded")]
+    public async Task CallLimitAsync()
+    {
+        await using var service = await ConnectAsync();
+        await using var client = await ConnectAsync();
+        Throws<InvalidOperationException>(() => service.Export("/org/runic/Test/None", new HoldObject(0)), "a limit below 1");
+
+        // One at a time: the calls queue in arrival order, and one past the waiting room is refused at once.
+        var serial = new HoldObject(1);
+        await using (service.Export(ObjectPath, serial))
+        {
+            var proxy = new DBusProxy(client, service.UniqueName, ObjectPath);
+            var calls = Enumerable.Range(0, 1 + 64).Select(index => proxy.CallAsync(Interface, "Hold", [DBusValue.From(index)]).AsTask()).ToArray();
+            Check(await ErrorAsync(() => proxy.CallAsync(Interface, "Hold", [DBusValue.From(-1)])) is { ErrorName: DBusException.LimitsExceeded },
+                "a call beyond the running and waiting calls is refused");
+            await serial.WaitStartedAsync(1);
+            await Task.Delay(200);
+            Check(serial.Started.Count == 1, $"one call runs at a time: {serial.Started.Count}");
+            Check(await ErrorAsync(() => proxy.GetPropertyAsync(Interface, "Name")) is { ErrorName: DBusException.LimitsExceeded },
+                "property calls count against the limit too");
+            serial.Release(1 + 64);
+            await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(10));
+            Check(serial.Started.SequenceEqual(Enumerable.Range(0, 1 + 64)), "the calls ran in arrival order");
+            Check(serial.MostAtOnce == 1, $"never more than one call at once: {serial.MostAtOnce}");
+            serial.Release(1);
+            Check((await proxy.CallAsync(Interface, "Hold", [DBusValue.From(99)]))[0].GetInt32() == 99, "the object answers again once its calls finished");
+        }
+
+        // The default runs 16 calls at once; the 17th waits for one of them.
+        var parallel = new HoldObject(null);
+        await using (service.Export(ObjectPath, parallel))
+        {
+            var proxy = new DBusProxy(client, service.UniqueName, ObjectPath);
+            var calls = Enumerable.Range(0, 17).Select(index => proxy.CallAsync(Interface, "Hold", [DBusValue.From(index)]).AsTask()).ToArray();
+            await parallel.WaitStartedAsync(16);
+            await Task.Delay(200);
+            Check(parallel.Started.Count == 16 && !parallel.Started.Contains(16), $"16 calls run at once by default: {parallel.Started.Count}");
+            parallel.Release(1);
+            await parallel.WaitStartedAsync(17);
+            parallel.Release(16);
+            await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(10));
+            Check(parallel.MostAtOnce == 16, $"at most 16 at once: {parallel.MostAtOnce}");
+        }
+    }
+
     private static async Task<DBusConnection> ConnectAsync() =>
         await DBusConnection.ConnectAsync(DBusBus.Session) is PlatformResult<DBusConnection>.Success(var connection) ? connection
             : throw new InvalidOperationException("Run the bus cases under dbus-run-session.");
@@ -457,6 +502,48 @@ internal sealed class BusTests
         public bool Hand(SafeHandle descriptor) => EmitSignal(Interface, "Handed", DBusValue.UnixFd(descriptor));
 
         public bool Tag(DBusValue[] arguments) => EmitSignal(Interface, "Tagged", arguments);
+    }
+
+    // Holds each call until released, and records the order and overlap of the calls it ran.
+    private sealed class HoldObject(int? limit) : DBusObject
+    {
+        private readonly System.Threading.Channels.Channel<int> _release = System.Threading.Channels.Channel.CreateUnbounded<int>();
+        private readonly Lock _gate = new();
+        private int _running;
+        public List<int> Started { get; } = [];
+        public int MostAtOnce { get; private set; }
+
+        protected override int MaxConcurrentCalls => limit ?? base.MaxConcurrentCalls;
+
+        public void Release(int count)
+        {
+            for (int index = 0; index < count; index++) _release.Writer.TryWrite(index);
+        }
+
+        public async Task WaitStartedAsync(int count)
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (true)
+            {
+                lock (_gate) if (Started.Count >= count) return;
+                await Task.Delay(10, deadline.Token);
+            }
+        }
+
+        protected override async ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context)
+        {
+            lock (_gate)
+            {
+                Started.Add(context.Arguments[0].GetInt32());
+                MostAtOnce = Math.Max(MostAtOnce, ++_running);
+            }
+            try { await _release.Reader.ReadAsync(context.RequestAborted); }
+            finally { lock (_gate) _running--; }
+            return [context.Arguments[0]];
+        }
+
+        protected override ValueTask<DBusValue> GetPropertyAsync(string interfaceName, string name, DBusMethodContext context) =>
+            ValueTask.FromResult(DBusValue.From("hold"));
     }
 
     // An org.freedesktop.DBus.ObjectManager with one disk to start with.

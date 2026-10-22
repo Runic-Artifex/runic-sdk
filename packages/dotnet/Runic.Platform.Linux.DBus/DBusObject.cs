@@ -17,13 +17,35 @@ namespace Runic.Platform.Linux.DBus;
 /// or moves work to its model context. Throw <see cref="DBusException"/> to reply with an error name. Any other
 /// exception replies <see cref="DBusException.Failed"/> without its message, which can contain internal details.
 /// </para>
+/// <para>
+/// Any program on the bus can call an exported object, so the calls one object answers are bounded: at most
+/// <see cref="MaxConcurrentCalls"/> run at once, and up to 64 more wait for a turn. Calls
+/// start in the order they arrive. A call beyond both is refused with <see cref="DBusException.LimitsExceeded"/>.
+/// </para>
 /// </remarks>
 public abstract class DBusObject
 {
+    // How many calls to one object can wait for a turn while MaxConcurrentCalls calls run.
+    internal const int MaxWaitingCalls = 64;
+
     private DBusObjectExport? _export;
 
     /// <summary>The path the object is exported at, or <see langword="null"/> while it is not exported.</summary>
     public DBusObjectPath? Path => Volatile.Read(ref _export) is { } export ? new DBusObjectPath(export.Path) : (DBusObjectPath?)null;
+
+    /// <summary>The most calls the object answers at once; 16 unless overridden.</summary>
+    /// <remarks>
+    /// <para>
+    /// Calls start in the order they arrive. With 1, the object answers one call at a time, in that order, so a call
+    /// sees what an earlier call changed. Raise the limit for an object whose calls wait a long time, such as for a user.
+    /// </para>
+    /// <para>
+    /// While this many calls run, up to 64 more wait; the connection refuses further calls with
+    /// <see cref="DBusException.LimitsExceeded"/> until one finishes. Introspection and calls whose arguments cannot be
+    /// read are answered at once and do not count. The value is read when the object is exported.
+    /// </para>
+    /// </remarks>
+    protected virtual int MaxConcurrentCalls => 16;
 
     /// <summary>The object's interfaces as introspection XML <c>&lt;interface&gt;</c> elements, without the standard interfaces.</summary>
     /// <remarks>Tools such as <c>busctl introspect</c> and generic clients read it. The default lists no interfaces.</remarks>
@@ -89,6 +111,7 @@ public abstract class DBusObject
     internal ValueTask<ImmutableDictionary<string, DBusValue>> GetAllAsync(string interfaceName, DBusMethodContext context) => GetAllPropertiesAsync(interfaceName, context);
     internal ValueTask SetAsync(string interfaceName, string name, DBusValue value, DBusMethodContext context) => SetPropertyAsync(interfaceName, name, value, context);
     internal string Introspection => IntrospectionXml;
+    internal int ConcurrencyLimit => MaxConcurrentCalls;
 }
 
 /// <summary>One call to an exported <see cref="DBusObject"/>.</summary>
@@ -145,11 +168,30 @@ internal static class DBusProperties
         """);
 }
 
-// Routes the calls for one exported path to its object, off the connection's read loop.
-internal sealed class DBusObjectExport(DBusConnection connection, DBusObjectPath path, DBusObject service) : IPathMethodHandler, IAsyncDisposable
+// Routes the calls for one exported path to its object, off the connection's read loop. At most `_limit` calls run at once;
+// later calls wait in arrival order, up to MaxWaitingCalls, and any beyond are refused.
+internal sealed class DBusObjectExport : IPathMethodHandler, IAsyncDisposable
 {
+    private readonly DBusConnection connection;
+    private readonly DBusObjectPath path;
+    private readonly DBusObject service;
+    private readonly int _limit;
+    private readonly Lock _calls = new();
+    private readonly Queue<(MethodContext Context, DBusMethodContext Call)> _waiting = new();
+    private int _running;
     private int _disposed;
-    public string Path { get; } = path.Value;
+
+    internal DBusObjectExport(DBusConnection connection, DBusObjectPath path, DBusObject service)
+    {
+        this.connection = connection;
+        this.path = path;
+        this.service = service;
+        _limit = service.ConcurrencyLimit;
+        if (_limit < 1) throw new InvalidOperationException($"The object's MaxConcurrentCalls is {_limit}; it must be at least 1.");
+        Path = path.Value;
+    }
+
+    public string Path { get; }
     public bool HandlesChildPaths => false;
 
     internal bool TryEmit(string interfaceName, string member, ImmutableArray<DBusValue> arguments) =>
@@ -173,13 +215,55 @@ internal sealed class DBusObjectExport(DBusConnection connection, DBusObjectPath
         }
         var call = new DBusMethodContext(request.SenderAsString, path, request.InterfaceAsString ?? "", request.MemberAsString ?? "", arguments,
             context.RequestAborted);
-        // The connection reads no further message until this method returns: answer on the thread pool instead.
-        context.DisposesAsynchronously = true;
-        _ = Task.Run(() => AnswerAsync(context, call));
+        bool start, refuse = false;
+        lock (_calls)
+        {
+            start = _running < _limit;
+            if (start) _running++;
+            else if (_waiting.Count >= DBusObject.MaxWaitingCalls) refuse = true;
+            else
+            {
+                // The connection reads no further message until this method returns: answer on the thread pool instead.
+                context.DisposesAsynchronously = true;
+                _waiting.Enqueue((context, call));
+            }
+        }
+        if (refuse)
+        {
+            // Any program on the bus can call the object: refuse a flood instead of queueing it.
+            foreach (var argument in arguments) DBusWire.CloseHandles(argument);
+            context.ReplyError(DBusException.LimitsExceeded, "The object has too many calls in progress.");
+        }
+        else if (start)
+        {
+            context.DisposesAsynchronously = true;
+            _ = Task.Run(() => AnswerAsync(context, call));
+        }
         return ValueTask.CompletedTask;
     }
 
+    // Starts the longest-waiting call in the finished call's place, or frees the place.
+    private void Next()
+    {
+        (MethodContext Context, DBusMethodContext Call) next;
+        lock (_calls)
+        {
+            if (!_waiting.TryDequeue(out next))
+            {
+                _running--;
+                return;
+            }
+        }
+        _ = Task.Run(() => AnswerAsync(next.Context, next.Call));
+    }
+
     private async Task AnswerAsync(MethodContext context, DBusMethodContext call)
+    {
+        try { await ReplyAsync(context, call).ConfigureAwait(false); }
+        finally { Next(); }
+    }
+
+    private async Task ReplyAsync(MethodContext context, DBusMethodContext call)
     {
         try
         {

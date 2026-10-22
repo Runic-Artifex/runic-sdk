@@ -1139,7 +1139,9 @@ generator reports this instead of generating:
   name.
 
 Before 0.9, the service-file duplicates were reported as RUNICDBUS011, and the
-other collisions compiled with the inherited member silently hidden.
+other collisions compiled with the inherited member silently hidden. Since 0.11 a
+service property named `MaxConcurrentCalls` collides with the `DBusObject` member
+of that name.
 
 **Fix:** put interfaces whose members collide in separate files, or set
 `RunicDBusClassName`. A D-Bus member whose name collides with an inherited member
