@@ -123,6 +123,57 @@ internal sealed class VolumeTests
         await Throws<ObjectDisposedException>(async () => { await foreach (var _ in volumes.WatchAsync()) { } });
     }
 
+    // A locked BitLocker volume: mount reports it locked, unlock shows Explorer's prompt and reads the volume again; an
+    // optical volume ejects its medium. Runs on every OS.
+    [Test]
+    public async Task LockedAndOpticalVolumes()
+    {
+#pragma warning disable CA1416 // Locked, IsLocked and IsEncrypted are pure.
+        var locked = WindowsVolumeSource.Locked("\\\\?\\Volume{l}\\", "F:\\", "USBSTOR\\DISK\\9", "Stick", removable: true, system: false, ejectable: true);
+        Check(locked is { IsLocked: true, IsEncrypted: true, UnlockMethod: DesktopVolumeUnlockMethod.SystemPrompt, CanMount: false, CanUnmount: false, CanEject: true,
+            MountPaths.IsEmpty: true, DisplayName: "Stick (F:)", IsRemovable: true }, $"a locked volume: {locked}");
+        Check(WindowsVolumeSource.Locked("\\\\?\\Volume{m}\\", "G:\\", null, null, false, false, false).DisplayName == "G:\\", "without a drive name, the drive letter");
+        Check(WindowsVolumeSource.IsLocked(WindowsVolumeSource.LockedVolumeError, null) && WindowsVolumeSource.IsLocked(21, 6) && !WindowsVolumeSource.IsLocked(21, 1)
+            && !WindowsVolumeSource.IsLocked(21, null), "the locked error or the shell's locked state");
+        Check(WindowsVolumeSource.IsEncrypted(1) && WindowsVolumeSource.IsEncrypted(5) && WindowsVolumeSource.IsEncrypted(6)
+            && !WindowsVolumeSource.IsEncrypted(2) && !WindowsVolumeSource.IsEncrypted(0) && !WindowsVolumeSource.IsEncrypted(null), "BitLocker protection states");
+#pragma warning restore CA1416
+
+        var optical = Volume("\\\\?\\Volume{o}\\", drive: "IDE\\CDROM\\1") with { FileSystem = "CDFS", IsReadOnly = true, IsRemovable = true };
+        var source = new FakeSource { Volumes = [locked, Volume("\\\\?\\Volume{u}\\"), optical] };
+        await using IDesktopVolumes volumes = new WindowsVolumes(source, Never, TimeSpan.Zero);
+        Check(await volumes.MountAsync(locked.Id) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Locked }, "mounting a locked volume");
+        Check(await volumes.MountAsync(locked.Id, new DesktopVolumeMountOptions(), default) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Locked },
+            "the default options mount as MountAsync(id) does");
+        Check(await volumes.MountAsync("\\\\?\\Volume{u}\\", new DesktopVolumeMountOptions { ReadOnly = true }, default)
+            is PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "Windows takes no mount options");
+
+        // The prompt was dismissed: the volume is still locked.
+        Check(await volumes.UnlockAsync(locked.Id) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.UserDismissed } && source.Prompted is [var first]
+            && first == locked.Id, "a dismissed prompt");
+        // The user unlocked it in the prompt.
+        source.Prompt = id =>
+        {
+            source.Volumes = [.. source.Volumes.Select(v => v.Id == id ? Volume(id, "USBSTOR\\DISK\\9") with { IsEncrypted = true } : v)];
+            return new PlatformResult<PlatformUnit>.Success(default);
+        };
+        Check(await volumes.UnlockAsync(locked.Id) is PlatformResult<DesktopVolume>.Success { Value: { IsLocked: false, IsEncrypted: true, MountPaths: ["E:\\"] } },
+            "the unlocked volume");
+        Check(await volumes.UnlockAsync(locked.Id) is PlatformResult<DesktopVolume>.Success && source.Prompted.Count == 2, "an unlocked volume needs no prompt");
+        source.Prompt = _ => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        source.Volumes = [locked];
+        Check(await volumes.UnlockAsync(locked.Id) is PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "no prompt on this system");
+        source.Volumes = [locked with { UnlockMethod = DesktopVolumeUnlockMethod.None }];
+        Check(await volumes.UnlockAsync(locked.Id) is PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable) && source.Prompted.Count == 3,
+            "a volume without a drive letter to prompt for");
+        Check(await volumes.UnlockAsync(locked.Id, "passphrase".AsMemory(), default) is PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            "a passphrase needs an administrator");
+        Check(await volumes.UnlockAsync("\\\\?\\Volume{z}\\") is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.NotFound }, "unlock of an unknown ID");
+
+        source.Volumes = [optical];
+        Check(await volumes.EjectAsync(optical.Id) is PlatformResult<PlatformUnit>.Success && source.Ejected is ["IDE\\CDROM\\1"], "an optical volume ejects");
+    }
+
     // Configuration Manager results and vetoes; runs on every OS.
     [Test]
     public void EjectResults()
@@ -142,6 +193,23 @@ internal sealed class VolumeTests
         Check(WindowsVolumeSource.Strings("E:\\\0C:\\Mount\\\0\0ignored".AsSpan()) is ["E:\\", "C:\\Mount\\"], "a double-NUL-terminated list");
         Check(WindowsVolumeSource.Strings("\0\0".AsSpan()).IsEmpty, "an empty list");
 #pragma warning restore CA1416
+    }
+
+    // What the runner's shell reports for BitLocker: the drive verb Explorer's unlock prompt uses and the protection
+    // state of the system drive. Read-only; records the values in the log.
+    [Test, Explicit, Category("NativeVolumes")]
+    public void BitLockerShell()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8)) throw new PlatformNotSupportedException("Volumes require Windows.");
+        using (var verb = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(@"Drive\shell\" + WindowsVolumeSource.UnlockVerb))
+        {
+            Console.WriteLine(verb is null ? $"HKCR\\Drive\\shell\\{WindowsVolumeSource.UnlockVerb}: absent (BitLocker is not installed)"
+                : $"HKCR\\Drive\\shell\\{WindowsVolumeSource.UnlockVerb}: AppliesTo={verb.GetValue("AppliesTo")}; command={verb.OpenSubKey("command")?.GetValue(null)}");
+        }
+        string systemRoot = Path.GetPathRoot(Environment.SystemDirectory)!;
+        uint? protection = WindowsVolumeSource.BitLockerProtectionForTest(systemRoot);
+        Console.WriteLine($"System.Volume.BitLockerProtection of {systemRoot}: {protection?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "not reported"}");
+        Check(protection is null or (>= 0 and <= 8), $"a known protection state: {protection}");
     }
 
     // A VHD that diskpart creates and attaches for the run, with a label unique to it: the runner's own disks are
@@ -195,7 +263,7 @@ internal sealed class VolumeTests
             attached = true;
             var added = await WaitForAsync(changes.Reader, v => v.DisplayName == label && !v.MountPaths.IsEmpty, timeout.Token);
             Console.WriteLine($"Attached: {Describe(added)}");
-            Check(added is { FileSystem: "NTFS", Size: > 0, IsSystem: false, IsReadOnly: false, IsLocked: false, CanMount: false, CanUnmount: false, DriveId: not null }
+            Check(added is { FileSystem: "NTFS", Size: > 0, IsSystem: false, IsReadOnly: false, IsLocked: false, IsEncrypted: false, CanMount: false, CanUnmount: false, DriveId: not null }
                 && added.DriveId != system.DriveId, $"the attached volume: {Describe(added)}");
             Check(Directory.Exists(added.MountPaths[0]), "its drive letter is a directory");
             Check(await volumes.MountAsync(added.Id, timeout.Token) is PlatformResult<DesktopVolume>.Success { Value.MountPaths.IsEmpty: false }, "mounting it returns it");
@@ -369,10 +437,19 @@ internal sealed class VolumeTests
             foreach (var subscriber in subscribers) subscriber();
         }
 
-        public PlatformResult<PlatformUnit> Eject(string driveId)
+        public PlatformResult<PlatformUnit> Eject(string volumeId, string? driveId)
         {
-            Ejected.Add(driveId);
+            Ejected.Add(driveId ?? volumeId);
             return EjectResult;
+        }
+
+        internal Func<string, PlatformResult<PlatformUnit>>? Prompt;
+        internal List<string> Prompted { get; } = [];
+
+        public Task<PlatformResult<PlatformUnit>> PromptUnlockAsync(string volumeId, CancellationToken cancellationToken)
+        {
+            Prompted.Add(volumeId);
+            return Task.FromResult(Prompt?.Invoke(volumeId) ?? new PlatformResult<PlatformUnit>.Success(default));
         }
 
         private sealed class Subscription(FakeSource source, Action changed) : IDisposable

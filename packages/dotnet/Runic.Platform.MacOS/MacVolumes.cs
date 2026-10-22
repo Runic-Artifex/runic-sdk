@@ -26,6 +26,10 @@ internal sealed record MacDisk(string BsdName)
     internal string? Vendor { get; init; }
     internal string? Model { get; init; }
     internal string? PhysicalDisk { get; init; }
+    // An encrypted APFS volume (the AppleAPFSVolume registry entry's Encrypted, or Disk Arbitration's
+    // DAMediaEncrypted), and whether it is locked now (the entry's Locked).
+    internal bool Encrypted { get; init; }
+    internal bool Locked { get; init; }
 }
 
 // What MacVolumes needs from Disk Arbitration; MacVolumeSource is the native one, tests use a fake.
@@ -37,15 +41,19 @@ internal interface IMacVolumeSource
     // Calls changed when a disk appears, disappears or its description changes; null without a session.
     IDisposable? Subscribe(Action changed);
 
-    // DADiskMount at the default location; the result is the mount path.
-    Task<PlatformResult<string?>> MountAsync(string bsdName);
+    // DADiskMount at the default location; the result is the mount path. Arguments are mount options, such as rdonly.
+    Task<PlatformResult<string?>> MountAsync(string bsdName, ImmutableArray<string> arguments);
+    // diskutil apfs unlockVolume with the passphrase on its standard input; it mounts the volume as well.
+    Task<PlatformResult<PlatformUnit>> UnlockAsync(string bsdName, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken);
     Task<PlatformResult<PlatformUnit>> UnmountAsync(string bsdName);
     // DADiskEject of a whole disk.
     Task<PlatformResult<PlatformUnit>> EjectAsync(string bsdName);
 }
 
 // Volumes from Disk Arbitration, as Finder and Disk Utility see them. Disk Arbitration reports every disk with its
-// description and asks dissenters, such as an application with a file open, before it unmounts or ejects.
+// description and asks dissenters, such as an application with a file open, before it unmounts or ejects. A locked
+// APFS volume is listed as locked and unlocks with its passphrase; macOS offers no system prompt for it, so the
+// prompt overload of UnlockAsync keeps its default.
 internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDesktopVolumes
 {
     internal static readonly TimeSpan DefaultSettle = TimeSpan.FromMilliseconds(100);
@@ -69,15 +77,55 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
         _ => throw new InvalidOperationException(),
     };
 
-    public async ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        return MountCoreAsync(volumeId, [], cancellationToken);
+    }
+
+    // Disk Arbitration passes the arguments to mount(8) as -o options: rdonly for a read-only mount.
+    public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, DesktopVolumeMountOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        ArgumentNullException.ThrowIfNull(options);
+        return MountCoreAsync(volumeId, MountArguments(options), cancellationToken);
+    }
+
+    internal static ImmutableArray<string> MountArguments(DesktopVolumeMountOptions options) =>
+        options.ReadOnly ? ["rdonly", .. options.Options] : options.Options;
+
+    // A locked APFS volume unlocks with its passphrase, through diskutil, which also mounts it.
+    public async ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        if (passphrase.IsEmpty) throw new ArgumentException("Supply the passphrase.", nameof(passphrase));
+        var found = await FindAsync(volumeId, cancellationToken).ConfigureAwait(false);
+        if (found is not PlatformResult<DesktopVolume>.Success(var volume) || !volume.IsLocked) return found;
+        if (volume.UnlockMethod != DesktopVolumeUnlockMethod.Passphrase) return new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        cancellationToken.ThrowIfCancellationRequested();
+        var unlocked = await source.UnlockAsync(volumeId, passphrase, cancellationToken).ConfigureAwait(false);
+        if (unlocked is not PlatformResult<PlatformUnit>.Success) return Forward<PlatformUnit, DesktopVolume>(unlocked);
+        // The unlocked state and the mount path arrive as description changes, which can follow diskutil's exit.
+        var refreshed = volume;
+        for (int attempt = 0; attempt < MountPathAttempts; attempt++)
+        {
+            if (await FindAsync(volumeId, cancellationToken).ConfigureAwait(false) is PlatformResult<DesktopVolume>.Success(var current)) refreshed = current;
+            if (!refreshed.IsLocked && !refreshed.MountPaths.IsEmpty) break;
+            await Task.Delay(MountPathDelay, cancellationToken).ConfigureAwait(false);
+        }
+        return new PlatformResult<DesktopVolume>.Success(refreshed.IsLocked
+            ? refreshed with { IsLocked = false, UnlockMethod = DesktopVolumeUnlockMethod.None } : refreshed);
+    }
+
+    private async ValueTask<PlatformResult<DesktopVolume>> MountCoreAsync(string volumeId, ImmutableArray<string> arguments, CancellationToken cancellationToken)
+    {
         var found = await FindAsync(volumeId, cancellationToken).ConfigureAwait(false);
         if (found is not PlatformResult<DesktopVolume>.Success(var volume)) return found;
         if (!volume.MountPaths.IsEmpty) return found;
+        if (volume.IsLocked) return new PlatformResult<DesktopVolume>.Failed(PlatformFailureCode.Locked);
         if (!volume.CanMount) return new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         cancellationToken.ThrowIfCancellationRequested();
-        var mounted = await source.MountAsync(volumeId).WaitAsync(cancellationToken).ConfigureAwait(false);
+        var mounted = await source.MountAsync(volumeId, arguments).WaitAsync(cancellationToken).ConfigureAwait(false);
         if (mounted is not PlatformResult<string?>.Success(var path)) return Forward<string?, DesktopVolume>(mounted);
         // The new mount path also arrives as a description change, which can follow the mount's completion; without
         // a path from the completion, wait a moment for it.
@@ -175,7 +223,10 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
                 IsRemovable = physical.Removable || physical.Ejectable || !physical.Internal,
                 IsReadOnly = !disk.Writable,
                 IsSystem = system,
-                CanMount = !mounted && disk.Mountable && !system,
+                IsLocked = disk.Locked,
+                IsEncrypted = disk.Encrypted || disk.Locked,
+                UnlockMethod = disk.Locked ? DesktopVolumeUnlockMethod.Passphrase : DesktopVolumeUnlockMethod.None,
+                CanMount = !mounted && disk.Mountable && !system && !disk.Locked,
                 CanUnmount = mounted && !system,
                 CanEject = physical.Ejectable && !systemDrives.Contains(drive),
             });

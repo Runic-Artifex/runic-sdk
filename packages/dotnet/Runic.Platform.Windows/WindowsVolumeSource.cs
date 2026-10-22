@@ -10,6 +10,8 @@ using Windows.Win32.Foundation;
 using Windows.Win32.Storage.FileSystem;
 using Windows.Win32.System.Diagnostics.Debug;
 using Windows.Win32.System.Ioctl;
+using Windows.Win32.UI.Shell;
+using Windows.Win32.UI.Shell.PropertiesSystem;
 
 namespace Runic.Platform.Windows;
 
@@ -24,7 +26,11 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
     private const int VolumeNameLength = 64; // \\?\Volume{GUID}\ (49 characters) and its terminator
     private const int MaxPath = 261;
     private const uint FILE_DEVICE_DISK = 7;
-    private const uint DRIVE_REMOVABLE = 2, DRIVE_CDROM = 5;
+    private const uint DRIVE_REMOVABLE = 2, DRIVE_FIXED = 3, DRIVE_CDROM = 5;
+    // FVE_E_LOCKED_VOLUME: "This drive is locked by BitLocker Drive Encryption."
+    internal const int LockedVolumeError = unchecked((int)0x80310000);
+    // System.Volume.BitLockerProtection: 1 on, 2 off, 3 encrypting, 4 decrypting, 5 suspended, 6 on and locked.
+    internal const uint ProtectionLocked = 6;
     // An ancestor this many levels up is no longer the drive's own hardware.
     private const int MaxDepth = 16;
     private static readonly Guid EfiSystemPartition = new("c12a7328-f81f-11d2-ba4b-00a0c93ec93b");
@@ -44,6 +50,14 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
 
     private static PlatformResult<ImmutableArray<DesktopVolume>> ListVolumes()
     {
+        // The BitLocker state is a shell property, which needs COM on this thread.
+        int com = PInvoke.CoInitializeEx(null, global::Windows.Win32.System.Com.COINIT.COINIT_MULTITHREADED).Value;
+        try { return ListVolumesCore(); }
+        finally { if (com >= 0) PInvoke.CoUninitialize(); }
+    }
+
+    private static PlatformResult<ImmutableArray<DesktopVolume>> ListVolumesCore()
+    {
         var drives = Drives();
         var volumes = new List<DesktopVolume>();
         Span<char> name = stackalloc char[VolumeNameLength];
@@ -59,13 +73,14 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
         return new PlatformResult<ImmutableArray<DesktopVolume>>.Success(VolumeTracking.Sorted(volumes));
     }
 
-    // A volume with a filesystem Windows recognizes; one without media, unformatted (RAW) or locked by BitLocker is
-    // left out because GetVolumeInformationW fails for it.
+    // A volume with a filesystem Windows recognizes, or one locked by BitLocker that has a drive letter to unlock it
+    // through; one without media or unformatted (RAW) is left out because GetVolumeInformationW fails for it.
     private static DesktopVolume? Volume(string id, Dictionary<(uint Type, uint Number), Drive> drives)
     {
         Span<char> label = stackalloc char[MaxPath];
         Span<char> fileSystem = stackalloc char[MaxPath];
-        if (!PInvoke.GetVolumeInformation(id, label, out _, out _, out uint flags, fileSystem)) return null;
+        if (!PInvoke.GetVolumeInformation(id, label, out _, out _, out uint flags, fileSystem))
+            return LockedVolume(id, Marshal.GetLastPInvokeError(), drives);
         var paths = MountPaths(id);
         long? size = PInvoke.GetDiskFreeSpaceEx(id, out _, out ulong total, out _) && total > 0 ? (long)Math.Min(total, long.MaxValue) : null;
         uint type = PInvoke.GetDriveType(id);
@@ -87,8 +102,77 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
             IsRemovable = type is DRIVE_REMOVABLE or DRIVE_CDROM || drive is { Ejectable: true },
             IsReadOnly = (flags & PInvoke.FILE_READ_ONLY_VOLUME) != 0,
             IsSystem = system,
-            CanEject = drive is { Ejectable: true },
+            IsEncrypted = type is DRIVE_FIXED or DRIVE_REMOVABLE && paths.Length > 0 && IsEncrypted(BitLockerProtection(paths[0])),
+            // An optical drive opens its tray (EjectMedia) where it is not a removable device of its own.
+            CanEject = drive is { Ejectable: true } || type == DRIVE_CDROM,
         };
+    }
+
+    // A BitLocker volume that is locked: GetVolumeInformationW fails, and the shell reports it locked. Explorer's
+    // unlock prompt needs its drive letter.
+    private static DesktopVolume? LockedVolume(string id, int error, Dictionary<(uint Type, uint Number), Drive> drives)
+    {
+        var paths = MountPaths(id);
+        if (paths.IsEmpty) return null;
+        if (!IsLocked(error, BitLockerProtection(paths[0]))) return null;
+        uint type = PInvoke.GetDriveType(id);
+        var (number, system) = Device(id);
+        Drive? drive = number is { } key && drives.TryGetValue(key, out var found) ? found : null;
+        return Locked(id, paths[0], drive?.InstanceId, drive?.Name, type is DRIVE_REMOVABLE || drive is { Ejectable: true }, system, drive is { Ejectable: true });
+    }
+
+    // A locked volume lists no mount path: its drive letter serves no files until it is unlocked.
+    internal static DesktopVolume Locked(string id, string root, string? driveId, string? driveName, bool removable, bool system, bool ejectable) =>
+        new(id, driveName is { } name ? $"{name} ({root.TrimEnd('\\')})" : root)
+        {
+            DriveId = driveId,
+            DriveName = driveName,
+            IsRemovable = removable,
+            IsSystem = system,
+            IsLocked = true,
+            IsEncrypted = true,
+            UnlockMethod = DesktopVolumeUnlockMethod.SystemPrompt,
+            CanEject = ejectable,
+        };
+
+    // GetVolumeInformationW's error for a locked volume, or the shell's protection state when the error differs.
+    internal static bool IsLocked(int error, uint? protection) => error == LockedVolumeError || protection == ProtectionLocked;
+
+    // On, encrypting, decrypting, suspended or locked: some of the volume is encrypted.
+    internal static bool IsEncrypted(uint? protection) => protection is 1 or 3 or 4 or 5 or ProtectionLocked;
+
+    // The shell's BitLocker state of a drive, for the native tests' record of what the runner reports.
+    internal static uint? BitLockerProtectionForTest(string root)
+    {
+        int com = PInvoke.CoInitializeEx(null, global::Windows.Win32.System.Com.COINIT.COINIT_MULTITHREADED).Value;
+        try { return BitLockerProtection(root); }
+        finally { if (com >= 0) PInvoke.CoUninitialize(); }
+    }
+
+    private static PROPERTYKEY? s_protectionKey;
+
+    // System.Volume.BitLockerProtection of a drive, which Explorer reads without an administrator; null when the shell
+    // does not report it, such as for a volume BitLocker cannot protect.
+    private static uint? BitLockerProtection(string root)
+    {
+        if (s_protectionKey is null)
+        {
+            PROPERTYKEY found;
+            if (PInvoke.PSGetPropertyKeyFromName("System.Volume.BitLockerProtection", out found).Value < 0) return null;
+            s_protectionKey = found;
+        }
+        PROPERTYKEY key = s_protectionKey.Value;
+        Guid itemId = typeof(IShellItem2).GUID;
+        void* created = null;
+        fixed (char* path = root)
+            if (PInvoke.SHCreateItemFromParsingName(path, null, &itemId, &created).Value < 0 || created is null) return null;
+        var item = (IShellItem2*)created;
+        try
+        {
+            uint value;
+            return item->GetUInt32(&key, &value).Value >= 0 ? value : null;
+        }
+        finally { item->Release(); }
     }
 
     // Drive letters (E:\) and mounted folders (C:\Data\Disk\), in the order Windows reports them.
@@ -188,12 +272,44 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
         return null;
     }
 
-    public PlatformResult<PlatformUnit> Eject(string driveId)
+    public PlatformResult<PlatformUnit> Eject(string volumeId, string? driveId)
     {
-        if (Locate(driveId) is not { } node) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.NotFound);
-        if (EjectionTarget(node) is not { } target) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-        return RequestEject(target);
+        uint? node = driveId is null ? null : Locate(driveId);
+        if (node is { } device && EjectionTarget(device) is { } target) return RequestEject(target);
+        // An internal optical drive is no removable device: open its tray instead.
+        if (PInvoke.GetDriveType(volumeId) == DRIVE_CDROM) return EjectMedia(volumeId);
+        return node is null ? new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.NotFound)
+            : new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     }
+
+    // Locks and dismounts the volume so that nothing writes to it, allows removal, then ejects the medium. The lock
+    // fails while a program has a file open on the disc.
+    private static PlatformResult<PlatformUnit> EjectMedia(string volumeId)
+    {
+        using var handle = PInvoke.CreateFile(volumeId.TrimEnd('\\'), 0x80000000 /* GENERIC_READ */,
+            FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE, null, FILE_CREATION_DISPOSITION.OPEN_EXISTING, 0, null);
+        if (handle.IsInvalid) return Failure<PlatformUnit>(Marshal.GetLastPInvokeError());
+        if (!Control(handle, PInvoke.FSCTL_LOCK_VOLUME, null, 0))
+        {
+            int error = Marshal.GetLastPInvokeError();
+            return error is (int)WIN32_ERROR.ERROR_ACCESS_DENIED or (int)WIN32_ERROR.ERROR_SHARING_VIOLATION or (int)WIN32_ERROR.ERROR_LOCK_VIOLATION
+                ? new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy, PlatformDiagnostic.FromWin32Error(error))
+                : Failure<PlatformUnit>(error);
+        }
+        if (!Control(handle, PInvoke.FSCTL_DISMOUNT_VOLUME, null, 0)) return Failure<PlatformUnit>(Marshal.GetLastPInvokeError());
+        var allow = new PREVENT_MEDIA_REMOVAL { PreventMediaRemoval = false };
+        _ = ControlInput(handle, PInvoke.IOCTL_STORAGE_MEDIA_REMOVAL, &allow, sizeof(PREVENT_MEDIA_REMOVAL));
+        if (!Control(handle, PInvoke.IOCTL_STORAGE_EJECT_MEDIA, null, 0)) return Failure<PlatformUnit>(Marshal.GetLastPInvokeError());
+        return new PlatformResult<PlatformUnit>.Success(default);
+    }
+
+    // Opens Explorer's BitLocker prompt for the drive (its "unlock-bde" verb, bdeunlock.exe) and waits for it to close.
+    public Task<PlatformResult<PlatformUnit>> PromptUnlockAsync(string volumeId, CancellationToken cancellationToken) =>
+        MountPaths(volumeId) is [var root, ..] ? WindowsUnlockPrompt.ShowAsync(root, cancellationToken)
+            : Task.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+
+    // The drive verb Explorer shows as "Unlock Drive..." on a locked BitLocker volume.
+    internal const string UnlockVerb = "unlock-bde";
 
     private static PlatformResult<PlatformUnit> RequestEject(uint node)
     {
@@ -261,6 +377,18 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
         PInvoke.CreateFile(path, 0, FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE, null,
             FILE_CREATION_DISPOSITION.OPEN_EXISTING, 0, null);
 
+    private static bool ControlInput(SafeFileHandle handle, uint code, void* input, int size)
+    {
+        bool added = false;
+        handle.DangerousAddRef(ref added);
+        try
+        {
+            uint returned;
+            return PInvoke.DeviceIoControl((HANDLE)handle.DangerousGetHandle(), code, input, (uint)size, null, 0, &returned, null);
+        }
+        finally { if (added) handle.DangerousRelease(); }
+    }
+
     private static bool Control(SafeFileHandle handle, uint code, void* output, int size)
     {
         bool added = false;
@@ -324,4 +452,27 @@ internal sealed unsafe class WindowsVolumeSource : IWindowsVolumeSource
     private static PlatformResult<T> Failure<T>(int error) =>
         new PlatformResult<T>.Failed(error == (int)WIN32_ERROR.ERROR_ACCESS_DENIED ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
             PlatformDiagnostic.FromWin32Error(error));
+}
+
+// The shell verb runs bdeunlock.exe through ShellExecuteEx; a verb that starts no process has finished when it returns.
+[SupportedOSPlatform("windows8.0")]
+internal static class WindowsUnlockPrompt
+{
+    internal static async Task<PlatformResult<PlatformUnit>> ShowAsync(string root, CancellationToken cancellationToken)
+    {
+        global::System.Diagnostics.Process? prompt;
+        try { prompt = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(root) { UseShellExecute = true, Verb = WindowsVolumeSource.UnlockVerb }); }
+        catch (global::System.ComponentModel.Win32Exception error)
+        {
+            return error.NativeErrorCode switch
+            {
+                1155 => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), // ERROR_NO_ASSOCIATION: no such verb
+                1223 => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed), // ERROR_CANCELLED
+                _ => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, PlatformDiagnostic.FromWin32Error(error.NativeErrorCode)),
+            };
+        }
+        if (prompt is not null)
+            using (prompt) await prompt.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        return new PlatformResult<PlatformUnit>.Success(default);
+    }
 }

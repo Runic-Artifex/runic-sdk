@@ -79,7 +79,8 @@ public static class MacOSPlatformProvider
     /// ends with disposal. An application that keeps a file open on a volume, or refuses through Disk Arbitration,
     /// makes an unmount or eject <see cref="PlatformFailureCode.ResourceBusy"/>. The startup disk's own volumes, and
     /// the images the system mounts under <c>/System</c> or hidden from Finder, are listed with
-    /// <see cref="DesktopVolume.IsSystem"/> and are never mounted, unmounted or ejected.
+    /// <see cref="DesktopVolume.IsSystem"/> and are never mounted, unmounted or ejected. A locked APFS volume is listed
+    /// locked and unlocks with its passphrase through <c>diskutil</c>; mount options go to Disk Arbitration.
     /// </remarks>
     public static IDesktopVolumes CreateVolumes()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacVolumes(new MacVolumeSource(), MacVolumes.DefaultSettle); }
