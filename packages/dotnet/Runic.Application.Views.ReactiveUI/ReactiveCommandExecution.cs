@@ -100,10 +100,17 @@ public static class ReactiveCommandExecution
     /// requiring one would incorrectly turn a completed no-result effect into
     /// a cardinality failure.
     /// </summary>
-    public static async Task ExecuteCompletion<TInput, TResult>(
+    public static Task ExecuteCompletion<TInput, TResult>(
+        IReactiveCommand<TInput, TResult> command, TInput input, CancellationToken cancellationToken) =>
+        command is null
+            ? Task.FromException(new ArgumentNullException(nameof(command)))
+            : CompletionAsync(command, input, cancellationToken);
+
+    // ExecuteCompletion, and RunAsync for hand-written code (#471): completes after zero or more values; a failure is
+    // marked received before it is rethrown, and held while the call runs, so it is never logged as event 1042.
+    internal static async Task CompletionAsync<TInput, TResult>(
         IReactiveCommand<TInput, TResult> command, TInput input, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(command);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
