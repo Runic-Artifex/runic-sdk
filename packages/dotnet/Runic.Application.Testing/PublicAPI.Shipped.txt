@@ -141,7 +141,6 @@ Runic.Application.Testing.RunicWindowTestHost
 static Runic.Application.Testing.RunicWindowTestHost.Create<TViewModel>(System.IServiceProvider! services, Runic.Application.Testing.RunicWindowTestHostOptions? options = null) -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!
 Runic.Application.Testing.RunicServeOnlyApplication
 Runic.Application.Testing.RunicServeOnlyApplication.DisposeAsync() -> System.Threading.Tasks.ValueTask
-Runic.Application.Testing.RunicServeOnlyApplication.GetDescendantProcesses() -> System.Collections.Generic.IReadOnlyList<System.Diagnostics.Process!>!
 Runic.Application.Testing.RunicServeOnlyApplication.ProcessId.get -> int
 Runic.Application.Testing.RunicServeOnlyApplication.StandardError.get -> string!
 Runic.Application.Testing.RunicServeOnlyApplication.StandardOutput.get -> string!
@@ -243,3 +242,9 @@ override Runic.Application.Testing.BridgeTestArguments.GetHashCode() -> int
 override Runic.Application.Testing.BridgeTestArguments.ToString() -> string!
 static Runic.Application.Testing.BridgeTestArguments.operator !=(Runic.Application.Testing.BridgeTestArguments? left, Runic.Application.Testing.BridgeTestArguments? right) -> bool
 static Runic.Application.Testing.BridgeTestArguments.operator ==(Runic.Application.Testing.BridgeTestArguments? left, Runic.Application.Testing.BridgeTestArguments? right) -> bool
+override Runic.Application.Testing.RunicDescendantProcess.ToString() -> string!
+Runic.Application.Testing.RunicDescendantProcess
+Runic.Application.Testing.RunicDescendantProcess.HasExited() -> bool
+Runic.Application.Testing.RunicDescendantProcess.Id.get -> int
+Runic.Application.Testing.RunicDescendantProcess.StartTime.get -> System.DateTime?
+Runic.Application.Testing.RunicServeOnlyApplication.GetDescendantProcesses() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicDescendantProcess!>!

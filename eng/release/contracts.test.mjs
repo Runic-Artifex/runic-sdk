@@ -113,6 +113,25 @@ test('registry polling is bounded and never retries mismatching published bytes'
  }})).rejects.toThrow('Registry bytes differ');
  expect(reads).toBe(2);
 });
+test('registry polling retries thrown timeouts and network errors within its limits', async()=>{
+ const timeout=()=>new DOMException('The operation timed out.','TimeoutError');
+ let attempts=0, delays=[];
+ const response=await fetchRegistry('https://api.nuget.org/v3-flatcontainer/test/index.json',{now:()=>0,sleep:async ms=>{delays.push(ms);},
+  fetchImpl:async()=>{if(attempts++===0) throw timeout(); return new Response('',{status:200});}});
+ expect(response.status).toBe(200);expect(attempts).toBe(2);expect(delays).toEqual([1000]);
+ attempts=0;
+ await expect(fetchRegistry('https://api.nuget.org/test',{maxAttempts:3,now:()=>0,sleep:async()=>{},
+  fetchImpl:async()=>{attempts++;throw timeout();}})).rejects.toThrow('timed out');
+ expect(attempts).toBe(3);
+ attempts=0;let time=0;
+ await expect(fetchRegistry('https://api.nuget.org/test',{budgetMs:5000,now:()=>time,sleep:async ms=>{time+=ms;},
+  fetchImpl:async()=>{attempts++;throw new TypeError('fetch failed');}})).rejects.toThrow('fetch failed');
+ expect(attempts).toBe(3);
+ attempts=0;
+ await expect(fetchRegistry('https://api.nuget.org/test',{now:()=>0,sleep:async()=>{},
+  fetchImpl:async()=>{attempts++;throw new Error('bug');}})).rejects.toThrow('bug');
+ expect(attempts).toBe(1);
+});
 
 test('after publication, the release waits until nuget.org lists every NuGet package version (#337)', async()=>{
  const urls=[];
@@ -134,6 +153,13 @@ test('after publication, the release waits until nuget.org lists every NuGet pac
  await expect(waitForNuget(packages,{now:()=>time,sleep:async ms=>{time+=ms;},log:()=>{},intervalMs:30000,timeoutMs:120000,lists:async name=>name==='Runic.A'}))
   .rejects.toThrow('nuget.org still does not list Runic.B 1.0.0 after 2 minutes');
  expect(time).toBeLessThan(120000);
+ // A version list that times out (for example while its body is read) is asked again on the next poll; other errors fail.
+ time=0;let failed=0;const retryLogs=[];
+ await waitForNuget(packages.slice(0,1),{now:()=>time,sleep:async ms=>{time+=ms;},log:line=>retryLogs.push(line),intervalMs:1000,timeoutMs:10000,
+  lists:async()=>{if(failed++===0) throw new DOMException('The operation timed out.','TimeoutError');return true;}});
+ expect(failed).toBe(2);
+ expect(retryLogs[0]).toBe('nuget.org version list for Runic.A failed (TimeoutError); asking again on the next poll');
+ await expect(waitForNuget(packages.slice(0,1),{now:()=>0,sleep:async()=>{},log:()=>{},lists:async()=>{throw new Error('boom');}})).rejects.toThrow('boom');
 });
 
 import { runChecked } from './process.mjs';

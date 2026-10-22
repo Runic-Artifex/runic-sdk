@@ -105,32 +105,30 @@ static Runic.Assets.AssetPath.TryNormalize(string? value, out string? normalized
 static Runic.Assets.AssetRoutingOptions.operator !=(Runic.Assets.AssetRoutingOptions? left, Runic.Assets.AssetRoutingOptions? right) -> bool
 static Runic.Assets.AssetRoutingOptions.operator ==(Runic.Assets.AssetRoutingOptions? left, Runic.Assets.AssetRoutingOptions? right) -> bool
 Runic.Assets.AssetArchiveSource.OpenAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
-[RUNICASSETS001]Runic.Assets.AssetSourceChangedEventArgs
-[RUNICASSETS001]Runic.Assets.AssetSourceChangedEventArgs.AssetSourceChangedEventArgs(Runic.Assets.AssetManifest! previous, Runic.Assets.AssetManifest! current) -> void
-[RUNICASSETS001]Runic.Assets.AssetSourceChangedEventArgs.Current.get -> Runic.Assets.AssetManifest!
-[RUNICASSETS001]Runic.Assets.AssetSourceChangedEventArgs.Previous.get -> Runic.Assets.AssetManifest!
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.AssetWatchOptions() -> void
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.DebounceDelay.get -> System.TimeSpan
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.DebounceDelay.init -> void
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.MaxRetryAttempts.get -> int
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.MaxRetryAttempts.init -> void
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.RetryDelay.get -> System.TimeSpan
-[RUNICASSETS001]Runic.Assets.AssetWatchOptions.RetryDelay.init -> void
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.Changed -> System.EventHandler<Runic.Assets.AssetSourceChangedEventArgs!>?
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.DevelopmentDirectoryAssetSource(string! rootDirectory, string! entryPointRelativePath) -> void
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.Dispose() -> void
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.Manifest.get -> Runic.Assets.AssetManifest!
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.OpenAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.Refresh(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Runic.Assets.AssetManifest!
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.SkippedEntries.get -> System.Collections.Generic.IReadOnlyList<string!>!
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.StartWatching(Runic.Assets.AssetWatchOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Runic.Assets.IAssetWatch!
-[RUNICASSETS001]Runic.Assets.DevelopmentDirectoryAssetSource.ValidateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Assets.EmbeddedAssetSource.OpenAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
-[RUNICASSETS001]Runic.Assets.IAssetSourceChangeNotifier
-[RUNICASSETS001]Runic.Assets.IAssetSourceChangeNotifier.Changed -> System.EventHandler<Runic.Assets.AssetSourceChangedEventArgs!>?
-[RUNICASSETS001]Runic.Assets.IAssetWatch
-[RUNICASSETS001]Runic.Assets.IAssetWatch.IsWatching.get -> bool
 Runic.Assets.IAssetSource.Manifest.get -> Runic.Assets.AssetManifest!
 Runic.Assets.IAssetSource.OpenAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
+Runic.Assets.AssetSourceChangedEventArgs
+Runic.Assets.AssetSourceChangedEventArgs.AssetSourceChangedEventArgs(Runic.Assets.AssetManifest! previous, Runic.Assets.AssetManifest! current) -> void
+Runic.Assets.AssetSourceChangedEventArgs.Current.get -> Runic.Assets.AssetManifest!
+Runic.Assets.AssetSourceChangedEventArgs.Previous.get -> Runic.Assets.AssetManifest!
+Runic.Assets.AssetWatchOptions
+Runic.Assets.AssetWatchOptions.AssetWatchOptions() -> void
+Runic.Assets.AssetWatchOptions.DebounceDelay.get -> System.TimeSpan
+Runic.Assets.AssetWatchOptions.DebounceDelay.init -> void
+Runic.Assets.AssetWatchOptions.MaxRetryAttempts.get -> int
+Runic.Assets.AssetWatchOptions.MaxRetryAttempts.init -> void
+Runic.Assets.AssetWatchOptions.RetryDelay.get -> System.TimeSpan
+Runic.Assets.AssetWatchOptions.RetryDelay.init -> void
+Runic.Assets.DevelopmentDirectoryAssetSource
+Runic.Assets.DevelopmentDirectoryAssetSource.Changed -> System.EventHandler<Runic.Assets.AssetSourceChangedEventArgs!>?
+Runic.Assets.DevelopmentDirectoryAssetSource.DevelopmentDirectoryAssetSource(string! rootDirectory, string! entryPointRelativePath) -> void
+Runic.Assets.DevelopmentDirectoryAssetSource.Dispose() -> void
+Runic.Assets.DevelopmentDirectoryAssetSource.Manifest.get -> Runic.Assets.AssetManifest!
+Runic.Assets.DevelopmentDirectoryAssetSource.OpenAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
+Runic.Assets.DevelopmentDirectoryAssetSource.RefreshAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetManifest!>
+Runic.Assets.DevelopmentDirectoryAssetSource.SkippedEntries.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Assets.DevelopmentDirectoryAssetSource.StartWatching(Runic.Assets.AssetWatchOptions? options = null) -> void
+Runic.Assets.DevelopmentDirectoryAssetSource.ValidateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Assets.IAssetSourceChangeNotifier
+Runic.Assets.IAssetSourceChangeNotifier.Changed -> System.EventHandler<Runic.Assets.AssetSourceChangedEventArgs!>?

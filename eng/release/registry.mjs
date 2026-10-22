@@ -12,7 +12,14 @@ export async function fetchRegistry(url, {waitForAvailability=false, fetchImpl=f
   for(let attempt=0; attempt<maxAttempts; attempt++) {
     const remaining=deadline-now();
     assert(remaining>0,'Registry retry budget expired');
-    const response=await fetchImpl(url,{signal:AbortSignal.timeout(Math.max(1,Math.min(30000,remaining)))});
+    let response;
+    // A timed-out or dropped request is as transient as a 503; rethrow it once attempts or budget run out.
+    try { response=await fetchImpl(url,{signal:AbortSignal.timeout(Math.max(1,Math.min(30000,remaining)))}); }
+    catch(error) {
+      const delay=Math.min(15000,1000 * 2**attempt);
+      if(!['TimeoutError','AbortError','TypeError'].includes(error?.name) || attempt===maxAttempts-1 || now()+delay>=deadline) throw error;
+      await sleep(delay); continue;
+    }
     // npm answers 401 for a scoped name it does not know yet, so a just-published
     // package can report 401 or 404 until the registry exposes it.
     const retry=[429,503].includes(response.status) || (waitForAvailability && [401,404].includes(response.status));
@@ -72,7 +79,12 @@ export async function waitForNuget(packages, {timeoutMs=60*60000, intervalMs=300
   const deadline=now()+timeoutMs;
   let missing=packages.filter(p => p.registry === 'nuget');
   for (;;) {
-    const listed=await Promise.all(missing.map(p => lists(p.name, p.version, options)));
+    // A version list that times out while its body is read counts as not listed yet; the next poll asks again.
+    const listed=await Promise.all(missing.map(p => lists(p.name, p.version, options).catch(error => {
+      if (!['TimeoutError','AbortError','TypeError'].includes(error?.name)) throw error;
+      log(`nuget.org version list for ${p.name} failed (${error.name}); asking again on the next poll`);
+      return false;
+    })));
     missing=missing.filter((_, index) => !listed[index]);
     if (missing.length === 0) return;
     const names=missing.map(p => `${p.name} ${p.version}`).join(', ');
