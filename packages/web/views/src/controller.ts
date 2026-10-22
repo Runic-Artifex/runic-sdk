@@ -1,4 +1,6 @@
+/// <reference lib="esnext.disposable" preserve="true" />
 import type { ViewClient } from "./connection.js";
+import { disposable } from "./lifetime.js";
 import { isBridgeOutcome, type BridgeOutcome } from "./outcome.js";
 
 /** Anything that connects a client: a generated page reference or `{ connect: connect<Name> }`. */
@@ -67,8 +69,11 @@ export function viewSourceIdentity<TClient extends ViewClient>(source: ViewSourc
   return isViewClient(source) ? source : source.connect;
 }
 
-/** Creates the framework-neutral controller behind `useView` and `injectView`. */
-export function createViewController<TClient extends ViewClient>(options: ViewControllerOptions<TClient> = {}): ViewController<TClient> {
+/**
+ * Creates the framework-neutral controller behind `useView` and `injectView`.
+ * A `using` declaration disposes it where the engine has `Symbol.dispose`.
+ */
+export function createViewController<TClient extends ViewClient>(options: ViewControllerOptions<TClient> = {}): ViewController<TClient> & Disposable {
   const release = options.release ?? ((client: TClient) => client.dispose());
   const listeners = new Set<() => void>();
   let current: ViewControllerState<TClient> = { source: undefined, client: undefined, state: undefined, error: undefined, pending: false };
@@ -119,7 +124,7 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
     });
   }
 
-  return {
+  return disposable<ViewController<TClient>>({
     get current() { return current; },
     subscribe(listener) {
       listeners.add(listener);
@@ -151,7 +156,7 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
       stop = undefined;
       listeners.clear();
     },
-  };
+  });
 }
 
 /** One consistent reading of a {@link CommandController}. */
@@ -204,10 +209,11 @@ export interface CommandController<TArgs extends readonly unknown[], TResult, TF
  * It may also return one of several commands' promises, such as
  * `name => name === "save" ? client.save() : client.discard()`; the result is
  * then their union and `failure` the union of their declared failures.
+ * A `using` declaration disposes it where the engine has `Symbol.dispose`.
  */
 export function createCommandController<TArgs extends readonly unknown[], TReturn>(
   command: (...args: TArgs) => TReturn,
-): CommandController<TArgs, Awaited<TReturn>, BridgeOutcomeFailure<Awaited<TReturn>>> {
+): CommandController<TArgs, Awaited<TReturn>, BridgeOutcomeFailure<Awaited<TReturn>>> & Disposable {
   type TFailure = BridgeOutcomeFailure<Awaited<TReturn>>;
   const listeners = new Set<() => void>();
   let current: CommandState<TFailure> = { pending: false, error: undefined, failure: undefined };
@@ -221,7 +227,7 @@ export function createCommandController<TArgs extends readonly unknown[], TRetur
     for (const listener of [...listeners]) listener();
   }
 
-  return {
+  return disposable<CommandController<TArgs, Awaited<TReturn>, TFailure>>({
     get current() { return current; },
     subscribe(listener) {
       listeners.add(listener);
@@ -257,5 +263,5 @@ export function createCommandController<TArgs extends readonly unknown[], TRetur
       disposed = true;
       listeners.clear();
     },
-  };
+  });
 }

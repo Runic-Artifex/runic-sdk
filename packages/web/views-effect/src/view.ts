@@ -2,9 +2,11 @@ import {
   isBridgeOutcome, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
 } from "@runic-artifex/views";
+import type * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import type * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
@@ -40,6 +42,27 @@ const viewFailure = (cause: unknown): ViewError | undefined => {
 export function connect<C extends ViewClient>(source: ViewConnector<C> | (() => PromiseLike<C>)): Effect.Effect<C, ViewError, Scope.Scope> {
   const open = typeof source === "function" ? source : () => source.connect();
   return Effect.acquireRelease(attempt(open, viewFailure), client => Effect.sync(() => client.dispose()));
+}
+
+/**
+ * A layer that provides a connected client as `service`. It connects when the
+ * layer is built, fails with a `ViewError` when the client cannot connect, and
+ * disposes the client when the layer's scope closes, for example when a
+ * `ManagedRuntime` built from it is disposed.
+ *
+ * ```ts
+ * class Editor extends Context.Service<Editor, EditorClient>()("app/Editor") {}
+ * const EditorLive = clientLayer(Editor, connectEditor);
+ *
+ * const save = Effect.gen(function* () {
+ *   const editor = yield* Editor;
+ *   yield* command(() => editor.save());
+ * }).pipe(Effect.provide(EditorLive));
+ * ```
+ */
+export function clientLayer<I, C extends ViewClient>(service: Context.Key<I, C>,
+  source: ViewConnector<C> | (() => PromiseLike<C>)): Layer.Layer<I, ViewError> {
+  return Layer.effect(service, connect(source));
 }
 
 export interface StatesOptions {

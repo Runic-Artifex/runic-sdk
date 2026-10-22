@@ -50,14 +50,35 @@ const program = Effect.gen(function* () {
 | Function | Returns | Behavior |
 | --- | --- | --- |
 | `connect(source)` | `Effect<Client, ViewError, Scope>` | Connects a generated `connect<Name>` function or a page reference and disposes the client when the scope closes. |
+| `clientLayer(service, source)` | `Layer<I, ViewError>` | Provides a connected client as a `Context` service. It connects when the layer is built and disposes the client when the layer's scope closes. |
 | `states(client, { bufferSize? })` | `Stream<State>` | The current state, then each accepted state. A slow consumer skips to the latest state (`bufferSize` defaults to 1). |
 | `command(() => client.method(...))` | `Effect<A, ViewError>` | Runs a command, setter, `can…` query or checked write. A command that declares a failure succeeds with its value and adds `ViewDomainFailure<F>`. |
 | `operation(start, options?)` | `Effect<Result, ViewOperationError>` | Starts a `start<Command>` operation and waits for its terminal status; `Result` is `void` for a command without one. A declared failure adds `ViewDomainFailure<F>`. |
 | `catchCase(effect, handlers)` | `Effect<A \| …, E \| …, R \| …>` | Handles every `$case` of a declared `[RunicUnion]` failure in the error channel; a missing case is a type error. |
 | `viewportChanges(controller)` | `Stream<CollectionViewport>` | The rows a `createCollectionViewportController` requests, as a stream. |
 | `followViewport(controller, request)` | `Effect<void, E, R>` | Sends each new row range to .NET and interrupts the request for a range the user scrolled past. |
-| `createEffectAction(program, { runFork? })` | `EffectAction` | A latest-wins runner with `status`, `pending`, `value`, `error` and `cause`, for any UI framework. |
+| `createEffectAction(program, { runFork? })` | `EffectAction & AsyncDisposable` | A latest-wins runner with `status`, `pending`, `value`, `error` and `cause`, for any UI framework. |
 | `fromBridgeError(error)` | `ViewError` | Maps a `BridgeError` from plain code. |
+
+A client service is an ordinary Effect 4 `Context.Service` whose shape is the
+generated client type. `clientLayer` builds it from the same sources as
+`connect`; a `ManagedRuntime` built from the layer connects once and disposes the
+client with the runtime:
+
+```ts
+import { Context, Effect, ManagedRuntime } from "effect";
+import { clientLayer, command } from "@runic-artifex/views-effect";
+import { connectEditor, type EditorClient } from "./generated/editor.js";
+
+class Editor extends Context.Service<Editor, EditorClient>()("app/Editor") {}
+
+const runtime = ManagedRuntime.make(clientLayer(Editor, connectEditor));
+await runtime.runPromise(Effect.gen(function* () {
+  const editor = yield* Editor;
+  yield* command(() => editor.save());
+}));
+await runtime.dispose(); // disposes the client
+```
 
 The values `command` and `operation` wrap are those of the generated client, so
 every generated module works unchanged. Only Bridge failures become typed
@@ -148,7 +169,19 @@ failures of that re-read are reported through `onBridgeDiagnostic` from
 Bindings keep rendering state with `useView` and its equivalents; Effect runs
 workflows. `createEffectAction` is framework-neutral (`current`, `subscribe`,
 `run`, `interrupt`, `reset`, `dispose`). `run` interrupts the previous run of
-the same action and resolves to its `Exit`; it never rejects.
+the same action and resolves to its `Exit`; it never rejects. `dispose()`
+returns a Promise because interrupting a fiber is asynchronous, unlike the
+`dispose(): void` of the other Runic controllers. The action also has
+`[Symbol.asyncDispose]()`, which calls `dispose()`, so `await using` releases it
+where the engine defines `Symbol.asyncDispose`; elsewhere the package loads
+unchanged and `dispose()` remains:
+
+```ts
+{
+  await using search = createEffectAction((query: string) => findNotes(query));
+  await search.run("runic");
+} // await search.dispose()
+```
 
 React has `useEffectAction` from `@runic-artifex/views-effect/react`. Unmounting
 interrupts the current run, which cancels an operation in .NET:

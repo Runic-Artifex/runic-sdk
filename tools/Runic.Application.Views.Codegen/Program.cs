@@ -1266,12 +1266,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
         + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
-    XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError.");
-    ts.AppendLine($"export function connect{shortName}(options?: {Ref("BridgeConnectOptions")}): Promise<{clientName}> {{ return {connectAt}(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}, options); }}");
-    ts.AppendLine($"async function {connectAt}(route: string, mount = false, options?: {Ref("BridgeConnectOptions")}): Promise<{clientName}> {{");
-    ts.AppendLine($"  const view = await {Ref("connectView")}({{ {connectOptions}, timeout: options?.timeout }});");
+    XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError. `options.signal` abandons the connection.\nA `using` declaration disposes the client where the engine has `Symbol.dispose`.");
+    // globalThis.Disposable cannot be shadowed by a named type of the same name.
+    ts.AppendLine($"export function connect{shortName}(options?: {Ref("BridgeConnectOptions")}): Promise<{clientName} & globalThis.Disposable> {{ return {connectAt}(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}, options); }}");
+    ts.AppendLine($"async function {connectAt}(route: string, mount = false, options?: {Ref("BridgeConnectOptions")}): Promise<{clientName} & globalThis.Disposable> {{");
+    ts.AppendLine($"  const view = await {Ref("connectView")}({{ {connectOptions}, timeout: options?.timeout, signal: options?.signal }});");
     OperationTypeScriptEmitter.AppendRuntime(ts, operationPlans);
-    ts.AppendLine("  return {");
+    ts.AppendLine($"  return {Ref("disposable")}<{clientName}>({{");
     ts.AppendLine("    get snapshot() { return view.snapshot; },");
     ts.AppendLine("    subscribe: view.subscribe,");
     ts.AppendLine("    dispose: view.dispose,");
@@ -1329,7 +1330,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ts.AppendLine($"    async can{name}({parameter}) {{ return view.query(`${{route}}Can{name}`{argument}); }},");
     }
     OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
-    ts.AppendLine("  };");
+    ts.AppendLine("  });");
     ts.AppendLine("}");
 
     var body = ts.ToString();
@@ -1347,7 +1348,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
-    var runtimeImports = new List<string> { Import("connectView"), Import("viewReferences") };
+    var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences") };
     if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
     if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
     if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));

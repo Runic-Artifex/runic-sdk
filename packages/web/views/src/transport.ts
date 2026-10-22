@@ -1,5 +1,6 @@
 import { emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
+import { abortable, throwIfAborted } from "./lifetime.js";
 
 /** The host-neutral Bridge a host script installs as `window.__runicBridge`. */
 export interface RunicBridgeClient {
@@ -19,6 +20,13 @@ export interface RunicBridgeClient {
 export interface WaitForBridgeOptions {
   /** Milliseconds to wait for the host Bridge to connect. Defaults to 5000. */
   readonly timeout?: number;
+  /**
+   * Stops waiting when it aborts: the wait rejects with `signal.reason`, an
+   * `AbortError` DOMException unless `abort(reason)` gave another one. An
+   * already aborted signal rejects at once. The wait removes its abort listener
+   * when it settles.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 type BridgeHost = typeof globalThis & { __runicBridge?: RunicBridgeClient };
@@ -35,11 +43,14 @@ const missingBridgeMessage =
 /**
  * Waits for the installed host Bridge to report a connection to .NET.
  * Rejects with an `unavailable` BridgeError when no host installed
- * `window.__runicBridge`, and with a `timeout` BridgeError when it did not connect in time.
+ * `window.__runicBridge`, with a `timeout` BridgeError when it did not connect in time,
+ * and with the abort reason when `options.signal` aborts first.
  */
 export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
   const timeout = options.timeout ?? defaultTimeout;
   if (!Number.isFinite(timeout) || timeout < 0) throw new RangeError("The Bridge timeout must be a non-negative number of milliseconds.");
+  const { signal } = options;
+  throwIfAborted(signal);
   const host = globalThis as BridgeHost;
   const deadline = Date.now() + timeout;
   while (!host.__runicBridge?.isConnected()) {
@@ -55,7 +66,9 @@ export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise
       if (error.kind === "unavailable") page[unavailableReported] = true;
       throw error;
     }
-    await new Promise<void>(resolve => setTimeout(resolve, 50));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await abortable(new Promise<void>(resolve => { timer = setTimeout(resolve, 50); }), signal); }
+    finally { clearTimeout(timer); }
   }
   return host.__runicBridge;
 }

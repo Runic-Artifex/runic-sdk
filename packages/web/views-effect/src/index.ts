@@ -18,6 +18,7 @@ export {
   type ViewOperationError,
 } from "./errors.js";
 export {
+  clientLayer,
   command,
   connect,
   followViewport,

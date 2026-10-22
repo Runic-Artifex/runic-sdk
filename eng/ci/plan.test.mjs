@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
-  everyLinuxJob, allPlatforms } from './plan.mjs';
+  everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, platformRules, neutralPaths } from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
@@ -158,6 +158,32 @@ test('plan outputs are single-line GitHub outputs', () => {
   assert.deepEqual(lines.map(line => line.split('=')[0]),
     ['full', 'components', 'managed', 'web', 'frameworks', 'native', 'wpf', 'packaging', 'platforms', 'why', 'skip']);
   for (const line of lines) JSON.parse(line.slice(line.indexOf('=') + 1));
+});
+
+test('the npm packages that run in Node admit Node 24 and 26, and the node-26 job tests them on Node 26', () => {
+  // D031.3; browser-only packages declare no engines.
+  assert.deepEqual(nodePackages(), ['vite-plugin-runic', 'sveltekit']);
+  assert.equal(nodeEngines, '^24.18.0 || ^26.0.0');
+  for (const entry of workspace.npm) {
+    const manifest = JSON.parse(readFileSync(resolve(root, entry.path, 'package.json'), 'utf8'));
+    assert.equal(manifest.engines?.node, nodePackages().includes(entry.path.split('/').at(-1)) ? nodeEngines : undefined, entry.name);
+  }
+  const job = workflow.jobs['node-26'];
+  assert.match(job.steps.find(step => step.uses?.startsWith('actions/setup-node@'))?.with['node-version'], /^26\.\d+\.\d+$/);
+  const tests = job.steps.filter(step => step.run?.includes('bun run test'));
+  assert.deepEqual(tests.map(step => step['working-directory']), nodePackages().map(name => `packages/web/${name}`));
+  for (const step of tests) {
+    const name = step['working-directory'].split('/').at(-1);
+    assert.equal(step.if, `\${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), '${name}') }}`);
+    // Without --bun, the package scripts' tools run on the job's Node.
+    assert.doesNotMatch(step.run, /--bun/);
+    assert.match(step.run, /node --version \| grep '\^v26\\\.'/);
+  }
+  assert.ok(runs(plan(['packages/web/sveltekit/src/index.ts']), 'node-26'));
+  assert.ok(runs(plan(['packages/web/vite-plugin-runic/src/index.ts']), 'node-26'));
+  assert.equal(runs(plan(['packages/web/views-effect/src/index.ts']), 'node-26'), false);
+  assert.equal(runs(plan(['README.md']), 'node-26'), false);
+  assert.ok(runs(everything, 'node-26'));
 });
 
 test('the workflow gates exactly the skippable jobs on the plan and verify aggregates all of them', () => {

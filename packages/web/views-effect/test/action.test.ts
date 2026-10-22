@@ -15,6 +15,44 @@ const act: typeof React.act = React.act ?? (React as unknown as { unstable_act: 
 const disconnected = () => new ViewDisconnected({ message: "Gone", route: "counterIncrement", cause: new BridgeError("disconnected", "Gone") });
 
 describe("createEffectAction", () => {
+  test("an await using block disposes the action, which interrupts its run", async () => {
+    let interrupted = false;
+    let run: Promise<Exit.Exit<never>> | undefined;
+    {
+      await using action = createEffectAction(() => Effect.never.pipe(Effect.onInterrupt(() => Effect.sync(() => { interrupted = true; }))));
+      expect(typeof action[Symbol.asyncDispose]).toBe("function");
+      run = action.run();
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    expect(interrupted).toBe(true);
+    expect(Exit.hasInterrupts(await run)).toBe(true);
+  });
+
+  test("loads and disposes where Symbol.asyncDispose is undefined", async () => {
+    // An engine without explicit resource management (older WebKitGTK and WKWebView). Symbol's own
+    // properties cannot be deleted, so a copy without the two well-known symbols replaces it while
+    // a fresh copy of the module loads and creates an action.
+    const native = globalThis.Symbol;
+    const legacy = function Symbol(description?: string | number) { return native(description); } as unknown as Record<PropertyKey, unknown>;
+    for (const key of Reflect.ownKeys(native))
+      if (!["dispose", "asyncDispose", "length", "name", "prototype"].includes(key as string)) legacy[key] = (native as unknown as Record<PropertyKey, unknown>)[key];
+    const specifier = "../dist/action.js?legacy-engine";
+    let action: ReturnType<typeof createEffectAction<[], number, never>>;
+    (globalThis as { Symbol: unknown }).Symbol = legacy;
+    try {
+      expect((Symbol as { asyncDispose?: symbol }).asyncDispose).toBeUndefined();
+      const legacyModule = await import(/* @vite-ignore */ specifier) as { createEffectAction: typeof createEffectAction };
+      expect(legacyModule.createEffectAction).not.toBe(createEffectAction);
+      action = legacyModule.createEffectAction(() => Effect.succeed(1));
+    } finally {
+      (globalThis as { Symbol: unknown }).Symbol = native;
+    }
+    expect(Object.getOwnPropertySymbols(action)).toEqual([]);
+    expect(await action.run()).toStrictEqual(Exit.succeed(1));
+    await action.dispose();
+    expect(action.current.status).toBe("success");
+  });
+
   test("publishes running, success and typed failure", async () => {
     const action = createEffectAction((value: number) => value < 0 ? Effect.fail(disconnected()) : Effect.succeed(value * 2));
     const seen: string[] = [];

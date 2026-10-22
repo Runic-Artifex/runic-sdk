@@ -73,10 +73,18 @@ export function webTests() {
     .map(item => ({ package: item.path.split("/").at(-1), node: item.name === "@runic-artifex/vite-plugin-runic" }));
 }
 
+// The npm packages that run in Node declare `engines.node` (the browser-only packages declare none).
+// Their range admits Node 24 and 26, so the node-26 job also runs their tests on Node 26 (D031.3).
+export const nodeEngines = "^24.18.0 || ^26.0.0";
+export function nodePackages() {
+  return webTests().map(test => test.package)
+    .filter(name => JSON.parse(readFileSync(resolve(root, "packages/web", name, "package.json"), "utf8")).engines?.node !== undefined);
+}
+
 // Jobs that always run: `plan`, `build` (which also checks generated files and packs the
 // package candidates) and `engineering` (workflow lint, contracts, Markdown links). `verify`
 // accepts a skipped job only when it is listed here and the plan skipped it.
-export const skippableJobs = ["managed", "web", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging"];
+export const skippableJobs = ["managed", "web", "node-26", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -131,6 +139,7 @@ export function planFor({ full, components, platforms: planned = platforms, why 
     managed: managed.length > 0,
     // One job runs each planned web package's tests and the framework consumers in named steps.
     web: web.length > 0 || frameworks,
+    "node-26": web.some(name => nodePackages().includes(name)),
     views: full || has("examples"),
     "package-consumers": packages,
     wpf: wpf.length > 0,

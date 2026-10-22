@@ -310,6 +310,9 @@ The TypeScript client adds one status kind of its own, `timed-out`: `wait({ time
 passed its deadline and sent a cancellation request. .NET never sends it, and a
 stream page never has it. A rejection for it is a `BridgeError` with kind
 `timeout`, the kind a connect that passed its deadline also has.
+`wait({ signal })` is client-only too: an aborted signal rejects that wait with
+its abort reason and sends no cancellation request; a wait request already sent
+completes unobserved, and the operation keeps running.
 
 Multi-word wire values are kebab-case (`domain-failed`, `result-too-large`,
 `cancellation-requested`, `timed-out`); a new one follows the rule. Generated enum

@@ -1,3 +1,6 @@
+/// <reference lib="esnext.disposable" preserve="true" />
+import { disposable } from "./lifetime.js";
+
 export interface CollectionViewport {
   /** First row requested from .NET, including overscan. */
   readonly start: number;
@@ -59,8 +62,9 @@ const sameViewport = (left: CollectionViewport, right: CollectionViewport) =>
  * `useCollectionViewport`. Scroll events are coalesced to one measurement per
  * animation frame, and a `ResizeObserver` follows the container's height.
  * `current` only changes when the requested range or sizes change.
+ * A `using` declaration disposes it where the engine has `Symbol.dispose`.
  */
-export function createCollectionViewportController(options: CollectionViewportOptions): CollectionViewportController {
+export function createCollectionViewportController(options: CollectionViewportOptions): CollectionViewportController & Disposable {
   const listeners = new Set<() => void>();
   let settings = options;
   let element: HTMLElement | undefined;
@@ -80,7 +84,7 @@ export function createCollectionViewportController(options: CollectionViewportOp
     for (const listener of [...listeners]) listener();
   }
 
-  return {
+  return disposable<CollectionViewportController>({
     get current() { return current; },
     subscribe(listener) {
       listeners.add(listener);
@@ -121,5 +125,5 @@ export function createCollectionViewportController(options: CollectionViewportOp
       disposed = true;
       listeners.clear();
     },
-  };
+  });
 }
