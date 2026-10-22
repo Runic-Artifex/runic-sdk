@@ -10,6 +10,8 @@ namespace Runic.Platform.Linux.Portal;
 internal sealed record PortalResponse(uint Code, string[] Uris)
 {
     internal PlatformDiagnostic Diagnostic => PortalErrors.Response(Code);
+    // FileChooser's current_filter result, (sa(us)): the filter the user left selected, when the portal says.
+    internal DBusValue? CurrentFilter { get; init; }
 }
 
 internal static class PortalErrors
@@ -130,9 +132,26 @@ internal sealed record PortalChooserOptions(ImmutableArray<FileDialogFilter> Fil
     internal static PortalChooserOptions? From(ImmutableArray<FileDialogFilter> filters, string? currentFolder, bool multiple) =>
         filters.IsDefaultOrEmpty && currentFolder is null && !multiple ? null : new(filters.IsDefault ? [] : filters, currentFolder, multiple);
 
-    // FileChooser filters are (name, [(0 = glob, pattern)]). Globs match case-sensitively in GTK backends.
+    // FileChooser filters are (name, [(0 = glob, pattern) or (1 = MIME type, type)]). Globs match case-sensitively in GTK
+    // backends.
     internal static DBusValue Filter(FileDialogFilter filter) => DBusValue.Struct(DBusValue.From(filter.Name),
-        DBusValue.Array("(us)", FileDialogPatterns.Globs(filter).Select(static pattern => DBusValue.Struct(DBusValue.From(0u), DBusValue.From(pattern)))));
+        DBusValue.Array("(us)", Patterns(filter).Select(static pattern => DBusValue.Struct(DBusValue.From(pattern.Kind), DBusValue.From(pattern.Value)))));
+
+    private static IEnumerable<(uint Kind, string Value)> Patterns(FileDialogFilter filter) =>
+        FileDialogPatterns.Globs(filter).Select(static glob => (0u, glob))
+            .Concat(filter.MatchesAllFiles ? [] : filter.MimeTypes.Select(static type => (1u, type.ToLowerInvariant())));
+
+    // The request's filter that a current_filter result names: the one with the same name and patterns, else the only
+    // one with that name. A portal backend may return a filter of its own, which is no request filter.
+    internal static FileDialogFilter? Chosen(ImmutableArray<FileDialogFilter> filters, DBusValue? current)
+    {
+        if (filters.IsDefaultOrEmpty || current is not { Signature.Value: "(sa(us))" } value) return null;
+        var fields = value.GetFields();
+        string name = fields[0].GetString();
+        var patterns = fields[1].GetItems().Select(static item => item.GetFields()).Select(static pair => (pair[0].GetUInt32(), pair[1].GetString())).ToArray();
+        var named = filters.Where(filter => filter.Name == name).ToArray();
+        return named.FirstOrDefault(filter => Patterns(filter).SequenceEqual(patterns)) ?? (named.Length == 1 ? named[0] : null);
+    }
 
     internal void AddTo(PortalOptions options)
     {
@@ -272,7 +291,7 @@ internal sealed class PortalTransport(string? address = null, string destination
         if (method == "SelectDirectory")
         {
             options["directory"] = DBusValue.From(true);
-            title = "Open directory";
+            title = chooser?.Multiple == true ? "Open directories" : "Open directory";
         }
         else if (method != "SaveFile") title = chooser?.Multiple == true ? "Open files" : "Open file";
         else
@@ -291,6 +310,6 @@ internal sealed class PortalTransport(string? address = null, string destination
         if (!PortalValues.TryReadResponse(signal, out uint code, out var results))
             return (path, new PortalResponse(2, [])); // The portal's "other error" response code.
         string[] uris = results.TryGetValue("uris", out var value) && value.Signature.Value == "as" ? [.. value.GetStringArray()] : [];
-        return (path, new PortalResponse(code, uris));
+        return (path, new PortalResponse(code, uris) { CurrentFilter = results.TryGetValue("current_filter", out var filter) ? filter : null });
     }
 }

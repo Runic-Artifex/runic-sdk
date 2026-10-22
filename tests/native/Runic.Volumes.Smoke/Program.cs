@@ -7,6 +7,8 @@ using Runic.Platform.Linux.Portal;
 // Volumes against the machine's UDisks2 on the system bus. Only nixos/volumes runs it, inside a VM with a scratch disk:
 //   list                    print each volume
 //   mount <id> | unmount <id> | eject <id>
+//   mount-ro <id>           mount read-only
+//   unlock <id>             unlock with the passphrase on the first line of standard input
 //   watch <seconds>         print each change for that long
 // Each command ends with "result: ..." for the test script.
 await using var volumes = new PortalApplication().CreateVolumes();
@@ -22,6 +24,14 @@ switch (command)
         break;
     case "mount":
         Report(await volumes.MountAsync(args[1]), static volume => Describe(volume));
+        break;
+    case "mount-ro":
+        Report(await volumes.MountAsync(args[1], new DesktopVolumeMountOptions { ReadOnly = true }, default), static volume => Describe(volume));
+        break;
+    case "unlock":
+        char[] passphrase = (Console.In.ReadLine() ?? "").ToCharArray();
+        try { Report(await volumes.UnlockAsync(args[1], passphrase, default), static volume => Describe(volume)); }
+        finally { Array.Clear(passphrase); }
         break;
     case "unmount":
         Report(await volumes.UnmountAsync(args[1]), static _ => "unmounted");
@@ -60,7 +70,8 @@ return 0;
 
 static string Describe(DesktopVolume volume) =>
     $"volume {volume.Id} name={volume.DisplayName} fs={volume.FileSystem} mounts=[{string.Join(',', volume.MountPaths)}] removable={volume.IsRemovable} " +
-    $"system={volume.IsSystem} locked={volume.IsLocked} mount={volume.CanMount} unmount={volume.CanUnmount} eject={volume.CanEject}";
+    $"system={volume.IsSystem} locked={volume.IsLocked} mount={volume.CanMount} unmount={volume.CanUnmount} eject={volume.CanEject} " +
+    $"encrypted={volume.IsEncrypted} unlock={volume.UnlockMethod}";
 
 static void Report<T>(PlatformResult<T> result, Func<T, string> success) => Console.WriteLine(result switch
 {

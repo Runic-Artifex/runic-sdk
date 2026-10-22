@@ -11,8 +11,8 @@ operating system. .NET has no API for this: `File.Delete` and
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
-| Linux | Implemented: the [freedesktop.org Trash specification 1.0](https://specifications.freedesktop.org/trash-spec/1.0/), home trash and topdir trashes, in Runic.Platform.Linux.Portal. | Tests in temporary directories, never the user's trash, for every outcome: home trash, name collisions and stale entries, directories, links, escaping, missing items, refused moves, a directory that contains the trash, and the topdir trashes on a second file system (`/dev/shm`) with sticky, non-sticky and linked trash directories. JIT and NativeAOT, x64 and arm64, in CI. |
-| Sandboxed Linux | Implemented: the Trash portal (`org.freedesktop.portal.Trash`) inside Flatpak and Snap. | A fake portal on a private bus: trashed, refused, a link, a read-only file, no Trash interface, no portal. The real xdg-desktop-portal 1.22 in a Fedora container with a temporary home moves a file and a directory, JIT and NativeAOT in CI. Inside a real Flatpak or Snap: unverified. |
+| Linux | Implemented: the [freedesktop.org Trash specification 1.0](https://specifications.freedesktop.org/trash-spec/1.0/), home trash and topdir trashes, with `directorysizes`, listing, restoring and emptying, in Runic.Platform.Linux.Portal. | Tests in temporary directories, never the user's trash, for every outcome: home trash, name collisions and stale entries, directories, links, escaping, missing items, refused moves, a directory that contains the trash, and the topdir trashes on a second file system (`/dev/shm`) with sticky, non-sticky and linked trash directories; a batch, `directorysizes` lines and stale entries, listing with original paths, sizes and dates, restoring over a conflict, into a removed parent and from a topdir trash, IDs outside the trash, emptying with a link and an orphaned entry; info files and encoded paths. JIT and NativeAOT, x64 and arm64, in CI. |
+| Sandboxed Linux | Implemented: the Trash portal (`org.freedesktop.portal.Trash`) inside Flatpak and Snap. Listing, restoring and emptying are `Unavailable(BackendUnavailable)`. | A fake portal on a private bus: trashed, refused, a link (sent as itself, and refused), a read-only file, no Trash interface, no portal. The real xdg-desktop-portal 1.22 in a Fedora container with a temporary home moves a file and a directory and refuses a symbolic link, which stays, JIT and NativeAOT in CI. Inside a real Flatpak or Snap: unverified. |
 | Windows | Implemented: `IFileOperation` with `FOFX_RECYCLEONDELETE` and no UI in Runic.Platform.Windows. A progress sink refuses a permanent deletion. Listing, restoring and emptying through the Recycle Bin's shell folder. | Portable tests for error mapping, the sink's refusal and the `$I` record. CI on the windows-latest and windows-11-arm runners' Recycle Bin, JIT and NativeAOT: a file and a directory are recycled and recorded with their original paths, a missing item is `NotFound`, a file on the administrative SMB share, which cannot be recycled, stays; both are listed with their size and deletion time, a restore over an existing file is `Conflict`, the file and the directory, into a removed parent, are restored, and the bin is emptied (on the ephemeral runner only). |
 | macOS | Implemented: `-[NSFileManager trashItemAtURL:resultingItemURL:error:]` in Runic.Platform.MacOS. Listing, restoring and emptying are `Unavailable(BackendUnavailable)`. | Portable tests for error mapping. CI on the macos-26 runner's Trash, JIT and NativeAOT: a file, a directory, a symbolic link, a missing item, and list, restore and empty unavailable. A volume without a trash (`NSFeatureUnsupportedError`) is unverified. |
 
@@ -119,15 +119,38 @@ and KIO do, and needs no service:
   A topdir trash that is a link or belongs to another user is not used. The
   info file's `Path` is relative to `$topdir`, so it stays valid when a
   removable drive is mounted elsewhere.
-- `directorysizes`, which the specification makes optional, is not updated.
+- After a directory is trashed, `directorysizes` gets the line `size mtime
+  name`: the bytes of the blocks the directory and its contents use (as `du
+  -B1`, links not followed), the info file's modification time in seconds and
+  the percent-encoded name. The file is rewritten through a temporary file and
+  a rename, as the specification asks; a failure leaves it as it was.
+- Listing reads the home trash and the topdir trashes this user owns on every
+  mount in `/proc/self/mountinfo` (`.Trash/$uid` under a sticky `.Trash` that is
+  not a link, and `.Trash-$uid`), creating nothing. Each `info/*.trashinfo` with
+  a `[Trash Info]` group and a `Path` is an item if its `files/` entry exists;
+  the entry's path is its `Id`. `Path` is percent-decoded and, in a topdir
+  trash, may be relative to the top directory; a relative path in the home
+  trash is skipped. `DeletionDate` is read as local time. A file's `Size` is its
+  size; a directory's comes only from a `directorysizes` entry whose time matches
+  its info file.
+- Restoring accepts only an `Id` in a known trash's `files/`. It creates the
+  missing parents of the original path, renames the entry back with
+  `renameat2(RENAME_NOREPLACE)` (`Failed(Conflict)` if anything is there), then
+  removes the info file and the `directorysizes` entry.
+- Emptying deletes, in every listed trash, each `files/` entry before its info
+  file, then entries left without one, then `directorysizes`. A link is deleted
+  itself; nothing is followed. The first failure is reported after the rest was
+  deleted.
 - Inside Flatpak (`/.flatpak-info`) or Snap (`$SNAP`), where the user's trash
   is out of reach, `org.freedesktop.portal.Trash.TrashFile` receives a
   descriptor of the item, opened as GIO opens it: a file read-write without
   following a link, a directory as `O_PATH`. The portal trashes what the
-  application can write. It follows an `O_PATH` descriptor's link and refuses
-  one opened `O_NOFOLLOW`, so a symbolic link cannot be trashed through it and
-  reports `Unavailable(BackendUnavailable)`. The portal chooses the entry's
-  name itself, such as `report.0.txt`.
+  application can write. A symbolic link goes as an `O_PATH | O_NOFOLLOW`
+  descriptor of the link itself, never of its target. xdg-desktop-portal
+  1.22.1 refuses it (result 0; verified in the Fedora CI leg), so the link
+  reports `Unavailable(BackendUnavailable)` and stays; a portal that accepts it
+  trashes the link. The portal chooses the entry's name itself, such as
+  `report.0.txt`. It offers no listing, restoring or emptying.
 
 ## Windows
 
@@ -170,7 +193,7 @@ protected by privacy consent.
 
 - Returning where the item went, for an application's own undo (D036.6).
 - Deleting one trashed item permanently.
-- Listing, restoring and emptying the trash on Linux: not yet implemented, so
-  they report `Unavailable(BackendUnavailable)`.
+- Listing, restoring and emptying inside Flatpak and Snap: the Trash portal
+  only moves items to the trash.
 - Updating `directorysizes` on Linux, and trashing a symbolic link through the
   Trash portal.

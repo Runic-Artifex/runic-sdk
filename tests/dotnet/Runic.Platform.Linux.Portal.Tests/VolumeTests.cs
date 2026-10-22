@@ -17,6 +17,8 @@ internal sealed class VolumeTests
     private const string Cleartext = "/org/freedesktop/UDisks2/block_devices/dm_2d0";
     private const string Ignored = "/org/freedesktop/UDisks2/block_devices/loop0";
     private const string Fixed = "/org/freedesktop/UDisks2/drives/Example_Disk";
+    private const string Unlocked = "/org/freedesktop/UDisks2/block_devices/dm_2d1";
+    private const string Passphrase = "correct horse battery staple";
 
     [Test, Explicit, Category("DBus"), DisplayName("volumes: UDisks2 objects become volumes with their mount state, drive and flags")]
     public async Task ListAsync()
@@ -60,6 +62,57 @@ internal sealed class VolumeTests
         Check(await volumes.MountAsync(Locked) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Locked }, "a locked volume");
         Check(await volumes.MountAsync("/org/freedesktop/UDisks2/block_devices/nothing") is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.NotFound }, "an unknown volume");
         Check(await volumes.MountAsync(Ignored) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.NotFound }, "an ignored device is no volume");
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("volumes: unlock with a passphrase and mount options through UDisks2")]
+    public async Task UnlockAndOptionsAsync()
+    {
+        await using var fake = await FakeUDisks.StartAsync();
+        await using IDesktopVolumes volumes = FakeUDisks.Volumes();
+        var listed = ((PlatformResult<ImmutableArray<DesktopVolume>>.Success)await volumes.ListAsync()).Value.ToDictionary(static v => v.Id);
+        Check(listed[Locked] is { IsLocked: true, IsEncrypted: true, UnlockMethod: DesktopVolumeUnlockMethod.Passphrase }
+            && listed[Cleartext] is { IsLocked: false, IsEncrypted: true, UnlockMethod: DesktopVolumeUnlockMethod.None }
+            && listed[Stick] is { IsEncrypted: false, UnlockMethod: DesktopVolumeUnlockMethod.None }, "encryption flags");
+
+        Check(await volumes.UnlockAsync(Locked) is PlatformResult<DesktopVolume>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+            "UDisks2 has no prompt of its own for a passphrase");
+        var wrong = await volumes.UnlockAsync(Locked, "wrong".AsMemory(), default);
+        Check(wrong is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "org.freedesktop.UDisks2.Error.Failed" }, $"a wrong passphrase: {wrong}");
+        fake.NextError = "org.freedesktop.UDisks2.Error.NotAuthorizedDismissed";
+        Check(await volumes.UnlockAsync(Locked, Passphrase.AsMemory(), default) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.UserDismissed },
+            "a dismissed authorization");
+        fake.NextError = "org.freedesktop.UDisks2.Error.NotAuthorized";
+        Check(await volumes.UnlockAsync(Locked, Passphrase.AsMemory(), default) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.PermissionDenied },
+            "a refused authorization");
+        var unlocked = await volumes.UnlockAsync(Locked, Passphrase.ToCharArray(), default);
+        Check(unlocked is PlatformResult<DesktopVolume>.Success { Value: { Id: Unlocked, DisplayName: "SECRETS", IsLocked: false, IsEncrypted: true, CanMount: true, DriveId: Fixed } },
+            $"the cleartext volume: {unlocked}");
+        Check(fake.Calls.Contains($"Unlock {Locked} auth.no_user_interaction=false"), $"Unlock allowed the prompt: {string.Join("; ", fake.Calls)}");
+        var after = ((PlatformResult<ImmutableArray<DesktopVolume>>.Success)await volumes.ListAsync()).Value;
+        Check(!after.Any(static v => v.Id == Locked) && after.Any(static v => v.Id == Unlocked), "the container leaves the listing; its cleartext device joins it");
+        Check(await volumes.UnlockAsync(Stick, "x".AsMemory(), default) is PlatformResult<DesktopVolume>.Success { Value.Id: Stick }, "an unlocked volume succeeds as it is");
+
+        fake.Calls.Clear();
+        var mounted = await volumes.MountAsync(Stick, new DesktopVolumeMountOptions { ReadOnly = true, Options = ["noexec", "nosuid"] }, default);
+        Check(mounted is PlatformResult<DesktopVolume>.Success && fake.Calls is [var call] && call.Contains("options='ro,noexec,nosuid'", StringComparison.Ordinal)
+            && call.Contains("auth.no_user_interaction=false", StringComparison.Ordinal), $"mount options: {string.Join("; ", fake.Calls)}");
+        await volumes.UnmountAsync(Stick);
+        fake.Calls.Clear();
+        Check(await volumes.MountAsync(Stick, new DesktopVolumeMountOptions(), default) is PlatformResult<DesktopVolume>.Success
+            && fake.Calls is [var plain] && !plain.Contains("options=", StringComparison.Ordinal), "the default options send none");
+        await volumes.UnmountAsync(Stick);
+        fake.NextError = "org.freedesktop.UDisks2.Error.OptionNotPermitted";
+        Check(await volumes.MountAsync(Stick, new DesktopVolumeMountOptions { Options = ["uid=0"] }, default)
+            is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Domain: "org.freedesktop.UDisks2.Error.OptionNotPermitted" },
+            "an option UDisks2 does not permit");
+    }
+
+    [Test, DisplayName("volumes: mount options become UDisks2's options")]
+    public void MountOptions()
+    {
+        Check(!UDisksVolumes.MountOptions(new DesktopVolumeMountOptions()).ContainsKey("options"), "no options");
+        Check(UDisksVolumes.MountOptions(new DesktopVolumeMountOptions { ReadOnly = true })["options"].GetString() == "ro", "read-only");
+        Check(UDisksVolumes.MountOptions(new DesktopVolumeMountOptions { Options = ["noexec", "uid=1000"] })["options"].GetString() == "noexec,uid=1000", "options");
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("volumes: UDisks2 errors map to platform failures")]
@@ -261,6 +314,7 @@ internal sealed class VolumeTests
             protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context)
             {
                 string path = context.Path.Value;
+                if ((context.Interface, context.Member) is ("org.freedesktop.UDisks2.Encrypted", "Unlock")) return Unlock(path, context);
                 string options = string.Join(",", context.Arguments[0].GetVariantDictionary().Select(static o => $"{o.Key}={o.Value.ToString().ToLowerInvariant()}"));
                 lock (fake.Calls) fake.Calls.Add($"{context.Member} {path} {options}");
                 if (Interlocked.Exchange(ref fake.NextError, null) is { } error) throw new DBusException(error, "Refused by the fake.");
@@ -279,6 +333,25 @@ internal sealed class VolumeTests
                     default:
                         throw new DBusException(DBusException.UnknownMethod, context.Member);
                 }
+            }
+
+            // The right passphrase adds a cleartext filesystem backed by the container, as UDisks2 does.
+            private ValueTask<ImmutableArray<DBusValue>> Unlock(string path, DBusMethodContext context)
+            {
+                string passphrase = context.Arguments[0].GetString();
+                string options = string.Join(",", context.Arguments[1].GetVariantDictionary().Select(static o => $"{o.Key}={o.Value.ToString().ToLowerInvariant()}"));
+                lock (fake.Calls) fake.Calls.Add($"Unlock {path} {options}");
+                if (Interlocked.Exchange(ref fake.NextError, null) is { } error) throw new DBusException(error, "Refused by the fake.");
+                if (passphrase != Passphrase) throw new DBusException("org.freedesktop.UDisks2.Error.Failed", "Error unlocking: wrong passphrase.");
+                string cleartext = Unlocked;
+                fake.AddBlock(cleartext, "/", "SECRETS", "ext4", 100_000_000_000, filesystem: []);
+                fake.Set(cleartext, "org.freedesktop.UDisks2.Block", ("CryptoBackingDevice", DBusValue.From(new DBusObjectPath(path))));
+                fake.Set(path, "org.freedesktop.UDisks2.Encrypted", ("CleartextDevice", DBusValue.From(new DBusObjectPath(cleartext))));
+                fake._exports.Add(fake._connection.Export(cleartext, new Device(fake)));
+                fake._manager.Emit("InterfacesAdded", DBusValue.From(new DBusObjectPath(cleartext)),
+                    DBusValue.Dictionary("s", "a{sv}", fake._objects[cleartext].Select(static i => KeyValuePair.Create(DBusValue.From(i.Key), DBusValue.VariantDictionary(i.Value)))));
+                EmitPropertiesChanged("org.freedesktop.UDisks2.Encrypted", new Dictionary<string, DBusValue> { ["CleartextDevice"] = DBusValue.From(new DBusObjectPath(cleartext)) });
+                return ValueTask.FromResult<ImmutableArray<DBusValue>>([DBusValue.From(new DBusObjectPath(cleartext))]);
             }
 
             private void Change(string path, params (string Key, DBusValue Value)[] values)

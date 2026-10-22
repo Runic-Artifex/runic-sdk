@@ -71,6 +71,8 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public string? Argument;
     public string? CurrentName;
     public string[] Uris = ResponseUris;
+    // The index of the request's filter to answer as current_filter, or null to answer none.
+    public int? RespondFilter;
     // Every option of the last FileChooser request except the handle token, as D-Bus values.
     public Dictionary<string, VariantValue> Options = [];
     public string? Call, RequestPath, ClosedCall, ClosedPath;
@@ -127,6 +129,10 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
             signal.WriteUInt32(0);
             var dict = signal.WriteDictionaryStart();
             signal.WriteDictionaryEntryStart(); signal.WriteString("uris"); signal.WriteVariant(MalformedUris ? VariantValue.String(Uris[0]) : VariantValue.Array(Uris));
+            if (RespondFilter is { } chosen && options.TryGetValue("filters", out var requested))
+            {
+                signal.WriteDictionaryEntryStart(); signal.WriteString("current_filter"); signal.WriteVariant(requested.GetItem(chosen));
+            }
             signal.WriteDictionaryEnd(dict);
             connection.TrySendMessage(signal.CreateMessage());
         }

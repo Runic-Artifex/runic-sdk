@@ -142,10 +142,10 @@ if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected 
 | Option | Windows | macOS | Linux portal (GTK 3 and GTK 4) | Linux GTK 3 native chooser |
 | --- | --- | --- | --- | --- |
 | Filters | File type list (`SetFileTypes`) | The union of every filter restricts the panel (`allowedContentTypes`); with `ShowsFilterChoice`, a pop-up below the panel selects one filter | FileChooser `filters` and `current_filter` | File type list |
-| MIME types | Ignored: extensions only | `UTType(mimeType:)`; `image/*`, `audio/*`, `video/*`, `text/*`, `font/*` and `model/*` map to their abstract types, other wildcards are skipped | Not yet sent: extensions only | Not yet added: extensions only |
-| Chosen filter (`SelectedFilter`) | `GetFileTypeIndex` | The pop-up's filter with `ShowsFilterChoice`, otherwise `null` | Not yet reported (`null`) | Not yet reported (`null`) |
+| MIME types | Ignored: extensions only | `UTType(mimeType:)`; `image/*`, `audio/*`, `video/*`, `text/*`, `font/*` and `model/*` map to their abstract types, other wildcards are skipped | `(1, type)` patterns in each filter | `gtk_file_filter_add_mime_type` |
+| Chosen filter (`SelectedFilter`) | `GetFileTypeIndex` | The pop-up's filter with `ShowsFilterChoice`, otherwise `null` | The response's `current_filter`, when the portal returns it | `gtk_file_chooser_get_filter` |
 | Multiple selection | `FOS_ALLOWMULTISELECT` | `allowsMultipleSelection` | FileChooser `multiple` | `select-multiple` |
-| Multiple directories | `FOS_PICKFOLDERS` with `FOS_ALLOWMULTISELECT` | `canChooseDirectories` with `allowsMultipleSelection`, security scope per URL | Not yet (`Unavailable`) | Not yet (`Unavailable`) |
+| Multiple directories | `FOS_PICKFOLDERS` with `FOS_ALLOWMULTISELECT` | `canChooseDirectories` with `allowsMultipleSelection`, security scope per URL | FileChooser `directory` with `multiple` (version 3 and later) | `SELECT_FOLDER` with `select-multiple` |
 | Initial folder | `SetFolder`, which overrides the folder Windows remembers | `directoryURL` | FileChooser `current_folder`; ignored when opening by portals before FileChooser version 4 | `current-folder` |
 | Suggested name | `SetFileName` | `nameFieldStringValue` | FileChooser `current_name` | `current-name` |
 
@@ -723,7 +723,9 @@ Its `UnlockMethod` says how to unlock it: `SystemPrompt` with `UnlockAsync(id)`,
 which shows the system's own prompt (BitLocker on Windows), or `Passphrase` with
 `UnlockAsync(id, passphrase, token)` (APFS on macOS). `MountAsync(id, options,
 token)` mounts read-only or with platform mount options where the platform
-takes them (macOS); Windows mounts volumes itself and takes none:
+takes them (Linux and macOS); Windows mounts volumes itself and takes none. A
+LUKS volume on Linux unlocks with its passphrase through UDisks2, which returns
+the cleartext filesystem as a new volume:
 
 ```csharp
 if (vault is { IsLocked: true, UnlockMethod: DesktopVolumeUnlockMethod.Passphrase })
@@ -737,7 +739,7 @@ await volumes.MountAsync(stick.Id, new DesktopVolumeMountOptions { ReadOnly = tr
 
 | Platform | Provider |
 | --- | --- |
-| Linux | UDisks2 on the system bus, which asks Polkit; inside Flatpak add `--system-talk-name=org.freedesktop.UDisks2` |
+| Linux | UDisks2 on the system bus, which asks Polkit; inside Flatpak add `--system-talk-name=org.freedesktop.UDisks2`. A LUKS volume unlocks with its passphrase; mount options go to UDisks2, which accepts those its configuration permits |
 | Windows | The volume management API: drive letters and mounted folders. Windows mounts volumes itself, so `MountAsync` and `UnmountAsync` only succeed for a volume already in that state and otherwise report `Unavailable(BackendUnavailable)`; `EjectAsync` is "Safely Remove Hardware", or opens an optical drive's tray. A locked BitLocker volume is listed and unlocks through Explorer's prompt |
 | macOS | Disk Arbitration, as Finder does; an application with a file open on the volume makes an unmount or eject `Failed(ResourceBusy)`. The startup disk's volumes are never unmounted or ejected. A locked APFS volume is listed and unlocks with its passphrase; mount options go to `DADiskMountWithArguments` |
 

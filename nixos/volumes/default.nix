@@ -1,8 +1,9 @@
 # Volumes against a real UDisks2 and Polkit, in a VM with an empty second disk. It installs tests/native/Runic.Volumes.Smoke
 # (published with NativeAOT; its publish directory in RUNIC_VOLUMES_SMOKE), formats the second disk and, as ordinary
-# users, lists, mounts and unmounts it: alice through a Polkit rule that allows mounting, bob without one. A watch
-# started by alice reports a mount made by root, a loop device that appears and disappears, and UDisks2 stopping. It
-# needs KVM and runs outside the sandbox:
+# users, lists, mounts and unmounts it: alice through a Polkit rule that allows mounting, bob without one. A LUKS
+# container on a loop device is listed locked, refused to bob, refused with a wrong passphrase, unlocked by alice with
+# the right one and its filesystem mounted read-only. A watch started by alice reports a mount made by root, a loop
+# device that appears and disappears, and UDisks2 stopping. It needs KVM and runs outside the sandbox:
 #
 #   nix build .#volumes-udisks2.driver
 #   RUNIC_VOLUMES_SMOKE=/path/to/publish result/bin/nixos-test-driver --no-interactive -o out
@@ -17,11 +18,12 @@
       # The second disk is not removable, so mounting it asks for org.freedesktop.udisks2.filesystem-mount-system.
       security.polkit.extraConfig = ''
         polkit.addRule(function(action, subject) {
-          if (action.id.indexOf("org.freedesktop.udisks2.filesystem-mount") == 0 && subject.user == "alice") return polkit.Result.YES;
+          if ((action.id.indexOf("org.freedesktop.udisks2.filesystem-mount") == 0 || action.id.indexOf("org.freedesktop.udisks2.encrypted-unlock") == 0)
+              && subject.user == "alice") return polkit.Result.YES;
         });
       '';
       virtualisation.emptyDiskImages = [ 64 ];
-      environment.systemPackages = [ pkgs.e2fsprogs pkgs.dosfstools pkgs.util-linux ];
+      environment.systemPackages = [ pkgs.e2fsprogs pkgs.dosfstools pkgs.util-linux pkgs.cryptsetup ];
       systemd.tmpfiles.rules = [ "d /var/lib/runic-volumes 0755 root root -" ];
     };
     testScript = ''
@@ -32,9 +34,10 @@
       publish = os.environ["RUNIC_VOLUMES_SMOKE"]
       disk = "/org/freedesktop/UDisks2/block_devices/vdb"
 
-      def smoke(user, *arguments):
+      def smoke(user, *arguments, stdin=None):
           command = " ".join(shlex.quote(a) for a in [program, *arguments])
-          output = machine.succeed(f"cd /tmp && runuser -u {user} -- {command} 2>&1")
+          feed = f"printf '%s\\n' {shlex.quote(stdin)} | " if stdin is not None else ""
+          output = machine.succeed(f"cd /tmp && {feed}runuser -u {user} -- {command} 2>&1")
           print(output)
           return output
 
@@ -81,6 +84,32 @@
 
       with subtest("An unknown volume is not found"):
           assert result(smoke("alice", "mount", "/org/freedesktop/UDisks2/block_devices/missing")) == "result: failed NotFound "
+
+      with subtest("A LUKS container unlocks with its passphrase and mounts read-only"):
+          passphrase = "runic test passphrase"
+          machine.succeed("truncate -s 40M /tmp/luks.img")
+          machine.succeed(f"printf '%s' {shlex.quote(passphrase)} | cryptsetup luksFormat --batch-mode --type luks2 --pbkdf pbkdf2 --pbkdf-force-iterations 1000 /tmp/luks.img -")
+          machine.succeed(f"printf '%s' {shlex.quote(passphrase)} | cryptsetup open --key-file - /tmp/luks.img runicluks && mkfs.ext4 -q -L RUNICLUKS /dev/mapper/runicluks && cryptsetup close runicluks")
+          luks = machine.succeed("udisksctl loop-setup --no-user-interaction -f /tmp/luks.img").split(" as ")[1].strip().rstrip(".")
+          luks_id = "/org/freedesktop/UDisks2/block_devices/" + os.path.basename(luks)
+          machine.succeed("udevadm settle")
+          line = volume(smoke("alice", "list"), luks_id)
+          assert "locked=True mount=False " in line and "encrypted=True unlock=Passphrase" in line, line
+          assert result(smoke("alice", "mount", luks_id)) == "result: failed Locked ", "a locked container does not mount"
+          output = smoke("bob", "unlock", luks_id, stdin=passphrase)
+          assert result(output) == "result: failed PermissionDenied org.freedesktop.UDisks2.Error.NotAuthorizedCanObtain", output
+          output = smoke("alice", "unlock", luks_id, stdin="not the passphrase")
+          assert result(output) == "result: failed Other org.freedesktop.UDisks2.Error.Failed", output
+          output = smoke("alice", "unlock", luks_id, stdin=passphrase)
+          assert result(output).startswith("result: success volume /org/freedesktop/UDisks2/block_devices/dm_2d") and " name=RUNICLUKS fs=ext4 mounts=[] " in result(output), output
+          assert "locked=False mount=True " in result(output) and "encrypted=True unlock=None" in result(output), output
+          cleartext = result(output).split(" ")[3]
+          assert luks_id not in smoke("alice", "list"), "the unlocked container leaves the listing"
+          output = smoke("alice", "mount-ro", cleartext)
+          assert result(output).startswith(f"result: success volume {cleartext} name=RUNICLUKS fs=ext4 mounts=[/run/media/alice/RUNICLUKS] "), output
+          machine.succeed("findmnt -n -o OPTIONS /run/media/alice/RUNICLUKS | tr , '\\n' | grep -qx ro")
+          assert result(smoke("alice", "unmount", cleartext)) == "result: success unmounted"
+          machine.succeed(f"udisksctl lock --no-user-interaction -b {luks} && udisksctl loop-delete --no-user-interaction -b {luks}")
 
       with subtest("A watch reports changes other processes make"):
           watch_log = "/tmp/watch.log"

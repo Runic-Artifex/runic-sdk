@@ -36,9 +36,59 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
         };
     }
 
-    public async ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        return MountCoreAsync(volumeId, Interactive, cancellationToken);
+    }
+
+    // Filesystem.Mount's "options" key: the mount options, comma-separated, with ro for a read-only mount. UDisks2 permits
+    // only the options its configuration allows for the filesystem and reports others as OptionNotPermitted.
+    public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, DesktopVolumeMountOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        ArgumentNullException.ThrowIfNull(options);
+        return MountCoreAsync(volumeId, MountOptions(options), cancellationToken);
+    }
+
+    internal static ImmutableDictionary<string, DBusValue> MountOptions(DesktopVolumeMountOptions options)
+    {
+        var list = options.ReadOnly ? options.Options.Insert(0, "ro") : options.Options;
+        return list.IsEmpty ? Interactive : Interactive.Add("options", DBusValue.From(string.Join(',', list)));
+    }
+
+    // Encrypted.Unlock with the passphrase; UDisks2 asks Polkit (encrypted-unlock) and returns the cleartext device, which
+    // is the unlocked volume. The locked container leaves the listing.
+    public async ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        if (passphrase.IsEmpty) throw new ArgumentException("Supply the passphrase.", nameof(passphrase));
+        var found = await VolumeAsync(volumeId, cancellationToken).ConfigureAwait(false);
+        if (found is not PlatformResult<(DBusConnection, Model, DesktopVolume)>.Success((var connection, var model, var volume))) return Forward<DesktopVolume>(found);
+        if (!volume.IsLocked) return new PlatformResult<DesktopVolume>.Success(volume);
+        if (!model.Has(volumeId, EncryptedInterface)) return new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        try
+        {
+            var cleartext = await new Encrypted(connection, service, volumeId)
+                .UnlockAsync(passphrase.ToString(), Interactive, DBusCallOptions.AllowInteractiveAuthorization, cancellationToken).ConfigureAwait(false);
+            // UDisks2 announces the cleartext device separately; wait a moment for it to be listed.
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                if (await ObjectsAsync(cancellationToken).ConfigureAwait(false) is PlatformResult<Model>.Success(var after)
+                    && after.Volumes().TryGetValue(cleartext.Value, out var unlocked))
+                    return new PlatformResult<DesktopVolume>.Success(unlocked);
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
+            }
+            return new PlatformResult<DesktopVolume>.Success(new DesktopVolume(cleartext.Value, volume.DisplayName)
+            {
+                DriveId = volume.DriveId, DriveName = volume.DriveName, IsRemovable = volume.IsRemovable, IsSystem = volume.IsSystem, IsEncrypted = true,
+            });
+        }
+        catch (DBusException error) { return Map<DesktopVolume>(error); }
+    }
+
+    private async ValueTask<PlatformResult<DesktopVolume>> MountCoreAsync(string volumeId, ImmutableDictionary<string, DBusValue> options, CancellationToken cancellationToken)
+    {
         var found = await VolumeAsync(volumeId, cancellationToken).ConfigureAwait(false);
         if (found is not PlatformResult<(DBusConnection, Model, DesktopVolume)>.Success((var connection, var model, var volume))) return Forward<DesktopVolume>(found);
         if (volume.IsLocked) return new PlatformResult<DesktopVolume>.Failed(PlatformFailureCode.Locked);
@@ -46,7 +96,7 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
         if (!volume.MountPaths.IsEmpty) return new PlatformResult<DesktopVolume>.Success(volume);
         try
         {
-            string path = await new Filesystem(connection, service, volumeId).MountAsync(Interactive, DBusCallOptions.AllowInteractiveAuthorization, cancellationToken)
+            string path = await new Filesystem(connection, service, volumeId).MountAsync(options, DBusCallOptions.AllowInteractiveAuthorization, cancellationToken)
                 .ConfigureAwait(false);
             // UDisks2 announces the new mount point separately; report it now either way.
             var refreshed = await ObjectsAsync(cancellationToken).ConfigureAwait(false) is PlatformResult<Model>.Success(var after) && after.Volumes().TryGetValue(volumeId, out var current)
@@ -275,6 +325,7 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
                 new PlatformResult<T>.Failed(PlatformFailureCode.PermissionDenied, diagnostic),
             "org.freedesktop.UDisks2.Error.NotAuthorizedDismissed" => new PlatformResult<T>.Failed(PlatformFailureCode.UserDismissed, diagnostic),
             "org.freedesktop.UDisks2.Error.DeviceBusy" => new PlatformResult<T>.Failed(PlatformFailureCode.ResourceBusy, diagnostic),
+            "org.freedesktop.UDisks2.Error.OptionNotPermitted" => new PlatformResult<T>.Failed(PlatformFailureCode.InvalidData, diagnostic),
             "org.freedesktop.UDisks2.Error.AlreadyMounted" or "org.freedesktop.UDisks2.Error.NotMounted" or "org.freedesktop.UDisks2.Error.Cancelled" =>
                 new PlatformResult<T>.Failed(PlatformFailureCode.Conflict, diagnostic),
             "org.freedesktop.DBus.Error.UnknownObject" or "org.freedesktop.DBus.Error.UnknownMethod" or "org.freedesktop.DBus.Error.UnknownInterface" =>
@@ -373,6 +424,9 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
                     IsReadOnly = block.ReadOnly == true,
                     IsSystem = block.HintSystem == true,
                     IsLocked = locked,
+                    // The LUKS container itself, or its cleartext device.
+                    IsEncrypted = encrypted || block.CryptoBackingDevice is { Value: not "/" },
+                    UnlockMethod = locked ? DesktopVolumeUnlockMethod.Passphrase : DesktopVolumeUnlockMethod.None,
                     CanMount = filesystem && paths.IsEmpty,
                     CanUnmount = filesystem && !paths.IsEmpty,
                     CanEject = driveProperties is { Ejectable: true },
