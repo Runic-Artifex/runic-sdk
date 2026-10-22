@@ -67,6 +67,16 @@ internal static partial class DesktopLog
         Message = "A DesktopWindow.Closed handler failed with {ErrorType}.")]
     internal static partial void WindowClosedHandlerFailed(ILogger logger, Exception exception, string errorType);
 
+    [LoggerMessage(EventId = 3014, EventName = "MenuCommandFailed", Level = LogLevel.Error,
+        Message = "The menu command target's {Member} failed for {CommandId} with {ErrorType}.")]
+    internal static partial void MenuCommandFailed(ILogger logger, Exception exception, string member, string commandId, string errorType);
+
+    // 3015 MenuBarPlacementChanged and 3016 GlobalMenuFailed belong to the Linux global menu.
+
+    [LoggerMessage(EventId = 3017, EventName = "MenuBarPlacementHandlerFailed", Level = LogLevel.Error,
+        Message = "A DesktopWindow.MenuBarPlacementChanged handler failed with {ErrorType}.")]
+    internal static partial void MenuBarPlacementHandlerFailed(ILogger logger, Exception exception, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

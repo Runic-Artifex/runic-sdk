@@ -9,8 +9,9 @@ namespace Runic.Application.Views.Desktop;
 
 // Binds the menu bar's command ids to ICommands: those of a Window's root ViewModel (IRunicMenuCommandSource), or the
 // application's (RunicDesktopHost.UseApplicationMenu). AppKit asks CanExecute on its main thread while it shows a menu or
-// matches a key, so the availability of each command is cached and updated from CanExecuteChanged. Resolving and
-// running a command happens in the model turn of the ViewModel, when there is one.
+// matches a key, so the availability of each command is cached per command id and parameter and updated from
+// CanExecuteChanged. Resolving and running a command happens in the model turn of the ViewModel, when there is one.
+// An item's CommandParameter is the command's parameter.
 internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposable
 {
     private readonly IRunicModelContext? _context;
@@ -18,7 +19,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
     private readonly ILogger _logger;
     private readonly DesktopHost _host;
     private readonly object _gate = new();
-    private Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private Dictionary<MenuCommandKey, Entry> _entries = [];
     private bool _disposed;
 
     private MenuCommandBinding(DesktopHost host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger)
@@ -52,7 +53,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
     public bool CanExecute(DesktopMenuItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        lock (_gate) return !_disposed && _entries.TryGetValue(item.CommandId, out var entry) && entry.CanExecute;
+        lock (_gate) return !_disposed && _entries.TryGetValue(MenuCommandKey.Of(item), out var entry) && entry.CanExecute;
     }
 
     public void Execute(DesktopMenuItem item)
@@ -61,7 +62,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         Entry? entry;
         lock (_gate)
         {
-            if (_disposed || !_entries.TryGetValue(item.CommandId, out entry)) return;
+            if (_disposed || !_entries.TryGetValue(MenuCommandKey.Of(item), out entry)) return;
         }
         _ = RunAsync(entry);
     }
@@ -71,9 +72,9 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         try
         {
             if (_context is { IsExecuting: false } context)
-                await context.InvokeAsync(() => ExecuteNow(entry.Command)).ConfigureAwait(false);
+                await context.InvokeAsync(() => ExecuteNow(entry.Command, entry.Parameter)).ConfigureAwait(false);
             else
-                await Task.Run(() => ExecuteNow(entry.Command)).ConfigureAwait(false);
+                await Task.Run(() => ExecuteNow(entry.Command, entry.Parameter)).ConfigureAwait(false);
         }
         catch (Exception error)
         {
@@ -81,9 +82,9 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         }
     }
 
-    private static void ExecuteNow(ICommand command)
+    private static void ExecuteNow(ICommand command, string? parameter)
     {
-        if (command.CanExecute(null)) command.Execute(null);
+        if (command.CanExecute(parameter)) command.Execute(parameter);
     }
 
     private void OnMenuBarChanged(object? sender, EventArgs eventArgs) => _ = RebindAsync();
@@ -96,7 +97,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
             var resolved = _context is { IsExecuting: false } context
                 ? await context.InvokeAsync(() => Resolve(ids)).ConfigureAwait(false)
                 : Resolve(ids);
-            Dictionary<string, Entry> previous;
+            Dictionary<MenuCommandKey, Entry> previous;
             lock (_gate)
             {
                 previous = _entries;
@@ -117,24 +118,27 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         }
     }
 
-    private Dictionary<string, Entry> Resolve(IEnumerable<string> ids)
+    private Dictionary<MenuCommandKey, Entry> Resolve(IEnumerable<MenuCommandKey> keys)
     {
-        Dictionary<string, Entry> entries = new(StringComparer.Ordinal);
-        foreach (var id in ids)
+        Dictionary<MenuCommandKey, Entry> entries = [];
+        Dictionary<string, ICommand?> commands = new(StringComparer.Ordinal);
+        foreach (var key in keys)
         {
-            if (_resolve(id) is { } command) entries[id] = new Entry(id, command);
+            if (!commands.TryGetValue(key.CommandId, out var command)) commands[key.CommandId] = command = _resolve(key.CommandId);
+            if (command is not null) entries[key] = new Entry(key.CommandId, key.Parameter, command);
         }
         return entries;
     }
 
-    internal static HashSet<string> CommandIds(IReadOnlyList<DesktopMenu> menus)
+    // Every command id of the bar, with each parameter its items pass.
+    internal static HashSet<MenuCommandKey> CommandIds(IReadOnlyList<DesktopMenu> menus)
     {
-        HashSet<string> ids = new(StringComparer.Ordinal);
+        HashSet<MenuCommandKey> ids = [];
         void Collect(IEnumerable<DesktopMenuEntry> entries)
         {
             foreach (var entry in entries)
             {
-                if (entry is DesktopMenuItem item) ids.Add(item.CommandId);
+                if (entry is DesktopMenuItem item) ids.Add(MenuCommandKey.Of(item));
                 else if (entry is DesktopMenu submenu) Collect(submenu.Items);
             }
         }
@@ -145,31 +149,39 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
     public void Dispose()
     {
         _host.MenuBarChanged -= OnMenuBarChanged;
-        Dictionary<string, Entry> entries;
+        Dictionary<MenuCommandKey, Entry> entries;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
             entries = _entries;
-            _entries = new(StringComparer.Ordinal);
+            _entries = [];
         }
         foreach (var entry in entries.Values) entry.Dispose();
     }
 
-    // One command and its cached availability, read with a null parameter as a menu item runs it.
+    // A command id and the parameter an item passes to it.
+    internal readonly record struct MenuCommandKey(string CommandId, string? Parameter)
+    {
+        internal static MenuCommandKey Of(DesktopMenuItem item) => new(item.CommandId, item.CommandParameter);
+    }
+
+    // One command and its cached availability for one parameter, read with the parameter the items pass.
     private sealed class Entry : IDisposable
     {
         private volatile bool _canExecute;
 
-        internal Entry(string commandId, ICommand command)
+        internal Entry(string commandId, string? parameter, ICommand command)
         {
             CommandId = commandId;
+            Parameter = parameter;
             Command = command;
             command.CanExecuteChanged += OnCanExecuteChanged;
             Refresh();
         }
 
         internal string CommandId { get; }
+        internal string? Parameter { get; }
         internal ICommand Command { get; }
         internal bool CanExecute => _canExecute;
 
@@ -177,7 +189,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
 
         private void Refresh()
         {
-            try { _canExecute = Command.CanExecute(null); }
+            try { _canExecute = Command.CanExecute(Parameter); }
             catch (Exception error) when (error is not OutOfMemoryException) { _canExecute = false; }
         }
 

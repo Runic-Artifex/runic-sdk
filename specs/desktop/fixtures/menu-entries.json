@@ -1,5 +1,5 @@
 {
-  "description": "Menu entry rules shared by the Runic Desktop menu bar (DesktopHostOptions.MenuBar, Runic.Desktop.Tests) and status icon menus (DesktopStatusIconState.Menu, Runic.Platform.Runtime.Tests). A title is literal text: not blank, at most 128 characters, no NUL. A command id has 1 to 64 ASCII letters, digits, dots, underscores or hyphens and does not start with the reserved 'runic.' in any letter case. A value {\"repeat\": s, \"count\": n} stands for s repeated n times.",
+  "description": "Menu entry rules shared by the Runic Desktop menu bar (DesktopHostOptions.MenuBar, Runic.Desktop.Tests) and status icon menus (DesktopStatusIconState.Menu, Runic.Platform.Runtime.Tests). A title is literal text: not blank, at most 128 characters, no NUL. A command id has 1 to 64 ASCII letters, digits, dots, underscores or hyphens and does not start with the reserved 'runic.' in any letter case. A command parameter is at most 1024 characters without NUL. An access key is one letter or digit. A radio group name follows the command id rule, and a radio item needs IsChecked. Status icon menus keep command ids unique. A value {\"repeat\": s, \"count\": n} stands for s repeated n times.",
   "titles": {
     "valid": ["Save", "Open & show", "Open_dashboard", "Enregistrer…", "保存", " Padded ", { "repeat": "a", "count": 128 }],
     "invalid": ["", " ", "\t", "Nul\u0000here", { "repeat": "a", "count": 129 }]
@@ -8,5 +8,18 @@
     "valid": ["file.save", "a", "A-Z_0.9", "app.runic.settings", "runic", "runicx.save", { "repeat": "x", "count": 64 }],
     "invalid": ["", " ", "file:open", "file save", "file/save", "über", "file.save\u0000", { "repeat": "x", "count": 65 }],
     "reserved": ["runic.edit.copy", "runic.", "Runic.App.Quit", "RUNIC.x"]
+  },
+  "commandParameters": {
+    "valid": ["", "row-7", "C:\\Users\\Ann\\notes.txt", "{\"zoom\":1.5}", "保存", { "repeat": "p", "count": 1024 }],
+    "invalid": ["nul\u0000here", { "repeat": "p", "count": 1025 }]
+  },
+  "accessKeys": {
+    "valid": ["S", "s", "0", "Ö", "ж"],
+    "invalid": [" ", "&", "_", "-", "\t"]
+  },
+  "radioGroups": {
+    "valid": ["view.zoom", "a", { "repeat": "g", "count": 64 }],
+    "invalid": ["", "view zoom", { "repeat": "g", "count": 65 }],
+    "reserved": ["runic.zoom"]
   }
 }

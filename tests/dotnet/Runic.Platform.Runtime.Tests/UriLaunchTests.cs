@@ -186,14 +186,16 @@ internal sealed class UriLaunchTests
     {
         string[] constants = [.. typeof(PlatformCapabilityIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Select(static field => (string)field.GetRawConstantValue()!)];
-        Check(constants.Length == 9 && constants.Distinct().Count() == constants.Length, "nine distinct constants");
+        Check(constants.Length == 11 && constants.Distinct().Count() == constants.Length, "eleven distinct constants");
         Check(WindowPlatformServices.CapabilityIds.Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)), "CapabilityIds holds every constant");
         Check(WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable).GetSnapshot().Statuses.Keys.Order(StringComparer.Ordinal)
             .SequenceEqual(constants.Order(StringComparer.Ordinal)), "the unavailable services report every constant");
         await using var lifetime = new PresentationLifetime(() => true, Guid.NewGuid());
         IPlatformCapabilities[] parts = [new PresentationFileLauncher(lifetime), new PresentationClipboard(lifetime), new PresentationFiles(lifetime)];
-        Check(parts.SelectMany(static part => part.GetSnapshot().Statuses.Keys).Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)),
-            "the presentation services report exactly the constants");
+        // The menu capabilities come from the window host, which shows menus without a platform provider.
+        string[] menus = [PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu];
+        Check(parts.SelectMany(static part => part.GetSnapshot().Statuses.Keys).Order(StringComparer.Ordinal)
+            .SequenceEqual(constants.Except(menus).Order(StringComparer.Ordinal)), "the presentation services report every constant but the menus");
     }
 
     private sealed class CountingOwner : INativeWindowOwner

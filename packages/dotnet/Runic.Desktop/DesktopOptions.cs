@@ -387,6 +387,17 @@ public enum DesktopWindowCapabilities
     /// <see cref="DesktopWindow.HideAsync"/>). Every embedded window reports it.
     /// </summary>
     Visibility = 1 << 10,
+
+    /// <summary>
+    /// The window can show <see cref="DesktopHostOptions.MenuBar"/> natively, in the window or in a global menu bar
+    /// (<see cref="DesktopWindow.MenuBarPlacement"/>). A window host factory that reports it in
+    /// <see cref="IDesktopWindowHostFactory.Capabilities"/> keeps <see cref="DesktopHost.Validate"/> from reporting
+    /// <c>menu-bar-unsupported</c>.
+    /// </summary>
+    MenuBar = 1 << 11,
+
+    /// <summary>The window can show native context menus (<see cref="DesktopWindow.ShowContextMenuAsync"/>).</summary>
+    ContextMenu = 1 << 12,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
@@ -535,6 +546,20 @@ public sealed record DesktopWindowOptions
     /// developer tools. Installed browsers do not apply it.
     /// </summary>
     public DesktopWebContentPolicy WebContent { get; init; } = DesktopWebContentPolicy.Default;
+
+    /// <summary>
+    /// Gets where the window shows the menu bar of <see cref="DesktopHostOptions.MenuBar"/>:
+    /// <see cref="DesktopMenuBarPresentation.Native"/>, the default, shows it natively.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DesktopMenuBarPresentation.Page"/> leaves the bar to the page, which renders <see cref="DesktopHost.MenuBar"/>
+    /// with its own components, and <see cref="DesktopMenuBarPresentation.None"/> shows no bar; with both the host
+    /// still matches the items' shortcuts. A frameless or kiosk window shows no bar in the window.
+    /// <see cref="DesktopWindow.MenuBarPlacement"/> reports where the bar went. An installed browser and a window host
+    /// without <see cref="DesktopWindowCapabilities.MenuBar"/> show no native bar, and <see cref="DesktopHost.Validate"/>
+    /// reports <c>menu-bar-unsupported</c> for a declared bar with this presentation.
+    /// </remarks>
+    public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
     /// <summary>Gets additional command-line arguments for the browser or WebView2 runtime.</summary>
     /// <remarks>

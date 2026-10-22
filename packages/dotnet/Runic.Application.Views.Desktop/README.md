@@ -183,7 +183,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   implements `IRunicMenuCommandSource`
   runs its own while the Window is key (see
   [Menu bar commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#menu-bar-commands)).
-  Declare the menus in `DesktopHostOptions.MenuBar`; macOS shows them.
+  Declare the menus in `DesktopHostOptions.MenuBar`; macOS shows them. Each
+  item's `CommandParameter` is the command's parameter. A ViewModel that takes
+  `IWindowPlatformServices` shows a native context menu with
+  `ShowContextMenuAsync`, which `DesktopWindowPlatformServices` implements for the
+  embedded window.
 - A Window's root ViewModel that implements `IRunicFileDropTarget` receives the
   files the user drops onto the embedded window, with their native paths, in
   its model turn (see

@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using Runic.Platform;
+
 namespace Runic.Desktop;
 
 /// <summary>Creates platform-native embedded WebView presentations.</summary>
@@ -92,6 +95,61 @@ public interface IDesktopWindowStateHost : IDesktopWindowHost
 
     /// <summary>Occurs after <see cref="State"/> has changed. It may be raised on the window's owning thread.</summary>
     event EventHandler? StateChanged;
+}
+
+/// <summary>An optional native host that shows the menu bar and context menus.</summary>
+/// <remarks>
+/// <para>
+/// Runic Desktop finds it by type and calls <see cref="SetMenuBarAsync"/> once the window has opened and again after
+/// every <see cref="DesktopHost.SetMenuBar"/>, whatever <see cref="DesktopWindowHostOptions.MenuBarPresentation"/> says:
+/// the host shows the bar only for <see cref="DesktopMenuBarPresentation.Native"/>, but matches the items' shortcuts
+/// for every presentation, after the page has seen the key and left it alone. Report
+/// <see cref="DesktopWindowCapabilities.MenuBar"/> and <see cref="DesktopWindowCapabilities.ContextMenu"/> in
+/// <see cref="IDesktopWindowHost.Capabilities"/> for what the host provides, and in
+/// <see cref="IDesktopWindowHostFactory.Capabilities"/> so validation knows it before a window opens.
+/// </para>
+/// <para>
+/// Run a chosen item or matched shortcut through <see cref="MenuCommands"/>: ask
+/// <see cref="IDesktopMenuCommandTarget.CanExecute"/> and call <see cref="IDesktopMenuCommandTarget.Execute"/> on the
+/// window's UI thread, and show an item enabled while its declaration and <c>CanExecute</c> allow it. The shared rules
+/// are the macOS bar's: <see cref="DesktopMenuItem.IsChecked"/> and <see cref="DesktopMenuItem.RadioGroup"/> as
+/// declared, a disabled menu disables its entries, and the standard shortcuts of the platform stay the platform's.
+/// </para>
+/// </remarks>
+public interface IDesktopMenuWindowHost : IDesktopWindowHost
+{
+    /// <summary>
+    /// Gets or sets the commands of the window's menu items: Runic Desktop sets a target that asks the window's
+    /// <see cref="DesktopWindow.MenuCommands"/> and then <see cref="DesktopHost.MenuCommands"/>, and logs a target that
+    /// throws (event 3014). <see langword="null"/> until Runic Desktop sets it.
+    /// </summary>
+    IDesktopMenuCommandTarget? MenuCommands { get; set; }
+
+    /// <summary>Gets where the window shows its menu bar now; <see cref="DesktopMenuBarPlacement.None"/> before it opens and after it closes.</summary>
+    /// <remarks>Called from any thread; keep it cheap.</remarks>
+    DesktopMenuBarPlacement MenuBarPlacement { get; }
+
+    /// <summary>Occurs after <see cref="MenuBarPlacement"/> has changed, for example when a global menu bar appeared or went away. It may be raised on the window's owning thread.</summary>
+    event EventHandler? MenuBarPlacementChanged;
+
+    /// <summary>Replaces the window's menus with <paramref name="menus"/>, checked by <see cref="DesktopHost"/>; empty removes them.</summary>
+    /// <param name="menus">The menus of <see cref="DesktopHost.MenuBar"/>, in declaration order.</param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the window shows the menus.</returns>
+    ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default);
+
+    /// <summary>Shows a context menu and completes with the chosen item, or <see langword="null"/> when it was dismissed.</summary>
+    /// <param name="items">The entries, already checked against the context-menu rules.</param>
+    /// <param name="options">Where the menu opens: <see cref="DesktopContextMenuOptions.X"/> and <see cref="DesktopContextMenuOptions.Y"/> in CSS pixels of the page's viewport, or at the pointer.</param>
+    /// <param name="cancellationToken">Closes the menu; the task then completes as cancelled.</param>
+    /// <returns>The chosen item, one of <paramref name="items"/>, or <see langword="null"/>.</returns>
+    /// <remarks>
+    /// Runic Desktop calls it only when <see cref="IDesktopWindowHost.Capabilities"/> includes
+    /// <see cref="DesktopWindowCapabilities.ContextMenu"/>. A new context menu of the window dismisses the open one,
+    /// which completes with <see langword="null"/>, as does a menu open while the window closes.
+    /// </remarks>
+    ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Hosts one Desktop surface in a platform-native window.</summary>
@@ -301,6 +359,10 @@ public sealed record DesktopWindowHostOptions
     /// </summary>
     public string? DocumentStartScript { get; init; }
 
+    /// <summary>Gets where the window shows the menu bar, from <see cref="DesktopWindowOptions.MenuBarPresentation"/>.</summary>
+    /// <remarks>A host implementing <see cref="IDesktopMenuWindowHost"/> applies it; others ignore it.</remarks>
+    public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
+
     /// <summary>
     /// Gets the callback that reports an event of the open window, such as a crashed web process, to
     /// <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger (event 3010). The host may call it on any
@@ -332,9 +394,36 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         {
             dropHost.FilesDropped += OnFilesDropped;
         }
+        if (_host is IDesktopMenuWindowHost menuHost)
+        {
+            menuHost.MenuBarPlacementChanged += OnMenuBarPlacementChanged;
+        }
     }
 
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
+
+    public event EventHandler? MenuBarPlacementChanged;
+
+    public IDesktopMenuCommandTarget? MenuCommands
+    {
+        get => _host is IDesktopMenuWindowHost menuHost ? menuHost.MenuCommands : null;
+        set
+        {
+            if (_host is IDesktopMenuWindowHost menuHost) menuHost.MenuCommands = value;
+        }
+    }
+
+    public DesktopMenuBarPlacement MenuBarPlacement =>
+        _host is IDesktopMenuWindowHost menuHost ? menuHost.MenuBarPlacement : DesktopMenuBarPlacement.None;
+
+    public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default) =>
+        _host is IDesktopMenuWindowHost menuHost ? menuHost.SetMenuBarAsync(menus, cancellationToken) : ValueTask.CompletedTask;
+
+    public ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
+        CancellationToken cancellationToken = default) =>
+        _host is IDesktopMenuWindowHost menuHost
+            ? menuHost.ShowContextMenuAsync(items, options, cancellationToken)
+            : ValueTask.FromException<DesktopMenuItem?>(new NotSupportedException("This window host shows no context menus."));
 
     public event EventHandler? Closed;
 
@@ -385,6 +474,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             AdditionalOrigins = options.AdditionalOrigins,
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
+            MenuBarPresentation = options.MenuBarPresentation,
         }, cancellationToken);
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>
@@ -428,6 +518,10 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         {
             dropHost.FilesDropped -= OnFilesDropped;
         }
+        if (_host is IDesktopMenuWindowHost menuHost)
+        {
+            menuHost.MenuBarPlacementChanged -= OnMenuBarPlacementChanged;
+        }
         await _host.DisposeAsync().ConfigureAwait(false);
     }
 
@@ -436,4 +530,6 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     private void OnStateChanged(object? sender, EventArgs eventArgs) => StateChanged?.Invoke(this, eventArgs);
 
     private void OnFilesDropped(object? sender, DesktopFileDropEventArgs eventArgs) => FilesDropped?.Invoke(this, eventArgs);
+
+    private void OnMenuBarPlacementChanged(object? sender, EventArgs eventArgs) => MenuBarPlacementChanged?.Invoke(this, eventArgs);
 }

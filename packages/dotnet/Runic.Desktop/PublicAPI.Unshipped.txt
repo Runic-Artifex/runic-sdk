@@ -3,3 +3,31 @@ Runic.Desktop.DesktopWindow.Closed -> System.EventHandler?
 Runic.Desktop.DesktopWindow.HideAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindowCapabilities.Visibility = 1024 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.DesktopMenuBarPlacement.Global = 2 -> Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.DesktopMenuBarPlacement.None = 0 -> Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.DesktopMenuBarPlacement.Page = 3 -> Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.DesktopMenuBarPlacement.Window = 1 -> Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.DesktopMenuBarPresentation
+Runic.Desktop.DesktopMenuBarPresentation.Native = 0 -> Runic.Desktop.DesktopMenuBarPresentation
+Runic.Desktop.DesktopMenuBarPresentation.None = 2 -> Runic.Desktop.DesktopMenuBarPresentation
+Runic.Desktop.DesktopMenuBarPresentation.Page = 1 -> Runic.Desktop.DesktopMenuBarPresentation
+Runic.Desktop.DesktopWindow.MenuBarPlacement.get -> Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.DesktopWindow.MenuBarPlacementChanged -> System.EventHandler?
+Runic.Desktop.DesktopWindow.ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> items, Runic.Platform.DesktopContextMenuOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.DesktopMenuItem?>
+Runic.Desktop.DesktopWindow.TryExecuteMenuItemAsync(Runic.Platform.DesktopMenuItem! item, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Desktop.DesktopWindowCapabilities.ContextMenu = 4096 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowCapabilities.MenuBar = 2048 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowHostOptions.MenuBarPresentation.get -> Runic.Desktop.DesktopMenuBarPresentation
+Runic.Desktop.DesktopWindowHostOptions.MenuBarPresentation.init -> void
+Runic.Desktop.DesktopWindowOptions.MenuBarPresentation.get -> Runic.Desktop.DesktopMenuBarPresentation
+Runic.Desktop.DesktopWindowOptions.MenuBarPresentation.init -> void
+Runic.Desktop.IDesktopMenuWindowHost
+Runic.Desktop.IDesktopMenuWindowHost.MenuBarPlacement.get -> Runic.Desktop.DesktopMenuBarPlacement
+Runic.Desktop.IDesktopMenuWindowHost.MenuBarPlacementChanged -> System.EventHandler?
+Runic.Desktop.IDesktopMenuWindowHost.MenuCommands.get -> Runic.Desktop.IDesktopMenuCommandTarget?
+Runic.Desktop.IDesktopMenuWindowHost.MenuCommands.set -> void
+Runic.Desktop.IDesktopMenuWindowHost.SetMenuBarAsync(System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>! menus, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopMenuWindowHost.ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> items, Runic.Platform.DesktopContextMenuOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.DesktopMenuItem?>
+Runic.Desktop.LinuxDesktopOptions.GlobalMenu.get -> bool
+Runic.Desktop.LinuxDesktopOptions.GlobalMenu.init -> void

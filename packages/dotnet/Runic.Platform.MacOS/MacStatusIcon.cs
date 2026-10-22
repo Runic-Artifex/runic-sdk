@@ -296,9 +296,9 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         return menu;
     }
 
-    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null)
+    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null, string? commandParameter = null)
     {
-        if (!_disposed) _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId));
+        if (!_disposed) _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId) { CommandParameter = commandParameter });
     }
 
     private async Task PumpAsync()
@@ -347,8 +347,9 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
     {
         try
         {
-            if (Owners.TryGetValue(self, out var icon) && icon._openMenu?.CommandFor(Send(sender, Sel("tag"))) is { } id)
-                icon.Raise(DesktopStatusIconActivationKind.MenuItem, id);
+            var tag = Send(sender, Sel("tag"));
+            if (Owners.TryGetValue(self, out var icon) && icon._openMenu is { } menu && menu.CommandFor(tag) is { } id)
+                icon.Raise(DesktopStatusIconActivationKind.MenuItem, id, menu.ParameterFor(tag));
         }
         catch { /* Never unwind through AppKit. */ }
     }

@@ -28,6 +28,9 @@ internal static partial class MacOsMenuSmoke
             new DesktopMenuItem("Word Wrap", "tools.run") { IsChecked = true },
             new DesktopMenuItem("Ruler", "tools.run") { IsChecked = false },
             new DesktopMenu("Disabled More", [new DesktopMenuItem("Inside", "tools.run")]) { IsEnabled = false },
+            // A radio group whose items pass their zoom level to one command; AppKit shows the check mark.
+            new DesktopMenuItem("Small", "tools.zoom") { RadioGroup = "zoom", IsChecked = false, CommandParameter = "0.8" },
+            new DesktopMenuItem("Large", "tools.zoom") { RadioGroup = "zoom", IsChecked = true, CommandParameter = "1.5" },
         ]),
         new("Archive", [new DesktopMenuItem("Restore", "tools.run")]) { IsEnabled = false },
         new("Help", [new DesktopMenuItem("Runic Help", "help.show")]) { Role = DesktopMenuRole.Help },
@@ -39,13 +42,18 @@ internal static partial class MacOsMenuSmoke
         internal Target(params string[] handled) => _handled = [.. handled];
         internal bool Enabled { get; set; } = true;
         internal System.Collections.Concurrent.ConcurrentQueue<string> Executed { get; } = new();
+        internal System.Collections.Concurrent.ConcurrentQueue<string?> Parameters { get; } = new();
         public bool CanExecute(DesktopMenuItem item) => Enabled && _handled.Contains(item.CommandId);
-        public void Execute(DesktopMenuItem item) => Executed.Enqueue(item.CommandId);
+        public void Execute(DesktopMenuItem item)
+        {
+            Parameters.Enqueue(item.CommandParameter);
+            Executed.Enqueue(item.CommandId);
+        }
     }
 
     internal static async Task ExerciseAsync(DesktopHost host, DesktopWindow window)
     {
-        var windowTarget = new Target("file.save", "tools.run", "tools.copy");
+        var windowTarget = new Target("file.save", "tools.run", "tools.copy", "tools.zoom");
         var applicationTarget = new Target("app.settings", "help.show", "tools.run");
         host.MenuCommands = applicationTarget;
         window.MenuCommands = windowTarget;
@@ -62,7 +70,16 @@ internal static partial class MacOsMenuSmoke
         });
         if (failure is not null) throw new InvalidOperationException("Menu bar: " + failure);
         // The command runs after AppKit returns; the target only records it.
-        Console.WriteLine("PASS menu bar: declared menus beside the standard ones, availability, declared disabled and checked state, actions and key equivalents.");
+        Console.WriteLine("PASS menu bar: declared menus beside the standard ones, availability, declared disabled, checked and radio state, parameters, actions and key equivalents.");
+        if (window.MenuBarPlacement != DesktopMenuBarPlacement.Global)
+            throw new InvalidOperationException($"Menu bar: the placement is {window.MenuBarPlacement}, not Global.");
+        windowTarget.Parameters.Clear();
+        if (!await window.TryExecuteMenuItemAsync(new DesktopMenuItem("Large", "tools.zoom") { CommandParameter = "1.5" })
+            || !windowTarget.Parameters.TryDequeue(out var parameter) || parameter != "1.5")
+            throw new InvalidOperationException("Menu bar: TryExecuteMenuItemAsync did not run the window's command with its parameter.");
+        windowTarget.Executed.Clear();
+        await ExerciseContextMenuAsync(window);
+        Console.WriteLine("PASS context menu: chosen item returned, dismissed by a later menu, closed by cancellation, in AppKit's tracking run loop mode.");
         host.MenuCommands = null;
         window.MenuCommands = null;
         host.SetMenuBar([]);
@@ -136,7 +153,17 @@ internal static partial class MacOsMenuSmoke
         if (!windowTarget.Executed.IsEmpty || !applicationTarget.Executed.IsEmpty)
             return "choosing the disabled Locked item ran its command";
 
+        // Radio items show AppKit's check mark as declared; choosing one passes its parameter.
+        if (Find(tools, "Small") is not { } small || Send(small, Sel("state")) != 0 || Find(tools, "Large") is not { } large || Send(large, Sel("state")) != 1)
+            return "the radio group does not show Large checked and Small unchecked";
         var key = Bool(window, Sel("isKeyWindow")) != 0;
+        var zoomTarget = key ? windowTarget : null;
+        Arg(tools, Sel("performActionForItemAtIndex:"), (nint)8);
+        if (zoomTarget is not null && (!zoomTarget.Executed.TryDequeue(out var zoom) || zoom != "tools.zoom"
+            || !zoomTarget.Parameters.TryDequeue(out var level) || level != "0.8"))
+            return "choosing Small did not run tools.zoom with 0.8";
+        windowTarget.Parameters.Clear();
+        applicationTarget.Parameters.Clear();
         Arg(tools, Sel("performActionForItemAtIndex:"), (nint)0);
         var ran = key ? windowTarget.Executed : applicationTarget.Executed;
         if (!ran.TryDequeue(out var executed) || executed != "tools.run")
@@ -160,6 +187,73 @@ internal static partial class MacOsMenuSmoke
             return "⌘, did not run the application's Settings…";
         return null;
     }
+
+    // The context menu tracks modally on the main thread; these requests reach it through the tracking run loop mode,
+    // as a user's click would.
+    private static async Task ExerciseContextMenuAsync(DesktopWindow window)
+    {
+        if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu))
+            throw new InvalidOperationException("Context menu: the window does not report the capability.");
+        System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items =
+        [
+            new DesktopMenuItem("Rename", "row.rename") { CommandParameter = "row-7", Shortcut = DesktopShortcut.Parse("Primary+R") },
+            new DesktopMenuSeparator(),
+            new DesktopMenu("More", [new DesktopMenuItem("Delete", "row.delete") { IsEnabled = false }]),
+        ];
+        // Chosen: the first item's action, sent while the menu tracks, then the menu closes.
+        var chosen = window.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 40, Y = 30 }).AsTask();
+        var menu = await TrackingAsync(0);
+        PerformInTrackingMode(menu, "performActionForItemAtIndex:", 0);
+        PerformInTrackingMode(menu, "cancelTracking", 0);
+        var result = await chosen.WaitAsync(TimeSpan.FromSeconds(10));
+        if (!ReferenceEquals(result, items[0])) throw new InvalidOperationException($"Context menu: returned {result?.Title ?? "null"}, not Rename.");
+
+        // Dismissed: a later menu of the window closes the open one, which returns null; cancellation closes the later one.
+        var first = window.ShowContextMenuAsync(items).AsTask();
+        var firstMenu = await TrackingAsync(0);
+        using var cancel = new CancellationTokenSource();
+        var second = window.ShowContextMenuAsync(items, cancellationToken: cancel.Token).AsTask();
+        if (await first.WaitAsync(TimeSpan.FromSeconds(10)) is not null)
+            throw new InvalidOperationException("Context menu: a menu replaced by a later one did not return null.");
+        await TrackingAsync(firstMenu);
+        cancel.Cancel();
+        try
+        {
+            await second.WaitAsync(TimeSpan.FromSeconds(10));
+            throw new InvalidOperationException("Context menu: a cancelled menu did not throw OperationCanceledException.");
+        }
+        catch (OperationCanceledException) { }
+        if (Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0)
+            throw new InvalidOperationException("Context menu: a menu still tracks after the last one closed.");
+    }
+
+    // Waits until a context menu other than the given one tracks.
+    private static async Task<nint> TrackingAsync(nint previous)
+    {
+        for (var waited = 0; waited < 10_000; waited += 20)
+        {
+            var menu = Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu;
+            if (menu != 0 && menu != previous)
+            {
+                // Let the menu start tracking before it is driven.
+                await Task.Delay(300);
+                return menu;
+            }
+            await Task.Delay(20);
+        }
+        throw new InvalidOperationException("Context menu: no menu tracked within 10 seconds.");
+    }
+
+    // performSelectorOnMainThread:withObject:waitUntilDone:modes: with the common modes, which include the event
+    // tracking mode; the argument travels in the object register.
+    private static void PerformInTrackingMode(nint target, string selector, nint argument)
+    {
+        var mode = Arg(Class("NSString"), Sel("stringWithUTF8String:"), Utf8("kCFRunLoopCommonModes"));
+        var modes = Arg(Class("NSArray"), Sel("arrayWithObject:"), mode);
+        PerformOnMain(target, Sel("performSelectorOnMainThread:withObject:waitUntilDone:modes:"), Sel(selector), argument, 0, modes);
+    }
+
+    private static nint Utf8(string text) => Marshal.StringToCoTaskMemUTF8(text);
 
     private static IEnumerable<nint> Items(nint menu)
     {
@@ -189,6 +283,7 @@ internal static partial class MacOsMenuSmoke
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Send(nint target, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Bool(nint target, nint selector);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void PerformOnMain(nint target, nint selector, nint action, nint argument, byte wait, nint modes);
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventCreateKeyboardEvent")] private static partial nint CreateKeyboardEvent(nint source, ushort key, [MarshalAs(UnmanagedType.U1)] bool down);
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventSetFlags")] private static partial void SetFlags(nint keyEvent, ulong flags);
     [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRelease")] private static partial void CFRelease(nint value);

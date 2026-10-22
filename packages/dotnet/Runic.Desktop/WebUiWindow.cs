@@ -635,20 +635,24 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.MenuBarPlacementChanged += EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
+                AttachMenuCommands(host);
                 _currentBrowser = WebUiBrowser.WebView;
                 connection = BeginConnection();
                 try
                 {
                     ConfigureCloseConfirmation(host);
                     await host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken).ConfigureAwait(false);
+                    PushMenuBar(host);
                 }
                 catch
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                     host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
@@ -706,8 +710,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.MenuBarPlacementChanged += EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
+                AttachMenuCommands(host);
                 _currentBrowser = WebUiBrowser.WebView;
                 connection = BeginConnection();
                 try
@@ -715,12 +721,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     ConfigureCloseConfirmation(host);
                     host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken)
                         .AsTask().GetAwaiter().GetResult();
+                    PushMenuBar(host);
                 }
                 catch
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                     host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
@@ -1184,6 +1192,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private async Task CompleteDisposeAsync()
     {
+        if (Interlocked.Exchange(ref _menuBarSubscribed, 0) != 0 && MenuHost is { } menuHost) menuHost.MenuBarChanged -= OnMenuBarChanged;
         try
         {
             await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
@@ -1320,7 +1329,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _proxyServer = null;
         _browserArgumentList = [];
         _browserArguments = null;
+        _menuBarPresentation = DesktopMenuBarPresentation.Native;
     }
+
+    // Where the next embedded window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).
+    internal void SetMenuBarPresentation(DesktopMenuBarPresentation presentation) => _menuBarPresentation = presentation;
 
     // The saved placement the next embedded window restores; ApplyWindowOptions already set its size and position.
     internal void SetPlacement(DesktopWindowPlacement placement) => _placement = placement;
@@ -1338,7 +1351,96 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The current embedded window's menu command target; a replacement window starts without one.
     internal void SetEmbeddedMenuCommands(IDesktopMenuCommandTarget? target)
     {
-        if (Volatile.Read(ref _embeddedHost) is { } host) host.MenuCommands = target;
+        if (Volatile.Read(ref _embeddedHost) is { } host && Volatile.Read(ref _menuChain) is { } chain && ReferenceEquals(chain.Host, host))
+            chain.Commands.Window = target;
+    }
+
+    // The command path of the current embedded host's items, with the host it belongs to.
+    private sealed record EmbeddedMenuChain(IWebUiEmbeddedHost Host, MenuCommandChain Commands);
+    private EmbeddedMenuChain? _menuChain;
+
+    private DesktopMenuBarPresentation _menuBarPresentation;
+    private int _menuBarSubscribed;
+
+    // The host whose menu bar the windows show, and whose MenuCommands come after the window's.
+    private DesktopHost? MenuHost => _runtimeOptions?.MenuHost;
+
+    // Gives a new embedded host the command path of its items, and follows the host's menu bar from now on.
+    private void AttachMenuCommands(IWebUiEmbeddedHost host)
+    {
+        var menuHost = MenuHost;
+        var commands = new MenuCommandChain(() => menuHost?.MenuCommands, Logger);
+        Volatile.Write(ref _menuChain, new EmbeddedMenuChain(host, commands));
+        host.MenuCommands = commands;
+        if (menuHost is not null && Interlocked.Exchange(ref _menuBarSubscribed, 1) == 0) menuHost.MenuBarChanged += OnMenuBarChanged;
+    }
+
+    private void OnMenuBarChanged(object? sender, EventArgs eventArgs)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            if (sender is DesktopHost menuHost) menuHost.MenuBarChanged -= OnMenuBarChanged;
+            return;
+        }
+        if (Volatile.Read(ref _embeddedHost) is { IsOpen: true } host) PushMenuBar(host);
+    }
+
+    // Hands the host's current menus to the window; a failure is the window's diagnostic, never the caller's.
+    private void PushMenuBar(IWebUiEmbeddedHost host)
+    {
+        if (MenuHost is not { } menuHost) return;
+        _ = PushMenuBarAsync(host, menuHost.MenuBar);
+    }
+
+    private async Task PushMenuBarAsync(IWebUiEmbeddedHost host, IReadOnlyList<Runic.Platform.DesktopMenu> menus)
+    {
+        try
+        {
+            await host.SetMenuBarAsync(menus).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            if (!host.IsOpen || !ReferenceEquals(Volatile.Read(ref _embeddedHost), host)) return;
+            ReportEmbeddedDiagnostic(new DesktopDiagnostic(DesktopErrorCategory.OperationFailed, "menu-bar-failed",
+                $"The window could not show the menu bar: {DesktopLog.ErrorType(error)}.", Retryable: true)
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopHostOptions.MenuBar",
+            });
+        }
+    }
+
+    // Where the current embedded window shows its menu bar now.
+    internal DesktopMenuBarPlacement EmbeddedMenuBarPlacement =>
+        Volatile.Read(ref _embeddedHost) is { IsOpen: true } host ? host.MenuBarPlacement : DesktopMenuBarPlacement.None;
+
+    // Each change of the current embedded window's placement, with the window that reported it.
+    internal event Action<object>? EmbeddedMenuBarPlacementChanged;
+
+    private void EmbeddedHostMenuBarPlacementChanged(object? sender, EventArgs eventArgs)
+    {
+        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
+            EmbeddedMenuBarPlacementChanged?.Invoke(host);
+    }
+
+    internal Task<Runic.Platform.DesktopMenuItem?> ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry> items,
+        Runic.Platform.DesktopContextMenuOptions options, CancellationToken cancellationToken)
+        => GetEmbeddedHost().ShowContextMenuAsync(items, options, cancellationToken).AsTask();
+
+    // Runs an item through the command path: on the window's UI thread when it has one, else on the caller's.
+    internal async Task<bool> TryExecuteMenuItemAsync(Runic.Platform.DesktopMenuItem item, IDesktopMenuCommandTarget? window,
+        CancellationToken cancellationToken)
+    {
+        var application = MenuHost?.MenuCommands;
+        if (Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsNativeDispatch: true } host && !host.CheckNativeAccess())
+        {
+            var ran = false;
+            await host.InvokeNativeAsync(() => ran = MenuCommandChain.TryExecute(item, window, application, Logger), cancellationToken)
+                .ConfigureAwait(false);
+            return ran;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return MenuCommandChain.TryExecute(item, window, application, Logger);
     }
 
     // Each drop of files onto the current embedded window, with the window that reported it.
@@ -1685,6 +1787,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 .ToArray(),
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
+            MenuBarPresentation = _menuBarPresentation,
         };
     }
 
@@ -1747,6 +1850,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 closed.Closed -= EmbeddedHostClosed;
                 closed.StateChanged -= EmbeddedHostStateChanged;
+                closed.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                 closed.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
                 await closed.DisposeAsync().ConfigureAwait(false);
@@ -1773,6 +1877,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 host.Closed -= EmbeddedHostClosed;
                 host.StateChanged -= EmbeddedHostStateChanged;
+                host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
                 await host.DisposeAsync().ConfigureAwait(false);
@@ -1949,6 +2054,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             embeddedHost.Closed -= EmbeddedHostClosed;
             embeddedHost.StateChanged -= EmbeddedHostStateChanged;
+            embeddedHost.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
             embeddedHost.FilesDropped -= EmbeddedHostFilesDropped;
             try
             {

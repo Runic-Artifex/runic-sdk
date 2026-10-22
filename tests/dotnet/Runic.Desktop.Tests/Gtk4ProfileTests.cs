@@ -297,12 +297,13 @@ public sealed class Gtk4ProfileTests
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop, advertised);
         else if (OperatingSystem.IsMacOS())
-            Assert.Equal(known | DesktopWindowCapabilities.State, advertised);
+            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu, advertised);
         else if (OperatingSystem.IsLinux())
             Assert.Equal(known, advertised);
         // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
-            known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop);
+            known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
+            DesktopWindowCapabilities.ContextMenu);
     }
 
     [Test]

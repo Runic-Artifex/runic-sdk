@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using Runic.Platform;
+
 namespace Runic.Desktop;
 
 /// <summary>Creates an embedded platform WebView host for a Runic Desktop window.</summary>
@@ -30,12 +33,30 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Occurs after the platform window has closed.</summary>
     event EventHandler? Closed;
 
-    /// <summary>The menu bar's command target while this window is key; only the macOS host has a menu bar.</summary>
+    /// <summary>The commands of the window's menu items: the window's target, then the application's (MenuCommandChain).</summary>
     IDesktopMenuCommandTarget? MenuCommands
     {
         get => null;
         set { }
     }
+
+    /// <summary>Where the window shows its menu bar now.</summary>
+    DesktopMenuBarPlacement MenuBarPlacement => DesktopMenuBarPlacement.None;
+
+    /// <summary>Occurs after <see cref="MenuBarPlacement"/> has changed, possibly on the window's owning thread.</summary>
+    event EventHandler? MenuBarPlacementChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>Replaces the window's menus; called after the window opens and after every DesktopHost.SetMenuBar.</summary>
+    ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+    /// <summary>Shows a checked context menu; requires <see cref="DesktopWindowCapabilities.ContextMenu"/>.</summary>
+    ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<DesktopMenuItem?>(new NotSupportedException("This host shows no context menus."));
 
     /// <summary>Gets the last reported bounds and state, kept after the window closes; null when the host reports none.</summary>
     DesktopWindowState? State => null;
@@ -149,4 +170,7 @@ internal sealed record WebUiEmbeddedHostOptions
 
     /// <summary>Reports an event of the open window, such as a terminated web process, to the host's sink and logger.</summary>
     public Action<DesktopDiagnostic>? ReportDiagnostic { get; init; }
+
+    /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
+    public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 }

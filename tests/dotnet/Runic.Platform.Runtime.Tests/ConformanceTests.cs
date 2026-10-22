@@ -101,6 +101,48 @@ internal sealed class ConformanceTests
         }
     }
 
+    // An implementation written before ShowContextMenuAsync keeps compiling: it checks the arguments and reports the
+    // owner unavailable, as WindowPlatformServices.Unavailable reports its own reason.
+    [Test, DisplayName("WINDOW: context menus without an implementation report why")]
+    public async Task ContextMenusWithoutAnImplementation()
+    {
+        System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> menu =
+            [new DesktopMenuItem("Rename", "row.rename") { CommandParameter = "row-7" }, new DesktopMenuSeparator(),
+             new DesktopMenu("More", [new DesktopMenuItem("Rename", "row.rename")])];
+        IWindowPlatformServices custom = new MinimalWindowServices();
+        if (await custom.ShowContextMenuAsync(menu) is not PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await custom.ShowContextMenuAsync(menu, new DesktopContextMenuOptions { X = 10, Y = 20 }) is not PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable))
+            throw new InvalidOperationException("The default ShowContextMenuAsync did not report the owner unavailable.");
+        if (await WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerClosed).ShowContextMenuAsync(menu)
+            is not PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed))
+            throw new InvalidOperationException("Unavailable window services did not report their reason for a context menu.");
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        var deep = (DesktopMenuEntry)new DesktopMenuItem("Leaf", "leaf");
+        for (var depth = 0; depth < 6; depth++) deep = new DesktopMenu("Level", [deep]);
+        foreach (var services in new[] { custom, WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerClosed) })
+        {
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync([]));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync(default));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync([new DesktopMenuItem("", "x")]));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync([new DesktopMenuItem("Pick", "x") { RadioGroup = "g" }]));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync([new DesktopMenuItem("Pick", "x") { CommandParameter = "a\0b" }]));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync([deep]));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync(
+                [.. Enumerable.Range(0, 257).Select(static index => (DesktopMenuEntry)new DesktopMenuItem("Item", "item"))]));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync(menu, new DesktopContextMenuOptions { X = 1 }));
+            await Rejects<ArgumentException>(() => services.ShowContextMenuAsync(menu, new DesktopContextMenuOptions { X = double.NaN, Y = 1 }));
+            await Rejects<OperationCanceledException>(() => services.ShowContextMenuAsync(menu, cancellationToken: cancelled.Token));
+        }
+
+        static async Task Rejects<TException>(Func<ValueTask<PlatformResult<DesktopMenuItem?>>> show) where TException : Exception
+        {
+            try { await show(); }
+            catch (TException) { return; }
+            throw new InvalidOperationException($"ShowContextMenuAsync did not throw {typeof(TException).Name}.");
+        }
+    }
+
     private sealed class MinimalWindowServices : IWindowPlatformServices
     {
         private readonly IWindowPlatformServices _inner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);

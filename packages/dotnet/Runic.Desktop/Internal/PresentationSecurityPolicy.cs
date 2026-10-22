@@ -62,4 +62,8 @@ internal sealed record PresentationSurfaceRuntimeOptions(
     TimeSpan ConnectionTimeout,
     Action<DesktopDiagnostic>? DiagnosticSink,
     Microsoft.Extensions.Logging.ILogger? Logger = null,
-    int BrowserLaunchAttempts = DesktopHostOptions.DefaultBrowserLaunchAttempts);
+    int BrowserLaunchAttempts = DesktopHostOptions.DefaultBrowserLaunchAttempts)
+{
+    // The host whose menu bar and application menu commands the surface's windows show and run.
+    internal DesktopHost? MenuHost { get; init; }
+}

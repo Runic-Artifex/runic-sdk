@@ -51,6 +51,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     internal static void SetApplicationMenuCommands(IDesktopMenuCommandTarget? target) => Volatile.Write(ref s_applicationMenuCommands, target);
 
+    // The logger of menu command failures (event 3014) while no key window's command path has one.
+    private static Microsoft.Extensions.Logging.ILogger? s_menuLogger;
+    internal static void SetMenuLogger(Microsoft.Extensions.Logging.ILogger logger) => Volatile.Write(ref s_menuLogger, logger);
+
+    // The application menu bar holds the declared menus for every presentation (D036.13): Page and None keep it.
+    public DesktopMenuBarPlacement MenuBarPlacement => IsOpen ? DesktopMenuBarPlacement.Global : DesktopMenuBarPlacement.None;
+
     // Shows the menus as soon as the main thread can: now while the AppKit loop runs, else when the first window opens.
     internal static void RequestMenuBar(IReadOnlyList<DesktopMenu> menus)
     {
@@ -99,7 +106,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.State;
+        DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -170,6 +177,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             return ValueTask.CompletedTask;
         }
+        // A context menu of the window tracks modally on the main thread; it closes first, returning null.
+        if (Volatile.Read(ref s_contextMenu) is { } menu && ReferenceEquals(menu.Owner, this)) menu.Dismiss();
         return new ValueTask(CloseCoreAsync(cancellationToken));
     }
 
@@ -804,42 +813,27 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    // The target of the key window, or of the main window while a panel is key, then the application's.
-    private static IEnumerable<IDesktopMenuCommandTarget> MenuTargets()
+    // The command path of the key window, or of the main window while a panel is key: its target, then the
+    // application's (MenuCommandChain). Without such a window, the application's target alone.
+    private static MenuCommandChain? KeyWindowCommands()
     {
         var application = Api.SharedApplicationIfCreated();
-        if (application != 0)
+        if (application == 0) return null;
+        foreach (var selector in (string[])["keyWindow", "mainWindow"])
         {
-            foreach (var selector in (string[])["keyWindow", "mainWindow"])
-            {
-                if (Hosts.TryGetValue(Api.SendNint(application, selector), out var host) && host.IsOpen && host.MenuCommands is { } target)
-                {
-                    yield return target;
-                    break;
-                }
-            }
+            if (Hosts.TryGetValue(Api.SendNint(application, selector), out var host) && host.IsOpen && host.MenuCommands is MenuCommandChain chain)
+                return chain;
         }
-        if (Volatile.Read(ref s_applicationMenuCommands) is { } fallback) yield return fallback;
+        return null;
     }
 
-    internal static bool CanExecuteMenuCommand(DesktopMenuItem item) => MenuTargets().Any(target => SafeCanExecute(target, item));
+    internal static bool CanExecuteMenuCommand(DesktopMenuItem item) => KeyWindowCommands() is { } chain
+        ? chain.CanExecute(item)
+        : MenuCommandChain.CanExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref s_menuLogger));
 
-    internal static bool ExecuteMenuCommand(DesktopMenuItem item)
-    {
-        foreach (var target in MenuTargets())
-        {
-            if (!SafeCanExecute(target, item)) continue;
-            target.Execute(item);
-            return true;
-        }
-        return false;
-    }
-
-    private static bool SafeCanExecute(IDesktopMenuCommandTarget target, DesktopMenuItem item)
-    {
-        try { return target.CanExecute(item); }
-        catch (Exception error) when (error is not OutOfMemoryException) { return false; }
-    }
+    internal static bool ExecuteMenuCommand(DesktopMenuItem item) => KeyWindowCommands() is { } chain
+        ? chain.TryExecute(item)
+        : MenuCommandChain.TryExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref s_menuLogger));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void MenuCommand(nint self, nint selector, nint sender)
@@ -867,6 +861,182 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         catch
         {
             return 0;
+        }
+    }
+
+    private const string ContextMenuAction = "runicContextMenuItem:";
+    private const string ContextMenuTickAction = "runicContextMenuTick:";
+    // The context menu that is tracking, or about to; AppKit tracks one menu at a time.
+    private static ContextMenuSession? s_contextMenu;
+
+    // The NSMenu of the context menu that is tracking now, or zero; for the native smoke.
+    internal static nint TrackingContextMenu => Volatile.Read(ref s_contextMenu) is { Menu: not 0 and var menu } ? menu : 0;
+
+    // One context menu: its items by tag minus one, and how it ended.
+    private sealed class ContextMenuSession(MacOsWkWebViewHost owner, CancellationToken cancellationToken)
+    {
+        private int _dismissed;
+        internal MacOsWkWebViewHost Owner { get; } = owner;
+        internal CancellationToken CancellationToken { get; } = cancellationToken;
+        internal TaskCompletionSource<DesktopMenuItem?> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal List<DesktopMenuItem> Items { get; } = [];
+        internal nint Menu { get; set; }
+
+        // Whether the menu should close: a later menu, the window closing or the caller's token.
+        internal bool IsDismissed => Volatile.Read(ref _dismissed) != 0 || CancellationToken.IsCancellationRequested;
+
+        // Asks the tracking menu to close from any thread; the tracking run loop's timer closes it.
+        internal void Dismiss() => Volatile.Write(ref _dismissed, 1);
+
+        internal void Complete(DesktopMenuItem? chosen)
+        {
+            if (chosen is null && CancellationToken.IsCancellationRequested) Result.TrySetCanceled(CancellationToken);
+            else Result.TrySetResult(chosen);
+        }
+    }
+
+    public ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (MenuTargetClass == 0) throw new NotSupportedException("The AppKit menu target class could not be created.");
+        // A new context menu dismisses the open one, which returns null.
+        Volatile.Read(ref s_contextMenu)?.Dismiss();
+        var session = new ContextMenuSession(this, cancellationToken);
+        var shown = InvokeAsync(() => ShowContextMenu(session, items, options), cancellationToken);
+        return new ValueTask<DesktopMenuItem?>(WaitForContextMenuAsync(session, shown));
+    }
+
+    private static async Task<DesktopMenuItem?> WaitForContextMenuAsync(ContextMenuSession session, ValueTask shown)
+    {
+        await shown.ConfigureAwait(false);
+        return await session.Result.Task.ConfigureAwait(false);
+    }
+
+    // Main thread only. Builds the NSMenu and tracks it modally over the web view; a timer in the tracking run loop
+    // mode closes it when the session is dismissed.
+    private void ShowContextMenu(ContextMenuSession session, ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options)
+    {
+        if (session.IsDismissed || !IsOpen || s_menuTarget == 0)
+        {
+            session.Complete(null);
+            return;
+        }
+        var menu = Api.NewMenu("");
+        Api.SendVoidBool(menu, "setAutoenablesItems:", false);
+        AddContextEntries(menu, items, enabled: true, session);
+        session.Menu = menu;
+        var previous = Interlocked.Exchange(ref s_contextMenu, session);
+        previous?.Dismiss();
+        var timer = Api.NewRepeatingTimer(0.05, s_menuTarget, ContextMenuTickAction);
+        var selected = false;
+        try
+        {
+            CGPoint location;
+            nint view;
+            if (options.X is { } x && options.Y is { } y)
+            {
+                // CSS pixels of the viewport to the web view's points, measured from its top-left corner.
+                var zoom = Api.SendDouble(_webView, "pageZoom");
+                if (!double.IsFinite(zoom) || zoom <= 0) zoom = 1;
+                var bounds = Api.SendRect(_webView, "bounds");
+                var top = y * zoom;
+                location = new CGPoint(x * zoom, Api.SendBool(_webView, "isFlipped") ? top : bounds.Height - top);
+                view = _webView;
+            }
+            else
+            {
+                // Screen coordinates, which a nil view takes.
+                location = Api.SendPoint(Api.GetClass("NSEvent"), "mouseLocation");
+                view = 0;
+            }
+            selected = Api.PopUpMenu(menu, location, view);
+        }
+        finally
+        {
+            Api.SendVoid(timer, "invalidate");
+            Api.SendVoid(timer, "release");
+            Interlocked.CompareExchange(ref s_contextMenu, null, session);
+            session.Menu = 0;
+            Api.SendVoid(menu, "release");
+        }
+        if (session.Result.Task.IsCompleted) return;
+        if (selected)
+        {
+            // AppKit sends the chosen item's action during tracking; should it come later, it is queued before this.
+            MainQueue.Enqueue(new NativeDispatchWork(() => session.Complete(null), CancellationToken.None));
+            return;
+        }
+        session.Complete(null);
+    }
+
+    private static void AddContextEntries(nint menu, ImmutableArray<DesktopMenuEntry> entries, bool enabled, ContextMenuSession session)
+    {
+        foreach (var entry in entries)
+        {
+            switch (entry)
+            {
+                case DesktopMenuSeparator:
+                    Api.SendVoidNint(menu, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+                    break;
+                case DesktopMenuItem item:
+                    // The shortcut is a hint: the menu exists only while it tracks.
+                    var (key, modifiers) = item.Shortcut is { Key.Length: > 0 } shortcut && !DesktopMenuBar.IsReserved(shortcut)
+                        ? DesktopMenuBar.ToMacKeyEquivalent(shortcut)
+                        : ("", 0UL);
+                    var native = Api.NewMenuItem(item.Title, ContextMenuAction, key, modifiers, s_menuTarget);
+                    session.Items.Add(item);
+                    Api.SendVoidNint(native, "setTag:", session.Items.Count);
+                    Api.SendVoidBool(native, "setEnabled:", enabled && item.IsEnabled);
+                    // NSControlStateValueOn and Off; a radio item shows the check mark, as AppKit has no radio look.
+                    if (item.IsChecked is { } isChecked) Api.SendVoidNint(native, "setState:", isChecked ? 1 : 0);
+                    Api.SendVoidNint(menu, "addItem:", native);
+                    Api.SendVoid(native, "release");
+                    break;
+                case DesktopMenu submenu:
+                    var holder = Api.NewMenuItem(submenu.Title, null, "", 0, 0);
+                    var child = Api.NewMenu(submenu.Title);
+                    Api.SendVoidBool(child, "setAutoenablesItems:", false);
+                    Api.SendVoidNint(holder, "setSubmenu:", child);
+                    Api.SendVoidBool(holder, "setEnabled:", enabled && submenu.IsEnabled);
+                    AddContextEntries(child, submenu.Items, enabled && submenu.IsEnabled, session);
+                    Api.SendVoidNint(menu, "addItem:", holder);
+                    Api.SendVoid(child, "release");
+                    Api.SendVoid(holder, "release");
+                    break;
+                default:
+                    // An entry kind of a later release.
+                    break;
+            }
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ContextMenuItem(nint self, nint selector, nint sender)
+    {
+        try
+        {
+            if (Volatile.Read(ref s_contextMenu) is not { } session) return;
+            var tag = Api.SendNint(sender, "tag");
+            if (tag >= 1 && tag <= session.Items.Count) session.Result.TrySetResult(session.Items[(int)tag - 1]);
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ContextMenuTick(nint self, nint selector, nint timer)
+    {
+        try
+        {
+            if (Volatile.Read(ref s_contextMenu) is { Menu: not 0 } session && (session.IsDismissed || !session.Owner.IsOpen))
+                Api.SendVoid(session.Menu, "cancelTracking");
+        }
+        catch
+        {
+            // Never unwind through AppKit.
         }
     }
 
@@ -1321,6 +1491,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Reset), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ActualSize, "v@:@");
         Api.AddMethod(type, MacOsMainMenu.QuitAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&Quit, "v@:@");
         Api.AddMethod(type, MenuCommandAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&MenuCommand, "v@:@");
+        Api.AddMethod(type, ContextMenuAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ContextMenuItem, "v@:@");
+        Api.AddMethod(type, ContextMenuTickAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ContextMenuTick, "v@:@");
         Api.AddMethod(type, "validateMenuItem:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&ValidateMenuItem,
             RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
         Api.RegisterClassPair(type);
@@ -1763,6 +1935,36 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal bool SendBool(nint receiver, string selector) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, byte>)_messageSend)(receiver, Selector(selector)) != 0;
+
+        // A 16-byte NSPoint comes back in registers on both architectures, so objc_msgSend returns it.
+        internal CGPoint SendPoint(nint receiver, string selector) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, CGPoint>)_messageSend)(receiver, Selector(selector));
+
+        // [menu popUpMenuPositioningItem:nil atLocation:location inView:view]: tracks modally, true when an item was chosen.
+        internal bool PopUpMenu(nint menu, CGPoint location, nint view) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, CGPoint, nint, byte>)_messageSend)(
+                menu, Selector("popUpMenuPositioningItem:atLocation:inView:"), 0, location, view) != 0;
+
+        // A retained repeating NSTimer that sends action to target, scheduled in the common run loop modes, which
+        // include the event tracking mode of an open menu.
+        internal nint NewRepeatingTimer(double interval, nint target, string action)
+        {
+            var timer = ((delegate* unmanaged[Cdecl]<nint, nint, double, nint, nint, nint, byte, nint>)_messageSend)(
+                GetClass("NSTimer"), Selector("timerWithTimeInterval:target:selector:userInfo:repeats:"), interval, target,
+                Selector(action), 0, 1);
+            SendVoid(timer, "retain");
+            var mode = CreateString("kCFRunLoopCommonModes");
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(
+                    SendNint(GetClass("NSRunLoop"), "currentRunLoop"), Selector("addTimer:forMode:"), timer, mode);
+            }
+            finally
+            {
+                SendVoid(mode, "release");
+            }
+            return timer;
+        }
 
         internal ulong SendUlong(nint receiver, string selector) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, ulong>)_messageSend)(receiver, Selector(selector));

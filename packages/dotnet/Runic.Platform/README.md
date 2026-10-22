@@ -271,7 +271,8 @@ either.
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
-| Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
+| Menu bar commands, `IRunicMenuCommandSource` | The native menu bar (macOS), while the window is key, and `DesktopWindow.TryExecuteMenuItemAsync` | None | None |
+| Context menus, `IWindowPlatformServices.ShowContextMenuAsync` | The window's native menu where it has `DesktopWindowCapabilities.ContextMenu` (macOS); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
@@ -289,15 +290,17 @@ it starts a host.
 
 ## Menus
 
-Status icon menus (`DesktopStatusIconState.Menu`) and the Runic Desktop menu bar
+Status icon menus (`DesktopStatusIconState.Menu`), context menus
+(`IWindowPlatformServices.ShowContextMenuAsync`) and the Runic Desktop menu bar
 (`DesktopHostOptions.MenuBar`) share one model:
 
 | Type | Is |
 | --- | --- |
 | `DesktopMenuEntry` | The base of every entry. The set is open: a minor release may add entry kinds, so give a `switch` over entries a default arm. Code that walks a menu skips entries it does not know. |
-| `DesktopMenuItem(Title, CommandId)` | An item that runs a command, with `IsEnabled`, `IsChecked` (`null` for a plain item) and `Shortcut` |
+| `DesktopMenuItem(Title, CommandId)` | An item that runs a command, with `IsEnabled`, `IsChecked` (`null` for a plain item), `Shortcut`, `CommandParameter`, `AccessKey` and `RadioGroup` |
 | `DesktopMenuSeparator` | A line between groups of entries |
-| `DesktopMenu(Title, Items)` | A submenu, or a menu of the menu bar, with `IsEnabled` and the menu bar's `Role` |
+| `DesktopMenu(Title, Items)` | A submenu, or a menu of the menu bar, with `IsEnabled`, `AccessKey` and the menu bar's `Role` |
+| `DesktopContextMenuOptions` | Where a context menu opens: `X` and `Y` in CSS pixels of the page's viewport, or at the pointer |
 | `DesktopShortcut`, `DesktopShortcutModifiers` | A key and its modifiers, written as `Primary+Shift+S` |
 
 ```csharp
@@ -316,16 +319,47 @@ The title comes first. A title is literal user-visible text: not blank, at most
 and `_` as written. A command id is an application-owned routing key, never a
 command line: 1 to 64 ASCII letters, digits, dots, underscores or hyphens. Ids
 starting with `runic.`, in any letter case, are reserved for Runic's standard
-commands. Each surface checks these rules when it receives a menu and throws an
-`ArgumentException` that names the id or title and the rule.
+commands. `CommandParameter` is passed to the command with the item: at most 1024
+characters without NUL, application-owned like the id. `AccessKey` is one letter
+or digit, which Windows and Linux underline: Runic places the marker, or shows
+the key in parentheses after a title without it. Items with the same
+`RadioGroup` in one menu level are a radio group: the name follows the command id
+rule, each item needs `IsChecked`, and at most one is checked. Each surface checks
+these rules when it receives a menu and throws an `ArgumentException` that names
+the id or title and the rule.
 
-| | Status icon menu | Menu bar (Runic Desktop) |
-| --- | --- | --- |
-| Command ids | Unique in the menu | May repeat |
-| Limits | Four nested submenus, 256 entries | None beyond the rules above |
-| `IsEnabled`, `IsChecked` | Shown as declared | Shown as declared; an item is also disabled while no command target can run it |
-| `Shortcut`, `Role` | Ignored | The macOS key equivalent and where the menu goes |
-| Choosing an item | `IDesktopStatusIcon.Activated` with `Kind` `MenuItem` and the item's `CommandId` | The command target's `Execute(DesktopMenuItem)` |
+| | Status icon menu | Context menu | Menu bar (Runic Desktop) |
+| --- | --- | --- | --- |
+| Command ids | Unique in the menu | May repeat | May repeat |
+| Limits | Four nested submenus, 256 entries | Four nested submenus, 256 entries, at least one entry | None beyond the rules above |
+| `IsEnabled`, `IsChecked`, `RadioGroup` | Shown as declared | Shown as declared | Shown as declared; an item is also disabled while no command target can run it |
+| `Shortcut` | Ignored | Shown as a hint, not registered | The item's shortcut; on macOS its key equivalent |
+| `Role`, `AccessKey` | Ignored | `Role` ignored; access key on Windows and Linux | Where the menu goes; access key on Windows and Linux |
+| Choosing an item | `IDesktopStatusIcon.Activated` with `Kind` `MenuItem`, the item's `CommandId` and `CommandParameter` | `Success` with the chosen item, `null` when dismissed | The command target's `Execute(DesktopMenuItem)` |
+
+The status icon reports `CommandParameter` on macOS in this release; Windows and
+Linux status icons report `null`.
+
+`IWindowPlatformServices.ShowContextMenuAsync` checks its arguments, then shows the
+window's native menu, or reports `Unavailable`: `OwnerUnavailable` before the window
+opens and on a host without a native owner, `OwnerClosed` after it closed, and
+`BackendUnavailable` for a window without native context menus. An implementation
+written before 0.11 reports `OwnerUnavailable`. The capability snapshot reports
+`PlatformCapabilityIds.ContextMenu` (`platform.menus.context`) and
+`PlatformCapabilityIds.MenuBar` (`platform.menus.bar`, a bar shown natively in the
+window or a global menu bar; an in-page bar does not count).
+
+```csharp
+// From the page's contextmenu event: showRowMenu(row.key, event.clientX, event.clientY).
+async Task ShowRowMenuAsync(string key, double x, double y)
+{
+    var result = await platform.ShowContextMenuAsync(
+        [new DesktopMenuItem("Rename", "row.rename") { CommandParameter = key }, new DesktopMenuSeparator(),
+         new DesktopMenuItem("Delete", "row.delete") { CommandParameter = key }],
+        new DesktopContextMenuOptions { X = x, Y = y });
+    if (result is PlatformResult<DesktopMenuItem?>.Success { Value: { } chosen }) Run(chosen.CommandId, chosen.CommandParameter);
+}
+```
 
 ## Opening files and URLs
 
