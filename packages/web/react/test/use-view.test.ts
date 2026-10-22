@@ -3,10 +3,13 @@ import * as React from "react";
 import { Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
-import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import {
-  retrySuspenseView, useCollectionViewport, useCommand, useLatestOperation, useOperation, useSuspenseView, useView, ViewOutlet,
-  type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
+  BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
+  type RunicBridgeClient,
+} from "@runic-artifex/views";
+import {
+  retrySuspenseView, useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useOperation, useSuspenseView, useView,
+  ViewOutlet, type BridgeConnectionHandle, type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
   type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root_ from "../dist/index.js";
@@ -218,6 +221,13 @@ describe("useView options", () => {
     for (const name of ["useSuspenseView", "retrySuspenseView", "useCollectionViewport", "useLatestOperation"])
       expect(typeof (root_ as Record<string, unknown>)[name]).toBe("function");
   });
+
+  test("the root entry keeps every earlier export and adds useBridgeConnection (0.11)", () => {
+    expect(Object.keys(root_).sort()).toEqual([
+      "ViewOutlet", "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation",
+      "useOperation", "useSuspenseView", "useView",
+    ]);
+  });
 });
 
 describe("useView glue", () => {
@@ -305,6 +315,19 @@ describe("ViewOutlet", () => {
     expect(mounts).toBe(2);
     await show({ kind: "counter", connect: fakeReference().connect }, { welcome: Welcome } as unknown as ViewRegistry<Page>);
     expect(document.querySelector("[role=alert]")?.textContent).toBe("No web component is registered for counter.");
+  });
+
+  test("renders missing for a kind without a component instead of the English alert", async () => {
+    const content: Page = { kind: "counter", connect: fakeReference().connect };
+    const missing = (page: Page) => createElement("output", null, `Keine Ansicht für ${page.kind}`);
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(ViewOutlet<Page>, { content, registry: { welcome: Welcome } as unknown as ViewRegistry<Page>, missing }));
+    });
+    expect(text()).toBe("Keine Ansicht für counter");
+    expect(document.querySelector("[role=alert]")).toBeNull();
+    await show(content);
+    expect(text()).toBe("counter:counter");
   });
 });
 
@@ -833,5 +856,73 @@ describe("useLatestOperation", () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(completions).toBe(0);
     expect(current.cancels()).toBe(0);
+  });
+});
+
+// A host script's Bridge: `onConnectionChange` reports the current state, then each change.
+function hostBridge(initial: boolean) {
+  let connected = initial;
+  const listeners = new Set<(connected: boolean) => void>();
+  const bridge: RunicBridgeClient = {
+    isConnected: () => connected,
+    call: () => Promise.reject(new Error("not used")),
+    onConnectionChange(listener) {
+      listeners.add(listener);
+      listener(connected);
+      return () => { listeners.delete(listener); };
+    },
+  };
+  return {
+    bridge,
+    get listeners() { return listeners.size; },
+    set(value: boolean) { connected = value; for (const listener of [...listeners]) listener(value); },
+  };
+}
+
+describe("useBridgeConnection", () => {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  afterEach(() => { delete host.__runicBridge; });
+
+  test("renders the connection state in StrictMode and unsubscribes on unmount", async () => {
+    const fake = hostBridge(true);
+    host.__runicBridge = fake.bridge;
+    const rendered: BridgeConnectionState[] = [];
+    function Status(): ReactNode {
+      const connection = useBridgeConnection({ lostAfter: 0 });
+      expectTypeOf(connection).toEqualTypeOf<BridgeConnectionHandle>();
+      rendered.push(connection.state);
+      return createElement("output", null, connection.state);
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(StrictMode, null, createElement(Status)));
+    });
+    // The first render already shows the state; StrictMode's extra mount keeps one subscription.
+    expect(rendered[0]).toBe("connected");
+    expect(text()).toBe("connected");
+    expect(fake.listeners).toBe(1);
+    await act(async () => fake.set(false));
+    expect(text()).toBe("lost");
+    await act(async () => fake.set(true));
+    expect(text()).toBe("connected");
+    await act(async () => root?.unmount());
+    root = undefined;
+    expect(fake.listeners).toBe(0);
+  });
+
+  test("is connecting without a Bridge and reconnecting after a drop", async () => {
+    function Status(): ReactNode { return createElement("output", null, useBridgeConnection().state); }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(Status));
+    });
+    expect(text()).toBe("connecting");
+    const fake = hostBridge(true);
+    host.__runicBridge = fake.bridge;
+    // The subscription polls every 50 ms until a host script installs the Bridge.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
+    expect(text()).toBe("connected");
+    await act(async () => fake.set(false));
+    expect(text()).toBe("reconnecting");
   });
 });

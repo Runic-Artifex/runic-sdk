@@ -706,3 +706,11 @@ unloads (`pagehide`), the state is not reported, so a reload or a navigation to
 another page does not show `reconnecting`. A host script without
 `onConnectionChange`, from a release before it, reports the first connection
 and each reconnect but not a loss.
+
+Each subscription follows the host from the moment it starts, so one that starts
+while the connection is down reports `connecting`, not `reconnecting`. The
+framework packages wrap it for components: `useBridgeConnection` in
+`@runic-artifex/react`, `@runic-artifex/vue` and `@runic-artifex/svelte`, and
+`injectBridgeConnection` in `@runic-artifex/angular`. During `vite dev`,
+`@runic-artifex/vite-plugin-runic` shows the page's state on its DevTools dock from
+page load.

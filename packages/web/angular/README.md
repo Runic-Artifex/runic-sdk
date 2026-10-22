@@ -107,8 +107,18 @@ it outside its own signal tracking. A component's `page` input receives that
 reference; `injectView(this.page)` owns its connection and cleanup. Declare
 `page` as a required signal input, `input.required<DocumentReference>()`: a
 decorator `@Input() page` or an optional `input<DocumentReference>()` does not
-satisfy `ViewRegistry`. Missing kinds render an alert. The generated TypeScript
-client can also be used directly without Angular.
+satisfy `ViewRegistry`. Missing kinds render an English `<p role="alert">`. The
+generated TypeScript client can also be used directly without Angular.
+
+The `missing` input replaces that alert with a template, for example with
+localized text. Its context (`ViewOutletMissingContext`) passes the reference
+whose kind has no component as `$implicit` and as `content`, and its markup
+(including any `role`) is yours. The outlet then leaves its `error` signal unset:
+
+```html
+<runic-view-outlet [content]="current()" [registry]="registry" [missing]="missingView" />
+<ng-template #missingView let-page><p role="alert">{{ missingText(page.kind) }}</p></ng-template>
+```
 
 ## Commands
 
@@ -191,6 +201,26 @@ lost Start reply; only `clear("replace")`, called after the application has
 established a fresh session, clears it. `clear()` drops the queued intent and cancels
 the active read. Destroying the injection context settles run promises without
 cancelling accepted work. Pass `injector` outside an injection context.
+
+## Connection state
+
+`injectBridgeConnection(options?)` follows the page's connection to its .NET
+host for the lifetime of the injection context. It wraps `onBridgeConnection`
+from `@runic-artifex/views` and returns `{ state }`, a signal of a
+`BridgeConnectionState`: `connecting`, `connected`, `reconnecting` or `lost` (a
+closed set, see
+[Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
+
+```ts
+import { injectBridgeConnection } from "@runic-artifex/angular";
+
+readonly connection = injectBridgeConnection({ lostAfter: 5_000 });
+// @if (connection.state() === "lost") { <p role="alert">The application stopped responding.</p> }
+```
+
+Destroying the injection context unsubscribes. Pass `injector` outside an
+injection context. Under server rendering (`PLATFORM_ID` is `"server"`) it does
+not observe and stays `connecting`. An invalid `lostAfter` throws a `RangeError`.
 
 ## Errors
 

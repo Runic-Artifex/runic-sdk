@@ -57,16 +57,19 @@ try {
   await writeFile(join(root, "src/index.html"), "<!doctype html><html><head><meta charset=\"utf-8\"><base href=\"/\"></head><body><consumer-root></consumer-root></body></html>", "utf8");
   await writeFile(join(root, "src/main.ts"), `import { Component, input, provideZonelessChangeDetection, type InputSignal } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import { injectCommand, ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
+import { injectBridgeConnection, injectCommand, ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 type Page = { readonly kind: "counter"; connect(): Promise<unknown> };
 @Component({ selector: "counter-page", standalone: true, template: "{{ page().kind }}" })
 class CounterPage { readonly page: InputSignal<Page> = input.required<Page>(); }
 @Component({ selector: "consumer-root", standalone: true, imports: [ViewOutlet],
-  template: '<runic-view-outlet [content]="current" [registry]="registry" />' })
+  template: '<runic-view-outlet [content]="current" [registry]="registry" [missing]="missingView" />' +
+    '<ng-template #missingView let-page><p role="alert">{{ page.kind }}</p></ng-template>' +
+    '@if (connection.state() === "lost") { <p role="alert">lost</p> }' })
 class ConsumerRoot {
   readonly current: Page = { kind: "counter", connect: async () => undefined };
   readonly registry = { counter: CounterPage } satisfies ViewRegistry<Page>;
   readonly refresh = injectCommand(async (count: number) => count + 1);
+  readonly connection = injectBridgeConnection();
 }
 void bootstrapApplication(ConsumerRoot, { providers: [provideZonelessChangeDetection()] });
 `, "utf8");

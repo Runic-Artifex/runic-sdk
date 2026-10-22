@@ -78,13 +78,16 @@ function connectViewsDiagnostics(): void {
 }
 
 // @runic-artifex/views publishes the page's connection state on this channel once a View
-// connects (specs/application, "Shared globals").
+// connects, or from page load when this client asks for it with `requested` and `start`
+// (specs/application, "Shared globals").
 const viewsConnectionKey = Symbol.for("runic.views.connection");
 const connectionListenerKey = "runic:connection-listener";
 
 interface ViewsConnectionChannel {
   readonly listeners: Set<(state: string) => void>;
   state?: string;
+  requested?: boolean;
+  start?: () => void;
 }
 
 function reportConnection(state: string): void {
@@ -100,6 +103,10 @@ function connectViewsConnection(): void {
   channel.listeners.add(reportConnection);
   hot.data[connectionListenerKey] = reportConnection;
   if (typeof channel.state === "string") reportConnection(channel.state);
+  // Observe from page load, not only once a View connects: a copy of @runic-artifex/views that
+  // loads later sees `requested`, and one that already loaded has set `start`.
+  channel.requested = true;
+  if (typeof channel.start === "function") channel.start();
 }
 
 connectViewsDiagnostics();

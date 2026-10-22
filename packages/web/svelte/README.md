@@ -95,8 +95,18 @@ the reference as its `page` prop:
 
 The outlet is generic over the reference union, so the registry must have a
 component for every kind with a matching `page` prop. A different reference
-remounts the component, a kind without a component renders an alert, and the
-optional `fallback` snippet renders while `content` is empty.
+remounts the component, a kind without a component renders an English
+`<p role="alert">`, and the optional `fallback` snippet renders while `content` is empty.
+
+The optional `missing` snippet replaces that alert, for example with localized
+text. It receives the reference whose kind has no component, and its markup
+(including any `role`) is yours:
+
+```svelte
+<ViewOutlet content={workspace.state?.main} registry={pages}>
+  {#snippet missing(page)}<p role="alert">{t("missingView", { kind: page.kind })}</p>{/snippet}
+</ViewOutlet>
+```
 
 ## `useCommand(command)`
 
@@ -192,6 +202,29 @@ observation blocks further Starts instead of retrying blindly, with its reason i
 observation without cancelling accepted work. The
 [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer)
 runs this hook against the packed packages and the desktop transport.
+
+## `useBridgeConnection(options?)`
+
+Follows the page's connection to its .NET host. It wraps `onBridgeConnection`
+from `@runic-artifex/views` and returns `{ state }`, a reactive
+`BridgeConnectionState`: `connecting`, `connected`, `reconnecting` or `lost` (a
+closed set, see
+[Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
+
+```svelte
+<script lang="ts">
+  import { useBridgeConnection } from "@runic-artifex/svelte";
+
+  const connection = useBridgeConnection({ lostAfter: 5_000 });
+</script>
+
+{#if connection.state === "lost"}<p role="alert">The application stopped responding.</p>{/if}
+```
+
+Call it during component initialization (or in `$effect.root`). `state` holds
+the current state at once; observing starts with the owner's effects, so a
+server render does not observe, and destroying the owner unsubscribes. An invalid
+`lostAfter` throws a `RangeError`.
 
 ## Errors
 

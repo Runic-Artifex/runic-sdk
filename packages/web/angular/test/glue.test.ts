@@ -1,14 +1,17 @@
 import "@angular/compiler";
-import { Component, createEnvironmentInjector, effect, EnvironmentInjector, Injector, NgZone, signal } from "@angular/core";
+import { Component, createEnvironmentInjector, effect, EnvironmentInjector, Injector, NgZone, PLATFORM_ID, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
 import {
-  injectCollectionViewport, injectCommand, injectLatestOperation, injectOperation, injectView, RunicViewOutlet, ViewOutlet,
-  type LatestOperationHandle, type ViewRegistry,
+  injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectOperation, injectView, RunicViewOutlet, ViewOutlet,
+  type BridgeConnectionHandle, type LatestOperationHandle, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
-import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
+import {
+  BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
+  type RunicBridgeClient,
+} from "@runic-artifex/views";
 
 type Page =
   | { readonly kind: "counter"; connect(): Promise<unknown> }
@@ -61,6 +64,19 @@ Component({
   imports: [ViewOutlet],
   template: `<runic-view-outlet [content]="content()" [registry]="registry"><span class="fallback">Loading</span></runic-view-outlet>`,
 })(FallbackHost);
+
+// X10: a missing template replaces the English alert.
+class MissingHost {
+  readonly content = signal<Page | undefined>({ kind: "welcome", connect: async () => undefined });
+  readonly registry = signal<ViewRegistry<Page>>({ counter: CounterPage } as unknown as ViewRegistry<Page>);
+}
+Component({
+  selector: "test-missing-host",
+  standalone: true,
+  imports: [ViewOutlet],
+  template: `<runic-view-outlet [content]="content()" [registry]="registry()" [missing]="missingView" />
+    <ng-template #missingView let-page let-same="content"><output>Keine Ansicht für {{ page.kind }}/{{ same.kind }}</output></ng-template>`,
+})(MissingHost);
 
 // The deprecated name of 0.7.0-preview.6 and earlier still renders the same outlet.
 class LegacyHost {
@@ -133,6 +149,19 @@ describe("ViewOutlet", () => {
     fixture.componentInstance.content.set(undefined);
     fixture.detectChanges();
     expect(element.querySelector(".fallback")?.textContent).toBe("Loading");
+  });
+
+  test("renders the missing template for a kind without a component instead of the English alert", () => {
+    counterMounts = 0;
+    const fixture = TestBed.createComponent(MissingHost);
+    const element = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    expect(element.textContent?.trim()).toBe("Keine Ansicht für welcome/welcome");
+    expect(element.querySelector("[role=alert]")).toBeNull();
+    fixture.componentInstance.content.set({ kind: "counter", connect: async () => undefined });
+    fixture.detectChanges();
+    expect(element.textContent?.trim()).toBe("counter:counter");
+    expect(counterMounts).toBe(1);
   });
 
   test("injectCollectionViewport is a root export (graduated in 0.10)", () => {
@@ -375,5 +404,83 @@ describe("injectLatestOperation", () => {
 
   test("requires an injection context or an injector", () => {
     expect(() => injectLatestOperation()).toThrow();
+  });
+});
+
+// A host script's Bridge: `onConnectionChange` reports the current state, then each change.
+function hostBridge(initial: boolean) {
+  let connected = initial;
+  const listeners = new Set<(connected: boolean) => void>();
+  const bridge: RunicBridgeClient = {
+    isConnected: () => connected,
+    call: () => Promise.reject(new Error("not used")),
+    onConnectionChange(listener) {
+      listeners.add(listener);
+      listener(connected);
+      return () => { listeners.delete(listener); };
+    },
+  };
+  return {
+    bridge,
+    get listeners() { return listeners.size; },
+    set(value: boolean) { connected = value; for (const listener of [...listeners]) listener(value); },
+  };
+}
+
+describe("injectBridgeConnection", () => {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  afterEach(() => { delete host.__runicBridge; });
+
+  test("follows the connection as a signal and unsubscribes when the injector is destroyed", () => {
+    const fake = hostBridge(true);
+    host.__runicBridge = fake.bridge;
+    const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+    const connection = injectBridgeConnection({ injector });
+    expectTypeOf(connection).toEqualTypeOf<BridgeConnectionHandle>();
+    expectTypeOf(connection.state()).toEqualTypeOf<BridgeConnectionState>();
+    expect(connection.state()).toBe("connected");
+    expect(fake.listeners).toBe(1);
+    fake.set(false);
+    expect(connection.state()).toBe("reconnecting");
+    fake.set(true);
+    expect(connection.state()).toBe("connected");
+    injector.destroy();
+    expect(fake.listeners).toBe(0);
+    fake.set(false);
+    expect(connection.state()).toBe("connected");
+  });
+
+  test("a component's connection ends with the component; lostAfter is forwarded", () => {
+    const fake = hostBridge(false);
+    host.__runicBridge = fake.bridge;
+    class Status { readonly connection = injectBridgeConnection({ lostAfter: 0 }); }
+    Component({ selector: "test-status", standalone: true, template: "<output>{{ connection.state() }}</output>" })(Status);
+    const fixture = TestBed.createComponent(Status);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toBe("lost");
+    fake.set(true);
+    fixture.detectChanges();
+    expect(element.textContent).toBe("connected");
+    fixture.destroy();
+    expect(fake.listeners).toBe(0);
+  });
+
+  test("does not observe under server rendering", () => {
+    const fake = hostBridge(true);
+    host.__runicBridge = fake.bridge;
+    const injector = createEnvironmentInjector([{ provide: PLATFORM_ID, useValue: "server" }], TestBed.inject(EnvironmentInjector));
+    const connection = injectBridgeConnection({ injector });
+    expect(connection.state()).toBe("connecting");
+    expect(fake.listeners).toBe(0);
+    injector.destroy();
+  });
+
+  test("requires an injection context or an injector, and is a root export (0.11)", () => {
+    expect(() => injectBridgeConnection()).toThrow();
+    expect(Object.keys(root).sort()).toEqual([
+      "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectLatestOperation",
+      "injectOperation", "injectView",
+    ]);
   });
 });

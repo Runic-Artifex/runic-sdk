@@ -542,6 +542,14 @@ test("forwards a Views BridgeError with its .NET detail to the timeline", async 
   assert.deepEqual(sent[2], { event: "runic:connection", data: { state: "connected" } });
 });
 
+// I-042: the client asks @runic-artifex/views for the connection from page load, before a View
+// connects, whichever of the two loads first.
+for (const order of ["client-first", "views-first"]) {
+  test(`forwards the connection state without a View connecting (${order})`, async () => {
+    assert.deepEqual(await executeConnectionForwarding(order), [{ event: "runic:connection", data: { state: "connected" } }]);
+  });
+}
+
 test("the dock shows the connection state the page forwards", () => {
   const plugin = runic({ devtools: false });
   const handlers = new Map();
@@ -637,6 +645,57 @@ context.__runicBridge = {
 };
 await connectionState.evaluate();
 connectionState.namespace.publishConnectionState();
+process.stdout.write(JSON.stringify(sent));
+`;
+  const { stdout } = await execFile(process.execPath, [
+    "--experimental-vm-modules", "--input-type=module", "--eval", harness,
+  ], { cwd: process.cwd() });
+  return JSON.parse(stdout);
+}
+
+// Loads the built Views connection module and this package's client in one context in the given
+// order, with a connected host Bridge and no View, and returns what the client sent.
+async function executeConnectionForwarding(order) {
+  const harness = String.raw`
+import { readFile } from "node:fs/promises";
+import { createContext, SourceTextModule } from "node:vm";
+
+const sent = [];
+const hot = { data: {}, send(event, data) { sent.push({ event, data }); }, on() {}, prune() {} };
+const context = createContext({ setTimeout, clearTimeout });
+context.__runicBridge = {
+  isConnected: () => true,
+  call: () => Promise.reject(new Error("not used")),
+  onConnectionChange(listener) { listener(true); return () => {}; },
+};
+const modules = new Map();
+async function load(path, identifier, meta) {
+  const module = new SourceTextModule(await readFile(path, "utf8"), {
+    context, identifier, ...(meta ? { initializeImportMeta: meta } : {}),
+  });
+  modules.set(identifier, module);
+  return module;
+}
+const views = "../views/dist/";
+const loaded = [
+  await load(views + "errors.js", "views/errors"),
+  await load(views + "diagnostics.js", "views/diagnostics"),
+  await load(views + "lifetime.js", "views/lifetime"),
+  await load(views + "transport.js", "views/transport"),
+];
+const connectionState = await load(views + "connection-state.js", "views/connection-state");
+const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
+const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
+const link = (from) => (specifier) => {
+  const module = modules.get(from + "/" + specifier.replace("./", "").replace(".js", ""));
+  return module ?? Promise.reject(new Error(specifier));
+};
+for (const module of [...loaded, connectionState]) await module.link(link("views"));
+await pluginDiagnostics.link(link("plugin"));
+await client.link(link("plugin"));
+const first = ${JSON.stringify(order)} === "client-first" ? client : connectionState;
+await first.evaluate();
+await (first === client ? connectionState : client).evaluate();
 process.stdout.write(JSON.stringify(sent));
 `;
   const { stdout } = await execFile(process.execPath, [
