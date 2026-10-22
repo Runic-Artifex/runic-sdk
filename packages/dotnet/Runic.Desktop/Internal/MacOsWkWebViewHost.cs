@@ -472,8 +472,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             // A placement saved full-screen opens full-screen on the screen of its restored bounds.
             if (options.Placement is { FullScreen: true })
             {
-                Api.SendVoidUlong(_window, "setCollectionBehavior:", Api.SendUlong(_window, "collectionBehavior") | (1UL << 7));
-                Api.SendVoidNint(_window, "toggleFullScreen:", 0);
+                RequestFullScreen();
             }
         }
         UpdateState();
@@ -599,6 +598,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         try
         {
             EndFullScreenTransition(window);
+            if (Hosts.TryGetValue(window, out var host)) host.RetryFullScreen();
         }
         catch
         {

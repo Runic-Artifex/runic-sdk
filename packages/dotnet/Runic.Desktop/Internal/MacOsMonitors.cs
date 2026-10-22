@@ -219,11 +219,38 @@ internal sealed partial class MacOsWkWebViewHost
             if (_kiosk || IsFullScreen == fullScreen) return;
             if (fullScreen)
             {
-                // NSWindowCollectionBehaviorFullScreenPrimary: the window gets its own full-screen space.
-                Api.SendVoidUlong(_window, "setCollectionBehavior:", Api.SendUlong(_window, "collectionBehavior") | (1UL << 7));
+                RequestFullScreen();
+                return;
             }
+            _fullScreenRetries = 0;
             Api.SendVoidNint(_window, "toggleFullScreen:", 0);
         }, cancellationToken);
+
+    // The retries left for a requested full screen that AppKit refused, as while another window's space animates.
+    private int _fullScreenRetries;
+
+    // Main thread only. NSWindowCollectionBehaviorFullScreenPrimary gives the window its own full-screen space.
+    private void RequestFullScreen()
+    {
+        _fullScreenRetries = 3;
+        Api.SendVoidUlong(_window, "setCollectionBehavior:", Api.SendUlong(_window, "collectionBehavior") | (1UL << 7));
+        Api.SendVoidNint(_window, "toggleFullScreen:", 0);
+    }
+
+    // Main thread only, from windowDidFailToEnterFullScreen:: asks again a little later while retries remain.
+    private void RetryFullScreen()
+    {
+        if (_fullScreenRetries <= 0 || _kiosk || IsFullScreen) return;
+        _fullScreenRetries--;
+        _ = Task.Delay(TimeSpan.FromMilliseconds(750)).ContinueWith(_ =>
+        {
+            if (!IsOpen) return Task.CompletedTask;
+            return InvokeAsync(() =>
+            {
+                if (IsOpen && !IsFullScreen && !_fullScreenTransition) Api.SendVoidNint(_window, "toggleFullScreen:", 0);
+            }, CancellationToken.None).AsTask();
+        }, TaskScheduler.Default).Unwrap().ContinueWith(static task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+    }
 
     public ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default)
     {
