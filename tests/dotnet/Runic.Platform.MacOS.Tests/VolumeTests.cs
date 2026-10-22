@@ -281,11 +281,20 @@ internal sealed partial class VolumeTests
             Console.WriteLine($"Attached: {Describe(volumeApfs)}");
             Check(volumeApfs is { FileSystem: "apfs", IsSystem: false, CanEject: true } && volumeApfs.DriveId == attached[^1],
                 $"the APFS volume belongs to the image's disk {attached[^1]}: {Describe(volumeApfs)}");
-            await EncryptedVolumeAsync(volumes, changes.Reader, volumeApfs, unique + "L", timeout.Token);
             var ejectedApfs = await EjectAsync(volumes, volumeApfs.Id, timeout.Token);
             Console.WriteLine($"Eject: {ejectedApfs}");
             Check(ejectedApfs is PlatformResult<PlatformUnit>.Success, $"the APFS image is ejected: {ejectedApfs}");
             await WaitForRemovalAsync(changes.Reader, volumeApfs.Id, timeout.Token);
+            attached.RemoveAt(attached.Count - 1);
+
+            // An encrypted volume needs a container with room for a second volume: APFS allows one per 512 MiB.
+            Run("hdiutil", "create", "-size", "1100m", "-type", "SPARSE", "-fs", "APFS", "-volname", unique + "V", Path.Combine(root, "vault"));
+            string vaultOutput = Run("hdiutil", "attach", Path.Combine(root, "vault.sparseimage"));
+            attached.Add(WholeDisk().Match(vaultOutput).Groups[1].Value);
+            string container = ApfsContainer().Match(vaultOutput) is { Success: true } found ? found.Groups[1].Value
+                : throw new InvalidOperationException($"hdiutil printed no APFS container: {vaultOutput}");
+            await EncryptedVolumeAsync(volumes, changes.Reader, container, unique + "L", timeout.Token);
+            Run("hdiutil", check: false, "detach", "-force", "/dev/" + attached[^1]);
             attached.RemoveAt(attached.Count - 1);
 
             // Attached read-only, the volume is read-only.
@@ -311,11 +320,10 @@ internal sealed partial class VolumeTests
     // An encrypted APFS volume added to the image's container and locked: listed locked, refused by MountAsync and
     // unlocked with its passphrase. The descriptions record where macOS reports the encryption and lock state.
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]
-    private static async Task EncryptedVolumeAsync(IDesktopVolumes volumes, ChannelReader<PlatformResult<DesktopVolumeChange>> changes, DesktopVolume plain, string name,
+    private static async Task EncryptedVolumeAsync(IDesktopVolumes volumes, ChannelReader<PlatformResult<DesktopVolumeChange>> changes, string container, string name,
         CancellationToken token)
     {
         const string passphrase = "runic-test-passphrase";
-        string container = Container().Match(plain.Id) is { Success: true } match ? match.Groups[1].Value : throw new InvalidOperationException($"No container for {plain.Id}");
         RunAsAdministratorIfNeeded("diskutil", "apfs", "addVolume", container, "APFS", name, "-passphrase", passphrase);
         var encrypted = await WaitForAsync(changes, v => v.DisplayName == name && !v.MountPaths.IsEmpty, token);
         Console.WriteLine($"Encrypted volume: {Describe(encrypted)}");
@@ -348,8 +356,8 @@ internal sealed partial class VolumeTests
         Check(unlocked is PlatformResult<DesktopVolume>.Success { Value: { IsLocked: false, MountPaths.IsEmpty: false } }, $"the volume is unlocked and mounted: {unlocked}");
     }
 
-    [GeneratedRegex(@"^(disk\d+)s\d+$")]
-    private static partial Regex Container();
+    [GeneratedRegex(@"/dev/(disk\d+)\s+EF57347C")]
+    private static partial Regex ApfsContainer();
 
     // diskutil changes an attached image's container as its user on the runners; sudo -n is the fallback.
     private static void RunAsAdministratorIfNeeded(string program, params string[] arguments)
