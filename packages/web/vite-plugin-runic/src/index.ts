@@ -28,6 +28,10 @@ const stateEvent = "runic:state";
 const diagnosticEvent = "runic:diagnostic";
 const connectionEvent = "runic:connection";
 const stateKey = "runic:state";
+// `dotnet runic dev` gives the Vite process a random session value and accepts the server as ready only when
+// /__runic/state answers with it, so another process that takes the port first is not mistaken for this server.
+const devSessionVariable = "RUNIC_APPLICATION_DEV_SESSION";
+const devSessionHeader = "X-Runic-Dev-Session";
 const defaultTimelineLimit = 200;
 const maximumTimelineLimit = 500;
 
@@ -207,10 +211,12 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       server = viteServer;
       viteServer.ws.on(connectionEvent, (payload) => applyConnection(payload));
       viteServer.ws.on(diagnosticEvent, (payload) => appendDiagnostic(payload));
+      const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use("/__runic/state", (_request, response) => {
         response.statusCode = 200;
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
+        if (devSession !== undefined) response.setHeader(devSessionHeader, devSession);
         response.end(JSON.stringify(withoutFailures(state)));
       });
       viteServer.httpServer?.once("close", () => {
@@ -245,6 +251,11 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       },
     },
   };
+}
+
+/** The session value `dotnet runic dev` set, when it has the shape the tool writes: 32 to 128 hex digits. */
+function devSessionValue(value: string | undefined): string | undefined {
+  return value !== undefined && /^[0-9a-f]{32,128}$/.test(value) ? value : undefined;
 }
 
 function resolveDesktopBootstrapUrl(

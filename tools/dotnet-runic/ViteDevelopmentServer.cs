@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +22,15 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         "RUNIC_APPLICATION_FRONTEND_COMPILER_HOT_RELOAD";
     internal const string ProjectEnvironmentVariable =
         "RUNIC_APPLICATION_DEV_PROJECT";
+
+    /// <summary>
+    /// A random value for each start of the Vite process. vite-plugin-runic answers <c>/__runic/state</c> with it in
+    /// <see cref="SessionHeader"/>, so dev does not take another process that bound the port first for its server.
+    /// </summary>
+    internal const string SessionEnvironmentVariable = "RUNIC_APPLICATION_DEV_SESSION";
+    internal const string SessionHeader = "X-Runic-Dev-Session";
+    internal const string StatePath = "__runic/state";
+    internal const string RunicVitePluginPackage = "@runic-artifex/vite-plugin-runic";
     private readonly RunningProcess _process;
 
     private ViteDevelopmentServer(
@@ -72,6 +85,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         IReadOnlyList<string> arguments = CreateArguments(
             configuration,
             port);
+        // A new value for each attempt: a server from an earlier attempt cannot answer for this one.
+        string session = CreateSession();
+        bool confirmSession = ConfirmsSession(configuration);
         JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
             configuration.WorkspaceRoot,
             configuration.FrontendPackageDirectory);
@@ -81,7 +97,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             packageManager.Executable,
             configuration.WorkspaceRoot,
             arguments,
-            CreateEnvironment(configuration),
+            CreateEnvironment(configuration, session),
             observeLine: conflict.Observe);
         var server = new ViteDevelopmentServer(
             process,
@@ -93,15 +109,22 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             configuration.ProjectPath);
         try
         {
-            await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
+            await server.WaitUntilReadyAsync(confirmSession ? session : null, cancellationToken).ConfigureAwait(false);
             if (!configuration.HasFrontendCompiler)
             {
                 using var client = new HttpClient();
+                var documents = new List<(string Destination, string Document)>();
                 foreach (string destination in configuration.DevelopmentServerDocuments)
                 {
-                    string document = await FrontendDevelopmentDocument.ReadAsync(
+                    documents.Add((destination, await FrontendDevelopmentDocument.ReadAsync(
                             client, origin, destination, "Vite", cancellationToken)
-                        .ConfigureAwait(false);
+                        .ConfigureAwait(false)));
+                }
+                // Vite exits at once when another process holds the port (--strictPort). Write nothing that such a
+                // process served.
+                ThrowIfExited(server.Completion);
+                foreach ((string destination, string document) in documents)
+                {
                     FrontendDevelopmentDocument.Write(
                         configuration,
                         origin,
@@ -109,6 +132,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                         document);
                 }
             }
+            ThrowIfExited(server.Completion);
             Console.WriteLine($"[dev] Vite development server ready at {origin}");
             return server;
         }
@@ -130,10 +154,58 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         }
     }
 
+    /// <summary>
+    /// Throws the readiness failure when the development server process has exited, so that a port conflict is
+    /// retried on another port and nothing another process served is used.
+    /// </summary>
+    internal static void ThrowIfExited(Task<int> completion, string server = "Vite")
+    {
+        if (completion.IsCompleted)
+        {
+            throw new DevDevelopmentException(
+                "RAPPDEV1007",
+                $"The {server} development server exited before readiness with code {completion.Result}.");
+        }
+    }
+
+    /// <summary>32 random bytes as 64 lowercase hex digits, the shape vite-plugin-runic accepts.</summary>
+    internal static string CreateSession() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    /// <summary>
+    /// Whether readiness requires the session confirmation: the resolved Vite configuration has <c>runic()</c>, or,
+    /// when dev did not resolve it (an external frontend compiler), the frontend declares vite-plugin-runic. Without
+    /// the plugin nothing can confirm the session, and dev relies on Vite exiting when the port is taken.
+    /// </summary>
+    internal static bool ConfirmsSession(DevProjectConfiguration configuration) =>
+        configuration.UsesRunicVitePlugin ?? DeclaresPackage(Path.Combine(configuration.FrontendPackageDirectory, "package.json"), RunicVitePluginPackage);
+
+    internal static bool DeclaresPackage(string packageJsonPath, string package)
+    {
+        try
+        {
+            using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(packageJsonPath));
+            if (manifest.RootElement.ValueKind != JsonValueKind.Object) return false;
+            foreach (string section in (string[])["dependencies", "devDependencies", "optionalDependencies"])
+            {
+                if (manifest.RootElement.TryGetProperty(section, out JsonElement packages) &&
+                    packages.ValueKind == JsonValueKind.Object && packages.TryGetProperty(package, out _))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+    }
+
     internal static IReadOnlyDictionary<string, string?> CreateEnvironment(
-        DevProjectConfiguration configuration) =>
+        DevProjectConfiguration configuration, string? session = null) =>
         new Dictionary<string, string?>(StringComparer.Ordinal)
         {
+            [SessionEnvironmentVariable] = session,
             ["BROWSER"] = "none",
             // Scope Vite diagnostics to the dev server. Passing DEBUG through
             // MSBuild can make its Exec task parse config dumps as build errors.
@@ -161,7 +233,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             ]);
     }
 
-    private async Task WaitUntilReadyAsync(CancellationToken cancellationToken)
+    private async Task WaitUntilReadyAsync(string? session, CancellationToken cancellationToken)
     {
         using var client = new HttpClient
         {
@@ -169,12 +241,16 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         };
         Console.WriteLine($"[vite] Probing {Origin} for the Vite client and application entry.");
         await WaitUntilReadyAsync(Origin, HostEnvironment[EntryEnvironmentVariable]![1..],
-            Completion, client, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+            Completion, client, TimeSpan.FromSeconds(30), cancellationToken, session).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Waits until the server serves the Vite client and the application entry, and, with a <paramref name="session"/>,
+    /// answers <c>/__runic/state</c> with it.
+    /// </summary>
     internal static async Task WaitUntilReadyAsync(
         Uri origin, string entry, Task<int> completion, HttpClient client,
-        TimeSpan deadline, CancellationToken cancellationToken)
+        TimeSpan deadline, CancellationToken cancellationToken, string? session = null)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(deadline);
@@ -213,7 +289,24 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                         lastResponse = $"HTTP {(int)entryResponse.StatusCode}";
                         if (entryResponse.IsSuccessStatusCode)
                         {
-                            return;
+                            if (session is null)
+                            {
+                                return;
+                            }
+                            probe = "session confirmation";
+                            lastResponse = "no response";
+                            using HttpResponseMessage stateResponse = await client
+                                .GetAsync(new Uri(origin, StatePath), timeout.Token)
+                                .ConfigureAwait(false);
+                            lastResponse = $"HTTP {(int)stateResponse.StatusCode}";
+                            if (stateResponse.IsSuccessStatusCode)
+                            {
+                                if (ConfirmsSession(stateResponse, session))
+                                {
+                                    return;
+                                }
+                                lastResponse = $"no {SessionHeader} for this session";
+                            }
                         }
                     }
                 }
@@ -234,11 +327,20 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         {
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
-                $"Timed out waiting for the Vite development server ({probe}: {lastResponse}). " +
-                "Run 'dotnet runic doctor' and verify the configured dev script " +
-                "and Vite entry module.");
+                probe == "session confirmation"
+                    ? $"Timed out waiting for the Vite development server to confirm this dev session ({probe}: {lastResponse}). " +
+                      "Another process may have taken the port, or the frontend's @runic-artifex/vite-plugin-runic is older than dotnet-runic: " +
+                      "run 'dotnet runic doctor' and use one release for both."
+                    : $"Timed out waiting for the Vite development server ({probe}: {lastResponse}). " +
+                      "Run 'dotnet runic doctor' and verify the configured dev script " +
+                      "and Vite entry module.");
         }
     }
+
+    private static bool ConfirmsSession(HttpResponseMessage response, string session) =>
+        response.Headers.TryGetValues(SessionHeader, out IEnumerable<string>? values) &&
+        System.Linq.Enumerable.ToArray(values) is [string answer] &&
+        CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(answer), Encoding.ASCII.GetBytes(session));
 
     public async ValueTask DisposeAsync()
         => await _process.DisposeAsync().ConfigureAwait(false);

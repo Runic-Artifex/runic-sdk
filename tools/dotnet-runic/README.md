@@ -54,6 +54,19 @@ it. A restart after a C# or frontend compiler edit gets the same grace;
 `dev` sets `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS=5000` for `dotnet watch`
 unless you set it yourself.
 
+`dev` picks a free loopback port for the development server, and on a shared
+machine another process could take that port first. Since 0.11, when the Vite
+configuration uses `runic()` from `@runic-artifex/vite-plugin-runic`, as the
+generated React, Vue and Svelte projects do, `dev` passes the Vite process a
+random value for the session. It accepts the server as ready only when the
+plugin's `/__runic/state` answers with that value, so `dev` never writes a
+page that another process served into the web root. Without the plugin, and
+for Angular, `dev` relies on the server exiting when its port is taken. In
+every case, `dev` writes the development documents only while its own server
+process is still running. The plugin and the tool must come from the same
+release; an older plugin does not answer, and readiness times out with
+`RAPPDEV1007`.
+
 Without a Vite or Angular development server, `dev` runs the frontend watcher
 instead: the `RunicApplicationFrontendDevWatchTarget` MSBuild target, or the
 frontend's `dev` script (for example `vite build --watch`), which writes the

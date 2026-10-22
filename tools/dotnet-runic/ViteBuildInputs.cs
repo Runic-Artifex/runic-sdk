@@ -54,7 +54,11 @@ internal static class ViteBuildInputs
             routed);
         Console.WriteLine($"[dev] Pages: {string.Join(", ", documents)}");
         phase.Complete();
-        return configuration with { DevelopmentServerDocument = string.Join(';', documents) };
+        return configuration with
+        {
+            DevelopmentServerDocument = string.Join(';', documents),
+            UsesRunicVitePlugin = ParseRunicPlugin(result.StandardOutput),
+        };
     }
 
     /// <summary>
@@ -109,6 +113,28 @@ internal static class ViteBuildInputs
 
     internal static (string Root, IReadOnlyList<string> Inputs, bool Routed) Parse(string output)
     {
+        using JsonDocument document = ReadMarker(output);
+        string root = document.RootElement.GetProperty("root").GetString() ?? string.Empty;
+        List<string> inputs = [.. document.RootElement.GetProperty("inputs").EnumerateArray()
+            .Select(input => input.GetString() ?? string.Empty)];
+        bool routed = document.RootElement.TryGetProperty("routed", out JsonElement value) && value.ValueKind == JsonValueKind.True;
+        return (root, inputs, routed);
+    }
+
+    /// <summary>
+    /// Whether the resolved configuration has <c>runic()</c> from <c>@runic-artifex/vite-plugin-runic</c>, whose
+    /// <c>/__runic/state</c> confirms the dev session; null when the probe did not say.
+    /// </summary>
+    internal static bool? ParseRunicPlugin(string output)
+    {
+        using JsonDocument document = ReadMarker(output);
+        return document.RootElement.TryGetProperty("runic", out JsonElement value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : null;
+    }
+
+    private static JsonDocument ReadMarker(string output)
+    {
         ArgumentNullException.ThrowIfNull(output);
         // Plugins may write to stdout while the configuration loads; the marker line is last.
         string? line = output
@@ -121,12 +147,7 @@ internal static class ViteBuildInputs
                 "Could not read the build inputs from the Vite configuration.",
                 output.Trim());
         }
-        using JsonDocument document = JsonDocument.Parse(line[Marker.Length..]);
-        string root = document.RootElement.GetProperty("root").GetString() ?? string.Empty;
-        List<string> inputs = [.. document.RootElement.GetProperty("inputs").EnumerateArray()
-            .Select(input => input.GetString() ?? string.Empty)];
-        bool routed = document.RootElement.TryGetProperty("routed", out JsonElement value) && value.ValueKind == JsonValueKind.True;
-        return (root, inputs, routed);
+        return JsonDocument.Parse(line[Marker.Length..]);
     }
 
     /// <summary>
@@ -151,6 +172,7 @@ internal static class ViteBuildInputs
                 root: config.root,
                 inputs: inputs.map((entry) => path.resolve(config.root, String(entry))),
                 routed: (config.plugins ?? []).some((plugin) => plugin?.name === "vite-plugin-sveltekit-setup"),
+                runic: (config.plugins ?? []).some((plugin) => plugin?.name === "runic"),
               }) + "\n");
             }).catch((error) => {
               console.error(error instanceof Error ? error.message : String(error));

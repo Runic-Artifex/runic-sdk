@@ -291,6 +291,34 @@ test("keeps core diagnostics available without the optional dock", async () => {
   } finally { await server.close(); }
 });
 
+test("/__runic/state confirms the dotnet runic dev session", async () => {
+  const previous = process.env.RUNIC_APPLICATION_DEV_SESSION;
+  const session = "0123456789abcdef".repeat(4);
+  try {
+    for (const [value, expected] of [[session, session], [undefined, null], ["not a session value", null], ["ABCDEF".repeat(8), null]]) {
+      if (value === undefined) delete process.env.RUNIC_APPLICATION_DEV_SESSION;
+      else process.env.RUNIC_APPLICATION_DEV_SESSION = value;
+      const server = await createServer({ configFile: false, logLevel: "silent", plugins: [runic({ devtools: false })],
+        server: { host: "127.0.0.1", port: 0, strictPort: false } });
+      try {
+        await server.listen();
+        const base = `http://127.0.0.1:${serverPort(server)}`;
+        const state = await fetch(`${base}/__runic/state`);
+        assert.equal(state.status, 200);
+        assert.equal(state.headers.get("x-runic-dev-session"), expected, String(value));
+        await state.arrayBuffer();
+        // Only the state endpoint answers with it, not the pages.
+        const page = await fetch(`${base}/`);
+        assert.equal(page.headers.get("x-runic-dev-session"), null);
+        await page.arrayBuffer();
+      } finally { await server.close(); }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.RUNIC_APPLICATION_DEV_SESSION;
+    else process.env.RUNIC_APPLICATION_DEV_SESSION = previous;
+  }
+});
+
 test("official DevTools registers a live Runic dock under Bun", { timeout: 30_000 }, async () => {
   const root = await fixtureRoot();
   const plugin = runic({ devtools: true, contract: { identity: "bun-dock" } });

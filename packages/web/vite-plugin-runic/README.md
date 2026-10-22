@@ -52,6 +52,15 @@ The plugin adds `@runic-artifex/vite-plugin-runic/client` to
 client: with a cold `node_modules/.vite` cache, the first page would otherwise
 discover it, and Vite would reload the page and close the host's connection.
 
+Under `dotnet runic dev`, the Vite process gets a random value for the session
+in `RUNIC_APPLICATION_DEV_SESSION`, and `/__runic/state` answers with it in the
+`X-Runic-Dev-Session` header. Since 0.11, `dev` treats the server as ready
+only when that answer matches. Another process that takes the port before Vite
+binds it cannot answer, so `dev` never loads its pages into the application.
+Pages and other responses do not carry the header. Use the plugin from the same
+release as `dotnet-runic`, because an older plugin does not answer and `dev`
+times out with `RAPPDEV1007`.
+
 The native host serves `webui.js` and its client script (`runic-desktop.js`,
 `runic-views.js`, `runic-cswebui.js` or `runic-desktop-views.js`) from the root
 of the web content, outside the Vite build. The plugin leaves those classic script tags
