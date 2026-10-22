@@ -153,6 +153,13 @@ test('after publication, the release waits until nuget.org lists every NuGet pac
  await expect(waitForNuget(packages,{now:()=>time,sleep:async ms=>{time+=ms;},log:()=>{},intervalMs:30000,timeoutMs:120000,lists:async name=>name==='Runic.A'}))
   .rejects.toThrow('nuget.org still does not list Runic.B 1.0.0 after 2 minutes');
  expect(time).toBeLessThan(120000);
+ // A version list that times out (for example while its body is read) is asked again on the next poll; other errors fail.
+ time=0;let failed=0;const retryLogs=[];
+ await waitForNuget(packages.slice(0,1),{now:()=>time,sleep:async ms=>{time+=ms;},log:line=>retryLogs.push(line),intervalMs:1000,timeoutMs:10000,
+  lists:async()=>{if(failed++===0) throw new DOMException('The operation timed out.','TimeoutError');return true;}});
+ expect(failed).toBe(2);
+ expect(retryLogs[0]).toBe('nuget.org version list for Runic.A failed (TimeoutError); asking again on the next poll');
+ await expect(waitForNuget(packages.slice(0,1),{now:()=>0,sleep:async()=>{},log:()=>{},lists:async()=>{throw new Error('boom');}})).rejects.toThrow('boom');
 });
 
 import { runChecked } from './process.mjs';

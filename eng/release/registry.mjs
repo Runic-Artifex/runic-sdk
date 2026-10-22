@@ -79,7 +79,12 @@ export async function waitForNuget(packages, {timeoutMs=60*60000, intervalMs=300
   const deadline=now()+timeoutMs;
   let missing=packages.filter(p => p.registry === 'nuget');
   for (;;) {
-    const listed=await Promise.all(missing.map(p => lists(p.name, p.version, options)));
+    // A version list that times out while its body is read counts as not listed yet; the next poll asks again.
+    const listed=await Promise.all(missing.map(p => lists(p.name, p.version, options).catch(error => {
+      if (!['TimeoutError','AbortError','TypeError'].includes(error?.name)) throw error;
+      log(`nuget.org version list for ${p.name} failed (${error.name}); asking again on the next poll`);
+      return false;
+    })));
     missing=missing.filter((_, index) => !listed[index]);
     if (missing.length === 0) return;
     const names=missing.map(p => `${p.name} ${p.version}`).join(', ');
