@@ -60,6 +60,25 @@ public static class ReactiveNavigationRegionExtensions
     }
 
     /// <summary>
+    /// Observes the region's <see cref="NavigationRegion{TContent}.History"/>, the retained entries below the current
+    /// entry, from bottom to top. Each subscription receives the current history, empty when the region has none, and
+    /// then each different history, in the commit turn of a request that changes it, such as a push, Back,
+    /// <c>ResetAsync</c> or <c>ClearHistoryAsync</c>. A request that changes only the current entry, such as a replace,
+    /// does not emit.
+    /// </summary>
+    /// <remarks>
+    /// Each value is a snapshot that does not change afterwards; bind a history list or breadcrumb to it. The sequence
+    /// never completes; dispose the subscription to stop observing.
+    /// </remarks>
+    public static IObservable<IReadOnlyList<NavigationEntry<TContent>>> WhenHistoryChanged<TContent>(this NavigationRegion<TContent> region)
+        where TContent : class
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        return new RegionObservable<TContent, IReadOnlyList<NavigationEntry<TContent>>>(region, static region => region.History,
+            nameof(NavigationRegion<TContent>.History), SameEntries<TContent>.Instance);
+    }
+
+    /// <summary>
     /// Observes whether the region has Back history. Each subscription receives the current value
     /// and then each different value. This does not include transition availability; compose with
     /// <see cref="WhenIsTransitioningChanged{TContent}"/> when creating a command.
@@ -226,6 +245,23 @@ public static class ReactiveNavigationRegionExtensions
                 foreach (var subscription in subscriptions) subscription?.Dispose();
             }
         }
+    }
+
+    // Two histories are the same when they hold the same entries in the same order.
+    private sealed class SameEntries<TContent> : IEqualityComparer<IReadOnlyList<NavigationEntry<TContent>>> where TContent : class
+    {
+        public static readonly SameEntries<TContent> Instance = new();
+
+        public bool Equals(IReadOnlyList<NavigationEntry<TContent>>? x, IReadOnlyList<NavigationEntry<TContent>>? y)
+        {
+            if (ReferenceEquals(x, y)) return true;
+            if (x is null || y is null || x.Count != y.Count) return false;
+            for (var index = 0; index < x.Count; index++)
+                if (!ReferenceEquals(x[index], y[index])) return false;
+            return true;
+        }
+
+        public int GetHashCode(IReadOnlyList<NavigationEntry<TContent>> value) => value.Count;
     }
 
     private sealed class Same<T> : IEqualityComparer<T> where T : class?

@@ -717,6 +717,129 @@ internal sealed class NavigationAdapterTests
                 && retainAsks == 1 && region.Current == asking, "askOnRetain did not ask before a retaining push.");
     }
 
+    // I-033: WhenHistoryChanged emits the retained entries, bottom to top, on subscription and when they change.
+    [Test, NotInParallel(Order = 10)]
+    public async Task HistorySemanticsAsync()
+    {
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var home = new NavigationPage("home");
+        var region = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(home));
+        var histories = new Recorder<IReadOnlyList<NavigationEntry<NavigationPage>>>();
+        using var subscription = region.WhenHistoryChanged().Subscribe(histories);
+        Require(histories.Values.Single().Count == 0, "A subscription did not receive the empty history first.");
+
+        var root = region.CurrentEntry!;
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("first")));
+        var first = region.CurrentEntry!;
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("second")));
+        Require(histories.Values.Length == 3 && histories.Values[1].SequenceEqual([root]) && histories.Values[2].SequenceEqual([root, first]),
+            $"Pushes emitted {Describe(histories)}.");
+        Require(ReferenceEquals(histories.Values[2][0], region.History[0]), "WhenHistoryChanged emitted other entry instances than History.");
+
+        // A replace changes only the current entry.
+        await region.ReplaceAsync(NavigationTarget.Own(new NavigationPage("replaced")));
+        Require(histories.Values.Length == 3, $"A replace emitted a history: {Describe(histories)}.");
+
+        await region.BackAsync();
+        await region.ClearHistoryAsync();
+        Require(histories.Values.Length == 5 && histories.Values[3].SequenceEqual([root]) && histories.Values[4].Count == 0,
+            $"Back and ClearHistory emitted {Describe(histories)}.");
+        // Each value is a snapshot.
+        Require(histories.Values[2].Count == 2, "An emitted history changed afterwards.");
+
+        // A later subscription starts from the current history.
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("third")));
+        var late = new Recorder<IReadOnlyList<NavigationEntry<NavigationPage>>>();
+        using (region.WhenHistoryChanged().Subscribe(late))
+            Require(late.Values.Single().Count == 1 && ReferenceEquals(late.Values[0][0], region.History[0]),
+                "A later subscription did not receive the current history.");
+
+        static string Describe(Recorder<IReadOnlyList<NavigationEntry<NavigationPage>>> recorder) =>
+            string.Join(" | ", recorder.Values.Select(history => $"[{string.Join(",", history.Select(entry => entry.Content?.Name))}]"));
+    }
+
+    // I-032: a region guard that asks through an interaction.
+    [Test, NotInParallel(Order = 11)]
+    public async Task InteractionRegionGuardAsync()
+    {
+        await using var context = new RunicModelContext();
+        using var log = new EventLog();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context, LoggerFactory = log });
+        var home = new NavigationPage("home");
+        var region = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(home));
+        var confirm = new Interaction<string, bool>();
+        var dirty = false;
+        var prompts = new List<bool>();
+        var discards = new List<bool>();
+        var guard = ReactiveNavigationRegionGuard.WithInteraction(confirm,
+            departure => { prompts.Add(context.IsExecuting); return $"{departure.Operation} {departure.Kind}"; },
+            departure => dirty, () => discards.Add(context.IsExecuting));
+        using var registration = region.AddDepartureGuard(guard);
+
+        // A retaining push is not asked by default; clean, nothing is asked, even with no handler.
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("page")));
+        Require(await region.BackAsync() is NavigationResult<NavigationPage>.Committed && prompts.Count == 0, "A clean region asked.");
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("page")));
+
+        // Unhandled: fails closed with Failed(Guarding) and event 1060.
+        dirty = true;
+        var unhandled = await region.BackAsync();
+        Require(unhandled is NavigationResult<NavigationPage>.Failed { Phase: NavigationPhase.Guarding } failed
+            && failed.Error.GetType().Name.StartsWith("UnhandledInteractionException", StringComparison.Ordinal)
+            && region.Current?.Name == "page" && discards.Count == 0, $"An unhandled interaction gave {unhandled}.");
+        Require(log.Entries.Any(entry => entry.Id == 1060), "An unhandled interaction was not logged as NavigationGuardFailed (1060).");
+
+        // No: rejected as a guard, nothing discarded. The prompt is created in a model turn and names the departure.
+        var asked = new List<string>();
+        using (confirm.RegisterHandler(interaction => { asked.Add(interaction.Input); interaction.SetOutput(false); }))
+        {
+            var kept = await region.BackAsync();
+            Require(kept is NavigationResult<NavigationPage>.Rejected { Reason: NavigationRejection.Guard } && region.Current?.Name == "page"
+                && asked.SequenceEqual(["Back Retire"]) && prompts.All(inTurn => inTurn) && discards.Count == 0, $"A no answer gave {kept}.");
+        }
+
+        // Cancelled by the caller: the question ends with the request.
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var never = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (confirm.RegisterHandler(async interaction =>
+        {
+            entered.TrySetResult();
+            interaction.SetOutput(await never.Task);
+        }))
+        {
+            using var cancellation = new CancellationTokenSource();
+            var back = region.BackAsync(cancellationToken: cancellation.Token).AsTask();
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            cancellation.Cancel();
+            var cancelled = await back.WaitAsync(TimeSpan.FromSeconds(10));
+            Require(cancelled is NavigationResult<NavigationPage>.Rejected { Reason: NavigationRejection.Cancelled } && region.Current?.Name == "page",
+                $"A cancelled question gave {cancelled}.");
+        }
+        never.SetResult(false);
+
+        // Yes: the transition commits and discard runs once, in the commit turn.
+        using (confirm.RegisterHandler(interaction => interaction.SetOutput(true)))
+        {
+            var left = await region.BackAsync();
+            Require(left is NavigationResult<NavigationPage>.Committed && region.Current == home && discards.SequenceEqual([true]),
+                $"A yes answer gave {left} with {discards.Count} discards.");
+        }
+
+        // A guard that another guard vetoes after it said yes discards nothing.
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("page")));
+        using (region.AddDepartureGuard(new Veto()))
+        using (confirm.RegisterHandler(interaction => interaction.SetOutput(true)))
+            Require(await region.BackAsync() is NavigationResult<NavigationPage>.Rejected && discards.Count == 1,
+                "A vetoed transition ran the discard of a guard that said yes.");
+    }
+
+    private sealed class Veto : INavigationRegionGuard
+    {
+        public ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(false);
+    }
+
     private static FlavorUnit UnitValue() => FlavorUnit.Default;
 
 

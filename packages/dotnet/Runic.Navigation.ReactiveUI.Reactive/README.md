@@ -17,10 +17,13 @@ dotnet add package Runic.Navigation.ReactiveUI.Reactive --prerelease
 ```
 
 Runic Views apps reference this package next to `Runic.Application.Views.ReactiveUI.Reactive`,
-which no longer brings it. Choose one flavor per app: the Runic.Application.Views
-adapters reject a direct reference to both. The two navigation adapters add
-extension methods with the same names in different namespaces, so referencing
-both without Runic.Application.Views is not guarded.
+which no longer brings it. Choose one flavor per app: with a Runic.Application.Views
+ReactiveUI adapter, a mix of flavors fails with `RUNICBRIDGE023`. The two
+navigation adapters add extension methods with the same names in different
+namespaces; a project that references both without a Views adapter, directly or
+through another package or project, gets build warning
+[`RUNICNAV002`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicnav002)
+(since 0.11).
 
 ```csharp
 BackCommand = Main.CreateBackCommand(); // on this ViewModel's own region: no disposal
@@ -45,7 +48,8 @@ with these differences:
   return `ReactiveCommand<Unit, NavigationOutcome>` (`ReactiveCommand<TResult,
   NavigationOutcome>` for the overload that completes with the command's
   parameter) and take an optional `IScheduler`.
-- `ReactiveLeaveConfirmation.WithInteraction()` takes a
+- `ReactiveLeaveConfirmation.WithInteraction()` and
+  `ReactiveNavigationRegionGuard.WithInteraction()` take a
   `ReactiveUI.Binding.Reactive.IInteraction<TPrompt, bool>`. An unanswered question
   fails the departure and is logged as `NavigationGuardFailed` (event 1060) with
   `ErrorType` `ReactiveUI.Binding.Reactive.UnhandledInteractionException`2`.

@@ -1,0 +1,27 @@
+<Project>
+  <!-- Shared by Runic.Navigation.ReactiveUI and Runic.Navigation.ReactiveUI.Reactive, which packs this file as
+       buildTransitive/Runic.Navigation.ReactiveUI.Reactive.targets. When both packages arrive, both import it and the
+       later definition of the target replaces the earlier one, so the warning is reported once.
+
+       An application uses one ReactiveUI flavor. The resolved references show the navigation adapters that arrive
+       directly, through packages or through other projects. With a Runic.Application.Views ReactiveUI adapter in the
+       references, RUNICBRIDGE023 of the Runic.Application.Views targets reports any mix as an error instead. -->
+  <Target Name="RunicNavigationWarnMixedReactiveUiFlavors" AfterTargets="ResolveAssemblyReferences"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <ItemGroup>
+      <_RunicNavigationFlavorReference Include="@(ReferencePath->'%(Filename)')" />
+      <_RunicNavigationFlavorPrimitives Include="@(_RunicNavigationFlavorReference)" Condition="'%(Identity)' == 'Runic.Navigation.ReactiveUI'" />
+      <_RunicNavigationFlavorReactive Include="@(_RunicNavigationFlavorReference)" Condition="'%(Identity)' == 'Runic.Navigation.ReactiveUI.Reactive'" />
+      <_RunicNavigationFlavorViews Include="@(_RunicNavigationFlavorReference)" Condition="'%(Identity)' == 'Runic.Application.Views.ReactiveUI' or '%(Identity)' == 'Runic.Application.Views.ReactiveUI.Reactive'" />
+    </ItemGroup>
+    <Warning Code="RUNICNAV002" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicnav002"
+             Condition="'@(_RunicNavigationFlavorPrimitives)' != '' and '@(_RunicNavigationFlavorReactive)' != '' and '@(_RunicNavigationFlavorViews)' == ''"
+             Text="$(MSBuildProjectName) references both Runic.Navigation.ReactiveUI, which uses ReactiveUI.Primitives, and Runic.Navigation.ReactiveUI.Reactive, which uses ReactiveUI's System.Reactive flavor, directly or through another package or project. Select one ReactiveUI flavor for the application." />
+    <ItemGroup>
+      <_RunicNavigationFlavorReference Remove="@(_RunicNavigationFlavorReference)" />
+      <_RunicNavigationFlavorPrimitives Remove="@(_RunicNavigationFlavorPrimitives)" />
+      <_RunicNavigationFlavorReactive Remove="@(_RunicNavigationFlavorReactive)" />
+      <_RunicNavigationFlavorViews Remove="@(_RunicNavigationFlavorViews)" />
+    </ItemGroup>
+  </Target>
+</Project>

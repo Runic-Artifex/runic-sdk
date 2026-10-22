@@ -69,7 +69,8 @@ public static class ReactiveLeaveConfirmation
             discard, askOnRetain);
     }
 
-    private static async Task<bool> AskAsync<TPrompt>(IInteraction<TPrompt, bool> interaction, TPrompt input,
+    // Asks interaction once; also ReactiveNavigationRegionGuard's question.
+    internal static async Task<bool> AskAsync<TPrompt>(IInteraction<TPrompt, bool> interaction, TPrompt input,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

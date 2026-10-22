@@ -14,6 +14,7 @@ Each entry starts with what the ID means. **Fix** says what to change.
 - [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSIZE`, `RCLI`)](#dotnet-runic)
 - [Asset packer and Runic.Assets build (`RAS`)](#asset-packer)
 - [Runic Desktop build (`RUNICDESK`)](#runic-desktop-build)
+- [Navigation ReactiveUI build (`RUNICNAV`)](#navigation-reactiveui-build)
 - [Runic.Create (`RCREATE`)](#runiccreate)
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
 - [D-Bus source generator (`RUNICDBUS`)](#d-bus-source-generator)
@@ -730,6 +731,29 @@ statically, but the restored `Microsoft.Web.WebView2` package has no
 
 **Fix:** restore the project for the runtime identifier again, so the
 `Microsoft.Web.WebView2` native SDK assets are present.
+
+## Navigation ReactiveUI build
+
+The `Runic.Navigation.ReactiveUI` and `Runic.Navigation.ReactiveUI.Reactive`
+build targets report this warning. `RUNICNAV001` was the experimental
+Navigation ID until 0.7.0-preview.7; it is retired and not reused.
+
+### RUNICNAV002
+
+The project's resolved references, direct or through another package or
+project, contain both navigation adapters: `Runic.Navigation.ReactiveUI`, which
+uses ReactiveUI.Primitives, and `Runic.Navigation.ReactiveUI.Reactive`, which
+uses ReactiveUI's System.Reactive flavor. An application uses one flavor. The
+two adapters add extension methods with the same names in different
+namespaces, so a file that imports both namespaces fails with CS0121, and
+types of the two ReactiveUI distributions do not mix. Since 0.11; earlier
+releases did not report the mix. When a `Runic.Application.Views` ReactiveUI
+adapter is referenced too, [`RUNICBRIDGE023`](#runicbridge023) reports the mix
+as an error instead.
+
+**Fix:** keep one navigation adapter: `Runic.Navigation.ReactiveUI.Reactive`
+with ReactiveUI's System.Reactive flavor, otherwise `Runic.Navigation.ReactiveUI`.
+A reference that arrives through another project or package is changed there.
 
 ## Runic.Create
 
