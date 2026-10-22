@@ -16,7 +16,11 @@
             "tsConfig": "tsconfig.app.json"
           },
           "configurations": {
-            "production": { "optimization": true, "outputHashing": "all", "sourceMap": false },
+            "production": {
+              "optimization": { "scripts": true, "styles": { "minify": true, "removeSpecialComments": true, "inlineCritical": false }, "fonts": false },
+              "outputHashing": "all",
+              "sourceMap": false
+            },
             "development": { "optimization": false, "outputHashing": "none", "sourceMap": true }
           },
           "defaultConfiguration": "production"

@@ -598,6 +598,36 @@ internal sealed class NativeChecks
         finally { window.Close(); }
     }
 
+    // SEC-06: RunicViewHost.ContentSecurityPolicy is sent with the surface's HTML beside the framing policy, and a value
+    // with a line break is rejected.
+    [Test, NotInParallel("WpfSuite", Order = 31)]
+    public async Task HostSendsItsContentSecurityPolicy()
+    {
+        const string Policy = "default-src 'self'; object-src 'none'";
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((_, _) => new Attachment());
+        await using var services = collection.BuildServiceProvider();
+        var host = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = new HostedModel(), ContentSecurityPolicy = Policy };
+        var rejected = false;
+        try { host.ContentSecurityPolicy = "default-src 'self'\r\nX-Injected: 1"; }
+        catch (ArgumentException) { rejected = true; }
+        Program.Check(rejected && host.ContentSecurityPolicy == Policy, "A policy with a line break was accepted.");
+        var window = new Window { Content = host, Width = 600, Height = 400, Title = "RunicViewHost content security policy" };
+        RunicViewHost.SetServices(window, services);
+        window.Show();
+        try
+        {
+            Program.Check(await SettledAsync(host) == RunicViewHostState.Open, $"The host did not open: {host.State} {host.Error}");
+            using var client = new System.Net.Http.HttpClient();
+            using var response = await client.GetAsync(host.Surface!.Url);
+            string[] policies = [.. response.Headers.GetValues("Content-Security-Policy")];
+            Program.Check(policies.SequenceEqual(["frame-ancestors 'self'", Policy]),
+                $"The host's surface sent {string.Join(" | ", policies)}.");
+            Console.WriteLine("RunicViewHost.ContentSecurityPolicy checks passed.");
+        }
+        finally { window.Close(); }
+    }
+
     // D034.7: hosts given one application-owned DesktopHost serve their surfaces from its listener; unloading one
     // releases only its surface, and a host without one keeps its own. A disposed shared host fails the open.
     [Test, NotInParallel("WpfSuite", Order = 24)]

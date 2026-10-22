@@ -10,3 +10,5 @@ Runic.Assets.AssetArchiveDirectoryOptions.ExcludedPaths.init -> void
 static Runic.Assets.AssetArchive.ReadAsync(System.IO.Stream! source, Runic.Assets.AssetArchiveReadOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetArchiveSource!>
 static Runic.Assets.AssetArchive.WriteDirectoryAsync(string! sourceDirectory, System.IO.Stream! destination, Runic.Assets.AssetArchiveDirectoryOptions! options, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 static Runic.Assets.AssetArchive.WriteTrustedDirectoryAsync(string! sourceDirectory, System.IO.Stream! destination, Runic.Assets.AssetArchiveDirectoryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Assets.AssetRoutingOptions.ContentSecurityPolicy.get -> string?
+Runic.Assets.AssetRoutingOptions.ContentSecurityPolicy.init -> void

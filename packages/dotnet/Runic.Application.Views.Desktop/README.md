@@ -69,6 +69,14 @@ The same Window and `async host => ...` body run on CS-WebUI with
   to `new DesktopSurfaceOptions { Content = new DesktopContent.Handler(assets.ToDesktopContentHandler()) }`
   from `Runic.Assets.Desktop`; see
   [Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder).
+- `RunicDesktopHostOptions.ContentSecurityPolicy` sends a `Content-Security-Policy`
+  with the HTML of every Window's surface, unless `SurfaceOptions` set one of
+  their own (`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of
+  its own next to the surface's `frame-ancestors` policy, and the WebView
+  enforces both. The Bridge delivers its messages as host scripts that the
+  page evaluates with the `Function` constructor, so the policy must allow
+  `'self'` scripts and connections and `'unsafe-eval'`, as
+  `default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` does. It still blocks inline and foreign scripts.
 - `RunicDesktopHostOptions.Resources` serves application files that are not part of
   the frontend build, such as icons from a cache, from each Window's own
   address. It is called with each Window as it opens, after its ViewModel is

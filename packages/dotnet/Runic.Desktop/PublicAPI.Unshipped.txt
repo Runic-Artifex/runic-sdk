@@ -111,3 +111,5 @@ override Runic.Desktop.DesktopStandardMenuTitles.GetHashCode() -> int
 override Runic.Desktop.DesktopStandardMenuTitles.ToString() -> string!
 static Runic.Desktop.DesktopStandardMenuTitles.operator !=(Runic.Desktop.DesktopStandardMenuTitles? left, Runic.Desktop.DesktopStandardMenuTitles? right) -> bool
 static Runic.Desktop.DesktopStandardMenuTitles.operator ==(Runic.Desktop.DesktopStandardMenuTitles? left, Runic.Desktop.DesktopStandardMenuTitles? right) -> bool
+Runic.Desktop.DesktopSurfaceOptions.ContentSecurityPolicy.get -> string?
+Runic.Desktop.DesktopSurfaceOptions.ContentSecurityPolicy.init -> void

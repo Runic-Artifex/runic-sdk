@@ -97,6 +97,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Resources = options.Resources;
         Placement = options.Placement;
         _includeFailureDetail = options.IncludeFailureDetail;
+        _contentSecurityPolicy = options.ContentSecurityPolicy;
         // The range of WindowContentSessionOptions.MaximumInputBytes, checked before a Window opens.
         if (options.MaximumInputBytes is < 1_024 or > 67_108_864)
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
@@ -106,6 +107,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private readonly bool? _includeFailureDetail;
     private readonly int? _maximumInputBytes;
+    private readonly string? _contentSecurityPolicy;
 
     // A Window's own choice of Bridge failure detail, or else the application's default.
     internal bool? IncludeFailureDetailFor(RunicWindowOptions options) => options.IncludeFailureDetail ?? _includeFailureDetail;
@@ -384,6 +386,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             };
             if (Resources is { } chooseResources && chooseResources(opening.Window) is { } resources)
                 surfaceOptions = surfaceOptions with { Resources = resources };
+            if (surfaceOptions.ContentSecurityPolicy is null && _contentSecurityPolicy is not null)
+                surfaceOptions = surfaceOptions with { ContentSecurityPolicy = _contentSecurityPolicy };
             surface = await Desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
             development?.Attach(surface);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));

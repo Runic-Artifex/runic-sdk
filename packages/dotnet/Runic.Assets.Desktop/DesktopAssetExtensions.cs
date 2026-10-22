@@ -15,7 +15,9 @@ public static class DesktopAssetExtensions
     /// Creates a Desktop content handler over the source's current immutable snapshots. Request
     /// paths resolve with <see cref="AssetManifest.TryResolveRequestPath"/>, the same rules the
     /// ASP.NET Core adapter uses, and responses carry the same headers: a <c>text/*</c> media type
-    /// without a charset is sent with <c>; charset=utf-8</c>.
+    /// without a charset is sent with <c>; charset=utf-8</c>. HTML assets carry
+    /// <see cref="AssetRoutingOptions.ContentSecurityPolicy"/> when it is set; the surface adds its own
+    /// <c>frame-ancestors</c> policy as a second header.
     /// </summary>
     public static ContentHandler ToDesktopContentHandler(
         this IAssetSource source,
@@ -44,7 +46,7 @@ public static class DesktopAssetExtensions
         {
             AssetDescriptor current = descriptor;
             string contentType = WithUtf8Charset(current.MediaType);
-            IReadOnlyDictionary<string, string> headers = Headers(current);
+            IReadOnlyDictionary<string, string> headers = Headers(current, routing?.ContentSecurityPolicy);
             if (MatchesIfNoneMatch(Header(request, "If-None-Match"), current.EntityTag))
             {
                 return new ContentResponse(ReadOnlyMemory<byte>.Empty, contentType, 304, headers);
@@ -134,14 +136,24 @@ public static class DesktopAssetExtensions
             ? mediaType + "; charset=utf-8"
             : mediaType;
 
-    private static Dictionary<string, string> Headers(AssetDescriptor descriptor) =>
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    private static Dictionary<string, string> Headers(AssetDescriptor descriptor, string? contentSecurityPolicy)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["ETag"] = descriptor.EntityTag,
             ["Cache-Control"] = descriptor.CacheControl,
             ["Accept-Ranges"] = "bytes",
             ["X-Content-Type-Options"] = "nosniff",
         };
+        if (contentSecurityPolicy is not null && IsHtml(descriptor.MediaType))
+            headers["Content-Security-Policy"] = contentSecurityPolicy;
+        return headers;
+    }
+
+    // The responses that carry AssetRoutingOptions.ContentSecurityPolicy; the same rule as the ASP.NET Core adapter.
+    internal static bool IsHtml(string mediaType) =>
+        mediaType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase)
+        && (mediaType.Length == "text/html".Length || mediaType["text/html".Length] is ';' or ' ');
 
     private static Dictionary<string, string> With(
         IReadOnlyDictionary<string, string> source,

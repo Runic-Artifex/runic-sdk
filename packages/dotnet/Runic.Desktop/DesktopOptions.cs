@@ -205,6 +205,58 @@ public sealed record DesktopSurfaceOptions
 
     /// <summary>Gets whether this surface owns a separate listener.</summary>
     public bool UseIsolatedListener { get; init; }
+
+    /// <summary>
+    /// Gets the <c>Content-Security-Policy</c> that the surface sends with the HTML of its content, or
+    /// <see langword="null"/>, the default, for none.
+    /// </summary>
+    /// <remarks>
+    /// The policy applies to <c>text/html</c> responses of <see cref="DesktopContent.Directory"/>,
+    /// <see cref="DesktopContent.Html"/> and <see cref="DesktopContent.Handler"/> content and of
+    /// <see cref="Resources"/>. It is sent as a header of its own next to the surface's
+    /// <c>frame-ancestors</c> policy, and next to a policy that a content handler sets: the browser or WebView enforces
+    /// every one, so a page can do only what all of them allow. Every embedded WebView and installed browser applies
+    /// it, since content is served over the surface's loopback listener. The surface's document-start scripts are
+    /// not subject to page policies, but the scripts the host runs in the page, such as the Views Bridge's messages,
+    /// are evaluated with the <c>Function</c> constructor: a policy whose <c>script-src</c> (or <c>default-src</c>)
+    /// lacks <c>'unsafe-eval'</c> stops them. The Bridge's WebSocket is a same-origin connection, which
+    /// <c>'self'</c> allows. The value must be printable ASCII: a carriage return, line feed, NUL or other control
+    /// character throws <see cref="ArgumentException"/>.
+    /// <code>
+    /// ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    /// </code>
+    /// </remarks>
+    /// <exception cref="ArgumentException">The value is empty or contains a character that a header cannot carry.</exception>
+    public string? ContentSecurityPolicy
+    {
+        get;
+        init => field = ValidateContentSecurityPolicy(value, nameof(ContentSecurityPolicy));
+    }
+
+    internal static string? ValidateContentSecurityPolicy(string? value, string parameterName)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException("A Content-Security-Policy must not be empty; use null for none.", parameterName);
+        }
+
+        foreach (var character in value)
+        {
+            if (character is < ' ' or > '~')
+            {
+                throw new ArgumentException(
+                    "A Content-Security-Policy must be printable ASCII without line breaks or control characters.",
+                    parameterName);
+            }
+        }
+
+        return value;
+    }
 }
 
 /// <summary>Identifies an installed or embedded browser presentation.</summary>

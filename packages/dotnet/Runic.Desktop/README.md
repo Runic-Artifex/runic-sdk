@@ -1155,8 +1155,29 @@ rest is internal to Runic Desktop and Runic Windows and Views. See
   origin cannot frame the app. In an embedded window, a frame receives the
   credential only when its own origin and the origins of all documents that
   contain it are the surface's or its `AdditionalOrigins`. A content handler
-  that sets its own `Content-Security-Policy` replaces the header; keep a
-  `frame-ancestors` directive in it.
+  that sets its own `Content-Security-Policy` sends it as a second header, so
+  the framing policy stays in force.
+- **Content-Security-Policy.** `DesktopSurfaceOptions.ContentSecurityPolicy`
+  sends a policy with the HTML of the surface's directory, HTML document,
+  handler and `Resources` responses, as a header of its own next to the
+  framing policy: the WebView or browser enforces each header, so a page can
+  do only what all of them allow. Content is served over the loopback
+  listener, so WebView2, WKWebView, WebKitGTK and installed browsers all apply
+  it. The document-start scripts are not subject to page policies, but the
+  scripts the host runs in the page (`ExecuteJavaScriptAsync`,
+  `RunJavaScriptAsync` and the Views Bridge's messages) are evaluated with the
+  `Function` constructor, so the policy's `script-src` must allow
+  `'unsafe-eval'`. It still blocks inline and foreign scripts. The Bridge
+  WebSocket is a same-origin connection, which `'self'` allows. A value with a
+  line break or another control character throws `ArgumentException`.
+
+  ```csharp
+  await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+  {
+      Content = new DesktopContent.Directory(webRoot),
+      ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  });
+  ```
 - **Surfaces in an installed browser.** Surfaces that share a listener share
   an origin. In an installed browser, a page of one surface can therefore load
   another surface's bootstrap and read that surface's credential. Embedded

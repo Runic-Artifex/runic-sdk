@@ -63,6 +63,23 @@ another presentation, call `DesktopEventLoop.Run` and create a
 [Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop/README.md)
 for native prerequisites and platform services. Create the project with
 `--linux-gtk 4` to use GTK 4 and WebKitGTK 6 on Linux.
+
+Outside the `Development` environment, `Program.cs` sends a
+Content-Security-Policy with the Window's pages
+(`RunicDesktopHostOptions.ContentSecurityPolicy`): scripts, styles and
+connections come only from the application itself, and the page can load no
+plugins and cannot be framed. `'unsafe-eval'` lets the Views Bridge deliver its
+messages. Add the origins of anything else the page loads, such as an API or a
+font service, to the policy.
+<!--#if (frontend == "sveltekit") -->
+SvelteKit starts the page with an inline script. `kit.csp` in
+`Frontend/vite.config.ts` adds a page policy that allows that script by its
+hash, and the browser enforces both policies.
+<!--#elif (frontend == "angular") -->
+The policy allows inline styles, which Angular adds for component styles, and
+`angular.json` turns off critical-CSS inlining, which would need an inline
+script.
+<!--#endif -->
 <!--#else -->
 `RunicCsWebUiHost.Run` in `Program.cs` uses CS-WebUI. It opens the app
 in an installed browser in app mode (Chrome, Edge or another Chromium-based

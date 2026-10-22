@@ -66,4 +66,7 @@ internal sealed record PresentationSurfaceRuntimeOptions(
 {
     // The host whose menu bar and application menu commands the surface's windows show and run.
     internal DesktopHost? MenuHost { get; init; }
+
+    // DesktopSurfaceOptions.ContentSecurityPolicy: sent with the HTML of the surface's content.
+    internal string? ContentSecurityPolicy { get; init; }
 }

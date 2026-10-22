@@ -23,6 +23,7 @@ public static class RunicAssetEndpointExtensions
     /// back to it unless <paramref name="routing"/> disables them. The endpoint matches only GET
     /// and HEAD requests for paths that resolve. It runs after the application's endpoints and
     /// before <c>MapFallback</c>, so other requests reach static files, a fallback or a 404.
+    /// HTML assets carry <see cref="AssetRoutingOptions.ContentSecurityPolicy"/> when it is set.
     /// </summary>
     public static IEndpointConventionBuilder MapRunicAssetSource(
         this IEndpointRouteBuilder endpoints,
@@ -53,7 +54,7 @@ public static class RunicAssetEndpointExtensions
                         return;
                     }
 
-                    await context.WriteAssetAsync(source, descriptor).ConfigureAwait(false);
+                    await WriteAssetCoreAsync(context, source, descriptor, routing?.ContentSecurityPolicy).ConfigureAwait(false);
                 })
             .WithDisplayName("Runic assets " + pattern.RawText)
             // After application endpoints (order 0 and conventional routes), before MapFallback (int.MaxValue).
@@ -65,7 +66,7 @@ public static class RunicAssetEndpointExtensions
     /// conditional and range requests, and a <c>text/*</c> media type with <c>; charset=utf-8</c>.
     /// Use it in a custom endpoint: <c>await context.WriteAssetAsync(source, descriptor)</c>.
     /// </summary>
-    public static async Task WriteAssetAsync(
+    public static Task WriteAssetAsync(
         this HttpContext context,
         IAssetSource source,
         AssetDescriptor descriptor)
@@ -73,7 +74,16 @@ public static class RunicAssetEndpointExtensions
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(descriptor);
+        return WriteAssetCoreAsync(context, source, descriptor, contentSecurityPolicy: null);
+    }
 
+    // The policy, already validated by AssetRoutingOptions, is sent with HTML assets only.
+    internal static async Task WriteAssetCoreAsync(
+        HttpContext context,
+        IAssetSource source,
+        AssetDescriptor descriptor,
+        string? contentSecurityPolicy)
+    {
         await using AssetReadSnapshot snapshot = await source.OpenAsync(
             descriptor.RelativePath,
             context.RequestAborted).ConfigureAwait(false);
@@ -83,6 +93,11 @@ public static class RunicAssetEndpointExtensions
         context.Response.Headers.CacheControl = current.CacheControl;
         context.Response.Headers.AcceptRanges = "bytes";
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        if (contentSecurityPolicy is not null && IsHtml(current.MediaType))
+        {
+            context.Response.Headers.ContentSecurityPolicy = contentSecurityPolicy;
+        }
+
         if (MatchesIfNoneMatch(context.Request.Headers.IfNoneMatch, current.EntityTag))
         {
             context.Response.StatusCode = StatusCodes.Status304NotModified;
@@ -140,6 +155,11 @@ public static class RunicAssetEndpointExtensions
             && !mediaType.Contains("charset=", StringComparison.OrdinalIgnoreCase)
             ? mediaType + "; charset=utf-8"
             : mediaType;
+
+    // The responses that carry AssetRoutingOptions.ContentSecurityPolicy; the same rule as the Desktop adapter.
+    internal static bool IsHtml(string mediaType) =>
+        mediaType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase)
+        && (mediaType.Length == "text/html".Length || mediaType["text/html".Length] is ';' or ' ');
 
     private static string NormalizePrefix(string routePrefix)
     {

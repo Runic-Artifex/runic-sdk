@@ -295,6 +295,7 @@ public sealed class DesktopHost : IAsyncDisposable
             _options.BrowserLaunchAttempts)
         {
             MenuHost = this,
+            ContentSecurityPolicy = configured.ContentSecurityPolicy,
         };
         var engine = new WebUiWindow(core, path, security, runtime);
         var surface = new DesktopSurface(this, id, engine, isolatedCore, windowHostFactory);

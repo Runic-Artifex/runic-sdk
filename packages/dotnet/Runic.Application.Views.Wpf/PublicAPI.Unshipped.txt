@@ -7,3 +7,6 @@ Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.WebContent.get -> Runic.De
 Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.WebContent.set -> void
 static readonly Runic.Application.Views.Wpf.RunicViewHost.DesktopProperty -> System.Windows.DependencyProperty!
 static readonly Runic.Application.Views.Wpf.RunicViewHost.WebContentProperty -> System.Windows.DependencyProperty!
+Runic.Application.Views.Wpf.RunicViewHost.ContentSecurityPolicy.get -> string?
+Runic.Application.Views.Wpf.RunicViewHost.ContentSecurityPolicy.set -> void
+static readonly Runic.Application.Views.Wpf.RunicViewHost.ContentSecurityPolicyProperty -> System.Windows.DependencyProperty!

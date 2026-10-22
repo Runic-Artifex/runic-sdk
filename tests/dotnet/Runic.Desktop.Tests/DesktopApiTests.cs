@@ -730,6 +730,70 @@ public sealed class DesktopApiTests
         Assert.Equal("SAMEORIGIN", withOrigins.Headers.GetValues("X-Frame-Options").Single());
     }
 
+    // SEC-06: DesktopSurfaceOptions.ContentSecurityPolicy is a second header on HTML, beside the framing policy, and a
+    // handler's own policy no longer replaces the framing policy.
+    [Test]
+    public async Task SurfacePolicyIsASecondHeaderOnHtml()
+    {
+        const string Policy = "default-src 'self'; object-src 'none'";
+        const string HandlerPolicy = "script-src 'none'";
+        var root = Directory.CreateTempSubdirectory("runic-csp-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "index.html"), "<p>file</p>");
+            File.WriteAllText(Path.Combine(root, "app.js"), "1");
+            await using var host = await DesktopHost.StartAsync();
+            await using var html = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("<p>safe</p>"),
+                ContentSecurityPolicy = Policy,
+            });
+            await using var directory = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(root, "index.html"),
+                ContentSecurityPolicy = Policy,
+            });
+            await using var handler = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Handler((request, _) => ValueTask.FromResult<ContentResponse?>(
+                    request.Path.EndsWith(".js", StringComparison.Ordinal)
+                        ? new ContentResponse("1"u8.ToArray(), "text/javascript", 200, new Dictionary<string, string> { ["Content-Security-Policy"] = HandlerPolicy })
+                        : new ContentResponse("<p>handled</p>"u8.ToArray(), "text/html; charset=utf-8", 200, new Dictionary<string, string> { ["Content-Security-Policy"] = HandlerPolicy }))),
+                ContentSecurityPolicy = Policy,
+            });
+            await using var handlerOnly = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Handler((_, _) => ValueTask.FromResult<ContentResponse?>(
+                    new ContentResponse("<p>handled</p>"u8.ToArray(), "text/html", 200, new Dictionary<string, string> { ["Content-Security-Policy"] = Policy }))),
+                ContentSecurityPolicy = Policy,
+            });
+            using var client = new HttpClient();
+            async Task<string[]> PoliciesAsync(Uri url)
+            {
+                using var response = await client.GetAsync(url);
+                Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+                return [.. response.Headers.GetValues("Content-Security-Policy")];
+            }
+
+            Assert.Equal(["frame-ancestors 'self'", Policy], await PoliciesAsync(html.Url));
+            Assert.Equal(["frame-ancestors 'self'", Policy], await PoliciesAsync(new Uri(directory.Url, "index.html")));
+            Assert.Equal(["frame-ancestors 'self'"], await PoliciesAsync(new Uri(directory.Url, "app.js")));
+            Assert.Equal(["frame-ancestors 'self'", HandlerPolicy, Policy], await PoliciesAsync(handler.Url));
+            Assert.Equal(["frame-ancestors 'self'", HandlerPolicy], await PoliciesAsync(new Uri(handler.Url, "app.js")));
+            // The same policy from the handler and the surface is sent once.
+            Assert.Equal(["frame-ancestors 'self'", Policy], await PoliciesAsync(handlerOnly.Url));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+
+        foreach (var invalid in new[] { "", " ", "default-src 'self'\r\nX-Injected: 1", "a\0b", "caf\u00e9" })
+        {
+            Assert.Throws<ArgumentException>(() => new DesktopSurfaceOptions { ContentSecurityPolicy = invalid });
+        }
+    }
+
     // SEC-24: the WebSocket subprotocol carrying the credential is compared in constant time, and only whole.
     [Test]
     public void SessionCredentialMatchesOnlyAWholeOfferedProtocol()

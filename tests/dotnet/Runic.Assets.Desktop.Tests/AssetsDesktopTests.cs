@@ -167,6 +167,45 @@ internal sealed class AssetsDesktopTests
         }
     }
 
+    // SEC-06: AssetRoutingOptions.ContentSecurityPolicy reaches HTML only, on Desktop beside the framing policy and in
+    // ASP.NET Core alone; the surface's own policy is not repeated when it is the same.
+    [Test, DisplayName("Desktop and ASP.NET Core send the routing policy with HTML only")]
+    public async Task PolicyOnHtmlOnly()
+    {
+        const string Policy = "default-src 'self'; object-src 'none'";
+        var source = new RoutingSource(("index.html", "entry", true), ("app.js", "script", false));
+        var routing = new AssetRoutingOptions { ContentSecurityPolicy = Policy };
+        await using var desktopHost = await DesktopHost.StartAsync().ConfigureAwait(false);
+        await using var surface = await desktopHost.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Handler(source.ToDesktopContentHandler(routing)),
+        }).ConfigureAwait(false);
+        await using var both = await desktopHost.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Handler(source.ToDesktopContentHandler(routing)),
+            ContentSecurityPolicy = Policy,
+        }).ConfigureAwait(false);
+        await using WebApplication web = await StartAspNetCoreAsync(source, "", routing).ConfigureAwait(false);
+        using var client = new HttpClient();
+
+        async Task<string> PoliciesAsync(Uri url)
+        {
+            using HttpResponseMessage response = await client.GetAsync(url).ConfigureAwait(false);
+            Equal(HttpStatusCode.OK, response.StatusCode, url.ToString());
+            return response.Headers.TryGetValues("Content-Security-Policy", out IEnumerable<string>? values) ? string.Join(" | ", values) : "";
+        }
+
+        foreach (string path in new[] { "", "index.html", "settings" })
+        {
+            Equal($"frame-ancestors 'self' | {Policy}", await PoliciesAsync(new Uri(surface.Url, path)).ConfigureAwait(false), $"Desktop /{path}");
+            Equal($"frame-ancestors 'self' | {Policy}", await PoliciesAsync(new Uri(both.Url, path)).ConfigureAwait(false), $"Desktop with surface policy /{path}");
+            Equal(Policy, await PoliciesAsync(new Uri(new Uri(web.Urls.Single() + "/"), path)).ConfigureAwait(false), $"ASP.NET Core /{path}");
+        }
+
+        Equal("frame-ancestors 'self'", await PoliciesAsync(new Uri(surface.Url, "app.js")).ConfigureAwait(false), "Desktop script");
+        Equal("", await PoliciesAsync(new Uri(new Uri(web.Urls.Single() + "/"), "app.js")).ConfigureAwait(false), "ASP.NET Core script");
+    }
+
     private static async Task<WebApplication> StartAspNetCoreAsync(
         IAssetSource source,
         string prefix,

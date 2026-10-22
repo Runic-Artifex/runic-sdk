@@ -98,4 +98,24 @@ public sealed record RunicDesktopHostOptions
     /// 64 MiB. <see langword="null"/>, the default, is 1 MiB. The host reads it when each Window opens.
     /// </summary>
     public int? MaximumInputBytes { get; init; }
+
+    /// <summary>
+    /// The <c>Content-Security-Policy</c> that every Window's surface sends with its HTML
+    /// (<see cref="DesktopSurfaceOptions.ContentSecurityPolicy"/>), or <see langword="null"/>, the default, for none.
+    /// </summary>
+    /// <remarks>
+    /// It applies to the default surface options and to <see cref="SurfaceOptions"/> that set no policy of their own.
+    /// The policy is a header of its own next to the surface's <c>frame-ancestors</c> policy; both are enforced. The
+    /// Bridge delivers its messages as host scripts, which the page evaluates with the <c>Function</c> constructor, so
+    /// the policy must allow <c>'self'</c> scripts and connections and <c>'unsafe-eval'</c>.
+    /// <code>
+    /// ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    /// </code>
+    /// </remarks>
+    /// <exception cref="ArgumentException">The value is empty or contains a character that a header cannot carry.</exception>
+    public string? ContentSecurityPolicy
+    {
+        get;
+        init => field = new DesktopSurfaceOptions { ContentSecurityPolicy = value }.ContentSecurityPolicy;
+    }
 }
