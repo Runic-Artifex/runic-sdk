@@ -65,10 +65,10 @@ The verifier follows the Runic command-line conventions:
 
 - `--help` works for the tool and for each command (`local --help`, `domain --help`).
 - `--version` prints the version.
-- `--output json` writes one `runic.commandline/1` envelope to stdout, with a
+- `--format json` writes one `runic.commandline/1` envelope to stdout, with a
   `runic.administration.verify/1` summary as its payload: run ID, report folder
   and the number of passed, failed, skipped and canceled checks. Progress then
-  goes to stderr.
+  goes to stderr. `--output json`, the former spelling, is still accepted.
 - `completion powershell` prints tab completions.
 
 Usage errors return a `RAV1xxx` code. A failed or canceled run returns `RAV2001`

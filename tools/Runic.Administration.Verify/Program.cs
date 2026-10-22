@@ -26,24 +26,16 @@ internal static class VerifierApplication
     private static readonly string[] DomainCapabilities = ["ldap", "gpo", "dns"];
     private static readonly string[] DeniedCapabilities = ["services", "tasks", "firewall", "shares"];
 
-    internal static async Task<int> RunAsync(string[] args)
-    {
-        // The first Ctrl+C requests cancellation and keeps the process alive, so the
-        // cleanup of created resources still runs. CommandApp's own handler would
-        // terminate on a second Ctrl+C and skip that cleanup.
-        using var cancellation = new CancellationTokenSource();
-        ConsoleCancelEventHandler handler = (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); };
-        Console.CancelKeyPress += handler;
-        try { return await CreateApplication().RunAsync(args, cancellation.Token); }
-        finally { Console.CancelKeyPress -= handler; }
-    }
+    // CommandApp turns the first Ctrl+C into cancellation; a run holds CommandExecutionContext.ProtectShutdown,
+    // so a repeated Ctrl+C cannot skip the cleanup of created resources.
+    internal static Task<int> RunAsync(string[] args) => CreateApplication().RunAsync(args);
 
-    private static CommandApp CreateApplication() => new(GeneratedCommandCatalog.Create())
+    // --format selects human or JSON output; --output, the former spelling, stays a hidden alias.
+    private static CommandApp CreateApplication() => new(GeneratedCommandCatalog.Create(builder => builder.OutputSelector("--format", "--output")))
     {
         Name = "Runic.AdminVerify",
         Version = typeof(WindowsAdministrationException).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
             ?? typeof(WindowsAdministrationException).Assembly.GetName().Version?.ToString() ?? "0.0.0",
-        HandleCancelKeyPress = false,
         HelpPresenter = new SpectreHelpPresenter(),
         Console = new SpectreCommandConsole(),
         ExitCodePolicy = VerifierExitCodePolicy.Instance,
@@ -123,6 +115,7 @@ internal static class VerifierApplication
     {
         if (!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
             return CommandOutcome.Failure<VerificationSummary>(CommandExitCategory.Unavailable, new CommandFault("RAV1006", "Windows x64 is required."));
+        using IDisposable protectShutdown = context.ProtectShutdown();
         // Progress goes through the invocation console, so JSON output keeps stdout for its envelope.
         void Write(string line) => context.Console.WriteOutAsync((line + Environment.NewLine).AsMemory(), CancellationToken.None).AsTask().GetAwaiter().GetResult();
         var report = new RunReport(options, Write);
@@ -228,5 +221,6 @@ internal sealed record VerificationSummary(
     [property: JsonPropertyName("Skipped")] int Skipped,
     [property: JsonPropertyName("Canceled")] int Canceled);
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(VerificationSummary))]
 internal sealed partial class VerifierJsonContext : JsonSerializerContext;

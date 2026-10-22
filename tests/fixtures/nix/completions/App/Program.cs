@@ -1,7 +1,8 @@
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
 
-return await new CommandApp(GeneratedCommandCatalog.Create())
+// --format selects the output, as in the Runic tools; --output stays a hidden alias that completions do not list.
+return await new CommandApp(GeneratedCommandCatalog.Create(builder => builder.OutputSelector("--format", "--output")))
 {
     Name = "hello",
     Version = "1.0.0",

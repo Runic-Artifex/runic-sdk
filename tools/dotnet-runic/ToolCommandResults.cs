@@ -38,6 +38,7 @@ internal sealed record DevCommandResult(
         dryRun);
 }
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(DevCommandResult))]
 internal sealed partial class DevCommandJsonContext : JsonSerializerContext;
 
@@ -71,5 +72,6 @@ internal sealed record SizeCommandVerification(
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("exitCode")] int? ExitCode);
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(SizeCommandResult))]
 internal sealed partial class SizeCommandJsonContext : JsonSerializerContext;

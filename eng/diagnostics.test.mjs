@@ -12,15 +12,13 @@ const experimental = readFileSync(join(root, 'docs/experimental.md'), 'utf8');
 const idPattern = /["']([A-Z]{3,}\d{3,})["']/g;
 // Verification harnesses that do not ship in a package.
 const unshipped = new Set(['tools/Runic.Administration.Verify']);
-// Sources that tool projects link; they report no diagnostic IDs of their own.
-const linked = new Set(['tools/Shared']);
 const skippedDirectories = new Set(['bin', 'obj', 'node_modules', 'dist', '.cache', 'content']);
 
 function* sources(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!skippedDirectories.has(entry.name) && !unshipped.has(relative(root, path)) && !linked.has(relative(root, path))) yield* sources(path);
+      if (!skippedDirectories.has(entry.name) && !unshipped.has(relative(root, path))) yield* sources(path);
     } else if (/\.(cs|targets|props)$/.test(entry.name)) yield path;
   }
 }

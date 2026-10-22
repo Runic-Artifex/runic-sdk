@@ -20,7 +20,10 @@ removes it.
 Accepting every default creates a Runic Desktop and ReactiveUI project.
 
 Pass an option to skip its question, or `--yes` to accept the defaults for
-every option you leave out. Arguments for the creator follow `--`:
+every option you leave out. The questions are written to standard error and
+asked only when standard input and standard error are a terminal; otherwise, and
+with `RUNIC_COMMANDLINE_NO_INPUT=1`, the defaults apply. Escape or Ctrl+C at a
+question cancels. Arguments for the creator follow `--`:
 
 ```sh
 dnx Runic.Create@<VERSION> -- MyApp --frontend svelte --package-manager bun --host cswebui --view-models toolkit

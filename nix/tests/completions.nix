@@ -21,6 +21,12 @@ runic.buildRunicApplication pkgs {
     grep -q _runic_hello $out/share/bash-completion/completions/hello.bash
     grep -qx '#compdef hello' <(head -n 1 $out/share/zsh/site-functions/_hello)
     grep -q "complete -c 'hello'" $out/share/fish/vendor_completions.d/hello.fish
+    # The output selector is --format; its hidden alias --output is not offered.
+    for script in $out/share/bash-completion/completions/hello.bash $out/share/zsh/site-functions/_hello \
+      $out/share/fish/vendor_completions.d/hello.fish; do
+      grep -q -- "'--format'" "$script"
+      ! grep -q -- '--output' "$script"
+    done
     runHook postInstallCheck
   '';
 }

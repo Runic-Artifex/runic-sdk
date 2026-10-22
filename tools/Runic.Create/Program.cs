@@ -30,17 +30,15 @@ internal static class Program
         return CreateApp(new SpectreCommandConsole(), Environment.GetEnvironmentVariable).RunAsync(arguments);
     }
 
+    // Command Line's default exit codes are those of every Runic tool: 0, 1, 2, 3 and 130.
     internal static CommandApp CreateApp(ICommandConsole console, Func<string, string?> getEnvironmentVariable) =>
-        new(GeneratedCommandCatalog.Create())
+        new(GeneratedCommandCatalog.Create(builder => builder.OutputSelector(FormatOptionName)))
         {
             Name = "runic-create",
             Version = Version,
             HelpPresenter = new SpectreHelpPresenter(),
             Console = console,
-            ExitCodePolicy = CreateExitCodePolicy.Instance,
-            ParseSettings = new ParseSettings(
-                getEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName),
-                transportOutputOptionName: FormatOptionName)
+            ParseSettings = new ParseSettings(getEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName))
             {
                 GetEnvironmentVariable = getEnvironmentVariable,
             },
@@ -145,19 +143,6 @@ internal sealed record CreateResult(
     public override string ToString() => HumanOutput;
 }
 
-internal sealed class CreateExitCodePolicy : IExitCodePolicy
-{
-    internal static CreateExitCodePolicy Instance { get; } = new();
-
-    public int GetExitCode(CommandExitCategory category) => category switch
-    {
-        CommandExitCategory.Success => Program.Success,
-        CommandExitCategory.Usage or CommandExitCategory.Validation => Program.UsageFailure,
-        CommandExitCategory.CommandFailure or CommandExitCategory.Unavailable => Program.CreateFailure,
-        CommandExitCategory.Cancelled => Program.Cancelled,
-        _ => Program.InternalFailure,
-    };
-}
-
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(CreateResult))]
 internal sealed partial class CreateJsonContext : JsonSerializerContext;

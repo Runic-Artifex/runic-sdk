@@ -33,11 +33,13 @@ internal sealed class SupportForwarding
     internal IReadOnlyList<string> Arguments { get; }
 
     /// <summary>
-    /// Recognizes <c>support</c> as the command, after any leading <c>--format</c>, and maps its arguments.
+    /// Recognizes <c>support</c> as the command, after any leading <c>--format</c>, and maps its arguments. The
+    /// selector's hidden alias <c>--output</c> is passed on as <c>--format</c>, except after <c>--</c>.
     /// </summary>
     internal static bool TryParse(IReadOnlyList<string> arguments, out SupportForwarding? forwarding)
     {
         forwarding = null;
+        arguments = WithFormatSelector(arguments);
         var leading = new List<string>();
         int index = 0;
         while (index < arguments.Count)
@@ -68,6 +70,19 @@ internal sealed class SupportForwarding
         }
         forwarding = new SupportForwarding([Command, mode.ToLowerInvariant(), .. leading, .. rest]);
         return true;
+    }
+
+    private static string[] WithFormatSelector(IReadOnlyList<string> arguments)
+    {
+        string[] result = [.. arguments];
+        for (int index = 0; index < result.Length && result[index] != "--"; index++)
+        {
+            string argument = result[index];
+            if (argument == Program.FormerFormatOptionName) result[index] = Program.FormatOptionName;
+            else if (argument.StartsWith(Program.FormerFormatOptionName + "=", StringComparison.Ordinal))
+                result[index] = Program.FormatOptionName + argument[Program.FormerFormatOptionName.Length..];
+        }
+        return result;
     }
 
     /// <summary>

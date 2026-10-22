@@ -24,9 +24,9 @@ internal static partial class Program
 
     /// <summary>
     /// Selects human or JSON output, as in every Runic tool. <c>--output</c> is its former spelling, a hidden alias
-    /// until 2.0 (<see cref="Runic.Tools.Shared.OutputSelectorAlias"/>).
+    /// until 2.0 that help and completion do not list.
     /// </summary>
-    internal const string FormatOptionName = Runic.Tools.Shared.OutputSelectorAlias.Selector;
+    internal const string FormatOptionName = "--format";
     internal const string FormerFormatOptionName = "--output";
 
     private const string ProjectDescription =
@@ -40,33 +40,28 @@ internal static partial class Program
     internal static async Task<int> RunAsync(string[] arguments, ICommandConsole? console = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        arguments = Runic.Tools.Shared.OutputSelectorAlias.Rewrite(arguments, FormerFormatOptionName);
         if (SupportForwarding.TryParse(arguments, out SupportForwarding? forwarding) &&
             SupportForwarding.ResolveTool(Environment.CurrentDirectory, SystemDoctorRuntime.Instance.FindExecutable, DevApplication.ResolveDotNetHost()) is { } translations)
         {
             return await forwarding!.RunAsync(translations, console ?? new SpectreCommandConsole()).ConfigureAwait(false);
         }
-        using ToolSignalCancellation signals = ToolSignalCancellation.Register();
-        return await new CommandApp(GeneratedCommandCatalog.Create())
+        // Command Line handles Ctrl+C, SIGTERM and SIGQUIT and reports 0, 1, 2, 3 and 130 as every Runic tool does;
+        // dev protects its cleanup from a repeated signal with CommandExecutionContext.ProtectShutdown.
+        return await new CommandApp(CreateCatalog())
         {
-            ParseSettings = new ParseSettings(
-                Environment.GetEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName),
-                transportOutputOptionName: FormatOptionName)
-            {
-                GetEnvironmentVariable = Environment.GetEnvironmentVariable,
-            },
-            // ToolSignalCancellation keeps Command Line's behavior but lets dev finish its cleanup.
-            HandleCancelKeyPress = false,
             Name = "dotnet runic",
             CompletionExecutableName = "dotnet-runic",
             Version = Version,
             HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
             Console = console ?? new SpectreCommandConsole(),
-            ExitCodePolicy = ToolExitCodePolicy.Instance,
             // Command Line reports an unexpected exception only as RCLI5000; name its cause.
             ExceptionObserver = ReportUnexpectedFailure,
-        }.RunAsync(arguments, signals.Token).ConfigureAwait(false);
+        }.RunAsync(arguments).ConfigureAwait(false);
     }
+
+    /// <summary>The tool's commands, with <c>--format</c> selecting the output and <c>--output</c> as its hidden alias.</summary>
+    internal static CommandCatalog CreateCatalog() =>
+        GeneratedCommandCatalog.Create(builder => builder.OutputSelector(FormatOptionName, FormerFormatOptionName));
 
     internal static void ReportUnexpectedFailure(Exception exception) =>
         Console.Error.WriteLine($"dotnet runic failed unexpectedly: {exception}");
@@ -96,7 +91,7 @@ internal static partial class Program
             applicationArguments);
         DevCommandResult? result = null;
         return ExecuteAsync(context, "dev",
-            async () => await DevApplication.RunAsync(options, cancellationToken,
+            async () => await DevApplication.RunAsync(context, options, cancellationToken,
                 evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false),
             () => result, stream: !dryRun);
     }
@@ -195,8 +190,8 @@ internal static partial class Program
             string? human = WithHelpLink(BoundedHumanOutput(output), "RAPPCLI1000");
             return payload is null
                 ? CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, fault, diagnostics: [], human)
-                : CommandOutcome.FailureWithData<T>(CommandExitCategory.CommandFailure, fault,
-                    CommandFailureData.Create(T.PayloadType, payload, T.JsonTypeInfo), diagnostics: [], human);
+                : CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, fault, diagnostics: [], human,
+                    failureData: CommandFailureData.Create(T.PayloadType, payload, T.JsonTypeInfo));
         });
 
     /// <summary>The fault code of a cancelled command, the one Runic.CommandLine reports.</summary>
@@ -314,23 +309,6 @@ internal interface IToolCommandResult<TSelf> where TSelf : class, IToolCommandRe
     static abstract string PayloadType { get; }
     static abstract JsonTypeInfo<TSelf> JsonTypeInfo { get; }
     TSelf WithHumanOutput(string humanOutput);
-}
-
-/// <summary>
-/// The exit codes every Runic tool shares: 0 success, 1 the command failed or what it needs is unavailable,
-/// 2 usage or validation, 3 internal or host failure, 130 cancelled.
-/// </summary>
-internal sealed class ToolExitCodePolicy : IExitCodePolicy
-{
-    internal static ToolExitCodePolicy Instance { get; } = new();
-    public int GetExitCode(CommandExitCategory category) => category switch
-    {
-        CommandExitCategory.Success => Program.Success,
-        CommandExitCategory.Usage or CommandExitCategory.Validation => Program.UsageFailure,
-        CommandExitCategory.CommandFailure or CommandExitCategory.Unavailable => Program.DevelopmentFailure,
-        CommandExitCategory.Cancelled => Program.Cancelled,
-        _ => Program.InternalFailure,
-    };
 }
 
 internal sealed class InvocationTextWriter(ICommandConsole console, bool standardError) : TextWriter
