@@ -29,12 +29,18 @@ sudo mkdir -p "$archives"
 apt=(sudo DEBIAN_FRONTEND=noninteractive apt-get -o "Dir::Cache::Archives=$archives/")
 cleanup="sudo pkill -KILL -x apt-get; sudo pkill -KILL -x dpkg; sleep 2; sudo DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
 
+# The x64 runners' sources name a mirror list; the arm64 runners have the file too,
+# but their sources name ports.ubuntu.com directly.
+uses_mirror_list() {
+  grep -rqsF "mirror+file:$mirror_list" /etc/apt/sources.list /etc/apt/sources.list.d
+}
+
 # The Ubuntu mirrors apt uses: the runner's mirror list, or the hosts in its sources.
 mirrors() {
-  if [ -f "$mirror_list" ]; then
+  if uses_mirror_list; then
     awk '{print $1}' "$mirror_list"
   else
-    grep -rhoE 'https?://[^/[:space:]]*ubuntu\.com' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null
+    grep -rhsE '^(deb|URIs:)' /etc/apt/sources.list /etc/apt/sources.list.d | grep -oE 'https?://[^/[:space:]]*ubuntu\.com' || true
   fi | sed -E 's#^https?://##; s#/.*##' | awk '!seen[$0]++' | paste -sd, -
 }
 
@@ -44,6 +50,7 @@ use_official_mirrors() {
   local file changed=1
   for file in "$mirror_list" /etc/apt/sources.list /etc/apt/sources.list.d/*; do
     if [ ! -f "$file" ] || ! grep -q 'azure\.archive\.ubuntu\.com' "$file"; then continue; fi
+    if [ "$file" = "$mirror_list" ] && ! uses_mirror_list; then continue; fi
     if [ "$file" = "$mirror_list" ] && grep -v 'azure\.archive\.ubuntu\.com' "$file" | grep -q '^[[:space:]]*[a-z]'; then
       # The list already names the official mirrors after Azure's.
       grep -v 'azure\.archive\.ubuntu\.com' "$file" | sudo tee "$file.runic" >/dev/null
