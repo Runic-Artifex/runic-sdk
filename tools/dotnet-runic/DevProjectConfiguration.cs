@@ -254,7 +254,8 @@ internal sealed record DevProjectConfiguration(
     /// <summary>
     /// Infers the development server from the frontend directory when the
     /// project does not set it: angular.json selects the Angular CLI, and a
-    /// Vite configuration selects Vite with the conventional src/main entry.
+    /// Vite configuration selects Vite with the conventional src/main entry,
+    /// or SvelteKit's root route.
     /// Explicit project properties always win.
     /// </summary>
     internal static (string Kind, bool ViteEnabled, string ViteEntry, string ViteConfiguration) InferDevelopmentServer(
@@ -286,8 +287,10 @@ internal sealed record DevProjectConfiguration(
     private static readonly string[] ViteConfigurationFiles =
         ["vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs"];
 
+    // A SvelteKit frontend has no main module; Vite serves its root route's page or layout as the entry.
     private static readonly string[] ViteEntryFiles =
-        ["src/main.ts", "src/main.tsx", "src/main.js", "src/main.jsx"];
+        ["src/main.ts", "src/main.tsx", "src/main.js", "src/main.jsx",
+         "src/routes/+page.svelte", "src/routes/+layout.svelte", "src/routes/+layout.ts", "src/routes/+layout.js"];
 
     private static string? FindFirst(string directory, string[] candidates)
     {

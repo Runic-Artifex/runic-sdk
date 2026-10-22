@@ -7,11 +7,12 @@
     "React",
     "Vue",
     "Svelte",
+    "SvelteKit",
     "Angular"
   ],
   "identity": "Runic.Application.Templates.App",
   "name": "Runic application",
-  "description": "A desktop application in a native window, with C# ViewModels and a React, Vue, Svelte, or Angular frontend.",
+  "description": "A desktop application in a native window, with C# ViewModels and a React, Vue, Svelte, SvelteKit, or Angular frontend.",
   "shortName": "runic-app",
   "sourceName": "RunicWindowApp",
   "preferNameDirectory": true,
@@ -67,6 +68,16 @@
       ]
     },
     {
+      "source": "./frontends/sveltekit/",
+      "target": "./Frontend/",
+      "condition": "(frontend == 'sveltekit')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
+    },
+    {
       "source": "./frontends/angular/",
       "target": "./Frontend/",
       "condition": "(frontend == 'angular')",
@@ -88,6 +99,7 @@
         { "choice": "react", "displayName": "React", "description": "React 19 with Vite" },
         { "choice": "vue", "displayName": "Vue", "description": "Vue 3 with Vite" },
         { "choice": "svelte", "displayName": "Svelte", "description": "Svelte 5 with Vite" },
+        { "choice": "sveltekit", "displayName": "SvelteKit", "description": "SvelteKit 3 with Vite, prerendered by the Runic SvelteKit adapter" },
         { "choice": "angular", "displayName": "Angular", "description": "Angular with the Angular CLI" }
       ]
     },
@@ -180,6 +192,13 @@
       "defaultValue": "false",
       "displayName": "Packaging recipes",
       "description": "Adds packaging/package.mjs and its manifests, which package the application as MSIX on Windows, a signed .app in a disk image on macOS and a Flatpak on Linux."
+    },
+    "restore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Restore packages",
+      "description": "Restores the project's NuGet packages after creating it, for an IDE that opens it next. dotnet runic dev and dotnet build restore them, and the frontend packages, anyway."
     },
     "applicationId": {
       "type": "parameter",
@@ -280,6 +299,7 @@
         "cases": [
           { "condition": "(frontend == 'vue')", "value": "Vue" },
           { "condition": "(frontend == 'svelte')", "value": "Svelte" },
+          { "condition": "(frontend == 'sveltekit')", "value": "SvelteKit" },
           { "condition": "(frontend == 'angular')", "value": "Angular" },
           { "value": "React" }
         ]
@@ -378,6 +398,19 @@
   "primaryOutputs": [
     {
       "path": "RunicWindowApp.csproj"
+    },
+    {
+      "condition": "(tests)",
+      "path": "RunicWindowApp.Tests/RunicWindowApp.Tests.csproj"
+    }
+  ],
+  "postActions": [
+    {
+      "condition": "(restore)",
+      "description": "Restores the NuGet packages of the created projects.",
+      "manualInstructions": [ { "text": "Run 'dotnet restore'" } ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
     }
   ]
 }

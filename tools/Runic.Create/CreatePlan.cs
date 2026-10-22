@@ -7,6 +7,9 @@ namespace Runic.Create;
 
 internal sealed record OptionSelection(TemplateOption Option, TemplateChoice Choice);
 
+/// <summary>A value given for one of the template's text parameters.</summary>
+internal sealed record TextSelection(TemplateText Text, string Value);
+
 /// <summary>The commands that create one project, and the commands that reproduce it.</summary>
 internal sealed record CreatePlan(
     string Name,
@@ -23,6 +26,15 @@ internal sealed record CreatePlan(
 
     public bool IsEnabled(string longName) => Toggles.Any(toggle => toggle.LongName == longName);
 
+    /// <summary>The text parameters given a value, such as <c>--application-id</c>.</summary>
+    public IReadOnlyList<TextSelection> Texts { get; init; } = [];
+
+    /// <summary>Passes <c>--force</c> to <c>dotnet new</c>, which creates the project in a directory that is not empty.</summary>
+    public bool Force { get; init; }
+
+    /// <summary>Skips <c>dotnet new install</c> and uses the installed template package.</summary>
+    public bool NoInstall { get; init; }
+
     public IReadOnlyList<string> InstallArguments =>
     [
         "new", "install", $"{TemplateOptionModel.TemplatePackage}@{Version}",
@@ -33,8 +45,8 @@ internal sealed record CreatePlan(
     [
         "new", TemplateOptionModel.TemplateShortName, "--name", Name,
         .. OutputDirectory is null ? Array.Empty<string>() : ["--output", OutputDirectory],
-        .. Selections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
-        .. Toggles.Select(toggle => toggle.Flag),
+        .. TemplateArguments,
+        .. Force ? ["--force"] : Array.Empty<string>(),
     ];
 
     /// <summary>The noninteractive creator invocation that selects the same options.</summary>
@@ -42,16 +54,30 @@ internal sealed record CreatePlan(
     [
         "dnx", $"Runic.Create@{Version}", "--", Name,
         .. OutputDirectory is null ? Array.Empty<string>() : ["--output", OutputDirectory],
+        .. TemplateArguments,
+        .. Force ? ["--force"] : Array.Empty<string>(),
+        .. NoInstall ? ["--no-install"] : Array.Empty<string>(),
+    ]);
+
+    // The template's options, which the creator and dotnet new spell the same way.
+    private IEnumerable<string> TemplateArguments =>
+    [
         .. Selections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
         .. Toggles.Select(toggle => toggle.Flag),
-    ]);
+        .. Texts.SelectMany(text => new[] { text.Text.Flag, text.Value }),
+    ];
+
+    /// <summary>The commands the creator runs: the template install, unless <see cref="NoInstall"/>, then dotnet new.</summary>
+    public IReadOnlyList<string> Commands => NoInstall ? [CreateCommand] : [InstallCommand, CreateCommand];
 
     public string InstallCommand => Format(["dotnet", .. InstallArguments]);
 
     public string CreateCommand => Format(["dotnet", .. CreateArguments]);
 
     public string Summary => string.Join(" · ",
-        Selections.Select(selection => selection.Choice.DisplayName).Concat(Toggles.Select(toggle => toggle.DisplayName)));
+        Selections.Select(selection => selection.Choice.DisplayName)
+            .Concat(Toggles.Select(toggle => toggle.DisplayName))
+            .Concat(Texts.Select(text => $"{text.Text.DisplayName} {text.Value}")));
 
     public IReadOnlyList<string> NextSteps =>
     [

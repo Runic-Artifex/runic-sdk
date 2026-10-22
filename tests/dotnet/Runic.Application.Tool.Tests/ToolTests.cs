@@ -446,6 +446,17 @@ internal sealed class ToolTests
         Contains(page, "http://127.0.0.1:5173/pages/settings.css");
         Contains(page, "http://127.0.0.1:5173/src/settings.ts");
         Equal(null, FrontendDevelopmentDocument.HostScriptName("vendor/webui.js"));
+
+        // SvelteKit's development page starts its client with import() of paths relative to the page, which
+        // would resolve against the native host.
+        string kit = "<html><head><link href=\"./_app/env.js\" rel=\"modulepreload\"></head><body><script>import(\"./_app/env.js\").then(() => import(\"./@fs/app/node_modules/@sveltejs/kit/src/runtime/client/entry.js\")); import('/src/start.js');</script></body></html>";
+        FrontendDevelopmentDocument.Write(configuration,
+            new Uri("http://127.0.0.1:5173/"), "index.html", kit);
+        string routed = File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "index.html"));
+        Contains(routed, "href=\"http://127.0.0.1:5173/_app/env.js\"");
+        Contains(routed, "import(\"http://127.0.0.1:5173/_app/env.js\")");
+        Contains(routed, "import(\"http://127.0.0.1:5173/@fs/app/node_modules/@sveltejs/kit/src/runtime/client/entry.js\")");
+        Contains(routed, "import('http://127.0.0.1:5173/src/start.js')");
     }
 
     [Test, DisplayName("development documents follow every Vite HTML build input")]
@@ -479,10 +490,21 @@ internal sealed class ToolTests
         False(configuration.HasExplicitDevelopmentServerDocuments, "An empty property selects the Vite inputs.");
         SequenceEqual(["index.html"], configuration.DevelopmentServerDocuments);
 
-        (string parsedRoot, IReadOnlyList<string> inputs) = ViteBuildInputs.Parse(
+        (string parsedRoot, IReadOnlyList<string> inputs, bool routed) = ViteBuildInputs.Parse(
             "plugin noise\nRUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[\"/app/index.html\"]}\n");
         Equal("/app", parsedRoot);
         SequenceEqual(["/app/index.html"], inputs);
+        False(routed, "A configuration without SvelteKit builds its pages from HTML inputs.");
+        True(ViteBuildInputs.Parse("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[\"/app/index.html\"],\"routed\":true}").Routed,
+            "SvelteKit's plugin marks a routed configuration.");
+        Contains(ViteBuildInputs.CreateProbe(""), "vite-plugin-sveltekit-setup");
+
+        // SvelteKit serves index.html from its routes, so a routed configuration needs no index.html file; an
+        // explicit document list is still checked.
+        string kitRoot = Path.Combine(workspace.Root, "Kit");
+        Directory.CreateDirectory(kitRoot);
+        SequenceEqual(["index.html"], ViteBuildInputs.SelectDocuments(kitRoot, [Path.Combine(kitRoot, "index.html")], null, routed: true));
+        Throws<DevUsageException>(() => ViteBuildInputs.SelectDocuments(kitRoot, [], ["settings.html"], routed: true));
         try
         {
             ViteBuildInputs.Parse("no marker");
@@ -1481,6 +1503,14 @@ internal sealed class ToolTests
         Equal("/src/app.ts", explicitEntry.ViteEntry);
         string plain = Path.GetDirectoryName(workspace.Write("Plain/package.json", "{}"))!;
         Equal(string.Empty, DevProjectConfiguration.InferDevelopmentServer(plain, "", false, "", "").Kind);
+
+        // A SvelteKit frontend has no src/main module; its root route's page is the entry the probe loads.
+        string kit = Path.GetDirectoryName(workspace.Write("Kit/vite.config.ts", "export default {};"))!;
+        workspace.Write("Kit/src/routes/+layout.ts", "export const ssr = false;");
+        workspace.Write("Kit/src/routes/+page.svelte", "<h1>Kit</h1>");
+        var sveltekit = DevProjectConfiguration.InferDevelopmentServer(kit, "", false, "", "");
+        Equal("vite", sveltekit.Kind);
+        Equal("/src/routes/+page.svelte", sveltekit.ViteEntry);
     }
 
     [Test, DisplayName("a development server owns the frontend build")]

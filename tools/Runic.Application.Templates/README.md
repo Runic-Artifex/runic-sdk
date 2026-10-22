@@ -1,7 +1,7 @@
 # Runic.Application.Templates
 
 Start a Runic desktop application with C# application logic and a React, Vue,
-Svelte, or Angular frontend. By default the app opens in a native Runic Desktop
+Svelte, SvelteKit, or Angular frontend. By default the app opens in a native Runic Desktop
 window and its ViewModels use ReactiveUI.
 
 ```bash
@@ -17,7 +17,7 @@ dotnet runic dev
 
 | Option | Choices | Default |
 | --- | --- | --- |
-| `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
+| `--frontend` | `react`, `vue`, `svelte`, `sveltekit`, `angular` | `react` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `desktop` (Runic Desktop), `cswebui` (CS-WebUI) | `desktop` |
 | `--linux-gtk` | `3` (GTK 3 and WebKitGTK 4.1), `4` (GTK 4 and WebKitGTK 6): the GTK version of Runic Desktop on Linux | `3` |
@@ -25,7 +25,14 @@ dotnet runic dev
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
 | `--packaging` | Adds `packaging/package.mjs`, which packages the application as MSIX, a signed `.app` in a disk image, or a Flatpak | No packaging recipes |
+| `--restore` | Restores the created projects' NuGet packages, for an IDE that opens the project next | No restore; `dotnet runic dev` and `dotnet build` restore |
 | `--application-id` | The reverse-DNS application ID, such as `org.example.Notes` | `com.example.` and the project name's ASCII letters and digits |
+
+`--frontend sveltekit` starts a SvelteKit 3 frontend that `runicAdapter()` from
+`@runic-artifex/sveltekit` prerenders into `Frontend/dist`, with
+`@runic-artifex/svelte` for the Views. It works with either host and either
+ViewModel library, and `dotnet runic dev` serves it from SvelteKit's
+development server.
 
 `dotnet runic dev` restores NuGet packages, installs the frontend packages,
 builds the application, starts the frontend development server, and opens the
@@ -38,9 +45,36 @@ the Window's ViewModels and generated Bridges in memory with
 builds the app without its frontend, and a `global.json` selects
 Microsoft.Testing.Platform for `dotnet test`.
 
-You need the .NET 10 SDK and either Node.js 24 with npm or pnpm, or Bun 1.4.
-Each generated project contains only the selected package manager's lock file
-and a local `dotnet-runic` tool manifest.
+You need the .NET 10 SDK and either Node.js 24 or 26 with npm or pnpm, or
+Bun 1.4. Each generated project contains only the selected package manager's
+lock file and a local `dotnet-runic` tool manifest. The project sets
+`RestorePackagesWithLockFile`, so its first restore writes `packages.lock.json`,
+which pins every NuGet package to its version and content hash; commit it with
+the frontend's lock file.
+
+## Add a View to an existing project
+
+The `runic-view` item template adds a View, or a Window, and its C# ViewModel to
+a project that already references a Runic host (`Runic.Application.Views.Desktop`
+or `Runic.Application.Views.CsWebUi`) or `Runic.Application.Views`, such as a
+`runic-app` project or an application you are moving to Runic:
+
+```bash
+dotnet new runic-view -n Settings                          # SettingsView.cs, SettingsViewModel.cs
+dotnet new runic-view -n Settings --view-models toolkit    # CommunityToolkit.Mvvm
+dotnet new runic-view -n Preferences --window              # PreferencesWindow.cs, PreferencesViewModel.cs
+```
+
+| Option | Choices | Default |
+| --- | --- | --- |
+| `--view-models` | `reactiveui` (ReactiveUI 26 Primitives, with `Runic.Application.Views.ReactiveUI`), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
+| `--window` | Declares a Window, which a host opens with `OpenWindowAsync`, instead of a View | A View |
+| `--namespace` | The namespace of the new types | The project's `RootNamespace` once it has been restored, otherwise `App` |
+
+Pass the name without the `View` or `Window` suffix. Register the new ViewModel
+with your services, for example `services.AddScoped<SettingsViewModel>()`;
+`AddRunicViews()` registers the View. The next build writes its typed client to
+the frontend's `src/generated` folder.
 
 What each host opens:
 
@@ -84,7 +118,9 @@ SDK's template acceptance check (`bun run verify:templates`) runs the commands
 above for every frontend and package manager with the default Runic Desktop and
 ReactiveUI, plus pairwise CS-WebUI and CommunityToolkit.Mvvm variants, and
 checks that `Runic.Create` produces the same project. The pairwise variants and
-the npm projects add `--tests` and run the generated tests.
+the npm projects add `--tests` and run the generated tests; every project also
+gets a View and a Window from `runic-view`. CI builds the SvelteKit projects on
+Node 26.
 Setting `RUNIC_APPLICATION_SERVE_ONLY=1` starts an app's local server, on either host,
 without opening a browser and prints `RUNIC_APPLICATION_URL=<url>`. Setting
 `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` makes a Runic Desktop app print

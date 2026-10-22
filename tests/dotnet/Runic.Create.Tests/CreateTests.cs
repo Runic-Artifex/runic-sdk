@@ -31,7 +31,7 @@ internal sealed class CreateTests
         Equal("frontend,package-manager,host,linux-gtk,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
         // Runic Desktop and ReactiveUI are the defaults and are listed first (D018.1, D018.9); GTK 3 is the Linux default.
         Equal("react,npm,desktop,3,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
-        Equal("react,vue,svelte,angular", string.Join(',', model.Options[0].Choices.Select(choice => choice.Value)));
+        Equal("react,vue,svelte,sveltekit,angular", string.Join(',', model.Options[0].Choices.Select(choice => choice.Value)));
         Equal("npm,pnpm,bun", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
         // W319-003 D19 tmpl-03: the host and the Linux GTK version are separate choices; desktop-gtk4 is gone.
         Equal("desktop,cswebui", string.Join(',', model.Options[2].Choices.Select(choice => choice.Value)));
@@ -43,10 +43,14 @@ internal sealed class CreateTests
         Equal("GTK 4", model.Options[3].Find("4")!.DisplayName);
         Equal("CommunityToolkit.Mvvm", model.Options[4].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
-        Equal("tests,nix,packaging", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
+        Equal("tests,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
         Equal("Nix flake", model.Toggles[1].DisplayName);
         Equal("Packaging recipes", model.Toggles[2].DisplayName);
+        Equal("Restore packages", model.Toggles[3].DisplayName);
+        // Text parameters are options generated from the model; --application-id is the template's only one.
+        Equal("application-id", string.Join(',', model.Texts.Select(text => text.LongName)));
+        Equal("Application ID", model.Texts[0].DisplayName);
         True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
         Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
@@ -56,6 +60,81 @@ internal sealed class CreateTests
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         Equal(string.Join(',', model.Options.Select(option => option.LongName)), string.Join(',', Runic.Create.Program.OptionFlags));
+    }
+
+    // W319-003 create-05: the template's text parameters are creator options generated from its model.
+    [Test, DisplayName("text parameters are options generated from the template model")]
+    public void TextParametersComeFromTheModel()
+    {
+        TemplateOptionModel parsed = TemplateOptionModel.Parse(
+            """{ "symbols": { "applicationId": { "type": "parameter", "datatype": "text", "displayName": "Application ID", "description": "The ID." }, "publisher": { "type": "parameter", "datatype": "string" }, "hiddenText": { "type": "parameter", "datatype": "text" } } }""",
+            """{ "symbolInfo": { "applicationId": { "longName": "application-id" }, "hiddenText": { "isHidden": true } } }""");
+        Equal("application-id,publisher", string.Join(',', parsed.Texts.Select(text => text.LongName)));
+        Equal("--application-id", parsed.Texts[0].Flag);
+
+        // A text option never shadows one of the creator's own options.
+        TemplateOptionModel model = TemplateOptionModel.Load();
+        string[] fixedFlags = [.. Runic.Create.Program.OptionFlags, .. Runic.Create.Program.ToggleFlags,
+            "output", "yes", "dry-run", "template-source", "force", "no-install", "format"];
+        True(model.Texts.All(text => !fixedFlags.Contains(text.LongName)), "a text option shadows a creator option");
+
+        (int exitCode, string output, string error) = Run("MyApp", "--application-id", "org.example.Notes", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Equal("org.example.Notes", payload.GetProperty("textOptions").GetProperty("application-id").GetString());
+            True(payload.GetProperty("commands")[1].GetString()!.EndsWith(" --application-id org.example.Notes", StringComparison.Ordinal), output);
+            True(payload.GetProperty("reproduceCommand").GetString()!.EndsWith(" --application-id org.example.Notes", StringComparison.Ordinal), output);
+        }
+        // Without a value the template computes its default, so the commands leave the option out.
+        (exitCode, output, _) = Run("MyApp", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(!output.Contains("--application-id", StringComparison.Ordinal), output);
+        (_, string help, _) = Run("--help");
+        True(help.Contains("--application-id", StringComparison.Ordinal), help);
+    }
+
+    [Test, DisplayName("--force creates the project in a directory that is not empty")]
+    public void ForceAllowsANonEmptyDirectory()
+    {
+        string destination = Path.Combine(Path.GetTempPath(), "runic-create-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(destination);
+        File.WriteAllText(Path.Combine(destination, "notes.txt"), "kept");
+        try
+        {
+            (int exitCode, string output, _) = Run("MyApp", "-o", destination, "--yes", "--dry-run", "--format", "json");
+            Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            True(output.Contains("RCREATE003", StringComparison.Ordinal), output);
+
+            (exitCode, output, string error) = Run("MyApp", "-o", destination, "--force", "--yes", "--dry-run", "--format", "json");
+            Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+            using JsonDocument document = JsonDocument.Parse(output);
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            True(payload.GetProperty("commands")[1].GetString()!.EndsWith(" --force", StringComparison.Ordinal), output);
+            True(payload.GetProperty("reproduceCommand").GetString()!.EndsWith(" --force", StringComparison.Ordinal), output);
+            Equal("kept", File.ReadAllText(Path.Combine(destination, "notes.txt")));
+        }
+        finally
+        {
+            Directory.Delete(destination, recursive: true);
+        }
+    }
+
+    [Test, DisplayName("--no-install uses the installed template")]
+    public void NoInstallSkipsTheTemplateInstall()
+    {
+        (int exitCode, string output, string error) = Run("MyApp", "--no-install", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Equal(1, payload.GetProperty("commands").GetArrayLength());
+            True(payload.GetProperty("commands")[0].GetString()!.StartsWith("dotnet new runic-app ", StringComparison.Ordinal), output);
+            True(payload.GetProperty("reproduceCommand").GetString()!.EndsWith(" --no-install", StringComparison.Ordinal), output);
+        }
+        (_, string human, _) = Run("MyApp", "--no-install", "--yes", "--dry-run");
+        True(!human.Contains("dotnet new install", StringComparison.Ordinal), human);
     }
 
     [Test, DisplayName("explicit choices match case-insensitively and reject unknown values")]
@@ -233,12 +312,12 @@ internal sealed class CreateTests
         Equal("runic.create/2", root.GetProperty("payloadType").GetString());
         JsonElement payload = root.GetProperty("payload");
         Equal(
-            "name,directory,fullPath,version,options,toggles,commands,reproduceCommand,created",
+            "name,directory,fullPath,version,options,toggles,textOptions,commands,reproduceCommand,created",
             string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
         // Options and toggles are keyed by the template's option names, not by a naming policy.
         Equal(string.Join(",", Runic.Create.Program.OptionFlags),
             string.Join(",", payload.GetProperty("options").EnumerateObject().Select(property => property.Name)));
-        Equal("tests=False,nix=False,packaging=False",
+        Equal("tests=False,nix=False,packaging=False,restore=False",
             string.Join(",", payload.GetProperty("toggles").EnumerateObject().Select(property => $"{property.Name}={property.Value.GetBoolean()}")));
         Equal(Path.GetFullPath("MyApp"), payload.GetProperty("fullPath").GetString());
         True(!payload.GetProperty("created").GetBoolean(), "a dry run creates nothing");
@@ -254,7 +333,8 @@ internal sealed class CreateTests
         Equal(
             "{\"name\":\"MyApp\",\"directory\":\"apps/MyApp\",\"fullPath\":\"/work/apps/MyApp\",\"version\":\"1.0.0\"," +
             "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"linux-gtk\":\"3\",\"view-models\":\"reactiveui\"}," +
-            "\"toggles\":{\"tests\":true,\"nix\":false,\"packaging\":false}," +
+            "\"toggles\":{\"tests\":true,\"nix\":false,\"packaging\":false,\"restore\":false}," +
+            "\"textOptions\":{}," +
             "\"commands\":[\"dotnet new install Runic.Application.Templates@1.0.0\"," +
             "\"dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests\"]," +
             "\"reproduceCommand\":\"dnx Runic.Create@1.0.0 -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests\"," +
@@ -267,7 +347,7 @@ internal sealed class CreateTests
     [Test, DisplayName("an interactive console asks each question on standard error")]
     public void InteractiveConsoleAsks()
     {
-        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "y", "", ""]) };
+        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "y", "", "", ""]) };
         int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
         True(exitCode == 0, console.Error.ToString());
         True(console.Answers.Count == 0, "Every question was asked.");
@@ -359,6 +439,9 @@ internal sealed class CreateTests
         try { action(); return false; }
         catch (System.IO.InvalidDataException) { return true; }
     }
+
+    private static void Equal(int expected, int actual) =>
+        Equal(expected.ToString(System.Globalization.CultureInfo.InvariantCulture), actual.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     private static void Equal(string? expected, string? actual)
     {

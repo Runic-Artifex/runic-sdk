@@ -813,7 +813,9 @@ than letters, digits, `.`, `_` and `-`.
 
 The destination directory exists and is not empty.
 
-**Fix:** choose another name or `--output`.
+**Fix:** choose another name or `--output`, or pass `--force` (since 0.11) to
+create the project there anyway, as `dotnet new --force` does; files the
+template writes replace existing files of the same name.
 
 ### RCREATE004
 
@@ -825,9 +827,13 @@ failed. Its output is printed before the fault.
 
 ### RCREATE005
 
-`dotnet new runic-app` failed. Its output is printed before the fault.
+`dotnet new runic-app` failed. Its output is printed before the fault. With
+`--no-install`, the creator uses the installed template, and `dotnet new` fails
+when none is installed.
 
 **Fix:** correct the problem the template reports, then run the creator again.
+With `--no-install`, install the template with the printed
+`dotnet new install` command, or run the creator without `--no-install`.
 
 ## Privileged actions
 

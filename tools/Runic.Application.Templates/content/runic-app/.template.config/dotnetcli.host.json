@@ -9,14 +9,17 @@
     "tests": { "longName": "tests", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
     "packaging": { "longName": "packaging", "shortName": "" },
+    "restore": { "longName": "restore", "shortName": "" },
     "applicationId": { "longName": "application-id", "shortName": "" }
   },
   "usageExamples": [
     "--frontend svelte --package-manager bun",
     "--frontend vue --host cswebui --view-models toolkit",
+    "--frontend sveltekit --view-models toolkit",
     "--tests",
     "--nix",
     "--application-id org.example.Notes",
-    "--host desktop --linux-gtk 4 --packaging"
+    "--host desktop --linux-gtk 4 --packaging",
+    "--tests --restore"
   ]
 }

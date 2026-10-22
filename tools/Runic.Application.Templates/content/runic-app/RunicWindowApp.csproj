@@ -24,11 +24,13 @@
 <!--#endif -->
     <!-- The Explorer and taskbar icon; icons/ holds the same placeholder as SVG and PNG. -->
     <ApplicationIcon>icons/icon.ico</ApplicationIcon>
-<!--#if (nix) -->
-    <!-- dotnet restore writes packages.lock.json, and dotnet restore -p:PublishAot=true writes
-         packages.aot.lock.json, whose graph adds the NativeAOT compiler. flake.nix restores from them in locked
-         mode for linux-x64, so both lock files list that runtime's packages too. -->
+    <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package.
+         Commit it: a later restore that resolves a different package fails instead of using it. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+<!--#if (nix) -->
+    <!-- dotnet restore -p:PublishAot=true writes packages.aot.lock.json, whose graph adds the NativeAOT compiler.
+         flake.nix restores from both lock files in locked mode for linux-x64, so they list that runtime's packages
+         too. -->
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
     <NuGetLockFilePath Condition="'$(PublishAot)' == 'true'">packages.aot.lock.json</NuGetLockFilePath>
 <!--#endif -->

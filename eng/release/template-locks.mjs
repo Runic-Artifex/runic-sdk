@@ -9,6 +9,8 @@ export const templateRunicPackages = Object.freeze({
   react: ['@runic-artifex/react', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   vue: ['@runic-artifex/vue', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   svelte: ['@runic-artifex/svelte', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
+  // SvelteKit builds through its own Vite plugin and the Runic SvelteKit adapter.
+  sveltekit: ['@runic-artifex/svelte', '@runic-artifex/sveltekit', '@runic-artifex/views'],
   angular: ['@runic-artifex/angular', '@runic-artifex/views'],
 });
 

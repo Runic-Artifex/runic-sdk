@@ -15,7 +15,7 @@ dotnet tool restore
 dotnet runic dev
 ```
 
-The creator asks for the frontend (React, Vue, Svelte or Angular), package
+The creator asks for the frontend (React, Vue, Svelte, SvelteKit or Angular), package
 manager (npm, pnpm or Bun), Window host (the default Runic Desktop opens a
 native window, CS-WebUI opens a browser window) and ViewModel library
 (ReactiveUI by default, or CommunityToolkit.Mvvm), then prints a command

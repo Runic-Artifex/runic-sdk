@@ -2,6 +2,8 @@
 
 SvelteKit adapter for Runic Desktop applications. Application Views use the
 `@runic-artifex/svelte` export.
+`dotnet new runic-app --frontend sveltekit` (Runic.Application.Templates) starts
+an application with this adapter, on Runic Desktop or CS-WebUI.
 
 ```ts
 // vite.config.ts

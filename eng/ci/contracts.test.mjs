@@ -278,8 +278,19 @@ test('the Windows native job scales the example smoke timeouts (#70)', () => {
 
 test('template lanes cover every framework once and run the creator check in one lane', () => {
   const { strategy, steps } = workflow.jobs.templates;
-  assert.deepEqual(strategy.matrix.include, [{ first: 'react', second: 'svelte', creator: '1' }, { first: 'vue', second: 'angular', 'desktop-smoke': '1' }]);
-  assert.deepEqual(strategy.matrix.include.flatMap(lane => [lane.first, lane.second]).sort(), ['angular', 'react', 'svelte', 'vue']);
+  assert.deepEqual(strategy.matrix.include, [
+    { first: 'react', second: 'svelte', creator: '1' },
+    { first: 'vue', second: 'angular', 'desktop-smoke': '1' },
+    { first: 'sveltekit', node: '26.12.0' },
+  ]);
+  assert.deepEqual(strategy.matrix.include.flatMap(lane => [lane.first, lane.second]).filter(Boolean).sort(),
+    ['angular', 'react', 'svelte', 'sveltekit', 'vue']);
+  // The starters admit Node 24 and 26 (D031.3): one lane builds them on Node 26, with the pinned package managers.
+  const node = steps.findIndex(item => item.uses?.startsWith('actions/setup-node@'));
+  assert.equal(steps[node].if, 'matrix.node');
+  assert.equal(steps[node].with['node-version'], '${{ matrix.node }}');
+  assert.equal(steps[node + 1].if, 'matrix.node');
+  assert.match(steps[node + 1].run, /npm install --global npm@\S+ pnpm@\S+/);
   const [step, second] = steps.filter(item => item.run === 'bun run verify:templates');
   assert.equal(step?.name, 'Verify generated ${{ matrix.first }} template applications');
   assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.first }}');
@@ -290,9 +301,10 @@ test('template lanes cover every framework once and run the creator check in one
   assert.equal(second?.name, 'Verify generated ${{ matrix.second }} template applications');
   assert.deepEqual(second?.env, { RUNIC_TEMPLATE_FRAMEWORKS: '${{ matrix.second }}', RUNIC_TEMPLATE_CREATOR: '0', RUNIC_TEMPLATE_DESKTOP_SMOKE: '0' });
   assert.equal(steps.find(item => item.uses?.startsWith('actions/download-artifact@'))?.id, 'candidates');
-  assert.equal(second.if, "${{ !cancelled() && steps.candidates.outcome == 'success' }}");
+  assert.equal(second.if, "${{ !cancelled() && steps.candidates.outcome == 'success' && matrix.second }}");
   const install = steps.findIndex(item => item.run?.includes('libwebkitgtk-6.0-4'));
   assert.ok(install >= 0 && install < steps.indexOf(step));
+  assert.ok(node >= 0 && node < steps.indexOf(step));
   assert.equal(steps[install].if, "matrix.desktop-smoke == '1'");
   const sandbox = steps.findIndex(item => item.run === 'eng/ci/permit-webkit-sandbox.sh');
   assert.ok(sandbox > install && sandbox < steps.indexOf(step));

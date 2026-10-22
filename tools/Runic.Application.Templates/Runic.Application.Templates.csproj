@@ -5,7 +5,7 @@
     <PackageId>Runic.Application.Templates</PackageId>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
     <Title>Runic Application project template</Title>
-    <Description>The dotnet new runic-app template for Runic Views Window applications with a React, Vue, Svelte, or Angular frontend.</Description>
+    <Description>The dotnet new runic-app template for Runic Views Window applications with a React, Vue, Svelte, SvelteKit, or Angular frontend, and the runic-view item template that adds a View to an existing project.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageType>Template</PackageType>
     <IncludeContentInPack>true</IncludeContentInPack>
@@ -28,7 +28,7 @@
   <ItemGroup>
     <Compile Remove="**/*" />
     <Content Include="content/**/*"
-             Exclude="content/**/bin/**/*;content/**/obj/**/*;content/**/node_modules/**/*;content/**/dist/**/*;content/**/.angular/**/*" />
+             Exclude="content/**/bin/**/*;content/**/obj/**/*;content/**/node_modules/**/*;content/**/dist/**/*;content/**/.angular/**/*;content/**/.svelte-kit/**/*" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
@@ -61,6 +61,7 @@
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/react/*" Pack="true" PackagePath="content/content/runic-app/frontends/react/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/vue/*" Pack="true" PackagePath="content/content/runic-app/frontends/vue/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/svelte/*" Pack="true" PackagePath="content/content/runic-app/frontends/svelte/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/frontends/sveltekit/*" Pack="true" PackagePath="content/content/runic-app/frontends/sveltekit/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/angular/*" Pack="true" PackagePath="content/content/runic-app/frontends/angular/" />
     </ItemGroup>
   </Target>
