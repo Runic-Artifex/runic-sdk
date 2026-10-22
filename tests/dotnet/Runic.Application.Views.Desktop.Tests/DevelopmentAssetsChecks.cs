@@ -143,6 +143,102 @@ internal sealed class DevelopmentAssetsChecks
         }
     }
 
+    // A reload reaches only a connected page. A page that is still loading or reconnecting when a change is published
+    // misses it: it is reloaded when it connects, and a page whose document is current is not.
+    [Test, NotInParallel(Order = 35)]
+    public async Task APageThatMissedAReloadIsReloadedWhenItConnects()
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        string root = Directory.CreateTempSubdirectory("runic-dev-assets-").FullName;
+        try
+        {
+            string dist = Path.Combine(root, "dist");
+            string www = Path.Combine(root, "www");
+            Write(dist, "index.html", "<p>one</p>");
+            Write(dist, "probe.txt", "one");
+            Write(www, "runic-views.js", "// host client");
+
+            await using var provider = Services();
+            await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = new NativeDispatchFactory(),
+                WaitForConnection = false,
+            });
+            var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+            {
+                WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+            })
+            {
+                ReadEnvironment = name => name switch
+                {
+                    "DOTNET_ENVIRONMENT" => "Development",
+                    DevelopmentAssets.EnvironmentVariable => dist,
+                    _ => null,
+                },
+            };
+            await using var window = await host.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = www });
+            var surface = ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Surface;
+            using var http = new HttpClient();
+
+            // The page loads its document; the change is published before its Bridge connects, so no page gets the reload.
+            Check((await http.GetStringAsync(surface.Url, cancellation.Token)).Contains("one", StringComparison.Ordinal),
+                "The window did not serve the frontend output directory.");
+            Write(dist, "index.html", "<p>two</p>");
+            Write(dist, "probe.txt", "two");
+            // probe.txt is not a document: polling it does not count as loading the page again. A file read while it is
+            // written does not match the manifest and fails until the refresh.
+            while (true)
+            {
+                using var probe = await http.GetAsync(new Uri(surface.Url, "probe.txt"), cancellation.Token);
+                if (probe.IsSuccessStatusCode && await probe.Content.ReadAsStringAsync(cancellation.Token) == "two") break;
+                await Task.Delay(50, cancellation.Token);
+            }
+
+            string url;
+            using (var page = await DesktopWireClient.ConnectAsync(surface, cancellation.Token))
+                url = await page.WaitForCommandAsync(Navigation, cancellation.Token);
+            Check(url == surface.Url.AbsoluteUri, $"The window reloaded '{url}'.");
+
+            // The reloaded page has the current document: it connects without another reload. The surface admits one page
+            // at a time, so the document is served once the navigated page has left.
+            string reloaded = "";
+            while (!reloaded.Contains("two", StringComparison.Ordinal))
+            {
+                await Task.Delay(50, cancellation.Token);
+                using var response = await http.GetAsync(surface.Url, cancellation.Token);
+                if (response.IsSuccessStatusCode) reloaded = await response.Content.ReadAsStringAsync(cancellation.Token);
+            }
+            using var current = await ConnectWhenFreeAsync(surface, cancellation.Token);
+            using var quiet = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
+            quiet.CancelAfter(TimeSpan.FromSeconds(1));
+            try
+            {
+                url = await current.WaitForCommandAsync(Navigation, quiet.Token);
+                throw new InvalidOperationException($"A page with the current document was reloaded to '{url}'.");
+            }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // The surface admits one page at a time; a page that just left may still hold the connection for a moment.
+    private static async Task<DesktopWireClient> ConnectWhenFreeAsync(DesktopSurface surface, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            try { return await DesktopWireClient.ConnectAsync(surface, cancellationToken); }
+            catch (Exception error) when (error is System.Net.WebSockets.WebSocketException or HttpRequestException)
+            {
+                await Task.Delay(50, cancellationToken);
+            }
+        }
+    }
+
     [Test, NotInParallel(Order = 35)]
     public async Task AHostOutsideDevelopmentIgnoresTheVariable()
     {
