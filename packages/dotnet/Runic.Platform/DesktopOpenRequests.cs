@@ -53,7 +53,7 @@ public static class DesktopOpenRequests
     public static IDesktopOpenRequests Unavailable(PlatformUnavailableReason reason)
     {
         if (!Enum.IsDefined(reason)) throw new ArgumentOutOfRangeException(nameof(reason));
-        return new UnavailableOpenRequests();
+        return new UnavailableOpenRequests(reason);
     }
 
     /// <summary>
@@ -122,8 +122,9 @@ public static class DesktopOpenRequests
         value.Length is > 0 and <= 64 && char.IsAsciiLetter(value[0])
         && value.AsSpan(1).IndexOfAnyExcept(SchemeCharacters) < 0;
 
-    private sealed class UnavailableOpenRequests : IDesktopOpenRequests
+    private sealed class UnavailableOpenRequests(PlatformUnavailableReason reason) : IDesktopOpenRequests, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public event EventHandler<DesktopOpenRequest>? Opened { add { } remove { } }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

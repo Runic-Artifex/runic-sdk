@@ -228,8 +228,9 @@ public static class DesktopApplications
         return new UnavailableApplications(reason);
     }
 
-    private sealed class UnavailableApplications(PlatformUnavailableReason reason) : IDesktopApplications
+    private sealed class UnavailableApplications(PlatformUnavailableReason reason) : IDesktopApplications, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<DesktopContentType>> GetContentTypeAsync(string path, DesktopContentDetection detection = DesktopContentDetection.NameAndContent,
             CancellationToken cancellationToken = default)
         {

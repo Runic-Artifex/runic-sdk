@@ -156,7 +156,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
         {
             if (_disposed) return;
             foreach (EventHandler<DesktopNotificationActivation> listener in Activated?.GetInvocationList() ?? [])
-                try { listener(this, new(notification.Id, action, notification.ActivationUri)); } catch { }
+                try { listener(this, new(notification.Id, action, notification.ActivationUri) { IsTrusted = true }); } catch { }
         });
     }
     public async ValueTask DisposeAsync()

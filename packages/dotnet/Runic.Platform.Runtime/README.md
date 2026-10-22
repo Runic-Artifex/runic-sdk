@@ -47,6 +47,11 @@ directory only the user can use (on Linux, macOS and Windows). By default a late
 launch hands over its arguments and exits, and the running instance raises
 `IApplicationInstance.Launched`.
 
+```csharp
+// In Main(string[] args): the same as ClaimAsync(id, ApplicationLaunch.FromProcess(args)).
+var claim = await ApplicationInstance.ClaimAsync("org.example.Manager", args);
+```
+
 With `ApplicationInstanceOptions.ReplyToLaunches`, a later launch, such as a
 command line, also waits for the running instance's reply: messages (output lines
 or JSON events, as UTF-8 strings of at most 1 MiB) and an exit status. Set it in
@@ -55,7 +60,7 @@ answers.
 
 ```csharp
 var options = new ApplicationInstanceOptions { ReplyToLaunches = true };
-var claim = await ApplicationInstance.ClaimAsync("org.example.Manager", ApplicationLaunch.FromProcess(args), options);
+var claim = await ApplicationInstance.ClaimAsync("org.example.Manager", args, options);
 
 // A later launch: print the running instance's messages and exit with its status.
 if (claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: { } reply } })

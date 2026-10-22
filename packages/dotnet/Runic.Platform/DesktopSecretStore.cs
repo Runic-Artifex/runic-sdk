@@ -46,8 +46,9 @@ public static class DesktopSecretStore
         return new UnavailableSecretStore(reason);
     }
 
-    private sealed class UnavailableSecretStore(PlatformUnavailableReason reason) : IDesktopSecretStore
+    private sealed class UnavailableSecretStore(PlatformUnavailableReason reason) : IDesktopSecretStore, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<string?>> GetAsync(string service, string account, CancellationToken cancellationToken = default)
         {
             SecretNames.Validate(service, account);

@@ -71,6 +71,15 @@ if (await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Selected(va
 }
 ```
 
+Where only the value matters, `PlatformResult<T>` also has `Succeeded`,
+`TryGetValue(out T value)` and `Match`, which calls one function per case:
+
+```csharp
+var token = await secrets.GetAsync("com.example.Mail", account);
+if (token.TryGetValue(out var value)) { /* value is null when none is stored */ }
+string status = token.Match(_ => "ready", unavailable => $"unavailable: {unavailable.Reason}", failed => $"failed: {failed.Code}");
+```
+
 ## File dialog options
 
 `OpenFileOptions` and `SaveFileOptions` take `Filters` and `InitialDirectory`,
@@ -213,6 +222,35 @@ application singletons too; without a provider they are
 and `DesktopInhibition.Unavailable(reason)`. Unavailable inhibition supports no
 effects, still validates the effects and reason as a provider does, and returns
 `Unavailable(reason)` from every acquisition.
+
+To decide whether to offer a feature at all, read an application service's status
+with `DesktopServiceStatus.Get(service)`. A service an `Unavailable(reason)` factory
+created, for example because no provider supports the host or Windows notifications
+have no application ID, reports `CapabilityStatus.Unavailable` with that reason;
+any other service reports `CapabilityStatus.Available`. Available means a native
+provider was created, not that each request succeeds: requests still report what the
+desktop does, including `Unavailable` when a desktop service turns out to be missing.
+A service implements `IDesktopServiceStatus` to report its own status.
+
+```csharp
+bool offerRememberMe = DesktopServiceStatus.Get(secrets) is CapabilityStatus.Available;
+```
+
+`DesktopAppearance.TextScale` is the desktop's text size preference as a factor of
+the default size: the Windows Accessibility "Text size" setting (1 to 2.25). macOS
+has no system-wide text size that applications can read, so it is `null` there, as
+on a desktop that has no such setting; the Linux provider does not read it yet.
+Multiply font sizes by it, for example a page's root font size; it is independent
+of the display scale. A watch reports a change of it like any other preference.
+
+A notification's `Activated` event is untrusted input. `DesktopNotificationActivation.IsTrusted`
+is `true` when the provider matched the activation to a notification the
+application showed, so its identifiers and `ActivationUri` are the ones the
+application supplied: on Windows and macOS. Linux activations are not trusted
+yet: one can arrive after a restart, when the process no longer knows the
+notification, and any process on the session bus can send one. Check the
+identifiers and link of an untrusted activation against the application's own
+state before acting on them.
 
 ### Hosts without a native owner
 
@@ -629,7 +667,10 @@ else
     ShowIcon(path); // No thumbnail: show the type's icon, from IDesktopApplications.GetIconAsync.
 ```
 
-`size` is the largest edge to display, up to 1024 pixels. The image keeps the
+`size` is the largest edge to display, up to 1024 pixels. For a high-density
+display, pass the window's scale too: `GetThumbnailAsync(path, 128, scale: 2,
+cancellationToken)` asks for 256 device pixels, at most 1024 (scales 1 to 16,
+`DesktopThumbnails.MaximumScale`). The image keeps the
 file's aspect ratio and can differ in size from the request, so scale it to
 display: Linux returns the cached size at least as large (128, 256, 512 or 1024
 pixels), Windows and macOS at most `size`. A file without a thumbnail, such as

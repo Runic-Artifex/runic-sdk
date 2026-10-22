@@ -37,10 +37,12 @@ releases and their evidence remain historical records.
    package published for the first time under a new ID (the `Runic.Application.Views*`
    packages after 0.7.0-preview.7), which until then validates against its old ID.
    Also remove the RS0026 `SuppressMessage` attributes on
-   `ReactiveNavigationEntryExtensions.CreateCompleteCommand` and
-   `DesktopPlatformServices.PresentAsync` once their lines are in
-   `Runic.Navigation.ReactiveUI*/PublicAPI.Shipped.txt` and
-   `Runic.Application.Views.Desktop/PublicAPI.Shipped.txt`: the analyzer accepts shipped overloads.
+   `ReactiveNavigationEntryExtensions.CreateCompleteCommand`,
+   `DesktopPlatformServices.PresentAsync` and the `string[] args` overloads of
+   `ApplicationInstance.ClaimAsync` once their lines are in
+   `Runic.Navigation.ReactiveUI*/PublicAPI.Shipped.txt`,
+   `Runic.Application.Views.Desktop/PublicAPI.Shipped.txt` and
+   `Runic.Platform.Runtime/PublicAPI.Shipped.txt`: the analyzer accepts shipped overloads.
 7. Refresh the docs catalog (see the end of this page).
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. The

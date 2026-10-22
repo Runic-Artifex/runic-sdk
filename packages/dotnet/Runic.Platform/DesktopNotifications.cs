@@ -16,8 +16,9 @@ public static class DesktopNotifications
         return new UnavailableDesktopNotifications(reason);
     }
 
-    private sealed class UnavailableDesktopNotifications(PlatformUnavailableReason reason) : IDesktopNotifications
+    private sealed class UnavailableDesktopNotifications(PlatformUnavailableReason reason) : IDesktopNotifications, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         private readonly PlatformResult<PlatformUnit> _result = new PlatformResult<PlatformUnit>.Unavailable(reason);
         private volatile bool _disposed;
 

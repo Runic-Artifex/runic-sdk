@@ -1,4 +1,7 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Text;
 
 namespace Runic.Platform;
 
@@ -85,6 +88,54 @@ public abstract record PlatformResult<T>
     /// <param name="Code">The classified failure. Branch on this value.</param>
     /// <param name="Diagnostic">Native error detail for logs and support, when the provider observed one.</param>
     public sealed record Failed(PlatformFailureCode Code, PlatformDiagnostic? Diagnostic = null) : PlatformResult<T>;
+
+    /// <summary>Whether this is a <see cref="Success"/>.</summary>
+    public bool Succeeded => this is Success;
+
+    /// <summary>Gets the value of a <see cref="Success"/>.</summary>
+    /// <param name="value">The returned value when this is a <see cref="Success"/>; otherwise the default.</param>
+    /// <returns><see langword="true"/> for a <see cref="Success"/>; <see langword="false"/> for
+    /// <see cref="Unavailable"/> and <see cref="Failed"/>.</returns>
+    /// <example><code>
+    /// if ((await store.ReadAsync(key)).TryGetValue(out var secret)) { … }
+    /// </code></example>
+    public bool TryGetValue([MaybeNullWhen(false)] out T value)
+    {
+        if (this is Success success)
+        {
+            value = success.Value;
+            return true;
+        }
+        value = default;
+        return false;
+    }
+
+    /// <summary>Calls the function for this case and returns its result.</summary>
+    /// <typeparam name="TResult">The type the functions return.</typeparam>
+    /// <param name="success">Called with the value of a <see cref="Success"/>.</param>
+    /// <param name="unavailable">Called with an <see cref="Unavailable"/> case.</param>
+    /// <param name="failed">Called with a <see cref="Failed"/> case.</param>
+    /// <returns>What the called function returned.</returns>
+    /// <exception cref="ArgumentNullException">A function is <see langword="null"/>.</exception>
+    public TResult Match<TResult>(Func<T, TResult> success, Func<Unavailable, TResult> unavailable, Func<Failed, TResult> failed)
+    {
+        ArgumentNullException.ThrowIfNull(success);
+        ArgumentNullException.ThrowIfNull(unavailable);
+        ArgumentNullException.ThrowIfNull(failed);
+        return this switch
+        {
+            Success value => success(value.Value),
+            Unavailable reason => unavailable(reason),
+            Failed failure => failed(failure),
+            _ => throw new UnreachableException(),
+        };
+    }
+
+    // Keeps ToString as before Succeeded was added: the cases print their own members only.
+    /// <summary>Prints the members of a case; the base prints none.</summary>
+    /// <param name="builder">The text being built.</param>
+    /// <returns><see langword="false"/>: the base has no members to print.</returns>
+    protected virtual bool PrintMembers(StringBuilder builder) => false;
 }
 
 /// <summary>

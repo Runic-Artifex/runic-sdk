@@ -30,6 +30,22 @@ internal sealed class PortableTests
     }
 
     [Test]
+    public void TextScaleClassification()
+    {
+#pragma warning disable CA1416 // Portable checks of the pure registry-value mapping; nothing here calls native code.
+        Check(WindowsDesktopSettings.TextScale(static () => null) == 1);
+        Check(WindowsDesktopSettings.TextScale(static () => 100) == 1);
+        Check(WindowsDesktopSettings.TextScale(static () => 150) == 1.5);
+        Check(WindowsDesktopSettings.TextScale(static () => 225) == 2.25);
+        Check(WindowsDesktopSettings.TextScale(static () => 99) is null);
+        Check(WindowsDesktopSettings.TextScale(static () => 226) is null);
+        Check(WindowsDesktopSettings.TextScale(static () => "150") is null);
+        Check(WindowsDesktopSettings.TextScale(static () => throw new UnauthorizedAccessException()) is null);
+#pragma warning restore CA1416
+        Console.WriteLine("PASS text scale registry mapping");
+    }
+
+    [Test]
     public void ToastXml()
     {
 #pragma warning disable CA1416 // Portable checks of pure classification and XML helpers; nothing here calls native code.

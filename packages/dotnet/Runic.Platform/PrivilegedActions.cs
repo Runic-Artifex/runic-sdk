@@ -392,8 +392,9 @@ public static class DesktopPrivilegedActions
         return new UnavailablePrivilegedActions(reason);
     }
 
-    private sealed class UnavailablePrivilegedActions(PlatformUnavailableReason reason) : IDesktopPrivilegedActions
+    private sealed class UnavailablePrivilegedActions(PlatformUnavailableReason reason) : IDesktopPrivilegedActions, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<PrivilegedActionCompletion>> RunAsync(PrivilegedActionRequest request, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);

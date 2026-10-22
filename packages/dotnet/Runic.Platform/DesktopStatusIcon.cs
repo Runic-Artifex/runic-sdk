@@ -96,8 +96,9 @@ public static class DesktopStatusIcon
         return new UnavailableStatusIcon(reason);
     }
 
-    private sealed class UnavailableStatusIcon(PlatformUnavailableReason reason) : IDesktopStatusIcon
+    private sealed class UnavailableStatusIcon(PlatformUnavailableReason reason) : IDesktopStatusIcon, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         private readonly PlatformResult<PlatformUnit> _result = new PlatformResult<PlatformUnit>.Unavailable(reason);
         private volatile bool _disposed;
 

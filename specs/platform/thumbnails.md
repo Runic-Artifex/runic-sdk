@@ -20,13 +20,16 @@ item W310-003). `IDesktopThumbnails` in Runic.Platform is the contract;
 public interface IDesktopThumbnails
 {
     ValueTask<PlatformResult<DesktopThumbnail?>> GetThumbnailAsync(string path, int size, CancellationToken cancellationToken = default);
+    // 0.11, a default member: GetThumbnailAsync(path, Math.Min(size * scale, MaximumSize), cancellationToken).
+    ValueTask<PlatformResult<DesktopThumbnail?>> GetThumbnailAsync(string path, int size, int scale, CancellationToken cancellationToken);
 }
 
 public sealed record DesktopThumbnail(ImmutableArray<byte> Png, int Width, int Height);
 
 public static class DesktopThumbnails
 {
-    public const int MaximumSize = 1024;
+    public static int MaximumSize => 1024;
+    public static int MaximumScale => 16;
     public static IDesktopThumbnails Unavailable(PlatformUnavailableReason reason);
 }
 ```
@@ -36,6 +39,12 @@ public static class DesktopThumbnails
   the largest edge to display, 1 to 1024 pixels; outside that range it is an
   `ArgumentOutOfRangeException`. Paths come from trusted C# application code,
   never directly from a web client.
+- `scale` is the display's device pixels per pixel, 1 to 16 as for
+  `DesktopIconRequest`. The default member asks for `size × scale` device
+  pixels, at most 1024, which is what each provider would do with a native
+  scale too; providers do not override it. Its token is required, so a call
+  with three arguments such as `GetThumbnailAsync(path, 256, default)` keeps
+  binding to the overload without a scale.
 - The thumbnail is PNG bytes with its pixel size. It keeps the file's aspect
   ratio and can differ in size from the request: Linux returns the smallest
   cached flavour at least as large, else the largest smaller one; Windows and
