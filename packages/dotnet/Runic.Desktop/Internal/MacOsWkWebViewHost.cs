@@ -82,6 +82,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     // The web view's navigation and UI delegate, which WebKit references weakly; released with the web view.
     private nint _webContentDelegate;
     private WebContentRules? _webContent;
+    // The MediaCapture grant and the origin it is limited to (SEC-37).
+    private bool _mediaCaptureGranted;
+    private Uri? _presentedUrl;
     private Action? _closeRequested;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
@@ -377,6 +380,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
         }
         WebViews[_webView] = this;
+        _mediaCaptureGranted = (options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0;
+        _presentedUrl = url;
         ApplyWebContent(new WebContentRules(options.WebContent, url, options.AdditionalOrigins));
         // underPageBackgroundColor requires macOS 12; ask the created view, not the unset field.
         if (options.Transparent && Api.RespondsToSelector(_webView, "setUnderPageBackgroundColor:"))
@@ -1040,6 +1045,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&DecidePolicyForNavigationResponse, "v@:@@@?");
         Api.AddMethod(type, "webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint>)&CreateWebView, "@@:@@@@");
+        // WKUIDelegate, macOS 12: camera and microphone requests follow AllowedPermissions (SEC-37).
+        Api.AddMethod(type, "webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint, void>)&RequestMediaCapturePermission, "v@:@@@q@?");
         Api.RegisterClassPair(type);
         return type;
     }
@@ -1152,6 +1160,63 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             // Never unwind through WebKit.
         }
         return 0;
+    }
+
+    // The handler is called exactly once, with Deny when anything fails.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void RequestMediaCapturePermission(nint self, nint selector, nint webView, nint origin, nint frame, nint type, nint decisionHandler)
+    {
+        var decision = MacOsWebContent.PermissionDeny;
+        nint pool = 0;
+        try
+        {
+            pool = Api.SendNint(Api.SendNint(Api.GetClass("NSAutoreleasePool"), "alloc"), "init");
+            if (WebViews.TryGetValue(webView, out var host) && host._presentedUrl is { } presented)
+            {
+                var frameOrigin = frame == 0 ? 0 : Api.SendNint(frame, "securityOrigin");
+                var topLevel = Api.SendNint(webView, "URL");
+                var topLevelText = topLevel == 0 ? 0 : Api.SendNint(topLevel, "absoluteString");
+                decision = MacOsWebContent.ForMediaCapture(
+                    host._mediaCaptureGranted,
+                    presented,
+                    SecurityOriginUrl(origin),
+                    SecurityOriginUrl(frameOrigin),
+                    topLevelText == 0 ? null : Api.Text(topLevelText),
+                    type);
+            }
+        }
+        catch
+        {
+            decision = MacOsWebContent.PermissionDeny;
+        }
+        try
+        {
+            MacOsWebContent.InvokePolicyHandler(decisionHandler, decision);
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+        try
+        {
+            if (pool != 0) Api.SendVoid(pool, "drain");
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+    }
+
+    // A WKSecurityOrigin as an origin URL, or null.
+    private static string? SecurityOriginUrl(nint origin)
+    {
+        if (origin == 0) return null;
+        var protocol = Api.SendNint(origin, "protocol");
+        var host = Api.SendNint(origin, "host");
+        return MacOsWebContent.OriginUrl(
+            protocol == 0 ? null : Api.Text(protocol),
+            host == 0 ? null : Api.Text(host),
+            Api.SendNint(origin, "port"));
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

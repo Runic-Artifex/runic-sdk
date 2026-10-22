@@ -83,7 +83,8 @@ public sealed class BrowserHostTests
             new WebUiBrowserLaunchOptions(
                 null, null, null, [], false, false, null, null, null, null,
                 DesktopPermissionGrant.MediaCapture));
-        Assert.Contains("--auto-accept-camera-and-microphone-capture", mediaArguments);
+        // SEC-11: Chromium asks the user, naming the requesting origin, instead of accepting capture for every origin.
+        Assert.DoesNotContain("--auto-accept-camera-and-microphone-capture", mediaArguments);
         Assert.DoesNotContain("--deny-permission-prompts", mediaArguments);
 
         var customArguments = WebUiBrowserHost.BuildArguments(

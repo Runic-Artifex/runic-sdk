@@ -417,6 +417,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     private WebView? _webView;
     private DesktopWindowHostOptions? _options;
     private Uri? _presentedUrl;
+    // With the MediaCapture grant only: the page's subframes, which the grant depends on.
+    private WebKitGtkMediaFrames? _mediaFrames;
     private readonly WebKitGtkWebProcess _webProcess = new();
     private int _isOpen;
     private int _disposed;
@@ -702,6 +704,18 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                     UserScriptInjectionTime.Start, WebKitGtkKeyboard.ScriptWorld, null, null);
                 contentManager.AddScript(dropScript);
             }
+            if ((options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
+            {
+                if (!contentManager.RegisterScriptMessageHandler(WebKitGtkMediaFrames.MessageHandler, WebKitGtkKeyboard.ScriptWorld))
+                {
+                    throw new InvalidOperationException("WebKitGTK could not register the media frames message handler.");
+                }
+                _mediaFrames = new WebKitGtkMediaFrames(url);
+                UserContentManager.ScriptMessageReceivedSignal.Connect(contentManager, OnMediaFramesMessage, false, WebKitGtkMediaFrames.MessageHandler);
+                using var framesScript = UserScript.NewForWorld(WebKitGtkMediaFrames.Script, UserContentInjectedFrames.AllFrames,
+                    UserScriptInjectionTime.Start, WebKitGtkKeyboard.ScriptWorld, null, null);
+                contentManager.AddScript(framesScript);
+            }
             using (var keyboardScript = UserScript.NewForWorld(
                 WebKitGtkKeyboard.Script,
                 UserContentInjectedFrames.TopFrame,
@@ -908,6 +922,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         if (IsOpen) _drops?.PageReport(FileDropSupport.DecodeLabel(args.Value.ToString()));
     }
 
+    private void OnMediaFramesMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
+    {
+        // Also before the window reports itself open: a frame the first page loads must not be missed.
+        _mediaFrames?.Receive(args.Value.ToString());
+    }
+
     internal void NativeFileDrop(IReadOnlyList<string> paths)
     {
         if (IsOpen) _drops?.NativeDrop(paths);
@@ -924,6 +944,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnZoomMessage);
             UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnFileDropMessage);
             contentManager.UnregisterScriptMessageHandler(FileDropSupport.WebKitMessageHandler, WebKitGtkKeyboard.ScriptWorld);
+            if (_mediaFrames is not null)
+            {
+                UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnMediaFramesMessage);
+                contentManager.UnregisterScriptMessageHandler(WebKitGtkMediaFrames.MessageHandler, WebKitGtkKeyboard.ScriptWorld);
+            }
             contentManager.UnregisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld);
         }
     }
@@ -949,6 +974,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             return;
         }
+        _mediaFrames?.Reset();
         var (reload, diagnostic) = _webProcess.Terminated(reason, Environment.TickCount64);
         if (reload)
         {
@@ -1367,11 +1393,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         private static partial void ObjectUnref(nint instance);
     }
 
-    // WebKitGTK does not identify the requesting frame; the top-level document must
-    // still have the presented origin. Screen capture is not part of the grant.
+    // WebKitGTK does not identify the requesting frame: the top-level document must have the presented origin, and so
+    // must every subframe (WebKitGtkMediaFrames). Screen capture is not part of the grant.
     private bool AllowsMediaCapture(WebView webView, PermissionRequest request) =>
         (_options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0 &&
         _presentedUrl is { } presented &&
+        _mediaFrames is { HasForeignFrames: false } &&
         request switch
         {
             UserMediaPermissionRequest media => !WebKit.Functions.UserMediaPermissionIsForDisplayDevice(media),

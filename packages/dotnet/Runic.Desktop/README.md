@@ -79,7 +79,9 @@ Content handlers receive request-scoped services and may return fixed or
 request-owned streaming responses. Stream writes are awaited for backpressure;
 requester disconnect, surface close, and host shutdown propagate cancellation
 and release the body exactly once. Multiple surfaces share one listener by
-default, while `UseIsolatedListener` is available for policy boundaries.
+default, while `UseIsolatedListener` gives a surface its own listener and
+origin. Use it for a surface that shows less-trusted content when the app may
+run in an installed browser (see [Security notes](#security-notes)).
 
 Installed browsers and the built-in WebView2, WKWebView, and WebKitGTK adapters
 remain replaceable through `IDesktopWindowHostFactory` (see
@@ -144,15 +146,23 @@ as unavailable.
 | `close-confirmation-unavailable` | Error or Warning | `ConfirmCloseAsync` is set for an explicitly selected browser (Error; opening throws a `DesktopException` with this code), or an `EmbeddedThenBrowser` fallback opens without close confirmation (Warning). |
 | `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |
 | `window-option-incomplete` | Warning | Only one of `X`/`Y` or `MinimumWidth`/`MinimumHeight` is set. |
-| `permission-grant-unsupported` | Warning | The presentation does not apply `MediaCapture` and asks the user instead (WKWebView, Firefox). |
+| `permission-grant-unsupported` | Warning | An installed browser does not apply `MediaCapture` and asks the user instead (Firefox and, since 0.11.0, Chromium-based browsers). |
 | `permission-grant-withheld` | Warning | An `EmbeddedThenBrowser` fallback opens without the grant. |
 
 Sensitive permissions remain denied unless the window opts into a typed grant.
-WebView2, WebKitGTK and GTK4 windows grant `MediaCapture` only to the presented
-origin. A browser cannot limit a grant to one origin, so a browser fallback opens
-without it and reports `permission-grant-withheld` to the diagnostic sink and the
-logger; an explicitly selected Chromium-based browser accepts capture for every
-origin it opens. A custom `IDesktopWindowHostFactory` reports the options it
+WebView2, WKWebView, WebKitGTK and GTK4 windows grant `MediaCapture` only to the
+presented origin: the requesting frame and the top-level document must both have
+it. Without the grant they deny camera and microphone; on macOS the system still
+asks the user once for the application's own access. WebKitGTK does not say
+which frame asks, so while the page contains a frame of another origin, the
+window denies every camera and microphone request, and WebKit then refuses the
+page's later requests until it reloads. Frames of another origin can ask only
+when the page delegates capture to them (`<iframe allow="camera; microphone">`);
+ask for capture before you show such a frame. A browser cannot limit a grant to
+one origin, so a browser fallback opens without it and reports
+`permission-grant-withheld` to the diagnostic sink and the logger; an explicitly
+selected browser asks the user, naming the requesting origin, and reports
+`permission-grant-unsupported`. A custom `IDesktopWindowHostFactory` reports the options it
 rejects or ignores through `ValidateOptions`. Direct legacy capability failures retain a redacted, correlated
 host diagnostic; the TypeScript transport maps its own frontend failures to
 typed correlation-bearing errors.
@@ -854,7 +864,7 @@ pages may read. Return `true` from `SupportsDocumentStartScript` and add
 that it runs in every frame's document before the page's scripts: the GTK 4 host
 adds it as an all-frames user script at document start, and `RunicWebView`
 through WebView2's `AddScriptToExecuteOnDocumentCreated`. The script checks the
-origin itself. The surface then keeps the credential out of the bootstrap
+origin itself, and the origins of the documents that contain the frame. The surface then keeps the credential out of the bootstrap
 scripts it serves. A host that reports `false` makes the surface write the
 credential into those scripts instead, which any client that can fetch them can
 read; report `false` only when the WebView cannot run document-start scripts.
@@ -949,6 +959,23 @@ rest is internal to Runic Desktop and Runic Windows and Views. See
   the bootstrap only when it is same-site with the surface, such as another
   port of `http://127.0.0.1`: the browser does not send the binding cookie to
   a cross-site page such as `http://localhost:5173`.
+- **Framing.** Since 0.11.0 every surface response sends
+  `Content-Security-Policy: frame-ancestors 'self'` followed by the surface's
+  `AdditionalOrigins`, and `X-Frame-Options: SAMEORIGIN`, so a page of another
+  origin cannot frame the app. In an embedded window, a frame receives the
+  credential only when its own origin and the origins of all documents that
+  contain it are the surface's or its `AdditionalOrigins`. A content handler
+  that sets its own `Content-Security-Policy` replaces the header; keep a
+  `frame-ancestors` directive in it.
+- **Surfaces in an installed browser.** Surfaces that share a listener share
+  an origin. In an installed browser, a page of one surface can therefore load
+  another surface's bootstrap and read that surface's credential. Embedded
+  windows are not affected. Give a surface that shows less-trusted content its
+  own origin with `DesktopSurfaceOptions.UseIsolatedListener`.
+- **Camera and microphone in an installed browser.** Since 0.11.0 a
+  Chromium-based browser opened with the `MediaCapture` grant asks the user,
+  naming the requesting origin, instead of accepting capture for every origin
+  it opens. Without the grant, Chromium-based browsers deny permission prompts.
 - A local client that holds the session credential can take the only Bridge
   connection from the page after the page's own WebSocket has been silent for 2
   seconds. The page's Bridge then reconnects and is refused until that client's

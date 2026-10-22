@@ -84,9 +84,12 @@ internal static class WebUiBrowserHost
                 arguments.AddRange(ChromiumDefaults);
             }
 
-            arguments.Add((options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0
-                ? "--auto-accept-camera-and-microphone-capture"
-                : "--deny-permission-prompts");
+            // Chromium cannot limit an automatic grant to one origin, so with MediaCapture it asks the user, who sees
+            // the requesting origin (SEC-11); without it, permission prompts are denied.
+            if ((options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) == 0)
+            {
+                arguments.Add("--deny-permission-prompts");
+            }
 
             if (options.Kiosk)
             {

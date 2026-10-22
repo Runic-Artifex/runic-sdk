@@ -91,19 +91,6 @@ internal static class DesktopWindowOptionValidation
         {
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.BrowserArguments), remediation));
         }
-        if (OperatingSystem.IsMacOS() && options.AllowedPermissions.HasFlag(DesktopPermissionGrant.MediaCapture))
-        {
-            diagnostics.Add(new DesktopDiagnostic(
-                DesktopErrorCategory.CapabilityDenied,
-                GrantUnsupportedCode,
-                "The macOS WKWebView window does not apply the MediaCapture grant; WebKit asks the user instead.",
-                Retryable: false,
-                Remediation: "Remove the grant, or expect the system camera and microphone prompt.")
-            {
-                Severity = DesktopDiagnosticSeverity.Warning,
-                Option = Prefix + nameof(DesktopWindowOptions.AllowedPermissions),
-            });
-        }
     }
 
     // A null browser is an Any or ChromiumBased request that no installed browser satisfies; only the
@@ -187,14 +174,18 @@ internal static class DesktopWindowOptionValidation
         {
             diagnostics.Add(GrantWithheld(presentation));
         }
-        else if (firefox)
+        // Nor does an explicitly selected browser apply it: Chromium-based browsers ask the user too (SEC-11), naming
+        // the requesting origin.
+        else if (browser is not null)
         {
             diagnostics.Add(new DesktopDiagnostic(
                 DesktopErrorCategory.CapabilityDenied,
                 GrantUnsupportedCode,
-                "Firefox does not apply the MediaCapture grant; it asks the user instead.",
+                firefox
+                    ? "Firefox does not apply the MediaCapture grant; it asks the user instead."
+                    : $"{presentation} does not apply the MediaCapture grant; it asks the user instead.",
                 Retryable: false,
-                Remediation: "Remove the grant, select a Chromium-based browser, or select BrowserKind.Embedded.")
+                Remediation: "Remove the grant, or select BrowserKind.Embedded to grant camera and microphone to the presented origin only.")
             {
                 Severity = DesktopDiagnosticSeverity.Warning,
                 Option = Prefix + nameof(DesktopWindowOptions.AllowedPermissions),
