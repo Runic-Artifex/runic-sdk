@@ -370,6 +370,16 @@
            Text="The Runic build property %(_RunicApplicationFrontendRemovedName.Identity) is removed. %(_RunicApplicationFrontendRemovedName.Reason); remove the property from $(MSBuildProjectFile), its imports or the command line." />
   </Target>
 
+  <!-- RUNICBRIDGE029: a RunicApplicationFrontendPackageManager other than npm, pnpm or bun (compared without case,
+       as the conditions above do) selects the npm commands and lock file. It is reported only where that matters:
+       for a frontend with a package.json that the build installs or builds with a default command. -->
+  <Target Name="RunicViewsCheckFrontendPackageManager" BeforeTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <Warning Code="RUNICBRIDGE029" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge029"
+             Condition="'$(RunicApplicationFrontendPackageManager)' != '' and '$(RunicApplicationFrontendPackageManager)' != 'npm' and '$(RunicApplicationFrontendPackageManager)' != 'pnpm' and '$(RunicApplicationFrontendPackageManager)' != 'bun' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json') and (('$(_RunicBridgeDefaultFrontendInstall)' == 'true' and '$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '') or '$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)')"
+             Text="RunicApplicationFrontendPackageManager is '$(RunicApplicationFrontendPackageManager)', which is not npm, pnpm or bun, so the default frontend install and build commands use npm. Set it to npm, pnpm or bun, or remove it to follow package.json or the lock file. Another package manager needs RunicApplicationFrontendInstallCommand and RunicApplicationFrontendBuildCommand." />
+  </Target>
+
   <!-- Generation turns on for a project that references Runic.Application.Views
        directly, or that references a host adapter directly or transitively:
        each adapter's props set _RunicApplicationHostAdapter=true. -->

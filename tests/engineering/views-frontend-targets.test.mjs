@@ -562,6 +562,54 @@ test("www mirrors dist and keeps the files that the frontend copy did not write"
   assert.equal(readFileSync(rewritten, "utf8"), "an operator's file");
 });
 
+// I-063: a RunicApplicationFrontendPackageManager other than npm, pnpm or bun selects the npm commands; say so.
+function packageManagerWarnings(name, properties, { packageJson = true } = {}) {
+  const project = join(directory, `package-manager-${name}`);
+  mkdirSync(join(project, "frontend"), { recursive: true });
+  if (packageJson) writeFileSync(join(project, "frontend/package.json"), JSON.stringify({ name: "app", private: true }));
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/frontend</RunicApplicationFrontendDirectory>
+    <Configuration>Debug</Configuration>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsCheckFrontendPackageManager",
+    ...properties.map(property => `-p:${property}`),
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 0, output);
+  return [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE029:/.test(line)).map(line => line.trim()))];
+}
+
+test("a RunicApplicationFrontendPackageManager other than npm, pnpm or bun warns with RUNICBRIDGE029", () => {
+  for (const value of ["yarn", "Yarn", "npm@10"]) {
+    const warnings = packageManagerWarnings(`invalid-${value.replace(/[^A-Za-z0-9]/g, "_")}`, [`RunicApplicationFrontendPackageManager=${value}`]);
+    assert.equal(warnings.length, 1, `${value}: ${warnings.join("\n")}`);
+    assert.ok(warnings[0].includes(`RunicApplicationFrontendPackageManager is '${value}', which is not npm, pnpm or bun, so the default frontend install and build commands use npm.`), warnings[0]);
+  }
+  // One default command is enough for the value to matter.
+  assert.equal(packageManagerWarnings("invalid-install-default",
+    ["RunicApplicationFrontendPackageManager=yarn", "RunicApplicationFrontendBuildCommand=yarn build"]).length, 1);
+  assert.equal(packageManagerWarnings("invalid-build-default",
+    ["RunicApplicationFrontendPackageManager=yarn", "RunicApplicationFrontendInstallCommand=yarn install"]).length, 1);
+});
+
+test("supported, differently cased or empty package managers, and unused values, do not warn", () => {
+  for (const value of ["", "npm", "pnpm", "bun", "NPM", "Pnpm", "BUN"])
+    assert.deepEqual(packageManagerWarnings(`valid-${value || "empty"}`, [`RunicApplicationFrontendPackageManager=${value}`]), [], value);
+  const yarn = "RunicApplicationFrontendPackageManager=yarn";
+  assert.deepEqual(packageManagerWarnings("own-commands",
+    [yarn, "RunicApplicationFrontendInstallCommand=yarn install", "RunicApplicationFrontendBuildCommand=yarn build"]), [],
+    "A project that sets both commands does not use the package manager.");
+  assert.deepEqual(packageManagerWarnings("no-install",
+    [yarn, "RunicApplicationFrontendInstallEnabled=false", "RunicApplicationFrontendBuildCommand=yarn build"]), []);
+  assert.deepEqual(packageManagerWarnings("no-build", [yarn, "RunicApplicationFrontendBuildEnabled=false"]), []);
+  assert.deepEqual(packageManagerWarnings("no-frontend", [yarn], { packageJson: false }), []);
+});
+
 // #237: a page that loads runic-views.js runs on every host; the referenced host supplies the client.
 const hostTargets = name => resolve(root, `packages/dotnet/Runic.Application.Views.${name}/build/Runic.Application.Views.${name}.targets`);
 const hostClient = name => readFileSync(resolve(root,
@@ -807,6 +855,9 @@ test("the default composition type is the sanitized RootNamespace's RunicViewsCo
   assert.equal(defaultComposition("Notes", "Contoso.Notes"), "Contoso.Notes.RunicViewsComposition");
   assert.equal(defaultComposition("My-App", undefined), "My_App.RunicViewsComposition");
   assert.equal(defaultComposition("2048Game", undefined), "_2048Game.RunicViewsComposition");
+  // I-062: a project name with a segment that starts with a digit builds (since 0.9); nothing to report.
+  assert.equal(defaultComposition("9Lives", undefined), "_9Lives.RunicViewsComposition");
+  assert.equal(defaultComposition("My.2App", undefined), "My._2App.RunicViewsComposition");
   assert.equal(defaultComposition("Keywords", "Contoso.class.9lives.Classic"), "Contoso._class._9lives.Classic.RunicViewsComposition");
   assert.equal(defaultComposition("Spaces", "My App (Beta)"), "My_App__Beta_.RunicViewsComposition");
   assert.equal(defaultComposition("Library", "Contoso.Library", false), "", "A project without a host adapter gets no composition.");
