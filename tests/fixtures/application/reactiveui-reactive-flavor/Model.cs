@@ -33,6 +33,23 @@ namespace ReactiveUiReactiveFlavorProof
 
         public ReactiveCommand<Unit, int> CountCommand { get; }
         public ReactiveCommand<Unit, int> DisableCommand { get; }
+
+        // #472 in the System.Reactive flavor: the page sends the key, the Bridge resolves the item.
+        [RunicCommandKey(nameof(FindItem))]
+        public ReactiveCommand<FlavorItem, Unit> RemoveCommand { get; } = ReactiveCommand.Create<FlavorItem>(item => item.Removed = true);
+
+        public FlavorItem? FindItem(int id) => id == Item.Id ? Item : null;
+
+        [RunicIgnore]
+        public FlavorItem Item { get; } = new(7);
+    }
+
+    // No wire form: the Stream is not a Bridge value.
+    public sealed class FlavorItem(int id)
+    {
+        public int Id { get; } = id;
+        public bool Removed { get; set; }
+        public System.IO.Stream? Data { get; init; }
     }
 
     public sealed partial class FlavorView : ReactiveRunicView<FlavorModel>

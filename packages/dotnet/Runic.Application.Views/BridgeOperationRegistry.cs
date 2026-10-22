@@ -75,7 +75,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
         ArgumentNullException.ThrowIfNull(work);
-        return AcceptCore(requestId, request: null, canStart: null, stream: null, async (_, cancellationToken) =>
+        return AcceptCore(requestId, request: null, refusal: null, stream: null, async (_, cancellationToken) =>
         {
             await work(cancellationToken).ConfigureAwait(false);
             return BridgeOperationResult.None;
@@ -92,8 +92,18 @@ internal sealed class BridgeOperationRegistry : IDisposable
         Func<CancellationToken, Task<BridgeOperationResult>> work)
     {
         ArgumentNullException.ThrowIfNull(canStart);
+        return AcceptUnlessRefused(request, Unavailable(canStart), work);
+    }
+
+    // refusal returns why a new request cannot start ("unavailable", "unresolved-key"), or null.
+    internal BridgeOperationAdmission AcceptUnlessRefused(
+        BridgeOperationRequest request,
+        Func<string?> refusal,
+        Func<CancellationToken, Task<BridgeOperationResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(work);
-        return AcceptCore(request.Identity.RegistryKey, request, canStart, stream: null,
+        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream: null,
             (_, cancellationToken) => work(cancellationToken));
     }
 
@@ -108,15 +118,27 @@ internal sealed class BridgeOperationRegistry : IDisposable
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
     {
         ArgumentNullException.ThrowIfNull(canStart);
+        return AcceptUnlessRefused(request, Unavailable(canStart), stream, work);
+    }
+
+    internal BridgeOperationAdmission AcceptUnlessRefused(
+        BridgeOperationRequest request,
+        Func<string?> refusal,
+        BridgeOperationStream stream,
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(work);
-        return AcceptCore(request.Identity.RegistryKey, request, canStart, stream, work);
+        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work);
     }
+
+    private static Func<string?> Unavailable(Func<bool> canStart) => () => canStart() ? null : "unavailable";
 
     private BridgeOperationAdmission AcceptCore(
         string requestId,
         BridgeOperationRequest? request,
-        Func<bool>? canStart,
+        Func<string?>? refusal,
         BridgeOperationStream? stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
     {
@@ -146,8 +168,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
             if (_operations.Count >= _maximumOperations)
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "capacity");
 
-            if (canStart is not null && !canStart())
-                return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "unavailable");
+            if (refusal?.Invoke() is { } reason)
+                return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, reason);
 
             // A stream can retain values while work is still running. Reserve
             // its declared maximum before execution so concurrent producers

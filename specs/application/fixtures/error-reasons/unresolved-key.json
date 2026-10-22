@@ -1,0 +1,8 @@
+{
+  "description": "A [RunicCommandKey] command whose wire key resolves to no object is rejected with reason unresolved-key, and the command does not run. The client rejects with BridgeError(\"rejected\") whose reason is unresolved-key. \"state\": {} stands for the model's state.",
+  "scenario": "unresolved-key",
+  "producer": "Runic.Application.Views",
+  "route": "command",
+  "wire": { "ok": false, "state": {}, "error": { "kind": "rejected", "message": "Lock has no object for this key.", "reason": "unresolved-key" } },
+  "client": { "error": { "kind": "rejected", "reason": "unresolved-key" }, "diagnostics": ["rejected"] }
+}

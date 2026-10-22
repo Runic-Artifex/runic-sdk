@@ -64,24 +64,32 @@ internal sealed class BridgeOperationRouter : IDisposable
 
     // The availability callback is intentionally supplied to the registry.
     // It is evaluated only for a newly admitted identity; a duplicate retry
-    // returns the original operation before a newer CanExecute value can
-    // reject it.
+    // returns the original operation before a newer CanExecute value (or key
+    // resolution) can reject it.
     internal BridgeOperationAdmissionReply Accept(
         BridgeOperationRequest request,
         Func<bool> canStart,
+        Func<CancellationToken, Task<BridgeOperationResult>> work) =>
+        AcceptUnlessRefused(request, () => canStart() ? null : "unavailable", work);
+
+    // refusal returns the rejection reason of a new request, such as "unavailable"
+    // or "unresolved-key", or null when the operation can start.
+    internal BridgeOperationAdmissionReply AcceptUnlessRefused(
+        BridgeOperationRequest request,
+        Func<string?> refusal,
         Func<CancellationToken, Task<BridgeOperationResult>> work)
     {
-        var admission = _operations.Accept(request, canStart, work);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, work);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
-    internal BridgeOperationAdmissionReply Accept(
+    internal BridgeOperationAdmissionReply AcceptUnlessRefused(
         BridgeOperationRequest request,
-        Func<bool> canStart,
+        Func<string?> refusal,
         BridgeOperationStream stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
     {
-        var admission = _operations.Accept(request, canStart, stream, work);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 

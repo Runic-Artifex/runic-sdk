@@ -68,6 +68,7 @@ and severities are open.
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
 | [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
+| [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
 
 ### RUNICBRIDGE001
 
@@ -444,6 +445,31 @@ runs `npm install`, `pnpm install` or `bun install` with `--ignore-scripts`. A
 project that sets `RunicApplicationFrontendInstallCommand`,
 `RunicApplicationFrontendNodeModulesDirectory` or
 `RunicApplicationFrontendInstallEnabled=false` is not checked.
+
+### RUNICBRIDGE027
+
+A `[RunicCommandKey]` declaration (since 0.11) is misplaced, or its resolver
+cannot be called the way the generated Bridge calls it:
+
+- it is on a member that is not a Bridge command or its `[RelayCommand]` method,
+  or on both the property and the method;
+- the command takes no parameter (a ReactiveUI command whose input is `RxVoid`
+  or `Unit`, a non-generic CommunityToolkit command);
+- it is combined with `[RunicCommandInput]`;
+- the named method does not exist on the ViewModel or its base classes, is
+  overloaded, or is `private` or `protected`;
+- the method does not take exactly the key (plus, when asynchronous, an optional
+  `CancellationToken`), or does not return the command's parameter type, directly
+  or as `Task<T>` or `ValueTask<T>`.
+
+**Fix:** name one method of the ViewModel, `public` or `internal`, instance or
+static, such as `Item? FindItem(ulong id)` or
+`ValueTask<Item?> FindItemAsync(ulong id, CancellationToken cancellationToken)`,
+and put the attribute on the command property or on its `[RelayCommand]` method
+only. A plain `ICommand` takes `[RunicCommandKey]` instead of
+`[RunicCommandInput]`. A key type that is not a Bridge value is
+`RUNICBRIDGE003` at `{Model}.{Command}.key`. See
+[Commands whose parameter has no wire form](../packages/dotnet/Runic.Application.Views/README.md#commands-whose-parameter-has-no-wire-form).
 
 ## dotnet runic
 

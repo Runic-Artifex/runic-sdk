@@ -1410,6 +1410,65 @@ and receipt-metadata budget. Evicted or oversized receipts leave bounded
 request-ID tombstones; reconcile authoritative state before issuing a new ID.
 The write may have succeeded even when its receipt could not be retained.
 
+## Commands whose parameter has no wire form
+
+A command whose parameter is a .NET object that cannot cross the Bridge, such as
+`ReactiveCommand<Item, RxVoid>` bound directly by WPF, is presented as is with
+`[RunicCommandKey]` (since 0.11). It names a ViewModel method that resolves a key
+the page sends to the parameter; `null` means "no such object":
+
+```csharp
+public ItemsViewModel()
+{
+    DeleteItemCommand = ReactiveCommand.CreateFromTask<Item>(DeleteAsync, canDelete);
+}
+
+[RunicCommandKey(nameof(FindItem))]
+public ReactiveCommand<Item, RxVoid> DeleteItemCommand { get; }
+
+public Item? FindItem(ulong id) => _items.Lookup(id).ValueOrDefault();
+```
+
+The generated client takes the resolver's parameter, with its name and wire
+type: `deleteItem(id: bigint)`, `canDeleteItem(id: bigint)` and, for an
+asynchronous command, `startDeleteItem(id: bigint, options?)`. .NET decodes the
+key, resolves it, evaluates the command's `CanExecute` with the resolved object
+and runs the command with it, inside the generated call: the model turn,
+failure replies, cancellation and logging are those of any generated command.
+No wrapper command is needed.
+
+- **Unresolved key.** When the resolver returns `null`, the call is `rejected`
+  with reason `unresolved-key` (`BridgeError.reason` in the page,
+  `RunicCallReply.ErrorReason` in tests) and the command does not run;
+  `canDeleteItem(id)` is `false`. Nothing is logged.
+- **Resolver shapes.** One method of the ViewModel or a base class, not
+  overloaded, instance or static, `public` or `internal`:
+  `P? Find(TKey key)`, `ValueTask<P?> FindAsync(TKey key)` or
+  `ValueTask<P?> FindAsync(TKey key, CancellationToken cancellationToken)`
+  (`Task<P?>` works too). `TKey` is any command input type; `P` is the command's
+  parameter type (for a plain `ICommand`, whatever the resolver returns).
+- **Turns.** A synchronous resolver runs in the call's model turn. An
+  asynchronous one starts in that turn; `CanExecute` and the command run in a
+  new turn after it completes. The resolution is window work like an awaited
+  command: closing the window waits for it and then cancels its token, which is
+  also cancelled when the page cancels the call.
+- **No side effects.** A resolver can run more than once for one request: for
+  `canX(key)` and then `x(key)`, or when a page repeats an operation start. A
+  repeated start with the same `requestId` and key observes the admitted
+  operation whatever the key resolves to now; the operation's identity is the
+  key, not the object.
+- **Exceptions.** A resolver that throws `ArgumentException`, `FormatException`
+  or `JsonException` rejects the call with `invalid-input`; any other exception
+  fails it, as a command's would.
+- **Libraries.** ReactiveUI commands of both flavors, CommunityToolkit
+  `IRelayCommand<T>` and `IAsyncRelayCommand<T>` (put the attribute on the
+  property or on the `[RelayCommand]` method) and a plain `ICommand`, which takes
+  `[RunicCommandKey]` instead of `[RunicCommandInput]`. A command without a
+  parameter cannot have a key.
+
+The generator reports a misplaced attribute or an unusable resolver as
+[`RUNICBRIDGE027`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge027).
+
 ## Operation results and parameterised queries
 
 What a call gives the page back depends on the command:

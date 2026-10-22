@@ -205,4 +205,33 @@ internal static class BridgeCommandSources
                 declarations.Add(("method", attribute.Failure));
         return declarations;
     }
+
+    // The RunicCommandKey declarations of a command: on the property, then on
+    // its source method. More than one is a codegen diagnostic.
+    [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]
+    internal static IReadOnlyList<(string DeclaredOn, string Resolver)> KeyDeclarations(Type model, PropertyInfo command)
+    {
+        var declarations = new List<(string, string)>();
+        foreach (var attribute in command.GetCustomAttributes<RunicCommandKeyAttribute>(true))
+            declarations.Add(("property", attribute.Resolver));
+        if (SourceMethod(model, command) is { } method)
+            foreach (var attribute in method.GetCustomAttributes<RunicCommandKeyAttribute>(true))
+                declarations.Add(("method", attribute.Resolver));
+        return declarations;
+    }
+
+    // The methods named name that the ViewModel declares or inherits, most derived first, without the base
+    // definitions of overrides.
+    [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]
+    internal static IReadOnlyList<MethodInfo> KeyResolvers(Type model, string name)
+    {
+        const BindingFlags Declared = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+            | BindingFlags.Public | BindingFlags.NonPublic;
+        var methods = new List<MethodInfo>();
+        for (var owner = model; owner is not null && owner != typeof(object); owner = owner.BaseType)
+            foreach (var method in owner.GetMethods(Declared))
+                if (method.Name == name && !methods.Any(found => found.GetBaseDefinition() == method.GetBaseDefinition()))
+                    methods.Add(method);
+        return methods;
+    }
 }

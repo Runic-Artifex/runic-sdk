@@ -38,6 +38,7 @@ public sealed class WireProtocolFixtureTests
                     "mount-ack" => MountAck(),
                     "unavailable" => await ToolkitReplyAsync("30"),
                     "invalid-input" => await ToolkitReplyAsync("\"many\""),
+                    "unresolved-key" => await UnresolvedKeyReplyAsync(),
                     _ => throw new InvalidOperationException($"Unknown wire fixture scenario {scenario}."),
                 };
                 Require(JsonNode.DeepEquals(expected, actual),
@@ -45,7 +46,7 @@ public sealed class WireProtocolFixtureTests
                 produced++;
             }
         }
-        Require(produced == 5, $"Expected five .NET-produced wire fixtures, matched {produced}.");
+        Require(produced == 6, $"Expected six .NET-produced wire fixtures, matched {produced}.");
     }
 
     private static JsonObject SnapshotReply()
@@ -86,6 +87,19 @@ public sealed class WireProtocolFixtureTests
         // The state is the fixture model's; only its presence is portable. Detail is development-only.
         node["state"] = node["state"] is null ? null : new JsonObject();
         node["error"]!.AsObject().Remove("detail");
+        return node;
+    }
+
+    // #472: a RunicCommandKey command whose key names no object.
+    private static async Task<JsonObject> UnresolvedKeyReplyAsync()
+    {
+        using var host = new RunicWindowTestHost<KeyedToolkitViewModel>(new KeyedToolkitViewModel(),
+            (transport, content, vm) => new KeyedToolkitBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { ViewLocator = new TestViewLocator() });
+        var reply = await host.Root.ExecuteAsync(vm => vm.LockCommand, "\"77\"");
+        Require(reply.ErrorReason == "unresolved-key", $"The key was not unresolved: {reply}");
+        var node = JsonNode.Parse(reply.Json)!.AsObject();
+        node["state"] = node["state"] is null ? null : new JsonObject();
         return node;
     }
 

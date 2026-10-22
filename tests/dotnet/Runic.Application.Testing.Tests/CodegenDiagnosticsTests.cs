@@ -264,6 +264,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 }
                 public sealed partial class PayloadFailureWindow : RunicWindow<PayloadFailureViewModel>;
                 """, "RUNICBRIDGE003", "public object Value", "PayloadFailureViewModel.SaveCommand.failure.value").ConfigureAwait(false);
+            await RejectKeyDiagnosticsAsync((name, members, code, declaration, expected) => RejectAt(name, members, code, declaration, expected)).ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow : RunicWindow<ObjectViewModel>;
@@ -644,6 +645,103 @@ internal sealed partial class CodegenDiagnosticsTests
     }
 
     /// <summary>Compiles one fixture assembly and returns the failed generator's output.</summary>
+    // RUNICBRIDGE027 (#472): a misplaced RunicCommandKey, or a resolver that is missing or has an unsupported shape.
+    // An unsupported key type stays RUNICBRIDGE003.
+    private static async Task RejectKeyDiagnosticsAsync(Func<string, string, string, string, string[], Task> rejectAt)
+    {
+        const string Item = "public sealed class Item { public System.IO.Stream? Data { get; init; } }\n";
+        Task Reject(string name, string members, string code, string declaration, params string[] expected) =>
+            rejectAt(name, Item + members, code, declaration, expected);
+
+        await Reject("KeyOnState", """
+            public sealed class KeyStateViewModel : FixtureModel { [RunicCommandKey("Find")] public string Title { get; set; } = ""; }
+            public sealed partial class KeyStateWindow : RunicWindow<KeyStateViewModel>;
+            """, "RUNICBRIDGE027", "public string Title",
+            "KeyStateViewModel.Title: RunicCommandKey applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method.").ConfigureAwait(false);
+        await Reject("KeyMissing", """
+            public sealed class KeyMissingViewModel : FixtureModel
+            {
+                [RunicCommandKey("Find")] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+            }
+            public sealed partial class KeyMissingWindow : RunicWindow<KeyMissingViewModel>;
+            """, "RUNICBRIDGE027", "public IRelayCommand<Item> DeleteCommand",
+            "KeyMissingViewModel.DeleteCommand: the RunicCommandKey resolver 'Find' is not a method of KeyMissingViewModel.").ConfigureAwait(false);
+        await Reject("KeyOverloaded", """
+            public sealed class KeyOverloadedViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+                public Item? Find(ulong id) => null;
+                public Item? Find(string name) => null;
+            }
+            public sealed partial class KeyOverloadedWindow : RunicWindow<KeyOverloadedViewModel>;
+            """, "RUNICBRIDGE027", "public Item? Find(string name)",
+            "KeyOverloadedViewModel.DeleteCommand: the RunicCommandKey resolver KeyOverloadedViewModel.Find is overloaded.").ConfigureAwait(false);
+        await Reject("KeyPrivate", """
+            public sealed class KeyPrivateViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+                private Item? Find(ulong id) => null;
+            }
+            public sealed partial class KeyPrivateWindow : RunicWindow<KeyPrivateViewModel>;
+            """, "RUNICBRIDGE027", "private Item? Find(ulong id)",
+            "KeyPrivateViewModel.DeleteCommand: the RunicCommandKey resolver KeyPrivateViewModel.Find must be public or internal").ConfigureAwait(false);
+        await Reject("KeyArity", """
+            public sealed class KeyArityViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+                public Item? Find(ulong id, ulong version) => null;
+            }
+            public sealed partial class KeyArityWindow : RunicWindow<KeyArityViewModel>;
+            """, "RUNICBRIDGE027", "public Item? Find(ulong id, ulong version)",
+            "must take the key as its only parameter").ConfigureAwait(false);
+        await Reject("KeyReturn", """
+            public sealed class KeyReturnViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+                public System.Threading.Tasks.Task<string?> Find(ulong id) => System.Threading.Tasks.Task.FromResult<string?>(null);
+            }
+            public sealed partial class KeyReturnWindow : RunicWindow<KeyReturnViewModel>;
+            """, "RUNICBRIDGE027", "public System.Threading.Tasks.Task<string?> Find(ulong id)",
+            "returns System.Threading.Tasks.Task<System.String>; it must return the command's parameter Fixture.Item").ConfigureAwait(false);
+        await Reject("KeyWithoutInput", """
+            public sealed class KeyNoInputViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                public Item? Find(ulong id) => null;
+            }
+            public sealed partial class KeyNoInputWindow : RunicWindow<KeyNoInputViewModel>;
+            """, "RUNICBRIDGE027", "public IRelayCommand SaveCommand",
+            "KeyNoInputViewModel.SaveCommand: RunicCommandKey resolves a command's parameter, but this command takes none.").ConfigureAwait(false);
+        await Reject("KeyWithInput", """
+            public sealed class KeyAndInputViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find)), RunicCommandInput(typeof(ulong))]
+                public System.Windows.Input.ICommand PickCommand { get; } = new RelayCommand<Item>(_ => { });
+                public Item? Find(ulong id) => null;
+            }
+            public sealed partial class KeyAndInputWindow : RunicWindow<KeyAndInputViewModel>;
+            """, "RUNICBRIDGE027", "public System.Windows.Input.ICommand PickCommand",
+            "KeyAndInputViewModel.PickCommand: RunicCommandKey replaces RunicCommandInput").ConfigureAwait(false);
+        await Reject("KeyOnBoth", """
+            public sealed class KeyBothViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+                [RelayCommand, RunicCommandKey(nameof(Find))] private void Delete(Item item) { }
+                public Item? Find(ulong id) => null;
+            }
+            public sealed partial class KeyBothWindow : RunicWindow<KeyBothViewModel>;
+            """, "RUNICBRIDGE027", "[RelayCommand, RunicCommandKey(nameof(Find))] private void Delete(Item item)",
+            "KeyBothViewModel.DeleteCommand: declare RunicCommandKey once").ConfigureAwait(false);
+        await Reject("KeyType", """
+            public sealed class KeyTypeViewModel : FixtureModel
+            {
+                [RunicCommandKey(nameof(Find))] public IRelayCommand<Item> DeleteCommand { get; } = new RelayCommand<Item>(_ => { });
+                public Item? Find(object key) => null;
+            }
+            public sealed partial class KeyTypeWindow : RunicWindow<KeyTypeViewModel>;
+            """, "RUNICBRIDGE003", "public Item? Find(object key)", "KeyTypeViewModel.DeleteCommand.key").ConfigureAwait(false);
+    }
+
     private static async Task<string> GenerateAsync(string generator, string temporaryRoot, string name, string source)
     {
         var (exitCode, text, _) = await RunGeneratorAsync(generator, temporaryRoot, name, source).ConfigureAwait(false);

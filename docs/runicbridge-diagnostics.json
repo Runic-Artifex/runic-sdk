@@ -130,6 +130,11 @@
       "id": "RUNICBRIDGE026",
       "severity": "error",
       "title": "The frontend declares dependencies but has no lock file for the default install"
+    },
+    {
+      "id": "RUNICBRIDGE027",
+      "severity": "error",
+      "title": "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"
     }
   ]
 }
