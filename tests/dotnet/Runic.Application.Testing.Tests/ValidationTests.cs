@@ -140,6 +140,80 @@ internal sealed class ValidationTests
         }), "An errors-only nested object did not publish its validation change.");
     }
 
+    [Test]
+    public void ToolkitObservableValidatorReportsEachMessageOnce()
+    {
+        var model = new ToolkitValidationViewModel();
+        model.Validate();
+        BridgeDataSubscriptionMember[] metadata =
+        [
+            new("name", static owner => ((ToolkitValidationViewModel)owner).Name, propertyName: nameof(ToolkitValidationViewModel.Name)),
+            new("count", static owner => ((ToolkitValidationViewModel)owner).Count, propertyName: nameof(ToolkitValidationViewModel.Count)),
+        ];
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer)) BridgeValidation.Write(writer, model, metadata);
+        using var document = JsonDocument.Parse(buffer.ToArray());
+        var validation = document.RootElement;
+        Require(validation.GetProperty("hasErrors").GetBoolean(), "The Toolkit validator's errors did not set hasErrors.");
+        var errors = validation.GetProperty("errors");
+        RequireErrors(errors,
+            ([], "Name is required.", 0),
+            (["name"], "Name is required.", 1),
+            ([], "Count must be between 1 and 10.", 0),
+            (["count"], "Count must be between 1 and 10.", 1));
+        Require(errors.GetArrayLength() == 2, $"The Toolkit validator's summary was not two errors: {errors}");
+    }
+
+    [Test]
+    public void ReactiveValidationObjectReportsEachMessageOnce()
+    {
+        var model = new ReactivePasswordViewModel { NewPassword = "abc", ConfirmPassword = "abd" };
+        // The fork keeps INotifyDataErrorInfo's unfiltered reading: every message.
+        Require(model.GetErrors(null).Cast<object>().Count() == 3,
+            "ReactiveValidationObject.GetErrors(null) no longer returns every message.");
+
+        using var host = new RunicWindowTestHost<ReactivePasswordViewModel>(model,
+            (transport, content, vm) => new ReactivePasswordBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "reactivePassword", ViewLocator = new TestViewLocator() });
+        using var snapshot = host.RawSnapshot();
+        var state = snapshot.RootElement.GetProperty("state");
+        var validation = state.GetProperty("validation");
+        Require(validation.GetProperty("hasErrors").GetBoolean(), "The ValidationContext's errors did not set hasErrors.");
+        var errors = validation.GetProperty("errors");
+        RequireErrors(errors,
+            (["newPassword"], ReactivePasswordViewModel.TooShort, 1),
+            ([], ReactivePasswordViewModel.TooShort, 0),
+            (["confirmPassword"], ReactivePasswordViewModel.Mismatch, 1),
+            ([], ReactivePasswordViewModel.Mismatch, 0),
+            ([], ReactivePasswordViewModel.Common, 1));
+        Require(errors.GetArrayLength() == 3, $"The summary was not three errors: {errors}");
+        Require(state.GetProperty("newPasswordErrors").EnumerateArray().Single().GetString() == ReactivePasswordViewModel.TooShort,
+            "The per-property errors changed.");
+
+        model.NewPassword = "abcdefgh";
+        model.ConfirmPassword = "abcdefgh";
+        using var valid = host.RawSnapshot();
+        var cleared = valid.RootElement.GetProperty("state").GetProperty("validation");
+        Require(!cleared.GetProperty("hasErrors").GetBoolean() && cleared.GetProperty("errors").GetArrayLength() == 0,
+            $"Valid rules still reported errors: {cleared}");
+    }
+
+    private static void RequireErrors(JsonElement errors, params (object[] Path, string Message, int Count)[] expected)
+    {
+        foreach (var (path, message, count) in expected)
+        {
+            var actual = errors.EnumerateArray().Count(error => HasError(JsonArray(error), path, message));
+            Require(actual == count,
+                $"'{message}' at [{string.Join(", ", path)}] appeared {actual} times, not {count}: {errors}");
+        }
+    }
+
+    private static JsonElement JsonArray(JsonElement error)
+    {
+        using var document = JsonDocument.Parse("[" + error.GetRawText() + "]");
+        return document.RootElement.Clone();
+    }
+
     private static bool HasError(JsonElement errors, object[] path, string message,
         string? code = null, string? severity = null) => errors.EnumerateArray().Any(error =>
     {

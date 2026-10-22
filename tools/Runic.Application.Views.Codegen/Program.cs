@@ -749,6 +749,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var hasErrors = typeof(INotifyDataErrorInfo).IsAssignableFrom(model);
     var hasValidation = hasErrors || valueProperties.Values.Any(graph =>
         graph.Nodes.Any(node => typeof(INotifyDataErrorInfo).IsAssignableFrom(node.Type)));
+    // #478: the ReactiveUI.Validation flavors (matched by name; the generator references neither) whose
+    // ValidationContext the generated Bridge reads for object-level errors.
+    var validationContextFlavors = hasValidation
+        ? ValidationContextFlavors([model, .. valueProperties.Values.SelectMany(graph => graph.Nodes.Select(node => node.Type))])
+        : [];
     if (hasValidation && properties.FirstOrDefault(property => WireName(property) == "validation") is { } validationProperty)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}.{validationProperty.Name}: validation is reserved for generated validation state. Alias the model property.", validationProperty);
@@ -854,6 +859,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =");
     BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties);
     cs.AppendLine("    ;");
+    if (validationContextFlavors.Length > 0)
+    {
+        cs.AppendLine();
+        AppendValidationContextReader(cs, validationContextFlavors);
+    }
     foreach (var (property, graph) in valueProperties)
     {
         graph.AppendCSharpCodec(cs, property.Name + "ValueCodec");
@@ -994,7 +1004,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasValidation)
     {
         cs.AppendLine("        writer.WritePropertyName(\"validation\");");
-        cs.AppendLine("        global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata);");
+        cs.AppendLine(validationContextFlavors.Length > 0
+            ? "        global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata, ReadValidationContextErrors);"
+            : "        global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata);");
     }
     // Availability without an argument is state; a command with an argument
     // is queried through can<Name>(argument). Execution state needs no
@@ -1423,6 +1435,47 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         return [.. defaults];
     }
+}
+
+// The root namespaces of the ReactiveUI.Validation flavors whose IValidatableViewModel one of the
+// types implements: ReactiveUI.Validation (RunicArtifex.ReactiveUI.Validation) and
+// ReactiveUI.Validation.Reactive (its System.Reactive flavor).
+static string[] ValidationContextFlavors(IEnumerable<Type> types) => types
+    .SelectMany(type => type.IsInterface ? [type, .. type.GetInterfaces()] : type.GetInterfaces())
+    .Select(type => type.FullName switch
+    {
+        "ReactiveUI.Validation.Abstractions.IValidatableViewModel" => "ReactiveUI.Validation",
+        "ReactiveUI.Validation.Reactive.Abstractions.IValidatableViewModel" => "ReactiveUI.Validation.Reactive",
+        _ => null,
+    })
+    .OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+
+// #478 (D033): a ReactiveValidationObject's GetErrors(null) returns the text of every property
+// validation. The reader takes the ValidationContext instead: a validation with properties is a
+// ValidationResult naming them, which BridgeValidation leaves to GetErrors(member) when they are
+// presented; any other validation reports at the object's path.
+static void AppendValidationContextReader(StringBuilder cs, IReadOnlyList<string> flavors)
+{
+    cs.AppendLine("    private static global::System.Collections.IEnumerable? ReadValidationContextErrors(object owner)");
+    cs.AppendLine("    {");
+    foreach (var flavor in flavors)
+    {
+        cs.AppendLine($"        if (owner is global::{flavor}.Abstractions.IValidatableViewModel {{ ValidationContext: {{ }} context }})");
+        cs.AppendLine("        {");
+        cs.AppendLine("            var errors = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();");
+        cs.AppendLine("            foreach (var validation in context.Validations.Items)");
+        cs.AppendLine("            {");
+        cs.AppendLine("                if (validation.IsValid) continue;");
+        cs.AppendLine($"                var properties = validation is global::{flavor}.Components.Abstractions.IValidatesProperties {{ PropertyCount: > 0 }} validatesProperties");
+        cs.AppendLine("                    ? global::System.Linq.Enumerable.ToArray(validatesProperties.Properties) : null;");
+        cs.AppendLine("                errors.Add(new(validation.Text?.ToSingleLine(\" \") ?? string.Empty, properties));");
+        cs.AppendLine("            }");
+        cs.AppendLine("            return errors;");
+        cs.AppendLine("        }");
+    }
+    cs.AppendLine("        return null;");
+    cs.AppendLine("    }");
+    cs.AppendLine();
 }
 
 static string MockModulePath(string typescriptPath) =>

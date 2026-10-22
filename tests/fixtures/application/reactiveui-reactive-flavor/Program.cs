@@ -112,6 +112,28 @@ using (scheduler.Schedule(0, TimeSpan.FromMilliseconds(100), (_, _) =>
 await Task.Delay(200);
 if (Volatile.Read(ref cancelled) != 0) throw new InvalidOperationException("Disposed scheduled work still ran.");
 
+// #478: the generated Bridge reads the ValidationContext of the System.Reactive flavor of
+// ReactiveUI.Validation, so each message appears once and the object rule at the object's path.
+var validationModel = new FlavorValidationModel { NewPassword = "abc", ConfirmPassword = "abd" };
+using (var validationHost = new RunicWindowTestHost<FlavorValidationModel>(validationModel,
+    (transport, content, vm) => new FlavorValidationModelBridge(transport, vm, content: content),
+    new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = viewLocator }))
+{
+    using var validationSnapshot = JsonDocument.Parse(validationHost.Transport.Call($"{validationHost.RootRoute}Snapshot"));
+    var errors = validationSnapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors");
+    var actual = errors.EnumerateArray()
+        .Select(error => $"[{string.Join(",", error.GetProperty("path").EnumerateArray().Select(segment => segment.GetString()))}] {error.GetProperty("message").GetString()}")
+        .Order(StringComparer.Ordinal).ToArray();
+    string[] expected =
+    [
+        $"[] {FlavorValidationModel.Common}",
+        $"[confirmPassword] {FlavorValidationModel.Mismatch}",
+        $"[newPassword] {FlavorValidationModel.TooShort}",
+    ];
+    if (!actual.SequenceEqual(expected, StringComparer.Ordinal))
+        throw new InvalidOperationException($"The Reactive flavor's validation summary was {errors}.");
+}
+
 Console.WriteLine("REACTIVEUI_REACTIVE_FLAVOR_OK");
 
 file static class Scheduled

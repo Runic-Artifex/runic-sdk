@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Application.Views.Generated.BridgeValidation.Write(System.Text.Json.Utf8JsonWriter! writer, object! root, System.Collections.Generic.IReadOnlyList<Runic.Application.Views.Generated.BridgeDataSubscriptionMember!>! members, System.Func<object!, System.Collections.IEnumerable?>! readObjectErrors) -> void

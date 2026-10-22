@@ -1618,6 +1618,28 @@ validation details are incomplete. Nested `ErrorsChanged` notifications publish 
 state, and removed objects lose their subscriptions. This projection works
 across model frameworks; it does not run validation rules itself.
 
+Each object is read with `GetErrors(null)` for its own errors and
+`GetErrors(member)` for each Bridge member. Many implementations, including
+CommunityToolkit's `ObservableValidator`, also return every property's errors
+for `null`. A `ValidationResult` from `GetErrors(null)` whose `MemberNames` all
+name Bridge members of the same object is therefore left to `GetErrors(member)`
+and reported once, at the member's path. Other member names still resolve
+relative to the object, and a result without member names reports at the
+object's path. Strings and `RunicValidationMessage`s from `GetErrors(null)`
+are reported as before.
+
+A ViewModel that implements ReactiveUI.Validation's `IValidatableViewModel`
+(`RunicArtifex.ReactiveUI.Validation` or its `.Reactive` flavor), such as a
+`ReactiveValidationObject`, is read through its `ValidationContext` instead of
+`GetErrors(null)`: a validation with properties reports at each property's
+path, and every other validation, such as a rule created with
+`ValidationRule(observable, message)`, at the object's path. Each message
+appears once. The generated Bridge emits this reader, so no further package is
+needed. A Bridge member's messages still come from `GetErrors(member)` and keep
+the ViewModel's formatter, as in the per-property `…Errors` arrays; the other
+messages are the validation text on one line, separated by spaces. `ReactiveValidationObject.GetErrors(null)`
+itself is unchanged.
+
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.
 

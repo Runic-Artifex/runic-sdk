@@ -4,6 +4,8 @@ using System.Reactive.Subjects;
 using ReactiveUI;
 using ReactiveUI.Reactive;
 using ReactiveUI.SourceGenerators;
+using ReactiveUI.Validation.Reactive.Extensions;
+using ReactiveUI.Validation.Reactive.Helpers;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI.Reactive;
 
@@ -57,6 +59,57 @@ namespace ReactiveUiReactiveFlavorProof
     }
 
     public sealed partial class FlavorShellWindow : RunicWindow<FlavorShellModel>
+    {
+    }
+
+    // #478 in the System.Reactive flavor: two property rules and one object rule, read through the
+    // ValidationContext so that each message appears once in the validation summary.
+    public sealed class FlavorValidationModel : ReactiveValidationObject
+    {
+        public const string TooShort = "Password must be at least 7 characters long.";
+        public const string Mismatch = "The confirmation does not match the new password.";
+        public const string Common = "Choose a less common password.";
+
+        private readonly BehaviorSubject<bool> _longEnough = new(true);
+        private readonly BehaviorSubject<bool> _matches = new(true);
+        private readonly BehaviorSubject<bool> _uncommon = new(true);
+
+        public FlavorValidationModel()
+        {
+            this.ValidationRule(vm => vm.NewPassword, _longEnough, TooShort);
+            this.ValidationRule(vm => vm.ConfirmPassword, _matches, Mismatch);
+            this.ValidationRule(_uncommon, Common);
+        }
+
+        public string NewPassword
+        {
+            get;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref field, value);
+                Revalidate();
+            }
+        } = string.Empty;
+
+        public string ConfirmPassword
+        {
+            get;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref field, value);
+                Revalidate();
+            }
+        } = string.Empty;
+
+        private void Revalidate()
+        {
+            _longEnough.OnNext(NewPassword.Length >= 7);
+            _matches.OnNext(NewPassword == ConfirmPassword);
+            _uncommon.OnNext(NewPassword != "abc");
+        }
+    }
+
+    public sealed partial class FlavorValidationWindow : RunicWindow<FlavorValidationModel>
     {
     }
 }
