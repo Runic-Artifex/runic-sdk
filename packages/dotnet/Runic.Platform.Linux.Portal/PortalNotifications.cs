@@ -124,7 +124,29 @@ internal sealed class PortalNotifications(string? address = null, string destina
     private void OnAction(string id, string action)
     {
         if (!_sent.TryGetValue(id, out var notification) || action != "default" && !notification.Actions.Any(a => a.Id == action)) return;
-        Raise(new DesktopNotificationActivation(id, action, notification.ActivationUri));
+        Raise(new DesktopNotificationActivation(id, action, notification.ActivationUri) { IsTrusted = true });
+    }
+    // org.freedesktop.Application.ActivateAction from the installed desktop entry. A notification this process showed,
+    // with one of its actions, is trusted and carries the link the application gave it, whatever the target says. Any
+    // other activation can come after a restart or from any process on the session bus (SEC-09): it is untrusted, and its
+    // link is kept only where LaunchUriAsync could open it on Linux (http, https or mailto without attachments).
+    private void OnInstalledAction(string id, string action, Uri? uri, DesktopActivationContext context)
+    {
+        if (_sent.TryGetValue(id, out var notification) && (action == "default" || notification.Actions.Any(a => a.Id == action)))
+        {
+            Raise(new DesktopNotificationActivation(id, action, notification.ActivationUri) { PlatformContext = context, IsTrusted = true });
+            return;
+        }
+        Diagnose("portal-notification-activation-unmatched", "The desktop invoked an action of a notification this process did not show.",
+            "The activation is untrusted: check its identifiers against the application's own state.");
+        Raise(new DesktopNotificationActivation(id, action, UntrustedLink(uri)) { PlatformContext = context });
+    }
+    internal static Uri? UntrustedLink(Uri? uri)
+    {
+        if (uri is null) return null;
+        try { DesktopUriPolicy.Require(uri); }
+        catch (ArgumentException) { return null; }
+        return DesktopUriPolicy.IsWindowsOnly(uri) ? null : uri;
     }
     private void Raise(DesktopNotificationActivation activation)
     {
@@ -243,7 +265,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 Uri? uri = parts[2].Length == 0 ? null : new Uri(parts[2], UriKind.Absolute);
                 if (uri is { IsFile: true }) throw new ArgumentException("File activation targets are not accepted.");
                 // Installed activation can arrive after restart. Consumers validate the IDs against their durable state.
-                owner.Raise(new(parts[0], parts[1], uri) { PlatformContext = activationContext });
+                owner.OnInstalledAction(parts[0], parts[1], uri, activationContext);
                 return ValueTask.FromResult(ImmutableArray<DBusValue>.Empty);
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or FormatException)

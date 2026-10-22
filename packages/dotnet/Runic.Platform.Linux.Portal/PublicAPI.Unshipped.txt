@@ -1,1 +1,6 @@
 #nullable enable
+Runic.Platform.Linux.Portal.PortalDiagnostic.Severity.get -> Runic.Platform.Linux.Portal.PortalDiagnosticSeverity
+Runic.Platform.Linux.Portal.PortalDiagnostic.Severity.init -> void
+Runic.Platform.Linux.Portal.PortalDiagnosticSeverity
+Runic.Platform.Linux.Portal.PortalDiagnosticSeverity.Information = 0 -> Runic.Platform.Linux.Portal.PortalDiagnosticSeverity
+Runic.Platform.Linux.Portal.PortalDiagnosticSeverity.Warning = 1 -> Runic.Platform.Linux.Portal.PortalDiagnosticSeverity

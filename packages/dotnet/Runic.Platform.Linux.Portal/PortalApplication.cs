@@ -104,7 +104,7 @@ public sealed class PortalApplication
 
     internal void Diagnose(string code, string message, string remedy)
     {
-        try { _diagnosticSink?.Invoke(new(code, message, remedy)); }
+        try { _diagnosticSink?.Invoke(PortalDiagnostic.Create(code, message, remedy)); }
         catch { /* Diagnostic observers cannot replace platform outcomes. */ }
     }
 }

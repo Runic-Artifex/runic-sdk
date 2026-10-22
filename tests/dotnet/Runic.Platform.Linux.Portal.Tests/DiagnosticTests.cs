@@ -25,11 +25,30 @@ internal sealed class DiagnosticTests
         string readme = File.ReadAllText(Path.Combine(package, "README.md"));
         var reported = Directory.EnumerateFiles(package, "*.cs", SearchOption.AllDirectories)
             .SelectMany(file => System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(file),
-                @"(?:Diagnose|new PortalDiagnostic)\(\s*""([a-z0-9]+(?:-[a-z0-9]+)+)""").Select(match => match.Groups[1].Value))
+                @"(?:Diagnose|PortalDiagnostic\.Create|new PortalDiagnostic)\(\s*""([a-z0-9]+(?:-[a-z0-9]+)+)""").Select(match => match.Groups[1].Value))
             .Distinct().ToArray();
         Check(reported.Length > 20, "The scan found the codes.");
         var missing = reported.Where(code => !readme.Contains($"| `{code}` |", StringComparison.Ordinal)).ToArray();
         Check(missing.Length == 0, "README is missing: " + string.Join(", ", missing));
+        // The README's severity column is the one the diagnostics carry.
+        var rows = System.Text.RegularExpressions.Regex.Matches(readme, @"^\| `([a-z0-9-]+)` \| (Information|Warning) \|", System.Text.RegularExpressions.RegexOptions.Multiline);
+        Check(rows.Count == reported.Length, $"README rows with a severity: {rows.Count}, reported codes: {reported.Length}.");
+        var wrong = rows.Where(row => PortalDiagnostic.SeverityOf(row.Groups[1].Value).ToString() != row.Groups[2].Value)
+            .Select(row => row.Groups[1].Value).ToArray();
+        Check(wrong.Length == 0, "README severity differs: " + string.Join(", ", wrong));
+    }
+
+    [Test, DisplayName("diagnostics: Severity is an optional init property; the services set it from the code")]
+    public void SeverityIsOptional()
+    {
+        var diagnostic = new PortalDiagnostic("status-icon-no-watcher", "No watcher.");
+        Check(diagnostic.Severity == PortalDiagnosticSeverity.Information, "A diagnostic created without one is informational.");
+        Check(PortalDiagnostic.Create("status-icon-no-watcher", "No watcher.", null).Severity == PortalDiagnosticSeverity.Warning, "Problems are warnings.");
+        Check(PortalDiagnostic.Create("portal-identity-registered", "Registered.", null).Severity == PortalDiagnosticSeverity.Information, "Reports of what a service did are information.");
+        var (code, message, remediation) = diagnostic with { Severity = PortalDiagnosticSeverity.Warning };
+        Check(code == "status-icon-no-watcher" && message == "No watcher." && remediation is null, "Deconstruct is unchanged.");
+        try { _ = diagnostic with { Severity = (PortalDiagnosticSeverity)7 }; throw new InvalidOperationException("An undefined severity was accepted."); }
+        catch (ArgumentOutOfRangeException) { }
     }
 
     private static string? FindRepository()

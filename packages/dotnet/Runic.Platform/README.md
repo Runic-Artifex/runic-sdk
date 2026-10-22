@@ -237,20 +237,23 @@ bool offerRememberMe = DesktopServiceStatus.Get(secrets) is CapabilityStatus.Ava
 ```
 
 `DesktopAppearance.TextScale` is the desktop's text size preference as a factor of
-the default size: the Windows Accessibility "Text size" setting (1 to 2.25). macOS
-has no system-wide text size that applications can read, so it is `null` there, as
-on a desktop that has no such setting; the Linux provider does not read it yet.
-Multiply font sizes by it, for example a page's root font size; it is independent
-of the display scale. A watch reports a change of it like any other preference.
+the default size: the Windows Accessibility "Text size" setting (1 to 2.25) and,
+on Linux, GNOME's text scaling factor (0.5 to 3, "Large Text" is 1.25), which the
+GNOME and GTK portal backends expose through the Settings portal. macOS has no
+system-wide text size that applications can read, so it is `null` there, as on a
+desktop that has no such setting, such as Plasma. Multiply font sizes by it, for
+example a page's root font size; it is independent of the display scale. A watch
+reports a change of it like any other preference.
 
 A notification's `Activated` event is untrusted input. `DesktopNotificationActivation.IsTrusted`
 is `true` when the provider matched the activation to a notification the
 application showed, so its identifiers and `ActivationUri` are the ones the
-application supplied: on Windows and macOS. Linux activations are not trusted
-yet: one can arrive after a restart, when the process no longer knows the
-notification, and any process on the session bus can send one. Check the
-identifiers and link of an untrusted activation against the application's own
-state before acting on them.
+application supplied: on Windows and macOS, and on Linux for a notification the
+running process showed. On Linux an activation can also arrive after a restart,
+when the process no longer knows the notification, and any process on the session
+bus can send one; such an activation is not trusted, and its `ActivationUri` is
+`null` unless it is an `http`, `https` or `mailto` URI. Check the identifiers of an
+untrusted activation against the application's own state before acting on them.
 
 ### Hosts without a native owner
 
