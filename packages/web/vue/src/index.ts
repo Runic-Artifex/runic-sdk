@@ -15,6 +15,9 @@ import {
   createLatestOperationController,
   createOperationController,
   createViewController,
+  onBridgeConnection,
+  type BridgeConnectionOptions,
+  type BridgeConnectionState,
   type BridgeOperation,
   type BridgeOutcomeFailure,
   type LatestOperationController,
@@ -107,14 +110,24 @@ function referenceKey(reference: object): number {
 /**
  * Renders the registered component for a generated View reference and passes
  * the reference as its `page` prop. A different reference remounts the
- * component. A kind without a component renders an alert; the default slot
- * renders while there is no content.
+ * component. The default slot renders while there is no content. A kind without
+ * a component renders the `missing` slot, which receives `{ content }`, for example
+ * for localized text, or an English alert without it:
+ *
+ * ```vue
+ * <ViewOutlet :content="state?.main" :registry="pages">
+ *   <template #missing="{ content }"><p role="alert">{{ t("missingView", content.kind) }}</p></template>
+ * </ViewOutlet>
+ * ```
  */
 export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewOutletProps<R>, { slots }: SetupContext) => (): VNodeChild => {
   const content = props.content;
   if (!content) return slots.default?.();
   const component = props.registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined;
-  if (!component) return h("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+  if (!component) {
+    if (slots["missing"]) return slots["missing"]({ content });
+    return h("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+  }
   return h(component, { key: referenceKey(content), page: content });
 }, { name: "ViewOutlet", props: ["content", "registry"] });
 
@@ -235,6 +248,29 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   });
   releaseWithScope("useLatestOperation", () => controller.dispose());
   return { ...refs, run: controller.run, clear: controller.clear } as LatestOperationHandle<TResult, TFailure>;
+}
+
+export interface BridgeConnectionHandle {
+  /** The connection to the .NET host, as `onBridgeConnection` reports it. */
+  readonly state: Readonly<Ref<BridgeConnectionState>>;
+}
+
+/**
+ * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`
+ * or `lost`) as a shallow ref through `onBridgeConnection`, until the current effect scope is
+ * disposed. Call it in `setup()` or `effectScope().run()`: outside an effect scope it is never
+ * released (development builds warn).
+ *
+ * ```vue
+ * const { state: connection } = useBridgeConnection();
+ * <p v-if="connection === 'lost'" role="alert">The application stopped responding.</p>
+ * ```
+ */
+export function useBridgeConnection(options: BridgeConnectionOptions = {}): BridgeConnectionHandle {
+  const state = shallowRef<BridgeConnectionState>("connecting");
+  const stop = onBridgeConnection(next => { state.value = next; }, options);
+  releaseWithScope("useBridgeConnection", stop);
+  return { state };
 }
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";

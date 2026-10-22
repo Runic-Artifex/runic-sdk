@@ -89,8 +89,8 @@ const step = computed({ get: () => state.value?.step ?? 1, set: value => void se
 
 Renders the component registered for a generated reference's `kind` and
 passes the reference as its `page` prop. A different reference remounts the
-component, a kind without a component renders an alert, and the default slot
-renders while `content` is empty:
+component, a kind without a component renders an English `<p role="alert">`
+(or the `missing` slot), and the default slot renders while `content` is empty:
 
 ```vue
 <script setup lang="ts">
@@ -110,6 +110,16 @@ const { state } = useView({ connect: connectWorkspace });
 
 `satisfies ViewRegistry<…>` checks that every kind has a component whose `page`
 prop accepts that reference.
+
+The `missing` slot replaces the English alert, for example with localized text.
+It receives `{ content }`, the reference whose kind has no component, and its
+markup (including any `role`) is yours:
+
+```vue
+<ViewOutlet :content="state?.main" :registry="pages">
+  <template #missing="{ content }"><p role="alert">{{ t("missingView", { kind: content.kind }) }}</p></template>
+</ViewOutlet>
+```
 
 ## `useCommand(command)`
 
@@ -191,6 +201,30 @@ lost Start reply; only `clear("replace")`, called after the application has
 established a fresh session, clears it. `clear()` drops the queued intent and cancels
 the active read. Disposing the effect scope settles run promises without cancelling
 accepted work.
+
+## `useBridgeConnection(options?)`
+
+Follows the page's connection to its .NET host. It wraps `onBridgeConnection`
+from `@runic-artifex/views` and returns `{ state }`, a shallow ref holding a
+`BridgeConnectionState`: `connecting`, `connected`, `reconnecting` or `lost` (a
+closed set, see
+[Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
+
+```vue
+<script setup lang="ts">
+import { useBridgeConnection } from "@runic-artifex/vue";
+
+const { state: connection } = useBridgeConnection({ lostAfter: 5_000 });
+</script>
+
+<template>
+  <p v-if="connection === 'lost'" role="alert">The application stopped responding.</p>
+</template>
+```
+
+Disposing the effect scope (unmounting the component) unsubscribes. Call it in
+`setup()` or `effectScope().run()`: outside an effect scope nothing stops it, and
+development builds warn. An invalid `lostAfter` throws a `RangeError`.
 
 ## Errors
 

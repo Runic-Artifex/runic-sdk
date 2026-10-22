@@ -3,10 +3,13 @@
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
-  useCollectionViewport, useCommand, useLatestOperation, useOperation, useView, ViewOutlet, type LatestOperationHandle, type ViewRegistry,
+  useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useOperation, useView, ViewOutlet, type LatestOperationHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root from "../dist/index.js";
-import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
+import {
+  BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
+  type RunicBridgeClient,
+} from "@runic-artifex/views";
 
 type State = { readonly count: number };
 
@@ -74,6 +77,20 @@ describe("ViewOutlet", () => {
     pages.value = { counter: Counter } as unknown as ViewRegistry<Page>;
     await nextTick();
     expect(host.querySelector("[role=alert]")?.textContent).toBe("No web component is registered for welcome.");
+    app.unmount();
+  });
+
+  test("renders the missing slot for a kind without a component instead of the English alert", async () => {
+    const host = document.createElement("div");
+    const content: Page = { kind: "welcome", connect: async () => fakeClient(1) };
+    const app = createApp({
+      setup: () => () => h(ViewOutlet<Page>, { content, registry: { counter: Counter } as unknown as ViewRegistry<Page> },
+        { missing: ({ content: page }: { content: Page }) => h("output", `Keine Ansicht für ${page.kind}`) }),
+    });
+    app.mount(host);
+    await nextTick();
+    expect(host.textContent).toBe("Keine Ansicht für welcome");
+    expect(host.querySelector("[role=alert]")).toBeNull();
     app.unmount();
   });
 });
@@ -222,8 +239,11 @@ describe("effect scope", () => {
     useOperation(() => undefined);
     useLatestOperation();
     useCollectionViewport({ totalCount: 0, rowHeight: 20 });
+    // A Bridge with onConnectionChange is never polled, so the unreleased observer stays on this one.
+    const stray = withBridge(hostBridge(false).bridge, () => useBridgeConnection());
     expect(warn.mock.calls.map(call => String(call[0]).split(" ")[0]))
-      .toEqual(["useView", "useCommand", "useOperation", "useLatestOperation", "useCollectionViewport"]);
+      .toEqual(["useView", "useCommand", "useOperation", "useLatestOperation", "useCollectionViewport", "useBridgeConnection"]);
+    expect(stray.state.value).toBe("connecting");
     expect(String(warn.mock.calls[0]![0])).toContain("outside an active effect scope");
   });
 
@@ -236,6 +256,7 @@ describe("effect scope", () => {
       useOperation(() => undefined);
       useLatestOperation();
       useCollectionViewport({ totalCount: 0, rowHeight: 20 });
+      withBridge(hostBridge(false).bridge, () => useBridgeConnection());
     });
     scope.stop();
     const app = createApp(defineComponent({ setup() { useCommand(() => 1); return () => h("div"); } }));
@@ -394,5 +415,84 @@ describe("useLatestOperation", () => {
     expect(completions).toBe(0);
     expect(current.cancels()).toBe(0);
     expect(latest.outcome.value).toBeUndefined();
+  });
+});
+
+function withBridge<T>(bridge: RunicBridgeClient, run: () => T): T {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  host.__runicBridge = bridge;
+  try { return run(); } finally { delete host.__runicBridge; }
+}
+
+// A host script's Bridge: `onConnectionChange` reports the current state, then each change.
+function hostBridge(initial: boolean) {
+  let connected = initial;
+  const listeners = new Set<(connected: boolean) => void>();
+  const bridge: RunicBridgeClient = {
+    isConnected: () => connected,
+    call: () => Promise.reject(new Error("not used")),
+    onConnectionChange(listener) {
+      listeners.add(listener);
+      listener(connected);
+      return () => { listeners.delete(listener); };
+    },
+  };
+  return {
+    bridge,
+    get listeners() { return listeners.size; },
+    set(value: boolean) { connected = value; for (const listener of [...listeners]) listener(value); },
+  };
+}
+
+describe("useBridgeConnection", () => {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  afterEach(() => { delete host.__runicBridge; });
+
+  test("renders the connection state and unsubscribes when the component unmounts", async () => {
+    const fake = hostBridge(true);
+    host.__runicBridge = fake.bridge;
+    const element = document.createElement("div");
+    let seen: BridgeConnectionState[] = [];
+    const app = createApp(defineComponent({
+      setup() {
+        const { state } = useBridgeConnection();
+        expectTypeOf(state.value).toEqualTypeOf<BridgeConnectionState>();
+        watchEffect(() => { seen = [...seen, state.value]; });
+        return () => h("output", state.value);
+      },
+    }));
+    app.mount(element);
+    expect(element.textContent).toBe("connected");
+    expect(fake.listeners).toBe(1);
+    fake.set(false);
+    await nextTick();
+    expect(element.textContent).toBe("reconnecting");
+    fake.set(true);
+    await nextTick();
+    expect(element.textContent).toBe("connected");
+    expect(seen).toEqual(["connected", "reconnecting", "connected"]);
+    app.unmount();
+    expect(fake.listeners).toBe(0);
+  });
+
+  test("stopping the effect scope stops observing, and lostAfter is forwarded", () => {
+    const fake = hostBridge(false);
+    host.__runicBridge = fake.bridge;
+    const scope = effectScope();
+    const connection = scope.run(() => useBridgeConnection({ lostAfter: 0 }))!;
+    expect(connection.state.value).toBe("lost");
+    fake.set(true);
+    expect(connection.state.value).toBe("connected");
+    scope.stop();
+    expect(fake.listeners).toBe(0);
+    fake.set(false);
+    expect(connection.state.value).toBe("connected");
+  });
+
+  test("is a root export (0.11)", () => {
+    expect(typeof root.useBridgeConnection).toBe("function");
+    expect(Object.keys(root).sort()).toEqual([
+      "ViewOutlet", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useOperation", "useView",
+    ]);
   });
 });

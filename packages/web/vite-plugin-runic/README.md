@@ -35,7 +35,9 @@ While serving, the plugin adds `virtual:runic/client`, which loads the
 development client (`@runic-artifex/vite-plugin-runic/client`), to `index.html`.
 The client has no exports. It shows the page's connection to its .NET host, as
 `@runic-artifex/views` reports it (`connecting`, `connected`, `reconnecting`,
-`lost`), on the dock's **Connection** card once a View connects, and forwards
+`lost`), on the dock's **Connection** card from page load, before a View
+connects (with `@runic-artifex/views` 0.11 or later; earlier releases start it
+when the first View connects), and forwards
 `@runic-artifex/views` failures to the timeline: the failed route, the
 error kind and, for errors, a failure with the exception type, message and
 stack. .NET includes that detail only in development (see the

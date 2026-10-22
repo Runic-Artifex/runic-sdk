@@ -131,8 +131,16 @@ const { state } = useSuspenseView(page, { releaseTimeout: 30_000 });
 component registered for `reference.kind` with the reference as its `page`
 prop. Declare the registry with `satisfies ViewRegistry<State["main"]>` so each
 kind has a component whose `page` prop matches. A different reference
-remounts the component; a kind without a component renders an alert, and
-`fallback` renders while `content` is empty.
+remounts the component; a kind without a component renders an English
+`<p role="alert">`, and `fallback` renders while `content` is empty.
+
+`missing` replaces that alert, for example with localized text. It receives the
+reference whose kind has no component, and its markup (including any `role`) is yours:
+
+```tsx
+<ViewOutlet content={state?.main} registry={pages}
+  missing={page => <p role="alert">{t("missingView", { kind: page.kind })}</p>} />
+```
 
 ## `useCommand(command)`
 
@@ -208,6 +216,28 @@ established a fresh session, clears it. `clear()` drops the queued intent and ca
 the active read. Unmounting disposes the controller like `useOperation`: pending runs
 resolve to `undefined` and accepted work is never cancelled. StrictMode's simulated
 unmount starts a fresh controller.
+
+## `useBridgeConnection(options?)`
+
+Renders the page's connection to its .NET host while the component is mounted.
+It wraps `onBridgeConnection` from `@runic-artifex/views` and returns
+`{ state }`, where `state` is a `BridgeConnectionState`: `connecting`,
+`connected`, `reconnecting` or `lost` (a closed set, see
+[Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
+
+```tsx
+import { useBridgeConnection } from "@runic-artifex/react";
+
+function ConnectionBanner() {
+  const connection = useBridgeConnection({ lostAfter: 5_000 });
+  return connection.state === "lost" ? <p role="alert">The application stopped responding.</p> : null;
+}
+```
+
+The first render already has the current state. Unmounting unsubscribes, and
+StrictMode's simulated unmount keeps one subscription. A changed `lostAfter`
+subscribes again; an invalid one throws a `RangeError`. A server render reads
+`connecting` and does not observe.
 
 ## Errors
 

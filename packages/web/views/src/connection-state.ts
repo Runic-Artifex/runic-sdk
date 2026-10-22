@@ -121,18 +121,25 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
 
 // The page's connection state on a registered channel, which copies of this package and
 // `@runic-artifex/vite-plugin-runic/client` share without a dependency (specs/application,
-// "Shared globals"). The first View that connects starts it; it then follows the host for the page.
+// "Shared globals"). The first View that connects starts it, or, from page load, the Vite
+// development client: it sets `requested` and calls `start`. It then follows the host for the page.
 const connectionChannelKey = Symbol.for("runic.views.connection");
 
 interface ConnectionChannel {
   readonly listeners: Set<(state: BridgeConnectionState) => void>;
   state?: BridgeConnectionState;
   started?: boolean;
+  requested?: boolean;
+  start?: () => void;
+}
+
+function connectionChannel(): ConnectionChannel {
+  const host = globalThis as unknown as Record<symbol, ConnectionChannel | undefined>;
+  return host[connectionChannelKey] ??= { listeners: new Set() };
 }
 
 export function publishConnectionState(): void {
-  const host = globalThis as unknown as Record<symbol, ConnectionChannel | undefined>;
-  const channel = host[connectionChannelKey] ??= { listeners: new Set() };
+  const channel = connectionChannel();
   if (channel.started) return;
   channel.started = true;
   onBridgeConnection(state => {
@@ -141,4 +148,11 @@ export function publishConnectionState(): void {
       try { listener(state); } catch (error) { reportBridgeError(error); }
     }
   });
+}
+
+// A development client that loaded first has set `requested`; one that loads later calls `start`.
+{
+  const channel = connectionChannel();
+  channel.start ??= publishConnectionState;
+  if (channel.requested) publishConnectionState();
 }

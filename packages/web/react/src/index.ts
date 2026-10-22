@@ -15,6 +15,9 @@ import {
   createLatestOperationController,
   createOperationController,
   createViewController,
+  onBridgeConnection,
+  type BridgeConnectionOptions,
+  type BridgeConnectionState,
   type BridgeOperation,
   type BridgeOutcomeFailure,
   type LatestOperationController,
@@ -164,6 +167,11 @@ export interface ViewOutletProps<R extends PageReference> {
   readonly registry: ViewRegistry<R>;
   /** Rendered while there is no content. Defaults to nothing. */
   readonly fallback?: ReactNode;
+  /**
+   * Renders a reference whose kind has no registered component, for example localized text.
+   * Defaults to an English `<p role="alert">`.
+   */
+  readonly missing?: (content: R) => ReactNode;
 }
 
 const referenceKeys = new WeakMap<object, number>();
@@ -178,12 +186,15 @@ function referenceKey(reference: object): number {
 /**
  * Renders the registered component for a generated View reference and passes
  * the reference as its `page` prop. A different reference remounts the
- * component. A kind without a component renders an alert.
+ * component. A kind without a component renders `missing`, or an English alert without it.
  */
-export function ViewOutlet<R extends PageReference>({ content, registry, fallback = null }: ViewOutletProps<R>): ReactNode {
+export function ViewOutlet<R extends PageReference>({ content, registry, fallback = null, missing }: ViewOutletProps<R>): ReactNode {
   if (!content) return fallback;
   const component = registry[content.kind as R["kind"]] as ComponentType<{ readonly page: R }> | undefined;
-  if (!component) return createElement("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+  if (!component) {
+    if (missing) return missing(content);
+    return createElement("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+  }
   return createElement(component, { key: referenceKey(content), page: content });
 }
 
@@ -311,6 +322,42 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   const current = useSyncExternalStore(controller.subscribe, read, read);
   return { ...current, run: controller.run, clear: controller.clear };
 }
+
+export interface BridgeConnectionHandle {
+  /** The connection to the .NET host, as `onBridgeConnection` reports it. */
+  readonly state: BridgeConnectionState;
+}
+
+// The state before the component subscribes: a subscription reports it at once.
+function currentBridgeConnection(options: BridgeConnectionOptions): BridgeConnectionState {
+  let current: BridgeConnectionState = "connecting";
+  onBridgeConnection(state => { current = state; }, options)();
+  return current;
+}
+
+/**
+ * Renders the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`
+ * or `lost`) while the component is mounted, through `onBridgeConnection`. A changed
+ * `lostAfter` subscribes again. The server snapshot is `connecting`.
+ *
+ * ```tsx
+ * const connection = useBridgeConnection();
+ * {connection.state === "lost" && <p role="alert">The application stopped responding.</p>}
+ * ```
+ */
+export function useBridgeConnection(options: BridgeConnectionOptions = {}): BridgeConnectionHandle {
+  const { lostAfter } = options;
+  const [store] = useState(() => ({ state: undefined as BridgeConnectionState | undefined }));
+  const subscribe = useCallback((onChange: () => void) => onBridgeConnection(state => {
+    store.state = state;
+    onChange();
+  }, lostAfter === undefined ? {} : { lostAfter }), [store, lostAfter]);
+  const read = useCallback(() => store.state ??= currentBridgeConnection(lostAfter === undefined ? {} : { lostAfter }), [store, lostAfter]);
+  const state = useSyncExternalStore(subscribe, read, serverConnectionState);
+  return { state };
+}
+
+const serverConnectionState = (): BridgeConnectionState => "connecting";
 
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
