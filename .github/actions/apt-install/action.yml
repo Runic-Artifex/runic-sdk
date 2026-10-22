@@ -1,0 +1,43 @@
+name: Install Ubuntu packages
+description: >-
+  Install Ubuntu packages with eng/ci/apt-install.sh, reusing the downloaded .deb archives
+  from a dependency cache keyed by Ubuntu release, architecture, package list and runner image.
+inputs:
+  packages:
+    description: Package names, separated by spaces
+    required: true
+runs:
+  using: composite
+  steps:
+    # apt checks every cached archive against the signed package index before it uses it,
+    # so a restored archive that no longer matches is downloaded again.
+    - name: Prepare the package archive cache
+      id: apt
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        archives=/var/cache/runic-apt
+        sudo install -d -o "$(id -u)" -g "$(id -g)" "$archives"
+        . /etc/os-release
+        # shellcheck disable=SC2086 # one package per word
+        list=$(printf '%s\n' $PACKAGES | sort -u | sha256sum | cut -c1-16)
+        {
+          echo "archives=$archives"
+          echo "prefix=apt-$ID-$VERSION_ID-$RUNNER_ARCH-$list-"
+          echo "image=${ImageVersion:-local}"
+        } >> "$GITHUB_OUTPUT"
+    # The cache holds the archives only: apt's lock and its partial downloads are root's.
+    - uses: ./.github/actions/dependency-cache
+      with:
+        path: /var/cache/runic-apt/*.deb
+        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}
+        restore-keys: ${{ steps.apt.outputs.prefix }}
+    - name: Install ${{ inputs.packages }}
+      shell: bash
+      env:
+        APT_ARCHIVES: ${{ steps.apt.outputs.archives }}
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        # shellcheck disable=SC2086 # one package per word
+        eng/ci/apt-install.sh $PACKAGES

@@ -215,10 +215,44 @@ pins their direct versions. The `core` NuGet cache key hashes the lock files and
 props; native jobs use a separate `native` key, and `native-musl` a `native-musl-<rid>` key. Each falls back to the latest cache for
 the same OS and architecture. Web and Svelte consumer jobs skip NuGet entirely.
 
-Every dependency cache (Bun, NuGet, Playwright, Flatpak) goes through
+Every dependency cache (Bun, NuGet, Playwright, Flatpak, Ubuntu package archives) goes through
 `.github/actions/dependency-cache`: runs on `main` restore and save, while pull requests and
 other branches only restore. Pull request entries would otherwise fill the repository's
 cache quota and evict `main`'s caches, which every run restores from.
+
+## Ubuntu packages
+
+`eng/ci/apt-install.sh <package>...` installs Ubuntu packages on Linux runners. The
+x64 runners' Azure mirror (`azure.archive.ubuntu.com`) is sometimes throttled to tens of
+kB/s: the WebKitGTK set (about 90 MB) then took over 30 minutes and failed the job,
+while a healthy mirror delivers it in seconds. The script therefore separates the
+download from the install:
+
+- `apt-get update` and `apt-get install --download-only` get a time limit per attempt:
+  2 minutes for the update, 90 seconds for the first download and 4 minutes for each of
+  the two retries. apt's own network timeout is 30 seconds with three retries per file.
+  Files completed by a stopped attempt are kept.
+- After a failed attempt the script drops the Azure mirror from the runner's mirror list
+  (`/etc/apt/apt-mirrors.txt`), leaving the official `archive.ubuntu.com` and
+  `security.ubuntu.com`, or replaces the Azure host in the apt sources when there is no
+  list. The rest of the job uses those mirrors. The arm64 runners use `ports.ubuntu.com`
+  directly, so they only retry.
+- The install then runs with `--no-download`.
+- The final failure is an `::error` annotation naming the packages, the mirrors of each
+  attempt and apt's errors or the file whose download the time limit stopped.
+
+All mirrors are official Ubuntu archives signed by the same key. Signature verification
+stays on: apt verifies the signed indexes and every archive's hash, including cached
+archives before it uses them.
+
+`.github/actions/apt-install` (the native job's WebView prerequisites and the Desktop
+template runtimes) also caches the downloaded `.deb` archives in
+`/var/cache/runic-apt` through the dependency cache, so only `main` saves them. The key
+is `apt-<Ubuntu release>-<arch>-<hash of the package list>-<runner image version>`; a new
+runner image restores the previous image's archives by prefix, and apt downloads only
+the versions that changed. `apt-get autoclean` removes archives the current indexes no
+longer offer before the cache is saved. Smaller installs inside multi-command steps call
+the script directly.
 
 ## Source snapshots and artifacts
 
