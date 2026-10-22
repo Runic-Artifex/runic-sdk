@@ -205,8 +205,8 @@ internal sealed class CodegenShapeTests
             ("dataShape.ts", File.ReadAllText(Path.Combine(directory, "dataShape.ts")).ReplaceLineEndings("\n"),
                 "  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */\n  readonly \"exact-id\": bigint;"),
             // The connect timeout is an option of the generated connect function (default 5000 ms).
-            ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient> {"),
-            ("documented.ts", documented, "hydrate, checkedFields: checkedFieldNames, timeout: options?.timeout });"),
+            ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> {"),
+            ("documented.ts", documented, "hydrate, checkedFields: checkedFieldNames, timeout: options?.timeout, signal: options?.signal });"),
             ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
             ("documented.ts", documented, "layout: bridgeWire.enumName<DocumentedLayout>(wire.layout, [\"List\", \"Grid\"]),"),
             ("collectionDelta.ts", collection, "rows: defineCollection<CollectionRow>(wire => bridgeWire.object<CollectionRow>(wire,"),
@@ -241,11 +241,11 @@ internal sealed class CodegenShapeTests
         var reactive = File.ReadAllText(Path.Combine(directory, "nullableReactive.ts")).ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
-            ("documented.ts", documented, "import { connectView, viewReferences } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
-            ("nullableReactive.ts", reactive, "import { connectView, viewReferences, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
+            ("documented.ts", documented, "import { connectView, disposable, viewReferences } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
+            ("nullableReactive.ts", reactive, "import { connectView, disposable, viewReferences, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
             ("nullableReactive.ts", reactive, "const interactionDefinitions = defineInteractions({"),
-            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations, timeout: options?.timeout });"),
-            ("collectionDelta.ts", collection, "import { connectView, viewReferences, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
+            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });"),
+            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
             ("collectionDelta.ts", collection, "const collectionDefinitions = defineCollections({"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
@@ -356,9 +356,9 @@ internal sealed class CodegenShapeTests
             ("wire.ts", "type _WireState = Omit<WireState, "),
             ("wire.ts", "function hydrate(wire: _WireState): WireState {"),
             ("view.ts", "import type { BridgeConnectOptions, ViewClient as _ViewClient } from \"@runic-artifex/views\";"),
-            ("view.ts", "import { connectView as _connectView, viewReferences } from \"@runic-artifex/views/generated\";"),
+            ("view.ts", "import { connectView as _connectView, disposable, viewReferences } from \"@runic-artifex/views/generated\";"),
             ("view.ts", "export interface ViewClient extends _ViewClient<ViewState> {"),
-            ("view.ts", "export function connectView(options?: BridgeConnectOptions): Promise<ViewClient> {"),
+            ("view.ts", "export function connectView(options?: BridgeConnectOptions): Promise<ViewClient & globalThis.Disposable> {"),
             ("view.ts", "  const view = await _connectView({ contract: bridgeContract, "),
             ("bridge.ts", "export type BridgeInteractionContext = _BridgeInteractionContext;"),
             ("bridge.ts", "export interface BridgeStreamOperation extends _BridgeStreamOperation<number> {}"),

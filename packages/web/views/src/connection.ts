@@ -4,6 +4,7 @@ import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { checkSnapshotProtocol, errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, notConnectedError, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
+import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import * as bridgeWire from "./wire.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
@@ -43,6 +44,14 @@ export interface BridgeConnectOptions {
    * client rejects with a `timeout` BridgeError. Defaults to 5000.
    */
   readonly timeout?: number | undefined;
+  /**
+   * Abandons the connection when it aborts before the client is returned: the
+   * call rejects with `signal.reason`, an `AbortError` DOMException unless
+   * `abort(reason)` gave another one, and releases what it connected. An already
+   * aborted signal rejects at once. Aborting after the client was returned has no
+   * effect; the call removes its abort listeners when it settles.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** How a generated module connects one ViewModel route. */
@@ -324,7 +333,11 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
  */
 export async function connectView<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
   try { return await connectRoute(options); }
-  catch (error) { emitErrorDiagnostic(error, `${options.route}Snapshot`); throw error; }
+  catch (error) {
+    // The caller aborted the connection; that is not a Bridge failure.
+    if (!isAbort(error, options.signal)) emitErrorDiagnostic(error, `${options.route}Snapshot`);
+    throw error;
+  }
 }
 
 // Reports a failure that leaves a client method once, with its route, then rethrows it.
@@ -334,9 +347,10 @@ async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
 }
 
 async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
-  const { route } = options;
+  const { route, signal } = options;
+  throwIfAborted(signal);
   publishConnectionState();
-  const bridge = await waitForBridge(options.timeout === undefined ? {} : { timeout: options.timeout });
+  const bridge = await waitForBridge({ ...(options.timeout === undefined ? {} : { timeout: options.timeout }), signal });
   const runtime = sharedRuntimeFor(bridge);
   const contractId = `${options.contract}:${route}`;
   const routeEntry = sharedRouteFor(runtime, bridge, route);
@@ -394,7 +408,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     if (callbacks[routeEntry.callbackName] === routeEntry.callback) callbacks[routeEntry.callbackName] = routeEntry.previousCallback;
   }
 
-  try { await shared.initializing; }
+  try { await abortable(shared.initializing ?? Promise.resolve(), signal); }
   catch (error) { dispose(); throw error; }
   if (!isLive()) { dispose(); throw notConnectedError(bridge, "The View was released during connection."); }
   lease.current = shared.current;
@@ -402,14 +416,16 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     try {
       lease.mounted = true;
       // A reconnect while the snapshot loaded started a new browser session.
-      const acknowledged = await bridge.call(`${route}Mount`, renewMountToken(runtime.mountSession));
+      const acknowledged = await abortable(bridge.call(`${route}Mount`, renewMountToken(runtime.mountSession)), signal);
       if (acknowledged !== "ok") throw notConnectedError(bridge, "The View mount was not accepted: .NET released the View.", `${route}Mount`);
     } catch (cause) {
       dispose();
+      if (isAbort(cause, signal)) throw cause;
       throw cause instanceof BridgeError ? cause : new BridgeError("disconnected", "The View mount could not complete.", { cause, route: `${route}Mount` });
     }
   }
   if (!isLive()) { dispose(); throw notConnectedError(bridge, "The View was released during connection."); }
+  if (signal?.aborted) { dispose(); throw abortReason(signal); }
   if (options.interactions)
     interactions = options.interactions({ bridge, route, presentationId: lease.mountToken, live: () => !lease.disposed && isLive() });
   if (interactions?.resume) lease.resumeInteractions = () => interactions?.resume?.(lease.mountToken);

@@ -19,7 +19,8 @@ omit the plugin entirely. A Runic Views frontend needs neither: its page loads
 passes the host it builds for as `RUNIC_APPLICATION_HOST` for a configuration
 that still differs per host. The optional
 `@vitejs/devtools` peer enables the Runic dock; register `DevTools()` in your
-Vite configuration when selecting `devtools: true`.
+Vite configuration when selecting `devtools: true`. The plugin runs on Node 24.18
+or later 24.x, or Node 26.
 
 `devtools` takes `true`, `false` or `"auto"`. `"auto"` is the default and the
 same as omitting the option: the development client is injected while serving,

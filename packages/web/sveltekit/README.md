@@ -15,8 +15,8 @@ export default defineConfig({
 ```
 
 The package requires SvelteKit 3 and `@sveltejs/adapter-static` 4, which take
-their configuration through the `sveltekit()` Vite plugin, and Svelte 5.57.1 or
-later. The adapter emits a relocatable page. Use `mode: "spa"` with
+their configuration through the `sveltekit()` Vite plugin, Svelte 5.57.1 or
+later, and Node 24.18 or later 24.x, or Node 26. The adapter emits a relocatable page. Use `mode: "spa"` with
 `router: { type: "hash" }` for a Desktop SPA.
 
 The options depend on the mode, and a field the mode would ignore does not

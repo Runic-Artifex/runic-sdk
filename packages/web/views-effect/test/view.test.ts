@@ -5,11 +5,11 @@ import {
 import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
-import { Cause, Effect, Exit, Fiber, Schedule, Scope, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, ManagedRuntime, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  catchCase, command, connect, followViewport, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
+  catchCase, clientLayer, command, connect, followViewport, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
   type ViewError, type ViewOperationError, type ViewportRange,
 } from "../dist/index.js";
 
@@ -101,6 +101,40 @@ describe("connect", () => {
     delete (globalThis as { __runicBridge?: unknown }).__runicBridge;
     const unavailable = await Effect.runPromise(Effect.flip(command(() => waitForBridge({ timeout: 0 }))));
     expect(unavailable._tag).toBe("ViewUnavailable");
+  });
+});
+
+describe("clientLayer", () => {
+  class Counter extends Context.Service<Counter, CounterClient>()("test/Counter") {}
+
+  test("provides the connected client and disposes it when the runtime is disposed", async () => {
+    const runtime = ManagedRuntime.make(clientLayer(Counter, () => connectCounter(true)));
+    const count = await runtime.runPromise(Effect.gen(function* () {
+      const counter = yield* Counter;
+      return (yield* command(() => counter.increment())).count;
+    }));
+    expect(count).toBe(2);
+    expect(names().filter(name => name === "counterSnapshot")).toHaveLength(1);
+    // The layer is built once per runtime.
+    await runtime.runPromise(Counter.use(counter => command(() => counter.increment())));
+    expect(names().filter(name => name === "counterSnapshot")).toHaveLength(1);
+    expect(names()).not.toContain("counterUnmount");
+    await runtime.dispose();
+    expect(names()).toContain("counterUnmount");
+  });
+
+  test("accepts a page reference or a function-style service, and fails with a ViewError", async () => {
+    const reference = { kind: "counter", connect: () => connectCounter() };
+    const FunctionCounter = Context.Service<CounterClient>("test/FunctionCounter");
+    const layer: Layer.Layer<CounterClient, ViewError> = clientLayer(FunctionCounter, reference);
+    expect(await Effect.runPromise(Effect.provide(FunctionCounter.useSync(client => client.snapshot.count), layer))).toBe(1);
+    // A generated connect function returns the client with Symbol.dispose.
+    const generated = () => connectCounter() as Promise<CounterClient & Disposable>;
+    expectTypeOf(clientLayer(Counter, generated)).toEqualTypeOf<Layer.Layer<Counter, ViewError>>();
+    delete (globalThis as { __runicBridge?: unknown }).__runicBridge;
+    const failed = await Effect.runPromise(Effect.flip(Effect.provide(Counter.useSync(counter => counter), clientLayer(Counter, () =>
+      waitForBridge({ timeout: 0 }).then(() => connectCounter())))));
+    expect(failed._tag).toBe("ViewUnavailable");
   });
 });
 

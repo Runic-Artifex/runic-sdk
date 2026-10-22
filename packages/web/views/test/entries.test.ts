@@ -36,6 +36,10 @@ test("binding and generator APIs are not in the application entries; graduated A
   for (const name of ["mockBridgeInternals", "mockFailureOf", "mockTypedView"])
     assert.equal(name in mock, false, `${name} must not be exported from ./mock`);
   assert.deepEqual(Object.keys(mock).sort(), ["createMockBridge", "installMockBridge", "mockFailure"]);
+  // Generated clients add Symbol.dispose through ./generated, not the application entry (0.11).
+  const generated = await import("@runic-artifex/views/generated");
+  assert.equal(typeof generated.disposable, "function");
+  assert.equal("disposable" in root, false, "disposable must not be exported from the root entry");
   const generatedMock = await import("@runic-artifex/views/generated/mock");
   assert.deepEqual(Object.keys(generatedMock), ["mockTypedView"]);
 });

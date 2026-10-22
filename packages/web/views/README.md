@@ -55,6 +55,50 @@ with a `BridgeError` whose `kind` is `rejected`, `cancelled`, `failed`,
 `disconnected`, `released`, `timeout` or `unavailable`; see
 [Errors and diagnostics](#errors-and-diagnostics).
 
+### Cancellation and `using`
+
+`connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's
+`wait({ signal })` and `outcome({ signal })` take an `AbortSignal`. When it
+aborts first, the call rejects with `signal.reason`: an `AbortError`
+`DOMException`, unless `abort(reason)` gave another value. An aborted signal
+rejects at once and calls no route. An aborted connect releases what it had
+connected, including the View's mount, and reports no diagnostic. Aborting after
+the client was returned has no effect, and every call removes its abort listener
+when it settles. Aborting an operation wait abandons only that wait: unlike
+`timeout`, it sends no cancellation request, and the operation and other waits
+continue; call `cancel()` to stop it.
+
+```ts
+const controller = new AbortController();
+const editor = await connectEditor({ signal: controller.signal });
+const save = await editor.startSave();
+const status = await save.wait({ signal: controller.signal });
+```
+
+A generated `connect<Name>()` resolves to the client with `[Symbol.dispose]()`,
+and `createViewController`, `createCommandController`,
+`createOperationController`, `createLatestOperationController` and
+`createCollectionViewportController` return controllers with it, so a `using`
+declaration disposes them at the end of its block. `[Symbol.dispose]()` calls
+`dispose()`:
+
+```ts
+{
+  using counter = await connectCounter();
+  await counter.increment();
+} // counter.dispose()
+```
+
+The member exists where the engine defines `Symbol.dispose`, or a polyfill did
+before the client or controller was created; it is looked up then, not when the
+package loads. On engines without it, such as older WebKitGTK and WKWebView, the
+package loads unchanged and `dispose()` is the way to release. The interfaces
+(`ViewClient`, `<Name>Client`, `ViewController` and the other controllers)
+are unchanged, so objects that implement them need no new member. The package's
+declarations reference TypeScript's `esnext.disposable` library, so `using`
+type-checks with `lib: ["ES2022", "DOM"]` (TypeScript 5.2 or later); running
+`using` still needs an engine or polyfill with `Symbol.dispose`.
+
 All generated modules on a page share one runtime instance, even when several
 bundles or copies of this package load: a route has one push callback and one
 revision, and `instanceof BridgeError` holds for errors from any copy.
@@ -71,7 +115,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
 | `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `mockFailure` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
-| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
+| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
 

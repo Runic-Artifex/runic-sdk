@@ -1,3 +1,4 @@
+/// <reference lib="esnext.disposable" preserve="true" />
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -41,7 +42,10 @@ export interface EffectAction<Args extends readonly unknown[], A, E> {
   interrupt(): Promise<void>;
   /** Returns to `idle`. Has no effect while a run is in flight. */
   reset(): void;
-  /** Interrupts the current run and stops publishing. */
+  /**
+   * Interrupts the current run and stops publishing. It returns a Promise because
+   * interrupting a fiber is asynchronous; `[Symbol.asyncDispose]` calls it.
+   */
   dispose(): Promise<void>;
 }
 
@@ -54,14 +58,15 @@ function awaitExit<A, E>(fiber: Fiber.Fiber<A, E>): Promise<Exit.Exit<A, E>> {
 /**
  * Creates the framework-neutral runner behind `useEffectAction`. Framework
  * bindings render `current`; `run` replaces an older run, as a search box or a
- * repeated button press expects.
+ * repeated button press expects. An `await using` declaration disposes it where
+ * the engine has `Symbol.asyncDispose`.
  */
 export function createEffectAction<Args extends readonly unknown[], A, E, R = never>(
   program: (...args: Args) => Effect.Effect<A, E, R>,
   ...[options]: [R] extends [never] ? [options?: EffectActionOptions<A, E, R>] : [options: EffectActionOptions<A, E, R> & {
     readonly runFork: (effect: Effect.Effect<A, E, R>) => Fiber.Fiber<A, E>;
   }]
-): EffectAction<Args, A, E> {
+): EffectAction<Args, A, E> & AsyncDisposable {
   const runFork = options?.runFork ?? (Effect.runFork as (effect: Effect.Effect<A, E, R>) => Fiber.Fiber<A, E>);
   const listeners = new Set<() => void>();
   let current: EffectActionState<A, E> = idle;
@@ -97,7 +102,7 @@ export function createEffectAction<Args extends readonly unknown[], A, E, R = ne
     await awaitExit(running);
   }
 
-  return {
+  return asyncDisposable<EffectAction<Args, A, E>>({
     get current() { return current; },
     subscribe(listener) {
       listeners.add(listener);
@@ -133,5 +138,15 @@ export function createEffectAction<Args extends readonly unknown[], A, E, R = ne
       listeners.clear();
       await stop(true);
     },
-  };
+  });
+}
+
+// Engines without `Symbol.asyncDispose`, such as older WebKitGTK and WKWebView,
+// load this module too: the symbol is looked up when an action is created, and
+// without it the action has only `dispose()`.
+function asyncDisposable<T extends { dispose(): Promise<void> }>(value: T): T & AsyncDisposable {
+  const key = (Symbol as { readonly asyncDispose?: unknown }).asyncDispose;
+  if (typeof key === "symbol" && !Object.hasOwn(value, key))
+    Object.defineProperty(value, key, { value: function asyncDispose() { return value.dispose(); }, configurable: true, writable: true });
+  return value as T & AsyncDisposable;
 }

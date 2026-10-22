@@ -1,4 +1,6 @@
+/// <reference lib="esnext.disposable" preserve="true" />
 import { emitErrorDiagnostic } from "./diagnostics.js";
+import { disposable } from "./lifetime.js";
 import { BridgeError, uncertainOperation } from "./errors.js";
 import type { BridgeOutcome } from "./outcome.js";
 import type { BridgeOperation, BridgeOperationCancelResult, BridgeOperationStatus } from "./operations.js";
@@ -88,11 +90,12 @@ function deferred<T>() {
  * only the latest publishes feedback or receives Cancel. No run is cancelled by
  * another run, reset or disposal. Applications normally disable mutation buttons
  * while pending, and use `createLatestOperationController` for superseding reads.
+ * A `using` declaration disposes it where the engine has `Symbol.dispose`.
  */
 export function createOperationController<TArgs extends readonly unknown[], TResult, TFailure = never>(
   start: (...args: TArgs) => MaybePromise<BridgeOperation<TResult, TFailure> | undefined>,
   options: OperationControllerOptions<TResult, TFailure> = {},
-): OperationController<TArgs, TResult, TFailure> {
+): OperationController<TArgs, TResult, TFailure> & Disposable {
   interface Run {
     readonly result: ReturnType<typeof deferred<BridgeOutcome<TResult, TFailure> | undefined>>;
     readonly feedback: number;
@@ -165,7 +168,7 @@ export function createOperationController<TArgs extends readonly unknown[], TRes
     }
   }
 
-  return {
+  return disposable<OperationController<TArgs, TResult, TFailure>>({
     get current() { return state.current; },
     subscribe(listener) { return disposed ? () => {} : state.subscribe(listener); },
     run(...args) {
@@ -203,7 +206,7 @@ export function createOperationController<TArgs extends readonly unknown[], TRes
       runs.clear();
       cancelling.clear();
     },
-  };
+  });
 }
 
 /** A captured selection, including the connection/session against which it is valid. */
@@ -238,8 +241,9 @@ export interface LatestOperationController<TResult, TFailure = never> {
  * Serializes read admission, coalescing input received during delayed Start receipts
  * and cancellation. A cancellation response never admits the next read: the old
  * operation's terminal wait and optional application completion barrier must finish.
+ * A `using` declaration disposes it where the engine has `Symbol.dispose`.
  */
-export function createLatestOperationController<TResult = void, TFailure = never>(): LatestOperationController<TResult, TFailure> {
+export function createLatestOperationController<TResult = void, TFailure = never>(): LatestOperationController<TResult, TFailure> & Disposable {
   interface Intent {
     readonly value: LatestOperationIntent<TResult, TFailure>;
     readonly result: ReturnType<typeof deferred<BridgeOutcome<TResult, TFailure> | undefined>>;
@@ -359,7 +363,7 @@ export function createLatestOperationController<TResult = void, TFailure = never
     void execute(intent);
   }
 
-  return {
+  return disposable<LatestOperationController<TResult, TFailure>>({
     get current() { return state.current; },
     subscribe(listener) { return disposed ? () => {} : state.subscribe(listener); },
     run(value) {
@@ -400,5 +404,5 @@ export function createLatestOperationController<TResult = void, TFailure = never
       pending = undefined;
       if (active) { active.superseded = true; active.suppressCancel = true; }
     },
-  };
+  });
 }

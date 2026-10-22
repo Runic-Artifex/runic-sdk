@@ -9,6 +9,7 @@
 // only the decoders a module calls.
 
 export { decodeBridgeValidation } from "./validation.js";
+export { disposable } from "./lifetime.js";
 export { connectView, viewReferences, type ViewConnection, type ViewConnectOptions } from "./connection.js";
 export type { BridgeOperationRuntimeHandle } from "./operations.js";
 export { defineCollection, defineCollections, defineText, type BridgeCollectionDefinition, type BridgeCollections } from "./collections.js";

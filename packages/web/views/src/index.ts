@@ -1,3 +1,4 @@
+/// <reference lib="esnext.disposable" preserve="true" />
 // The app-facing API. Generated clients import their runtime from
 // `@runic-artifex/views/generated`; framework bindings import their plumbing from
 // `@runic-artifex/views/bindings`.

@@ -1,6 +1,7 @@
 import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError, decodeFailureDetail, uncertainOperation, type BridgeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
+import { abortable, throwIfAborted } from "./lifetime.js";
 import { releasedRouteError, type RunicBridgeClient } from "./transport.js";
 
 /**
@@ -76,6 +77,14 @@ export interface BridgeOperationWaitOptions {
    * sends a cancellation request and resolves to a `timed-out` status.
    */
   readonly timeout?: number;
+  /**
+   * Abandons this wait when it aborts: the call rejects with `signal.reason`, an
+   * `AbortError` DOMException unless `abort(reason)` gave another one. Unlike
+   * `timeout`, it sends no cancellation request; the operation keeps running and
+   * other waits are unaffected. Call `cancel()` to stop it. An already aborted
+   * signal rejects at once; the wait removes its abort listener when it settles.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 export interface BridgeOperationCancelResult { readonly contract: string; readonly requestId: string; readonly kind: BridgeOperationCancelKind; }
 export interface BridgeOperationStreamItem<TResult> { readonly sequence: number; readonly value: TResult; }
@@ -100,7 +109,8 @@ export interface BridgeOperation<TResult = void, TFailure = never> {
   readonly completion: Promise<BridgeOperationStatus<TResult, TFailure>>;
   /**
    * Waits for the terminal status. With `timeout`, resolves to a `timed-out`
-   * status after cancelling the operation, unless it finished first.
+   * status after cancelling the operation, unless it finished first. With
+   * `signal`, rejects with its abort reason when it aborts first.
    */
   wait(options?: BridgeOperationWaitOptions): Promise<BridgeOperationStatus<TResult, TFailure>>;
   cancel(): Promise<BridgeOperationCancelResult>;
@@ -109,7 +119,8 @@ export interface BridgeOperation<TResult = void, TFailure = never> {
    * Rejects with `BridgeError` for `failed` (`failed`), `cancelled` (`cancelled`),
    * `timed-out` (`timeout`) and a result or failure that could not be delivered
    * (`failed`), and with `BridgeOperationUncertainError` for `expired` and
-   * `unknown`: the outcome is unknown, so do not retry blindly.
+   * `unknown`: the outcome is unknown, so do not retry blindly. Rejects with the
+   * abort reason when `signal` aborts first.
    */
   outcome(options?: BridgeOperationWaitOptions): Promise<BridgeOutcome<TResult, TFailure>>;
 }
@@ -254,18 +265,21 @@ class OperationChannel {
       .catch(error => { completion = undefined; throw error; });
     const waitWithin = async (options?: BridgeOperationWaitOptions): Promise<Status<TResult, TFailure>> => {
       const timeout = options?.timeout;
-      if (timeout === undefined) return wait();
-      if (!Number.isFinite(timeout) || timeout < 0) throw new RangeError("The operation timeout must be a non-negative number of milliseconds.");
+      const signal = options?.signal;
+      if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0))
+        throw new RangeError("The operation timeout must be a non-negative number of milliseconds.");
+      throwIfAborted(signal);
+      if (timeout === undefined) return abortable(wait(), signal);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<undefined>(resolve => { timer = setTimeout(resolve, timeout, undefined); });
       const pending = wait();
       try {
-        const status = await Promise.race([pending, deadline]);
+        const status = await abortable(Promise.race([pending, deadline]), signal);
         if (status !== undefined) return status;
       } finally {
         clearTimeout(timer);
       }
-      return this.timeOut(member, requestId, decode, decodeFailure, timeout, pending);
+      return abortable(this.timeOut(member, requestId, decode, decodeFailure, timeout, pending), signal);
     };
     const handle = {
       requestId,

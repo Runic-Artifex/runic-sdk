@@ -290,6 +290,45 @@ jobs:
         run: bun tests/web/lowest-peers/lowest-peers.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
+  # engines.node of the npm packages that run in Node admits Node 24 and 26 (D031.3). The other jobs
+  # run .node-version (Node 24); this one runs those packages' tests on Node 26 (eng/ci/plan.mjs nodePackages).
+  node-26:
+    name: npm packages / Node 26
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'node-26') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: none
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.12.0
+      - name: Install compatibility package managers
+        run: npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
+      - uses: ./.github/actions/restore-build
+        id: restore
+        with:
+          nuget: "false"
+      - uses: ./.github/actions/install-browser
+        if: ${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}
+      # Without --bun, the scripts' tsc and vitest and the packed-consumer checks run on this Node.
+      - name: Test vite-plugin-runic on Node 26
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}
+        working-directory: packages/web/vite-plugin-runic
+        run: |
+          node --version | grep '^v26\.'
+          bun run test
+      - name: Test sveltekit on Node 26
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'sveltekit') }}
+        working-directory: packages/web/sveltekit
+        run: |
+          node --version | grep '^v26\.'
+          bun run test
   engineering:
     needs: build
     runs-on: ubuntu-24.04
@@ -1291,7 +1330,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [plan, build, managed, web, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging]
+    needs: [plan, build, managed, web, node-26, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
