@@ -170,6 +170,7 @@ called on whichever thread the service is on; an exception it throws is ignored.
 | `status-icon-register-failed` | problem | Registering the icon failed; it registers again later. |
 | `status-icon-bus-unavailable` | problem | The session bus could not be reached. |
 | `status-icon-bus-lost` | information | The session bus connection ended; the icon registers again. |
+| `status-icon-activations-dropped` | problem | Activations arrived faster than the `Activated` handler returned; those beyond the queue were dropped. |
 | `login-startup-identity-unspecified` | problem | Login startup outside a sandbox needs an application ID. |
 | `login-startup-foreign-entry` | problem | Another autostart entry uses the application's name. |
 | `login-startup-portal-unavailable` | problem | The Background portal is missing or failed. |
@@ -218,6 +219,16 @@ unavailable and reports `status-icon-no-watcher` or `status-icon-no-host`. The
 icon stays ready and registers once a watcher starts, and again after it
 restarts. `HideAsync` releases the icon's bus name, which removes it. A sandbox
 must allow owning `org.kde.StatusNotifierItem-*` names and talking to the watcher.
+
+The status area talks to the icon over the session bus, which does not say
+which program is calling. Any program in the user's session can therefore
+activate the icon or click a menu item, as the status area does. Do not bind a
+destructive or irreversible action to a menu item without a confirmation in the
+application's own window. The icon checks every call's signature and bounds
+what calls can cost. `Activated` runs one activation at a time, and up to 32
+more wait while a handler runs; later ones are dropped and reported once as
+`status-icon-activations-dropped`, so return from the handler quickly. A menu
+call takes at most 1024 entry IDs or events, and repeated IDs are answered once.
 
 Plasma fills a submenu when it first opens, so the first hover over a submenu
 can show nothing. The VM checks in `nixos/status-icon` drive the icon through

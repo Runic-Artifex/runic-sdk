@@ -168,6 +168,91 @@ internal sealed class StatusIconTests
         await watcher.DisposeAsync();
     }
 
+    // SEC-17: any session-bus peer can call the item and its menu, so calls are checked and bounded.
+    [Test, Explicit, Category("DBus"), DisplayName("status icon: signatures are checked, id lists capped and de-duplicated, activations bounded")]
+    public async Task StatusNotifierLimitsAsync()
+    {
+        string watcherName = "org.runic.test.StatusNotifierWatcher" + Environment.ProcessId + "l";
+        var diagnostics = new System.Collections.Concurrent.ConcurrentQueue<PortalDiagnostic>();
+        await using var watcher = await FakeWatcher.StartAsync(watcherName);
+        await using var icon = new StatusNotifierIcon(watcher: watcherName, application: new PortalApplication(diagnosticSink: diagnostics.Enqueue));
+        using var release = new SemaphoreSlim(0);
+        var activations = System.Threading.Channels.Channel.CreateUnbounded<DesktopStatusIconActivation>();
+        var handling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The handler blocks until released, as a slow application handler would.
+        icon.Activated += (_, activation) => { activations.Writer.TryWrite(activation); handling.TrySetResult(); release.Wait(); };
+        Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Success, "shown");
+        string item = await watcher.Registered.Task.WaitAsync(Wait);
+        using var host = new DBusConnection(DBusAddress.Session!);
+        await host.ConnectAsync();
+        var (_, root) = await Layout(host, item);
+        int open = root.Children[0].Id;
+
+        // A call whose signature does not match the method is refused, not misread.
+        await RefusedAsync(Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "Activate", "s", (ref MessageWriter writer) => writer.WriteString("x")),
+            "org.freedesktop.DBus.Error.InvalidArgs", "Activate with a string");
+        await RefusedAsync(Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "ProvideXdgActivationToken", "i", (ref MessageWriter writer) => writer.WriteInt32(1)),
+            "org.freedesktop.DBus.Error.InvalidArgs", "a token that is no string");
+        await RefusedAsync(Call(host, item, "/StatusNotifierItem", "org.freedesktop.DBus.Properties", "Get", "s", (ref MessageWriter writer) => writer.WriteString("x")),
+            "org.freedesktop.DBus.Error.InvalidArgs", "Properties.Get without a name");
+        await RefusedAsync(Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "is", (ref MessageWriter writer) => { writer.WriteInt32(open); writer.WriteString("clicked"); }),
+            "org.freedesktop.DBus.Error.InvalidArgs", "Event without data and timestamp");
+        await RefusedAsync(Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "GetGroupProperties", "ai", (ref MessageWriter writer) => writer.WriteArray(new[] { open })),
+            "org.freedesktop.DBus.Error.InvalidArgs", "GetGroupProperties without property names");
+        await RefusedAsync(Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Unknown", "", static (ref MessageWriter _) => { }),
+            "org.freedesktop.DBus.Error.UnknownMethod", "an unknown dbusmenu method");
+
+        // Repeated ids are answered once; a list beyond the limit is refused.
+        var answered = await Request(host, item, "/MenuBar", "com.canonical.dbusmenu", "GetGroupProperties", "aias", (ref MessageWriter writer) =>
+        { writer.WriteArray(Enumerable.Repeat(open, 500).Append(9999).ToArray()); writer.WriteArray(Array.Empty<string>()); }, static (message, _) =>
+        {
+            var reader = message.GetBodyReader();
+            var ids = new List<int>();
+            var items = reader.ReadArrayStart(DBusType.Struct);
+            while (reader.HasNext(items)) { reader.AlignStruct(); ids.Add(reader.ReadInt32()); _ = reader.ReadDictionaryOfStringToVariantValue(); }
+            return ids;
+        });
+        Check(answered.SequenceEqual([open]), $"each known id once: {string.Join(", ", answered)}");
+        await RefusedAsync(Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "GetGroupProperties", "aias", (ref MessageWriter writer) =>
+            { writer.WriteArray(Enumerable.Repeat(open, StatusNotifierIcon.MenuIdLimit + 1).ToArray()); writer.WriteArray(Array.Empty<string>()); }),
+            "org.freedesktop.DBus.Error.LimitsExceeded", "too many ids");
+        static void Events(ref MessageWriter writer, IEnumerable<int> ids)
+        {
+            var events = writer.WriteArrayStart(DBusType.Struct);
+            foreach (int id in ids) { writer.WriteStructureStart(); writer.WriteInt32(id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); }
+            writer.WriteArrayEnd(events);
+        }
+        await RefusedAsync(Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "EventGroup", "a(isvu)",
+            (ref MessageWriter writer) => Events(ref writer, Enumerable.Repeat(open, StatusNotifierIcon.MenuIdLimit + 1))),
+            "org.freedesktop.DBus.Error.LimitsExceeded", "too many events");
+        var unknown = await Request(host, item, "/MenuBar", "com.canonical.dbusmenu", "EventGroup", "a(isvu)",
+            (ref MessageWriter writer) => Events(ref writer, [open, open, 9999, 9999]), static (message, _) => message.GetBodyReader().ReadArrayOfInt32());
+        Check(unknown.SequenceEqual([9999]), "an unknown id is reported once");
+        // The handler now blocks on the one click of the group: a refused group chose nothing, a repeated click is chosen once.
+        await handling.Task.WaitAsync(Wait);
+
+        // While the handler blocks, a flood of activations fills the queue and the rest are dropped, diagnosed once.
+        for (int index = 0; index < StatusNotifierIcon.ActivationQueueLimit + 20; index++)
+            await Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "Activate", "ii", (ref MessageWriter writer) => { writer.WriteInt32(0); writer.WriteInt32(0); });
+        Check(diagnostics.Count(static d => d.Code == "status-icon-activations-dropped") == 1, "the drop is diagnosed once");
+        release.Release(StatusNotifierIcon.ActivationQueueLimit + 100);
+        var received = new List<DesktopStatusIconActivation>();
+        while (received.Count < 1 + StatusNotifierIcon.ActivationQueueLimit)
+            received.Add(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        await Task.Delay(200);
+        Check(!activations.Reader.TryRead(out _), "nothing beyond the queue arrived");
+        Check(received[0] is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open" }
+            && received.Skip(1).All(static a => a.Kind == DesktopStatusIconActivationKind.Primary), "the group's click, then the queued activations in order");
+    }
+
+    private static async Task RefusedAsync(Task call, string errorName, string what)
+    {
+        try { await call.WaitAsync(Wait); }
+        catch (DBusErrorReplyException error) when (error.ErrorName == errorName) { return; }
+        catch (DBusErrorReplyException error) { throw new InvalidOperationException($"{what}: {error.ErrorName} instead of {errorName}"); }
+        throw new InvalidOperationException($"{what} was accepted");
+    }
+
     private sealed record Node(int Id, Dictionary<string, string> Props, List<Node> Children);
 
     private static Node Parse(VariantValue node)

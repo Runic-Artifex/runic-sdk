@@ -18,6 +18,14 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
     // Hosts call ProvideXdgActivationToken just before Activate; an older token has expired.
     private static readonly TimeSpan TokenLifetime = TimeSpan.FromSeconds(10);
+    // Any program on the session bus can call the item and its menu; these bound what one call, or a flood of them, costs.
+    // Activations wait for the application's handler in a queue this long; later ones are dropped until it drains.
+    internal const int ActivationQueueLimit = 32;
+    // dbusmenu id lists (GetGroupProperties, EventGroup) longer than this are refused before they are read in full.
+    internal const int MenuIdLimit = 1024;
+    // XDG activation tokens are short; a longer one is ignored rather than kept.
+    private const int TokenLengthLimit = 4096;
+    private const string InvalidArgs = "org.freedesktop.DBus.Error.InvalidArgs", LimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded";
     private static int s_instances;
     private readonly PortalApplication _application = application ?? new PortalApplication();
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -25,9 +33,15 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     private readonly Lock _lock = new();
     // dbusmenu IDs stay with their entries across menu changes, so a click in flight never lands on another entry.
     private readonly Menu.Ids _ids = new();
-    // Activations reach the application one at a time, in order, and never after disposal.
+    // Activations reach the application one at a time, in order, and never after disposal. The queue is bounded, so a
+    // peer that clicks faster than the handler runs cannot grow it.
     private readonly System.Threading.Channels.Channel<DesktopStatusIconActivation> _activations =
-        System.Threading.Channels.Channel.CreateUnbounded<DesktopStatusIconActivation>(new() { SingleReader = true });
+        System.Threading.Channels.Channel.CreateBounded<DesktopStatusIconActivation>(new System.Threading.Channels.BoundedChannelOptions(ActivationQueueLimit)
+        {
+            SingleReader = true, FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait,
+        });
+    // 1 while activations are being dropped, so the drop is diagnosed once until the queue drains.
+    private int _dropping;
     private Task? _pump;
     private DesktopStatusIconState? _state;
     private Menu _menu = Menu.Empty;
@@ -295,7 +309,12 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             try { context = new DesktopActivationContext(activationToken: fresh.Token); }
             catch (ArgumentException) { /* An unusable token cannot raise a window; activate without it. */ }
         }
-        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId) { PlatformContext = context });
+        // TryWrite fails when the queue is full, or after disposal; the newest activation is the one dropped.
+        if (!_activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId) { PlatformContext = context })
+            && !_disposed && Interlocked.Exchange(ref _dropping, 1) == 0)
+            _application.Diagnose("status-icon-activations-dropped",
+                $"More than {ActivationQueueLimit} status icon activations waited for the Activated handler; later ones were dropped.",
+                "Return from the Activated handler quickly and move longer work off it.");
     }
 
     private async Task PumpAsync()
@@ -303,6 +322,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         await foreach (var activation in _activations.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             if (_disposed) return;
+            if (!_activations.Reader.TryPeek(out _)) Volatile.Write(ref _dropping, 0);
             try { Activated?.Invoke(this, activation); }
             catch (Exception error)
             {
@@ -402,16 +422,26 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 icon.HandleItemProperties(context);
             else if (request.InterfaceAsString == ItemInterface)
             {
+                string? signature = request.MemberAsString switch
+                {
+                    "Activate" or "SecondaryActivate" or "ContextMenu" => "ii",
+                    "Scroll" => "is",
+                    "ProvideXdgActivationToken" => "s",
+                    _ => null,
+                };
+                if (signature is null) { context.ReplyUnknownMethodError(); return ValueTask.CompletedTask; }
+                if (!Takes(context, signature)) return ValueTask.CompletedTask;
                 switch (request.MemberAsString)
                 {
                     case "Activate": icon.Raise(DesktopStatusIconActivationKind.Primary); break;
                     case "SecondaryActivate": icon.Raise(DesktopStatusIconActivationKind.Secondary); break;
                     case "ProvideXdgActivationToken":
                         string token = request.GetBodyReader().ReadString();
-                        lock (icon._lock) icon._activationToken = (token, System.Diagnostics.Stopwatch.GetTimestamp());
+                        if (token.Length <= TokenLengthLimit)
+                            lock (icon._lock) icon._activationToken = (token, System.Diagnostics.Stopwatch.GetTimestamp());
                         break;
-                    case "ContextMenu" or "Scroll": break; // The menu is served over dbusmenu; scrolling has no meaning here.
-                    default: context.ReplyUnknownMethodError(); return ValueTask.CompletedTask;
+                    // The menu is served over dbusmenu; scrolling has no meaning here.
+                    default: break;
                 }
                 Empty(context);
             }
@@ -425,6 +455,8 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         var reader = context.Request.GetBodyReader();
         switch (context.Request.MemberAsString)
         {
+            case "Get" when !Takes(context, "ss"): break;
+            case "GetAll" when !Takes(context, "s"): break;
             case "Get":
             {
                 string @interface = reader.ReadString(), name = reader.ReadString();
@@ -458,8 +490,34 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 finally { reply.Dispose(); }
                 break;
             }
-            default: context.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", "Status icon properties are read-only."); break;
+            case "Set": context.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", "Status icon properties are read-only."); break;
+            default: context.ReplyUnknownMethodError(); break;
         }
+    }
+
+    // Checks a call's signature before its body is read, so a peer cannot make a handler misread it.
+    private static bool Takes(MethodContext context, string signature)
+    {
+        string actual = context.Request.SignatureAsString ?? "";
+        if (actual == signature) return true;
+        context.ReplyError(InvalidArgs, $"{context.Request.MemberAsString} takes \"{signature}\", not \"{actual}\".");
+        return false;
+    }
+
+    // Reads an "ai" of at most MenuIdLimit ids, without repeats, in their first order; null once the limit is passed.
+    private static List<int>? ReadIds(ref Reader reader)
+    {
+        var ids = new List<int>();
+        var seen = new HashSet<int>();
+        var end = reader.ReadArrayStart(DBusType.Int32);
+        int count = 0;
+        while (reader.HasNext(end))
+        {
+            if (++count > MenuIdLimit) return null;
+            int id = reader.ReadInt32();
+            if (seen.Add(id)) ids.Add(id);
+        }
+        return ids;
     }
 
     private sealed class MenuHandler(StatusNotifierIcon icon) : IPathMethodHandler
@@ -476,6 +534,19 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             var reader = request.GetBodyReader();
             if (request.InterfaceAsString == PropertiesInterface) { MenuProperties(context, reader); return ValueTask.CompletedTask; }
             if (request.InterfaceAsString != MenuInterface) { context.ReplyUnknownMethodError(); return ValueTask.CompletedTask; }
+            string? signature = request.MemberAsString switch
+            {
+                "GetLayout" => "iias",
+                "GetGroupProperties" => "aias",
+                "GetProperty" => "is",
+                "Event" => "isvu",
+                "EventGroup" => "a(isvu)",
+                "AboutToShow" => "i",
+                "AboutToShowGroup" => "ai",
+                _ => null,
+            };
+            if (signature is null) { context.ReplyUnknownMethodError(); return ValueTask.CompletedTask; }
+            if (!Takes(context, signature)) return ValueTask.CompletedTask;
             switch (request.MemberAsString)
             {
                 case "GetLayout":
@@ -494,7 +565,8 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 }
                 case "GetGroupProperties":
                 {
-                    var ids = reader.ReadArrayOfInt32();
+                    // Each id is answered once, so the reply is no longer than the menu.
+                    if (ReadIds(ref reader) is not { } ids) { TooMany(context); break; }
                     var reply = context.CreateReplyWriter("a(ia{sv})");
                     try
                     {
@@ -536,15 +608,26 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 }
                 case "EventGroup":
                 {
+                    // The events are read in full before any is chosen, so a refused group activates nothing. An entry
+                    // clicked twice in one group is chosen once, and an unknown id is reported once.
                     var unknown = new List<int>();
+                    var chosen = new List<(int Id, string Kind)>();
+                    var seen = new HashSet<(int, string)>();
                     var events = reader.ReadArrayStart(DBusType.Struct);
+                    int count = 0;
+                    bool tooMany = false;
                     while (reader.HasNext(events))
                     {
+                        if (++count > MenuIdLimit) { tooMany = true; break; }
                         reader.AlignStruct();
                         int id = reader.ReadInt32(); string kind = reader.ReadString();
                         _ = reader.ReadVariantValue(); _ = reader.ReadUInt32();
-                        if (menu.Nodes.ContainsKey(id)) Choose(menu, id, kind); else unknown.Add(id);
+                        if (!seen.Add((id, kind))) continue;
+                        if (menu.Nodes.ContainsKey(id)) chosen.Add((id, kind));
+                        else if (!unknown.Contains(id)) unknown.Add(id);
                     }
+                    if (tooMany) { TooMany(context); break; }
+                    foreach (var (id, kind) in chosen) Choose(menu, id, kind);
                     var reply = context.CreateReplyWriter("ai");
                     try { reply.WriteArray(unknown.ToArray()); context.Reply(reply.CreateMessage()); }
                     finally { reply.Dispose(); }
@@ -577,14 +660,23 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         }
 
         private static void UnknownId(MethodContext context, int id) =>
-            context.ReplyError("org.freedesktop.DBus.Error.InvalidArgs", $"No menu entry {id}.");
+            context.ReplyError(InvalidArgs, $"No menu entry {id}.");
+
+        private static void TooMany(MethodContext context) =>
+            context.ReplyError(LimitsExceeded, $"A menu call takes at most {MenuIdLimit} ids or events.");
 
         private static void MenuProperties(MethodContext context, Reader reader)
         {
+            switch (context.Request.MemberAsString)
+            {
+                case "Set": context.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", "Menu properties are read-only."); return;
+                case "Get" when !Takes(context, "ss"): return;
+                case "GetAll" when !Takes(context, "s"): return;
+                case "Get" or "GetAll": break;
+                default: context.ReplyUnknownMethodError(); return;
+            }
             string @interface = reader.ReadString();
             bool all = context.Request.MemberAsString == "GetAll";
-            if (context.Request.MemberAsString is not ("Get" or "GetAll"))
-            { context.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", "Menu properties are read-only."); return; }
             string? name = all ? null : reader.ReadString();
             var reply = context.CreateReplyWriter(all ? "a{sv}" : "v");
             try
