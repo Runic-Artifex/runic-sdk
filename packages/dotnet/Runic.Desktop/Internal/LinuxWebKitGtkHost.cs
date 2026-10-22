@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal;
 
-internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
+internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 {
     private static readonly Lazy<GtkApi> NativeApi = new(static () => new());
     private static GtkApi Api => NativeApi.Value;
@@ -46,9 +46,12 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
 
+    // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (Api.CanReportState ? DesktopWindowCapabilities.State : DesktopWindowCapabilities.None) |
-        (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
+        (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None) |
+        (Api.CanUseFullScreen ? DesktopWindowCapabilities.FullScreen : DesktopWindowCapabilities.None) |
+        (Api.CanPlaceOnMonitor && !Api.IsWaylandDisplay() ? DesktopWindowCapabilities.MonitorPlacement : DesktopWindowCapabilities.None);
 
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
@@ -226,7 +229,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
         _window = Api.GtkWindowNew();
-        _webView = Api.WebKitWebViewNew();
+        _webView = Api.WebKitWebViewNew(options.Language);
         if (_window == 0 || _webView == 0)
         {
             throw new InvalidOperationException("GTK could not create the embedded WebView window.");
@@ -237,6 +240,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         int? x = options.X;
         int? y = options.Y;
         var isWayland = Api.IsWaylandDisplay();
+        // DesktopWindowOptions.Monitor: centered on its work area on X11; on Wayland only a full-screen placement uses it.
+        var chosen = options.Monitor is { } monitorId ? FindMonitor(monitorId) : null;
+        _fullScreenMonitor = chosen?.Index ?? -1;
         if (options.Placement is not null && Api.CanReportState)
         {
             // Keep a restored window on a monitor that exists now. Wayland lets the compositor place it.
@@ -248,7 +254,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             }
             else
             {
-                (width, height) = WindowPlacementClamp.ClampSize(width, height, WindowPlacementClamp.Largest(workAreas));
+                var target = chosen is { } monitor ? ToScreenRect(monitor.Monitor.WorkArea) : WindowPlacementClamp.Largest(workAreas);
+                (width, height) = WindowPlacementClamp.ClampSize(width, height, target);
             }
             _normal = new DesktopWindowPlacement
             {
@@ -264,9 +271,21 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Api.GtkWidgetSetSizeRequest(_window, checked((int)minimumWidth), checked((int)minimumHeight));
         }
         Api.GtkContainerAdd(_window, _webView);
+        // DesktopWindowOptions.LayoutDirection: the window and its widgets; the page keeps its own dir.
+        if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
+        {
+            var direction = options.LayoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? 2 : 1;
+            Api.GtkWidgetSetDirection(_window, direction);
+            Api.GtkWidgetSetDirection(_webView, direction);
+        }
         Api.GtkWindowSetDecorated(_window, !options.Frameless && !options.Kiosk);
         Api.GtkWindowSetResizable(_window, options.Resizable);
-        if (options.Centered)
+        if (chosen is { } onMonitor && !isWayland)
+        {
+            var area = CenterIn(width, height, ToScreenRect(onMonitor.Monitor.WorkArea));
+            Api.GtkWindowMove(_window, area.X, area.Y);
+        }
+        else if (options.Centered)
         {
             Api.GtkWindowSetPosition(_window, 1);
         }
@@ -338,6 +357,11 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.GtkWindowFullscreen(_window);
         }
+        else if (options.Placement is { FullScreen: true } && Api.CanUseFullScreen)
+        {
+            // A placement saved full-screen: on the chosen monitor (also on Wayland), else where the window opened.
+            EnterFullScreen();
+        }
         if (options.Hidden)
         {
             Api.GtkWidgetHide(_window);
@@ -377,6 +401,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             _normal = current;
         }
+        var kiosk = _options?.Kiosk == true;
         var state = new DesktopWindowState
         {
             X = x,
@@ -385,7 +410,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Height = current.Height,
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
-            Placement = (_normal ?? current) with { Maximized = maximized },
+            MonitorId = MonitorIdOf(Api.MonitorOfWindow(_window)),
+            Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !kiosk },
         };
         if (Equals(state, Volatile.Read(ref _state)))
         {
@@ -1094,6 +1120,18 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GdkDisplayGetNMonitorsPointer = Optional(_gtk, "gdk_display_get_n_monitors");
                 GdkDisplayGetMonitorPointer = Optional(_gtk, "gdk_display_get_monitor");
                 GdkMonitorGetWorkareaPointer = Optional(_gtk, "gdk_monitor_get_workarea");
+                GdkMonitorGetGeometryPointer = Optional(_gtk, "gdk_monitor_get_geometry");
+                GdkMonitorGetScaleFactorPointer = Optional(_gtk, "gdk_monitor_get_scale_factor");
+                GdkMonitorIsPrimaryPointer = Optional(_gtk, "gdk_monitor_is_primary");
+                GdkMonitorGetModelPointer = Optional(_gtk, "gdk_monitor_get_model");
+                GdkMonitorGetManufacturerPointer = Optional(_gtk, "gdk_monitor_get_manufacturer");
+                GdkDisplayGetMonitorAtWindowPointer = Optional(_gtk, "gdk_display_get_monitor_at_window");
+                GdkDisplayGetDefaultScreenPointer = Optional(_gtk, "gdk_display_get_default_screen");
+                GdkScreenGetMonitorPlugNamePointer = Optional(_gtk, "gdk_screen_get_monitor_plug_name");
+                GtkWindowUnfullscreenPointer = Optional(_gtk, "gtk_window_unfullscreen");
+                GtkWindowFullscreenOnMonitorPointer = Optional(_gtk, "gtk_window_fullscreen_on_monitor");
+                GtkWidgetSetDirectionPointer = Optional(_gtk, "gtk_widget_set_direction");
+                WebKitWebContextSetPreferredLanguagesPointer = Optional(_webkit, "webkit_web_context_set_preferred_languages");
                 GdkWaylandDisplayGetTypePointer = Optional(_gtk, "gdk_wayland_display_get_type");
                 GtkSelectionDataGetUrisPointer = Optional(_gtk, "gtk_selection_data_get_uris");
                 GStrfreevPointer = Optional(_gtk, "g_strfreev");
@@ -1264,6 +1302,136 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWidgetGetWindowPointer { get; }
         private nint GdkWindowGetStatePointer { get; }
         private nint GdkDisplayGetNMonitorsPointer { get; }
+        private nint GdkMonitorGetGeometryPointer { get; }
+        private nint GdkMonitorGetScaleFactorPointer { get; }
+        private nint GdkMonitorIsPrimaryPointer { get; }
+        private nint GdkMonitorGetModelPointer { get; }
+        private nint GdkMonitorGetManufacturerPointer { get; }
+        private nint GdkDisplayGetMonitorAtWindowPointer { get; }
+        private nint GdkDisplayGetDefaultScreenPointer { get; }
+        private nint GdkScreenGetMonitorPlugNamePointer { get; }
+        private nint GtkWindowUnfullscreenPointer { get; }
+        private nint GtkWindowFullscreenOnMonitorPointer { get; }
+        private nint GtkWidgetSetDirectionPointer { get; }
+        private nint WebKitWebContextSetPreferredLanguagesPointer { get; }
+
+        // GTK 3.22 monitors (gdk_display_get_monitor and the GdkMonitor getters) on the GTK thread.
+        internal bool CanListMonitors => IsAvailable && GdkDisplayGetNMonitorsPointer != 0 && GdkDisplayGetMonitorPointer != 0 &&
+            GdkMonitorGetWorkareaPointer != 0 && GdkMonitorGetGeometryPointer != 0 && GdkMonitorGetScaleFactorPointer != 0 &&
+            GdkMonitorIsPrimaryPointer != 0 && GdkDisplayGetMonitorAtWindowPointer != 0;
+
+        internal bool CanUseFullScreen => IsAvailable && GtkWindowUnfullscreenPointer != 0;
+
+        internal bool CanPlaceOnMonitor => CanListMonitors && GtkWindowFullscreenOnMonitorPointer != 0 && GdkDisplayGetDefaultScreenPointer != 0;
+
+        // The monitors of the default display, in GDK's order, with their GdkMonitor. GTK thread only.
+        internal List<(nint Handle, Runic.Platform.DesktopMonitor Monitor)> ReadMonitors()
+        {
+            List<(nint, Runic.Platform.DesktopMonitor)> monitors = [];
+            var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+            if (display == 0 || !CanListMonitors) return monitors;
+            var screen = GdkDisplayGetDefaultScreenPointer == 0 ? 0 : ((delegate* unmanaged[Cdecl]<nint, nint>)GdkDisplayGetDefaultScreenPointer)(display);
+            var count = ((delegate* unmanaged[Cdecl]<nint, int>)GdkDisplayGetNMonitorsPointer)(display);
+            HashSet<string> ids = [];
+            for (var index = 0; index < count; index++)
+            {
+                var monitor = ((delegate* unmanaged[Cdecl]<nint, int, nint>)GdkDisplayGetMonitorPointer)(display, index);
+                if (monitor == 0) continue;
+                GdkRectangle geometry, area;
+                ((delegate* unmanaged[Cdecl]<nint, GdkRectangle*, void>)GdkMonitorGetGeometryPointer)(monitor, &geometry);
+                ((delegate* unmanaged[Cdecl]<nint, GdkRectangle*, void>)GdkMonitorGetWorkareaPointer)(monitor, &area);
+                var model = GdkMonitorGetModelPointer == 0 ? null
+                    : Marshal.PtrToStringUTF8(((delegate* unmanaged[Cdecl]<nint, nint>)GdkMonitorGetModelPointer)(monitor));
+                var manufacturer = GdkMonitorGetManufacturerPointer == 0 ? null
+                    : Marshal.PtrToStringUTF8(((delegate* unmanaged[Cdecl]<nint, nint>)GdkMonitorGetManufacturerPointer)(monitor));
+                // The connector, such as HDMI-1: stable while the monitor stays on it.
+                string? connector = null;
+                if (screen != 0 && GdkScreenGetMonitorPlugNamePointer != 0)
+                {
+                    var name = ((delegate* unmanaged[Cdecl]<nint, int, nint>)GdkScreenGetMonitorPlugNamePointer)(screen, index);
+                    if (name != 0)
+                    {
+                        connector = Marshal.PtrToStringUTF8(name);
+                        if (GFreePointer != 0) ((delegate* unmanaged[Cdecl]<nint, void>)GFreePointer)(name);
+                    }
+                }
+                var id = !string.IsNullOrEmpty(connector) ? connector : $"monitor-{index}";
+                if (!ids.Add(id)) id = $"{id}-{index}";
+                var displayName = string.Join(' ', new[] { manufacturer, model }.Where(static part => !string.IsNullOrWhiteSpace(part)));
+                monitors.Add((monitor, new Runic.Platform.DesktopMonitor(id, displayName.Length > 0 ? displayName : id)
+                {
+                    Bounds = new(geometry.X, geometry.Y, geometry.Width, geometry.Height),
+                    WorkArea = new(area.X, area.Y, area.Width, area.Height),
+                    Scale = Math.Max(1, ((delegate* unmanaged[Cdecl]<nint, int>)GdkMonitorGetScaleFactorPointer)(monitor)),
+                    IsPrimary = ((delegate* unmanaged[Cdecl]<nint, int>)GdkMonitorIsPrimaryPointer)(monitor) != 0,
+                }));
+            }
+            // The primary monitor first, the others in GDK's order.
+            var primary = monitors.FindIndex(static monitor => monitor.Item2.IsPrimary);
+            if (primary > 0)
+            {
+                var first = monitors[primary];
+                monitors.RemoveAt(primary);
+                monitors.Insert(0, first);
+            }
+            return monitors;
+        }
+
+        // The GdkMonitor that holds most of the window, or zero. GTK thread only.
+        internal nint MonitorOfWindow(nint window)
+        {
+            if (!CanListMonitors) return 0;
+            var gdkWindow = ((delegate* unmanaged[Cdecl]<nint, nint>)GtkWidgetGetWindowPointer)(window);
+            var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+            return gdkWindow == 0 || display == 0 ? 0
+                : ((delegate* unmanaged[Cdecl]<nint, nint, nint>)GdkDisplayGetMonitorAtWindowPointer)(display, gdkWindow);
+        }
+
+        // The index of a GdkMonitor in the default display, which gtk_window_fullscreen_on_monitor takes; -1 if absent.
+        internal int MonitorIndex(nint monitor)
+        {
+            var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+            if (display == 0 || monitor == 0) return -1;
+            var count = ((delegate* unmanaged[Cdecl]<nint, int>)GdkDisplayGetNMonitorsPointer)(display);
+            for (var index = 0; index < count; index++)
+            {
+                if (((delegate* unmanaged[Cdecl]<nint, int, nint>)GdkDisplayGetMonitorPointer)(display, index) == monitor) return index;
+            }
+            return -1;
+        }
+
+        internal void GtkWindowUnfullscreen(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowUnfullscreenPointer)(window);
+
+        internal void GtkWindowFullscreenOnMonitor(nint window, int index)
+        {
+            var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+            var screen = display == 0 ? 0 : ((delegate* unmanaged[Cdecl]<nint, nint>)GdkDisplayGetDefaultScreenPointer)(display);
+            if (screen == 0) GtkWindowFullscreen(window);
+            else ((delegate* unmanaged[Cdecl]<nint, nint, int, void>)GtkWindowFullscreenOnMonitorPointer)(window, screen, index);
+        }
+
+        // GtkTextDirection: 1 left to right, 2 right to left. A container passes it to children without their own.
+        internal void GtkWidgetSetDirection(nint widget, int direction)
+        {
+            if (GtkWidgetSetDirectionPointer != 0) ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWidgetSetDirectionPointer)(widget, direction);
+        }
+
+        // Connects a static handler without user data; the connection lasts as long as the instance.
+        internal ulong ConnectStatic(nint instance, string signal, nint callback)
+        {
+            using var value = Utf8String.Create(signal);
+            return ((delegate* unmanaged[Cdecl]<nint, byte*, nint, nint, nint, int, ulong>)GSignalConnectDataPointer)(
+                instance, value.Pointer, callback, 0, 0, 0);
+        }
+
+        internal nint DefaultDisplay() => ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+
+        internal nint DefaultScreen()
+        {
+            var display = DefaultDisplay();
+            return display == 0 || GdkDisplayGetDefaultScreenPointer == 0 ? 0
+                : ((delegate* unmanaged[Cdecl]<nint, nint>)GdkDisplayGetDefaultScreenPointer)(display);
+        }
         private nint GdkDisplayGetMonitorPointer { get; }
         private nint GdkMonitorGetWorkareaPointer { get; }
         private nint GdkWaylandDisplayGetTypePointer { get; }
@@ -1651,12 +1819,21 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return handler;
         }
 
-        internal nint WebKitWebViewNew()
+        internal nint WebKitWebViewNew(string? language = null)
         {
             var context = ((delegate* unmanaged[Cdecl]<nint>)WebKitWebContextNewPointer)();
             if (context == 0)
             {
                 return 0;
+            }
+            // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
+            if (language is not null && WebKitWebContextSetPreferredLanguagesPointer != 0)
+            {
+                using var tag = Utf8String.Create(language);
+                var languages = stackalloc nint[2];
+                languages[0] = (nint)tag.Pointer;
+                languages[1] = 0;
+                ((delegate* unmanaged[Cdecl]<nint, nint*, void>)WebKitWebContextSetPreferredLanguagesPointer)(context, languages);
             }
 
             try

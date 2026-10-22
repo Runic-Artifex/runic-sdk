@@ -291,7 +291,7 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
     /// <inheritdoc />
     /// <remarks>
     /// An open window reports <see cref="DesktopWindowCapabilities.Announcements"/> only with GTK 4.14 or later, and
-    /// <see cref="DesktopWindowCapabilities.Move"/> only on X11.
+    /// <see cref="DesktopWindowCapabilities.Move"/> and <see cref="DesktopWindowCapabilities.MonitorPlacement"/> only on X11.
     /// </remarks>
     public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities | DesktopWindowCapabilities.Announcements |
         Gtk4WindowHost.PositionCapabilities;
@@ -303,6 +303,9 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
     /// </remarks>
     public IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) =>
         Gtk4WindowHost.GetUnsupportedOptions(options);
+
+    // Explicit, so the factory gains no public member: DesktopHost.Monitors returns these.
+    Runic.Platform.IDesktopMonitors IDesktopWindowHostFactory.Monitors => Gtk4Monitors.Source;
 
     /// <inheritdoc />
     /// <remarks>Reports <c>linux-embedded-backend-conflict</c>, <c>gtk4-runtime-missing</c> and <c>webkitgtk6-runtime-missing</c> together.</remarks>
@@ -410,12 +413,14 @@ internal static class Gtk4Runtime
 }
 
 [SupportedOSPlatform("linux")]
-internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost
+internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost,
+    IDesktopPlacementWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
-        DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop;
+        DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
+        DesktopWindowCapabilities.FullScreen;
     private DesktopWindowState? _state;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
     // when a hidden window is first shown, and the X event connection that reports moves.
@@ -469,7 +474,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     // GTK 4 positions windows only on X11 (Gtk4X11Placement).
     internal static DesktopWindowCapabilities PositionCapabilities =>
-        Gtk4X11Placement.IsActive ? DesktopWindowCapabilities.Move : DesktopWindowCapabilities.None;
+        Gtk4X11Placement.IsActive ? DesktopWindowCapabilities.Move | DesktopWindowCapabilities.MonitorPlacement : DesktopWindowCapabilities.None;
 
     public bool SupportsNativeDispatch => true;
 
@@ -712,6 +717,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             // window lifetime has ended. A per-view context is reference-counted by
             // the WebView and is disposed on the GTK dispatcher with that view.
             using var webContext = WebContext.New();
+            // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
+            if (options.Language is { } language) webContext.SetPreferredLanguages([language]);
             using var contextValue = new GObject.Value(webContext);
             webView = WebView.NewWithProperties(
                 [new GObject.ConstructArgument("web-context", contextValue)]);
@@ -720,6 +727,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             var height = options.Height;
             var x11 = Gtk4X11Placement.IsActive;
             (int X, int Y)? position = x11 && options.X is { } requestedX && options.Y is { } requestedY ? (requestedX, requestedY) : null;
+            // DesktopWindowOptions.Monitor: centered on its work area on X11; on Wayland only full screen uses it.
+            var chosen = options.Monitor is { } monitorId ? Gtk4Monitors.Find(monitorId) : null;
+            _fullScreenMonitor = chosen?.Handle;
             if (options.Placement is not null)
             {
                 if (position is { } placed)
@@ -732,8 +742,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 {
                     // Wayland: the compositor chooses the monitor, so fit the restored size to the largest one. The
                     // position of a placement is ignored.
-                    (width, height) = FitToLargestMonitor(width, height);
+                    (width, height) = chosen is { } target
+                        ? WindowPlacementClamp.ClampSize(width, height, ToScreenRect(target.Monitor.WorkArea))
+                        : FitToLargestMonitor(width, height);
                 }
+            }
+            if (chosen is { } onMonitor && x11 && position is null)
+            {
+                var area = CenterIn(width, height, ToScreenRect(onMonitor.Monitor.WorkArea));
+                (position, width, height) = ((area.X, area.Y), area.Width, area.Height);
             }
             window.SetDefaultSize(width, height);
             window.SetResizable(options.Resizable);
@@ -812,6 +829,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             keys.OnKeyPressed += OnUnhandledKeyPressed;
             window.AddController(keys);
             window.SetChild(webView);
+            // DesktopWindowOptions.LayoutDirection: the window, its header bar and the view; the page keeps its own dir.
+            if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
+            {
+                var direction = options.LayoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? Gtk.TextDirection.Rtl : Gtk.TextDirection.Ltr;
+                window.SetDirection(direction);
+                webView.SetDirection(direction);
+            }
             // Hidden windows still need a native surface for portal ownership
             // and orderly Wayland teardown. Realizing does not map/show them.
             // Some GTK 4 Wayland session cleanup versions assume it exists.
@@ -849,6 +873,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             if (options.Kiosk)
             {
                 window.Fullscreen();
+            }
+            else if (options.Placement is { FullScreen: true })
+            {
+                // A placement saved full-screen: on the chosen monitor (also on Wayland), else where the window opened.
+                EnterFullScreen(window);
             }
             WindowStateSignals.Connect(this, window);
             _moveWatch = Gtk4X11Placement.ConnectMoved(SurfaceOf(window), QueueStateUpdate);
@@ -940,6 +969,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.BrowserArguments), "GTK 4 WebKit custom arguments are not supported."));
         if (!string.IsNullOrWhiteSpace(options.IconFile))
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.IconFile), "GTK 4 window icon files are not implemented."));
+        // On Wayland a chosen monitor applies only to a full-screen placement; the compositor places other windows.
+        if (options.Monitor is not null && !x11 && options.Placement is not { FullScreen: true })
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Monitor),
+                "GTK 4 on Wayland ignores DesktopWindowOptions.Monitor except for a full-screen placement; the compositor places the window.",
+                "Remove the option on Wayland, or rely on the compositor's placement.") with { Severity = DesktopDiagnosticSeverity.Warning });
         return diagnostics;
     }
 
@@ -1553,6 +1587,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             Height = height > 0 ? height : restoredHeight,
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
+            MonitorId = Gtk4Monitors.IdOf(window.GetSurface()),
             Placement = new DesktopWindowPlacement
             {
                 X = _normalPosition?.X,
@@ -1560,6 +1595,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 Width = restoredWidth,
                 Height = restoredHeight,
                 Maximized = maximized,
+                FullScreen = fullScreen && _options?.Kiosk != true,
             },
         };
         if (Equals(state, Volatile.Read(ref _state)))

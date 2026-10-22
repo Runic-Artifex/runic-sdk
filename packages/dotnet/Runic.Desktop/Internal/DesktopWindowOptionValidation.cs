@@ -99,14 +99,6 @@ internal static class DesktopWindowOptionValidation
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Language),
                 "WKWebView uses the application's preferred languages. Remove the option on macOS."));
         }
-        if (OperatingSystem.IsLinux())
-        {
-            const string gtk3 = "Remove the option, or use the GTK 4 window.";
-            if (options.Monitor is not null) diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Monitor), gtk3));
-            if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
-                diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.LayoutDirection), gtk3));
-            if (options.Language is not null) diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Language), gtk3));
-        }
         if (!string.IsNullOrWhiteSpace(options.ProfilePath))
         {
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.ProfilePath), remediation));

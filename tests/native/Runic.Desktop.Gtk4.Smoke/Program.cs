@@ -53,6 +53,9 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
 
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
+if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
+    return MonitorSmoke.Run(monitors + 1 < args.Length ? args[monitors + 1] : "gtk4");
+
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 

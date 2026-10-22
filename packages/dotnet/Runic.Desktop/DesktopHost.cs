@@ -77,7 +77,7 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <summary>Gets the desktop's monitors, in the units of this host's windows.</summary>
     /// <remarks>
     /// <para>
-    /// The built-in hosts list them on Windows and macOS; on macOS the main thread must run
+    /// The built-in hosts list them on Windows, macOS and with GTK 3; on macOS the main thread must run
     /// <see cref="DesktopEventLoop"/> (or the call must come from it), as for windows. With
     /// <see cref="DesktopHostOptions.WindowHostFactory"/> they come from <see cref="IDesktopWindowHostFactory.Monitors"/>,
     /// which reports <see cref="PlatformUnavailableReason.BackendUnavailable"/> unless the factory provides them, as the GTK 4
@@ -97,6 +97,7 @@ public sealed class DesktopHost : IAsyncDisposable
         if (options.WindowHostFactory is { } factory) return factory.Monitors;
         if (OperatingSystem.IsWindows()) return WindowsMonitors.Shared;
         if (OperatingSystem.IsMacOS()) return MacOsWkWebViewHost.Monitors;
+        if (OperatingSystem.IsLinux() && options.Linux.EmbeddedBackend == LinuxEmbeddedBackend.Gtk3WebKit41) return LinuxWebKitGtkHost.Monitors;
         return DesktopMonitors.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     }
 

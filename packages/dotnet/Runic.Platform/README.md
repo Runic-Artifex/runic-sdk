@@ -303,7 +303,7 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows and macOS; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
