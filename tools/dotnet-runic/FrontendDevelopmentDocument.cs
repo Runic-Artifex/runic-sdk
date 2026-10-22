@@ -81,6 +81,14 @@ internal static partial class FrontendDevelopmentDocument
                 match.Groups["prefix"].Value +
                 new Uri(origin, match.Groups["path"].Value).AbsoluteUri +
                 match.Groups["suffix"].Value);
+        // An inline script's import() resolves against the document, which the native host serves. SvelteKit's
+        // development page starts its client this way, with paths relative to the page.
+        document = DynamicImportSpecifier().Replace(
+            document,
+            match =>
+                match.Groups["prefix"].Value +
+                new Uri(documentUrl, match.Groups["path"].Value).AbsoluteUri +
+                match.Groups["suffix"].Value);
         string destination = Path.GetFullPath(
             destinationDocument,
             configuration.RuntimeWebRoot);
@@ -129,4 +137,7 @@ internal static partial class FrontendDevelopmentDocument
 
     [GeneratedRegex("(?<prefix>\\b(?:from|import)\\s*[\"'])(?<path>/[^\"']+)(?<suffix>[\"'])")]
     private static partial Regex RootModuleSpecifier();
+
+    [GeneratedRegex("(?<prefix>\\bimport\\s*\\(\\s*[\"'])(?<path>(?:\\.{1,2})?/[^\"']+)(?<suffix>[\"'])")]
+    private static partial Regex DynamicImportSpecifier();
 }

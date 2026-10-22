@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Runic Artifex",
+  "classifications": [
+    "Desktop",
+    "Runic Views"
+  ],
+  "identity": "Runic.Application.Templates.View",
+  "name": "Runic View",
+  "description": "Adds a Runic View, or a Window, and its C# ViewModel to an existing project that references a Runic host or Runic.Application.Views. The build generates its typed TypeScript client.",
+  "shortName": "runic-view",
+  "sourceName": "Sample",
+  "preferNameDirectory": false,
+  "tags": {
+    "language": "C#",
+    "type": "item"
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [ ".template.config/**/*" ],
+      "modifiers": [
+        { "condition": "(window)", "rename": { "SampleView.cs": "SampleWindow.cs" } }
+      ]
+    }
+  ],
+  "symbols": {
+    "viewModels": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "reactiveui",
+      "displayName": "ViewModels",
+      "description": "The MVVM library of the project's ViewModels.",
+      "choices": [
+        { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "ReactiveUI 26 Primitives, with Runic.Application.Views.ReactiveUI" },
+        { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" }
+      ]
+    },
+    "window": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Window",
+      "description": "Declares a Window, which a host opens with OpenWindowAsync, instead of a View, which a Window or another View shows."
+    },
+    "namespace": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "",
+      "displayName": "Namespace",
+      "description": "The namespace of the generated types. Default: the RootNamespace of the project in the current directory once it has been restored, otherwise App."
+    },
+    "projectNamespace": {
+      "type": "bind",
+      "binding": "msbuild:RootNamespace",
+      "defaultValue": "App"
+    },
+    "namespaceValue": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "namespace",
+        "fallbackVariableName": "projectNamespace"
+      },
+      "replaces": "RunicViewNamespace"
+    }
+  },
+  "postActions": [
+    {
+      "description": "Explains how to use the new ViewModel.",
+      "manualInstructions": [
+        {
+          "text": "Register the ViewModel where the application registers its services, for example services.AddScoped<NameViewModel>(). AddRunicViews() registers the View. Show a View from a property of a Window or View ViewModel, or open a Window with host.OpenWindowAsync<NameWindow>(). The next build writes its typed client to the frontend's src/generated folder."
+        }
+      ],
+      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
+      "continueOnError": true
+    }
+  ]
+}

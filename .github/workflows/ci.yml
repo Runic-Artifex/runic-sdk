@@ -555,7 +555,7 @@ jobs:
         run: dotnet run --project examples/wpf-navigation/Tests.ReactiveUI -c Release
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-  # Two lanes of two frameworks, with one named step per framework.
+  # Two lanes of two frameworks, with one named step per framework, and a SvelteKit lane on Node 26.
   templates:
     name: Templates / ${{ matrix.first }}+${{ matrix.second }}
     needs: [plan, build]
@@ -575,6 +575,9 @@ jobs:
           - first: vue
             second: angular
             desktop-smoke: "1"
+          # The starters' engines.node admits Node 24 and 26 (D031.3); this lane builds them on Node 26.
+          - first: sveltekit
+            node: "26.12.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -582,6 +585,15 @@ jobs:
       - uses: ./.github/actions/setup-sdk
         with:
           node: "true"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install the pinned package managers on Node ${{ matrix.node }}
+        if: matrix.node
+        run: |
+          npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
+          node --version | grep "^v${{ matrix.node }}$"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         id: candidates
         with:
@@ -601,7 +613,7 @@ jobs:
           RUNIC_TEMPLATE_DESKTOP_SMOKE: ${{ matrix.desktop-smoke || '0' }}
       # Also runs after the first framework failed, so one run reports both.
       - name: Verify generated ${{ matrix.second }} template applications
-        if: ${{ !cancelled() && steps.candidates.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.candidates.outcome == 'success' && matrix.second }}
         run: bun run verify:templates
         env:
           RUNIC_TEMPLATE_FRAMEWORKS: ${{ matrix.second }}

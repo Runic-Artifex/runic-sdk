@@ -323,7 +323,7 @@ packages:
 
   '@runic-artifex/vite-plugin-runic@0.9.0':
     resolution: {integrity: sha512-PnHHNJRmUL/aoeqDE7vh9u/xBVsG3IaUFfvRE6wxWyWBPQMP9X9ghAD5WLjTbHjn2bZjKIAS9aUJIugnI741zA==}
-    engines: {node: '>=24.18.0 <25'}
+    engines: {node: ^24.18.0 || ^26.0.0}
     peerDependencies:
       '@vitejs/devtools': ^0.7.6
       vite: '>=8.0.12 <9'

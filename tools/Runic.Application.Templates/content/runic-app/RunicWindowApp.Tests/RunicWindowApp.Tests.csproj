@@ -5,10 +5,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-<!--#if (nix) -->
-    <!-- dotnet restore writes packages.lock.json, from which flake.nix restores the tests in locked mode for
-         linux-x64 and runs them (doCheck). They run under the JIT, also in the NativeAOT package. -->
+    <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+<!--#if (nix) -->
+    <!-- flake.nix restores the tests from it in locked mode for linux-x64 and runs them (doCheck). They run under
+         the JIT, also in the NativeAOT package. -->
     <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
 <!--#endif -->
   </PropertyGroup>

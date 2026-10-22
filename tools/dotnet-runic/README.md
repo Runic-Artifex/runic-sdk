@@ -98,6 +98,10 @@ tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
+The JavaScript runtime passes at the certified version and warns for a newer
+release of the same major version. Node 26 is supported as well, with a
+warning, since the starters and the Runic npm packages that run in Node declare
+`engines.node` `^24.18.0 || ^26.0.0` (0.11).
 
 Doctor checks every Views host adapter the project references, not only one.
 It reads the project's direct package and project references, with the
@@ -363,9 +367,9 @@ serves (see its
 | `RunicApplicationFrontendOutputDirectory` | `dist`, relative to the frontend directory |
 | `RunicApplicationFrontendWebRoot` | `www`, relative to the build output |
 | `RunicApplicationFrontendDevServerKind` | `angular` with `angular.json`, `vite` with a `vite.config.*`, otherwise none |
-| `RunicApplicationFrontendViteDevServerEntry` | the first of `/src/main.ts`, `/src/main.tsx`, `/src/main.js`, `/src/main.jsx` |
+| `RunicApplicationFrontendViteDevServerEntry` | the first of `/src/main.ts`, `/src/main.tsx`, `/src/main.js`, `/src/main.jsx`; for SvelteKit, which has no main module, its root route: `/src/routes/+page.svelte`, `+layout.svelte`, `+layout.ts` or `+layout.js` |
 | `RunicApplicationFrontendViteConfiguration` | the frontend's `vite.config.*` |
-| `RunicApplicationFrontendDevServerDocument` | every HTML build input with Vite, `index.html` with Angular; set it to override the list and separate several documents with `;` |
+| `RunicApplicationFrontendDevServerDocument` | every HTML build input with Vite, `index.html` with Angular and with SvelteKit, whose development server renders it from its routes; set it to override the list and separate several documents with `;` |
 | `RunicApplicationFrontendDevWatchTarget` | none; an MSBuild target to run as the frontend watcher without a development server |
 
 The package manager comes from `packageManager` in the frontend `package.json`,

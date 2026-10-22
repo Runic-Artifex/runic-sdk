@@ -46,11 +46,12 @@ internal static class ViteBuildInputs
                 "Could not read the build inputs from the Vite configuration. Check that 'vite build' works in the frontend directory.",
                 CommandRunner.LocalDetail(configuration.FrontendPackageDirectory, result.CombinedOutput.Trim()));
         }
-        (string root, IReadOnlyList<string> inputs) = Parse(result.StandardOutput);
+        (string root, IReadOnlyList<string> inputs, bool routed) = Parse(result.StandardOutput);
         IReadOnlyList<string> documents = SelectDocuments(
             root,
             inputs,
-            configuration.HasExplicitDevelopmentServerDocuments ? configuration.DevelopmentServerDocuments : null);
+            configuration.HasExplicitDevelopmentServerDocuments ? configuration.DevelopmentServerDocuments : null,
+            routed);
         Console.WriteLine($"[dev] Pages: {string.Join(", ", documents)}");
         phase.Complete();
         return configuration with { DevelopmentServerDocument = string.Join(';', documents) };
@@ -61,11 +62,14 @@ internal static class ViteBuildInputs
     /// otherwise every HTML build input with <c>index.html</c> first, because
     /// the first document is the application's entry document. Every document
     /// must exist below the Vite root, which a missing window entry does not.
+    /// A routed configuration, such as SvelteKit's, builds its pages from routes: its development server serves
+    /// <c>index.html</c> without a file of that name, so only the explicit list is checked there.
     /// </summary>
     internal static IReadOnlyList<string> SelectDocuments(
         string root,
         IReadOnlyList<string> inputs,
-        IReadOnlyList<string>? explicitDocuments)
+        IReadOnlyList<string>? explicitDocuments,
+        bool routed = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         ArgumentNullException.ThrowIfNull(inputs);
@@ -81,6 +85,10 @@ internal static class ViteBuildInputs
         {
             // A library-style configuration builds no page; keep the conventional entry.
             documents.Add("index.html");
+        }
+        if (routed && derived)
+        {
+            return documents;
         }
         foreach (string document in documents)
         {
@@ -99,7 +107,7 @@ internal static class ViteBuildInputs
         return documents;
     }
 
-    internal static (string Root, IReadOnlyList<string> Inputs) Parse(string output)
+    internal static (string Root, IReadOnlyList<string> Inputs, bool Routed) Parse(string output)
     {
         ArgumentNullException.ThrowIfNull(output);
         // Plugins may write to stdout while the configuration loads; the marker line is last.
@@ -117,13 +125,15 @@ internal static class ViteBuildInputs
         string root = document.RootElement.GetProperty("root").GetString() ?? string.Empty;
         List<string> inputs = [.. document.RootElement.GetProperty("inputs").EnumerateArray()
             .Select(input => input.GetString() ?? string.Empty)];
-        return (root, inputs);
+        bool routed = document.RootElement.TryGetProperty("routed", out JsonElement value) && value.ValueKind == JsonValueKind.True;
+        return (root, inputs, routed);
     }
 
     /// <summary>
     /// A script for <c>node -e</c> and <c>bun -e</c> that resolves the Vite
     /// configuration as <c>vite build</c> does and prints the absolute input paths.
     /// Vite resolves relative inputs against its root and defaults to index.html.
+    /// <c>routed</c> is true when SvelteKit's plugin builds the pages from routes instead of HTML inputs.
     /// </summary>
     internal static string CreateProbe(string configurationPath)
     {
@@ -140,6 +150,7 @@ internal static class ViteBuildInputs
               process.stdout.write("\n{{Marker}}" + JSON.stringify({
                 root: config.root,
                 inputs: inputs.map((entry) => path.resolve(config.root, String(entry))),
+                routed: (config.plugins ?? []).some((plugin) => plugin?.name === "vite-plugin-sveltekit-setup"),
               }) + "\n");
             }).catch((error) => {
               console.error(error instanceof Error ? error.message : String(error));

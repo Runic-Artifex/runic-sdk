@@ -25,4 +25,4 @@ for (const framework of templateFrontends) {
       { expectedPackages: templateRunicPackages[framework] });
   }
 }
-console.log("Staged all 12 template locks against final npm archive bytes.");
+console.log(`Staged all ${templateFrontends.length * 3} template locks against final npm archive bytes.`);

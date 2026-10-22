@@ -27,6 +27,12 @@ install them again when `package.json` or the lock file changes; set
 `RunicApplicationFrontendInstallEnabled` to `false` to install them yourself.
 These commands build the production frontend instead of starting a development server.
 
+The first restore writes `packages.lock.json`, which pins every NuGet package
+to its version and content hash (`RestorePackagesWithLockFile`). Commit it with
+the frontend's lock file; a restore that would resolve a different package
+fails until you restore again on purpose, for example with
+`dotnet restore --force-evaluate` after changing a package reference.
+
 ## What opens
 
 `RunAsync` in `Program.cs` opens `WorkspaceWindow` with
@@ -69,9 +75,19 @@ the template's default Runic Desktop host (create the project without
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/).
 <!--#endif -->
 
+<!--#if (frontend == "sveltekit") -->
+The page names no host: `Frontend/src/app.html`, SvelteKit's page template,
+loads `webui.js` and `runic-views.js`, which the host package copies into
+`www/` from its own Views client.
+<!--#elif (frontend == "angular") -->
+The page names no host: `Frontend/src/index.html` loads `webui.js` and
+`runic-views.js`, which the host package copies into `www/` from its own
+Views client.
+<!--#else -->
 The page names no host: `Frontend/index.html` loads `webui.js` and
 `runic-views.js`, which the host package copies into `www/` from its own
-Views client. Switching hosts changes the host package and `Program.cs`, not
+Views client.
+<!--#endif --> Switching hosts changes the host package and `Program.cs`, not
 the frontend. A project that
 references both hosts sets `RunicApplicationHost` to `desktop` or `cswebui`.
 
@@ -126,6 +142,9 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#endif -->
 <!--#if (frontend == "angular") -->
 | `Frontend/src/app` | Components connect generated clients with `injectView()` and render the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/angular`. |
+<!--#elif (frontend == "sveltekit") -->
+| `Frontend/src/routes/+page.svelte`, `Frontend/src/lib/pages` | The root route connects generated clients with `useView` and renders the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/svelte`. `+layout.ts` prerenders it as an empty shell (`ssr = false`): it renders in the window, where the Views client connects. |
+| `Frontend/src/hooks.ts` | Routes `index.html`, the file a Window opens, to the root route. |
 <!--#elif (frontend == "svelte") -->
 | `Frontend/src/App.svelte`, `Frontend/src/pages` | Connect generated clients with `useView` and render the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/svelte`. |
 <!--#elif (frontend == "vue") -->
@@ -133,7 +152,9 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#else -->
 | `Frontend/src/App.tsx`, `Frontend/src/pages` | Connect generated clients with `useView` from `@runic-artifex/react` and render the page that `WorkspaceViewModel.Main` selects. |
 <!--#endif -->
-<!--#if (frontend != "angular") -->
+<!--#if (frontend == "sveltekit") -->
+| `Frontend/vite.config.ts` | Configures SvelteKit with `runicAdapter()` from `@runic-artifex/sveltekit`, which prerenders the page into `Frontend/dist`, the folder the build copies to `www/`. SvelteKit writes relative URLs, so the page runs below any path. |
+<!--#elif (frontend != "angular") -->
 | `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
 <!--#endif -->
 | `Frontend/src/generated` | Typed clients generated from the ViewModels. They import the shared `@runic-artifex/views` runtime. |

@@ -262,11 +262,12 @@ verify_template() {
   # below prove that the template's defaults are this host and ViewModel
   # library; "tests" adds the TUnit test project and runs it; "gtk4" adds
   # --linux-gtk 4 to the desktop host.
-  local defaults="" tests="" linux_gtk=3 flag
+  local defaults="" tests="" restore="" linux_gtk=3 flag
   for flag in "${@:5}"; do
     case "$flag" in
       defaults) defaults=defaults ;;
       tests) tests=tests ;;
+      restore) restore=restore ;;
       gtk4) linux_gtk=4 ;;
       *) echo "Unknown verify_template flag: $flag" >&2; exit 2 ;;
     esac
@@ -280,6 +281,10 @@ verify_template() {
   [[ "$defaults" == defaults ]] && selection=()
   local tests_options=()
   [[ "$tests" == tests ]] && tests_options=(--tests)
+  [[ "$restore" == restore ]] && tests_options+=(--restore)
+  # SvelteKit renders its page from src/app.html and its routes; the other Vite frontends build HTML inputs.
+  local html_inputs=true
+  [[ "$framework" == angular || "$framework" == sveltekit ]] && html_inputs=false
   # --host desktop --linux-gtk 4 names the project ...DesktopGtk4... and its directory ...-desktop-gtk4-....
   local host_label="$host" host_name="${host^}"
   if [[ "$linux_gtk" == 4 ]]; then host_label+=-gtk4; host_name+=Gtk4; fi
@@ -300,6 +305,17 @@ verify_template() {
     --package-manager "$manager" \
     "${selection[@]}" \
     "${tests_options[@]}"
+
+  # The opt-in restore post-action restores the created projects, which writes their NuGet lock files (SEC-31).
+  if [[ "$restore" == restore ]]; then
+    test -f "$output/obj/project.assets.json"
+    test -f "$output/packages.lock.json"
+    [[ "$tests" != tests ]] || test -f "$output/$project_name.Tests/packages.lock.json"
+  elif [[ -e "$output/obj" ]]; then
+    echo "The $framework project without --restore was restored." >&2
+    exit 1
+  fi
+  grep -Fq '<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>' "$output/$project_name.csproj"
 
   # The candidate template references the candidate packages: the pack stamped their versions.
   if ! grep -Fq "\"version\": \"$package_version\"" "$output/.config/dotnet-tools.json" \
@@ -335,14 +351,19 @@ verify_template() {
   grep -Fq 'await window.WaitForCloseAsync();' "$output/Program.cs"
   local index_html="$output/Frontend/index.html"
   [[ "$framework" == angular ]] && index_html="$output/Frontend/src/index.html"
+  [[ "$framework" == sveltekit ]] && index_html="$output/Frontend/src/app.html"
   # The page names no host: every host serves its Views client as runic-views.js (#237).
   grep -Fq '<script src="runic-views.js"></script>' "$index_html"
   if grep -nE 'runic-(cswebui|desktop-views|desktop)\.js' "$index_html"; then
     echo "The $host frontend names a host script." >&2
     exit 1
   fi
+  if [[ "$framework" == sveltekit ]]; then
+    grep -Fq 'runicAdapter({ out: "dist" })' "$output/Frontend/vite.config.ts"
+    grep -Fq "\"@runic-artifex/sveltekit\": \"$views_npm_version\"" "$output/Frontend/package.json"
+  fi
   if [[ "$framework" != angular ]]; then
-    grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
+    [[ "$framework" == sveltekit ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
     if grep -n 'desktop' "$output/Frontend/vite.config.ts"; then
       echo "The $host Vite configuration chooses a host." >&2
       exit 1
@@ -417,7 +438,7 @@ verify_template() {
   # A second window gets its own page as a second Vite build input, the step the
   # template's vite.config.ts describes. Angular builds through the Angular CLI
   # and keeps a single page here.
-  if [[ "$framework" != angular ]]; then
+  if [[ "$html_inputs" == true ]]; then
     sed -i 's|input: \["index.html"\]|input: ["index.html", "settings.html"]|' \
       "$output/Frontend/vite.config.ts"
     grep -Fq 'input: ["index.html", "settings.html"]' "$output/Frontend/vite.config.ts"
@@ -430,7 +451,12 @@ verify_template() {
     cat "$output/doctor-unrestored.txt" >&2
     exit 1
   fi
-  grep -Fq 'WARN compatibility-set: The project has not been restored yet' "$output/doctor-unrestored.txt"
+  # The restore post-action already restored a --restore project.
+  if [[ "$restore" == restore ]]; then
+    grep -Fq 'PASS compatibility-set:' "$output/doctor-unrestored.txt"
+  else
+    grep -Fq 'WARN compatibility-set: The project has not been restored yet' "$output/doctor-unrestored.txt"
+  fi
   # The browser check follows the host, before restore too; Desktop projects
   # get no CS-WebUI advice.
   if [[ "$host" == desktop* ]]; then
@@ -440,7 +466,7 @@ verify_template() {
       exit 1
     fi
   fi
-  if [[ "$framework" != angular ]]; then
+  if [[ "$html_inputs" == true ]]; then
     sed 's|<title>[^<]*</title>|<title>Second window</title>|' "$output/Frontend/index.html" > "$output/Frontend/settings.html"
   fi
   # serve_and_fetch also fetches CS-WebUI's runic-cswebui.js. Desktop variants
@@ -449,7 +475,7 @@ verify_template() {
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
   fi
-  if [[ "$manager" == npm && "$host" == cswebui && "$framework" != angular ]]; then
+  if [[ "$manager" == npm && "$host" == cswebui && "$html_inputs" == true ]]; then
     # A window entry that is a build input but has no file fails before the
     # build, naming the page instead of timing out the window's connection.
     mv "$output/Frontend/settings.html" "$output/settings.html.kept"
@@ -466,6 +492,16 @@ verify_template() {
   fi
 
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
+  test -f "$output/packages.lock.json"
+  # The runic-view item template adds a View and a Window with their ViewModels to the restored project, in its
+  # RootNamespace; the build generates their clients.
+  local root_namespace
+  root_namespace="$(sed -n 's|^namespace \(.*\);$|\1|p' "$output/Views.cs")"
+  (cd "$output" && dotnet new runic-view --name Settings --view-models "$view_models" \
+    && dotnet new runic-view --name Preferences --window --view-models "$view_models") > "$output/runic-view.log"
+  grep -Fq "namespace $root_namespace;" "$output/SettingsView.cs"
+  grep -Fq "public sealed partial class PreferencesWindow : RunicWindow<PreferencesViewModel>;" "$output/PreferencesWindow.cs"
+  grep -Fq 'services.AddScoped<NameViewModel>()' "$output/runic-view.log"
   "$tool_directory/dotnet-runic" dev \
     --project "$output/$project_name.csproj" \
     --dry-run > "$output/dotnet-runic-dev-plan.txt"
@@ -496,7 +532,7 @@ verify_template() {
     exit 1
   fi
   grep -Fq '"Identity": "Frontend/package.json"' "$output/items.json" || grep -Fq '"Identity": "Frontend\\package.json"' "$output/items.json"
-  if [[ "$framework" != angular ]]; then
+  if [[ "$html_inputs" == true ]]; then
     test -f "$output/bin/Release/net10.0/www/settings.html"
   fi
   # The referenced host's client is the page's runic-views.js.
@@ -505,6 +541,8 @@ verify_template() {
   # the earlier build are gone, and the host scripts stay (#236).
   local entry
   entry="$(find "$output/Frontend/src" -maxdepth 1 -name 'main.ts*' | head -n 1)"
+  # A SvelteKit frontend has no main module; its universal hooks are part of the client bundle.
+  [[ "$framework" == sveltekit ]] && entry="$output/Frontend/src/hooks.ts"
   printf '\nconsole.info("Runic template rebuild check");\n' >> "$entry"
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild.log"
   local built_files served_files
@@ -517,7 +555,7 @@ verify_template() {
     exit 1
   fi
   grep -rFq 'Runic template rebuild check' "$output/bin/Release/net10.0/www"
-  if [[ "$framework" != angular && "$manager" == npm ]]; then
+  if [[ "$html_inputs" == true && "$manager" == npm ]]; then
     dotnet publish "$output/$project_name.csproj" --configuration Release --no-restore --no-build \
       --output "$output/publish" > "$output/publish.log"
     test -f "$output/publish/www/settings.html"
@@ -530,6 +568,8 @@ verify_template() {
     exit 1
   fi
   test -f "$output/Frontend/src/generated/workspace.ts"
+  test -f "$output/Frontend/src/generated/settings.ts"
+  test -f "$output/Frontend/src/generated/preferences.ts"
   # One frontend build runs on every host: the built page loads runic-views.js
   # and no host-specific script, such as the Runic Desktop bootstrap.
   grep -Eq '<script\s[^>]*src="(\./)?runic-views\.js"' "$output/Frontend/dist/index.html"
@@ -568,7 +608,7 @@ verify_template() {
   if [[ "$tests" == tests ]]; then
     run_generated_tests "$output" "$project_name"
   fi
-  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}"
+  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" "${restore:+|restore}"
 }
 
 # Runs the generated test project as its README documents. The tests build the
@@ -664,7 +704,8 @@ check_diagnostics_log() {
 # produces, using the packaged tool and the candidate template.
 verify_creator() {
   local creator_directory="$template_tmp/creator"
-  local options=(--frontend vue --package-manager pnpm --host cswebui --view-models toolkit --tests)
+  # --application-id is a text option that the creator generates from the template model.
+  local options=(--frontend vue --package-manager pnpm --host cswebui --view-models toolkit --tests --application-id org.example.AcceptanceCreator)
   dotnet tool install Runic.Create \
     --tool-path "$tool_directory" \
     --version "$package_version" \
@@ -686,7 +727,15 @@ verify_creator() {
     echo "The creator accepted an unknown frontend." >&2
     exit 1
   fi
-  grep -Fq 'react, vue, svelte, angular' "$creator_directory/invalid.txt"
+  grep -Fq 'react, vue, svelte, sveltekit, angular' "$creator_directory/invalid.txt"
+  grep -Fq '<ApplicationId>org.example.AcceptanceCreator</ApplicationId>' "$creator_directory/guided/AcceptanceCreator/AcceptanceCreator.csproj"
+  # --no-install uses the template installed above and prints only the dotnet new command.
+  (cd "$creator_directory/guided" && "$tool_directory/runic-create" Offline --no-install --yes --dry-run) \
+    > "$creator_directory/no-install.txt"
+  if grep -Fq 'dotnet new install' "$creator_directory/no-install.txt"; then
+    echo "The creator installs the template with --no-install." >&2
+    exit 1
+  fi
   # Accepting every default selects Runic Desktop and ReactiveUI.
   (cd "$creator_directory/guided" && "$tool_directory/runic-create" Defaults --yes --dry-run) \
     > "$creator_directory/defaults.txt"
@@ -774,7 +823,7 @@ check_application_id() {
   done
 }
 
-frameworks=(react vue svelte angular)
+frameworks=(react vue svelte sveltekit angular)
 managers=(npm pnpm bun)
 # Every frontend and package manager uses the default host and ViewModels,
 # Runic Desktop and ReactiveUI, created without --host and --view-models.
@@ -782,7 +831,7 @@ managers=(npm pnpm bun)
 # served documents the checks fetch, each frontend with CommunityToolkit.Mvvm,
 # and every host and ViewModel pairing. Variants and the npm projects add the
 # test project and run it, so the tests pass with every host and ViewModel
-# library.
+# library. SvelteKit adds a variant with the opt-in restore post-action.
 variants=(
   "react npm cswebui toolkit tests"
   "vue npm cswebui reactiveui tests"
@@ -791,6 +840,8 @@ variants=(
   "svelte bun desktop toolkit tests"
   "angular pnpm desktop toolkit tests"
   "vue npm desktop toolkit tests gtk4"
+  "sveltekit npm cswebui toolkit tests restore"
+  "sveltekit bun desktop toolkit tests"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
@@ -813,7 +864,7 @@ else
 fi
 for framework in "${frameworks[@]}"; do
   case "$framework" in
-    react|vue|svelte|angular) ;;
+    react|vue|svelte|sveltekit|angular) ;;
     *) echo "Unknown template framework: $framework" >&2; exit 2 ;;
   esac
 done

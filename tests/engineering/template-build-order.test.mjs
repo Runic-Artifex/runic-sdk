@@ -10,7 +10,8 @@ import { templateFrontendDirectory, templateFrontends } from "../../eng/release/
 for (const framework of templateFrontends.filter(name => name !== "angular")) {
   test(`${framework} template builds with Vite before its type check`, () => {
     const manifest = JSON.parse(readFileSync(new URL(`../../tools/Runic.Application.Templates/content/${templateFrontendDirectory(framework)}/package.json`, import.meta.url), "utf8"));
-    // The build bundles, then runs the same check as the typecheck script.
-    assert.deepEqual(manifest.scripts.build.split("&&").map(step => step.trim()), ["vite build", manifest.scripts.typecheck]);
+    // The build bundles, then runs the same steps as the typecheck script (SvelteKit's syncs its types first).
+    const steps = script => script.split("&&").map(step => step.trim());
+    assert.deepEqual(steps(manifest.scripts.build), ["vite build", ...steps(manifest.scripts.typecheck)]);
   });
 }

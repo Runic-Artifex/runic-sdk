@@ -177,7 +177,7 @@ test("the shipped template has no hidden or version parameters, and the pack sta
     const symbols = JSON.parse(shipped).symbols;
     const parameters = Object.entries(symbols).filter(([, symbol]) => symbol.type === "parameter").map(([name]) => name);
     assert.deepEqual(parameters,
-      ["frontend", "packageManager", "host", "linuxGtk", "viewModels", "tests", "nix", "packaging", "applicationId"]);
+      ["frontend", "packageManager", "host", "linuxGtk", "viewModels", "tests", "nix", "packaging", "restore", "applicationId"]);
     for (const name of parameters) {
       assert.doesNotMatch(`${name} ${symbols[name].replaces ?? ""}`, /version/i, `${name} sets a version`);
       assert.ok(host.symbolInfo[name], `${name} has no dotnetcli.host.json entry`);

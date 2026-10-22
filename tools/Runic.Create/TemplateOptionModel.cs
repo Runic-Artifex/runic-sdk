@@ -32,11 +32,23 @@ internal sealed record TemplateToggle(string Symbol, string LongName, string Dis
 }
 
 /// <summary>
-/// The visible choice and Boolean parameters of the runic-app template, read from the
+/// A free-text template parameter, such as <c>--application-id</c>. The creator passes a value only when one is given;
+/// otherwise the template computes its default.
+/// </summary>
+internal sealed record TemplateText(string Symbol, string LongName, string DisplayName, string Description)
+{
+    public string Flag => "--" + LongName;
+}
+
+/// <summary>
+/// The visible choice, Boolean and text parameters of the runic-app template, read from the
 /// template's own template.json and dotnetcli.host.json. The creator, the
 /// template, and the documentation picker share these declarations.
 /// </summary>
-internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options, IReadOnlyList<TemplateToggle> toggles)
+internal sealed class TemplateOptionModel(
+    IReadOnlyList<TemplateOption> options,
+    IReadOnlyList<TemplateToggle> toggles,
+    IReadOnlyList<TemplateText>? texts = null)
 {
     public const string TemplatePackage = "Runic.Application.Templates";
     public const string TemplateShortName = "runic-app";
@@ -45,6 +57,9 @@ internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options,
 
     /// <summary>Boolean parameters that are off by default, such as <c>--tests</c>.</summary>
     public IReadOnlyList<TemplateToggle> Toggles { get; } = toggles;
+
+    /// <summary>Text parameters, such as <c>--application-id</c>, which the creator exposes as options from this model.</summary>
+    public IReadOnlyList<TemplateText> Texts { get; } = texts ?? [];
 
     public static TemplateOptionModel Load() =>
         Parse(ReadResource("Runic.Create.template.json"), ReadResource("Runic.Create.dotnetcli.host.json"));
@@ -57,16 +72,24 @@ internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options,
 
         var options = new List<TemplateOption>();
         var toggles = new List<TemplateToggle>();
+        var texts = new List<TemplateText>();
         foreach (JsonProperty symbol in template.RootElement.GetProperty("symbols").EnumerateObject())
         {
             JsonElement value = symbol.Value;
             string? datatype = String(value, "datatype");
-            if (String(value, "type") != "parameter" || datatype is not ("choice" or "bool")) continue;
+            if (String(value, "type") != "parameter" || datatype is not ("choice" or "bool" or "text" or "string")) continue;
             JsonElement info = symbolInfo.ValueKind == JsonValueKind.Object &&
                 symbolInfo.TryGetProperty(symbol.Name, out JsonElement found) ? found : default;
             if (info.ValueKind == JsonValueKind.Object &&
                 info.TryGetProperty("isHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True) continue;
             string longName = (info.ValueKind == JsonValueKind.Object ? String(info, "longName") : null) ?? symbol.Name;
+
+            if (datatype is "text" or "string")
+            {
+                texts.Add(new TemplateText(symbol.Name, longName,
+                    String(value, "displayName") ?? symbol.Name, String(value, "description") ?? ""));
+                continue;
+            }
 
             if (datatype == "bool")
             {
@@ -94,7 +117,7 @@ internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options,
             _ = option.Default;
             options.Add(option);
         }
-        return new TemplateOptionModel(options, toggles);
+        return new TemplateOptionModel(options, toggles, texts);
     }
 
     private static string? String(JsonElement element, string name) =>

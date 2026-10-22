@@ -78,12 +78,22 @@ internal static partial class CreateApplication
                 enabled.Add(toggle);
         }
 
-        var plan = new CreatePlan(name, request.Directory, version, selections, request.TemplateSource, enabled);
+        // Text parameters, such as --application-id, are not asked: the template computes their defaults.
+        TextSelection[] texts = model.Texts
+            .Where(text => request.Texts.ContainsKey(text.LongName))
+            .Select(text => new TextSelection(text, request.Texts[text.LongName]))
+            .ToArray();
+        var plan = new CreatePlan(name, request.Directory, version, selections, request.TemplateSource, enabled)
+        {
+            Texts = texts,
+            Force = request.Force,
+            NoInstall = request.NoInstall,
+        };
         string directory = Path.GetFullPath(plan.Directory);
-        if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
+        if (!plan.Force && Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
         {
             return Failure(CommandExitCategory.Usage, "RCREATE003",
-                $"The directory '{plan.Directory}' already exists and is not empty. Choose another name or --output.");
+                $"The directory '{plan.Directory}' already exists and is not empty. Choose another name or --output, or pass --force to create the project there anyway.");
         }
 
         if (request.DryRun)
@@ -96,19 +106,23 @@ internal static partial class CreateApplication
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         bool json = context.OutputMode == CommandOutputMode.Json;
-        ProcessResult install = await RunDotNetAsync(plan.InstallArguments, capture: true, json, cancellationToken).ConfigureAwait(false);
-        if (install.ExitCode != 0 && !IsAlreadyInstalled(install.ExitCode, install.Output))
+        if (!plan.NoInstall)
         {
-            await context.Console.WriteErrorAsync(install.Output.AsMemory(), cancellationToken).ConfigureAwait(false);
-            return Failure(CommandExitCategory.CommandFailure, "RCREATE004",
-                $"Installing {TemplateOptionModel.TemplatePackage}@{version} failed with exit code {install.ExitCode}.");
+            ProcessResult install = await RunDotNetAsync(plan.InstallArguments, capture: true, json, cancellationToken).ConfigureAwait(false);
+            if (install.ExitCode != 0 && !IsAlreadyInstalled(install.ExitCode, install.Output))
+            {
+                await context.Console.WriteErrorAsync(install.Output.AsMemory(), cancellationToken).ConfigureAwait(false);
+                return Failure(CommandExitCategory.CommandFailure, "RCREATE004",
+                    $"Installing {TemplateOptionModel.TemplatePackage}@{version} failed with exit code {install.ExitCode}.");
+            }
         }
 
         ProcessResult create = await RunDotNetAsync(plan.CreateArguments, capture: false, json, cancellationToken).ConfigureAwait(false);
         if (create.ExitCode != 0)
         {
-            return Failure(CommandExitCategory.CommandFailure, "RCREATE005",
-                $"dotnet new {TemplateOptionModel.TemplateShortName} failed with exit code {create.ExitCode}.");
+            return Failure(CommandExitCategory.CommandFailure, "RCREATE005", plan.NoInstall
+                ? $"dotnet new {TemplateOptionModel.TemplateShortName} failed with exit code {create.ExitCode}. With --no-install the installed template is used; install it with '{plan.InstallCommand}', or run the creator without --no-install."
+                : $"dotnet new {TemplateOptionModel.TemplateShortName} failed with exit code {create.ExitCode}.");
         }
 
         return Success(model, plan, directory, created: true, DescribeCreated(plan));
@@ -165,8 +179,7 @@ internal static partial class CreateApplication
     private static string DescribePlan(CreatePlan plan) => string.Join('\n',
     [
         $"Would create {plan.Name} ({plan.Summary}) with:",
-        $"  {plan.InstallCommand}",
-        $"  {plan.CreateCommand}",
+        .. plan.Commands.Select(command => $"  {command}"),
         "",
         "Reproduce with the creator:",
         $"  {plan.CreatorCommand}",
@@ -205,7 +218,8 @@ internal static partial class CreateApplication
         plan.Version,
         plan.Selections.ToDictionary(selection => selection.Option.LongName, selection => selection.Choice.Value, StringComparer.Ordinal),
         model.Toggles.ToDictionary(toggle => toggle.LongName, toggle => plan.IsEnabled(toggle.LongName), StringComparer.Ordinal),
-        [plan.InstallCommand, plan.CreateCommand],
+        plan.Texts.ToDictionary(text => text.Text.LongName, text => text.Value, StringComparer.Ordinal),
+        plan.Commands,
         plan.CreatorCommand,
         created);
 
