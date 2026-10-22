@@ -71,11 +71,16 @@ for (const flavor of flavors) {
     assert.deepEqual(runic, [`Runic.Navigation/${version}`, `${flavor.id}/${version}`].sort(),
       `Unexpected Runic libraries for ${flavor.id}: ${runic.join(", ")}`);
 
-    // 3. NuGet imports no Runic build assets.
+    // 3. NuGet imports no Runic build assets except the adapter's own: its RUNICNAV002 flavor check and help link.
+    const own = new RegExp(`/${flavor.id.toLowerCase().replaceAll(".", "\\.")}/[^/]+/buildTransitive/${flavor.id.replaceAll(".", "\\.")}\\.(props|targets)$`);
+    const adapterImports = [];
     for (const file of readdirSync(join(directory, "obj")).filter(name => /\.nuget\.g\.(props|targets)$/.test(name))) {
       const imports = [...readFileSync(join(directory, "obj", file), "utf8").matchAll(/<Import\s+Project="([^"]+)"/g)].map(([, path]) => path);
-      assert.ok(!imports.some(path => /runic\./i.test(path)), `${file} imports a Runic package: ${imports.join(", ")}`);
+      const runicImports = imports.filter(path => /runic\./i.test(path));
+      assert.ok(runicImports.every(path => own.test(path)), `${file} imports another Runic package's build assets: ${runicImports.join(", ")}`);
+      adapterImports.push(...runicImports);
     }
+    assert.equal(adapterImports.length, 2, `The ${flavor.id} build assets were not imported: ${adapterImports.join(", ")}`);
 
     // 4. The scenario runs.
     const output = run(["run", "--no-restore", "--project", "ReactiveUiConsumer.csproj", "-c", "Release", ...properties]);
