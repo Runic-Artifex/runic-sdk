@@ -40,6 +40,27 @@ public sealed class ContentLifecycleTests
     // A command doing `Main = b; Main = a;` can publish a parent snapshot whose
     // reference never changed for the browser, so the browser keeps its mount.
     [Test]
+    public void MountTokensAreBoundedPerOwner()
+    {
+        var root = new Item();
+        var views = new ViewCounter();
+        using var transport = new InMemoryBridgeTransport();
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root });
+        var route = $"content{Present(session, root, new Item(), views).Id}";
+        Require(transport.Call($"{route}Mount", Browser("browser:" + new string('p', 256))) == "invalid",
+            "A mount token longer than 256 characters was accepted.");
+        for (var index = 0; index < 64; index++)
+            Require(transport.Call($"{route}Mount", Browser($"browser:{index}")) == "ok", $"Presentation {index} did not mount.");
+        Require(transport.Call($"{route}Mount", Browser("browser:64")) == "invalid",
+            "A 65th presentation of one owner was mounted.");
+        Require(transport.Call($"{route}Mount", Browser("browser:0")) == "ok", "An exact duplicate mount was refused.");
+        Require(transport.Call($"{route}Mount", new BridgeTestArguments(StringValue: "browser:64", ClientKey: "client",
+            ConnectionKey: "other")) is not "invalid", "Another connection's first presentation was limited.");
+        Require(transport.Call($"{route}Unmount", Browser("browser:0")) == "ok", "A presentation did not unmount.");
+        Require(transport.Call($"{route}Mount", Browser("browser:65")) == "ok", "A freed mount slot was not reused.");
+    }
+
+    [Test]
     public async Task ReexposedReferenceKeepsItsBrowserMount()
     {
         var root = new Item();

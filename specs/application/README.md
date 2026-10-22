@@ -150,7 +150,7 @@ Protocol 3 defines these reasons:
 | `reason` | `kind` | Sent when |
 | --- | --- | --- |
 | `unavailable` | `rejected` | A command's `CanExecute` is false. |
-| `invalid-input` | `rejected` | A setter value, checked write or command argument does not decode, or the setter or command rejects it with `ArgumentException`, `FormatException` or `JsonException`. |
+| `invalid-input` | `rejected` | A setter value, checked write or command argument does not decode, including a number outside its type's range, a number string longer than 4 096 characters or a value longer than 64 KiB (65 536 UTF-16 code units), or the setter or command rejects it with `ArgumentException`, `FormatException` or `JsonException` (a setter also with `OverflowException`). |
 | `unresolved-key` | `rejected` | Reserved for a command parameter resolved from a wire key that resolves to nothing. No release sends it yet. |
 
 ```json
@@ -246,7 +246,8 @@ A generated client mounts each presentation of a content reference with a token
 `{browserSession}:{presentation}`, unique to the page and presentation.
 
 - `Mount` answers `ok` (also for an exact duplicate), `invalid` for a malformed
-  token, `ignored` when another client or connection owns the token, and
+  token, one longer than 256 characters, or a 65th token of the same client and
+  connection on one route, `ignored` when another client or connection owns the token, and
   `released` when the route is suspended or the token's browser session was
   used by a connection that has since closed. A new browser session from the same
   client supersedes that client's earlier tokens.
@@ -316,6 +317,17 @@ Awaited command routes are window work as well. Closing a window stops admission
 (`Start` answers `owner-closing`, an awaited route answers `released`), waits
 up to its timeout for operations and awaited commands, and then requests
 cancellation of what remains. The host keeps its DI scope until that work ends.
+A window runs at most 64 awaited command calls at once; another call answers
+`rejected` without a `reason` and does not run the command.
+
+Operations belong to the window, not to a browser client. `Status`, `Wait`,
+`Cancel` and `Stream` find an operation by its contract, request id and member,
+and do not compare the caller's `ClientKey`. Under the default single-client
+policy this is the one browser that may call the window. A host that admits
+several clients to one window lets each of them observe, wait for and cancel
+the others' operations whose contract and request id it knows. The client's
+default request id is a random UUID; a page whose operations other clients must
+not reach needs its own window.
 
 ## Interactions
 

@@ -435,15 +435,25 @@ internal sealed class BridgeOperationRegistry : IDisposable
             ? BridgeOperationStatus.Expired(requestId)
             : BridgeOperationStatus.Unknown(requestId);
 
+    // The most awaited command calls a window runs at once, as for admitted operations.
+    internal const int MaximumAwaitedExecutions = 64;
+
     // Awaited command routes reply with their terminal result directly rather
     // than through a recoverable operation identity. They are still window
     // work: close waits for them and owner cancellation reaches them. Returns
-    // null once the owner is closing.
-    internal BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation)
+    // null once the owner is closing, or with atCapacity set while the window
+    // already runs MaximumAwaitedExecutions of them.
+    internal BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation, out bool atCapacity)
     {
         lock (_gate)
         {
+            atCapacity = false;
             if (_disposed || _closing) return null;
+            if (_awaited.Count >= MaximumAwaitedExecutions)
+            {
+                atCapacity = true;
+                return null;
+            }
             var execution = new BridgeAwaitedExecution(this,
                 CancellationTokenSource.CreateLinkedTokenSource(_ownerShutdown.Token, callerCancellation));
             _awaited.Add(execution);

@@ -543,12 +543,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, property.Name);
             try
             {
-                property.Set(_vm, e);
+                property.Set(_vm, new BoundedBridgeArguments(e));
                 var reply = EncodeTerminal();
                 call.Complete(BridgeCallOutcome.Ok);
                 return reply;
             }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
+            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or OverflowException)
             {
                 call.Complete(BridgeCallOutcome.Rejected);
                 return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
@@ -661,7 +661,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
             try
             {
-                var argument = descriptor.ReadArgument?.Invoke(arguments);
+                var argument = ReadArgument(descriptor, arguments);
                 var command = descriptor.Get(_vm);
                 if (!IsAvailable(descriptor, argument))
                 {
@@ -702,7 +702,17 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         // The awaited route is window work like an admitted operation: closing
         // the window waits for it before the host disposes its scope, and
         // cancels it after the close timeout.
-        using var admission = _content?.Operations.TryBeginAwaited(token);
+        var atCapacity = false;
+        using var admission = _content is null ? null : _content.Operations.TryBeginAwaited(token, out atCapacity);
+        if (atCapacity)
+        {
+            var refused = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
+            refused.Complete(BridgeCallOutcome.Rejected);
+            return ReplyAfterCommand(() => IsInactive
+                ? EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."))
+                : EncodeTerminal(new("rejected",
+                    $"{descriptor.Name} was not run: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.")));
+        }
         if (_content is not null && admission is null)
             return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The window is closing."));
         var cancellation = admission?.Token ?? token;
@@ -714,7 +724,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var rejection = _modelTurn.Run(() =>
             {
                 if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-                var argument = descriptor.ReadArgument?.Invoke(arguments);
+                var argument = ReadArgument(descriptor, arguments);
                 rejected = BridgeCallOutcome.Rejected;
                 if (!IsAvailable(descriptor, argument))
                     return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
@@ -795,7 +805,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return "false";
-            try { return IsAvailable(descriptor, descriptor.ReadArgument?.Invoke(arguments)) ? "true" : "false"; }
+            try { return IsAvailable(descriptor, ReadArgument(descriptor, arguments)) ? "true" : "false"; }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
             { return "false"; }
         }
@@ -828,7 +838,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     if (payload.Length > MaximumFieldWritePayloadLength) throw new FormatException("The command input is too large.");
                     using var document = JsonDocument.Parse(payload);
                     requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
-                    argument = descriptor.ReadArgument(new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
+                    argument = ReadArgument(descriptor, new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
                 }
                 _ = BridgeOperationIdentity.Create(OperationContract(), requestId);
                 var canonicalInput = descriptor.EncodeArgument?.Invoke(argument) ?? WriteJson(writer =>
@@ -920,6 +930,32 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             call.Complete(BridgeCallOutcome.Failed, error);
             throw;
         }
+    }
+
+    // A generated reader decodes at most MaximumFieldWritePayloadLength characters, as a checked
+    // write or an operation start does. An out-of-range number is an invalid argument; an
+    // OverflowException from the command itself stays a failure.
+    private static object? ReadArgument(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
+    {
+        if (descriptor.ReadArgument is not { } read) return null;
+        try { return read(new BoundedBridgeArguments(arguments)); }
+        catch (OverflowException error) { throw new FormatException("The command argument is out of range.", error); }
+    }
+
+    private sealed class BoundedBridgeArguments(IBridgeArguments source) : IBridgeArguments
+    {
+        public string GetString()
+        {
+            var value = source.GetString();
+            return value is null || value.Length <= MaximumFieldWritePayloadLength
+                ? value!
+                : throw new FormatException("The value is too large.");
+        }
+
+        public long GetInt64() => source.GetInt64();
+        public bool GetBoolean() => source.GetBoolean();
+        public string? ClientKey => source.ClientKey;
+        public string? ConnectionKey => source.ConnectionKey;
     }
 
     private sealed class JsonBridgeArguments(string json, IBridgeArguments source) : IBridgeArguments

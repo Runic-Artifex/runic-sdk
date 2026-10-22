@@ -80,6 +80,16 @@ public static class BridgeWire
         return value.GetString() ?? throw Invalid("Expected a string.");
     }
 
+    // The longest number string a reader parses. BigInteger parsing is superlinear in the
+    // number of digits; no exact wire number of a generated contract needs more.
+    private const int MaximumNumberStringLength = 4_096;
+
+    private static string ReadNumberString(JsonElement value, string message)
+    {
+        var text = ReadString(value);
+        return text.Length <= MaximumNumberStringLength ? text : throw Invalid(message);
+    }
+
     /// <summary>Compatibility spelling for a non-null JSON string.</summary>
     public static string ReadRequiredString(JsonElement value) => ReadString(value);
 
@@ -135,7 +145,7 @@ public static class BridgeWire
     }
 
     /// <summary>Reads an exact 64-bit integer represented as an invariant string.</summary>
-    public static long ReadInt64(JsonElement value) => long.TryParse(ReadRequiredString(value), NumberStyles.Integer,
+    public static long ReadInt64(JsonElement value) => long.TryParse(ReadNumberString(value, "Expected a 64-bit integer string."), NumberStyles.Integer,
         CultureInfo.InvariantCulture, out var result)
         ? result
         : throw Invalid("Expected a 64-bit integer string.");
@@ -144,7 +154,7 @@ public static class BridgeWire
     public static long ReadInt64String(JsonElement value) => ReadInt64(value);
 
     /// <summary>Reads an exact unsigned 64-bit integer represented as an invariant string.</summary>
-    public static ulong ReadUInt64(JsonElement value) => ulong.TryParse(ReadString(value), NumberStyles.Integer,
+    public static ulong ReadUInt64(JsonElement value) => ulong.TryParse(ReadNumberString(value, "Expected an unsigned 64-bit integer string."), NumberStyles.Integer,
         CultureInfo.InvariantCulture, out var result)
         ? result
         : throw Invalid("Expected an unsigned 64-bit integer string.");
@@ -153,7 +163,7 @@ public static class BridgeWire
     public static ulong ReadUInt64String(JsonElement value) => ReadUInt64(value);
 
     /// <summary>Reads an exact arbitrary-precision integer represented as an invariant string.</summary>
-    public static BigInteger ReadBigInteger(JsonElement value) => BigInteger.TryParse(ReadString(value), NumberStyles.Integer,
+    public static BigInteger ReadBigInteger(JsonElement value) => BigInteger.TryParse(ReadNumberString(value, "Expected an arbitrary-precision integer string."), NumberStyles.Integer,
         CultureInfo.InvariantCulture, out var result)
         ? result
         : throw Invalid("Expected an arbitrary-precision integer string.");
@@ -167,7 +177,7 @@ public static class BridgeWire
     }
 
     /// <summary>Reads an exact decimal represented as an invariant string.</summary>
-    public static decimal ReadDecimal(JsonElement value) => decimal.TryParse(ReadRequiredString(value), NumberStyles.Number,
+    public static decimal ReadDecimal(JsonElement value) => decimal.TryParse(ReadNumberString(value, "Expected a decimal string."), NumberStyles.Number,
         CultureInfo.InvariantCulture, out var result)
         ? result
         : throw Invalid("Expected a decimal string.");
