@@ -17,8 +17,7 @@
         "type": "Project",
         "dependencies": {
           "Runic.Platform.Linux.DBus": "[0.10.0, )",
-          "Runic.Platform.Runtime": "[0.10.0, )",
-          "Tmds.DBus.Protocol": "[0.95.1, )"
+          "Runic.Platform.Runtime": "[0.10.0, )"
         }
       },
       "runic.platform.runtime": {

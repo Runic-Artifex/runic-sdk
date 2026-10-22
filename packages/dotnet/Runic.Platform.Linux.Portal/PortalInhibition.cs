@@ -1,6 +1,6 @@
-using Runic.Platform.Runtime;
 using System.Threading.Channels;
-using Tmds.DBus.Protocol;
+using Runic.Platform.Linux.DBus;
+using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -15,6 +15,9 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
         var generation = owner.Generation;
         PortalParentLease? parent = null;
         PortalConnection? session = null;
+        // A request the portal may hold once its call was sent; closed again unless it becomes the lease.
+        string? request = null;
+        Task<DBusObjectPath>? inhibit = null;
         try
         {
             if (!owner.IsAvailable) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -33,30 +36,32 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
                 if (!owner.IsAvailable || owner.Generation != generation) deadline.Cancel();
             }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(50));
             var connection = session.Connection;
-            var prefix = "/org/freedesktop/portal/desktop/request/" + connection.UniqueName!.TrimStart(':').Replace('.', '_') + "/";
+            var prefix = "/org/freedesktop/portal/desktop/request/" + connection.UniqueName.TrimStart(':').Replace('.', '_') + "/";
             var responses = Channel.CreateUnbounded<(string Path, uint Code)>();
-            using var subscription = await connection.AddMatchAsync(new MatchRule
+            await using var subscription = await connection.SubscribeAsync(new DBusSignalFilter
             {
-                Type = MessageType.Signal, Sender = session.Destination, PathNamespace = prefix.TrimEnd('/'),
+                Sender = session.Destination, PathNamespace = new DBusObjectPath(prefix.TrimEnd('/')),
                 Interface = "org.freedesktop.portal.Request", Member = "Response",
-            }, static (message, _) => (message.PathAsString!, message.GetBodyReader().ReadUInt32()), value =>
+            }, deadline.Token).ConfigureAwait(false);
+            _ = PortalValues.PumpAsync(subscription, signal =>
             {
-                if (value.HasValue) responses.Writer.TryWrite(value.Value);
-                else if (value.IsCompletion) responses.Writer.TryComplete(value.Exception);
-            }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(deadline.Token).ConfigureAwait(false);
-            var options = new Dictionary<string, VariantValue>
-            {
-                ["handle_token"] = VariantValue.String("runic_" + Guid.NewGuid().ToString("N")),
-                ["reason"] = VariantValue.String(reason),
-            };
+                if (signal.Arguments is [{ Signature.Value: "u" } code, ..]) responses.Writer.TryWrite((signal.Path.Value, code.GetUInt32()));
+            }, error => responses.Writer.TryComplete(error));
+            string token = "runic_" + Guid.NewGuid().ToString("N");
+            var options = new PortalOptions { ["handle_token"] = DBusValue.From(token), ["reason"] = DBusValue.From(reason) };
             uint flags = (effects.HasFlag(DesktopInhibitionEffects.SystemSleep) ? 4u : 0) | (effects.HasFlag(DesktopInhibitionEffects.DisplaySleep) ? 8u : 0);
-            string handle = (await new Protocol.Inhibit(connection, session.Destination, "/org/freedesktop/portal/desktop")
-                .InhibitAsync(parent.Identifier, flags, options).WaitAsync(deadline.Token).ConfigureAwait(false)).ToString();
+            request = prefix + token;
+            inhibit = PortalOptions.RequestAsync(new Protocol.Inhibit(connection, session.Destination, "/org/freedesktop/portal/desktop"),
+                Protocol.Inhibit.InterfaceName, "Inhibit", [DBusValue.From(parent.Identifier), DBusValue.From(flags), options.ToValue()]);
+            string handle = (await inhibit.WaitAsync(deadline.Token).ConfigureAwait(false)).Value;
             if (!handle.StartsWith(prefix, StringComparison.Ordinal)) throw new IOException("Invalid inhibition request handle.");
+            request = handle;
             while (true)
             {
                 var response = await responses.Reader.ReadAsync(deadline.Token).ConfigureAwait(false);
                 if (response.Path != handle) continue;
+                // The portal ends a request that it answered with an error; a granted one stays until it is closed.
+                if (response.Code != 0) request = null;
                 if (response.Code != 0)
                     return new PlatformResult<IDesktopInhibitionLease>.Failed(response.Code == 1 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
                         PortalErrors.Response(response.Code));
@@ -67,21 +72,20 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
             // The parent identifies the window only while the portal handles the request.
             // Release it now: GTK3 allows one Wayland export per window at a time.
             var lease = new Lease(session, handle, effects);
-            session = null;
+            request = null;
             return new PlatformResult<IDesktopInhibitionLease>.Success(lease);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(parent?.OwnerClosed.IsCancellationRequested == true || !owner.IsAvailable || owner.Generation != generation ? PlatformUnavailableReason.OwnerClosed : PlatformUnavailableReason.BackendUnavailable); }
         catch (OwnerClosedException) { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
-        catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
+        catch (DBusException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
         { return new PlatformResult<IDesktopInhibitionLease>.Failed(PlatformFailureCode.PermissionDenied, PortalErrors.Reply(error)); }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException or IOException or ChannelClosedException)
+        catch (Exception error) when (error is DBusException or TimeoutException or NativeBackendUnavailableException or IOException or ChannelClosedException)
         { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         finally
         {
-            // Failed/cancelled calls lose their dedicated bus connection, which
-            // releases even a request whose handle reply raced cancellation.
-            session?.Dispose();
+            // A failed or cancelled request is closed, even one whose handle reply raced cancellation.
+            if (request is not null && session is not null) _ = PortalRequests.CloseAbandonedAsync(session, request, inhibit);
             if (parent is not null) await parent.DisposeAsync().ConfigureAwait(false);
         }
     }
@@ -91,18 +95,6 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
         private readonly object _gate = new();
         private Task? _dispose;
         public DesktopInhibitionEffects Effects => effects;
-        public ValueTask DisposeAsync() { lock (_gate) return new(_dispose ??= CloseAsync()); }
-        private async Task CloseAsync()
-        {
-            try
-            {
-                if (!session.OwnerChanged.IsCancellationRequested)
-                {
-                    await new Protocol.Request(session.Connection, session.Destination, handle).CloseAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-                }
-            }
-            catch (Exception error) when (error is DBusExceptionBase or TimeoutException) { /* Disconnect also releases the request. */ }
-            finally { session.Dispose(); }
-        }
+        public ValueTask DisposeAsync() { lock (_gate) return new(_dispose ??= PortalRequests.CloseAsync(session, handle)); }
     }
 }

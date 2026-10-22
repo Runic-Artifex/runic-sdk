@@ -31,7 +31,9 @@
     {
       "path": "data/org.freedesktop.portal.Settings.xml",
       "file": "org.freedesktop.portal.Settings.xml",
-      "sha256": "ffd03f4b1d24704fa2a380426497e1cb77512d02298442ece897c8ce1c088df0"
+      "sha256": "c40a1169e794bff0cc114e636e4e42ec5e07ee528fe0ba60a830dbf5b95e9849",
+      "upstreamSha256": "ffd03f4b1d24704fa2a380426497e1cb77512d02298442ece897c8ce1c088df0",
+      "modification": "The deprecated Read method is removed; the provider uses ReadAll, and the Runic D-Bus generator warns about Deprecated annotations (RUNICDBUS013)."
     },
     {
       "path": "data/org.freedesktop.portal.OpenURI.xml",

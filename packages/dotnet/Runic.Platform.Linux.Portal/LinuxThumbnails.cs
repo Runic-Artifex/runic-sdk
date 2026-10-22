@@ -61,7 +61,6 @@ internal sealed class LinuxThumbnails(LinuxThumbnailOptions options, PortalAppli
     private readonly PortalApplication _application = application ?? new PortalApplication();
     private readonly object _gate = new();
     private LinuxDesktopApplications? _types;
-    private Task<PlatformResult<DBusConnection>>? _connecting;
     private int _cacheReported, _busReported;
 
     internal LinuxThumbnailOptions Options => options;
@@ -324,26 +323,9 @@ internal sealed class LinuxThumbnails(LinuxThumbnailOptions options, PortalAppli
             is PlatformResult<DesktopContentType>.Success(var type) && type.MimeType is { Length: > 0 } mime ? mime : SharedMimeDatabase.OctetStream;
     }
 
-    // One connection for every request, opened on the first cache miss and replaced when it closes or failed. The service
-    // lives as long as the application, as its registration does, and the connection with it.
-    private Task<PlatformResult<DBusConnection>> ConnectAsync(CancellationToken cancellationToken)
-    {
-        Task<PlatformResult<DBusConnection>> connecting;
-        lock (_gate)
-        {
-            if (_connecting is null || _connecting.IsCompleted && (!_connecting.IsCompletedSuccessfully
-                || _connecting.Result is not PlatformResult<DBusConnection>.Success { Value.Disconnected.IsCancellationRequested: false }))
-            {
-                if (_connecting is { IsCompletedSuccessfully: true, Result: PlatformResult<DBusConnection>.Success(var closed) })
-                    _ = closed.DisposeAsync().AsTask();
-                _connecting = options.BusAddress is null
-                    ? DBusConnection.ConnectAsync(DBusBus.Session, CancellationToken.None).AsTask()
-                    : DBusConnection.ConnectToAddressAsync(options.BusAddress, CancellationToken.None).AsTask();
-            }
-            connecting = _connecting;
-        }
-        return connecting.WaitAsync(cancellationToken);
-    }
+    // The process's shared session connection, opened on the first cache miss and replaced when it closes or failed.
+    private Task<PlatformResult<DBusConnection>> ConnectAsync(CancellationToken cancellationToken) =>
+        PortalBus.Session(options.BusAddress, PortalConnection.RegisteredIdentity(_application)).TryConnectAsync(cancellationToken).AsTask();
 }
 
 // MD5 (RFC 1321) for the cache's file names. Managed, so the cache needs no OpenSSL, which also refuses MD5 in FIPS mode.

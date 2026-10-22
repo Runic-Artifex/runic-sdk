@@ -8,8 +8,9 @@ using Runic.Platform.Linux.Portal.UDisks;
 
 namespace Runic.Platform.Linux.Portal;
 
-// Volumes from UDisks2 on the system bus, through proxies generated from UDisks/org.freedesktop.UDisks2.xml.
-// UDisks2 asks Polkit itself; calls allow interactive authorization so it can show the prompt.
+// Volumes from UDisks2 on the system bus: its objects through DBusObjectManagerProxy, its devices through proxies generated
+// from UDisks/org.freedesktop.UDisks2.xml. UDisks2 asks Polkit itself; calls allow interactive authorization so it can
+// show the prompt. The process's shared system-bus connection carries the calls.
 internal sealed class UDisksVolumes(string? address = null, string service = UDisksVolumes.ServiceName) : IDesktopVolumes
 {
     internal const string ServiceName = "org.freedesktop.UDisks2";
@@ -21,9 +22,7 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
     private static readonly ImmutableDictionary<string, DBusValue> Interactive =
         ImmutableDictionary<string, DBusValue>.Empty.Add("auth.no_user_interaction", DBusValue.From(false));
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _disposed = new();
-    private DBusConnection? _connection;
 
     public async ValueTask<PlatformResult<ImmutableArray<DesktopVolume>>> ListAsync(CancellationToken cancellationToken = default)
     {
@@ -115,7 +114,7 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
             // Subscribe before reading the objects, so no change between the two is lost.
             foreach (var filter in new[]
             {
-                new DBusSignalFilter { Sender = service, Path = Root, Interface = "org.freedesktop.DBus.ObjectManager" },
+                new DBusSignalFilter { Sender = service, Path = Root, Interface = DBusObjectManagerProxy.InterfaceName },
                 new DBusSignalFilter { Sender = service, PathNamespace = Root, Interface = "org.freedesktop.DBus.Properties", Member = "PropertiesChanged" },
                 new DBusSignalFilter { Sender = "org.freedesktop.DBus", Interface = "org.freedesktop.DBus", Member = "NameOwnerChanged", Arg0 = service },
             })
@@ -201,13 +200,9 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
         {
             switch (signal.Member)
             {
-                case "InterfacesAdded":
-                    var (added, interfaces) = ObjectManager.ReadInterfacesAdded(signal.Arguments);
-                    foreach (var (name, properties) in interfaces) model.Set(added.Value, name, properties);
-                    break;
-                case "InterfacesRemoved":
-                    var (removed, names) = ObjectManager.ReadInterfacesRemoved(signal.Arguments);
-                    foreach (var name in names) model.Remove(removed.Value, name);
+                case "InterfacesAdded" or "InterfacesRemoved" when DBusObjectManagerProxy.ReadInterfaceChanges(signal) is { } change:
+                    foreach (var (name, properties) in change.Added) model.Set(change.Path.Value, name, properties);
+                    foreach (var name in change.Removed) model.Remove(change.Path.Value, name);
                     break;
                 case "PropertiesChanged" when DBusProxy.ReadPropertyChanges(signal) is { } changes:
                     model.Update(signal.Path.Value, changes.Interface, changes.Changed);
@@ -258,29 +253,16 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
     {
         try
         {
-            var objects = await new ObjectManager(connection, service, Root).GetManagedObjectsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            var objects = await new DBusObjectManagerProxy(connection, service, Root).GetManagedObjectsAsync(cancellationToken).ConfigureAwait(false);
             return new PlatformResult<Model>.Success(new Model(objects));
         }
         catch (DBusException error) { return Map<Model>(error); }
     }
 
-    private async ValueTask<PlatformResult<DBusConnection>> ConnectAsync(CancellationToken cancellationToken)
+    private ValueTask<PlatformResult<DBusConnection>> ConnectAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed.IsCancellationRequested, this);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            ObjectDisposedException.ThrowIf(_disposed.IsCancellationRequested, this);
-            if (_connection is { Disconnected.IsCancellationRequested: false } current) return new PlatformResult<DBusConnection>.Success(current);
-            if (_connection is { } closed) await closed.DisposeAsync().ConfigureAwait(false);
-            _connection = null;
-            var result = address is null
-                ? await DBusConnection.ConnectAsync(DBusBus.System, cancellationToken).ConfigureAwait(false)
-                : await DBusConnection.ConnectToAddressAsync(address, cancellationToken).ConfigureAwait(false);
-            if (result is PlatformResult<DBusConnection>.Success(var connection)) _connection = connection;
-            return result;
-        }
-        finally { _gate.Release(); }
+        return PortalBus.System(address).TryConnectAsync(cancellationToken);
     }
 
     // UDisks2 errors (https://storaged.org/doc/udisks2-api/latest/UDisksError.html) and bus errors.
@@ -313,17 +295,11 @@ internal sealed class UDisksVolumes(string? address = null, string service = UDi
 
     private static readonly PlatformResult<PlatformUnit> Done = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
 
-    public async ValueTask DisposeAsync()
+    // Ends the watches; the shared connection stays open for the rest of the process.
+    public ValueTask DisposeAsync()
     {
-        if (_disposed.IsCancellationRequested) return;
         _disposed.Cancel();
-        await _gate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (_connection is { } connection) await connection.DisposeAsync().ConfigureAwait(false);
-            _connection = null;
-        }
-        finally { _gate.Release(); }
+        return ValueTask.CompletedTask;
     }
 
     // UDisks2's objects and the volumes they describe.

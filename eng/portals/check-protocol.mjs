@@ -8,5 +8,9 @@ for (const file of manifest.files) {
   const bytes = await readFile(new URL(file.file, root));
   const actual = createHash('sha256').update(bytes).digest('hex');
   if (actual !== file.sha256) throw new Error(`Protocol input changed: ${file.file}. Review upstream and update its pin/hash explicitly.`);
+  // A local change to an upstream file keeps upstream's hash and says what changed.
+  if ((file.upstreamSha256 === undefined) !== (file.modification === undefined))
+    throw new Error(`${file.file}: a modified input records both upstreamSha256 and modification.`);
 }
-console.log(`PASS ${manifest.files.length} pinned portal XML inputs (${manifest.revision}).`);
+const modified = manifest.files.filter(file => file.modification !== undefined).length;
+console.log(`PASS ${manifest.files.length} pinned portal XML inputs (${manifest.revision}), ${modified} with a recorded local change.`);

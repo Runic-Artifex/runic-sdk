@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using Runic.Platform.Linux.DBus;
 using Runic.Platform.Runtime;
-using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -16,7 +17,10 @@ internal sealed class PortalNotifications(string? address = null, string destina
     private readonly List<string> _recent = [];
     private const int RecentCapacity = 64;
     private DBusConnection? _connection;
-    private IDisposable? _actions;
+    private DBusSignalSubscription? _actions;
+    // The application's bus name and its org.freedesktop.Application object, on the connection that owns them.
+    private DBusConnection? _owner;
+    private IAsyncDisposable? _activation;
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
 
@@ -25,12 +29,13 @@ internal sealed class PortalNotifications(string? address = null, string destina
     public ValueTask<PlatformResult<PlatformUnit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Notification(notification);
-        return ExecuteAsync(proxy => proxy.AddNotificationAsync(notification.Id, NotificationOptions(notification)), cancellationToken, notification);
+        return ExecuteAsync(proxy => proxy.CallAsync(Protocol.Notification.InterfaceName, "AddNotification",
+            [DBusValue.From(notification.Id), NotificationOptions(notification).ToValue()]).AsTask(), cancellationToken, notification);
     }
     public ValueTask<PlatformResult<PlatformUnit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Identifier(id);
-        return ExecuteAsync(proxy => proxy.RemoveNotificationAsync(id), cancellationToken, remove: id);
+        return ExecuteAsync(proxy => proxy.RemoveNotificationAsync(id).AsTask(), cancellationToken, remove: id);
     }
     private async ValueTask<PlatformResult<PlatformUnit>> ExecuteAsync(Func<Protocol.Notification, Task>? request,
         CancellationToken cancellationToken, DesktopNotification? notification = null, string? remove = null)
@@ -42,29 +47,28 @@ internal sealed class PortalNotifications(string? address = null, string destina
             if (_session?.OwnerChanged.IsCancellationRequested == true)
             {
                 Diagnose("portal-notification-owner-changed", "The portal service was replaced.", "Reconnecting and registering before the next request; submitted notifications are not replayed.");
-                ResetConnection();
+                await ResetConnectionAsync().ConfigureAwait(false);
             }
             if (_connection is null)
             {
                 var session = await PortalConnection.OpenAsync(address, destination, _application, cancellationToken).ConfigureAwait(false);
                 var connection = session.Connection;
-                try
+                if (ApplicationId is null)
+                    Diagnose("portal-notification-identity-unspecified", "No desktop application ID was supplied for notifications.", "Supply an installed reverse-DNS desktop ID; an unidentified host application may lose notification actions or history.");
+                else if (_owner != connection) await OwnApplicationNameAsync(connection, ApplicationId, cancellationToken).ConfigureAwait(false);
+                var actions = await connection.SubscribeAsync(new DBusSignalFilter
                 {
-                    if (ApplicationId is null)
-                        Diagnose("portal-notification-identity-unspecified", "No desktop application ID was supplied for notifications.", "Supply an installed reverse-DNS desktop ID; an unidentified host application may lose notification actions or history.");
-                    if (ApplicationId is not null)
-                    {
-                        connection.AddMethodHandler(new ActivationHandler(this, ApplicationId));
-                        if (!await connection.TryRequestNameAsync(ApplicationId, RequestNameOptions.None).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false))
-                            throw new NotificationCapacityException();
-                    }
-                    _actions = await new Protocol.Notification(connection, session.Destination, "/org/freedesktop/portal/desktop")
-                        .WatchActionInvokedAsync(value => { if (!session.OwnerChanged.IsCancellationRequested) OnAction(value.Id, value.Action); }, emitOnCapturedContext: false)
-                        .AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-                    _connection = connection;
-                    _session = session;
-                }
-                catch { session.Dispose(); throw; }
+                    Sender = session.Destination, Path = new DBusObjectPath("/org/freedesktop/portal/desktop"),
+                    Interface = Protocol.Notification.InterfaceName, Member = "ActionInvoked",
+                }, cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                _ = PortalValues.PumpAsync(actions, signal =>
+                {
+                    if (!session.OwnerChanged.IsCancellationRequested && signal.Arguments is [{ Signature.Value: "s" } id, { Signature.Value: "s" } action, ..])
+                        OnAction(id.GetString(), action.GetString());
+                }, static _ => { });
+                _actions = actions;
+                _connection = connection;
+                _session = session;
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (request is not null)
@@ -98,21 +102,21 @@ internal sealed class PortalNotifications(string? address = null, string destina
             }
             else
             {
-                var version = await new Protocol.Notification(_connection, _session!.Destination, "/org/freedesktop/portal/desktop").GetVersionAsync()
-                    .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                var version = await new Protocol.Notification(_connection, _session!.Destination, "/org/freedesktop/portal/desktop").GetVersionAsync(cancellationToken)
+                    .AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                 if (_session!.OwnerChanged.IsCancellationRequested) throw new NativeBackendUnavailableException();
                 if (version < 1) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             }
             return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
         }
-        catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
+        catch (DBusException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
         { Diagnose("portal-notification-permission-denied", error.ErrorName, "Check application identity and desktop notification permissions."); return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PortalErrors.Reply(error)); }
         catch (NotificationCapacityException) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy); }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
+        catch (Exception error) when (error is DBusException or TimeoutException or NativeBackendUnavailableException)
         {
-            Diagnose("portal-notification-backend-unavailable", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
+            Diagnose("portal-notification-backend-unavailable", error is DBusException reply ? reply.ErrorName : error.GetType().Name,
                 "Check session portal services and the installed desktop entry for the supplied application ID.");
-            ResetConnection();
+            await ResetConnectionAsync().ConfigureAwait(false);
             return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         }
         finally { _gate.Release(); }
@@ -132,66 +136,106 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 try { observer(this, activation); } catch { /* Native event delivery must survive an application observer. */ }
         });
     }
-    private void ResetConnection()
+    // The application's name and activation object stay with their connection across portal restarts.
+    private async Task OwnApplicationNameAsync(DBusConnection connection, string id, CancellationToken cancellationToken)
     {
-        _actions?.Dispose(); _actions = null;
-        _session?.Dispose(); _session = null; _connection = null;
+        await ReleaseApplicationNameAsync().ConfigureAwait(false);
+        IAsyncDisposable activation;
+        // Another service of this process already answers for the name.
+        try { activation = connection.Export(new DBusObjectPath("/" + id.Replace('.', '/').Replace('-', '_')), new ActivationObject(this)); }
+        catch (InvalidOperationException) { throw new NotificationCapacityException(); }
+        try
+        {
+            // The export above shows no other service of this process answers for the name, so a name this connection
+            // already owns, from a request whose caller stopped waiting, is ours.
+            var reply = await connection.RequestNameAsync(id, DBusRequestNameOptions.DoNotQueue, CancellationToken.None).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            if (reply is not (DBusRequestNameReply.PrimaryOwner or DBusRequestNameReply.AlreadyOwner)) throw new NotificationCapacityException();
+        }
+        catch
+        {
+            await activation.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        _owner = connection;
+        _activation = activation;
+    }
+
+    private async Task ReleaseApplicationNameAsync()
+    {
+        var (owner, activation) = (_owner, _activation);
+        _owner = null; _activation = null;
+        if (activation is not null) await activation.DisposeAsync().ConfigureAwait(false);
+        if (owner is null || ApplicationId is null || owner.Disconnected.IsCancellationRequested) return;
+        try { await owner.ReleaseNameAsync(ApplicationId).AsTask().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
+        catch (Exception error) when (error is DBusException or TimeoutException) { /* Closing the connection releases the name too. */ }
+    }
+
+    private async ValueTask ResetConnectionAsync()
+    {
+        var actions = _actions;
+        _actions = null; _session = null; _connection = null;
+        if (actions is not null) await actions.DisposeAsync().ConfigureAwait(false);
     }
     private void Diagnose(string code, string message, string remedy) => _application.Diagnose(code, message, remedy);
     // The XML describes this extensible dictionary only as a{sv}. Keep its
     // notification semantics handwritten; the generator owns the wire envelope.
-    private Dictionary<string, VariantValue> NotificationOptions(DesktopNotification notification)
+    private PortalOptions NotificationOptions(DesktopNotification notification)
     {
-        var options = new Dictionary<string, VariantValue>
-        {
-            ["title"] = VariantValue.String(notification.Title),
-            ["body"] = VariantValue.String(notification.Body),
-            ["default-action"] = VariantValue.String(ApplicationId is null ? "default" : "app.runic-notification"),
-        };
+        var options = new PortalOptions();
+        options["title"] = DBusValue.From(notification.Title);
+        options["body"] = DBusValue.From(notification.Body);
+        options["default-action"] = DBusValue.From(ApplicationId is null ? "default" : "app.runic-notification");
         if (ApplicationId is not null)
-            options["default-action-target"] = VariantValue.String(Target(notification, "default"));
+            options["default-action-target"] = DBusValue.From(Target(notification, "default"));
         if (!notification.Actions.IsEmpty)
         {
-            var buttons = new Array<Dict<string, VariantValue>>();
-            foreach (var action in notification.Actions)
+            options["buttons"] = DBusValue.Array("a{sv}", notification.Actions.Select(action =>
             {
-                var button = new Dict<string, VariantValue> { { "label", VariantValue.String(action.Label) },
-                    { "action", VariantValue.String(ApplicationId is null ? action.Id : "app.runic-notification") } };
-                if (ApplicationId is not null) button.Add("target", VariantValue.String(Target(notification, action.Id)));
-                buttons.Add(button);
-            }
-            options["buttons"] = buttons;
+                var button = new List<KeyValuePair<string, DBusValue>>
+                {
+                    new("label", DBusValue.From(action.Label)),
+                    new("action", DBusValue.From(ApplicationId is null ? action.Id : "app.runic-notification")),
+                };
+                if (ApplicationId is not null) button.Add(new("target", DBusValue.From(Target(notification, action.Id))));
+                return DBusValue.VariantDictionary(button);
+            }));
         }
         return options;
     }
     public async ValueTask DisposeAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { if (_disposed) return; _disposed = true; ResetConnection(); _sent.Clear(); _recent.Clear(); Activated = null; }
+        try
+        {
+            if (_disposed) return;
+            _disposed = true;
+            await ResetConnectionAsync().ConfigureAwait(false);
+            await ReleaseApplicationNameAsync().ConfigureAwait(false);
+            _sent.Clear(); _recent.Clear(); Activated = null;
+        }
         finally { _gate.Release(); }
     }
     private static string Target(DesktopNotification notification, string action) =>
         notification.Id + "\n" + action + "\n" + notification.ActivationUri?.AbsoluteUri;
-    private sealed class ActivationHandler(PortalNotifications owner, string id) : IPathMethodHandler
+    // org.freedesktop.Application at the application's object path; only ActivateAction of a notification is answered.
+    private sealed class ActivationObject(PortalNotifications owner) : DBusObject
     {
-        public string Path => "/" + id.Replace('.', '/').Replace('-', '_');
-        public bool HandlesChildPaths => false;
-        public ValueTask HandleMethodAsync(MethodContext context)
+        protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context)
         {
-            if (context.Request.InterfaceAsString != "org.freedesktop.Application" || context.Request.MemberAsString != "ActivateAction")
-            { context.ReplyError("org.freedesktop.DBus.Error.UnknownMethod", "Only notification actions are exported here."); return ValueTask.CompletedTask; }
+            if (context.Interface != "org.freedesktop.Application" || context.Member != "ActivateAction")
+                throw new DBusException(DBusException.UnknownMethod, "Only notification actions are exported here.");
             try
             {
-                var reader = context.Request.GetBodyReader();
-                var action = reader.ReadString();
-                var parameters = reader.ReadArrayOfVariantValue();
-                var platformData = reader.ReadDictionaryOfStringToVariantValue();
-                string? ContextString(string key) => platformData.TryGetValue(key, out var value) && value.Type == VariantValueType.String
-                    ? value.GetString() : null;
+                if (context.Signature.Value != "sava{sv}") throw new ArgumentException("Unexpected signature.");
+                var action = context.Arguments[0].GetString();
+                var parameters = context.Arguments[1].GetItems();
+                var platformData = PortalValues.Variants(context.Arguments[2]);
+                string? ContextString(string key) => platformData.TryGetValue(key, out var value) && value.Signature.Value == "s" ? value.GetString() : null;
                 var activationContext = new DesktopActivationContext(ContextString("activation-token"), ContextString("desktop-startup-id"));
-                if (action != "runic-notification" || parameters.Length != 1 || parameters[0].Type != VariantValueType.String)
+                if (action != "runic-notification" || parameters.Length != 1 || parameters[0].GetVariant() is not { Signature.Value: "s" } targetValue)
                     throw new ArgumentException("Unknown notification action.");
-                var target = parameters[0].GetString();
+                var target = targetValue.GetString();
                 if (target.Length > 2200) throw new ArgumentException("Notification target is too long.");
                 var parts = target.Split('\n');
                 if (parts.Length != 3) throw new ArgumentException("Invalid notification target.");
@@ -200,11 +244,10 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 if (uri is { IsFile: true }) throw new ArgumentException("File activation targets are not accepted.");
                 // Installed activation can arrive after restart. Consumers validate the IDs against their durable state.
                 owner.Raise(new(parts[0], parts[1], uri) { PlatformContext = activationContext });
-                using var reply = context.CreateReplyWriter(null); context.Reply(reply.CreateMessage());
+                return ValueTask.FromResult(ImmutableArray<DBusValue>.Empty);
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or FormatException)
-            { context.ReplyError("org.freedesktop.DBus.Error.InvalidArgs", "Invalid notification activation."); }
-            return ValueTask.CompletedTask;
+            { throw new DBusException(DBusException.InvalidArgs, "Invalid notification activation."); }
         }
     }
     private sealed class NotificationCapacityException : Exception;

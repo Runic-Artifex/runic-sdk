@@ -74,7 +74,7 @@ internal sealed class PortalRecoveryTests
                 .RequestAsync("x11:1234", method, "https://example.org/", default);
             Check(response.Code == 0, "URI and chooser operations use shared identity");
         }
-        Check(replacement.RegisteredPeers.Count == 5 && replacement.RegisteredPeers.Values.All(x => x == appId), "five owned connections share one application identity");
+        Check(replacement.RegisteredPeers.Count == 1 && replacement.RegisteredPeers.Values.All(x => x == appId), "the services share one connection, registered once with the application identity");
         Check(replacement.UnidentifiedCalls == 0, "no unidentified portal calls crossed the backend boundary");
 
         // The retained settings connection follows a replaced portal owner.

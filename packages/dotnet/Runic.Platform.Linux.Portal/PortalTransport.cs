@@ -3,7 +3,7 @@ using System.Text;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
-using Tmds.DBus.Protocol;
+using Runic.Platform.Linux.DBus;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -20,7 +20,101 @@ internal static class PortalErrors
 
     // The D-Bus error name identifies the error. The service's free-form message is omitted
     // because it is not guaranteed to be free of paths.
-    internal static PlatformDiagnostic Reply(DBusErrorReplyException error) => new(error.ErrorName, 0);
+    internal static PlatformDiagnostic Reply(DBusException error) => new(error.ErrorName, 0);
+}
+
+// A portal call's a{sv} options in the order they were set, as the portals' own clients send them; setting a key again
+// replaces its value in place.
+internal sealed class PortalOptions
+{
+    private readonly List<KeyValuePair<string, DBusValue>> _entries = [];
+
+    internal DBusValue this[string key]
+    {
+        set
+        {
+            int index = _entries.FindIndex(entry => entry.Key == key);
+            if (index < 0) _entries.Add(KeyValuePair.Create(key, value));
+            else _entries[index] = KeyValuePair.Create(key, value);
+        }
+    }
+
+    internal DBusValue ToValue() => DBusValue.VariantDictionary(_entries);
+
+    // Calls a portal method that answers with a request handle.
+    /// <exception cref="IOException">The reply is not an object path.</exception>
+    internal static async Task<DBusObjectPath> RequestAsync(DBusProxy portal, string interfaceName, string member, ImmutableArray<DBusValue> arguments)
+    {
+        var reply = await portal.CallAsync(interfaceName, member, arguments).ConfigureAwait(false);
+        return reply is [{ Signature.Value: "o" } handle] ? handle.GetObjectPath() : throw new IOException("The portal returned an invalid request handle.");
+    }
+}
+
+// Closing org.freedesktop.portal.Request objects on the shared connection, which outlives every request.
+internal static class PortalRequests
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+
+    // Closes a request unless its portal was replaced, which ended it.
+    internal static async Task CloseAsync(PortalConnection session, string handle)
+    {
+        if (session.OwnerChanged.IsCancellationRequested) return;
+        try
+        {
+            await new Protocol.Request(session.Connection, session.Destination, handle).CloseAsync(cancellationToken: CancellationToken.None).AsTask()
+                .WaitAsync(Timeout).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is DBusException or TimeoutException) { /* The portal also ends a request when its caller's connection closes. */ }
+    }
+
+    // Closes an abandoned request at the handle the portal returned, or at the expected one when the call failed or got no reply.
+    internal static async Task CloseAbandonedAsync(PortalConnection session, string expected, Task<DBusObjectPath>? call)
+    {
+        string handle = expected;
+        if (call is not null)
+        {
+            try { handle = (await call.WaitAsync(Timeout).ConfigureAwait(false)).Value; }
+            catch (Exception error) when (error is DBusException or TimeoutException) { }
+        }
+        await CloseAsync(session, handle).ConfigureAwait(false);
+    }
+}
+
+// Reading values from portal replies and signals. A peer controls them, so a repeated dictionary key keeps its last
+// value instead of failing the read, as the portals' own GVariant readers do.
+internal static class PortalValues
+{
+    // An a{sv} as its entries, each value unwrapped from its variant; an empty dictionary for anything else.
+    internal static Dictionary<string, DBusValue> Variants(DBusValue value)
+    {
+        var entries = new Dictionary<string, DBusValue>(StringComparer.Ordinal);
+        if (value.Signature.Value != "a{sv}") return entries;
+        foreach (var entry in value.GetEntries()) entries[entry.Key.GetString()] = entry.Value.GetVariant();
+        return entries;
+    }
+
+    // Values of a Request.Response signal: the response code and its results.
+    internal static bool TryReadResponse(DBusSignal signal, out uint code, out Dictionary<string, DBusValue> results)
+    {
+        if (signal.Arguments is [{ Signature.Value: "u" } response, { Signature.Value: "a{sv}" } values])
+        {
+            code = response.GetUInt32();
+            results = Variants(values);
+            return true;
+        }
+        code = 0;
+        results = [];
+        return false;
+    }
+
+    // Forwards a subscription's signals until it ends, then reports how it ended.
+    internal static async Task PumpAsync(DBusSignalSubscription subscription, Action<DBusSignal> signal, Action<Exception?> ended)
+    {
+        Exception? failure = null;
+        try { await foreach (var received in ((IAsyncEnumerable<DBusSignal>)subscription).ConfigureAwait(false)) signal(received); }
+        catch (Exception error) { failure = error; }
+        ended(failure);
+    }
 }
 internal interface IPortalTransport
 {
@@ -37,25 +131,19 @@ internal sealed record PortalChooserOptions(ImmutableArray<FileDialogFilter> Fil
         filters.IsDefaultOrEmpty && currentFolder is null && !multiple ? null : new(filters.IsDefault ? [] : filters, currentFolder, multiple);
 
     // FileChooser filters are (name, [(0 = glob, pattern)]). Globs match case-sensitively in GTK backends.
-    internal static Struct<string, Array<Struct<uint, string>>> Filter(FileDialogFilter filter)
-    {
-        var patterns = new Array<Struct<uint, string>>();
-        foreach (var pattern in FileDialogPatterns.Globs(filter)) patterns.Add(new Struct<uint, string>(0, pattern));
-        return new Struct<string, Array<Struct<uint, string>>>(filter.Name, patterns);
-    }
+    internal static DBusValue Filter(FileDialogFilter filter) => DBusValue.Struct(DBusValue.From(filter.Name),
+        DBusValue.Array("(us)", FileDialogPatterns.Globs(filter).Select(static pattern => DBusValue.Struct(DBusValue.From(0u), DBusValue.From(pattern)))));
 
-    internal void AddTo(Dictionary<string, VariantValue> options)
+    internal void AddTo(PortalOptions options)
     {
         if (!Filters.IsEmpty)
         {
-            var filters = new Array<Struct<string, Array<Struct<uint, string>>>>();
-            foreach (var filter in Filters) filters.Add(Filter(filter));
-            options["filters"] = filters;
+            options["filters"] = DBusValue.Array("(sa(us))", Filters.Select(Filter));
             options["current_filter"] = Filter(Filters[0]);
         }
         // A NUL-terminated byte string: the portal takes the path's bytes, not a URI.
-        if (CurrentFolder is not null) options["current_folder"] = VariantValue.Array((byte[])[.. Encoding.UTF8.GetBytes(CurrentFolder), 0]);
-        if (Multiple) options["multiple"] = VariantValue.Bool(true);
+        if (CurrentFolder is not null) options["current_folder"] = DBusValue.ByteArray([.. Encoding.UTF8.GetBytes(CurrentFolder), 0]);
+        if (Multiple) options["multiple"] = DBusValue.From(true);
     }
 }
 
@@ -81,8 +169,8 @@ internal static class FileDialogPatterns
 
 // Wire calls use proxies generated at build time from the pinned portal XML: no
 // reflection, dynamic proxy or runtime code generation enters the NativeAOT path.
-// Subscription order, returned-handle validation, Close, FD borrowing and the
-// version guard stay explicit here.
+// Subscription order, returned-handle validation, Close and the version guard stay
+// explicit here. Requests share the process's portal connection.
 internal sealed class PortalTransport(string? address = null, string destination = "org.freedesktop.portal.Desktop", SafeHandle? file = null, bool ask = false, PortalApplication? application = null) : IPortalTransport
 {
     private const string Root = "/org/freedesktop/portal/desktop";
@@ -94,51 +182,46 @@ internal sealed class PortalTransport(string? address = null, string destination
 
     public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken)
     {
-        using var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
+        var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
         var connection = session.Connection;
         if (file is null && method == "SelectDirectory")
         {
             // FileChooser.directory was introduced in version 3. Older portals
             // may ignore unknown options and present a file picker instead.
-            uint version = await new Protocol.FileChooser(connection, session.Destination, Root).GetVersionAsync()
-                .WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+            uint version = await new Protocol.FileChooser(connection, session.Destination, Root).GetVersionAsync(cancellationToken)
+                .AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
             if (version < 3) throw new Runic.Platform.Runtime.NativeBackendUnavailableException();
         }
         if (file is not null)
         {
-            uint version = await new Protocol.OpenURI(connection, session.Destination, Root).GetVersionAsync()
-                .WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+            uint version = await new Protocol.OpenURI(connection, session.Destination, Root).GetVersionAsync(cancellationToken)
+                .AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
             if (version < (ask || method == "OpenDirectory" ? 3u : 2u))
                 throw new Runic.Platform.Runtime.NativeBackendUnavailableException();
         }
-        string prefix = "/org/freedesktop/portal/desktop/request/" + connection.UniqueName![1..].Replace('.', '_') + "/";
+        string prefix = "/org/freedesktop/portal/desktop/request/" + connection.UniqueName[1..].Replace('.', '_') + "/";
         string token = "runic_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
         string handle = prefix + token;
         var responses = Channel.CreateBounded<(string Path, PortalResponse Response)>(16);
-        using var serviceLifetime = await connection.AddMatchAsync(new MatchRule
+        // Initial service activation is allowed; replacement is not.
+        await using var serviceLifetime = await connection.SubscribeAsync(new DBusSignalFilter
         {
-            Type = MessageType.Signal, Sender = "org.freedesktop.DBus", Path = "/org/freedesktop/DBus",
+            Sender = "org.freedesktop.DBus", Path = new DBusObjectPath("/org/freedesktop/DBus"),
             Interface = "org.freedesktop.DBus", Member = "NameOwnerChanged", Arg0 = destination,
-        }, static (message, _) =>
+        }, cancellationToken).AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+        _ = PortalValues.PumpAsync(serviceLifetime, signal =>
         {
-            var reader = message.GetBodyReader();
-            _ = reader.ReadString();
-            return reader.ReadString().Length != 0; // Initial service activation is allowed; replacement is not.
-        }, notification =>
-        {
-            if (notification.HasValue && notification.Value)
+            if (signal.Arguments is [_, _, { Signature.Value: "s" } owner] && owner.GetString().Length != 0)
                 responses.Writer.TryComplete(new Runic.Platform.Runtime.NativeBackendUnavailableException());
-            else if (notification.IsCompletion) responses.Writer.TryComplete(notification.Exception);
-        }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
-        using var subscription = await connection.AddMatchAsync(new MatchRule
+        }, error => responses.Writer.TryComplete(error));
+        await using var subscription = await connection.SubscribeAsync(new DBusSignalFilter
         {
-            Type = MessageType.Signal, Sender = session.Destination, PathNamespace = prefix.TrimEnd('/'),
+            Sender = session.Destination, PathNamespace = new DBusObjectPath(prefix.TrimEnd('/')),
             Interface = RequestInterface, Member = "Response",
-        }, static (message, _) => ReadResponse(message), notification =>
-        {
-            if (notification.HasValue) responses.Writer.TryWrite(notification.Value);
-            else if (notification.IsCompletion) responses.Writer.TryComplete(notification.Exception);
-        }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken).AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+        _ = PortalValues.PumpAsync(subscription, signal => responses.Writer.TryWrite(ReadResponse(signal)), error => responses.Writer.TryComplete(error));
+        // A portal that goes away will not answer.
+        using var ownerGone = session.OwnerChanged.Register(() => responses.Writer.TryComplete(new Runic.Platform.Runtime.NativeBackendUnavailableException()));
         bool completed = false;
         try
         {
@@ -147,7 +230,7 @@ internal sealed class PortalTransport(string? address = null, string destination
             // Let the bounded method reply finish even on cancellation so an older
             // portal's returned handle can also be closed.
             handle = (await Call(connection, session.Destination, parent, method, argument, token, chooser)
-                .WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false)).ToString();
+                .WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false)).Value;
             if (!handle.StartsWith(prefix, StringComparison.Ordinal))
                 throw new IOException("The portal returned an invalid request handle.");
             while (true)
@@ -162,75 +245,52 @@ internal sealed class PortalTransport(string? address = null, string destination
         {
             if (!completed && handle.StartsWith(prefix, StringComparison.Ordinal))
             {
-                try { await new Protocol.Request(connection, session.Destination, handle).CloseAsync().WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false); }
-                catch (Exception error) when (error is DBusExceptionBase or TimeoutException or IOException) { /* Connection disposal also releases request ownership. */ }
+                try { await new Protocol.Request(connection, session.Destination, handle).CloseAsync(cancellationToken: CancellationToken.None).AsTask().WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception error) when (error is DBusException or TimeoutException or IOException) { /* The portal also ends a request when its caller's connection closes. */ }
             }
         }
     }
 
-    private Task<ObjectPath> Call(DBusConnection connection, string peer, string parent, string method, string argument, string token,
+    private Task<DBusObjectPath> Call(DBusConnection connection, string peer, string parent, string method, string argument, string token,
         PortalChooserOptions? chooser = null)
     {
-        var options = new Dictionary<string, VariantValue> { ["handle_token"] = VariantValue.String(token) };
+        var options = new PortalOptions { ["handle_token"] = DBusValue.From(token) };
         if (file is not null)
         {
-            if (ask) options["ask"] = VariantValue.Bool(true);
-            var openUri = new Protocol.OpenURI(connection, peer, Root);
-            // The generated writer takes ownership of the wrapper, never of the caller's handle.
-            return method == "OpenDirectory" ? openUri.OpenDirectoryAsync(parent, new BorrowedHandle(file), options)
-                : openUri.OpenFileAsync(parent, new BorrowedHandle(file), options);
+            if (ask) options["ask"] = DBusValue.From(true);
+            // The connection sends a duplicate of the descriptor; the caller's handle stays open.
+            return PortalOptions.RequestAsync(new Protocol.OpenURI(connection, peer, Root), Protocol.OpenURI.InterfaceName,
+                method == "OpenDirectory" ? "OpenDirectory" : "OpenFile", [DBusValue.From(parent), DBusValue.UnixFd(file), options.ToValue()]);
         }
-        if (method == "OpenURI") return new Protocol.OpenURI(connection, peer, Root).OpenURIAsync(parent, argument, options);
-        options["modal"] = VariantValue.Bool(true);
+        if (method == "OpenURI")
+            return PortalOptions.RequestAsync(new Protocol.OpenURI(connection, peer, Root), Protocol.OpenURI.InterfaceName, "OpenURI",
+                [DBusValue.From(parent), DBusValue.From(argument), options.ToValue()]);
+        options["modal"] = DBusValue.From(true);
         chooser?.AddTo(options);
         var fileChooser = new Protocol.FileChooser(connection, peer, Root);
+        string title;
         if (method == "SelectDirectory")
         {
-            options["directory"] = VariantValue.Bool(true);
-            return fileChooser.OpenFileAsync(parent, "Open directory", options);
+            options["directory"] = DBusValue.From(true);
+            title = "Open directory";
         }
-        if (method != "SaveFile") return fileChooser.OpenFileAsync(parent, chooser?.Multiple == true ? "Open files" : "Open file", options);
-        options["current_name"] = VariantValue.String(argument);
-        return fileChooser.SaveFileAsync(parent, "Save file", options);
+        else if (method != "SaveFile") title = chooser?.Multiple == true ? "Open files" : "Open file";
+        else
+        {
+            options["current_name"] = DBusValue.From(argument);
+            return PortalOptions.RequestAsync(fileChooser, Protocol.FileChooser.InterfaceName, "SaveFile",
+                [DBusValue.From(parent), DBusValue.From("Save file"), options.ToValue()]);
+        }
+        return PortalOptions.RequestAsync(fileChooser, Protocol.FileChooser.InterfaceName, "OpenFile", [DBusValue.From(parent), DBusValue.From(title), options.ToValue()]);
     }
 
-    // A malformed response fails only its own request; a reader exception would
-    // instead end the subscription. Wrongly typed URIs are no selection at all.
-    private static (string, PortalResponse) ReadResponse(Message message)
+    // A malformed response fails only its own request. Wrongly typed URIs are no selection at all.
+    private static (string, PortalResponse) ReadResponse(DBusSignal signal)
     {
-        string path = message.PathAsString!;
-        try
-        {
-            var reader = message.GetBodyReader();
-            uint code = reader.ReadUInt32();
-            string[] uris = [];
-            var dictionary = reader.ReadDictionaryStart();
-            while (reader.HasNext(dictionary))
-            {
-                string key = reader.ReadString();
-                var value = reader.ReadVariantValue();
-                if (key != "uris") continue;
-                try { uris = value.GetArray<string>(); }
-                catch (InvalidOperationException) { uris = []; }
-            }
-            return (path, new PortalResponse(code, uris));
-        }
-        catch (Exception error) when (error is InvalidOperationException or DBusExceptionBase or IndexOutOfRangeException)
-        { return (path, new PortalResponse(2, [])); } // The portal's "other error" response code.
+        string path = signal.Path.Value;
+        if (!PortalValues.TryReadResponse(signal, out uint code, out var results))
+            return (path, new PortalResponse(2, [])); // The portal's "other error" response code.
+        string[] uris = results.TryGetValue("uris", out var value) && value.Signature.Value == "as" ? [.. value.GetStringArray()] : [];
+        return (path, new PortalResponse(code, uris));
     }
-    // Tmds takes ownership of the wrapper. Retain, but never close, the caller's file handle.
-    internal sealed class BorrowedHandle : SafeHandle
-    {
-        private readonly SafeHandle _source;
-        internal BorrowedHandle(SafeHandle source) : base(-1, true)
-        {
-            bool retained = false;
-            source.DangerousAddRef(ref retained);
-            _source = source;
-            SetHandle(source.DangerousGetHandle());
-        }
-        public override bool IsInvalid => handle == -1;
-        protected override bool ReleaseHandle() { _source.DangerousRelease(); return true; }
-    }
-
 }
