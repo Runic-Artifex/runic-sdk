@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,9 +16,10 @@ namespace Runic.Assets.Tests;
 // the Runic.Assets MSBuild targets. The native job runs this class on Windows and macOS as well.
 internal sealed class ArchiveDirectoryTests
 {
-    // The SHA-256 of the archive that WriteTreeAsync's tree produces. The same tree gives the same bytes on
-    // Linux, Windows and macOS, so every leg checks the same value.
-    private const string CanonicalTreeArchiveSha256 = "160a1af2d8982990f65bbe67dde3225aadc237a4cffc418733c7f3a4bb2386ce";
+    // The canonical manifest digest (AssetArchive.Inspect) of WriteTreeAsync's tree. The same tree gives the same
+    // manifest and content on Linux, Windows and macOS, so every leg checks the same value. The ZIP bytes are the
+    // same on each OS, but not across them: System.IO.Compression records the origin OS and its file attributes.
+    private const string CanonicalTreeManifestSha256 = "11270532face7bb9ef63f750974ce264754ed7ed7b23c1cd41c4cc72ec3cfc24";
 
     [Test, DisplayName("ReadAsync matches Read for seekable and non-seekable streams")]
     public async Task ReadAsyncMatchesRead()
@@ -74,14 +74,14 @@ internal sealed class ArchiveDirectoryTests
             stream, cancellationToken: during.Token).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
-    [Test, DisplayName("the trusted directory writer produces the same archive on every operating system")]
+    [Test, DisplayName("the trusted directory writer is deterministic and gives one manifest on every operating system")]
     public async Task TrustedWriterIsPortable()
     {
         using var directory = new TemporaryDirectory();
         byte[] first = await WriteTreeAsync(directory).ConfigureAwait(false);
         byte[] second = await WriteTreeAsync(directory).ConfigureAwait(false);
         SequenceEqual(first, second);
-        Equal(CanonicalTreeArchiveSha256, Convert.ToHexStringLower(SHA256.HashData(first)));
+        Equal(CanonicalTreeManifestSha256, AssetArchive.Inspect(new MemoryStream(first)).ManifestSha256);
 
         AssetArchiveSource source = AssetArchive.Read(new MemoryStream(first));
         SequenceEqual(
