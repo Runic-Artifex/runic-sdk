@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
@@ -38,6 +39,91 @@ internal sealed class SnapshotDeliveryTests
                 throw new InvalidOperationException("A recovery snapshot did not supersede pending deltas.");
         }
         finally { slow.Release.Set(); }
+    }
+
+    // I-018: a UTF-8 transport receives exactly the bytes a string transport's frames encode to, in the same order.
+    [Test]
+    public async Task Utf8TransportsReceiveTheBytesOfTheStringFramesAsync()
+    {
+        string[] frames = ["""{"title":"Grüße 🎉","n":1}""", """{"delta":["ä","\u2028"]}""", """{"error":"ok"}"""];
+        using var strings = new RecordingTransport();
+        using var bytes = new RecordingUtf8Transport();
+        using var memory = new InMemoryBridgeTransport();
+        var turn = BridgeModelTurn.For(new Model());
+        using var toStrings = new BridgeSnapshotDelivery(strings, "rows", turn, nameof(Model));
+        using var toBytes = new BridgeSnapshotDelivery(bytes, "rows", turn, nameof(Model));
+        using var toMemory = new BridgeSnapshotDelivery(memory, "rows", turn, nameof(Model));
+        var published = new List<string>();
+        for (var index = 0; index < frames.Length; index++)
+        {
+            // One frame at a time: a state supersedes frames still queued before it.
+            Action<BridgeSnapshotDelivery> enqueue = index switch
+            {
+                0 => delivery => delivery.Enqueue(frames[0]),
+                1 => delivery => { if (!delivery.EnqueueDelta(frames[1])) throw new InvalidOperationException("A delta was rejected."); },
+                _ => delivery => delivery.EnqueueFailure(frames[2]),
+            };
+            enqueue(toStrings);
+            enqueue(toBytes);
+            enqueue(toMemory);
+            var count = index + 1;
+            await WaitUntilAsync(() =>
+            {
+                published.AddRange(memory.TakePublications().Select(publication => publication.Json));
+                return strings.Count == count && bytes.Count == count && published.Count == count;
+            });
+        }
+        if (!strings.Frames.SequenceEqual(frames) || !published.SequenceEqual(frames))
+            throw new InvalidOperationException($"The string frames differ: [{string.Join(", ", strings.Frames)}], [{string.Join(", ", published)}].");
+        if (!bytes.Frames.Zip(frames).All(pair => pair.First.AsSpan().SequenceEqual(Encoding.UTF8.GetBytes(pair.Second))))
+            throw new InvalidOperationException(
+                $"The UTF-8 frames differ from the string frames: [{string.Join(", ", bytes.Frames.Select(Encoding.UTF8.GetString))}].");
+        if (bytes.StringCalls != 0) throw new InvalidOperationException("The Bridge called the string path of a UTF-8 transport.");
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var started = TimeProvider.System.GetTimestamp();
+        while (!condition())
+        {
+            if (TimeProvider.System.GetElapsedTime(started) > TimeSpan.FromSeconds(5))
+                throw new TimeoutException("The frames were not delivered.");
+            await Task.Delay(10);
+        }
+    }
+
+    private sealed class RecordingTransport : IBridgeTransport, IDisposable
+    {
+        private readonly List<string> _frames = [];
+        public string[] Frames { get { lock (_frames) return [.. _frames]; } }
+        public int Count { get { lock (_frames) return _frames.Count; } }
+        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
+        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
+            throw new NotSupportedException();
+        public void Publish(string name, string stateJson)
+        {
+            lock (_frames) _frames.Add(stateJson);
+        }
+        public void Dispose() { }
+    }
+
+    private sealed class RecordingUtf8Transport : IBridgeUtf8Transport, IDisposable
+    {
+        private readonly List<byte[]> _frames = [];
+        public byte[][] Frames { get { lock (_frames) return [.. _frames]; } }
+        public int Count { get { lock (_frames) return _frames.Count; } }
+        public int StringCalls { get; private set; }
+        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
+        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
+            throw new NotSupportedException();
+        public void Publish(string name, string stateJson) => StringCalls++;
+        public ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
+        {
+            // The memory is valid only until the returned task completes.
+            lock (_frames) _frames.Add(stateUtf8.ToArray());
+            return ValueTask.CompletedTask;
+        }
+        public void Dispose() { }
     }
 
     private sealed class Model : INotifyPropertyChanged

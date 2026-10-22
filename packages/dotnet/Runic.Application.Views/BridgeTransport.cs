@@ -55,3 +55,27 @@ public interface IAsyncBridgeTransport : IBridgeTransport
     /// <remarks>Generated bridges await this outside the model context. Slow delivery is bounded by the bridge's recovery-snapshot queue.</remarks>
     ValueTask PublishAsync(string name, string stateJson);
 }
+
+/// <summary>A host that receives state frames as UTF-8 JSON instead of strings.</summary>
+/// <remarks>
+/// <para>
+/// The generated Bridge finds this interface by a type test and then delivers every state frame through
+/// <see cref="PublishUtf8Async"/> instead of <see cref="IBridgeTransport.Publish"/> or
+/// <see cref="IAsyncBridgeTransport.PublishAsync"/>. The bytes are the UTF-8 encoding of the string the other
+/// methods would receive for the same frame, without a byte order mark.
+/// </para>
+/// <para>
+/// As with <see cref="IAsyncBridgeTransport.PublishAsync"/>, the Bridge awaits each call before it sends the next
+/// frame of the route, outside the model context, and the transport delivers each frame without coalescing it with
+/// other frames. The memory is valid only until the returned task completes; copy it to keep it longer.
+/// Desktop and <c>Runic.Application.Testing</c>'s in-memory transport implement it.
+/// </para>
+/// </remarks>
+public interface IBridgeUtf8Transport : IBridgeTransport
+{
+    /// <summary>Delivers one encoded state frame, as UTF-8 JSON, to the browser listener for <paramref name="name"/>.</summary>
+    /// <param name="name">The route.</param>
+    /// <param name="stateUtf8">The frame's JSON, encoded as UTF-8.</param>
+    /// <param name="cancellationToken">Stops waiting for delivery; the frame may still be delivered.</param>
+    ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default);
+}

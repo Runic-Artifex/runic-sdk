@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
@@ -177,7 +179,9 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             var timestamp = BridgeTelemetry.Timestamp();
             try
             {
-                if (transport is IAsyncBridgeTransport asynchronous)
+                if (transport is IBridgeUtf8Transport utf8)
+                    await PublishUtf8Async(utf8, route, snapshot).ConfigureAwait(false);
+                else if (transport is IAsyncBridgeTransport asynchronous)
                     await asynchronous.PublishAsync(route, snapshot).ConfigureAwait(false);
                 else transport.Publish(route, snapshot);
                 BridgeTelemetry.RecordFrame(model, kind, snapshot, timestamp);
@@ -187,6 +191,22 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 BridgeTelemetry.RecordFailure("snapshot.delivery", model, null, error);
                 ViewsLog.SnapshotDeliveryFailed(_logger, error, model, route, BridgeTelemetry.ErrorType(error));
             }
+        }
+    }
+
+    // The bytes are Encoding.UTF8.GetBytes(snapshot), the encoding a string transport applies. The pooled buffer is
+    // returned once the transport completes, as IBridgeUtf8Transport documents.
+    private static async ValueTask PublishUtf8Async(IBridgeUtf8Transport transport, string route, string snapshot)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetByteCount(snapshot));
+        try
+        {
+            var length = Encoding.UTF8.GetBytes(snapshot, buffer);
+            await transport.PublishUtf8Async(route, buffer.AsMemory(0, length)).ConfigureAwait(false);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

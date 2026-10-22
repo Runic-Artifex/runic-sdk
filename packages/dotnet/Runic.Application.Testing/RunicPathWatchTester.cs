@@ -11,15 +11,16 @@ namespace Runic.Application.Testing;
 /// <remarks>
 /// Pass <see cref="Options"/> to the ViewModel that starts the watcher, typically through its constructor or
 /// dependency injection. One tester can serve several watchers; their changes are returned in the order their
-/// callbacks ran.
+/// callbacks ran. Dispose the tester at the end of the test to stop the watchers its options started.
 /// </remarks>
-public sealed class RunicPathWatchTester
+public sealed class RunicPathWatchTester : IDisposable
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
     private readonly object _gate = new();
     private readonly List<RunicPathWatcher> _watchers = [];
     private readonly Queue<RunicPathChange> _changes = new();
     private TaskCompletionSource _arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool _disposed;
 
     /// <summary>Creates a tester with a new <see cref="FakeTimeProvider"/>.</summary>
     /// <param name="debounce">The watchers' debounce; null keeps the default of <see cref="RunicPathWatcherOptions"/>.</param>
@@ -70,6 +71,7 @@ public sealed class RunicPathWatchTester
             Task arrived;
             lock (_gate)
             {
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 if (_changes.TryDequeue(out var change)) return change;
                 arrived = _arrived.Task;
             }
@@ -92,6 +94,7 @@ public sealed class RunicPathWatchTester
         var limit = quiet ?? TimeSpan.FromMilliseconds(300);
         var step = Options.Debounce > TimeSpan.Zero ? Options.Debounce : TimeSpan.FromMilliseconds(1);
         var started = TimeProvider.System.GetTimestamp();
+        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
         while (TimeProvider.System.GetElapsedTime(started) < limit)
         {
             Time.Advance(step);
@@ -99,6 +102,7 @@ public sealed class RunicPathWatchTester
         }
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             var changes = _changes.ToArray();
             _changes.Clear();
             return changes;
@@ -120,7 +124,11 @@ public sealed class RunicPathWatchTester
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         RunicPathWatcher[] watchers;
-        lock (_gate) watchers = [.. _watchers];
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            watchers = [.. _watchers];
+        }
         var signalled = false;
         foreach (var watcher in watchers) signalled |= watcher.Signal(path);
         if (!signalled)
@@ -128,11 +136,35 @@ public sealed class RunicPathWatchTester
         return NextChangeAsync(timeout, cancellationToken);
     }
 
+    /// <summary>
+    /// Stops the active watchers started with <see cref="Options"/>, drops the changes not returned yet and detaches
+    /// from the options: a watcher started with them later runs on <see cref="Time"/> but is not tracked.
+    /// </summary>
+    /// <remarks>Disposing a watcher again, as its ViewModel does, has no effect.</remarks>
+    public void Dispose()
+    {
+        RunicPathWatcher[] watchers;
+        TaskCompletionSource arrived;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            watchers = [.. _watchers];
+            _watchers.Clear();
+            _changes.Clear();
+            arrived = _arrived;
+        }
+        foreach (var watcher in watchers) watcher.Dispose();
+        // Wakes a NextChangeAsync, which then throws ObjectDisposedException.
+        arrived.TrySetResult();
+    }
+
     private sealed class Observer(RunicPathWatchTester owner) : IRunicPathWatchObserver
     {
         public void Started(RunicPathWatcher watcher)
         {
-            lock (owner._gate) owner._watchers.Add(watcher);
+            lock (owner._gate)
+                if (!owner._disposed) owner._watchers.Add(watcher);
         }
 
         public void Stopped(RunicPathWatcher watcher)
@@ -145,6 +177,7 @@ public sealed class RunicPathWatchTester
             TaskCompletionSource arrived;
             lock (owner._gate)
             {
+                if (owner._disposed) return;
                 owner._changes.Enqueue(change);
                 arrived = owner._arrived;
                 owner._arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);

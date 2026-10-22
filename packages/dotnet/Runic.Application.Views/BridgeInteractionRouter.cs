@@ -100,14 +100,67 @@ public sealed class RunicInteractionInvocation
 }
 
 /// <summary>Raised when a selected mounted interaction endpoint disappears.</summary>
-public sealed class RunicInteractionCancelledException(string message) : OperationCanceledException(message);
+public sealed class RunicInteractionCancelledException : OperationCanceledException
+{
+    /// <summary>Creates the exception with a default message.</summary>
+    public RunicInteractionCancelledException()
+    {
+    }
+
+    /// <summary>Creates the exception with <paramref name="message"/>.</summary>
+    public RunicInteractionCancelledException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>Creates the exception with <paramref name="message"/> and the exception that caused it.</summary>
+    public RunicInteractionCancelledException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
 
 /// <summary>Raised when a browser interaction exceeded its configured lifetime.</summary>
-public sealed class RunicInteractionTimeoutException(string message) : TimeoutException(message);
+public sealed class RunicInteractionTimeoutException : TimeoutException
+{
+    /// <summary>Creates the exception with a default message.</summary>
+    public RunicInteractionTimeoutException()
+    {
+    }
+
+    /// <summary>Creates the exception with <paramref name="message"/>.</summary>
+    public RunicInteractionTimeoutException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>Creates the exception with <paramref name="message"/> and the exception that caused it.</summary>
+    public RunicInteractionTimeoutException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
 
 /// <summary>Raised when a browser answered an interaction with output its contract cannot decode.</summary>
-public sealed class RunicInteractionOutputException(string message, Exception innerException)
-    : InvalidOperationException(message, innerException);
+public sealed class RunicInteractionOutputException : InvalidOperationException
+{
+    /// <summary>Creates the exception with a default message.</summary>
+    public RunicInteractionOutputException()
+    {
+    }
+
+    /// <summary>Creates the exception with <paramref name="message"/>.</summary>
+    public RunicInteractionOutputException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>Creates the exception with <paramref name="message"/> and the exception that caused it.</summary>
+    public RunicInteractionOutputException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
 
 /// <summary>
 /// Window-owned request/reply broker for typed interaction adapters. Browser

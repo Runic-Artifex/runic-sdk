@@ -325,6 +325,7 @@ public sealed class RunicPathWatcher : IDisposable
         {
             if (_disposed) return;
             List<RunicWatchTarget> changed = [];
+            List<RunicPathChangeEntry> entries = [];
             var reportedByEvent = false;
             for (var i = 0; i < dirty.Length; i++)
             {
@@ -333,11 +334,12 @@ public sealed class RunicPathWatcher : IDisposable
                     && (forced[i] || !string.Equals(dirty[i].Probe.Signature, probes[i].Signature, StringComparison.Ordinal)))
                 {
                     changed.Add(dirty[i].Target);
+                    entries.AddRange(dirty[i].Target.ChangedEntries(dirty[i].Probe, probes[i]));
                     reportedByEvent |= byEvent[i];
                 }
                 dirty[i].Probe = probes[i];
             }
-            if (changed.Count > 0) change = new(changed) { ByEvent = reportedByEvent };
+            if (changed.Count > 0) change = new(changed, entries) { ByEvent = reportedByEvent };
             current = [.. _states.Select(state => state.Probe)];
             subscribed = new(_subscriptions, WatchPaths.Comparer);
             skipped = new(_remote.Concat(_failedWatches.Keys), WatchPaths.Comparer);
@@ -587,10 +589,34 @@ public sealed class RunicPathWatcherOptions
 /// <summary>Targets of a <see cref="RunicPathWatcher"/> that changed together.</summary>
 public sealed class RunicPathChange
 {
-    internal RunicPathChange(IReadOnlyList<RunicWatchTarget> targets) => Targets = targets;
+    internal RunicPathChange(IReadOnlyList<RunicWatchTarget> targets, IReadOnlyList<RunicPathChangeEntry> entries)
+    {
+        Targets = targets;
+        Entries = entries;
+    }
 
     /// <summary>Gets the targets that changed, in the order they were passed to <see cref="RunicPathWatcher.Start"/>.</summary>
     public IReadOnlyList<RunicWatchTarget> Targets { get; }
+
+    /// <summary>Gets the paths that changed: at least one for each of <see cref="Targets"/>, in the same order.</summary>
+    /// <remarks>
+    /// <para>
+    /// The watcher compares what it read of each target before and after the change. For a
+    /// <see cref="RunicWatchTarget.File"/>, the entry is the file. For a <see cref="RunicWatchTarget.Directory"/> or
+    /// <see cref="RunicWatchTarget.Files"/>, the entries are the matching entries that were added
+    /// (<see cref="RunicPathChangeKind.Created"/>) or removed (<see cref="RunicPathChangeKind.Deleted"/>), a renamed
+    /// entry being both, in ordinal order of their names; for <see cref="RunicWatchTarget.Files"/> also those whose
+    /// size, write time, kind or link target changed (<see cref="RunicPathChangeKind.Changed"/>). Where the
+    /// watcher cannot name what changed, as for a <see cref="RunicWatchTarget.Link"/>, a
+    /// <see cref="RunicWatchTarget.GitHead"/>, an unreadable directory or an event that named an entry whose
+    /// metadata stayed the same, the entry is the target's own full path with <see cref="RunicPathChangeKind.Changed"/>.
+    /// </para>
+    /// <para>
+    /// Changes are compared between readings, so an entry created and deleted again between two readings is not
+    /// listed.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<RunicPathChangeEntry> Entries { get; }
 
     // Whether an event, rather than a poll, led to reading a target that changed. For tests.
     internal bool ByEvent { get; init; }
@@ -598,6 +624,43 @@ public sealed class RunicPathChange
     /// <summary>Gets whether <paramref name="target"/> is among the changed targets.</summary>
     /// <param name="target">A target passed to <see cref="RunicPathWatcher.Start"/>.</param>
     public bool Contains(RunicWatchTarget target) => Targets.Contains(target);
+}
+
+/// <summary>A path that changed, one of the <see cref="RunicPathChange.Entries"/> of a change.</summary>
+public sealed class RunicPathChangeEntry
+{
+    internal RunicPathChangeEntry(RunicWatchTarget target, string path, RunicPathChangeKind kind)
+    {
+        Target = target;
+        Path = path;
+        Kind = kind;
+    }
+
+    /// <summary>Gets the target that reported the path, an instance passed to <see cref="RunicPathWatcher.Start"/>.</summary>
+    public RunicWatchTarget Target { get; }
+
+    /// <summary>Gets the full path that changed: an entry of a directory target, or the target's own path.</summary>
+    public string Path { get; }
+
+    /// <summary>Gets how the path changed.</summary>
+    public RunicPathChangeKind Kind { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => $"{Kind} {Path}";
+}
+
+/// <summary>How a <see cref="RunicPathChangeEntry"/> changed.</summary>
+/// <remarks>The set is open: a minor release may add kinds, so treat an unknown kind as <see cref="Changed"/>.</remarks>
+public enum RunicPathChangeKind
+{
+    /// <summary>The path was written, replaced or otherwise changed, or the watcher cannot say how.</summary>
+    Changed,
+
+    /// <summary>The path did not exist at the previous reading and exists now.</summary>
+    Created,
+
+    /// <summary>The path existed at the previous reading and does not exist now.</summary>
+    Deleted,
 }
 
 /// <summary>A problem a <see cref="RunicPathWatcher"/> works around.</summary>

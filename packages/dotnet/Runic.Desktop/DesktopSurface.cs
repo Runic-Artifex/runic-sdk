@@ -191,6 +191,10 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
         _engine.RunJavaScriptAsync(script, cancellationToken);
 
+    /// <summary>Runs JavaScript, encoded as UTF-8, in every authenticated presentation session.</summary>
+    internal Task RunJavaScriptUtf8Async(ReadOnlyMemory<byte> script, CancellationToken cancellationToken = default) =>
+        _engine.RunJavaScriptUtf8Async(script, cancellationToken);
+
     /// <summary>Runs JavaScript and returns its string result from an authenticated presentation session.</summary>
     /// <param name="script">The script; its <c>return</c> value is the result.</param>
     /// <param name="cancellationToken">Cancels waiting for the result. To wait for a limited time, pass a token from a

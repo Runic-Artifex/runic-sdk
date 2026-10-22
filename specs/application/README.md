@@ -62,7 +62,9 @@ publication:
   failure to the caller.
   Dependent collection deltas remain ordered. An `IAsyncBridgeTransport`
   acknowledges each delivery outside the model context before the next frame
-  is sent; Desktop implements this path.
+  is sent; Desktop implements this path. An `IBridgeUtf8Transport` receives
+  each frame the same way, as the UTF-8 encoding of the string the other
+  paths receive; Desktop and the in-memory test transport implement it.
 
 The browser host script defines `__runicBridge`:
 

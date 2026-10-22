@@ -177,4 +177,68 @@ public sealed class RunicTestOperation
         using var document = JsonDocument.Parse(_transport.Call("__runicOperationCancel", new(StringValue: _identity)));
         return RunicOperationWire.Cancel(document.RootElement.GetProperty("kind").GetString());
     }
+
+    /// <summary>
+    /// Reads the retained items of a streamed operation after <paramref name="cursor"/> through the window's stream
+    /// route, as the generated client's <c>stream(cursor)</c> does.
+    /// </summary>
+    /// <param name="cursor">The <see cref="RunicOperationStreamPage.Cursor"/> of the previous page, or 0 for the first.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cursor"/> is negative.</exception>
+    public RunicOperationStreamPage ReadStream(long cursor = 0)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(cursor);
+        var request = RunicJson.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("contract", Contract);
+            writer.WriteString("member", Member);
+            writer.WriteString("requestId", RequestId);
+            writer.WriteNumber("cursor", cursor);
+            writer.WriteEndObject();
+        });
+        return new(_transport.Call("__runicOperationStream", new(StringValue: request)), cursor);
+    }
+}
+
+/// <summary>A page of a streamed operation's items, read with <see cref="RunicTestOperation.ReadStream"/>.</summary>
+public sealed class RunicOperationStreamPage
+{
+    internal RunicOperationStreamPage(string json, long cursor)
+    {
+        Json = json;
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Kind = root.TryGetProperty("kind", out var kind) ? RunicOperationWire.Status(kind.GetString()) : RunicOperationStatusKind.Unknown;
+        Cursor = root.TryGetProperty("cursor", out var next) ? next.GetInt64() : cursor;
+        Completed = root.TryGetProperty("completed", out var completed) && completed.GetBoolean();
+        Items = root.TryGetProperty("items", out var items)
+            ? [.. items.EnumerateArray().Select(item => item.GetProperty("value").Clone())]
+            : [];
+        if (root.TryGetProperty("delivery", out var delivery) && delivery.ValueKind == JsonValueKind.Object)
+        {
+            DeliveryKind = delivery.GetProperty("kind").GetString();
+            DeliveryMessage = delivery.GetProperty("message").GetString();
+        }
+    }
+
+    /// <summary>The operation's status: <see cref="RunicOperationStatusKind.Unknown"/> or <see cref="RunicOperationStatusKind.Expired"/> when the window no longer has it.</summary>
+    public RunicOperationStatusKind Kind { get; }
+    /// <summary>The encoded items after the requested cursor, in the order the command produced them.</summary>
+    public IReadOnlyList<JsonElement> Items { get; }
+    /// <summary>The cursor to read the next page with; the requested cursor when the page has no stream.</summary>
+    public long Cursor { get; }
+    /// <summary>Whether the stream ended, so later pages add no items.</summary>
+    public bool Completed { get; }
+    /// <summary>
+    /// Why items were dropped, such as <c>stream-overflow</c> or <c>stream-retention-too-large</c>; null when none
+    /// were. The kinds are an open set.
+    /// </summary>
+    public string? DeliveryKind { get; }
+    /// <summary>The message that goes with <see cref="DeliveryKind"/>.</summary>
+    public string? DeliveryMessage { get; }
+    /// <summary>The page as .NET serialized it.</summary>
+    public string Json { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => Json;
 }

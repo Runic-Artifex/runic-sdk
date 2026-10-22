@@ -25,6 +25,18 @@ internal sealed class TestingSurfaceTests
             "The transport must take parsed publications, as drivers do.");
     }
 
+    // I-017: the interaction exceptions have the standard exception constructors (CA1032).
+    [Test]
+    public void InteractionExceptionsHaveTheStandardConstructors()
+    {
+        foreach (var type in new[] { typeof(RunicInteractionCancelledException), typeof(RunicInteractionTimeoutException), typeof(RunicInteractionOutputException) })
+            foreach (Type[] parameters in new[] { Type.EmptyTypes, [typeof(string)], [typeof(string), typeof(Exception)] })
+                Require(type.GetConstructor(parameters) is not null, $"{type.Name} lacks the constructor ({string.Join(", ", parameters.Select(parameter => parameter.Name))}).");
+        var inner = new InvalidOperationException("inner");
+        Require(new RunicInteractionTimeoutException("late", inner) is { Message: "late" } timeout && ReferenceEquals(timeout.InnerException, inner),
+            "The message and inner exception were not kept.");
+    }
+
     // D35 o: the host keeps no raw Snapshot/Mount/Unmount beside the driver's; D46 e: no legacy constructor;
     // B3/D37: DrainAsync replaces BeginCloseAsync.
     [Test]
@@ -56,7 +68,9 @@ internal sealed class TestingSurfaceTests
             var name = $"{method.DeclaringType!.Name}.{method.Name}";
             var valueTask = method.ReturnType == typeof(ValueTask) || method.ReturnType.IsGenericType
                 && method.ReturnType.GetGenericTypeDefinition() == typeof(ValueTask<>);
-            Require(valueTask == name is "InMemoryBridgeTransport.CallAsync" or "RunicServeOnlyApplication.DisposeAsync",
+            // ValueTask where a Bridge interface or IAsyncDisposable sets the shape.
+            Require(valueTask == name is "InMemoryBridgeTransport.CallAsync" or "InMemoryBridgeTransport.PublishUtf8Async"
+                    or "RunicServeOnlyApplication.DisposeAsync",
                 $"{name} returns {method.ReturnType.Name}.");
             var parameters = method.GetParameters();
             Require(parameters.Length > 0 && parameters[^1].ParameterType == typeof(CancellationToken) || name.EndsWith(".DisposeAsync", StringComparison.Ordinal),

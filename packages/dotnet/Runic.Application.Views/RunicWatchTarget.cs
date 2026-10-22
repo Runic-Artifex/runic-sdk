@@ -148,6 +148,8 @@ public sealed class RunicWatchTarget
     {
         var directory = WatchPaths.Canonical(FullPath);
         var signature = new StringBuilder();
+        // What the signature says of each entry, for RunicPathChange.Entries; null when the directory is unreadable.
+        Dictionary<string, string>? described = new(StringComparer.Ordinal);
         if (System.IO.Directory.Exists(directory))
         {
             try
@@ -159,13 +161,19 @@ public sealed class RunicWatchTarget
                 foreach (var name in names)
                 {
                     signature.Append(name).Append('\n');
-                    if (entries) signature.Append(DescribeEntry(System.IO.Path.Combine(directory, name)).Replace('\n', ' ')).Append('\n');
+                    var description = entries ? DescribeEntry(System.IO.Path.Combine(directory, name)).Replace('\n', ' ') : "";
+                    if (entries) signature.Append(description).Append('\n');
+                    described[name] = description;
                 }
             }
-            catch (Exception exception) when (IsFileSystemFailure(exception)) { signature.Append("unreadable"); }
+            catch (Exception exception) when (IsFileSystemFailure(exception))
+            {
+                signature.Append("unreadable");
+                described = null;
+            }
         }
         else signature.Append("missing");
-        return new(signature.ToString(), [new(directory, Pattern, false)], DirectoryOrMissing(directory), null);
+        return new(signature.ToString(), [new(directory, Pattern, false)], DirectoryOrMissing(directory), null) { Entries = described };
     }
 
     private WatchProbe ProbeGit()
@@ -283,6 +291,38 @@ public sealed class RunicWatchTarget
 
     private static bool Exists(string path) => System.IO.File.Exists(path) || System.IO.Directory.Exists(path);
 
+    // The entries of a change of this target from reading `before`, then `after` (RunicPathChange.Entries).
+    internal IEnumerable<RunicPathChangeEntry> ChangedEntries(WatchProbe before, WatchProbe after)
+    {
+        switch (Kind)
+        {
+            case WatchTargetKind.File:
+                var existed = before.Signature != "missing";
+                var exists = after.Signature != "missing";
+                yield return new(this, FullPath, existed == exists ? RunicPathChangeKind.Changed
+                    : exists ? RunicPathChangeKind.Created : RunicPathChangeKind.Deleted);
+                yield break;
+            case WatchTargetKind.Directory or WatchTargetKind.Files when before.Entries is { } old && after.Entries is { } current:
+                var found = false;
+                foreach (var name in old.Keys.Union(current.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+                {
+                    RunicPathChangeKind kind;
+                    if (!old.TryGetValue(name, out var was)) kind = RunicPathChangeKind.Created;
+                    else if (!current.TryGetValue(name, out var now)) kind = RunicPathChangeKind.Deleted;
+                    else if (!string.Equals(was, now, StringComparison.Ordinal)) kind = RunicPathChangeKind.Changed;
+                    else continue;
+                    found = true;
+                    yield return new(this, System.IO.Path.Combine(FullPath, name), kind);
+                }
+                // An event named an entry whose metadata did not change, or the directory came or went without entries.
+                if (!found) yield return new(this, FullPath, RunicPathChangeKind.Changed);
+                yield break;
+            default:
+                yield return new(this, FullPath, RunicPathChangeKind.Changed);
+                yield break;
+        }
+    }
+
     // The file's identity as far as a stat shows it: existence, kind, link target, size and write time.
     private static string DescribeEntry(string path)
     {
@@ -321,7 +361,11 @@ internal readonly record struct WatchSpec(string Directory, string Pattern, bool
 
 // A target's state: what identifies it, which directories show its changes, a directory it needs that is missing,
 // and a GitHead directory that is not a repository.
-internal sealed record WatchProbe(string Signature, IReadOnlyList<WatchSpec> Specs, string? MissingDirectory, string? NotRepository);
+internal sealed record WatchProbe(string Signature, IReadOnlyList<WatchSpec> Specs, string? MissingDirectory, string? NotRepository)
+{
+    // The matching entries of a Directory or Files target, by name, with what the signature says of each.
+    public IReadOnlyDictionary<string, string>? Entries { get; init; }
+}
 
 internal static class WatchPaths
 {
