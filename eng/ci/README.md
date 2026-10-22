@@ -96,6 +96,11 @@ podman run --rm --init --userns=keep-id --user root --security-opt seccomp=uncon
 
 The container writes its build outputs into the checkout's `bin`, `obj` and `artifacts`.
 
+The GTK4 smoke steps start their private session bus inside `xvfb-run`
+(`xvfb-run -a dbus-run-session -- …`). Services that the bus activates, such as Ubuntu's
+xdg-desktop-portal-gtk, inherit the bus's environment rather than the client's; with the
+bus outside the X display they exited with "cannot open display" on each activation.
+
 ## Display scaling and appearance evidence
 
 The native job changes the runner's own display and preferences to check W315-017
@@ -112,7 +117,8 @@ and W315-011, and restores them before the step ends:
   Events while one runs.
 - Linux (`eng/ci/real-portal.sh`) runs the published portal tests against the real
   xdg-desktop-portal and its GNOME backend in a digest-pinned Fedora container, because
-  Ubuntu 24.04's portal does not publish the accent colour or reduced motion.
+  Ubuntu 24.04's portal does not publish the accent colour or reduced motion. Its
+  package download is bounded and cached ("Fedora packages" below).
 
 Hosted runners have one virtual monitor, and the macOS runner offers no HiDPI mode,
 so moving a window between monitors with different scales and macOS scaling need
@@ -276,14 +282,59 @@ All mirrors are official Ubuntu archives signed by the same key. Signature verif
 stays on: apt verifies the signed indexes and every archive's hash, including cached
 archives before it uses them.
 
-`.github/actions/apt-install` (the native job's WebView prerequisites and the Desktop
-template runtimes) also caches the downloaded `.deb` archives in
-`/var/cache/runic-apt` through the dependency cache, so only `main` saves them. The key
-is `apt-<Ubuntu release>-<arch>-<hash of the package list>-<runner image version>`; a new
-runner image restores the previous image's archives by prefix, and apt downloads only
-the versions that changed. `apt-get autoclean` removes archives the current indexes no
-longer offer before the cache is saved. Smaller installs inside multi-command steps call
-the script directly.
+`.github/actions/apt-install` (the native job's WebView prerequisites, the Desktop
+template runtimes, Playwright's Chromium dependencies and flatpak-builder) also caches
+the downloaded `.deb` archives in `/var/cache/runic-apt` through the dependency cache, so
+only `main` saves them. The key is
+`apt-<Ubuntu release>-<arch>-<hash of the package list>[-norecommends]-<runner image version>`;
+a new runner image restores the previous image's archives by prefix, and apt downloads
+only the versions that changed. `apt-get autoclean` removes archives the current indexes
+no longer offer before the cache is saved. Smaller installs inside multi-command steps
+call the script directly. `--no-install-recommends` as the script's first argument, or
+`install-recommends: "false"` for the action, leaves out recommended packages.
+
+No workflow step runs `apt-get` directly. `.github/actions/install-browser` does not use
+Playwright's `install --with-deps`, which runs `apt-get update` and `apt-get install`
+without a time limit or mirror fallback. It lists the packages Playwright needs for the
+runner's Ubuntu release that the image lacks (`playwright-core install-deps --dry-run`,
+which simulates the install against the image's package indexes), installs them through
+the action without recommended packages, as Playwright does, and then downloads Chromium
+with a 5-minute limit per attempt. When the image already has every package, the apt
+step is skipped.
+
+## Fedora packages
+
+The real GNOME portal check (`eng/ci/real-portal.sh`, "Display scaling and appearance
+evidence") installs xdg-desktop-portal, its GNOME backend and their dependencies (177
+packages, about 145 MB) with dnf in the digest-pinned Fedora container. A slow Fedora
+mirror has held that download until the step's 10-minute limit with no output, because
+`dnf -q` prints nothing while downloading and dnf only drops a mirror below 1000 B/s.
+The script therefore:
+
+- Downloads with `dnf install --downloadonly` in two time-limited attempts (2 and 2.5
+  minutes; a healthy mirror needs well under one) through `eng/ci/retry.sh`, with
+  `minrate=100k`: a mirror slower than 100 kB/s for 30 seconds is dropped for the next
+  mirror in Fedora's metalink. Packages completed by a stopped attempt are kept.
+- Then falls back to the restored package cache alone (`--cacheonly`), whatever the age
+  of its metadata, with a warning annotation.
+- Installs with `--cacheonly`, without network access.
+- Fails with an `::error` annotation naming each attempt, how many packages it had
+  downloaded and dnf's errors, well before the step's limit.
+
+Signature checking stays on: dnf verifies every package's checksum against the
+repository metadata and its OpenPGP signature against the Fedora key in the image,
+including cached packages. A cached package that does not match is downloaded again.
+
+The native job mounts `/var/cache/runic-dnf` as the container's `/var/cache/libdnf5` and
+keeps it in the dependency cache (only `main` saves). The key is
+`dnf-<hash of the image reference>-<arch>-<hash of real-portal.sh>-<year-month>`, restored
+by prefix, so `main` saves current updates once a month. Before the cache is saved the
+script removes the packages it did not install and dnf's generated `solv` files, which
+keeps it near 200 MB per architecture. The image itself is pulled with two 90-second
+attempts.
+
+Locally, add `-v <directory>:/var/cache/libdnf5` to the `podman run` command in the
+script's header to reuse downloaded packages.
 
 ## Source snapshots and artifacts
 

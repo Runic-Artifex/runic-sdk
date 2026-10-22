@@ -12,11 +12,13 @@
 # runs without network access. A killed attempt's apt-get or dpkg is stopped and its
 # locks released before the next one.
 #
-# Usage: apt-install.sh <package>...
+# Usage: apt-install.sh [--no-install-recommends] <package>...
 # APT_ARCHIVES, if set, is the directory for downloaded .deb files, so a cache can
 # restore and save them (.github/actions/apt-install).
 set -euo pipefail
 dir=$(cd "$(dirname "$0")" && pwd)
+options=()
+if [ "${1:-}" = --no-install-recommends ]; then options=(--no-install-recommends); shift; fi
 packages=("$@")
 archives=${APT_ARCHIVES:-/var/cache/apt/archives}
 mirror_list=/etc/apt/apt-mirrors.txt
@@ -91,7 +93,7 @@ for ((attempt = 1; attempt <= ${#limits[@]}; attempt++)); do
   used=$(mirrors)
   started=$SECONDS
   : >"$log"
-  if limited_apt 120 update && limited_apt "${limits[attempt - 1]}" install --yes --download-only "${packages[@]}"; then
+  if limited_apt 120 update && limited_apt "${limits[attempt - 1]}" install --yes --download-only ${options[@]+"${options[@]}"} "${packages[@]}"; then
     downloaded=true
     echo "Downloaded in $((SECONDS - started))s via $used"
     break
@@ -107,7 +109,7 @@ if [ "$downloaded" != true ]; then
 fi
 
 export RETRY_CLEANUP="$cleanup"
-if ! "$dir/retry.sh" 2 300 "${apt[@]}" install --yes --no-download "${packages[@]}"; then
+if ! "$dir/retry.sh" 2 300 "${apt[@]}" install --yes --no-download ${options[@]+"${options[@]}"} "${packages[@]}"; then
   echo "::error title=Ubuntu packages could not be installed::${packages[*]} were downloaded from $(mirrors) but could not be installed; see the apt-get output above."
   exit 1
 fi
