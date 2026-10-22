@@ -16,6 +16,8 @@
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <!-- LibraryImport for the signals that stop the application gracefully. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- assets pack compiles the packer's command source as a subcommand (AssetPackCommand.cs). -->
+    <DefineConstants>$(DefineConstants);RUNIC_ASSETS_PACK_SUBCOMMAND</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +25,8 @@
     <EmbeddedResource Include="metadata/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
     <PackageReference Include="Runic.CommandLine" />
+    <ProjectReference Include="../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
+    <Compile Include="../Runic.Assets.Packer/AssetPackCommand.cs" Link="Shared/AssetPackCommand.cs" />
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk4NativeLibraries.cs" Link="Shared/Gtk4NativeLibraries.cs" />
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk3NativeLibraries.cs" Link="Shared/Gtk3NativeLibraries.cs" />
   </ItemGroup>

@@ -757,9 +757,9 @@ diagnostic with this code for each such check.
 
 ## Asset packer
 
-`Runic.Assets.Packer`, which the Runic.Assets build runs, reports the
-`RAS1xxx` codes. Human output writes the message and the link to standard
-error. See the
+`Runic.Assets.Packer`, which the Runic.Assets build runs, and
+`dotnet runic assets pack` report the `RAS1xxx` codes. Human output writes the
+message and the link to standard error. See the
 [packer guide](../tools/Runic.Assets.Packer/README.md#exit-codes-and-errors).
 The `Runic.Assets` build targets report the `RAS2xxx` codes.
 
@@ -772,7 +772,8 @@ such as Vite's `dist`.
 
 ### RAS1002
 
-The entry point does not exist in the source directory or was excluded. Exit
+The entry point does not exist in the source directory or was excluded, by
+`--exclude` or by a default exclusion (a `.git` path or a `.env*` name). Exit
 code 1.
 
 **Fix:** pass the entry document with `--entry-point`, or remove it from the
@@ -793,6 +794,18 @@ requires Linux. Exit code 1.
 **Fix:** pass `--trusted-generated-output` for output of the current build, as
 the MSBuild integration does. See
 [`--trusted-generated-output`](../tools/Runic.Assets.Packer/README.md#--trusted-generated-output).
+
+### RAS1005
+
+A warning: the archive contains source maps (`*.map`). The packer writes their
+count and the first path to standard error as `warning RAS1005: …`, so the
+`Runic.Assets` build reports it as a build warning. Source maps can expose the
+original source code of the frontend. The archive is written and the exit code
+is 0. Since 0.11.
+
+**Fix:** leave the maps out of the production build (Vite's `build.sourcemap`)
+or exclude them with `--exclude` or `RunicAssetsDistExclude`. If the
+application ships them on purpose, add `RAS1005` to `NoWarn`.
 
 ### RAS2001
 

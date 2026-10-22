@@ -18,7 +18,7 @@ after(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-function pack(name, properties) {
+function packerArguments(name, properties) {
   const project = join(directory, name);
   mkdirSync(join(project, "dist"), { recursive: true });
   writeFileSync(join(project, "dist/index.html"), "<!doctype html>");
@@ -41,7 +41,11 @@ ${properties}
   const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicAssetsPackFileSystem",
     "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m"], { cwd: project, encoding: "utf8" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  const argumentsList = JSON.parse(readFileSync(join(project, "arguments.json"), "utf8"));
+  return JSON.parse(readFileSync(join(project, "arguments.json"), "utf8"));
+}
+
+function pack(name, properties) {
+  const argumentsList = packerArguments(name, properties);
   const index = argumentsList.indexOf("--exclude");
   return index < 0 ? null : argumentsList[index + 1];
 }
@@ -52,4 +56,15 @@ test("RunicAssetsDistExclude defaults to runic-assets.zip, and a project can rep
   assert.equal(pack("default", ""), "runic-assets.zip");
   assert.equal(pack("replaced", "<RunicAssetsDistExclude>stats.html</RunicAssetsDistExclude>"), "stats.html");
   assert.equal(pack("emptied", "<RunicAssetsDistExclude></RunicAssetsDistExclude>"), null);
+});
+
+// SEC-32: the packer leaves .git directories and .env* files out unless RunicAssetsDefaultExcludes is false.
+test("RunicAssetsDefaultExcludes=false passes --no-default-excludes, with or without exclusions", () => {
+  assert.ok(!packerArguments("default-excludes", "").includes("--no-default-excludes"));
+  assert.ok(!packerArguments("default-excludes-true", "<RunicAssetsDefaultExcludes>true</RunicAssetsDefaultExcludes>").includes("--no-default-excludes"));
+  for (const [name, exclude] of [["no-default-excludes", ""], ["no-default-excludes-emptied", "<RunicAssetsDistExclude></RunicAssetsDistExclude>"]]) {
+    const argumentsList = packerArguments(name, `<RunicAssetsDefaultExcludes>false</RunicAssetsDefaultExcludes>${exclude}`);
+    assert.ok(argumentsList.includes("--no-default-excludes"), argumentsList.join(" "));
+    assert.ok(argumentsList.includes("--trusted-generated-output"), argumentsList.join(" "));
+  }
 });

@@ -109,7 +109,7 @@ internal sealed class PackerContractTests
         int exitCode = await PackerApplication.CreateApp(console, (presentation, cancellationToken) =>
         {
             interactive = new Runic.CommandLine.CommandPrompts(presentation.Context).IsInteractive;
-            return PackerApplication.PresentAsync(presentation, cancellationToken);
+            return Runic.Assets.Packer.AssetPackCommand.PresentAsync(presentation, cancellationToken);
         }).RunAsync([Path.Combine(directory.Path, "missing"), Path.Combine(directory.Path, "out.runic-assets")]).ConfigureAwait(false);
         Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
         True(console.Error.Contains("RAS1001", StringComparison.Ordinal), console.Error);

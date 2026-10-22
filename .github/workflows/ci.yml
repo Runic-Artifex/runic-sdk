@@ -679,13 +679,14 @@ jobs:
           --treenode-filter "/*/*/PathWatcherTests/*" --timeout 3m --output detailed
       # The managed job runs these cases on Linux. The development-directory source pins its root with a no-follow
       # handle on macOS (openat, F_GETPATH) but checks paths for reparse points on Windows, and its watcher uses
-      # FSEvents and ReadDirectoryChangesW there.
-      - name: Test development asset sources on Windows and macOS
+      # FSEvents and ReadDirectoryChangesW there. The trusted archive writer rejects reparse points on Windows and
+      # must write the same bytes on every OS; the packer's RAS1005 warning must reach MSBuild there too.
+      - name: Test development asset sources and archive writers on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 10
         run: >-
           dotnet run --project tests/dotnet/Runic.Assets.Tests -c Release --
-          --treenode-filter "/*/*/DevelopmentDirectoryTests/*" --timeout 3m --output detailed
+          --treenode-filter "/*/*/(DevelopmentDirectoryTests)|(ArchiveDirectoryTests)/*" --timeout 3m --output detailed
       # The managed job runs these cases on Linux; renames, attributes and path rules differ on Windows and macOS.
       - name: Test file transfers on Windows and macOS
         if: runner.os != 'Linux'

@@ -59,9 +59,15 @@ internal static partial class Program
         }.RunAsync(arguments).ConfigureAwait(false);
     }
 
-    /// <summary>The tool's commands, with <c>--format</c> selecting the output and <c>--output</c> as its hidden alias.</summary>
+    /// <summary>
+    /// The tool's commands, with <c>--format</c> selecting the output and <c>--output</c> as its hidden alias.
+    /// <c>assets pack</c> is the packer's command (<see cref="Runic.Assets.Packer.AssetPackCommand"/>) with its human output.
+    /// </summary>
     internal static CommandCatalog CreateCatalog() =>
-        GeneratedCommandCatalog.Create(builder => builder.OutputSelector(FormatOptionName, FormerFormatOptionName));
+        GeneratedCommandCatalog.Create(builder => builder
+            .OutputSelector(FormatOptionName, FormerFormatOptionName)
+            .PresentOutcome<Runic.Assets.Packer.PackerResult>(
+                Runic.Assets.Packer.AssetPackCommand.CommandPath, Runic.Assets.Packer.AssetPackCommand.PresentAsync));
 
     internal static void ReportUnexpectedFailure(Exception exception) =>
         Console.Error.WriteLine($"dotnet runic failed unexpectedly: {exception}");
