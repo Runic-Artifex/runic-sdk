@@ -89,13 +89,13 @@
       "runic.assets.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.9.1, )"
+          "Runic.Assets": "[0.10.0, )"
         }
       },
       "runic.assets.packer": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.9.1, )",
+          "Runic.Assets": "[0.10.0, )",
           "Runic.CommandLine": "[0.8.0, )",
           "Runic.CommandLine.Spectre": "[0.8.0, )"
         }

@@ -25,7 +25,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.9.1, )"
+          "Runic.Navigation": "[0.10.0, )"
         }
       },
       "runic.assets": {
@@ -34,15 +34,15 @@
       "runic.assets.desktop": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.9.1, )",
-          "Runic.Desktop": "[0.9.1, )"
+          "Runic.Assets": "[0.10.0, )",
+          "Runic.Desktop": "[0.10.0, )"
         }
       },
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.9.1, )"
+          "Runic.Platform": "[0.10.0, )"
         }
       },
       "runic.navigation": {
@@ -58,48 +58,48 @@
       "runic.platform.linux": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Linux.Portal": "[0.9.1, )",
-          "Runic.Platform.Runtime": "[0.9.1, )"
+          "Runic.Platform.Linux.Portal": "[0.10.0, )",
+          "Runic.Platform.Runtime": "[0.10.0, )"
         }
       },
       "runic.platform.linux.dbus": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Platform": "[0.9.1, )",
+          "Runic.Platform": "[0.10.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.linux.gtk4": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.9.1, )"
+          "Runic.Platform.Runtime": "[0.10.0, )"
         }
       },
       "runic.platform.linux.portal": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Linux.DBus": "[0.9.1, )",
-          "Runic.Platform.Runtime": "[0.9.1, )",
+          "Runic.Platform.Linux.DBus": "[0.10.0, )",
+          "Runic.Platform.Runtime": "[0.10.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.macos": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.9.1, )"
+          "Runic.Platform.Runtime": "[0.10.0, )"
         }
       },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.9.1, )"
+          "Runic.Platform": "[0.10.0, )"
         }
       },
       "runic.platform.windows": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.9.1, )"
+          "Runic.Platform.Runtime": "[0.10.0, )"
         }
       },
       "Microsoft.Extensions.Logging.Abstractions": {
@@ -148,7 +148,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.9.1, )"
+          "Runic.Navigation": "[0.10.0, )"
         }
       },
       "runic.assets": {
@@ -157,15 +157,15 @@
       "runic.assets.desktop": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.9.1, )",
-          "Runic.Desktop": "[0.9.1, )"
+          "Runic.Assets": "[0.10.0, )",
+          "Runic.Desktop": "[0.10.0, )"
         }
       },
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.9.1, )"
+          "Runic.Platform": "[0.10.0, )"
         }
       },
       "runic.navigation": {
@@ -181,13 +181,13 @@
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.9.1, )"
+          "Runic.Platform": "[0.10.0, )"
         }
       },
       "runic.platform.windows": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.9.1, )"
+          "Runic.Platform.Runtime": "[0.10.0, )"
         }
       },
       "Microsoft.Extensions.Logging.Abstractions": {

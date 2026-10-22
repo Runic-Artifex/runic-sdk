@@ -84,21 +84,21 @@
       "runic.assets.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.9.1, )"
+          "Runic.Assets": "[0.10.0, )"
         }
       },
       "runic.assets.desktop": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.9.1, )",
-          "Runic.Desktop": "[0.9.1, )"
+          "Runic.Assets": "[0.10.0, )",
+          "Runic.Desktop": "[0.10.0, )"
         }
       },
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.9.1, )"
+          "Runic.Platform": "[0.10.0, )"
         }
       },
       "runic.platform": {
