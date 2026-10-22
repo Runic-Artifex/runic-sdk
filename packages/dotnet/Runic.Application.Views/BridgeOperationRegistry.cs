@@ -99,12 +99,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
     internal BridgeOperationAdmission AcceptUnlessRefused(
         BridgeOperationRequest request,
         Func<string?> refusal,
-        Func<CancellationToken, Task<BridgeOperationResult>> work)
+        Func<CancellationToken, Task<BridgeOperationResult>> work,
+        BridgeOperationRetirement? retirement = null)
     {
         ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(work);
         return AcceptCore(request.Identity.RegistryKey, request, refusal, stream: null,
-            (_, cancellationToken) => work(cancellationToken));
+            (_, cancellationToken) => work(cancellationToken), retirement);
     }
 
     // A stream belongs to the admitted entry before work starts. Reads can
@@ -125,12 +126,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
         BridgeOperationRequest request,
         Func<string?> refusal,
         BridgeOperationStream stream,
-        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
+        BridgeOperationRetirement? retirement = null)
     {
         ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(work);
-        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work);
+        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work, retirement);
     }
 
     private static Func<string?> Unavailable(Func<bool> canStart) => () => canStart() ? null : "unavailable";
@@ -140,7 +142,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         BridgeOperationRequest? request,
         Func<string?>? refusal,
         BridgeOperationStream? stream,
-        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
+        BridgeOperationRetirement? retirement = null)
     {
 
         Entry accepted;
@@ -180,7 +183,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "stream-capacity");
 
             accepted = new Entry(requestId, request, stream,
-                stream?.MaximumBytes ?? 0, _ownerShutdown.Token);
+                stream?.MaximumBytes ?? 0, _ownerShutdown.Token) { Retirement = retirement };
             _reservedRunningStreamBytes += accepted.ReservedRunningStreamBytes;
             _operations.Add(requestId, accepted);
         }
@@ -399,6 +402,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
             entry.DomainFailure = domainFailure;
             entry.FailureDelivery = failureDelivery;
             entry.Result = result;
+            // A terminal record keeps no model reference.
+            entry.Retirement = null;
             var snapshot = entry.Snapshot();
             entry.Terminal.TrySetResult(snapshot);
             _terminals.Enqueue(entry);
@@ -408,6 +413,36 @@ internal sealed class BridgeOperationRegistry : IDisposable
         // linked source. Retained status records keep only their immutable
         // terminal snapshot, not an undisposed CancellationTokenSource.
         entry.DisposeCancellation();
+    }
+
+    // The navigation entry whose content is owner retires (RunicOperationRetirement): requests cancellation of the
+    // running operations declared Cancel that owner or a model presented under it started, and returns a task that
+    // completes when those and the ones declared Drain have ended. Keep operations are not affected. The task never
+    // faults. Logs event 1017 per operation.
+    internal Task Retire(object owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        List<(Entry Entry, BridgeOperationRetirement Retirement)> retiring = [];
+        lock (_gate)
+        {
+            foreach (var entry in _operations.Values)
+                if (entry.Status is BridgeOperationStatusKind.Running && entry.Retirement is { } retirement && retirement.IsOwnedBy(owner))
+                    retiring.Add((entry, retirement));
+        }
+        if (retiring.Count == 0) return Task.CompletedTask;
+        foreach (var (entry, retirement) in retiring)
+        {
+            ViewsLog.OperationRetired(_logger, entry.Request?.Member ?? "(unnamed)", retirement.Policy, retirement.Route);
+            if (retirement.Policy is not RunicOperationRetirement.Cancel) continue;
+            try { entry.Cancellation.Cancel(); }
+            // The operation ended and released its source after the selection above.
+            catch (ObjectDisposedException) { }
+            catch (Exception error)
+            {
+                ViewsLog.OperationCancellationCallbackFailed(_logger, error, BridgeTelemetry.ErrorType(error));
+            }
+        }
+        return Task.WhenAll(retiring.Select(item => (Task)item.Entry.Terminal.Task));
     }
 
     // Terminal history is bounded. During admission, terminal entries may be
@@ -611,6 +646,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public int RetainedResultBytes { get; set; }
         public int RetainedStreamBytes { get; set; }
         public int ReservedRunningStreamBytes { get; }
+        // The retirement policy and owners of a running operation declared Cancel or Drain; null otherwise.
+        public BridgeOperationRetirement? Retirement { get; set; }
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
         public bool MatchesMember(string? member) => BridgeOperationRegistry.MatchesMember(Request, member);
@@ -629,6 +666,19 @@ internal sealed class BridgeOperationRegistry : IDisposable
 
     private static bool MatchesMember(BridgeOperationRequest? request, string? member) =>
         member is null || request is { } value && value.Member == member;
+}
+
+// An operation's RunicOperationRetirement with the model that started it (Owner), the models that presented that
+// model when it started (Presenters, transitively) and its Bridge route, for event 1017.
+internal sealed class BridgeOperationRetirement(RunicOperationRetirement policy, object owner, IReadOnlyCollection<object> presenters, string route)
+{
+    public RunicOperationRetirement Policy { get; } = policy;
+    public object Owner { get; } = owner;
+    public IReadOnlyCollection<object> Presenters { get; } = presenters;
+    public string Route { get; } = route;
+
+    public bool IsOwnedBy(object model) =>
+        ReferenceEquals(Owner, model) || Presenters.Any(presenter => ReferenceEquals(presenter, model));
 }
 
 internal enum BridgeOperationAdmissionKind { Accepted, Duplicate, Expired, Rejected }

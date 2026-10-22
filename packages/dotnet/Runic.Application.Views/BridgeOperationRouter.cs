@@ -77,9 +77,10 @@ internal sealed class BridgeOperationRouter : IDisposable
     internal BridgeOperationAdmissionReply AcceptUnlessRefused(
         BridgeOperationRequest request,
         Func<string?> refusal,
-        Func<CancellationToken, Task<BridgeOperationResult>> work)
+        Func<CancellationToken, Task<BridgeOperationResult>> work,
+        BridgeOperationRetirement? retirement = null)
     {
-        var admission = _operations.AcceptUnlessRefused(request, refusal, work);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, work, retirement);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
@@ -87,9 +88,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         BridgeOperationRequest request,
         Func<string?> refusal,
         BridgeOperationStream stream,
-        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work)
+        Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
+        BridgeOperationRetirement? retirement = null)
     {
-        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work, retirement);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
@@ -140,6 +142,9 @@ internal sealed class BridgeOperationRouter : IDisposable
         var lookup = _operations.ReadStream(identity.RegistryKey, cursor, member);
         return new(identity, lookup.Status, lookup.Stream);
     }
+
+    // The running operations that retiring owner's entry ends (RunicOperationRetirement).
+    internal Task Retire(object owner) => _operations.Retire(owner);
 
     internal ValueTask<BridgeOperationCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
         _operations.BeginCloseAsync(timeout, cancellationToken);

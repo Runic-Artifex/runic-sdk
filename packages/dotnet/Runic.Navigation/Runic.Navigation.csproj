@@ -15,6 +15,9 @@
     <InternalsVisibleTo Include="Runic.Navigation.Tests" />
     <!-- The ReactiveUI adapters' main-thread scheduler follows a model turn's async flow (RunicModelContext.Flowing,
          #473). They reference this package through Runic.Application.Views, with the exact version of the release. -->
+    <!-- A window session whose root ViewModel is a navigator's content, such as a WPF child view's, finds that
+         navigator (RunicNavigator.OwnerOf) to apply RunicOperationRetirement (D036.2). -->
+    <InternalsVisibleTo Include="Runic.Application.Views" />
     <InternalsVisibleTo Include="Runic.Application.Views.ReactiveUI" />
     <InternalsVisibleTo Include="Runic.Application.Views.ReactiveUI.Reactive" />
     <None Include="README.md" Pack="true" PackagePath="/" />

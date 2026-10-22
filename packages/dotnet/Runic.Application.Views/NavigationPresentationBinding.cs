@@ -95,6 +95,10 @@ internal static class NavigationPresentationBinding
 
         public void Forget(object content) => Session.Forget(content);
 
+        // Waits for the content's operations declared RunicOperationRetirement.Cancel or Drain, so the navigator
+        // disposes the content after them.
+        public ValueTask ForgetAsync(object content) => new(Session.ForgetAsync(content));
+
         // Drops the attachment too, since it references the navigator.
         public void Detach() => Interlocked.Exchange(ref _attachment, null)?.Dispose();
 

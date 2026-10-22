@@ -213,6 +213,12 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     /// model turn; availability and execution run in a new turn. <see langword="null"/> unless the resolver is asynchronous.
     /// </summary>
     public Func<T, object?, CancellationToken, ValueTask<object?>>? ResolveArgumentAsync { get; init; }
+
+    /// <summary>
+    /// What happens to the command's running operations when the navigation entry whose content started them retires,
+    /// from <see cref="RunicOperationRetirementAttribute"/>. <see cref="RunicOperationRetirement.Keep"/> by default.
+    /// </summary>
+    public RunicOperationRetirement Retirement { get; init; }
 }
 
 // Detail is present only when the window allows local failure detail.
@@ -1028,19 +1034,23 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             argument = value;
             return reason;
         };
+        // RunicOperationRetirement: the operation's owner is this Bridge's model, and the models that present it,
+        // read when it starts; retiring one of them cancels or waits for it.
+        var retirement = descriptor.Retirement is RunicOperationRetirement.Keep ? null
+            : new BridgeOperationRetirement(descriptor.Retirement, _vm, content.PresentingOwners(_vm), _name);
         return descriptor.ExecuteStreamAsync is { } executeStream
             ? content.Operations.AcceptUnlessRefused(request, refusal, descriptor.CreateStream!(),
                 (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                     return executeStream(_vm, execution, cancellation, argument);
-                }))
+                }), retirement)
             : content.Operations.AcceptUnlessRefused(request, refusal,
                 cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                     return InvokeCommandAsync(descriptor, argument, cancellation);
-                }));
+                }), retirement);
     }
 
     private string OperationStartFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, Exception error)

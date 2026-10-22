@@ -35,3 +35,12 @@ Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgument.get -> Sy
 Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgument.init -> void
 Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgumentAsync.get -> System.Func<T, object?, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<object?>>?
 Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgumentAsync.init -> void
+Runic.Application.Views.Generated.CommandDescriptor<T>.Retirement.get -> Runic.Application.Views.RunicOperationRetirement
+Runic.Application.Views.Generated.CommandDescriptor<T>.Retirement.init -> void
+Runic.Application.Views.RunicOperationRetirement
+Runic.Application.Views.RunicOperationRetirement.Cancel = 1 -> Runic.Application.Views.RunicOperationRetirement
+Runic.Application.Views.RunicOperationRetirement.Drain = 2 -> Runic.Application.Views.RunicOperationRetirement
+Runic.Application.Views.RunicOperationRetirement.Keep = 0 -> Runic.Application.Views.RunicOperationRetirement
+Runic.Application.Views.RunicOperationRetirementAttribute
+Runic.Application.Views.RunicOperationRetirementAttribute.RunicOperationRetirementAttribute(Runic.Application.Views.RunicOperationRetirement retirement) -> void
+Runic.Application.Views.RunicOperationRetirementAttribute.Retirement.get -> Runic.Application.Views.RunicOperationRetirement

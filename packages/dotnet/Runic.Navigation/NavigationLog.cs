@@ -85,4 +85,8 @@ internal static partial class NavigationLog
         Message = "The arrival hook of {EntryType} in navigation region {Region} ({RegionId}) failed during {Operation} with {ErrorType}; the commit stands.")]
     internal static partial void NavigationArrivalFailed(ILogger logger, Exception? exception, string region, int regionId,
         string operation, string entryType, string errorType);
+
+    [LoggerMessage(EventId = 1077, EventName = "NavigationContentReleaseOverdue", Level = LogLevel.Warning,
+        Message = "Disposing the navigator stopped waiting after the close timeout for work that a presentation keeps for retired {EntryType} of navigation region {Region} ({RegionId}); the content is disposed when that work ends.")]
+    internal static partial void NavigationContentReleaseOverdue(ILogger logger, Exception? exception, string region, int regionId, string entryType);
 }

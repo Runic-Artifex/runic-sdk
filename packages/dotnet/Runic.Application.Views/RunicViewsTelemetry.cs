@@ -283,6 +283,10 @@ internal static partial class ViewsLog
         Message = "Path watcher: {Problem}")]
     internal static partial void PathWatchPolling(ILogger logger, RunicPathWatchError problem);
 
+    [LoggerMessage(EventId = 1017, EventName = "BridgeOperationRetired", Level = LogLevel.Debug,
+        Message = "The navigation entry that started Bridge operation {Member} on route {Route} retired; its retirement policy is {Policy}.")]
+    internal static partial void OperationRetired(ILogger logger, string member, RunicOperationRetirement policy, string route);
+
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
     internal static partial void MountFailed(ILogger logger, Exception? exception, string route, string errorType);

@@ -69,6 +69,7 @@ and severities are open.
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
 | [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
 | [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
+| [`RUNICBRIDGE028`](#runicbridge028) | Warning | Generator | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
 
 ### RUNICBRIDGE001
@@ -471,6 +472,26 @@ only. A plain `ICommand` takes `[RunicCommandKey]` instead of
 `[RunicCommandInput]`. A key type that is not a Bridge value is
 `RUNICBRIDGE003` at `{Model}.{Command}.key`. See
 [Commands whose parameter has no wire form](../packages/dotnet/Runic.Application.Views/README.md#commands-whose-parameter-has-no-wire-form).
+
+### RUNICBRIDGE028
+
+A warning from the Bridge generator (since 0.11). A `[RunicOperationRetirement]`
+declaration has no effect:
+
+- it is on a ViewModel member that is not a Bridge command that starts an
+  operation: a state property, a ReactiveUI interaction, or a synchronous
+  command (a non-async CommunityToolkit command, a plain `ICommand`), which
+  never runs as an operation;
+- it is on a ViewModel class that has no asynchronous Bridge command;
+- its value is not a `RunicOperationRetirement` member; the declaration is
+  ignored.
+
+The generated Bridge is the same as without the declaration.
+
+**Fix:** put it on an asynchronous command property (for a CommunityToolkit
+`[RelayCommand]` method, `[property: RunicOperationRetirement(...)]`), or on
+the class whose operations it should cover, or remove it. See
+[Operations and navigation entries](../packages/dotnet/Runic.Application.Views/README.md#operations-and-navigation-entries).
 
 ### RUNICBRIDGE029
 

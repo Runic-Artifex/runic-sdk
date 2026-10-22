@@ -25,8 +25,12 @@ internal static class BridgeAttributeNames
 {
     private static readonly ConditionalWeakTable<Module, ModuleMetadata> Modules = new();
 
-    /// <summary>One attribute: its type full name and its named arguments, decoded on demand.</summary>
-    internal sealed record Entry(string Name, Func<IReadOnlyDictionary<string, object?>> NamedArguments);
+    /// <summary>
+    /// One attribute: its type full name, its named arguments and its constructor arguments, decoded on demand. An enum
+    /// argument is its underlying Int32 value.
+    /// </summary>
+    internal sealed record Entry(string Name, Func<IReadOnlyDictionary<string, object?>> NamedArguments,
+        Func<IReadOnlyList<object?>>? FixedArguments = null);
 
     internal static bool Has(Assembly assembly, string fullName) => Of(assembly).Any(entry => entry.Name == fullName);
 
@@ -47,7 +51,8 @@ internal static class BridgeAttributeNames
         try
         {
             return [.. attributes().Select(attribute => new Entry(attribute.AttributeType.FullName ?? "",
-                () => attribute.NamedArguments.ToDictionary(argument => argument.MemberName, argument => argument.TypedValue.Value, StringComparer.Ordinal)))];
+                () => attribute.NamedArguments.ToDictionary(argument => argument.MemberName, argument => argument.TypedValue.Value, StringComparer.Ordinal),
+                () => [.. attribute.ConstructorArguments.Select(argument => argument.Value)]))];
         }
         // An attribute type that cannot be resolved; without a module file
         // there is nothing else to read, so the failure stands.
@@ -75,7 +80,8 @@ internal static class BridgeAttributeNames
             entries.Add(new Entry(name, () => attribute.DecodeValue(ArgumentTypes.Instance).NamedArguments
                 .Where(argument => argument.Name is not null)
                 .GroupBy(argument => argument.Name!, StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal)));
+                .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.Ordinal),
+                () => [.. attribute.DecodeValue(ArgumentTypes.Instance).FixedArguments.Select(argument => argument.Value)]));
         }
         return entries;
     }

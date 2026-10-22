@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Navigation.INavigationPresentation.ForgetAsync(object! content) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.NavigationRequestOptions.Requester.get -> Runic.Navigation.NavigationEntryId?
+Runic.Navigation.NavigationRequestOptions.Requester.init -> void

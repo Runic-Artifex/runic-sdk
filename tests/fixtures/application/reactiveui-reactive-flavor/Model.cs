@@ -129,4 +129,55 @@ namespace ReactiveUiReactiveFlavorProof
     public sealed partial class FlavorValidationWindow : RunicWindow<FlavorValidationModel>
     {
     }
+
+    // #284 in the System.Reactive flavor: retiring the page's navigation entry cancels its operation, and the
+    // navigator disposes the page only after the operation ended.
+    public sealed class FlavorRetireShellModel : ReactiveObject
+    {
+        public FlavorRetireShellModel(Runic.Navigation.RunicNavigator navigator) =>
+            Main = navigator.CreateRegion<FlavorRetirePageModel>(this);
+
+        public Runic.Navigation.NavigationRegion<FlavorRetirePageModel> Main { get; }
+    }
+
+    public sealed partial class FlavorRetireShellWindow : RunicWindow<FlavorRetireShellModel>
+    {
+    }
+
+    public sealed class FlavorRetirePageModel : ReactiveObject, IDisposable
+    {
+        private int _ended;
+
+        public FlavorRetirePageModel(IScheduler commandScheduler)
+        {
+            UploadCommand = ReactiveCommand.CreateFromTask(async token =>
+            {
+                Started.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, token); }
+                finally { Volatile.Write(ref _ended, 1); }
+            }, outputScheduler: commandScheduler);
+            // The cancellation also reaches ThrownExceptions, possibly after the page's Bridge stopped observing it;
+            // without a subscriber ReactiveUI's default handler would end the process.
+            _thrown = UploadCommand.ThrownExceptions.Subscribe(_ => { });
+        }
+
+        private readonly IDisposable _thrown;
+
+        [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+        public ReactiveCommand<Unit, Unit> UploadCommand { get; }
+
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal int Disposed { get; private set; }
+        internal bool EndedBeforeDispose { get; private set; }
+
+        public void Dispose()
+        {
+            EndedBeforeDispose = Volatile.Read(ref _ended) == 1;
+            Disposed++;
+        }
+    }
+
+    public sealed partial class FlavorRetirePageView : ReactiveRunicView<FlavorRetirePageModel>
+    {
+    }
 }

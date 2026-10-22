@@ -90,10 +90,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     internal static readonly TimeSpan OverrunWarningDelay = TimeSpan.FromSeconds(5);
 
-    // Every instance any navigator has ever owned, live or retired.
-    private static readonly ConditionalWeakTable<object, object> EverOwned = new();
+    // Every instance any navigator has ever owned, live or retired, with that navigator, held weakly.
+    private static readonly ConditionalWeakTable<object, WeakReference<RunicNavigator>> EverOwned = new();
     private static readonly object EverOwnedGate = new();
-    private static readonly object OwnedMarker = new();
 
     // The initial-target creations in progress on this thread (CreateRegion's cycle guard).
     [ThreadStatic] private static List<(Type Owner, Type Target)>? s_initialCreations;
@@ -116,6 +115,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private readonly HashSet<NavigationEntryCore> _tracked = [];
     private readonly HashSet<NavigationTransition> _running = [];
     private readonly HashSet<Task> _retirements = [];
+    // Retired entries whose content, scope and lease wait for work their presentations keep (ForgetAsync).
+    private readonly Dictionary<Task, NavigationEntryCore> _deferredReleases = [];
     // PushForResult requests that have not completed or been dismissed.
     private readonly HashSet<NavigationResultRequestCore> _resultRequests = [];
     private long _nextEntryId;
@@ -662,6 +663,12 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// An initialize hook never starts on content that retirement already claimed. The worst case of a disposal is about twice
     /// <see cref="RunicNavigatorOptions.CloseTimeout"/> (transition wait plus clearing turns), plus content disposal.
     /// <para>
+    /// Retired content whose presentation keeps work for it (<see cref="INavigationPresentation.ForgetAsync"/>), such as a
+    /// Runic Views operation declared with <c>RunicOperationRetirement.Drain</c>, is disposed when that work ends. Disposal
+    /// waits for it up to one more <see cref="RunicNavigatorOptions.CloseTimeout"/>, then logs a warning (1077) per entry
+    /// and completes; the content, its entry scope and its lease are still released once the work ends.
+    /// </para>
+    /// <para>
     /// With a model context that implements <see cref="IRunicModelHookScheduler"/>, owned content is disposed as scheduled
     /// operations on the model's thread. Those that haven't started by the clearing turns' deadline run on the thread pool
     /// instead, so disposal still completes when the model's thread is blocked. Never block the model's thread on this task
@@ -717,6 +724,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             foreach (var entry in remaining.OrderBy(entry => entry.Id.Value))
                 await this.AfterUserCode(RetireAsync(entry, null));
             lock (Gate) _presentations.Clear();
+            await this.AfterUserCode(WaitForDeferredReleasesAsync());
         }
         catch (Exception error)
         {
@@ -728,6 +736,25 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             _contextClosedRegistration.Unregister();
             disposal.TrySetResult();
         }
+    }
+
+    // Waits up to the close timeout for releases that wait for their presentations' work, then logs each one still
+    // waiting (event 1077) and leaves it to finish on its own.
+    private async Task WaitForDeferredReleasesAsync()
+    {
+        Task[] deferred;
+        lock (Gate) deferred = [.. _deferredReleases.Keys];
+        if (deferred.Length == 0) return;
+        try
+        {
+            await this.AfterUserCode(Task.WhenAll(deferred).WaitAsync(_closeTimeout, _time));
+            return;
+        }
+        catch (TimeoutException) { }
+        NavigationEntryCore[] overdue;
+        lock (Gate) overdue = [.. _deferredReleases.Values];
+        foreach (var entry in overdue.OrderBy(entry => entry.Id.Value))
+            NavigationLog.NavigationContentReleaseOverdue(Logger, null, entry.Region.ContentTypeName, entry.Region.Id, entry.ContentTypeName);
     }
 
     // Refuses new requests, dismisses open PushForResult requests (so guards awaiting a result
@@ -792,14 +819,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     {
         var request = new NavigationResultRequestCore<TResult>(region, cancellationToken);
         var outcome = Start(region, NavigationOperation.Push, target, null, options?.ExpectedCurrent, cancellationToken,
-            @return: null, request);
+            @return: null, request, requester: options?.Requester);
         return new(NavigationResults.MapTask<TContent>(outcome), request.Completion);
     }
 
     internal Task<TransitionOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
         CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
-        bool runDetached = false, NavigationAdmission? admission = null)
+        bool runDetached = false, NavigationAdmission? admission = null, NavigationEntryId? requester = null)
     {
         TransitionOutcome? rejected = null;
         NavigationTransition? transition = null;
@@ -822,6 +849,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 rejected = TransitionOutcome.Reject(NavigationRejection.Reentrant);
             else if (expected is { } expectedId && region.CurrentEntry?.Id != expectedId)
                 rejected = TransitionOutcome.Reject(NavigationRejection.NotCurrent);
+            else if (requester is { } requesterId && !IsRequesterCurrentLocked(requesterId))
+                rejected = TransitionOutcome.Reject(NavigationRejection.NotCurrent, requesterId);
             else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
                 rejected = TransitionOutcome.Reject(NavigationRejection.NoHistory);
             else if (operation == NavigationOperation.Back && @return is null
@@ -884,7 +913,12 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], settlement, joinable, cancellationToken) { Return = @return, AdmittedPlan = joinable ? plan : null };
+                    [.. waitFor], settlement, joinable, cancellationToken)
+                {
+                    Return = @return,
+                    AdmittedPlan = joinable ? plan : null,
+                    Requester = requester,
+                };
                 if (joinable) backCaller = transition.AddBackCallerLocked(cancellationToken);
                 if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
@@ -1520,6 +1554,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 stopped = TransitionOutcome.Superseded;
             else if (transition.Expected is { } expected && region.CurrentEntry?.Id != expected)
                 stopped = TransitionOutcome.Reject(NavigationRejection.NotCurrent);
+            else if (transition.Requester is { } requester && !IsRequesterCurrentLocked(requester))
+                stopped = TransitionOutcome.Reject(NavigationRejection.NotCurrent, requester);
             else if (plan.Resume is { } resume && Array.IndexOf(region.Stack, resume) < 0)
                 stopped = TransitionOutcome.Reject(NavigationRejection.EntryNotFound);
             else
@@ -1825,6 +1861,39 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         return found;
     }
 
+    // NavigationRequestOptions.Requester: whether the entry is its region's current entry, and so is an entry holding the
+    // content that owns that region, up to a region whose owner no entry of this navigator holds. An entry that finished
+    // retiring is no longer tracked, so it is not current. Call under the gate.
+    private bool IsRequesterCurrentLocked(NavigationEntryId requester)
+    {
+        NavigationEntryCore? entry = null;
+        foreach (var tracked in _tracked)
+        {
+            if (tracked.Id != requester) continue;
+            entry = tracked;
+            break;
+        }
+        // Each step moves to an entry of an ancestor region; the bound only guards against a malformed graph.
+        for (var depth = 0; entry is not null && depth <= _tracked.Count; depth++)
+        {
+            var region = entry.Region;
+            if (region.Closed || !ReferenceEquals(region.CurrentEntry, entry) || entry.Retiring is not null) return false;
+            NavigationEntryCore? owner = null;
+            var owned = false;
+            foreach (var tracked in _tracked)
+            {
+                if (!ReferenceEquals(tracked.Content, region.Owner)) continue;
+                owned = true;
+                if (!ReferenceEquals(tracked.Region.CurrentEntry, tracked)) continue;
+                owner = tracked;
+                break;
+            }
+            if (!owned) return true;
+            entry = owner;
+        }
+        return false;
+    }
+
     private NavigationPlan ComputePlanLocked(NavigationRegionCore region, NavigationOperation operation,
         NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected, bool popToEmpty = false)
     {
@@ -2128,6 +2197,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (entry.ResultRequest is { } request) FinishResult(request, NavigationResultDismissal.Retired);
 
             var content = entry.Content;
+            var disposeContent = false;
+            Task? presentationWork = null;
             // Another entry still holding shared content keeps it: its child regions, presentations and disposal.
             if (entry.Holds && content is not null && lastHolder)
             {
@@ -2171,18 +2242,16 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     }
                 }
 
-                // 3. Detach every presentation of the content.
-                ForgetPresentations(entry);
-
-                // 4. Dispose the content outside turns: on the thread pool, or as its own
-                // scheduled operation on the model's thread while the context accepts them (A9).
-                try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
-                catch (Exception error) { LogCleanup(entry, "Dispose", error); }
+                // 3. Detach every presentation of the content. A presentation can keep work for it
+                // (ForgetAsync): steps 4 to 5 then wait for that work, without holding up the retirement.
+                presentationWork = ForgetPresentations(entry);
+                disposeContent = true;
             }
 
-            // 4b. Dispose the entry's service scope, after its content (W240-001 §5.1). A pending
-            // entry whose factory failed has none: preparation disposed it. The scope of created content that another
-            // entry still holds lives on with the content, and the last holder disposes it.
+            // The entry's service scopes (step 4b) and its model-context lease (step 5), taken now: the last
+            // holder's record is removed when the retirement finishes, which may be before a deferred release runs.
+            // A pending entry whose factory failed has no scope: preparation disposed it. The scope of created content
+            // that another entry still holds lives on with the content, and the last holder disposes it.
             List<IServiceScope> scopes = [];
             lock (Gate)
             {
@@ -2203,9 +2272,6 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     }
                 }
             }
-            foreach (var scope in scopes) await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
-
-            // 5. Release the model-context lease.
             IRunicModelContextLease? lease;
             lock (Gate)
             {
@@ -2213,10 +2279,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 lease = entry.Lease;
                 entry.Lease = null;
             }
-            if (lease is not null)
+
+            var release = new EntryRelease(entry, disposeContent ? content : null, scopes, lease);
+            if (presentationWork is { IsCompleted: false } keptWork) DeferRelease(release, keptWork);
+            else
             {
-                try { await this.AfterUserCode(lease.DisposeAsync()); }
-                catch (Exception error) { LogCleanup(entry, "Lease", error); }
+                if (presentationWork is not null) ObservePresentationWork(entry, presentationWork);
+                await this.AfterUserCode(ReleaseAsync(release));
             }
         }
         finally
@@ -2236,17 +2305,92 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     // Detaches retiring owned content from every attached presentation, one at a
     // time, so one failure doesn't skip the others. A presentation detached while
-    // this runs still gets the snapshot's call.
-    private void ForgetPresentations(NavigationEntryCore entry)
+    // this runs still gets the snapshot's call. Returns the work the presentations
+    // keep for the content (INavigationPresentation.ForgetAsync), or null.
+    private Task? ForgetPresentations(NavigationEntryCore entry)
     {
-        if (entry.Content is not { } content) return;
+        if (entry.Content is not { } content) return null;
         PresentationAttachment[] attachments;
         lock (Gate) attachments = [.. _presentations];
+        List<Task>? pending = null;
         foreach (var attachment in attachments)
         {
-            try { attachment.Presentation.Forget(content); }
+            try
+            {
+                var work = attachment.Presentation.ForgetAsync(content);
+                if (work.IsCompletedSuccessfully) continue;
+                (pending ??= []).Add(work.AsTask());
+            }
             catch (Exception error) { LogCleanup(entry, "Forget", error); }
         }
+        return pending switch { null => null, [var single] => single, _ => Task.WhenAll(pending) };
+    }
+
+    // What an entry releases after its presentations' work: its content (null when another entry holds it or the
+    // entry holds none), its service scopes and its model-context lease (steps 4 to 5).
+    private sealed record EntryRelease(NavigationEntryCore Entry, object? Content, List<IServiceScope> Scopes,
+        IRunicModelContextLease? Lease);
+
+    private async Task ReleaseAsync(EntryRelease release)
+    {
+        var entry = release.Entry;
+        // 4. Dispose the content outside turns: on the thread pool, or as its own
+        // scheduled operation on the model's thread while the context accepts them (A9).
+        if (release.Content is { } content)
+        {
+            try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
+            catch (Exception error) { LogCleanup(entry, "Dispose", error); }
+        }
+
+        // 4b. Dispose the entry's service scope, after its content (W240-001 §5.1).
+        foreach (var scope in release.Scopes) await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
+
+        // 5. Release the model-context lease.
+        if (release.Lease is { } lease)
+        {
+            try { await this.AfterUserCode(lease.DisposeAsync()); }
+            catch (Exception error) { LogCleanup(entry, "Lease", error); }
+        }
+    }
+
+    // Logs a presentation's failed ForgetAsync task (event 1064, step Forget).
+    private void ObservePresentationWork(NavigationEntryCore entry, Task work)
+    {
+        if (work.Exception is { } error) LogCleanup(entry, "Forget", error.InnerExceptions.Count == 1 ? error.InnerExceptions[0] : error);
+    }
+
+    // Releases the entry once the work its presentations keep for its content has ended, without holding up the
+    // retirement: it is tracked apart from _retirements, so IsBusy and WhenIdleAsync do not wait for it. DisposeAsync
+    // waits for it up to the close timeout (event 1077).
+    private void DeferRelease(EntryRelease release, Task work)
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (Gate) _deferredReleases.Add(done.Task, release.Entry);
+        _ = RunDeferredReleaseAsync(release, work, done);
+    }
+
+    private async Task RunDeferredReleaseAsync(EntryRelease release, Task work, TaskCompletionSource done)
+    {
+        try
+        {
+            try { await this.AfterUserCode(work); }
+            catch { ObservePresentationWork(release.Entry, work); }
+            // Never inline in the thread that ended the work: release outside its stack, as retirement does.
+            await NavigationAwait.Hop();
+            await this.AfterUserCode(ReleaseAsync(release));
+        }
+        catch (Exception error) { LogCleanup(release.Entry, "Dispose", error); }
+        finally
+        {
+            lock (Gate) _deferredReleases.Remove(done.Task);
+            done.TrySetResult();
+        }
+    }
+
+    // The number of entries whose release waits for their presentations' work; for tests.
+    internal int DeferredReleaseCount
+    {
+        get { lock (Gate) return _deferredReleases.Count; }
     }
 
     // Disposes an entry scope outside turns, like content (RunCleanupAsync, A9); a failure is logged
@@ -2568,6 +2712,25 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         lock (EverOwnedGate) return EverOwned.TryGetValue(owner, out _);
     }
 
+    /// <summary>
+    /// Gets the navigator that owns or shares <paramref name="content"/> through one of its entries (an Own, Create or
+    /// Share target) while it is alive, or <see langword="null"/> for content no navigator ever held, such as borrowed
+    /// content. A presentation that shows one page, such as a WPF child view, attaches to that navigator with
+    /// <see cref="AttachPresentation"/>.
+    /// </summary>
+    internal static RunicNavigator? OwnerOf(object content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        lock (EverOwnedGate)
+            return EverOwned.TryGetValue(content, out var owner) && owner.TryGetTarget(out var navigator) ? navigator : null;
+    }
+
+    // Whether this navigator holds content now: an entry that has not finished retiring holds it. Call outside the gate.
+    internal bool Holds(object content)
+    {
+        lock (Gate) return _holders.TryGetValue(content, out var holders) && holders.Holders.Count > 0;
+    }
+
     // The number of held instances with a holder record; for tests.
     internal int HolderRecordCount
     {
@@ -2601,7 +2764,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (EverOwned.TryGetValue(content, out _))
                 throw new InvalidOperationException(
                     $"This {content.GetType().Name} instance was already owned by a navigator and no entry of this navigator holds it. Share a new instance, or content of a live entry of this navigator.");
-            EverOwned.Add(content, OwnedMarker);
+            EverOwned.Add(content, new WeakReference<RunicNavigator>(this));
         }
     }
 
@@ -2625,14 +2788,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         return false;
     }
 
-    private static void Claim(object content)
+    private void Claim(object content)
     {
         lock (EverOwnedGate)
         {
             if (EverOwned.TryGetValue(content, out _))
                 throw new InvalidOperationException(
                     $"This {content.GetType().Name} instance was already owned by a navigator. Own or create a new instance, or borrow container-owned content.");
-            EverOwned.Add(content, OwnedMarker);
+            EverOwned.Add(content, new WeakReference<RunicNavigator>(this));
         }
     }
 
@@ -2860,6 +3023,7 @@ internal sealed class NavigationTransition : IDisposable
     public NavigationEntryCore? Pending { get; }
     public NavigationEntryId? BackTo { get; }
     public NavigationEntryId? Expected { get; }
+    public NavigationEntryId? Requester { get; init; }
     // Read under the navigator's gate, including at commit: token callbacks can be delayed by that gate.
     public bool CancellationRequested => _backCallers is { } callers
         ? callers.All(static caller => caller.Token.IsCancellationRequested)
