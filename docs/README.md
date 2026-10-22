@@ -19,3 +19,6 @@ SDK package reports, other than the experimental API IDs. Diagnostics link to it
 
 [Experimental APIs](experimental.md) lists the experimental diagnostic IDs
 and how to suppress them. The diagnostics link to it at the release's tag.
+
+The [security guide](security.md) is for authors of Runic applications: what Runic
+protects by default, which options relax it, and what an application checks itself.

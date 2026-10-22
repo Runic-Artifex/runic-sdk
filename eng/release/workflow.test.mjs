@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 const workflow = name => Bun.YAML.parse(readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8'));
 const runs = job => job.steps.filter(s => s.run).map(s => s.run).join('\n');
 test('publication reuses the package artifact of the successful CI push run without rerunning CI', () => {
@@ -117,4 +117,15 @@ test('npm latest follows the preview after its GitHub release, never backwards',
   expect(needsLatest('0.6.0-preview.1', '0.6.0-preview.2')).toBe(true);
   expect(needsLatest('0.6.0-preview.1', '0.6.0-preview.1')).toBe(false);
   expect(needsLatest('0.7.0-preview.1', '0.6.0-preview.2')).toBe(false);
+});
+test('every publishing workflow waits in one fixed concurrency group, so publications never overlap', () => {
+  const names = readdirSync(new URL('../../.github/workflows/', import.meta.url)).filter(name => /\.ya?ml$/.test(name));
+  const writes = permissions => ['contents', 'id-token', 'attestations', 'packages'].some(name => permissions?.[name] === 'write');
+  const publishing = names.filter(name => {
+    const file = workflow(name);
+    return writes(file.permissions) || Object.values(file.jobs).some(job => writes(job.permissions) || job.environment);
+  });
+  expect(publishing).toContain('publish-preview.yml');
+  // One group for every version: a per-version group would let two versions publish and move tags at once.
+  for (const name of publishing) expect(workflow(name).concurrency).toEqual({group: 'publish-preview', 'cancel-in-progress': false});
 });

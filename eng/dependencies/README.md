@@ -16,6 +16,25 @@ and a CI contract test rejects unpinned references. Update the SHA and the comme
 together, from the tag's commit. This replaces the earlier first-party major tags
 in the decisions below.
 
+NuGet lock files pin the restored package graph, but not `PackageDownload`
+packages: the previous release's `Runic.*` packages that package validation
+compares with, the WindowsDesktop targeting pack, and the runtime, apphost and
+ILCompiler packs of RID-specific and NativeAOT publishes.
+`package-downloads.json` pins their id, version and content hash (the SHA-512
+that `packages.lock.json` also records). After restoring, the CI build job and
+each native leg run `bun eng/dependencies/package-downloads.mjs check`, which
+compares every `PackageDownload` in the checkout's `project.assets.json` files with
+the `.nupkg.metadata` NuGet wrote for it, and fails for an unlisted package or a
+different hash. When the SDK or the validation baseline moves, restore
+`RunicSdk.Core.slnx` and the packs, then run
+`bun eng/dependencies/package-downloads.mjs write`. For the packs, restore a
+NativeAOT publish for each native RID, or a temporary project in the checkout
+with `PackageDownload` items for them: the Nix SDK bundles the packs of its own
+RID, so a restore there does not download them. It records the restored
+packages and drops other versions of the same ids; review the diff. A version of
+nuget.org cannot be replaced, so a changed hash means the restore came from
+another source or the cache was altered.
+
 `eng/toolchain.mjs` reads the actual maintained SDK, Node, Bun, npm and pnpm pins;
 dependency audits and template lock generation use that reader, not a release receipt.
 

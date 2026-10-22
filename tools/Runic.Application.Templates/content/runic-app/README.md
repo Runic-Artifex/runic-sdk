@@ -253,6 +253,17 @@ way. Give status such as `IsDirty`, `Error` or a collection a private setter
 form fields publicly settable.
 <!--#endif -->
 
+## Security
+
+The page renders the application, but treat what it sends as untrusted input:
+any script that runs in it can call every public setter and command of the
+Window's ViewModels. Check values in C#, keep state that the page only reads
+behind private setters, and let the user choose files and confirm destructive
+steps in native UI instead of taking paths from the page. The
+[security guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/docs/security.md)
+covers embedded windows and browsers, admission, Content-Security-Policy,
+permissions and what to keep out of the frontend build.
+
 ## Identity and icons
 
 The project file declares the application's identity once:

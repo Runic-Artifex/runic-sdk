@@ -14,10 +14,19 @@ investigate, and credit you in the advisory unless you prefer otherwise.
 
 ## Supported versions
 
-Runic SDK is in preview. Fixes ship in the next preview release; earlier
-previews do not receive backported fixes. Upgrade to the
+Until 1.0, security fixes ship as a patch release of the latest minor release
+(for example 0.9.1 after 0.9.0); earlier minors are not patched. Upgrade to the
 [latest release](https://github.com/Runic-Artifex/runic-sdk/releases) before
-reporting.
+reporting. From 1.0, the
+[support policy](eng/release/README.md#fixes-and-support) in the release guide
+applies.
+
+## Building secure applications
+
+The [security guide](docs/security.md) explains what Runic protects by default,
+which options relax it, and what an application must check itself: Bridge input,
+embedded windows and installed browsers, surface admission, framing and
+Content-Security-Policy, permissions, CS-WebUI windows and packed assets.
 
 ## Scope
 
@@ -34,7 +43,11 @@ own repositories:
 Every published NuGet package, npm package and GitHub release asset has a signed
 build-provenance attestation, and each release has a CycloneDX SBOM that is
 attached to the release and attested for its packages. Verify a file with
-`gh attestation verify <file> -R Runic-Artifex/runic-sdk`. Packages downloaded
+`gh attestation verify <file> -R Runic-Artifex/runic-sdk --signer-workflow Runic-Artifex/runic-sdk/.github/workflows/publish-preview.yml`.
+The attestation shows that the publish workflow of this repository, which runs
+only on `main`, published those bytes. It does not build them: it takes the
+packages from a successful CI run of the same commit and checks them by hash
+before attesting them. Packages downloaded
 from NuGet.org carry NuGet.org's repository signature and therefore differ from
 the attested bytes; verify the copy from the release's package bundle instead. See
 [verifying a release](eng/release/README.md#verifying-a-release).

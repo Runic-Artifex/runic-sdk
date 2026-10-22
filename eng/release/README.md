@@ -105,6 +105,10 @@ registry write, tag or release. A failing dry-run check is the failure the real
 run would hit. `eng/release/workflow.test.mjs`, `github.test.mjs`, `sbom.test.mjs`
 and `ci-run.test.mjs` pin this contract.
 
+Publications run one at a time. Every workflow that publishes waits in the one
+`publish-preview` concurrency group, whatever the version, and never cancels a
+publication in progress; `workflow.test.mjs` checks it.
+
 ## Verifying a release
 
 Every package and release asset has a signed build-provenance attestation from
@@ -114,17 +118,28 @@ attestation. Verify with the GitHub CLI (`gh auth login` first):
 ```sh
 version=0.7.0-preview.1
 gh release download "v$version" -R Runic-Artifex/runic-sdk
-gh attestation verify "runic-sdk-$version-packages.tar.gz" -R Runic-Artifex/runic-sdk
+gh attestation verify "runic-sdk-$version-packages.tar.gz" -R Runic-Artifex/runic-sdk \
+  --signer-workflow Runic-Artifex/runic-sdk/.github/workflows/publish-preview.yml
 tar -xzf "runic-sdk-$version-packages.tar.gz"
 gh attestation verify "nuget/Runic.Application.$version.nupkg" -R Runic-Artifex/runic-sdk \
   --signer-workflow Runic-Artifex/runic-sdk/.github/workflows/publish-preview.yml
 # The SBOM attestation (CycloneDX); the release asset runic-sdk-<version>.cdx.json is the same document.
 gh attestation verify "nuget/Runic.Application.$version.nupkg" -R Runic-Artifex/runic-sdk \
+  --signer-workflow Runic-Artifex/runic-sdk/.github/workflows/publish-preview.yml \
   --predicate-type https://cyclonedx.org/bom
 # npm serves the published bytes unchanged, so a registry tarball verifies directly.
 npm pack "@runic-artifex/views@$version"
-gh attestation verify "runic-artifex-views-$version.tgz" -R Runic-Artifex/runic-sdk
+gh attestation verify "runic-artifex-views-$version.tgz" -R Runic-Artifex/runic-sdk \
+  --signer-workflow Runic-Artifex/runic-sdk/.github/workflows/publish-preview.yml
 ```
+
+Pass `--signer-workflow` for every file. The provenance names `publish-preview.yml`,
+the workflow that attested and published the bytes, not the job that built them.
+The packages are built by the `build` job of a successful `ci.yml` run for the
+same commit, where the locked build and test dependencies also run. The publish
+workflow accepts only that run's artifact, by id, and checks the files against
+the candidate's hashes and inventory before it attests them (see
+[Workflow jobs and dry run](#workflow-jobs-and-dry-run)).
 
 `sha256sum --check SHA256SUMS` checks the bundle and SBOM. NuGet.org adds its
 repository signature (`.signature.p7s`) to every package it accepts, so a `.nupkg`
