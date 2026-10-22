@@ -41,13 +41,14 @@ The host owns the hosting lifecycle:
 - It opens when it is **loaded** with a `ViewModel` and `Services`, and waits for
   the native child's `Loaded` before starting the presentation.
 - It closes when it is **unloaded** or `ViewModel` becomes `null`. Changing
-  `ViewModel`, `Services`, `ModelContext`, `ContentRoot`, `StartPage` or
-  `SurfaceOptions` closes the session and opens a fresh one.
+  `ViewModel`, `Services`, `ModelContext`, `ContentRoot`, `StartPage`,
+  `SurfaceOptions`, `WebContent` or `Desktop` closes the session and opens a
+  fresh one.
 - Changes run **one at a time**. A newer change cancels an open in progress,
   and changes that queue behind a running one collapse into the latest.
 - Closing releases the Bridge session first, which drains its accepted
-  operations, then the `DesktopHost`, and only then removes and disposes the
-  native child.
+  operations, then its Desktop surface and its own `DesktopHost`, and only then
+  removes and disposes the native child.
 - When the presentation can't open (no WebView2 Runtime, no Bridge registered
   for the model, a missing frontend), the host shows its content, the
   **fallback**, sets `State` to `Failed` and keeps the exception in `Error`.
@@ -72,6 +73,34 @@ dispatcher context when navigation and the web View present the same model.
 presentation's `DesktopSurface`, and `WaitForPresentationAsync()` returns when
 no change is pending. The host borrows the model, services and context: it
 never creates or disposes a ViewModel, a scope or a navigation entry.
+
+`WebContent` sets what the page may do beyond the application's origins, as
+`DesktopWindowOptions.WebContent` does for a Desktop window: external
+navigation, downloads and developer tools. `null`, the default, is
+`DesktopWebContentPolicy.Default`.
+
+### Share one Desktop host between hosts
+
+By default each `RunicViewHost` starts its own `DesktopHost`, with its own
+listener, when it opens, and disposes it when it closes. To serve every host
+from one listener, create a `DesktopHost` in the application, set it as each
+host's `Desktop`, directly or through a `Style`, and dispose it after the hosts
+that use it have unloaded:
+
+```csharp
+_desktop = await DesktopHost.StartAsync(new DesktopHostOptions { LoggerFactory = loggerFactory });
+editorHost.Desktop = _desktop;
+previewHost.Desktop = _desktop;
+
+// On shutdown, after the hosts have unloaded:
+await _desktop.DisposeAsync();
+```
+
+Each host then creates its own surface on the shared `DesktopHost`, presents it
+through its own `RunicWebView`, and releases only that surface when it closes;
+it never disposes the shared host. The shared host's `WindowHostFactory` option
+is not used for these surfaces. A host whose `Desktop` was disposed before it
+opens fails to open: `State` becomes `Failed` and the fallback shows.
 
 ## Lower-level API
 
@@ -140,8 +169,9 @@ native WebView2 controller and native loader, including origin-bound document
 start credentials, permission policy and the web content policy: external links
 open in the default browser, downloads are refused and developer tools are
 available only in Development (see [Links, new windows, downloads and developer tools](../Runic.Desktop/README.md#links-new-windows-downloads-and-developer-tools)).
-`WpfBridgeView` and `RunicViewHost` open with the defaults; a surface you open
-yourself through `RunicWebView.CreateWindowHostFactory()` takes
+`WpfBridgeView` and `RunicViewHost` open with the defaults unless you set their
+`WebContent`, which the next `OpenAsync` (or the host's next open) applies; a
+surface you open yourself through `RunicWebView.CreateWindowHostFactory()` takes
 `DesktopWindowOptions.WebContent`.
 Install Microsoft Edge WebView2 Runtime on the Windows machine. It creates no
 separate WPF window or UI thread.
@@ -197,6 +227,14 @@ modal to it. Until the window has a native handle (it is shown, or
 closes, the services wait for operations in progress, release the file access
 they acquired, and report `OwnerClosed`; they need no disposal. Each call
 creates services with their own lifetime.
+
+`AnnounceAsync(message, priority)` raises a UI Automation notification from the
+window's automation peer, as Runic Desktop's WebView2 window does, which
+Narrator and NVDA speak: `Polite` messages are queued and `Assertive` ones
+replace those not yet spoken. It returns `Success` once the window raised it,
+`OwnerUnavailable` before the window has a handle and `OwnerClosed` after it
+closed. Send each message one way: a live region in a `RunicViewHost`'s page
+reaches the screen reader too.
 
 ## Bring the window forward for a second launch
 

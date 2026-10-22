@@ -529,6 +529,150 @@ internal sealed class NativeChecks
         }
     }
 
+    // A WPF window's services announce through its UI Automation peer once it has a handle, and report why they cannot
+    // before that and after it closed, through IWindowPlatformServices and through the Desktop priority alike.
+    [Test, NotInParallel("WpfSuite", Order = 22)]
+    public async Task ForWindowAnnouncesThroughTheWpfWindow()
+    {
+        var window = new Window { Width = 320, Height = 200, Title = "Runic WPF announcements", ShowActivated = false };
+        var services = WpfPlatformServices.ForWindow(window);
+        Program.Check(await services.AnnounceAsync("Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "A window without a handle did not report the owner unavailable for an announcement.");
+        try
+        {
+            window.Show();
+            var polite = await services.AnnounceAsync("Saved");
+            // From a thread-pool thread: the announcement runs on the window's dispatcher.
+            var assertive = await Task.Run(async () => await services.AnnounceAsync("The disk is full", PlatformAnnouncementPriority.Assertive));
+            var desktop = await ((Runic.Application.Views.Desktop.DesktopWindowPlatformServices)services)
+                .AnnounceAsync("Copied", DesktopAnnouncementPriority.Assertive);
+            Program.Check(polite is PlatformResult<PlatformUnit>.Success && assertive is PlatformResult<PlatformUnit>.Success
+                && desktop is PlatformResult<PlatformUnit>.Success,
+                $"The open WPF window did not announce: {polite}, {assertive}, {desktop}.");
+            try
+            {
+                await services.AnnounceAsync(" ");
+                Program.Check(false, "An empty announcement was accepted.");
+            }
+            catch (ArgumentException) { }
+        }
+        finally { window.Close(); }
+        Program.Check(await services.AnnounceAsync("Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "A closed window did not report the owner closed for an announcement.");
+        Console.WriteLine("WpfPlatformServices.ForWindow announcement checks passed.");
+    }
+
+    // RunicViewHost.WebContent reaches the child WebView2: developer tools follow it, and a change reopens.
+    [Test, NotInParallel("WpfSuite", Order = 23)]
+    public async Task HostAppliesItsWebContent()
+    {
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((_, _) => new Attachment());
+        await using var services = collection.BuildServiceProvider();
+        var expectedDefault = string.Equals(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+        var host = new RunicViewHost
+        {
+            SurfaceOptions = Program.HtmlOptions(),
+            ViewModel = new HostedModel(),
+            WebContent = new DesktopWebContentPolicy { DevTools = !expectedDefault },
+        };
+        var window = new Window { Content = host, Width = 600, Height = 400, Title = "RunicViewHost web content" };
+        RunicViewHost.SetServices(window, services);
+        window.Show();
+        try
+        {
+            Program.Check(await SettledAsync(host) == RunicViewHostState.Open, $"The host did not open: {host.State} {host.Error}");
+            var controller = ((RunicWebView)host.Child).Controller ?? throw new InvalidOperationException("The host's WebView has no controller.");
+            Program.Check(controller.AreDevToolsEnabled == !expectedDefault,
+                $"The host's WebContent did not reach the WebView: developer tools are {controller.AreDevToolsEnabled}.");
+            var first = host.Surface;
+            host.WebContent = null;
+            await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            Program.Check(host.State == RunicViewHostState.Open && !ReferenceEquals(first, host.Surface),
+                "Changing WebContent did not reopen the presentation.");
+            controller = ((RunicWebView)host.Child).Controller ?? throw new InvalidOperationException("The host's WebView has no controller.");
+            Program.Check(controller.AreDevToolsEnabled == expectedDefault,
+                $"A host without WebContent did not apply the default policy: developer tools are {controller.AreDevToolsEnabled}.");
+            Console.WriteLine("RunicViewHost.WebContent checks passed.");
+        }
+        finally { window.Close(); }
+    }
+
+    // D034.7: hosts given one application-owned DesktopHost serve their surfaces from its listener; unloading one
+    // releases only its surface, and a host without one keeps its own. A disposed shared host fails the open.
+    [Test, NotInParallel("WpfSuite", Order = 24)]
+    public async Task HostsShareAnApplicationOwnedDesktopHost()
+    {
+        Dictionary<HostedModel, Attachment> attachments = [];
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((_, model) =>
+        {
+            var attachment = new Attachment();
+            lock (attachments) attachments.Add(model, attachment);
+            return attachment;
+        });
+        await using var services = collection.BuildServiceProvider();
+        var shared = await DesktopHost.StartAsync(new() { ConnectionTimeout = TimeSpan.FromSeconds(20) });
+        HostedModel left = new(), right = new(), own = new();
+        var leftHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = left, Desktop = shared, Height = 120 };
+        var rightHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = right, Desktop = shared, Height = 120 };
+        var ownHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = own, Height = 120 };
+        var panel = new StackPanel();
+        panel.Children.Add(leftHost);
+        panel.Children.Add(rightHost);
+        panel.Children.Add(ownHost);
+        var window = new Window { Content = panel, Width = 600, Height = 450, Title = "Runic WPF shared Desktop host" };
+        RunicViewHost.SetServices(window, services);
+        window.Show();
+        try
+        {
+            Program.Check(await SettledAsync(leftHost) == RunicViewHostState.Open && await SettledAsync(rightHost) == RunicViewHostState.Open
+                && await SettledAsync(ownHost) == RunicViewHostState.Open,
+                $"The hosts did not open: {leftHost.State} {leftHost.Error} / {rightHost.State} {rightHost.Error} / {ownHost.State} {ownHost.Error}");
+            Program.Check(leftHost.Surface!.Url.Port == shared.Port && rightHost.Surface!.Url.Port == shared.Port
+                && !ReferenceEquals(leftHost.Surface, rightHost.Surface),
+                "The hosts given the shared Desktop host did not each create a surface on its listener.");
+            Program.Check(ownHost.Surface!.Url.Port != shared.Port, "A host without a Desktop host did not start its own.");
+            await ConnectedAsync([leftHost.Surface!, rightHost.Surface!, ownHost.Surface!]);
+
+            panel.Children.Remove(leftHost);
+            await UntilAsync(() => !leftHost.IsLoaded);
+            await leftHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            lock (attachments)
+                Program.Check(leftHost.State == RunicViewHostState.Closed && attachments[left].Disposed && !attachments[right].Disposed
+                    && rightHost.State == RunicViewHostState.Open, "Unloading one host on the shared Desktop host released or closed the other.");
+            await ConnectedAsync([rightHost.Surface!]);
+            await using (var surface = await shared.CreateSurfaceAsync(Program.HtmlOptions()))
+                Program.Check(surface.Url.Port == shared.Port, "Unloading a host disposed the shared Desktop host.");
+
+            panel.Children.Remove(rightHost);
+            await UntilAsync(() => !rightHost.IsLoaded);
+            await rightHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await shared.DisposeAsync();
+            var fallback = new TextBlock { Text = "Native editor" };
+            var late = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = new HostedModel(), Desktop = shared, Fallback = fallback, Height = 120 };
+            panel.Children.Add(late);
+            Program.Check(await SettledAsync(late) == RunicViewHostState.Failed && late.Error is ObjectDisposedException,
+                $"A host given a disposed Desktop host did not fail: {late.State} {late.Error}");
+            Console.WriteLine("RunicViewHost shared Desktop host checks passed.");
+        }
+        finally
+        {
+            window.Close();
+            await shared.DisposeAsync();
+        }
+
+        static async Task ConnectedAsync(IEnumerable<DesktopSurface> surfaces)
+        {
+            foreach (var surface in surfaces)
+            {
+                var origin = await surface.ExecuteJavaScriptAsync("return location.origin;", TimeSpan.FromSeconds(20));
+                Program.Check(origin == surface.Url.GetLeftPart(UriPartial.Authority),
+                    $"The document of {surface.Url} did not answer from its own origin: {origin}.");
+            }
+        }
+    }
+
     // Resolves when the document's focused element has the given id, or after ten seconds, and reports the element
     // it settled on, the element it found on arrival, the wait, and whether the page had OS focus. It polls
     // because Chromium does not raise focusin in a page without OS focus, while activeElement still moves.

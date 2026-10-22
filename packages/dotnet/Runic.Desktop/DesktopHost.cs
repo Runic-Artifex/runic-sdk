@@ -193,9 +193,29 @@ public sealed class DesktopHost : IAsyncDisposable
             : requested;
 
     /// <summary>Creates and starts one isolated surface namespace.</summary>
-    public async ValueTask<DesktopSurface> CreateSurfaceAsync(
+    public ValueTask<DesktopSurface> CreateSurfaceAsync(
         DesktopSurfaceOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        CreateSurfaceCoreAsync(options, windowHostFactory: null, cancellationToken);
+
+    // A surface whose embedded window comes from its own factory instead of DesktopHostOptions.WindowHostFactory, such
+    // as each RunicViewHost's RunicWebView on a DesktopHost the application shares between them. The surface's
+    // availability checks consult that factory too.
+    internal ValueTask<DesktopSurface> CreateSurfaceAsync(
+        DesktopSurfaceOptions? options,
+        IDesktopWindowHostFactory windowHostFactory,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(windowHostFactory);
+        if (windowHostFactory is ILinuxDesktopWindowHostFactory linux && _options.Linux.EmbeddedBackend != linux.Backend)
+            throw new ArgumentException("Linux.EmbeddedBackend must match the surface's Linux window host factory.", nameof(windowHostFactory));
+        return CreateSurfaceCoreAsync(options, windowHostFactory, cancellationToken);
+    }
+
+    private async ValueTask<DesktopSurface> CreateSurfaceCoreAsync(
+        DesktopSurfaceOptions? options,
+        IDesktopWindowHostFactory? windowHostFactory,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var configured = options ?? new DesktopSurfaceOptions();
@@ -221,9 +241,10 @@ public sealed class DesktopHost : IAsyncDisposable
         var isolatedCore = configured.UseIsolatedListener ? CreateCore(_options, port: 0) : null;
         var core = isolatedCore ?? _core;
         var security = ToCorePolicy(configured.Security ?? _options.Security);
-        IWebUiEmbeddedHostFactory embeddedFactory = _options.WindowHostFactory is null
+        var surfaceFactory = windowHostFactory ?? _options.WindowHostFactory;
+        IWebUiEmbeddedHostFactory embeddedFactory = surfaceFactory is null
             ? new WebUiEmbeddedHostFactory(_options.Linux.EmbeddedBackend)
-            : new DesktopWindowHostFactoryAdapter(_options.WindowHostFactory);
+            : new DesktopWindowHostFactoryAdapter(surfaceFactory);
         var runtime = new PresentationSurfaceRuntimeOptions(
             rootFolder,
             NormalizeOptionalPath(_options.BrowserFolder),
@@ -234,7 +255,7 @@ public sealed class DesktopHost : IAsyncDisposable
             _logger,
             _options.BrowserLaunchAttempts);
         var engine = new WebUiWindow(core, path, security, runtime);
-        var surface = new DesktopSurface(this, id, engine, isolatedCore);
+        var surface = new DesktopSurface(this, id, engine, isolatedCore, windowHostFactory);
         if (!_surfaces.TryAdd(id, surface))
         {
             await engine.DisposeAsync().ConfigureAwait(false);
@@ -362,8 +383,10 @@ public sealed class DesktopHost : IAsyncDisposable
         else System.Diagnostics.Trace.TraceWarning($"{diagnostic.Code}: {diagnostic.Message}");
     }
 
-    internal DesktopPresentationAvailability GetPresentation(BrowserKind browser) =>
-        DesktopPlatform.GetAvailability(_options).GetPresentation(browser);
+    // The availability of a surface's presentation: with its own window host factory, that factory's.
+    internal DesktopPresentationAvailability GetPresentation(BrowserKind browser, IDesktopWindowHostFactory? windowHostFactory = null) =>
+        DesktopPlatform.GetAvailability(windowHostFactory is null ? _options : _options with { WindowHostFactory = windowHostFactory })
+            .GetPresentation(browser);
 
     internal static DesktopPresentationAvailability Unavailable(BrowserKind browser) => new(
         browser,

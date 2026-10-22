@@ -165,8 +165,13 @@ internal sealed class PlatformServicesChecks
                     "A Window did not announce through its embedded window.");
                 Require(await services.AnnounceAsync("The disk is full", DesktopAnnouncementPriority.Assertive) is PlatformResult<PlatformUnit>.Success,
                     "The ViewModel's platform services did not announce.");
+                // The host-neutral member a ViewModel reaches through IWindowPlatformServices.
+                Require(await window.ViewModel.Platform.AnnounceAsync("Copied") is PlatformResult<PlatformUnit>.Success
+                    && await window.ViewModel.Platform.AnnounceAsync("Offline", PlatformAnnouncementPriority.Assertive) is PlatformResult<PlatformUnit>.Success,
+                    "IWindowPlatformServices.AnnounceAsync did not announce through the embedded window.");
                 Require(factory.Hosts[0].Announcements.SequenceEqual(
-                    [("Saved", DesktopAnnouncementPriority.Polite), ("The disk is full", DesktopAnnouncementPriority.Assertive)]),
+                    [("Saved", DesktopAnnouncementPriority.Polite), ("The disk is full", DesktopAnnouncementPriority.Assertive),
+                     ("Copied", DesktopAnnouncementPriority.Polite), ("Offline", DesktopAnnouncementPriority.Assertive)]),
                     "The embedded window did not receive the announcements with their priorities.");
                 await ((DesktopBridgeWindow<FileViewModel>)window.Host).Window.CloseAsync();
                 Require(await DesktopPlatformServices.AnnounceAsync(window, "Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
@@ -178,6 +183,8 @@ internal sealed class PlatformServicesChecks
             }
             Require(await services.AnnounceAsync("Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
                 "The services of a closed window did not report the owner closed.");
+            Require(await ((IWindowPlatformServices)services).AnnounceAsync("Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                "IWindowPlatformServices.AnnounceAsync of a closed window did not report the owner closed.");
         }
 
         await using (var provider = CreateProvider())
@@ -191,12 +198,26 @@ internal sealed class PlatformServicesChecks
         }
 
         var unbound = new DesktopWindowPlatformServices();
+        IWindowPlatformServices neutral = unbound;
         Require(await unbound.AnnounceAsync("Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             "Services of a window that has not opened did not report the owner unavailable.");
+        Require(await neutral.AnnounceAsync("Saved", PlatformAnnouncementPriority.Assertive) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "IWindowPlatformServices.AnnounceAsync of a window that has not opened did not report the owner unavailable.");
         var rejected = false;
         try { _ = await unbound.AnnounceAsync(""); }
         catch (ArgumentException) { rejected = true; }
         Require(rejected, "An empty announcement was accepted.");
+        rejected = false;
+        try { _ = await neutral.AnnounceAsync(" "); }
+        catch (ArgumentException) { rejected = true; }
+        Require(rejected, "An empty announcement was accepted through IWindowPlatformServices.");
+        rejected = false;
+        try { _ = await neutral.AnnounceAsync("Saved", (PlatformAnnouncementPriority)7); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Require(rejected, "An undefined announcement priority was accepted through IWindowPlatformServices.");
+        await unbound.DisposeAsync();
+        Require(await neutral.AnnounceAsync("Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "IWindowPlatformServices.AnnounceAsync of stopped services did not report the owner closed.");
     }
 
     // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is

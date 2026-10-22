@@ -17,7 +17,12 @@ namespace Runic.Application.Views.Wpf;
 /// The host opens the web presentation when it is loaded with a <see cref="ViewModel"/> and <see cref="Services"/>, and
 /// closes it when it is unloaded or the ViewModel is cleared. A change of model, services or content closes the current
 /// presentation and opens a fresh one. Changes run one at a time; a newer change cancels an open in progress. Closing
-/// releases the Bridge session first, draining its accepted operations, then the Desktop host, then the native child.
+/// releases the Bridge session first, draining its accepted operations, then the Desktop surface and the host's own
+/// Desktop host, then the native child.
+/// </para>
+/// <para>
+/// Each host starts and disposes its own <see cref="DesktopHost"/>, with its own listener, unless <see cref="Desktop"/>
+/// names one that the application shares between hosts.
 /// </para>
 /// <para>
 /// When the presentation can't open (no WebView2 Runtime, no registered Bridge, missing frontend), the host shows
@@ -71,6 +76,14 @@ public class RunicViewHost : Decorator
     /// <summary>Identifies the <see cref="SurfaceOptions"/> dependency property.</summary>
     public static readonly DependencyProperty SurfaceOptionsProperty = DependencyProperty.Register(nameof(SurfaceOptions),
         typeof(DesktopSurfaceOptions), typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
+
+    /// <summary>Identifies the <see cref="WebContent"/> dependency property.</summary>
+    public static readonly DependencyProperty WebContentProperty = DependencyProperty.Register(nameof(WebContent),
+        typeof(DesktopWebContentPolicy), typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
+
+    /// <summary>Identifies the <see cref="Desktop"/> dependency property.</summary>
+    public static readonly DependencyProperty DesktopProperty = DependencyProperty.Register(nameof(Desktop),
+        typeof(DesktopHost), typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
     /// <summary>Identifies the <see cref="Fallback"/> dependency property.</summary>
     public static readonly DependencyProperty FallbackProperty = DependencyProperty.Register(nameof(Fallback), typeof(object),
@@ -163,6 +176,44 @@ public class RunicViewHost : Decorator
         set => SetValue(SurfaceOptionsProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets what the page may do beyond the application's origins: external navigation, downloads and developer
+    /// tools. <see langword="null"/>, the default, is <see cref="DesktopWebContentPolicy.Default"/>.
+    /// </summary>
+    /// <remarks>
+    /// The same as <see cref="DesktopWindowOptions.WebContent"/> of a Desktop window. A change reopens the presentation.
+    /// </remarks>
+    public DesktopWebContentPolicy? WebContent
+    {
+        get => (DesktopWebContentPolicy?)GetValue(WebContentProperty);
+        set => SetValue(WebContentProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets an application-owned Desktop host to create the presentation's surface on, or
+    /// <see langword="null"/>, the default, for a Desktop host of this host's own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// By default each host starts a <see cref="DesktopHost"/>, with its own listener, when it opens and disposes it when
+    /// it closes. Set one host on every <see cref="RunicViewHost"/>, directly or through a <see cref="Style"/>, to serve
+    /// them all from one listener: create it once, for example with
+    /// <c>await DesktopHost.StartAsync(new DesktopHostOptions { LoggerFactory = loggerFactory })</c>, and dispose it
+    /// after the hosts that use it have unloaded. Each host creates its own surface on it and releases only that
+    /// surface when it closes; it never disposes the Desktop host. A Desktop host disposed before a host opens makes the
+    /// open fail: <see cref="State"/> becomes <see cref="RunicViewHostState.Failed"/> and <see cref="Fallback"/> shows.
+    /// </para>
+    /// <para>
+    /// Each host still presents through its own <see cref="RunicWebView"/>: the Desktop host's
+    /// <see cref="DesktopHostOptions.WindowHostFactory"/> is not used for these surfaces. A change reopens the presentation.
+    /// </para>
+    /// </remarks>
+    public DesktopHost? Desktop
+    {
+        get => (DesktopHost?)GetValue(DesktopProperty);
+        set => SetValue(DesktopProperty, value);
+    }
+
     /// <summary>Gets or sets the content shown when the web presentation fails to open, such as the native View for the model.</summary>
     public object? Fallback
     {
@@ -237,6 +288,8 @@ public class RunicViewHost : Decorator
         {
             Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), StartPage),
         };
+        var webContent = WebContent ?? DesktopWebContentPolicy.Default;
+        var shared = Desktop;
         var control = new RunicWebView();
         // The pane that UI Automation clients such as Narrator announce takes the host's accessible name.
         control.SetBinding(AutomationProperties.NameProperty, new Binding { Source = this, Path = new PropertyPath(AutomationProperties.NameProperty) });
@@ -260,19 +313,29 @@ public class RunicViewHost : Decorator
             if (!control.IsLoaded) await loaded.Task.WaitAsync(cancellationToken);
         }
         finally { control.Loaded -= OnLoaded; }
-        var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        IWpfBridgeView view;
+        if (shared is null)
         {
-            WindowHostFactory = factory,
-            LoggerFactory = loggerFactory,
-        }, cancellationToken);
-        lifecycle.Own(desktop.DisposeAsync);
-        var view = await services.CreateWpfViewForModelAsync(desktop, surfaceOptions, model, ModelContext, cancellationToken);
+            var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = factory,
+                LoggerFactory = loggerFactory,
+            }, cancellationToken);
+            lifecycle.Own(desktop.DisposeAsync);
+            view = await services.CreateWpfViewForModelAsync(desktop, null, surfaceOptions, model, ModelContext, cancellationToken);
+        }
+        else
+        {
+            // The application owns the shared host; closing releases only this surface, which the view disposes.
+            view = await services.CreateWpfViewForModelAsync(shared, factory, surfaceOptions, model, ModelContext, cancellationToken);
+        }
         lifecycle.Own(() =>
         {
             _view = null;
             return view.DisposeAsync();
         });
         _view = view;
+        view.WebContent = webContent;
         await view.OpenAsync(cancellationToken);
     }
 

@@ -115,7 +115,7 @@ windows and platform services, use
 instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformServices`,
 `IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
 ViewModels that take them resolve on both hosts. CS-WebUI windows have no native
-owner, so every operation and the capability snapshot report
+owner, so every operation, `AnnounceAsync` included, and the capability snapshot report
 `Unavailable(OwnerUnavailable)`. It also registers one `IDesktopSettings`,
 `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup` and
 `IDesktopInhibition`, the same application services as Runic Desktop, whose

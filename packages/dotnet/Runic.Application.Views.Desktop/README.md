@@ -135,8 +135,10 @@ The same Window and `async host => ...` body run on CS-WebUI with
   [Accessibility](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#accessibility)).
   WebKitGTK reports no ARIA live region to Orca, so on Linux this is how a
   page's status reaches a screen reader. A ViewModel takes
-  `DesktopWindowPlatformServices` and calls its `AnnounceAsync(message, priority)`.
-  Both return `Success`, or `Unavailable` with `OwnerUnavailable` for a Window
+  `IWindowPlatformServices` and calls its `AnnounceAsync(message, priority)`,
+  which works on every host, or takes `DesktopWindowPlatformServices` and calls
+  its `AnnounceAsync(message, priority)` with a `DesktopAnnouncementPriority`.
+  All return `Success`, or `Unavailable` with `OwnerUnavailable` for a Window
   without an embedded window (an installed browser, serve-only mode, another
   host, or a ViewModel's window that has not opened yet), `OwnerClosed` once it
   closed, and `BackendUnavailable` for a window host without announcements,

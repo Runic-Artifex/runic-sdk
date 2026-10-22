@@ -671,7 +671,7 @@ WebView2 and WKWebView a live region in the page reaches the screen reader too,
 so send each message one way, or it is spoken twice. A custom `IDesktopWindowHost` that reports
 `Announcements` implements `AnnounceAsync`. Runic Windows announce with
 `DesktopPlatformServices.AnnounceAsync(window, message)` or, from a ViewModel,
-`DesktopWindowPlatformServices.AnnounceAsync(message)`
+`IWindowPlatformServices.AnnounceAsync(message)`
 ([Runic.Application.Views.Desktop](../Runic.Application.Views.Desktop/README.md)).
 
 **A list item with only a button can crash the page.** WebKitGTK 2.54.1, both

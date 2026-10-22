@@ -123,14 +123,14 @@ internal sealed class HostLifecycleTests
         await using var services = collection.BuildServiceProvider();
         await using var host = await DesktopHost.StartAsync();
         var model = new DerivedModel();
-        var view = await services.CreateWpfViewForModelAsync(host, Program.HtmlOptions(), model, null, CancellationToken.None);
+        var view = await services.CreateWpfViewForModelAsync(host, null, Program.HtmlOptions(), model, null, CancellationToken.None);
         Program.Check(ReferenceEquals(view.ViewModel, model) && view is WpfBridgeView<BaseModel>, "The base-class Bridge was not used.");
         await view.DisposeAsync();
         Program.Check(attachment.Disposed, "The session did not release its attachment.");
         try
         {
             await new ServiceCollection().BuildServiceProvider()
-                .CreateWpfViewForModelAsync(host, Program.HtmlOptions(), model, null, CancellationToken.None);
+                .CreateWpfViewForModelAsync(host, null, Program.HtmlOptions(), model, null, CancellationToken.None);
             throw new InvalidOperationException("A model without a Bridge was accepted.");
         }
         catch (InvalidOperationException error) when (error.Message.Contains("AddRunicViews", StringComparison.Ordinal)) { }

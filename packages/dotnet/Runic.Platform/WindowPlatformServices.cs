@@ -19,6 +19,47 @@ public interface IWindowPlatformServices : IPlatformCapabilities
     ITextClipboard Clipboard { get; }
     /// <summary>Hands local files and web, mail or Windows Settings URIs to native applications on behalf of the window.</summary>
     IDesktopFileLauncher FileLauncher { get; }
+
+    /// <summary>Asks the screen reader to announce a message for the window, such as the result of an action.</summary>
+    /// <param name="message">The text to speak, in the window's language.</param>
+    /// <param name="priority">
+    /// <see cref="PlatformAnnouncementPriority.Polite"/>, the default, waits for what the screen reader is saying;
+    /// <see cref="PlatformAnnouncementPriority.Assertive"/> interrupts it.
+    /// </param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> once the window's accessibility API accepted the announcement, or
+    /// <see cref="PlatformResult{T}.Unavailable"/>: <see cref="PlatformUnavailableReason.OwnerUnavailable"/> before the
+    /// window opens or on a host without a native owner, <see cref="PlatformUnavailableReason.OwnerClosed"/> once it
+    /// closed, and <see cref="PlatformUnavailableReason.BackendUnavailable"/> when the window cannot announce.
+    /// </returns>
+    /// <remarks>
+    /// The host-neutral counterpart of an ARIA live region: the host raises the announcement through the platform's
+    /// accessibility API for the window, so it reaches the screen reader where a live region in the page does not.
+    /// An implementation that does not override this member reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is empty or white space.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="priority"/> is not a defined value.</exception>
+    ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(string message,
+        PlatformAnnouncementPriority priority = PlatformAnnouncementPriority.Polite, CancellationToken cancellationToken = default)
+    {
+        WindowPlatformServices.CheckAnnouncement(message, priority, cancellationToken);
+        return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
+            new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+    }
+}
+
+/// <summary>How a screen-reader announcement relates to what the screen reader is saying, as ARIA live regions do.</summary>
+/// <remarks>A closed set: <c>aria-live</c> defines these two announcing politeness levels.</remarks>
+public enum PlatformAnnouncementPriority
+{
+    /// <summary>After what the screen reader is saying, as <c>aria-live="polite"</c>.</summary>
+    Polite = 0,
+
+    /// <summary>Interrupting what the screen reader is saying, as <c>aria-live="assertive"</c>; for errors and other messages the user must hear at once.</summary>
+    Assertive = 1,
 }
 
 /// <summary>The capability identifiers of a window's platform services, the keys of
@@ -63,13 +104,22 @@ public static class WindowPlatformServices
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>
-    /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard and launcher
-    /// <see cref="PlatformResult{T}.Unavailable"/>; nothing throws except for invalid arguments and caller cancellation.
+    /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher and
+    /// <see cref="IWindowPlatformServices.AnnounceAsync"/> <see cref="PlatformResult{T}.Unavailable"/>; nothing throws
+    /// except for invalid arguments and caller cancellation.
     /// </remarks>
     public static IWindowPlatformServices Unavailable(PlatformUnavailableReason reason)
     {
         if (!Enum.IsDefined(reason)) throw new ArgumentOutOfRangeException(nameof(reason));
         return new UnavailableWindowPlatformServices(reason);
+    }
+
+    // The argument checks of IWindowPlatformServices.AnnounceAsync, shared by its implementations.
+    internal static void CheckAnnouncement(string message, PlatformAnnouncementPriority priority, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     private sealed class UnavailableWindowPlatformServices(PlatformUnavailableReason reason)
@@ -130,6 +180,13 @@ public static class WindowPlatformServices
         public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default)
         {
             DesktopUriPolicy.Require(uri);
+            return Result<PlatformUnit>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(string message,
+            PlatformAnnouncementPriority priority = PlatformAnnouncementPriority.Polite, CancellationToken cancellationToken = default)
+        {
+            CheckAnnouncement(message, priority, cancellationToken);
             return Result<PlatformUnit>(cancellationToken);
         }
 
