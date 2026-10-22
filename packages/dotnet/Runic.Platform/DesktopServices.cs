@@ -17,7 +17,25 @@ public enum DesktopColorScheme
 public sealed record DesktopAccentColor(double Red, double Green, double Blue);
 /// <summary>Unknown optional preferences remain null rather than becoming false.</summary>
 public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopColorScheme.NoPreference,
-    DesktopAccentColor? AccentColor = null, bool? HighContrast = null, bool? ReducedMotion = null);
+    DesktopAccentColor? AccentColor = null, bool? HighContrast = null, bool? ReducedMotion = null)
+{
+    private readonly double? _textScale;
+
+    /// <summary>
+    /// The desktop's text size preference as a factor of the default text size: 1 for the default, 1.5 for text half as
+    /// large again; null when the desktop has no such setting or it could not be read. Multiply font sizes by it, as a
+    /// CSS root font size would be, independently of the display scale.
+    /// </summary>
+    /// <remarks>Windows reports the Accessibility "Text size" setting (1 to 2.25). macOS has no system-wide setting that
+    /// applications can read and reports null; the Linux provider does not read it yet.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is not a finite number greater than 0.</exception>
+    public double? TextScale
+    {
+        get => _textScale;
+        init => _textScale = value is null || double.IsFinite(value.Value) && value.Value > 0 ? value
+            : throw new ArgumentOutOfRangeException(nameof(TextScale));
+    }
+}
 /// <summary>Application-scoped desktop preferences. Dispose to stop observation.</summary>
 public interface IDesktopSettings : IAsyncDisposable
 {
@@ -41,6 +59,16 @@ public sealed record DesktopNotification(string Id, string Title, string Body)
 /// <summary>A user action on a notification. Treat activation as untrusted input at the application boundary.</summary>
 public sealed record DesktopNotificationActivation(string NotificationId, string ActionId, Uri? ActivationUri = null)
 {
+    /// <summary>
+    /// Whether the provider matched this activation to a notification the application showed, so that
+    /// <see cref="NotificationId"/>, <see cref="ActionId"/> and <see cref="ActivationUri"/> are the ones the application
+    /// supplied. False for an activation the provider could not match, such as a Linux activation that arrives after a
+    /// restart, which any process on the session bus can also send: validate its identifiers and link against the
+    /// application's own state.
+    /// </summary>
+    /// <remarks>Windows and macOS activations are trusted; Linux activations are not trusted yet.</remarks>
+    public bool IsTrusted { get; init; }
+
     /// <summary>Short-lived desktop activation data. Dispatch promptly; do not persist it.</summary>
     public DesktopActivationContext? PlatformContext { get; init; }
 }

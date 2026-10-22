@@ -146,8 +146,9 @@ public static class DesktopFileTransfers
         return new UnavailableTransfers(reason);
     }
 
-    private sealed class UnavailableTransfers(PlatformUnavailableReason reason) : IDesktopFileTransfers
+    private sealed class UnavailableTransfers(PlatformUnavailableReason reason) : IDesktopFileTransfers, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<FileTransferSummary>> CopyAsync(FileTransferRequest request, CancellationToken cancellationToken = default) =>
             Report(request, cancellationToken);
 

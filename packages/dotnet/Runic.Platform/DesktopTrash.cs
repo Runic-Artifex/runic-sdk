@@ -39,8 +39,9 @@ public static class DesktopTrash
         return new UnavailableTrash(reason);
     }
 
-    private sealed class UnavailableTrash(PlatformUnavailableReason reason) : IDesktopTrash
+    private sealed class UnavailableTrash(PlatformUnavailableReason reason) : IDesktopTrash, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<PlatformUnit>> MoveToTrashAsync(string path, CancellationToken cancellationToken = default)
         {
             ItemPaths.Validate(path, nameof(path));

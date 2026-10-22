@@ -111,8 +111,9 @@ public static class DesktopVolumes
         return new UnavailableVolumes(reason);
     }
 
-    private sealed class UnavailableVolumes(PlatformUnavailableReason reason) : IDesktopVolumes
+    private sealed class UnavailableVolumes(PlatformUnavailableReason reason) : IDesktopVolumes, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         private readonly CancellationTokenSource _disposed = new();
 
         public ValueTask<PlatformResult<ImmutableArray<DesktopVolume>>> ListAsync(CancellationToken cancellationToken = default) =>

@@ -131,7 +131,9 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
             if (action == "com.apple.UNNotificationDefaultActionIdentifier") action = "default";
             DesktopServiceValidation.Identifier(id); DesktopServiceValidation.Identifier(action);
             var uriText = Text(Arg(Send(Send(request, Sel("content")), Sel("userInfo")), Sel("objectForKey:"), String("runic-uri")));
-            var activation = new DesktopNotificationActivation(id, action, Uri.TryCreate(uriText, UriKind.Absolute, out var uri) && !uri.IsFile ? uri : null);
+            // UserNotifications delivers responses only to notifications this application posted, with the content it set.
+            var activation = new DesktopNotificationActivation(id, action, Uri.TryCreate(uriText, UriKind.Absolute, out var uri) && !uri.IsFile ? uri : null)
+                { IsTrusted = true };
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 if (owner._disposed) return;

@@ -17,8 +17,9 @@ public static class DesktopSettings
         return new UnavailableDesktopSettings(reason);
     }
 
-    private sealed class UnavailableDesktopSettings(PlatformUnavailableReason reason) : IDesktopSettings
+    private sealed class UnavailableDesktopSettings(PlatformUnavailableReason reason) : IDesktopSettings, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         private readonly CancellationTokenSource _disposed = new();
         private readonly PlatformResult<DesktopAppearance> _result = new PlatformResult<DesktopAppearance>.Unavailable(reason);
 

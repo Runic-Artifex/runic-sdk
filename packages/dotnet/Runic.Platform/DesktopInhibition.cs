@@ -47,8 +47,9 @@ public static class DesktopInhibition
         return new UnavailableInhibition(reason);
     }
 
-    private sealed class UnavailableInhibition(PlatformUnavailableReason unavailable) : IDesktopInhibition
+    private sealed class UnavailableInhibition(PlatformUnavailableReason unavailable) : IDesktopInhibition, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(unavailable);
         public DesktopInhibitionEffects SupportedEffects => DesktopInhibitionEffects.None;
 
         public ValueTask<PlatformResult<IDesktopInhibitionLease>> AcquireAsync(DesktopInhibitionEffects effects, string reason,

@@ -90,6 +90,51 @@ public static class ApplicationInstance
     }
 
     /// <summary>
+    /// Becomes the running instance of <paramref name="applicationId"/>, or forwards this process's launch with
+    /// <paramref name="args"/> to it.
+    /// </summary>
+    /// <param name="applicationId">The application's reverse-DNS ID, such as <c>org.example.App</c>.</param>
+    /// <param name="args">The process's command-line arguments, as <c>Main</c> receives them.</param>
+    /// <param name="cancellationToken">Cancels waiting for the running instance.</param>
+    /// <returns>As <see cref="ClaimAsync(string, ApplicationLaunch, CancellationToken)"/>.</returns>
+    /// <remarks>Equivalent to <see cref="ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> with
+    /// <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>).</remarks>
+    /// <example><code>
+    /// var claim = await ApplicationInstance.ClaimAsync("org.example.App", args);
+    /// </code></example>
+    // The overloads differ in their second parameter's type; only a null launch, which is refused, could bind to both.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Only a null second argument, which every overload refuses, is ambiguous. Remove once these lines are in PublicAPI.Shipped.txt.")]
+    public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, string[] args,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        return ClaimAsync(applicationId, ApplicationLaunch.FromProcess(args), HandOver, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Becomes the running instance of <paramref name="applicationId"/>, or forwards this process's launch with
+    /// <paramref name="args"/> to it, as <paramref name="options"/> describe.
+    /// </summary>
+    /// <param name="applicationId">The application's reverse-DNS ID, such as <c>org.example.App</c>.</param>
+    /// <param name="args">The process's command-line arguments, as <c>Main</c> receives them.</param>
+    /// <param name="options">Whether the launches of this application are answered.</param>
+    /// <param name="cancellationToken">Cancels waiting for the running instance.</param>
+    /// <returns>As <see cref="ClaimAsync(string, ApplicationLaunch, ApplicationInstanceOptions, CancellationToken)"/>.</returns>
+    /// <remarks>Equivalent to <see cref="ClaimAsync(string, ApplicationLaunch, ApplicationInstanceOptions, CancellationToken)"/>
+    /// with <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>).</remarks>
+    // The overloads differ in their second parameter's type; only a null launch, which is refused, could bind to both.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Only a null second argument, which every overload refuses, is ambiguous. Remove once these lines are in PublicAPI.Shipped.txt.")]
+    public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, string[] args,
+        ApplicationInstanceOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        ArgumentNullException.ThrowIfNull(options);
+        return ClaimAsync(applicationId, ApplicationLaunch.FromProcess(args), options, null, cancellationToken);
+    }
+
+    /// <summary>
     /// Delivers the files and URLs of <paramref name="launch"/> and of each later launch that <paramref name="instance"/>
     /// receives, as Linux and Windows pass them: as arguments.
     /// </summary>

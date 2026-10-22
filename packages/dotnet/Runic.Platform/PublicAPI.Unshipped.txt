@@ -3,3 +3,16 @@ Runic.Platform.IWindowPlatformServices.AnnounceAsync(string! message, Runic.Plat
 Runic.Platform.PlatformAnnouncementPriority
 Runic.Platform.PlatformAnnouncementPriority.Assertive = 1 -> Runic.Platform.PlatformAnnouncementPriority
 Runic.Platform.PlatformAnnouncementPriority.Polite = 0 -> Runic.Platform.PlatformAnnouncementPriority
+Runic.Platform.DesktopAppearance.TextScale.get -> double?
+Runic.Platform.DesktopAppearance.TextScale.init -> void
+Runic.Platform.DesktopNotificationActivation.IsTrusted.get -> bool
+Runic.Platform.DesktopNotificationActivation.IsTrusted.init -> void
+Runic.Platform.DesktopServiceStatus
+Runic.Platform.IDesktopServiceStatus
+Runic.Platform.IDesktopServiceStatus.Status.get -> Runic.Platform.CapabilityStatus!
+Runic.Platform.IDesktopThumbnails.GetThumbnailAsync(string! path, int size, int scale, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopThumbnail?>!>
+Runic.Platform.PlatformResult<T>.Match<TResult>(System.Func<T, TResult>! success, System.Func<Runic.Platform.PlatformResult<T>.Unavailable!, TResult>! unavailable, System.Func<Runic.Platform.PlatformResult<T>.Failed!, TResult>! failed) -> TResult
+Runic.Platform.PlatformResult<T>.Succeeded.get -> bool
+Runic.Platform.PlatformResult<T>.TryGetValue(out T value) -> bool
+static Runic.Platform.DesktopServiceStatus.Get(object! service) -> Runic.Platform.CapabilityStatus!
+static Runic.Platform.DesktopThumbnails.MaximumScale.get -> int

@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 
 namespace Runic.Platform.Runtime;
@@ -286,10 +288,12 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
         catch (FileNotFoundException) { return path; }
     }
 
-    // On Unix the staging file takes the replaced file's permissions, so the rename
-    // neither widens nor narrows access. Set-ID bits are not carried to new content.
+    // The staging file takes the replaced file's permissions, so it is never readable by more users than the file it
+    // replaces while it is written, and the rename neither widens nor narrows access. On Unix that is the mode; set-ID
+    // bits are not carried to new content. On Windows it is the security descriptor's DACL.
     private static FileStream CreateStaging(string staging, string target)
     {
+        if (OperatingSystem.IsWindows()) return CreateStagingOnWindows(staging, target);
         var options = new FileStreamOptions
         {
             Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None,
@@ -315,6 +319,25 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
             File.Delete(staging);
             throw;
         }
+    }
+
+    // Without a descriptor the staging file would take the folder's inheritable ACL until File.Replace applies the
+    // target's, so a private file in a shared folder would be readable there meanwhile (SEC-28). The target's DACL,
+    // including whether it is protected from inheritance, is applied when the file is created; Windows recomputes its
+    // inherited entries from the same folder. A new target has no descriptor and keeps the folder's, as it will after
+    // the move.
+    [SupportedOSPlatform("windows")]
+    internal static FileStream CreateStagingOnWindows(string staging, string target)
+    {
+        FileSecurity? security = null;
+        try
+        {
+            byte[] descriptor = new FileInfo(target).GetAccessControl(AccessControlSections.Access).GetSecurityDescriptorBinaryForm();
+            security = new FileSecurity();
+            security.SetSecurityDescriptorBinaryForm(descriptor, AccessControlSections.Access);
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { }
+        return new FileInfo(staging).Create(FileMode.CreateNew, FileSystemRights.Write, FileShare.None, 4096, FileOptions.Asynchronous, security);
     }
 
     public ValueTask DisposeAsync()

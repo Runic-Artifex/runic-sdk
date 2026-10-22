@@ -33,7 +33,37 @@ public interface IDesktopThumbnails
     /// <param name="cancellationToken">Cancels the request, also while a thumbnailer generates the thumbnail.</param>
     /// <exception cref="ArgumentException"><paramref name="path"/> is empty, relative, contains NUL or names a root directory.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> is less than 1 or greater than <see cref="DesktopThumbnails.MaximumSize"/>.</exception>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0027:API with optional parameter(s) should have the most parameters amongst its public overloads",
+        Justification = "The scale overload takes a required token: an optional one would make GetThumbnailAsync(path, size, default) ambiguous.")]
     ValueTask<PlatformResult<DesktopThumbnail?>> GetThumbnailAsync(string path, int size, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a thumbnail of the file at <paramref name="path"/> for display at <paramref name="size"/> pixels on a display
+    /// with <paramref name="scale"/> device pixels per pixel, such as a window's device pixel ratio.
+    /// </summary>
+    /// <param name="path">A fully qualified local path.</param>
+    /// <param name="size">The largest edge to display, from 1 to <see cref="DesktopThumbnails.MaximumSize"/> pixels at scale 1.</param>
+    /// <param name="scale">
+    /// The display scale, from 1 to <see cref="DesktopThumbnails.MaximumScale"/>; 2 asks for an image with twice the pixels
+    /// along each edge. The request is <paramref name="size"/> times <paramref name="scale"/> device pixels, at most
+    /// <see cref="DesktopThumbnails.MaximumSize"/>; the thumbnail is then sized as
+    /// <see cref="GetThumbnailAsync(string, int, CancellationToken)"/> describes, in device pixels.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the request, also while a thumbnailer generates the thumbnail.</param>
+    /// <remarks>The token is required so that a call with three arguments, such as
+    /// <c>GetThumbnailAsync(path, 256, default)</c>, keeps binding to the overload without a scale. The default
+    /// implementation asks <see cref="GetThumbnailAsync(string, int, CancellationToken)"/> for the
+    /// device-pixel size, which is what every Runic provider does.</remarks>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is empty, relative, contains NUL or names a root directory.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> or <paramref name="scale"/> is outside its range.</exception>
+    ValueTask<PlatformResult<DesktopThumbnail?>> GetThumbnailAsync(string path, int size, int scale, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(size, DesktopThumbnails.MaximumSize);
+        ArgumentOutOfRangeException.ThrowIfLessThan(scale, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(scale, DesktopThumbnails.MaximumScale);
+        return GetThumbnailAsync(path, Math.Min(size * scale, DesktopThumbnails.MaximumSize), cancellationToken);
+    }
 }
 
 /// <summary>A thumbnail: a PNG image and its size in pixels.</summary>
@@ -61,6 +91,10 @@ public static class DesktopThumbnails
     /// release may raise it.</summary>
     public static int MaximumSize => 1024;
 
+    /// <summary>The largest display scale a request accepts, as <see cref="DesktopIconRequest.MaximumScale"/>. A later
+    /// release may raise it.</summary>
+    public static int MaximumScale => 16;
+
     /// <summary>Creates thumbnails that report every request unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>Requests validate their arguments as a provider does; otherwise nothing throws except caller cancellation.</remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="reason"/> is not defined.</exception>
@@ -70,8 +104,9 @@ public static class DesktopThumbnails
         return new UnavailableThumbnails(reason);
     }
 
-    private sealed class UnavailableThumbnails(PlatformUnavailableReason reason) : IDesktopThumbnails
+    private sealed class UnavailableThumbnails(PlatformUnavailableReason reason) : IDesktopThumbnails, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<DesktopThumbnail?>> GetThumbnailAsync(string path, int size, CancellationToken cancellationToken = default)
         {
             ItemPaths.Validate(path, nameof(path));

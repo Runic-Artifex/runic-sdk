@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Microsoft.Win32;
 using Windows.Win32;
 using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
@@ -34,9 +35,22 @@ internal sealed class WindowsDesktopSettings : DesktopSettingsSource
                 ? (highContrast.dwFlags & HIGHCONTRASTW_FLAGS.HCF_HIGHCONTRASTON) != 0 : null;
             int animations = 0;
             bool? reduced = PInvoke.SystemParametersInfo(SYSTEM_PARAMETERS_INFO_ACTION.SPI_GETCLIENTAREAANIMATION, 0, &animations, 0) ? animations == 0 : null;
-            return new PlatformResult<DesktopAppearance>.Success(new(scheme, new(accent.Red / 255d, accent.Green / 255d, accent.Blue / 255d), contrast, reduced));
+            return new PlatformResult<DesktopAppearance>.Success(new(scheme, new(accent.Red / 255d, accent.Green / 255d, accent.Blue / 255d), contrast, reduced)
+                { TextScale = TextScale() });
         }
         finally { Release(settings); Release(instance); UninitializeRuntime(); }
+    }
+    // Settings > Accessibility > Text size, which UISettings.TextScaleFactor also reports: 100 to 225 percent, and no
+    // value until the user changes it. Polled with the rest of the appearance (DesktopSettingsSource).
+    internal static double? TextScale() => TextScale(static () =>
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Accessibility");
+        return key?.GetValue("TextScaleFactor");
+    });
+    internal static double? TextScale(Func<object?> read)
+    {
+        try { return read() switch { null => 1, int percent and >= 100 and <= 225 => percent / 100d, _ => null }; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { return null; }
     }
     // Windows.UI.Color has no Win32 metadata; it belongs to the WinRT projection.
     [StructLayout(LayoutKind.Sequential)] private struct Color { internal byte Alpha, Red, Green, Blue; }

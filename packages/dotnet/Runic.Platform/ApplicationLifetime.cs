@@ -216,8 +216,9 @@ public static class DesktopLoginStartup
         return new UnavailableLoginStartup(reason);
     }
 
-    private sealed class UnavailableLoginStartup(PlatformUnavailableReason reason) : IDesktopLoginStartup
+    private sealed class UnavailableLoginStartup(PlatformUnavailableReason reason) : IDesktopLoginStartup, IDesktopServiceStatus
     {
+        public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
         public ValueTask<PlatformResult<bool>> IsEnabledAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
