@@ -1072,10 +1072,24 @@ rest is internal to Runic Desktop and Runic Windows and Views. See
   Chromium-based browser opened with the `MediaCapture` grant asks the user,
   naming the requesting origin, instead of accepting capture for every origin
   it opens. Without the grant, Chromium-based browsers deny permission prompts.
-- A local client that holds the session credential can take the only Bridge
-  connection from the page after the page's own WebSocket has been silent for 2
-  seconds. The page's Bridge then reconnects and is refused until that client's
-  connection ends. This is a residual risk of the handshake deadline (#35). In an
-  embedded window only the surface's own documents receive the credential; in an
-  installed browser only the launched browser does (see above). The credential is
-  still required, and a wrong credential is closed at once.
+- **Taking over the Bridge connection (#35).** A client that holds a surface's
+  session credential, and in an installed browser is the bound client, can take
+  the only Bridge connection from the page after the page's own WebSocket has
+  been silent for 2 seconds, a residual risk of the handshake deadline. The
+  page's Bridge then reconnects and is refused until that client's connection
+  ends. A wrong credential is closed at once. Who can hold the credential depends
+  on the presentation:
+  - In an embedded window, only documents of the surface's origin and its
+    `AdditionalOrigins`, through the document-start script.
+  - In an installed browser, only the launched browser, except in the cases
+    above: on macOS a process that reads the browser's command line can use the
+    launch code first (opening then fails visibly), a page of another surface on
+    the same listener can read the credential, and with
+    `DesktopClientAdmission.Multiple` any client that knows the surface address
+    can connect.
+  - A process running as the same user can read the application's memory, and
+    with it the credential, in either presentation. Runic does not protect
+    against it.
+
+  See the [security guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/security.md)
+  for choosing a presentation and the admission options.

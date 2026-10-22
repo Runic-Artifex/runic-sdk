@@ -126,6 +126,10 @@ jobs:
       # of test results. Package consumers, templates and the WPF lane download them.
       - name: Pack the verified build inputs
         run: bun eng/run.mjs pack-built
+      # PackageDownload packages (the validation baselines, the WindowsDesktop targeting pack) are
+      # outside the NuGet lock files; eng/dependencies/package-downloads.json pins their content hashes.
+      - name: Check PackageDownload packages against their pinned hashes
+        run: bun eng/dependencies/package-downloads.mjs check
       - name: Verify shipped template lock integrity
         run: bun eng/release/verify-template-locks.mjs
       - name: Check generated files and lockfile after packing
@@ -1178,6 +1182,10 @@ jobs:
           dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
           node examples/notes-reactive-views/ide-host-smoke.mjs
           RUNIC_HMR_FRONTEND=angular RUNIC_HMR_VIA_IDE=1 node examples/notes-reactive-views/hmr-smoke.mjs
+      # The RID-specific and NativeAOT publishes download runtime and ILCompiler packs.
+      - name: Check PackageDownload packages against their pinned hashes
+        shell: bash
+        run: bun eng/dependencies/package-downloads.mjs check
 
   # The native checks for the musl RIDs, in Alpine. GitHub cannot run JavaScript actions in an
   # Alpine container on arm64 runners, so the runner checks out and caches, and

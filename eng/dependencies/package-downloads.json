@@ -1,0 +1,282 @@
+[
+  {
+    "id": "Microsoft.AspNetCore.App.Runtime.linux-arm64",
+    "version": "10.0.12",
+    "contentHash": "ujDwTz3IfVB8LObm77IuirrIhN3ThgyruB6JKsqTnaXtKGoUMvRMsIhoNUlbID0DReOu4Kn/AC0BFPUUFfmw/Q=="
+  },
+  {
+    "id": "Microsoft.AspNetCore.App.Runtime.linux-x64",
+    "version": "10.0.12",
+    "contentHash": "uNpe40GALY0lbi+mJAvycUP3M2E66E1HUyws0AkPbqGxzHTnT4vhPouK25o0XKPNrSdUbiND1O0to8T2uIftmw=="
+  },
+  {
+    "id": "Microsoft.AspNetCore.App.Runtime.osx-arm64",
+    "version": "10.0.12",
+    "contentHash": "YjK7DjjFtNQvu1CuS4ysmxoIqh1iIJlKtZgrobhfMLCcxx21T05Otnm5QokHGj1RFLiaDHgfd8eH5viqxP6MWQ=="
+  },
+  {
+    "id": "Microsoft.AspNetCore.App.Runtime.win-arm64",
+    "version": "10.0.12",
+    "contentHash": "QlZRVxHv5TfVNf5KbNYQaS9JICXN1srDeK1+fk9nbt4U97hqHb3G8SIT1ZJ+EKoXitDRc1+WCyt9JMwJ5DE+ww=="
+  },
+  {
+    "id": "Microsoft.AspNetCore.App.Runtime.win-x64",
+    "version": "10.0.12",
+    "contentHash": "W017+ITNnqIsYwmtQllvLTKbEDA86hEsrHCgLVoHutuhngNEFacJHEHoHrcOUZXDS11fcpeZ+3vc09Ugg3npAQ=="
+  },
+  {
+    "id": "Microsoft.DotNet.ILCompiler",
+    "version": "10.0.12",
+    "contentHash": "AawF393Q+VkdrnrnI1gu612zh5iqpa1AGSvnKCQ3IkMgSKJXIQbO1sXYRgEzOU4f0cPZ6MaCCF29xZSGWlmbuQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Host.linux-arm64",
+    "version": "10.0.12",
+    "contentHash": "+nNC1jiRJz8ru/oefXzwBCgW5UOdeFfdq5HnYrK1jNXbCJnR3ccnemOMy9V2wIPHTxAykn62F/Nc6oRWrVtYFQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Host.linux-x64",
+    "version": "10.0.12",
+    "contentHash": "B2N9nxYl+30n3AjU6g+9kSPv2H/rExmn9LBTxU1JgO9NgPEJNj6x+6Edlis/RJkd5QPokAQC8tm0ivec+TPtHQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Host.osx-arm64",
+    "version": "10.0.12",
+    "contentHash": "dfP2tB1H3fdPipMtSQoDrvEZD321FssDgZonuip97rxPizWZRfSa2zL3bmfn4nLiDIByIwZFTeCCmT4efSabcg=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Host.win-arm64",
+    "version": "10.0.12",
+    "contentHash": "sUOtUf+wrtlUtOsi4Q7a9kDmNGmnh0eVzFy/hk52lNwyCa4gTqNyInqasj6p2Uz1eIQsD4ynoyW0DqYcuvuE+A=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Host.win-x64",
+    "version": "10.0.12",
+    "contentHash": "Oczd5UwDq7SMZ6WTAgBLPmNwWNBg5JC3L7w4zfbyXYCaAIbp6zsIh06t8hsFxqglQY49Qrh1nlQIOR7qOyRtnw=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.linux-arm64",
+    "version": "10.0.12",
+    "contentHash": "KRyLIbbqJFNIvvqDDWFx+p0vbor91cHu0wurR+69OthYGlx/hupDDTkvzgKYi3IXH13C5TASAR75N8kGPfbF8w=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.linux-x64",
+    "version": "10.0.12",
+    "contentHash": "nrSdIt6h0T6FVd96Jeg3nJ/oc10sOObwW044h26QBiQQEi7ZG9UJ0WY+hoCy/fGlSLBGkfxCqVmRc+UbtP7eMg=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.NativeAOT.linux-arm64",
+    "version": "10.0.12",
+    "contentHash": "vBy3NVs1mF1O+4ESvWPleNqSPxSlDt3POwd6IMGu/qOZvH5Z+lcxOZtfa++cIvBvrR3bbFQrsUsv6XQgC7pOvw=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.NativeAOT.linux-x64",
+    "version": "10.0.12",
+    "contentHash": "Nu2P+TSwEFCNYqOOXvEl0f6/VxupGh2aU6qvm9fxLSR1NdC+xB1g7+UujjdAV36mb/RyqqjT9ENlGpz7eUhhuQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.NativeAOT.osx-arm64",
+    "version": "10.0.12",
+    "contentHash": "Zo2gPlahiPKWzS9Z4EIlmIbadTLa5gFCTU3uZcT2eLrUaF+L4/Vofa+tO4wIKWuqJXi2V7TBRCkArTrhzNi+QQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.NativeAOT.win-arm64",
+    "version": "10.0.12",
+    "contentHash": "8P17mI8pkUSAw3edqmGEB2EoCoALvr76KgzBBkLQjAYhW/cpkXgN1/Y+yhdT6t3sZQYHzsFyOpbMd7pP+8YWPg=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.NativeAOT.win-x64",
+    "version": "10.0.12",
+    "contentHash": "MPm78CKSJf8Sb0nbXgvzedp2uwFQX4JONl618NhEeAEznK9JLzQ6ETfJZ+UcoW5ScTqa27a+JGQDXD3bUAMTrA=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.osx-arm64",
+    "version": "10.0.12",
+    "contentHash": "5s6w7DIq8/3bAQkgst/wiBfrYOPKu3Pn9yxH5OXof/QY7KCQD+6KjPiFYWxltRy/uqQv+l7uPVRVvVp83pDfCQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.win-arm64",
+    "version": "10.0.12",
+    "contentHash": "n5OK0qtevujcVa4LgJ032WzkugNAvAGYbNMXGIYLwrt9g6+mVpiR6pI8Nm//cCJBZH5E73xjUu3glm5ZsPgAXQ=="
+  },
+  {
+    "id": "Microsoft.NETCore.App.Runtime.win-x64",
+    "version": "10.0.12",
+    "contentHash": "H3eh1w8Yevp6yO2+R3zbOPfwJ1vs2c/5PKa1ez7igGCF8EIycnzZr8gTjeVBAKjCPbyGuOdMSazLUnNqMsfTkw=="
+  },
+  {
+    "id": "Microsoft.WindowsDesktop.App.Ref",
+    "version": "10.0.12",
+    "contentHash": "nMvtgAJ5bx+zC21QX0j6YNQpZR5gLG0W+1UqcTSeYMatfjP0XQ5izMxd4Dolko1H2n/f7dIujB/ygrY8UXvfvw=="
+  },
+  {
+    "id": "Microsoft.WindowsDesktop.App.Runtime.win-arm64",
+    "version": "10.0.12",
+    "contentHash": "FwjwSaW8ohL4kVuk6lIPjXqm+ZQ0jbcpnZFbxJj6AhR+ePMtQu2ZFhOUoTQtCQxl13vMc363WoNdiWH/A+WOrg=="
+  },
+  {
+    "id": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+    "version": "10.0.12",
+    "contentHash": "VsVtDEmt6l3gyhSs1G6B2u5BJoW2a7p9S4Kllui9YZv8jEwnlfpxpcZm9U3Wuc29zvw7iQ7bwddsc36KvGtwwg=="
+  },
+  {
+    "id": "Runic.Application.Testing",
+    "version": "0.10.0",
+    "contentHash": "7pHaAN0eB4rfSVZZvupTtxh4uc5nmomKjO8tZ3BjHDSxcK7QtdGKQy823X5loe7cwzsbP2npW4sXGehyrsNZMw=="
+  },
+  {
+    "id": "Runic.Application.Views.CsWebUi",
+    "version": "0.10.0-preview.1",
+    "contentHash": "gN8Kip7nPV8XiHcZHyCf2xa40HjoFrMJ+6tTdibq7Uah/C0P7wOErcR5mMQxoI8CgLTBF9ssBUuSWSZt55uACw=="
+  },
+  {
+    "id": "Runic.Application.Views.Desktop",
+    "version": "0.10.0",
+    "contentHash": "3Llx0Pi0ACMiAP0PlQGZJKqW80VhQrQ0msdSLrpjVp5h3f+jcR4tK+xzd8CCDXkXzIYltEYYz6oEDHo1AEa4Rw=="
+  },
+  {
+    "id": "Runic.Application.Views.ReactiveUI.Reactive",
+    "version": "0.10.0",
+    "contentHash": "l1vYN8k1yJ4mQJXSOKUZr0QDNwGDjegk3Z3VxLEJTusdEE5q+N0dvLEV6ykB0EONOm9/408SX40SKUagy+donw=="
+  },
+  {
+    "id": "Runic.Application.Views.ReactiveUI",
+    "version": "0.10.0",
+    "contentHash": "dNLexYUnKmCRox8+gSkGVwBfgHMRfHF2MRx4BB8i8rcHjPE+bpPISx06+aQ7JSGSJgxd+n+6zuiTR6J8WVjJpw=="
+  },
+  {
+    "id": "Runic.Application.Views.Wpf",
+    "version": "0.10.0",
+    "contentHash": "kwFVovBxOE+CxxqQr5oJtw+GxnhmFVHUjyYaZDFkzChvQm37qiVzDJLHvpHzZ4EcWgdkyr7ObqyCNmxUHQ87rw=="
+  },
+  {
+    "id": "Runic.Application.Views",
+    "version": "0.10.0",
+    "contentHash": "53j/Wkyzs6iIGvZqzw2ZtMsOwCFEXpstNn5xq0sAofBPYgiIGdsK+TCUezydyqcL1Tq19wQL+R65cYV+hSdbqA=="
+  },
+  {
+    "id": "Runic.Assets.AspNetCore",
+    "version": "0.10.0",
+    "contentHash": "8wosDb8gWn+owTBjsEJjlzT44mpg/nXXiW9qP5qMsdOIsROD5qlwWM6FL9EEah1QQG27UAC7P8OlKrI0o9+xUg=="
+  },
+  {
+    "id": "Runic.Assets.Desktop",
+    "version": "0.10.0",
+    "contentHash": "Qz2qIDD4NAMGO5CV1NE6ZzWc69nbNQke5u7s8l8p3n8gxA1a+8mh0GDzy2V3uVRnA15fiGHxYAlY1rkJCfAdeA=="
+  },
+  {
+    "id": "Runic.Assets",
+    "version": "0.10.0",
+    "contentHash": "xFcjicVMox/czEjL7nx5oxHo/LOxJt+wP6ZKOyWT6VReHn2beNNcPrwwfjLPkccMFvCnSl0WsdcsHfw2RjXMlA=="
+  },
+  {
+    "id": "Runic.Desktop.Gtk4",
+    "version": "0.10.0",
+    "contentHash": "tzAO3nH3OFwexplECuzndsLWPtMNLjn711Vwm8bKqY948xJLRAkIH0sfUxyuCqKtL5hlhZc4WP/oshWfG1g0tw=="
+  },
+  {
+    "id": "Runic.Desktop",
+    "version": "0.10.0",
+    "contentHash": "DM/rjoJ2c2hvTERWQh5tAXp6mM9DpiglEi7LOR6oFq4UhOTyWrL5w5DFdBF4tYWHIPudQWSvh2dB7Wbuvn/fVg=="
+  },
+  {
+    "id": "Runic.Navigation.ReactiveUI.Reactive",
+    "version": "0.10.0",
+    "contentHash": "QBNB4xOzIDv+3vpZoAWpCOj1/EUeY7fpgfhEkjPZJo9JSEL5BnVzCYVI3347jTOP78jeD9uCZaCvpucelmhZ/Q=="
+  },
+  {
+    "id": "Runic.Navigation.ReactiveUI",
+    "version": "0.10.0",
+    "contentHash": "E1Agq8SCXZpB1yXjlxlte//1a/J8LQFuN3ZpK6/4ftYu/cRo8Ac+gehPwWkg2GQAXdOFqdxoT+/dSKt9hNxaLg=="
+  },
+  {
+    "id": "Runic.Navigation.Wpf",
+    "version": "0.10.0",
+    "contentHash": "gvyoolVQVlnE+7NLyFUHnurpZkCbBtc6h9/IcFI3a/LMiFqEGynYJbDWbAf6/nNJiK02jSlj3vTcwK8dQH3TyQ=="
+  },
+  {
+    "id": "Runic.Navigation",
+    "version": "0.10.0",
+    "contentHash": "sBct0p1EWdVMpiBrDFq2W7QEtnuba9WfxmehI2UgP7gLzzYeFp8IFNsubL+3JHq7qB5eM7tnTtJ5bLePmGxjog=="
+  },
+  {
+    "id": "Runic.Platform.Administration.Windows",
+    "version": "0.10.0",
+    "contentHash": "tFfm72ZtmS2NyfPab9a+EkBSIpJL/orYEnr8OpJ/V7Dl1OAyHOhE+k/dsxdvIxndyssPukDAyvB6GEoXz9VInw=="
+  },
+  {
+    "id": "Runic.Platform.Linux.DBus",
+    "version": "0.10.0",
+    "contentHash": "36lvZyL+/SF9Z5kh2VtSue297DERJ5cK9CV0MXjwdbcXat2x4NBBCB7lZKxK6Dd9xOVhk+54RCrQ5ff/kMFYeQ=="
+  },
+  {
+    "id": "Runic.Platform.Linux.Gtk4",
+    "version": "0.10.0",
+    "contentHash": "NE4ltAXparvnsYK7PVsO7brdk3QW73eV0Ge7aJt5zMEE3YHRXnX6m6r9TklNhXroabaGFSid7RKt5dhfxtQA8Q=="
+  },
+  {
+    "id": "Runic.Platform.Linux.Polkit",
+    "version": "0.10.0",
+    "contentHash": "yJ1WoPw4oMdjb+8SmLpZkCFS9SFpdSkbCBDJrHNSzh1LEqeR2ygfHlAoqJrtwyfKOF7FHZv1HZ8BVxm1D+8cCg=="
+  },
+  {
+    "id": "Runic.Platform.Linux.Portal",
+    "version": "0.10.0",
+    "contentHash": "YnjuLEqhby9Z3jVzahfXEplm7kFLhm+fCENoWJvkfrvOYCjNU9W5NAY8GVOBumsVni90rzX7U6KNSmPklBj+Bw=="
+  },
+  {
+    "id": "Runic.Platform.Linux",
+    "version": "0.10.0",
+    "contentHash": "DZ3heNSw3tUujF1Ah8JsNVYktfCZ+p9NItrNntZLPvV0DycmH9dRw8VyqpCo/9VzGEBTtuqFPUKBfn/AZZLeAw=="
+  },
+  {
+    "id": "Runic.Platform.MacOS",
+    "version": "0.10.0",
+    "contentHash": "4Y/xffVbRHNRU4dycjvOfnzi3GLh+PXh2hggcWWuldNxfEFu7aTgJ1KVIjTN7UGa3dXTAgGfAgRrYm6pG76BBA=="
+  },
+  {
+    "id": "Runic.Platform.Runtime",
+    "version": "0.10.0",
+    "contentHash": "49HLDd6eXhvCEFJgyXRAgVe5mpzp561PFWxlmEhJMzPl7Aq5AMghMwZ2EWbEEC6m/6/vEoF0nLZXWaJ0v/Mfwg=="
+  },
+  {
+    "id": "Runic.Platform.Windows.Elevation",
+    "version": "0.10.0",
+    "contentHash": "3pCZtrqW2Dj2gAOM0CFQTVeWtS0zSK4EOccJX5BLuaWgLeVRbj6R9RMSQgzfi+RLllhGZlm76cqh2uN5OhACvQ=="
+  },
+  {
+    "id": "Runic.Platform.Windows",
+    "version": "0.10.0",
+    "contentHash": "NJzkEMD530d5PW5NWig2Ncuw5jb8QUft9dkQ2va8itFAdFasBf5MFAJnpsP3PDMRS8Sbt4nlckknyHr/DbYaaw=="
+  },
+  {
+    "id": "Runic.Platform",
+    "version": "0.10.0",
+    "contentHash": "VpWs1a36FMlltZujANmip7kVx4ibwJ634G5Vy3UkgvrOnoejlzjwDiwZgIxO3LlKoaoa3wPL0SjvGHDWcJV9Iw=="
+  },
+  {
+    "id": "runtime.linux-arm64.Microsoft.DotNet.ILCompiler",
+    "version": "10.0.12",
+    "contentHash": "/5+mHi8hwnpAh0Uut3VVoungKmx5lER+c9T11qlt9Geqpm3j28eTnay6kQnWdegcGgXBhdLN/iY09yPR8GukeQ=="
+  },
+  {
+    "id": "runtime.linux-x64.Microsoft.DotNet.ILCompiler",
+    "version": "10.0.12",
+    "contentHash": "wAa+LAE6+Bkd+pEJvGdnQU8PZQRzvhurpQ4hzsOTpRuedIq1kunJcz86xBCBlzsc+QlVdCKVUPzEfB3uYVB7Gw=="
+  },
+  {
+    "id": "runtime.osx-arm64.Microsoft.DotNet.ILCompiler",
+    "version": "10.0.12",
+    "contentHash": "WwM79vRmPYfsV7wVjFVYaZWc853weM+HpY917SbWI52go/PU+A2L24fMaGkYB3bunhjiLb/SMNlNT0fuyjbQqA=="
+  },
+  {
+    "id": "runtime.win-arm64.Microsoft.DotNet.ILCompiler",
+    "version": "10.0.12",
+    "contentHash": "2qwg37KiPUnsvPjdLhAMjcRTxLFAC5BhIBkJd1HEBGzgSK4WT+gg/C+kh5Gwg53EQv6xTqF2oGks+c49JLa8jw=="
+  },
+  {
+    "id": "runtime.win-x64.Microsoft.DotNet.ILCompiler",
+    "version": "10.0.12",
+    "contentHash": "clsgU9GnioCJ+PBzQTCoJHxLXRU+7O/BzYrwRT8CUP7jgyYjNgJmNsQ/kbzAA7MG5kDvFoFvIBGHGzYdINh/EQ=="
+  }
+]
