@@ -240,7 +240,7 @@ internal sealed partial class MacOsWkWebViewHost
     // Main thread only, from windowDidFailToEnterFullScreen:: asks again a little later while retries remain.
     private void RetryFullScreen()
     {
-        if (_fullScreenRetries <= 0 || _kiosk || IsFullScreen) return;
+        if (_fullScreenRetries <= 0 || IsFullScreen) return;
         _fullScreenRetries--;
         _ = Task.Delay(TimeSpan.FromMilliseconds(750)).ContinueWith(_ =>
         {

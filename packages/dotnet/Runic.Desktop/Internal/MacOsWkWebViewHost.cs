@@ -460,8 +460,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (options.Kiosk)
         {
             // A borderless window enters full screen only as a full-screen primary window.
-            Api.SendVoidUlong(_window, "setCollectionBehavior:", Api.SendUlong(_window, "collectionBehavior") | (1UL << 7));
-            Api.SendVoidNint(_window, "toggleFullScreen:", 0);
+            RequestFullScreen();
         }
         else
         {
