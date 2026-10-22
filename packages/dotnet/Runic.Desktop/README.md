@@ -624,27 +624,33 @@ page's `<title>` on every host. CI checks what each host exposes with
 `tests/native/Runic.Desktop.AccessibilityProbe`, which reads and changes a page
 through the API from its own process, as a screen reader does
 (`Runic.Desktop.WebViewSmoke --accessibility` on Windows and macOS,
-`Runic.Desktop.Gtk4.Smoke --accessibility gtk3|gtk4` on Linux). On macOS
-VoiceOver runs as well, and the probe checks what it says. The probe's
-`Expectations.cs` lists each host's known gaps:
+`Runic.Desktop.Gtk4.Smoke --accessibility gtk3|gtk4` on Linux). A screen
+reader runs as well, and the probe checks what it says (`--screen-reader`):
+VoiceOver on macOS, NVDA 2026.2 on Windows and Orca 46 on Linux (Ubuntu
+24.04). The probe's `Expectations.cs` lists each host's known gaps:
 
 | Page | WebKitGTK (GTK 3 and GTK 4) | WebView2 | WKWebView |
 | --- | --- | --- | --- |
-| `<input type="range">` | Slider with value, minimum and maximum; set through the Value interface; value-change event | Slider; `RangeValue`; value-change event | Slider; `AXIncrement`; VoiceOver says "7 Volume slider", then the new value |
+| `<input type="range">` | Slider with value, minimum and maximum; set through the Value interface; value-change event; Orca says "Volume horizontal slider 7", then the new value | Slider; `RangeValue`; value-change event; NVDA says "Volume slider 7", then "Volume slider 6" | Slider; `AXIncrement`; VoiceOver says "7 Volume slider", then the new value |
 | `<input type="number">` | An entry: its text, no range | Spinner with value, minimum and maximum | Number field: its value; minimum and maximum read 0 |
-| ARIA spin button whose value the page changes | Spin button; value-change event | Spinner; value-change event | Stepper; VoiceOver says `aria-valuetext`, or a percentage of the range without it |
+| ARIA spin button whose value the page changes | Spin button; value-change event; Orca says "Restore points to keep 6 spin button" | Spinner; value-change event; NVDA says "Restore points to keep spin button 6 restore points" (`aria-valuetext`) | Stepper; VoiceOver says `aria-valuetext`, or a percentage of the range without it |
 | Increment of an ARIA spin button by the screen reader | AT-SPI has none: Orca sends arrow keys. Setting the value through AT-SPI aborts the web process ([#396](https://github.com/Runic-Artifex/runic-sdk/issues/396)) | `RangeValue.SetValue` is ignored: screen readers send arrow keys | `AXIncrement` reaches the page as Arrow Up |
-| `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event | List; `Selection` patterns; selection event | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
-| Focus moved by the screen reader | Focus event | Focus event | VoiceOver follows it and says the control |
-| Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)) | `LiveRegionChanged` | VoiceOver says it |
-| `AnnounceAsync`, polite and assertive | `Object:Announcement` | Notification event | `AXAnnouncementRequested`; VoiceOver says it |
+| `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event; Orca says "Fruit List with 3 items", then "Apple" | List; `Selection` patterns; selection event; NVDA says "Fruit list", then "Apple 1 of 3" | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
+| Focus moved by the screen reader | Focus event; Orca follows it and says the control | Focus event; NVDA follows it and says the control | VoiceOver follows it and says the control |
+| Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)); Orca says nothing | `LiveRegionChanged`; NVDA says it | VoiceOver says it |
+| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | Notification event; NVDA says nothing (below) | `AXAnnouncementRequested`; VoiceOver says it |
 | Native menu bar | None | None | Application, Edit, View and Window menus |
 
-The Linux and Windows columns are what a client of the API receives; Orca,
-Narrator and NVDA were not run. WebKit on macOS posts the page's notifications
+Each cell is what a client of the API receives, then what the screen reader
+says. Narrator is not run in CI. WebKit on macOS posts the page's notifications
 to VoiceOver but not to an observer of the public accessibility API, so there
 the probe checks values, selection, focus and live regions through what
 VoiceOver says (`eng/ci/macos-voiceover.sh` lets the job control VoiceOver).
+NVDA runs as a portable copy with the silence synthesizer and logs what it
+speaks (`eng/ci/windows-nvda.ps1`); Orca speaks through a Speech Dispatcher
+whose output module writes each utterance to a file. An increment of the ARIA
+spin button by the screen reader is checked with VoiceOver only: NVDA and Orca
+send arrow keys, which the probe does not.
 
 On Linux, the embedded window is WebKitGTK, and a screen reader such as Orca
 reads the page through WebKit's accessibility tree. It differs from Chromium,
@@ -717,10 +723,16 @@ every platform:
 
 | Host | What the window does | Checked |
 | --- | --- | --- |
-| GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`) |
+| GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`); Orca says both (`Runic.Desktop.AccessibilityProbe --screen-reader orca`) |
 | GTK 4 | Calls `gtk_accessible_announce` (GTK 4.14 or later; an older GTK reports no `Announcements`). | As GTK 3 (`--announcement gtk4`) |
-| WebView2 | Raises a UI Automation notification event from the window's own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both with their processing (`Runic.Desktop.AccessibilityProbe`); not checked with Narrator or NVDA |
-| WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | VoiceOver says both (`Runic.Desktop.AccessibilityProbe --voiceover`) |
+| WebView2 | Raises a UI Automation notification event from the window's own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both with their processing (`Runic.Desktop.AccessibilityProbe`); NVDA says neither (`--screen-reader nvda`); not checked with Narrator |
+| WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | VoiceOver says both (`Runic.Desktop.AccessibilityProbe --screen-reader voiceover`) |
+
+**NVDA does not say `AnnounceAsync` messages on WebView2.** NVDA 2026.2
+receives the window's notification event but speaks a notification only from
+the application that has the focus, and while the page has the focus, that is
+WebView2's browser process (`msedgewebview2.exe`), not the application. A live
+region in the page reaches NVDA.
 
 `DesktopAnnouncementPriority.Polite`, the default, waits for what the screen
 reader is saying, and `Assertive` interrupts it, as `aria-live` does. A browser

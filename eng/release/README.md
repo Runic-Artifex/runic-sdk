@@ -51,8 +51,8 @@ no successful CI run on `main`, if that run is still in progress, if it did not 
 every Windows and macOS leg, or if its package artifact has expired.
 
 The Windows and macOS legs are `Native / win-x64`, `win-arm64` and `osx-arm64`,
-`WPF navigation / win-x64` and `win-arm64`, and `Packaging / windows` and `macos`
-(`releaseJobs` in `eng/ci/platforms.mjs`). This keeps the guarantee releases had when
+`WPF navigation / win-x64` and `win-arm64`, `Packaging / windows` and `macos`, and
+`Screen reader / nvda` (`releaseJobs` in `eng/ci/platforms.mjs`). This keeps the guarantee releases had when
 every push to `main` ran all of them; it adds no check. Pushes now plan those legs from
 their changes (eng/ci/README.md), so `ci-run.mjs` accepts a push, scheduled or manual
 run of the exact commit and takes the newest successful one that ran them all; its

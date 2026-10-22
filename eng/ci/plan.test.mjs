@@ -7,7 +7,8 @@ import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
   everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
-import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, platformRules, neutralPaths } from './platforms.mjs';
+import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, platformRules, neutralPaths }
+  from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -117,6 +118,27 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
     assert.ok(!runs(plan([file]), 'packaging'), file);
 });
 
+test('the screen reader legs run for the embedded windows, the accessibility fixture and the probe only', () => {
+  for (const path of screenReaderPaths) assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
+  for (const file of ['packages/dotnet/Runic.Desktop/DesktopSurface.cs', 'tests/native/Runic.Desktop.AccessibilityProbe/Program.cs',
+    'tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs']) {
+    const result = plan([file]);
+    assert.ok(runs(result, 'screen-readers'), file);
+    assert.deepEqual(result['screen-readers'].include, screenReaderLegs, file);
+  }
+  // GTK 4 plans no Windows leg, so only Orca reads it.
+  for (const file of ['packages/dotnet/Runic.Desktop.Gtk4/GtkWindow.cs', 'tests/native/Runic.Desktop.Gtk4.Smoke/Program.cs'])
+    assert.deepEqual(plan([file])['screen-readers'].include, screenReaderLegs.filter(leg => !leg.platform), file);
+  for (const file of ['packages/dotnet/Runic.Platform.Linux.Portal/Portal.cs', 'packages/dotnet/Runic.Platform.Windows/WindowsPlatformProvider.cs',
+    'packages/web/views/src/index.ts', 'docs/README.md'])
+    assert.ok(!runs(plan([file]), 'screen-readers'), file);
+  // Pushes to main run Orca; a base planner without screenReaders runs every planned leg.
+  assert.deepEqual(planFor(everyLinuxJob(affected(['docs/README.md'])))['screen-readers'].include, screenReaderLegs.filter(leg => !leg.platform));
+  const { screenReaders, ...older } = affected(['packages/web/views/src/index.ts']);
+  assert.equal(screenReaders, false);
+  assert.deepEqual(planFor(parseAffected(JSON.stringify(older)))['screen-readers'].include, legsFor(screenReaderLegs, older.platforms));
+});
+
 test('Windows administration changes run native checks', () => {
   const result = plan(['packages/dotnet/Runic.Platform.Administration.Windows/Inspection.cs']);
   assert.ok(runs(result, 'native'));
@@ -156,7 +178,7 @@ test('the base checkout decides what is affected and this checkout enumerates su
 test('plan outputs are single-line GitHub outputs', () => {
   const lines = outputs(plan(['docs/README.md'])).split('\n');
   assert.deepEqual(lines.map(line => line.split('=')[0]),
-    ['full', 'components', 'managed', 'web', 'frameworks', 'native', 'wpf', 'packaging', 'platforms', 'why', 'skip']);
+    ['full', 'components', 'managed', 'web', 'frameworks', 'native', 'wpf', 'packaging', 'screen-readers', 'platforms', 'why', 'skip']);
   for (const line of lines) JSON.parse(line.slice(line.indexOf('=') + 1));
 });
 
@@ -445,7 +467,8 @@ test('a base planner without platforms plans every leg, and invalid platforms ar
   for (const older of [{ full: decided.full, components: decided.components },
     { ...decided, platforms: ['win-x64', 'linux-riscv64'] }, { ...decided, platforms: ['win-x64'], why: {} }]) {
     const parsed = parseAffected(JSON.stringify(older));
-    assert.deepEqual(parsed, { full: decided.full, components: decided.components });
+    const readers = older.screenReaders === undefined ? {} : { screenReaders: older.screenReaders };
+    assert.deepEqual(parsed, { full: decided.full, components: decided.components, ...readers });
     const result = planFor(parsed);
     assert.deepEqual(result.platforms, platforms);
     assert.match(result.why, /the base planner plans no platforms/);
@@ -455,7 +478,7 @@ test('a base planner without platforms plans every leg, and invalid platforms ar
 
 test('the workflow plans platform legs, reads the label live and runs everything nightly', () => {
   const { plan: job } = workflow.jobs;
-  for (const name of ['native', 'wpf', 'packaging']) {
+  for (const name of ['native', 'wpf', 'packaging', 'screen-readers']) {
     assert.equal(workflow.jobs[name].strategy.matrix, `\${{ fromJSON(needs.plan.outputs.${name}) }}`, name);
     assert.equal(job.outputs[name], `\${{ steps.plan.outputs.${name} }}`, name);
   }

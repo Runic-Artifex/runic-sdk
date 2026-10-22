@@ -40,6 +40,7 @@ jobs:
       native: ${{ steps.plan.outputs.native }}
       wpf: ${{ steps.plan.outputs.wpf }}
       packaging: ${{ steps.plan.outputs.packaging }}
+      screen-readers: ${{ steps.plan.outputs.screen-readers }}
       platforms: ${{ steps.plan.outputs.platforms }}
       why: ${{ steps.plan.outputs.why }}
       skip: ${{ steps.plan.outputs.skip }}
@@ -809,7 +810,8 @@ jobs:
       # W315-018: Runic.Desktop.AccessibilityProbe reads and changes a page through AT-SPI (GTK 3 and GTK 4), UI
       # Automation (WebView2) or the macOS accessibility API (WKWebView) from its own process, as a screen reader does:
       # roles, range values, selection, their change events, focus, live regions and AnnounceAsync. On macOS VoiceOver
-      # also runs and the probe checks what it says. Expectations.cs lists each host's known gaps.
+      # also runs and the probe checks what it says; the screen-readers job does so with NVDA and Orca. Expectations.cs
+      # lists each host's known gaps.
       - name: Check what screen readers read in the embedded window
         timeout-minutes: 12
         shell: bash
@@ -826,7 +828,7 @@ jobs:
           probe=(dotnet "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll")
           if [[ "$RUNNER_OS" == macOS ]]; then
             eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
-              --accessibility --probe "${probe[@]}" --voiceover --receipt artifacts/accessibility/wkwebview.json
+              --accessibility --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview.json
             exit
           fi
           for toolkit in gtk3 gtk4; do
@@ -1339,10 +1341,79 @@ jobs:
           bun eng/ci/packaging-probe-check.mjs "$receipts/packaged.json" flatpak
           flatpak uninstall --user -y --noninteractive org.runic.tests.PackagingProbe
 
+  # I-074: what NVDA (WebView2) and Orca (WebKitGTK, GTK 3 and GTK 4) say while the accessibility probe reads and changes
+  # the accessibility fixture, as the native job's macOS leg checks VoiceOver. The probe starts the screen reader before
+  # the page opens and quits it (Runic.Desktop.AccessibilityProbe/SpeechScenario.cs); Expectations.cs lists what each
+  # one is known not to say. NVDA logs its speech with the silence synthesizer; Orca speaks through a Speech Dispatcher
+  # whose output module writes each utterance to a file. Narrator stays a manual check.
+  screen-readers:
+    name: Screen reader / ${{ matrix.reader }}
+    needs: plan
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'screen-readers') }}
+    # The planned legs of screenReaderLegs in eng/ci/platforms.mjs.
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.screen-readers) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: native
+          install: "false"
+      - name: Install Orca and the native WebView prerequisites
+        if: matrix.reader == 'orca'
+        run: |
+          eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core orca
+          eng/ci/permit-webkit-sandbox.sh
+          dpkg-query -W orca speech-dispatcher libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4
+      - name: Install a portable NVDA
+        if: matrix.reader == 'nvda'
+        timeout-minutes: 5
+        shell: pwsh
+        run: eng/ci/windows-nvda.ps1 -Destination "$env:RUNNER_TEMP\nvda"
+      - name: Build the accessibility fixture and probe
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
+            dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0-windows
+          else
+            dotnet build tests/native/Runic.Desktop.Gtk4.Smoke -c Release
+            dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0
+          fi
+      - name: Check what the screen reader says in the embedded window
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          mkdir -p artifacts/screen-reader
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility \
+              --probe "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
+              --screen-reader nvda --nvda "$RUNNER_TEMP/nvda/nvda.exe" --receipt artifacts/screen-reader/webview2.json
+            exit
+          fi
+          probe=(dotnet "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll")
+          for toolkit in gtk3 gtk4; do
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+              -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --screen-reader orca \
+              --receipt "artifacts/screen-reader/$toolkit/$toolkit.json"
+          done
+      - name: Retain screen reader receipts and logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screen-reader-${{ matrix.reader }}-${{ github.run_id }}
+          path: artifacts/screen-reader
+          if-no-files-found: ignore
+
   verify:
     name: verify
     if: always()
-    needs: [plan, build, managed, web, node-26, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging]
+    needs: [plan, build, managed, web, node-26, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging, screen-readers]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

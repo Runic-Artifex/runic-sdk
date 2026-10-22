@@ -118,6 +118,36 @@ Hosted runners have one virtual monitor, and the macOS runner offers no HiDPI mo
 so moving a window between monitors with different scales and macOS scaling need
 real hardware.
 
+## Screen reader speech
+
+The `screen-readers` job (`screenReaderLegs` in `eng/ci/platforms.mjs`) runs the
+accessibility fixture with a screen reader and checks what it says, as the native
+job's `osx-arm64` leg does with VoiceOver: NVDA on `windows-2025` (WebView2) and Orca
+on `ubuntu-24.04` (WebKitGTK, GTK 3 and GTK 4, under Xvfb on a private session bus).
+`Runic.Desktop.AccessibilityProbe --screen-reader nvda|orca` starts the screen reader
+before the page opens, acts on the page through the accessibility API and quits it;
+`Expectations.cs` lists what each one is known not to say. The receipts and the
+screen reader's own logs are the `screen-reader-<reader>-<run>` artifact.
+
+- **NVDA.** `eng/ci/windows-nvda.ps1` downloads the NVDA launcher pinned by version
+  and SHA-256, requires NV Access's Authenticode signature and creates a portable copy
+  in `RUNNER_TEMP`. The probe gives it its own configuration (no welcome dialog, update
+  check or sounds) and the silence synthesizer, and reads the speech that NVDA logs at
+  its input/output level. To update NVDA, change the version and hash in the script;
+  NV Access publishes the launcher's SHA-1 at
+  `https://api.nvaccess.org/nvdaUpdateCheck?versionType=stable`.
+- **Orca.** Ubuntu's `orca` package. The probe runs Orca with private XDG directories
+  and a Speech Dispatcher configuration whose `sd_generic` output module appends each
+  utterance to a file instead of synthesizing it (audio goes to ALSA's null device).
+  To run it locally, use an isolated session, never the desktop's own:
+  `GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run
+  --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release -- --accessibility gtk4
+  --probe dotnet <probe.dll> --screen-reader orca --receipt artifacts/screen-reader/gtk4.json`.
+
+Both legs run for changes to `Runic.Desktop`, `Runic.Desktop.Gtk4`, the WebView and
+GTK 4 smokes and the probe (`screenReaderPaths`), and with every job; NVDA only when
+`win-x64` is planned. Narrator stays a manual check.
+
 ## Affected-only pull requests
 
 The `plan` job runs `eng/ci/plan.mjs`. On a pull request it diffs GitHub's merge
@@ -190,7 +220,8 @@ Other runs choose legs this way:
   follow `svelte`; `views` follows `examples`; package consumers and templates run for
   any affected component.
   Native jobs follow `desktop`, `platform`, `application`, `examples` and
-  `administration-windows`, with the legs above.
+  `administration-windows`, with the legs above; the screen reader legs follow
+  `screenReaderPaths` (see [Screen reader speech](#screen-reader-speech)).
 
 Skipped jobs report `skipped`, so no check stays pending. The required `verify` job
 (`eng/ci/gate.mjs`) accepts `skipped` only for jobs in the plan's skip list; a

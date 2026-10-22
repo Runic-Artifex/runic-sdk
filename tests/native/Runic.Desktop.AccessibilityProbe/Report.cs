@@ -9,6 +9,9 @@ internal sealed class Report(string host, bool survey)
 
     internal string Api { get; set; } = "";
 
+    /// <summary>The screen reader that ran (--screen-reader), or null.</summary>
+    internal string? ScreenReader { get; init; }
+
     internal int ExitCode => _failures == 0 ? 0 : 1;
 
     internal void Pass(string id, string detail) => Add(id, "pass", detail, null);
@@ -36,6 +39,7 @@ internal sealed class Report(string host, bool survey)
         {
             ["host"] = host,
             ["api"] = Api,
+            ["screenReader"] = ScreenReader,
             ["os"] = Environment.OSVersion.ToString(),
             ["survey"] = survey,
             ["failures"] = _failures,
