@@ -24,8 +24,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         "RUNIC_APPLICATION_DEV_PROJECT";
 
     /// <summary>
-    /// A random value for each start of the Vite process. vite-plugin-runic answers <c>/__runic/state</c> with it in
-    /// <see cref="SessionHeader"/>, so dev does not take another process that bound the port first for its server.
+    /// A random value for each start of the development server process. vite-plugin-runic answers <c>/__runic/state</c>
+    /// with it in <see cref="SessionHeader"/>: <c>runic()</c> on a Vite server, <c>runicDevSessionProxy()</c> in an
+    /// Angular proxy configuration. dev thus does not take another process that bound the port first for its server.
     /// </summary>
     internal const string SessionEnvironmentVariable = "RUNIC_APPLICATION_DEV_SESSION";
     internal const string SessionHeader = "X-Runic-Dev-Session";
@@ -133,6 +134,10 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 }
             }
             ThrowIfExited(server.Completion);
+            if (confirmSession)
+            {
+                Console.WriteLine("[dev] The Vite development server confirmed this dev session.");
+            }
             Console.WriteLine($"[dev] Vite development server ready at {origin}");
             return server;
         }
@@ -337,7 +342,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         }
     }
 
-    private static bool ConfirmsSession(HttpResponseMessage response, string session) =>
+    /// <summary>Whether the response carries exactly this session's value in <see cref="SessionHeader"/>.</summary>
+    internal static bool ConfirmsSession(HttpResponseMessage response, string session) =>
         response.Headers.TryGetValues(SessionHeader, out IEnumerable<string>? values) &&
         System.Linq.Enumerable.ToArray(values) is [string answer] &&
         CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(answer), Encoding.ASCII.GetBytes(session));

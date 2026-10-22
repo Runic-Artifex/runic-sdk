@@ -61,6 +61,32 @@ Pages and other responses do not carry the header. Use the plugin from the same
 release as `dotnet-runic`, because an older plugin does not answer and `dev`
 times out with `RAPPDEV1007`.
 
+Two exports answer only the session, for development servers that cannot use
+`runic()`. Without `dotnet runic dev` neither changes anything.
+
+- `runicDevSession()` is a Vite plugin without `runic()`'s HTML hooks, for
+  SvelteKit, which warns about plugins with a `transformIndexHtml` hook:
+
+  ```ts
+  plugins: [sveltekit({ adapter: runicAdapter() }), runicDevSession()],
+  ```
+
+- `runicDevSessionProxy()` returns Vite proxy entries, for the Angular CLI,
+  which takes a proxy configuration but no Vite plugins. Spread it into the
+  file that the serve target's `proxyConfig` in `angular.json` names:
+
+  ```js
+  // proxy.conf.mjs
+  import { runicDevSessionProxy } from "@runic-artifex/vite-plugin-runic";
+
+  export default { ...runicDevSessionProxy() };
+  ```
+
+  `dotnet runic dev` expects the answer from an Angular frontend whose
+  `package.json` declares this package.
+
+The `runic-app` template's SvelteKit and Angular frontends are set up this way.
+
 The native host serves `webui.js` and its client script (`runic-desktop.js`,
 `runic-views.js`, `runic-cswebui.js` or `runic-desktop-views.js`) from the root
 of the web content, outside the Vite build. The plugin leaves those classic script tags

@@ -25,6 +25,7 @@
     "@angular/cli": "22.2.3",
     "@angular/compiler": "22.2.3",
     "@angular/compiler-cli": "22.2.3",
+    "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
     "typescript": "6.0.3"
   },
   "overrides": {

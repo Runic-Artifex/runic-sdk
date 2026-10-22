@@ -23,6 +23,7 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": { "proxyConfig": "proxy.conf.mjs" },
           "configurations": {
             "development": { "buildTarget": "frontend:build:development" }
           },

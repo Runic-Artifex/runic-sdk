@@ -474,6 +474,13 @@ verify_template() {
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
+    # Every starter's development server confirms the dev session (runic(), runicDevSession() for SvelteKit,
+    # runicDevSessionProxy() in the Angular proxyConfig), so dev never takes another process on its port for it.
+    if ! grep -Fq 'development server confirmed this dev session.' "$output/dotnet-runic-dev.log"; then
+      echo "The $framework development server did not confirm the dev session." >&2
+      tail -n 80 "$output/dotnet-runic-dev.log" >&2
+      exit 1
+    fi
   fi
   if [[ "$manager" == npm && "$host" == cswebui && "$html_inputs" == true ]]; then
     # A window entry that is a build input but has no file fails before the
