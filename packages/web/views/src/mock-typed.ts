@@ -174,13 +174,18 @@ export interface MockTypedViewDefinition {
   readonly setters?: object;
   readonly commands?: object;
   readonly canExecute?: object;
+  /**
+   * Key resolution of `[RunicCommandKey]` commands by client method: whether .NET would find an object for the
+   * key. Absent, every key resolves.
+   */
+  readonly resolveKey?: object;
   readonly operations?: object;
 }
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
-function rejected(message: string): Error {
-  return Object.assign(new Error(message), { kind: "rejected" });
+function rejected(message: string, reason: "unavailable" | "unresolved-key"): Error {
+  return Object.assign(new Error(message), { kind: "rejected", reason });
 }
 
 // A typed handler throws mockFailure(typed); the untyped mock sends the wire value.
@@ -230,15 +235,22 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
   for (const [method, command] of Object.entries(spec.commands ?? {})) {
     const handler = (definition.commands as Record<string, unknown> | undefined)?.[method] as MockCommandHandler<unknown, unknown[]> | undefined;
     const available = (definition.canExecute as Record<string, unknown> | undefined)?.[method] as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
+    const resolves = (definition.resolveKey as Record<string, unknown> | undefined)?.[method] as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
     const name = upperFirst(method);
+    // As in .NET: the key is resolved before availability is evaluated.
     routes[command.route] = async (state, ...args) => {
       const input = command.read && args.length > 0 ? [command.read(args[0])] : [];
-      if (command.available && state[command.available] === false) throw rejected(`${name} is unavailable.`);
-      if (available && !available(decode(state), ...input)) throw rejected(`${name} is unavailable.`);
+      if (resolves && !resolves(decode(state), ...input)) throw rejected(`${name} has no object for this key.`, "unresolved-key");
+      if (command.available && state[command.available] === false) throw rejected(`${name} is unavailable.`, "unavailable");
+      if (available && !available(decode(state), ...input)) throw rejected(`${name} is unavailable.`, "unavailable");
       try { return patchOf(handler ? await handler(decode(state), ...input) : undefined); }
       catch (error) { throw encodedFailure(error, command.encodeFailure); }
     };
-    if (command.read) routes[`Can${name}`] = (state, argument) => available ? available(decode(state), command.read!(argument)) : true;
+    if (command.read) routes[`Can${name}`] = (state, argument) => {
+      const input = command.read!(argument);
+      if (resolves && !resolves(decode(state), input)) return false;
+      return available ? available(decode(state), input) : true;
+    };
   }
   const operations: Record<string, MockOperationHandler | "manual"> = {};
   const wrapOperation = (method: string) => (raw: ReturnType<MockView["operations"]>[number]): MockTypedOperation<unknown, unknown, unknown> => {

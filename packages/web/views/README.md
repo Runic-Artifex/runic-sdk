@@ -450,6 +450,14 @@ A definition takes:
   error becomes the client's `BridgeError`, with its `kind` when it has one. A
   setter's value is applied first; checked writes (`write<Property>`) use the
   same handler and answer `conflict` for a stale baseline.
+  A command whose `CanExecute` is false rejects with reason `unavailable`, as
+  .NET does.
+- `resolveKey`: for a command with `[RunicCommandKey]` (since 0.11), whether
+  .NET would find an object for the key, by client method:
+  `resolveKey: { deleteItem: (state, id) => state.items.some(item => item.id === id) }`.
+  It runs before `canExecute`; `false` rejects the command with reason
+  `unresolved-key` and makes `can<Command>(key)` false. Absent, every key
+  resolves.
 - `operations`: runs `start<Command>()`. Without a handler the command handler
   runs and the operation succeeds. `"manual"` keeps each operation running
   until the test calls `succeed(result)`, `fail(message)`, `failWith(failure)`
@@ -471,7 +479,7 @@ A definition takes:
   and a start with the id begins a new operation.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
-.NET publication), `calls`, `failNext(method, { kind, message, detail })` or
+.NET publication), `calls`, `failNext(method, { kind, message, detail, reason })` or
 `failNext(method, { kind: "domain-failed", failure })` for a method's declared failure,
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
@@ -582,9 +590,12 @@ A `BridgeError` names what failed and why:
   including a declared failure of a command whose client does not declare it, is
   `failed`.
 - `reason` refines `kind` when .NET sent one (`BridgeErrorReason`, open): a
-  `rejected` command whose `CanExecute` is false has `unavailable`, and a setter
+  `rejected` command whose `CanExecute` is false has `unavailable`, a setter
   value or command argument that does not decode or is rejected has
-  `invalid-input`. `unresolved-key` is reserved for a later release.
+  `invalid-input`, and a `[RunicCommandKey]` command whose key names no object
+  has `unresolved-key` (since 0.11). An operation start rejected as
+  `unavailable` or `unresolved-key` carries the same reason (since 0.11), with
+  the token as its message.
 - A connect to a .NET host that speaks another Views protocol version, for example
   a page of this release with `Runic.Application.Views` of another one, rejects
   with `failed` and a message that names both versions. Use the .NET and npm

@@ -9,10 +9,11 @@ export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnecte
 
 /**
  * Refines a {@link BridgeError} kind. .NET sends `unavailable` (a command whose
- * `CanExecute` is false) and `invalid-input` (a setter value or command argument that
- * does not decode or is rejected) with `rejected`. `unresolved-key` is reserved for a
- * command parameter resolved from a wire key that resolves to nothing; no release sends
- * it yet. Open: a minor release may add a reason, so handle unknown reasons.
+ * `CanExecute` is false), `invalid-input` (a setter value or command argument that
+ * does not decode or is rejected) and, since 0.11, `unresolved-key` (the key of a
+ * `[RunicCommandKey]` command names no object) with `rejected`; an operation start
+ * rejected for one of these reasons carries it too. Open: a minor release may add a
+ * reason, so handle unknown reasons.
  */
 export type BridgeErrorReason = "unavailable" | "invalid-input" | "unresolved-key";
 

@@ -18,6 +18,10 @@ export interface KeyedPlainMockDefinition {
   readonly canExecute?: {
     readonly pick?: (state: KeyedPlainMockState, input: number) => boolean;
   };
+  /** Whether .NET finds an object for the key of a `[RunicCommandKey]` command; absent, every key resolves. */
+  readonly resolveKey?: {
+    readonly pick?: (state: KeyedPlainMockState, slot: number) => boolean;
+  };
 }
 
 export interface KeyedPlainMock extends MockTypedView<KeyedPlainMockState, KeyedPlainClient, "keyedPlain"> {}

@@ -39,6 +39,14 @@ async function journeys(): Promise<string[]> {
     "JsonIgnore opt-in changed DTO/root contract boundaries.");
   pass("shared-dto");
 
+  // #472: a [RunicCommandKey] command takes the key, and .NET resolves the entry inside the call.
+  require(await client.canArchiveEntry(1n) && !(await client.canArchiveEntry(2n)), "can… did not follow key resolution.");
+  require((await client.archiveEntry(1n)).archived === "entry-1", "The keyed command did not run with its entry.");
+  const unresolved = await client.archiveEntry(2n).then(() => undefined, error => error);
+  require(unresolved instanceof BridgeError && unresolved.kind === "rejected" && unresolved.reason === "unresolved-key",
+    "An unresolved key was not rejected with reason unresolved-key.");
+  pass("keyed-command");
+
   // A legacy awaited callback must not hold the transport while another callback
   // writes a draft or requests cancellation.
   const direct = client.long().then(() => undefined, error => error);

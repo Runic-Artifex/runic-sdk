@@ -1,4 +1,4 @@
-import type { BridgeErrorKind, BridgeFailureDetail } from "./errors.js";
+import type { BridgeErrorKind, BridgeErrorReason, BridgeFailureDetail } from "./errors.js";
 import type { RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, viewsVersion } from "./version.js";
 
@@ -40,6 +40,8 @@ export interface MockErrorFailure {
   readonly message?: string;
   /** Development-only .NET detail, as `BridgeError.detail` exposes it. */
   readonly detail?: BridgeFailureDetail;
+  /** What refines `kind`, as `BridgeError.reason` exposes it, such as `unresolved-key` for `rejected`. */
+  readonly reason?: BridgeErrorReason;
 }
 
 /**
@@ -278,13 +280,15 @@ function parseObject(text: unknown): Record<string, unknown> | undefined {
   } catch { return undefined; }
 }
 
-function failureFromError(error: unknown): { kind: string; message: string; detail?: BridgeFailureDetail } {
+function failureFromError(error: unknown): { kind: string; message: string; detail?: BridgeFailureDetail; reason?: string } {
   const kind = typeof (error as { kind?: unknown })?.kind === "string" ? (error as { kind: string }).kind : "failed";
+  const reason = (error as { reason?: unknown } | null | undefined)?.reason;
   // Like .NET in development, the reply carries the thrown error's detail.
   const detail = error instanceof Error
     ? { type: error.name, message: error.message, ...(typeof error.stack === "string" ? { stack: error.stack } : {}) }
     : undefined;
-  return { kind, message: error instanceof Error ? error.message : String(error), ...(detail ? { detail } : {}) };
+  return { kind, message: error instanceof Error ? error.message : String(error), ...(detail ? { detail } : {}),
+    ...(typeof reason === "string" ? { reason } : {}) };
 }
 
 interface Deferred<T> { readonly promise: Promise<T>; resolve(value: T): void }
@@ -413,7 +417,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return state;
   };
   // Like .NET, only snapshot replies state the protocol and package version; the mock is of this release.
-  const envelope = (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown; failure?: unknown },
+  const envelope = (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown; failure?: unknown; reason?: string },
     protocol = false) => JSON.stringify({
     ok: error === undefined, state: wireState(view), error: error ?? null, ...(protocol ? { protocol: bridgeProtocol, version: viewsVersion } : {}),
   });
@@ -873,10 +877,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const message = failure.message ?? `The mock failed ${name}.`;
     if (failure.kind === "transport") throw new Error(message);
     const detail = failure.detail ? { detail: failure.detail } : {};
-    if (!view) throw Object.assign(new Error(message), { kind: failure.kind });
+    const reason = failure.reason === undefined ? {} : { reason: failure.reason };
+    if (!view) throw Object.assign(new Error(message), { kind: failure.kind, ...reason });
+    // An admission has no message of its own: a reason token takes its place, as in .NET.
     if (/^Start[A-Z]/.test(name.slice(view.route.length)))
-      return JSON.stringify({ kind: failure.kind === "rejected" ? "rejected" : "failed", reason: message, terminal: null, ...detail });
-    return envelope(view, { kind: failure.kind, message, ...detail });
+      return JSON.stringify({ kind: failure.kind === "rejected" ? "rejected" : "failed", reason: failure.reason ?? message, terminal: null, ...detail });
+    return envelope(view, { kind: failure.kind, message, ...detail, ...reason });
   }
 
   const viewFor = (name: string) => {

@@ -28,6 +28,13 @@ export interface KeyedReactiveMockDefinition {
     readonly rename?: (state: KeyedReactiveMockState, input: bigint) => boolean;
     readonly export?: (state: KeyedReactiveMockState, input: bigint) => boolean;
   };
+  /** Whether .NET finds an object for the key of a `[RunicCommandKey]` command; absent, every key resolves. */
+  readonly resolveKey?: {
+    readonly delete?: (state: KeyedReactiveMockState, itemId: bigint) => boolean;
+    readonly archive?: (state: KeyedReactiveMockState, itemId: bigint) => boolean;
+    readonly rename?: (state: KeyedReactiveMockState, itemId: bigint) => boolean;
+    readonly export?: (state: KeyedReactiveMockState, itemId: bigint) => boolean;
+  };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
     readonly delete?: MockTypedOperationHandler<KeyedReactiveMockState, bigint, void> | "manual";

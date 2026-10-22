@@ -22,6 +22,12 @@ export interface KeyedToolkitMockDefinition {
     readonly open?: (state: KeyedToolkitMockState, input: bigint) => boolean;
     readonly select?: (state: KeyedToolkitMockState, input: string) => boolean;
   };
+  /** Whether .NET finds an object for the key of a `[RunicCommandKey]` command; absent, every key resolves. */
+  readonly resolveKey?: {
+    readonly lock?: (state: KeyedToolkitMockState, id: bigint) => boolean;
+    readonly open?: (state: KeyedToolkitMockState, id: bigint) => boolean;
+    readonly select?: (state: KeyedToolkitMockState, name: string) => boolean;
+  };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
     readonly open?: MockTypedOperationHandler<KeyedToolkitMockState, bigint, void> | "manual";

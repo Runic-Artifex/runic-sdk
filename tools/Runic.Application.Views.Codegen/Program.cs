@@ -1415,7 +1415,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var name = command.Name[..^"Command".Length];
             return new MockCommand(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : null,
                 plan.HasArgument ? plan.InputGraph?.EmitTypeScriptDecoder("wire") ?? "bridgeWire.string(wire)" : null,
-                plan.HasArgument ? null : $"can{name}", plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
+                plan.HasArgument ? null : $"can{name}", plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"),
+                plan.Key is null ? null : plan.ParameterName);
         }).ToArray(),
         commands.Where(command => commandPlans[command].IsAsync).Select(command =>
         {

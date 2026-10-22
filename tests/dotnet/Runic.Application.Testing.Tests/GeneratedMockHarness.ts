@@ -185,4 +185,34 @@ function fresh(): MockBridge {
   client.dispose();
 }
 
+// #472: a [RunicCommandKey] command's mock resolves the key before availability, as .NET does.
+{
+  const bridge = fresh();
+  const { connectKeyedReactive } = await load("keyedReactive");
+  const { mockKeyedReactive } = await load("keyedReactive.mock");
+  const items = new Set([1n, 3n]);
+  mockKeyedReactive(bridge, {
+    state: { enabled: true, last: "" },
+    resolveKey: { delete: (_state: unknown, itemId: bigint) => items.has(itemId), archive: (_state: unknown, itemId: bigint) => items.has(itemId) },
+    canExecute: { delete: (_state: unknown, itemId: bigint) => itemId !== 3n },
+    commands: { delete: (_state: unknown, itemId: bigint) => { items.delete(itemId); return { last: `deleted ${itemId}` }; } },
+  });
+  const client = await connectKeyedReactive();
+  assert.equal(await client.canDelete(1n), true);
+  assert.equal(await client.canDelete(2n), false);
+  assert.equal(await client.canDelete(3n), false);
+  assert.equal((await client.delete(1n)).last, "deleted 1");
+  await assert.rejects(client.delete(1n), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "unresolved-key");
+  await assert.rejects(client.delete(3n), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "unavailable");
+  // An injected rejection carries its reason to commands and operation starts.
+  bridge.failNext("keyedReactiveArchive", { kind: "rejected", reason: "unresolved-key", message: "Archive has no object for this key." });
+  await assert.rejects(client.archive(3n), (error: unknown) => error instanceof BridgeError && error.reason === "unresolved-key");
+  bridge.failNext("keyedReactiveStartArchive", { kind: "rejected", reason: "unresolved-key" });
+  await assert.rejects(client.startArchive(3n), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "unresolved-key");
+  client.dispose();
+}
+
 console.log("GENERATED_MOCKS_OK");

@@ -17,6 +17,10 @@ The existing Linux package-consumer CI job runs these focused journeys:
   property leaves the contract by default, and `[assembly: RunicIncludeJsonIgnored]`
   keeps it (generation then rejects it); conditional JSON rules and root model
   members remain in the contract.
+- A `[RunicCommandKey]` command whose parameter has no wire form takes the
+  resolver's key in the generated client (`archiveEntry(entryId: bigint)`);
+  `canArchiveEntry` follows the resolution, and an unknown key rejects with
+  reason `unresolved-key`.
 - An awaited long command and a public operation `wait()` admit concurrent draft
   and Cancel callbacks through the real desktop transport. The shipped Svelte
   `useOperation` renders pending and cancellation state, and a cancelled run ends
