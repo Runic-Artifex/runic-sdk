@@ -58,7 +58,8 @@ internal sealed partial class MacBookmarksNativeTests
             Check(resolved.TryGetValue(out var access), $"resolves: {resolved}");
             await using (access!)
             {
-                Check(Path.GetFileName(access!.LocalPath) == "probe é.txt" && await File.ReadAllTextAsync(access.LocalPath) == "probe" && !access.IsStale,
+                // APFS keeps the name as created, but NSURL may report it decomposed (NFD).
+                Check(Path.GetFileName(access!.LocalPath).Normalize() == "probe é.txt".Normalize() && await File.ReadAllTextAsync(access.LocalPath) == "probe" && !access.IsStale,
                     $"resolves to the file: {access.LocalPath} stale={access.IsStale}");
             }
 
