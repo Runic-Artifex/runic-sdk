@@ -400,7 +400,7 @@ internal sealed class WindowServiceChecks
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];
         Type[] notServices = [typeof(IPlatformCapabilities), typeof(IDesktopServiceStatus), typeof(IDirectoryLease), typeof(IReadFileLease),
-            typeof(IReadFileLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
+            typeof(IReadFileLeaseList), typeof(IDirectoryLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
             typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply)];
         var contracts = typeof(IFileDialogs).Assembly.GetExportedTypes().Where(static type => type.IsInterface).ToHashSet();
         var unclassified = contracts.Except(window).Except(application).Except(composed).Except(notServices).Select(static type => type.Name).ToArray();
