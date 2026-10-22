@@ -31,6 +31,31 @@ internal sealed partial class CodegenDiagnosticsTests
 
         """;
 
+    // I-028: the committed machine-readable list is the generator's current output. eng/diagnostics.test.mjs checks
+    // it against the catalog.
+    [Test]
+    public async Task DiagnosticListIsTheGeneratorsOutputAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        using var process = Process.Start(new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+            ArgumentList = { generator, "--list-diagnostics" },
+        })!;
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().WaitAsync(GeneratorTimeout).ConfigureAwait(false);
+        var list = await output.ConfigureAwait(false);
+        Require(process.ExitCode == 0, $"--list-diagnostics failed: {await error.ConfigureAwait(false)}");
+        var committed = File.ReadAllText(Path.Combine(root, "docs", "runicbridge-diagnostics.json")).ReplaceLineEndings("\n");
+        Require(list == committed, "docs/runicbridge-diagnostics.json is stale. Run: dotnet run --project "
+            + "tools/Runic.Application.Views.Codegen -- --list-diagnostics docs/runicbridge-diagnostics.json\n" + list);
+    }
+
     [Test]
     public async Task GeneratorRejectsUnsupportedModelsWithLocatedDiagnosticsAsync()
     {

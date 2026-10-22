@@ -225,6 +225,8 @@ It runs these steps in order:
 Commit the resulting changes. `regen` does not change lockfiles or anything outside
 the solution:
 
+- Run `dotnet run --project tools/Runic.Application.Views.Codegen -- --list-diagnostics docs/runicbridge-diagnostics.json`
+  after changing a `RUNICBRIDGE` code, severity or title in `BridgeDiagnosticCodes.All`.
 - Run `bun install` for `bun.lock`.
 - Run `bun run lock:nuget` for the NuGet `packages.lock.json` files after changing
   a project or package reference, `Directory.Packages.props`, the .NET SDK pin or
