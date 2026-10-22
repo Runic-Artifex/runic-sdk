@@ -26,6 +26,11 @@
     <property name="MountPoints" type="aay" access="read"/>
   </interface>
   <interface name="org.freedesktop.UDisks2.Encrypted">
+    <method name="Unlock">
+      <arg name="passphrase" type="s" direction="in"/>
+      <arg name="options" type="a{sv}" direction="in"/>
+      <arg name="cleartext_device" type="o" direction="out"/>
+    </method>
     <property name="CleartextDevice" type="o" access="read"/>
   </interface>
   <interface name="org.freedesktop.UDisks2.Drive">

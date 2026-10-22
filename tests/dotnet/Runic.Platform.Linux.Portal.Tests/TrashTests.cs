@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Runic.Platform;
@@ -172,6 +173,111 @@ internal sealed partial class TrashTests
         finally { Directory.Delete(topdir, recursive: true); }
     }
 
+    // The home trash in a temporary directory, never the user's; no mount is searched for topdir trashes.
+    [Test, DisplayName("trash: list, restore and empty the trash; directorysizes for a trashed directory")]
+    public async Task ListRestoreEmptyAsync()
+    {
+        using var scratch = new Scratch();
+        IDesktopTrash trash = new LinuxTrash(homeTrash: scratch.HomeTrash, sandboxed: false, mountPoints: () => []);
+        string file = scratch.File(Path.Combine("docs", "report ä.txt"), "content");
+        string folder = Path.Combine(scratch.Root, "docs", "photos");
+        Directory.CreateDirectory(Path.Combine(folder, "2026"));
+        File.WriteAllBytes(Path.Combine(folder, "2026", "a.jpg"), new byte[10_000]);
+        string outside = scratch.File("outside.txt", "outside");
+        string link = Path.Combine(scratch.Root, "docs", "link");
+        File.CreateSymbolicLink(link, outside);
+        var before = DateTimeOffset.Now.AddSeconds(-2);
+        var results = await trash.MoveAllToTrashAsync([file, folder, link]);
+        Check(results.All(static result => result is PlatformResult<PlatformUnit>.Success), $"trashed: {string.Join(", ", results)}");
+
+        // directorysizes: "size mtime name", with the info file's modification time and the blocks the directory uses.
+        string[] sizes = File.ReadAllLines(Path.Combine(scratch.HomeTrash, "directorysizes"));
+        long infoTime = new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(scratch.HomeTrash, "info", "photos.trashinfo"))).ToUnixTimeSeconds();
+        Check(sizes is [var line] && line.Split(' ') is [var size, var mtime, "photos"] && long.Parse(size, System.Globalization.CultureInfo.InvariantCulture) >= 10_000
+            && mtime == infoTime.ToString(System.Globalization.CultureInfo.InvariantCulture), $"directorysizes: {string.Join(" | ", sizes)}");
+
+        var listed = ((PlatformResult<ImmutableArray<DesktopTrashItem>>.Success)await trash.ListAsync()).Value.ToDictionary(static item => item.OriginalPath);
+        Check(listed.Count == 3, $"three items: {string.Join("; ", listed.Values)}");
+        Check(listed[file] is { IsDirectory: false, Size: 7, DeletedAt: { } deleted } && deleted >= before && deleted <= DateTimeOffset.Now.AddSeconds(2)
+            && listed[file].Id == Path.Combine(scratch.HomeTrash, "files", "report ä.txt"), $"the file: {listed[file]}");
+        Check(listed[folder] is { IsDirectory: true, Size: >= 10_000 }, $"the directory's size comes from directorysizes: {listed[folder]}");
+        Check(listed[link] is { IsDirectory: false }, $"the link: {listed[link]}");
+
+        // A stale cache entry (another mtime) is not reported; the directory is never walked to measure it.
+        File.WriteAllLines(Path.Combine(scratch.HomeTrash, "directorysizes"), ["12345 1 photos"]);
+        Check(((PlatformResult<ImmutableArray<DesktopTrashItem>>.Success)await trash.ListAsync()).Value.Single(item => item.OriginalPath == folder).Size is null,
+            "an outdated directorysizes entry");
+        File.WriteAllLines(Path.Combine(scratch.HomeTrash, "directorysizes"), sizes);
+
+        // Restore: never over something new at the original path; a removed parent is created again.
+        File.WriteAllText(file, "new");
+        Check(await trash.RestoreAsync(listed[file].Id) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Conflict } && File.ReadAllText(file) == "new",
+            "a conflicting restore leaves both");
+        Directory.Delete(Path.Combine(scratch.Root, "docs"), recursive: true);
+        Check(await trash.RestoreAsync(listed[file].Id) is PlatformResult<PlatformUnit>.Success && File.ReadAllText(file) == "content", "the file is back in its recreated parent");
+        Check(!File.Exists(Path.Combine(scratch.HomeTrash, "info", "report ä.txt.trashinfo")), "its info file is gone");
+        Check(await trash.RestoreAsync(listed[folder].Id) is PlatformResult<PlatformUnit>.Success && File.Exists(Path.Combine(folder, "2026", "a.jpg")), "the directory is back");
+        Check(File.ReadAllLines(Path.Combine(scratch.HomeTrash, "directorysizes")).Length == 0, "its directorysizes entry is gone");
+        Check(await trash.RestoreAsync(listed[file].Id) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "a restored item is gone");
+        Check(await trash.RestoreAsync(outside) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }
+            && await trash.RestoreAsync("relative") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }
+            && File.Exists(outside), "an ID outside the trash");
+
+        // Empty: every item and info file, the link itself and not its target, and directorysizes.
+        Check((await trash.MoveAllToTrashAsync([file, folder])).All(static result => result is PlatformResult<PlatformUnit>.Success), "trashed again");
+        Directory.CreateDirectory(Path.Combine(scratch.HomeTrash, "files", "orphan"));
+        Check(await trash.EmptyAsync() is PlatformResult<PlatformUnit>.Success, "emptied");
+        Check(Directory.GetFileSystemEntries(Path.Combine(scratch.HomeTrash, "files")).Length == 0 && Directory.GetFileSystemEntries(Path.Combine(scratch.HomeTrash, "info")).Length == 0
+            && !File.Exists(Path.Combine(scratch.HomeTrash, "directorysizes")), "the trash is empty");
+        Check(File.ReadAllText(outside) == "outside", "a trashed link's target stays");
+        Check(((PlatformResult<ImmutableArray<DesktopTrashItem>>.Success)await trash.ListAsync()).Value.IsEmpty && await trash.EmptyAsync() is PlatformResult<PlatformUnit>.Success,
+            "an empty trash lists nothing and empties again");
+
+        IDesktopTrash sandboxed = new LinuxTrash(homeTrash: scratch.HomeTrash, sandboxed: true, mountPoints: () => []);
+        Check(await sandboxed.ListAsync() is PlatformResult<ImmutableArray<DesktopTrashItem>>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }
+            && await sandboxed.RestoreAsync("x") is PlatformResult<PlatformUnit>.Unavailable && await sandboxed.EmptyAsync() is PlatformResult<PlatformUnit>.Unavailable,
+            "the Trash portal only moves items to the trash");
+    }
+
+    [Test, DisplayName("trash: a topdir trash is listed and restored with paths relative to its top directory")]
+    public async Task TopdirListAsync()
+    {
+        using var scratch = new Scratch();
+        if (!Directory.Exists("/dev/shm") || LinuxTrash.MountPoint("/dev/shm") == LinuxTrash.MountPoint(scratch.Root))
+        { Console.WriteLine("Skipped: /dev/shm is not a separate file system."); return; }
+        string topdir = Path.Combine("/dev/shm", "runic-trash-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(topdir, "docs"));
+        try
+        {
+            IDesktopTrash trash = new LinuxTrash(homeTrash: scratch.HomeTrash, sandboxed: false, mountPointOf: _ => topdir, mountPoints: () => [topdir]);
+            string item = Path.Combine(topdir, "docs", "a.txt");
+            File.WriteAllText(item, "a");
+            Check(await trash.MoveToTrashAsync(item) is PlatformResult<PlatformUnit>.Success, "trashed to the topdir trash");
+            var listed = ((PlatformResult<ImmutableArray<DesktopTrashItem>>.Success)await trash.ListAsync()).Value;
+            Check(listed is [{ OriginalPath: var original, Size: 1 } entry] && original == item && entry.Id.StartsWith(topdir, StringComparison.Ordinal), $"listed: {string.Join("; ", listed)}");
+            Check(await trash.RestoreAsync(listed[0].Id) is PlatformResult<PlatformUnit>.Success && File.ReadAllText(item) == "a", "restored");
+        }
+        finally { Directory.Delete(topdir, recursive: true); }
+    }
+
+    [Test, DisplayName("trash: info files, encoded paths and directorysizes lines")]
+    public void InfoFiles()
+    {
+        Check(LinuxTrash.ParseInfo("[Trash Info]\nPath=/home/u/a%20b/%C3%A4.txt\nDeletionDate=2026-10-22T14:03:12\n", null) is { OriginalPath: "/home/u/a b/ä.txt", DeletedAt: { } date }
+            && date.DateTime == new DateTime(2026, 10, 22, 14, 3, 12), "a home trash entry");
+        Check(LinuxTrash.ParseInfo("# comment\n[Trash Info]\nPath=docs/a.txt\n", "/media/u/stick") is { OriginalPath: "/media/u/stick/docs/a.txt", DeletedAt: null },
+            "a relative path in a topdir trash, without a date");
+        Check(LinuxTrash.ParseInfo("[Trash Info]\nPath=docs/a.txt\n", null) is null, "a relative path in the home trash");
+        Check(LinuxTrash.ParseInfo("[Other]\nPath=/a\n", null) is null && LinuxTrash.ParseInfo("[Trash Info]\nDeletionDate=x\n", null) is null
+            && LinuxTrash.ParseInfo("[Trash Info]\nPath=/a%2\n", null) is null && LinuxTrash.ParseInfo("[Trash Info]\nPath=/a%00b\n", null) is null
+            && LinuxTrash.ParseInfo("[Trash Info]\nPath=/a%FF\n", null) is null, "malformed info files");
+        Check(LinuxTrash.ParseInfo("[Trash Info]\r\nPath=/a\r\nDeletionDate=bad\r\n[Next]\nPath=/b\n", null) is { OriginalPath: "/a", DeletedAt: null }, "CRLF, a bad date and a later group");
+        Check(LinuxTrash.DirectorySizes.Line(4096, 1761141792, "my photos") == "4096 1761141792 my%20photos", "a directorysizes line");
+        Check(LinuxTrash.DirectorySizes.Parse("4096 1761141792 my%20photos") == (4096, 1761141792, "my photos")
+            && LinuxTrash.DirectorySizes.Parse("4096 x name") is null && LinuxTrash.DirectorySizes.Parse("1 2") is null && LinuxTrash.DirectorySizes.Parse("1 2 a%2Fb") is null,
+            "directorysizes entries");
+    }
+
     [Test, DisplayName("trash: names, escapes and the mount table")]
     public void Helpers()
     {
@@ -220,12 +326,18 @@ internal sealed partial class TrashTests
         Check(await trash.MoveToTrashAsync(Path.Combine(scratch.Root, "folder")).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success
             && portal.Received == Path.Combine(scratch.Root, "folder"), "a directory is passed too");
 
-        // The portal follows a link's descriptor to its target, so a link is not sent; nor is a file the sandbox cannot write.
+        // A link goes as an O_PATH | O_NOFOLLOW descriptor of the link itself; a portal that refuses it leaves the link
+        // unavailable. A file the sandbox cannot write is not sent.
         string link = Path.Combine(scratch.Root, "link");
         File.CreateSymbolicLink(link, item);
         portal.Received = null;
-        Check(await trash.MoveToTrashAsync(link).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable && portal.Received is null,
-            "a link is not trashed through the portal");
+        Check(await trash.MoveToTrashAsync(link).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success && portal.Received == link,
+            $"the link itself is sent: {portal.Received}");
+        portal.Result = 0;
+        Check(await trash.MoveToTrashAsync(link).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+            "a portal that refuses a link");
+        portal.Result = 1;
+        portal.Received = null;
         if (GetEffectiveUserId() != 0)
         {
             string readOnly = scratch.File("read-only.txt", "r");
@@ -279,7 +391,19 @@ internal sealed partial class TrashTests
         Console.WriteLine($"Trash portal, directory: {result}, to {trashedFolder}");
         Check(result is PlatformResult<PlatformUnit>.Success && !Directory.Exists(folder) && trashedFolder is not null
             && Directory.Exists(Path.Combine(trashedFolder, "sub")), "the directory is in a trash with its info");
-        Console.WriteLine("PASS the real Trash portal moved a file and a directory.");
+        // A symbolic link goes as an O_PATH | O_NOFOLLOW descriptor of the link. xdg-desktop-portal 1.22 chases it
+        // without following; whichever it does, the link's target stays, and a refusal leaves the link.
+        string target = scratch.File("link target.txt", "target");
+        string link = Path.Combine(scratch.Root, "real link");
+        File.CreateSymbolicLink(link, target);
+        result = await trash.MoveToTrashAsync(link).AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+        string? trashedLink = Trashed(link);
+        Console.WriteLine($"Trash portal, symbolic link: {result}, to {trashedLink}; link {(File.Exists(link) || new FileInfo(link).LinkTarget is not null ? "kept" : "gone")}");
+        Check(File.ReadAllText(target) == "target", "the link's target stays");
+        Check(result is PlatformResult<PlatformUnit>.Success && new FileInfo(link).LinkTarget is null && trashedLink is not null && new FileInfo(trashedLink).LinkTarget is not null
+            || result is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable } && new FileInfo(link).LinkTarget is not null,
+            $"the link is trashed itself or stays: {result}");
+        Console.WriteLine("PASS the real Trash portal moved a file and a directory, and a symbolic link " + (result.Succeeded ? "itself." : "was refused."));
     }
 
     private sealed class TrashPortal : IPathMethodHandler

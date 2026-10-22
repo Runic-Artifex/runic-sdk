@@ -3,6 +3,7 @@ using Runic.Platform.Linux.Portal;
 using Runic.Platform.Runtime;
 using TUnit.Core;
 using Tmds.DBus.Protocol;
+using DBusValue = Runic.Platform.Linux.DBus.DBusValue;
 
 // Filters, the initial folder and multiple selection reach the FileChooser portal as its documented options.
 internal sealed class FileDialogOptionsTests
@@ -58,6 +59,62 @@ internal sealed class FileDialogOptionsTests
         Check(transport.Method == "SelectDirectory" && transport.Chooser is { CurrentFolder: "/tmp", Multiple: false } directory && directory.Filters.IsEmpty,
             "directory request folder");
         Check(new PortalFilePicker(new Owner(), transport).SupportsMultipleSelection, "the portal picker declares multiple selection");
+    }
+
+    [Test, DisplayName("portal filters carry MIME types; current_filter names the chosen filter")]
+    public async Task MimeAndChosenFilterAsync()
+    {
+        var pictures = new FileDialogFilter("Pictures", ["png"]) { MimeTypes = ["image/*", "Image/WebP"] };
+        var text = new FileDialogFilter("Text", ["txt"]);
+        var otherText = new FileDialogFilter("Text", ["md"]);
+        Check(Describe(PortalChooserOptions.Filter(pictures)) == "Pictures:0=*.[pP][nN][gG],1=image/*,1=image/webp", "MIME types follow the globs as (1, type)");
+        Check(Describe(PortalChooserOptions.Filter(Everything with { MimeTypes = ["text/plain"] })) == "All files:0=*", "an all-files filter needs no MIME type");
+        Check(PortalChooserOptions.Chosen([pictures, text], PortalChooserOptions.Filter(text)) == text, "the same filter");
+        Check(PortalChooserOptions.Chosen([pictures, text, otherText], PortalChooserOptions.Filter(otherText)) == otherText, "the same name, told apart by patterns");
+        Check(PortalChooserOptions.Chosen([text, otherText], PortalChooserOptions.Filter(new("Text", ["rst"]))) is null, "an ambiguous name");
+        Check(PortalChooserOptions.Chosen([pictures, text], PortalChooserOptions.Filter(new("Text", ["log"]))) == text, "a backend's own patterns under a unique name");
+        Check(PortalChooserOptions.Chosen([pictures], DBusValue.From("Pictures")) is null && PortalChooserOptions.Chosen([], PortalChooserOptions.Filter(text)) is null
+            && PortalChooserOptions.Chosen([pictures], null) is null, "no filter");
+
+        var transport = new FakeTransport(new(0, ["file:///tmp/a.txt"]) { CurrentFilter = PortalChooserOptions.Filter(text) });
+        var selections = await new PortalFilePicker(new Owner(), transport).SelectAsync(new NativeFileDialogRequest(false, null) { Filters = [pictures, text] }, default);
+        Check(selections is [{ SelectedFilter: var chosen }] && chosen == text, "the picker reports the portal's current_filter");
+
+        transport = new FakeTransport(new(0, ["file:///tmp/a", "file:///tmp/b%20c"]));
+        var picker = new PortalFilePicker(new Owner(), transport);
+        Check(picker.SupportsMultipleDirectorySelection, "the portal picker declares multiple directory selection");
+        var directories = await picker.SelectDirectoriesAsync("/tmp", default);
+        Check(transport.Method == "SelectDirectory" && transport.Chooser is { Multiple: true, CurrentFolder: "/tmp" } && directories is [{ Path: "/tmp/a" }, { Path: "/tmp/b c" }],
+            "directory and multiple");
+        Check(await new PortalFilePicker(new Owner(), new FakeTransport(new(1, []))).SelectDirectoriesAsync(null, default) is null, "a dismissed directory dialog");
+    }
+
+    private static string Describe(DBusValue filter)
+    {
+        var fields = filter.GetFields();
+        return fields[0].GetString() + ":" + string.Join(',', fields[1].GetItems().Select(static item => item.GetFields()).Select(static pair => $"{pair[0].GetUInt32()}={pair[1].GetString()}"));
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("real D-Bus protocol: FileChooser MIME filters, current_filter in the reply, directories with multiple")]
+    public async Task WireChosenFilterAsync()
+    {
+        using var service = new DBusConnection(DBusAddress.Session!);
+        await service.ConnectAsync();
+        var fake = new PortalService(service) { Uris = ["file:///tmp/a.png"], RespondFilter = 1 };
+        service.AddMethodHandler(fake);
+        var transport = new PortalTransport(destination: service.UniqueName!);
+        var pictures = new FileDialogFilter("Pictures", ["png"]) { MimeTypes = ["image/*"] };
+        var selections = await new PortalFilePicker(new Owner(), transport)
+            .SelectAsync(new NativeFileDialogRequest(false, null) { Filters = [Images, pictures] }, default);
+        Check(Filter(fake.Options["filters"].GetItem(1)) == "Pictures:0=*.[pP][nN][gG],1=image/*", "a MIME type is (1, type) on the wire");
+        Check(selections is [{ SelectedFilter: var chosen }] && chosen == pictures, "current_filter in the reply is the chosen filter");
+
+        fake.RespondFilter = null;
+        fake.Uris = ["file:///tmp/one", "file:///tmp/two"];
+        var directories = await new PortalFilePicker(new Owner(), transport).SelectDirectoriesAsync("/tmp", default);
+        Check(fake.Call == "org.freedesktop.portal.FileChooser.OpenFile(ssa{sv}) handle_token,modal,current_folder,multiple,directory" && fake.Argument == "Open directories"
+            && directories is [{ Path: "/tmp/one" }, { Path: "/tmp/two" }], $"directories: {fake.Call}");
+        Console.WriteLine("PASS FileChooser MIME filters, current_filter and multiple directories on the wire.");
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("real D-Bus protocol: FileChooser filters, current_filter, current_folder and multiple")]

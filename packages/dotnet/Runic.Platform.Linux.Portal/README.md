@@ -100,7 +100,9 @@ re-checking that the name is still absent.
 There is no automatic fallback to GTK's own dialogs, including when a portal fails.
 
 File dialog filters become FileChooser `filters` (case-insensitive glob patterns,
-such as `*.[pP][nN][gG]`) with the first as `current_filter`; the initial folder
+such as `*.[pP][nN][gG]`, and `(1, type)` for each MIME type) with the first as
+`current_filter`; the response's `current_filter` is matched back to the
+request's filters as the result's `SelectedFilter`; the initial folder
 becomes `current_folder`, the folder's bytes with a trailing NUL; and
 `OpenFilesAsync` sets `multiple` and accepts every returned local file URI. A
 dialog without these options sends the same request as before. Portals before
@@ -109,7 +111,8 @@ FileChooser version 4 ignore `current_folder` when opening files.
 Directory selection uses `OpenDirectoryAsync` through the same providers for
 GTK3 and GTK4. It sends FileChooser `OpenFile` with `directory=true`, requiring
 FileChooser version 3 or newer. The provider refuses older portals before showing
-a chooser and accepts one exact local directory URI. Its directory lease retains
+a chooser and accepts one exact local directory URI; `OpenDirectoriesAsync` adds
+`multiple` and accepts every returned one. Its directory lease retains
 presentation ownership; persistent portal document permissions remain owned by
 the user's permission store.
 
@@ -295,8 +298,14 @@ item into `$XDG_DATA_HOME/Trash`, or, on another file system, into the trash at
 the top of its mount (`$topdir/.Trash/$uid` or `$topdir/.Trash-$uid`), with an
 info file recording where it was. It renames and never copies, so a location
 without a usable trash reports `Unavailable(BackendUnavailable)` and the item
-stays. Inside Flatpak or Snap it asks the Trash portal, which trashes what the
-application can write; a symbolic link cannot be trashed there. See the
+stays. A trashed directory's size goes to the trash's `directorysizes`.
+`ListAsync`, `RestoreAsync` and `EmptyAsync` read the home trash and the
+topdir trashes this user owns on every mounted file system; a restore never
+replaces what is at the original path and recreates missing parents. Inside
+Flatpak or Snap it asks the Trash portal, which trashes what the application can
+write, and a symbolic link itself where xdg-desktop-portal 1.22 accepts it;
+listing, restoring and emptying report `Unavailable(BackendUnavailable)` there.
+See the
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
 
 ## Volumes
@@ -310,7 +319,10 @@ such as `/run/media/<user>/<label>`. Creating the volumes connects to nothing;
 the first request opens the system bus, and disposal closes it. Without
 UDisks2 every request is `Unavailable(BackendUnavailable)`. Inside Flatpak, add
 `--system-talk-name=org.freedesktop.UDisks2` to the finish arguments; inside
-Snap, connect the `udisks2` interface. See the
+Snap, connect the `udisks2` interface. `UnlockAsync(id, passphrase, token)`
+unlocks a LUKS container (`Encrypted.Unlock`) and returns its cleartext
+filesystem, a volume with an `Id` of its own; `MountAsync(id, options, token)`
+passes the options, with `ro` for read-only, as UDisks2's `options`. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
 
 ## Desktop applications

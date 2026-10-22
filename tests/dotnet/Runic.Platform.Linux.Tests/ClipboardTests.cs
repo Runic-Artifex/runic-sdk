@@ -166,8 +166,53 @@ internal sealed class ClipboardTests
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
             Check(state is { Multiple: true, Current: "Images", Folder: var shownFolder } && state.Filters.SequenceEqual(["Images", "All files"]) && shownFolder == folder,
                 $"GTK chooser options: {state}");
+
+            // MIME types reach the chooser's filter.
+            state = null;
+            shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            owner.AfterDispatch = () => shown.TrySetResult();
+            using var typed = new CancellationTokenSource();
+            var pictures = directories.OpenFileAsync(new OpenFileOptions { Filters = [new("Pictures", ["png"]) { MimeTypes = ["image/*"] }] }, typed.Token).AsTask();
+            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var deadline = DateTime.UtcNow.AddSeconds(5); state is null && DateTime.UtcNow < deadline; await Task.Delay(50))
+                await owner.InvokeAsync(_ => state = ChooserState.Read());
+            typed.Cancel();
+            try { await pictures.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("MIME filter cancellation ignored."); }
+            catch (OperationCanceledException) when (typed.IsCancellationRequested) { }
+            Check(state is { Rules: [var rules] } && rules.Contains("(1, 'image/*')", StringComparison.Ordinal) && rules.Contains("*.[pP][nN][gG]", StringComparison.Ordinal),
+                $"GTK MIME filter: {state}");
+
+            // Several directories: SELECT_FOLDER with select-multiple.
+            state = null;
+            shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            owner.AfterDispatch = () => shown.TrySetResult();
+            using var folders = new CancellationTokenSource();
+            var several = directories.OpenDirectoriesAsync(new OpenDirectoryOptions { InitialDirectory = folder }, folders.Token).AsTask();
+            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var deadline = DateTime.UtcNow.AddSeconds(5); state is null && DateTime.UtcNow < deadline; await Task.Delay(50))
+                await owner.InvokeAsync(_ => state = ChooserState.Read());
+            folders.Cancel();
+            try { await several.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directories cancellation ignored."); }
+            catch (OperationCanceledException) when (folders.IsCancellationRequested) { }
+            Check(state is { Multiple: true, Action: 2 }, $"GTK folder multi-select: {state}");
+
+            // The filter left selected when the user accepts is the result's SelectedFilter.
+            state = null;
+            shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            owner.AfterDispatch = () => shown.TrySetResult();
+            var text = new FileDialogFilter("Text", ["txt"]);
+            var save = directories.SaveFileAsync(new SaveFileOptions("chosen.txt") { Filters = [new("Images", ["png"]), text], InitialDirectory = folder }).AsTask();
+            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var deadline = DateTime.UtcNow.AddSeconds(5); state?.Folder != folder && DateTime.UtcNow < deadline; await Task.Delay(50))
+                await owner.InvokeAsync(_ => state = ChooserState.Read());
+            bool accepted = false;
+            await owner.InvokeAsync(_ => accepted = ChooserState.Accept(1));
+            var saved = await save.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(accepted && saved is PickerResult<ISaveFileLease>.Selected { SelectedFilter: var chosen, Value.DisplayName: "chosen.txt" } && chosen == text,
+                $"GTK chosen filter: {saved}");
+            if (saved is PickerResult<ISaveFileLease>.Selected(var lease)) await lease.DisposeAsync();
         }
-        finally { Directory.Delete(folder); }
+        finally { Directory.Delete(folder, recursive: true); }
         shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         owner.AfterDispatch = () => shown.TrySetResult();
         var pendingDirectory = directories.OpenDirectoryAsync(new()).AsTask();
@@ -267,6 +312,34 @@ internal sealed class GtkOwner : INativeWindowOwner, IAsyncDisposable
 // The options of the GTK file chooser dialog that is open, read on the GTK thread.
 internal sealed record ChooserState(bool Multiple, string[] Filters, string? Current, string? Folder)
 {
+    // GTK_FILE_CHOOSER_ACTION_*: 0 open, 1 save, 2 select folder.
+    internal int Action { get; init; }
+    // Each filter as gtk_file_filter_to_gvariant prints it, with its (0, glob) and (1, MIME type) rules.
+    internal string[] Rules { get; init; } = [];
+
+    // On the owner's thread: the shown chooser, which selects the filter at the index and accepts.
+    internal static bool Accept(int filter)
+    {
+        nint toplevels = Native.ListToplevels();
+        try
+        {
+            for (nint node = toplevels; node != 0; node = Marshal.ReadIntPtr(node, IntPtr.Size))
+            {
+                nint window = Marshal.ReadIntPtr(node);
+                if (Native.IsA(window, Native.FileChooserType()) == 0) continue;
+                nint list = Native.ListFilters(window);
+                nint item = list;
+                for (int index = 0; index < filter && item != 0; index++) item = Marshal.ReadIntPtr(item, IntPtr.Size);
+                if (item != 0) Native.SetFilter(window, Marshal.ReadIntPtr(item));
+                Native.FreeSList(list);
+                Native.Respond(window, -3); // GTK_RESPONSE_ACCEPT
+                return true;
+            }
+            return false;
+        }
+        finally { Native.FreeList(toplevels); }
+    }
+
     internal static ChooserState? Read()
     {
         nint toplevels = Native.ListToplevels();
@@ -277,16 +350,26 @@ internal sealed record ChooserState(bool Multiple, string[] Filters, string? Cur
                 nint window = Marshal.ReadIntPtr(node);
                 if (Native.IsA(window, Native.FileChooserType()) == 0) continue;
                 var filters = new List<string>();
+                var rules = new List<string>();
                 nint list = Native.ListFilters(window);
                 for (nint item = list; item != 0; item = Marshal.ReadIntPtr(item, IntPtr.Size))
-                    filters.Add(Marshal.PtrToStringUTF8(Native.FilterName(Marshal.ReadIntPtr(item))) ?? "");
+                {
+                    nint native = Marshal.ReadIntPtr(item);
+                    filters.Add(Marshal.PtrToStringUTF8(Native.FilterName(native)) ?? "");
+                    nint variant = Native.VariantRefSink(Native.FilterToVariant(native));
+                    nint printed = Native.VariantPrint(variant, 0);
+                    rules.Add(Marshal.PtrToStringUTF8(printed) ?? "");
+                    Native.Free(printed);
+                    Native.VariantUnref(variant);
+                }
                 Native.FreeSList(list);
                 nint current = Native.CurrentFilter(window);
                 nint folder = Native.CurrentFolder(window);
                 try
                 {
                     return new(Native.SelectMultiple(window) != 0, [.. filters],
-                        current == 0 ? null : Marshal.PtrToStringUTF8(Native.FilterName(current)), Marshal.PtrToStringUTF8(folder));
+                        current == 0 ? null : Marshal.PtrToStringUTF8(Native.FilterName(current)), Marshal.PtrToStringUTF8(folder))
+                    { Action = Native.GetAction(window), Rules = [.. rules] };
                 }
                 finally { Native.Free(folder); }
             }
@@ -294,7 +377,7 @@ internal sealed record ChooserState(bool Multiple, string[] Filters, string? Cur
         }
         finally { Native.FreeList(toplevels); }
     }
-    public override string ToString() => $"multiple {Multiple}, filters [{string.Join(", ", Filters)}], current {Current}, folder {Folder}";
+    public override string ToString() => $"multiple {Multiple}, action {Action}, filters [{string.Join(", ", Filters)}], rules [{string.Join(" ", Rules)}], current {Current}, folder {Folder}";
 }
 
 internal static partial class Native
@@ -309,6 +392,13 @@ internal static partial class Native
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_filter")] internal static partial nint CurrentFilter(nint chooser);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_current_folder")] internal static partial nint CurrentFolder(nint chooser);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_filter_get_name")] internal static partial nint FilterName(nint filter);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_filter_to_gvariant")] internal static partial nint FilterToVariant(nint filter);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_action")] internal static partial int GetAction(nint chooser);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_set_filter")] internal static partial void SetFilter(nint chooser, nint filter);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_dialog_response")] internal static partial void Respond(nint dialog, int response);
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_variant_ref_sink")] internal static partial nint VariantRefSink(nint value);
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_variant_unref")] internal static partial void VariantUnref(nint value);
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_variant_print")] internal static partial nint VariantPrint(nint value, int typeAnnotate);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_window_new")] internal static partial nint NewWindow(int type);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_show")] internal static partial void Show(nint window);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_destroy")] internal static partial void Destroy(nint window);

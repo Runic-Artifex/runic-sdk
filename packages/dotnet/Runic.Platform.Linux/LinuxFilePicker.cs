@@ -19,6 +19,16 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
 
     public bool SupportsMultipleSelection => true;
 
+    // SELECT_FOLDER with select-multiple, natively and through the FileChooser portal.
+    public bool SupportsMultipleDirectorySelection => true;
+
+    public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
+    {
+        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory, AllowMultiple = true }, true,
+            cancellationToken).ConfigureAwait(false);
+        return selections is null ? null : [.. selections.Select(static selection => new NativeDirectorySelection(selection.Path, selection.Access))];
+    }
+
     public async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -36,13 +46,13 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
 
     private async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectCoreAsync(NativeFileDialogRequest request, bool directory, CancellationToken cancellationToken)
     {
-        bool save = request.Save, multiple = request.AllowMultiple && !save && !directory;
+        bool save = request.Save, multiple = request.AllowMultiple && !save;
         string? suggestedName = request.SuggestedName;
         cancellationToken.ThrowIfCancellationRequested();
         if (RequiresPortal && !await Task.Run(ProbePortal, cancellationToken).ConfigureAwait(false))
             throw new NativeBackendUnavailableException();
         cancellationToken.ThrowIfCancellationRequested();
-        var state = new Selection(multiple);
+        var state = new Selection(multiple, directory ? [] : request.Filters);
         nint dialog = 0;
         nint context = 0;
         nint retainedParent = 0;
@@ -68,7 +78,7 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
                 if (multiple) SetSelectMultiple(dialog, 1);
                 // A folder that does not exist leaves GTK's own choice; the request is a hint.
                 if (request.InitialDirectory is { } folder) _ = SetCurrentFolder(dialog, folder);
-                if (!directory) AddFilters(dialog, request.Filters);
+                if (!directory) state.NativeFilters = AddFilters(dialog, request.Filters);
                 if (save) { SetOverwrite(dialog, 1); SetName(dialog, suggestedName ?? "Untitled"); }
                 Show(dialog);
                 Shown.TrySetResult();
@@ -149,26 +159,40 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
         return await work.ConfigureAwait(false);
     }
 
-    private sealed class Selection(bool multiple)
+    private sealed class Selection(bool multiple, ImmutableArray<FileDialogFilter> filters)
     {
         internal bool Multiple => multiple;
+        internal ImmutableArray<FileDialogFilter> Filters => filters;
+        // The chooser's GtkFileFilter for each of Filters, which the chooser owns while it lives.
+        internal nint[] NativeFilters = [];
         internal TaskCompletionSource<IReadOnlyList<NativeFileSelection>?> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    // The chooser owns each filter: gtk_file_chooser_add_filter sinks its floating reference.
-    private static void AddFilters(nint dialog, ImmutableArray<FileDialogFilter> filters)
+    // The chooser owns each filter: gtk_file_chooser_add_filter sinks its floating reference. MIME types match the
+    // file's content type, as the portal's (1, type) patterns do.
+    private static nint[] AddFilters(nint dialog, ImmutableArray<FileDialogFilter> filters)
     {
-        if (filters.IsDefaultOrEmpty) return;
-        nint first = 0;
-        foreach (var filter in filters)
+        if (filters.IsDefaultOrEmpty) return [];
+        var natives = new nint[filters.Length];
+        for (int index = 0; index < filters.Length; index++)
         {
+            var filter = filters[index];
             nint native = NewFilter();
             SetFilterName(native, filter.Name);
             foreach (var pattern in Portal.FileDialogPatterns.Globs(filter)) AddPattern(native, pattern);
+            if (!filter.MatchesAllFiles) foreach (string type in filter.MimeTypes) AddMimeType(native, type.ToLowerInvariant());
             AddFilter(dialog, native);
-            if (first == 0) first = native;
+            natives[index] = native;
         }
-        SetFilter(dialog, first);
+        SetFilter(dialog, natives[0]);
+        return natives;
+    }
+
+    // The filter the chooser shows now, one of the request's, or null.
+    internal static FileDialogFilter? Chosen(ImmutableArray<FileDialogFilter> filters, nint[] natives, nint current)
+    {
+        int index = current == 0 ? -1 : Array.IndexOf(natives, current);
+        return index >= 0 && index < filters.Length ? filters[index] : null;
     }
     private static unsafe nint ResponsePointer => (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, void>)&Response;
     private static unsafe nint ParentDestroyedPointer => (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&ParentDestroyed;
@@ -185,13 +209,17 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
         try
         {
             if (response != -3) { state.Result.TrySetResult(null); return; } // GTK_RESPONSE_ACCEPT
-            if (state.Multiple) { state.Result.TrySetResult(ReadFilenames(Filenames(dialog))); return; }
-            nint filename = Filename(dialog);
-            try
+            var chosen = Chosen(state.Filters, state.NativeFilters, GetFilter(dialog));
+            List<NativeFileSelection> selections;
+            if (state.Multiple) selections = ReadFilenames(Filenames(dialog));
+            else
             {
-                state.Result.TrySetResult([new(ReadExactPath(filename), null, true)]);
+                nint filename = Filename(dialog);
+                try { selections = [new(ReadExactPath(filename), null, true)]; }
+                finally { if (filename != 0) Free(filename); }
             }
-            finally { if (filename != 0) Free(filename); }
+            if (chosen is not null) selections[0] = selections[0] with { SelectedFilter = chosen };
+            state.Result.TrySetResult(selections);
         }
         catch (Exception error) { state.Result.TrySetException(error); }
     }
@@ -310,6 +338,8 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_filter_add_pattern", StringMarshalling = StringMarshalling.Utf8)] private static partial void AddPattern(nint filter, string pattern);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_add_filter")] private static partial void AddFilter(nint dialog, nint filter);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_set_filter")] private static partial void SetFilter(nint dialog, nint filter);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_get_filter")] private static partial nint GetFilter(nint dialog);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_filter_add_mime_type", StringMarshalling = StringMarshalling.Utf8)] private static partial void AddMimeType(nint filter, string mimeType);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_slist_free")] private static partial void FreeList(nint list);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)] private static partial ulong Connect(nint instance, string signal, nint callback, nint data, nint destroy, int flags);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")] private static partial void Unref(nint instance);

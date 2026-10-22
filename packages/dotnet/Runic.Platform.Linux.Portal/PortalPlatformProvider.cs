@@ -114,6 +114,19 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     }
     public bool SupportsMultipleSelection => true;
 
+    // FileChooser's directory and multiple options; SelectDirectory checks for version 3, which added directory.
+    public bool SupportsMultipleDirectorySelection => true;
+
+    public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
+    {
+        var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink,
+            PortalChooserOptions.From([], initialDirectory, multiple: true)).ConfigureAwait(false);
+        if (result.Code == 1) return null;
+        if (result.Code != 0) throw new NativeBackendUnavailableException();
+        if (result.Uris.Length == 0) throw new IOException("The portal did not return a local directory.");
+        return [.. result.Uris.Select(static uri => new NativeDirectorySelection(ReadExactLocalPath(uri), null))];
+    }
+
     internal async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken) =>
         (await SelectAsync(new NativeFileDialogRequest(save, suggestedName), cancellationToken).ConfigureAwait(false)) is [var selection] ? selection : null;
 
@@ -138,6 +151,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
             var location = await (documents ?? DocumentPortalPaths.Session).ClassifyAsync(uri.LocalPath, cancellationToken).ConfigureAwait(false);
             selections.Add(new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true) { Location = location });
         }
+        if (PortalChooserOptions.Chosen(request.Filters, result.CurrentFilter) is { } chosen) selections[0] = selections[0] with { SelectedFilter = chosen };
         return selections;
     }
 }
