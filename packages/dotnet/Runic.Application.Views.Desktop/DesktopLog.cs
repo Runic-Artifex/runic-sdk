@@ -38,14 +38,11 @@ internal static partial class DesktopLog
     internal static partial void DevelopmentReloadFailed(ILogger logger, Exception? exception);
 
 #if RUNIC_PORTABLE_PLATFORMS
-    // A rejected identity or an unreachable portal is a warning; accepted requests and registrations are details.
+    // A problem, such as a rejected identity or an unreachable portal, is a warning; accepted requests and
+    // registrations are details. An unknown severity from a later package version is a warning too.
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     internal static void PortalDiagnostic(ILogger logger, PortalDiagnostic diagnostic) =>
-        PortalDiagnostic(logger, IsProblem(diagnostic.Code) ? LogLevel.Warning : LogLevel.Debug, diagnostic.Code,
-            diagnostic.Message, diagnostic.Remediation ?? string.Empty);
-
-    internal static bool IsProblem(string code) =>
-        code.EndsWith("-failed", StringComparison.Ordinal) || code.EndsWith("-unavailable", StringComparison.Ordinal)
-        || code.EndsWith("-denied", StringComparison.Ordinal) || code.EndsWith("-unspecified", StringComparison.Ordinal);
+        PortalDiagnostic(logger, diagnostic.Severity == PortalDiagnosticSeverity.Information ? LogLevel.Debug : LogLevel.Warning,
+            diagnostic.Code, diagnostic.Message, diagnostic.Remediation ?? string.Empty);
 #endif
 }

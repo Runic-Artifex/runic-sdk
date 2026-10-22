@@ -184,8 +184,8 @@ internal static class PortalRequest
         catch (Exception error) when (error is DBusException or TimeoutException or DllNotFoundException or EntryPointNotFoundException or NativeBackendUnavailableException or ChannelClosedException)
         {
             var diagnostic = parentExported
-                ? new PortalDiagnostic("portal-request-unavailable", "The desktop portal could not complete the request.", "Ensure the session D-Bus service and a desktop-appropriate xdg-desktop-portal backend are running.")
-                : new PortalDiagnostic("portal-parent-unavailable", "The presentation could not export an owned portal parent.", "Use a supported X11 or Wayland session and a live owner. Hostless applications may explicitly choose unparented dialogs.");
+                ? PortalDiagnostic.Create("portal-request-unavailable", "The desktop portal could not complete the request.", "Ensure the session D-Bus service and a desktop-appropriate xdg-desktop-portal backend are running.")
+                : PortalDiagnostic.Create("portal-parent-unavailable", "The presentation could not export an owned portal parent.", "Use a supported X11 or Wayland session and a live owner. Hostless applications may explicitly choose unparented dialogs.");
             try { diagnosticSink?.Invoke(diagnostic); } catch { /* Observers cannot replace the platform outcome. */ }
             throw new NativeBackendUnavailableException();
         }

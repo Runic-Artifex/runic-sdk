@@ -8,11 +8,12 @@ namespace Runic.Platform.Linux.Portal;
 internal sealed class PortalDesktopSettings(string? address = null, string destination = "org.freedesktop.portal.Desktop", PortalApplication? application = null) : DesktopSettingsSource
 {
     private const string Root = "/org/freedesktop/portal/desktop";
-    private static readonly string[] Namespaces = ["org.freedesktop.appearance"];
+    // The GNOME namespace carries text-scaling-factor, which GNOME's and GTK's portal backends expose; others omit it.
+    private static readonly string[] Namespaces = ["org.freedesktop.appearance", "org.gnome.desktop.interface"];
     private readonly SemaphoreSlim _connect = new(1, 1);
     private readonly object _gate = new();
     private PortalConnection? _session;
-    private DBusSignalSubscription? _subscription;
+    private DBusSignalSubscription[]? _subscriptions; // One per namespace.
     private CancellationTokenRegistration _ownerChanged;
     private TaskCompletionSource? _changed; // Null while no live subscription exists.
     private bool _lost;
@@ -53,17 +54,28 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
         await ResetAsync().ConfigureAwait(false);
         var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
         // Subscribe before reading so a change between them is not missed.
-        var subscription = await session.Connection.SubscribeAsync(new DBusSignalFilter
+        var subscriptions = new List<DBusSignalSubscription>(Namespaces.Length);
+        try
         {
-            Sender = session.Destination, Path = new DBusObjectPath(Root),
-            Interface = "org.freedesktop.portal.Settings", Member = "SettingChanged", Arg0 = Namespaces[0],
-        }, cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            foreach (string name in Namespaces)
+                subscriptions.Add(await session.Connection.SubscribeAsync(new DBusSignalFilter
+                {
+                    Sender = session.Destination, Path = new DBusObjectPath(Root),
+                    Interface = "org.freedesktop.portal.Settings", Member = "SettingChanged", Arg0 = name,
+                }, cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false));
+        }
+        catch
+        {
+            foreach (var added in subscriptions) await added.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
         lock (_gate)
         {
-            _session = session; _subscription = subscription; _lost = false;
+            _session = session; _subscriptions = [.. subscriptions]; _lost = false;
             _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        _ = PortalValues.PumpAsync(subscription, _ => Changed(session, lost: false), _ => Changed(session, lost: true));
+        foreach (var subscription in subscriptions)
+            _ = PortalValues.PumpAsync(subscription, _ => Changed(session, lost: false), _ => Changed(session, lost: true));
         _ownerChanged = session.OwnerChanged.Register(() => Changed(session, lost: true));
         return session;
     }
@@ -97,21 +109,21 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
 
     private async ValueTask ResetAsync()
     {
-        DBusSignalSubscription? subscription;
+        DBusSignalSubscription[]? subscriptions;
         TaskCompletionSource? woken;
         lock (_gate)
         {
-            (subscription, woken) = (_subscription, _changed);
-            _session = null; _subscription = null; _changed = null;
+            (subscriptions, woken) = (_subscriptions, _changed);
+            _session = null; _subscriptions = null; _changed = null;
         }
         _ownerChanged.Dispose();
-        if (subscription is not null) await subscription.DisposeAsync().ConfigureAwait(false);
+        foreach (var subscription in subscriptions ?? []) await subscription.DisposeAsync().ConfigureAwait(false);
         woken?.TrySetResult();
     }
     // Values stay variants: unknown or wrongly typed optional preferences are ignored, not errors.
     internal static DesktopAppearance Read(Dictionary<string, Dictionary<string, DBusValue>> namespaces)
     {
-        var result = new DesktopAppearance();
+        var result = new DesktopAppearance { TextScale = TextScale(namespaces) };
         if (!namespaces.TryGetValue("org.freedesktop.appearance", out var values)) return result;
         foreach (var (key, value) in values)
         {
@@ -132,4 +144,10 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
         }
         return result;
     }
+
+    // GNOME's text-scaling-factor (Accessibility, Large Text) is a double from 0.5 to 3. Out of that range it is ignored.
+    private static double? TextScale(Dictionary<string, Dictionary<string, DBusValue>> namespaces) =>
+        namespaces.TryGetValue("org.gnome.desktop.interface", out var values)
+        && values.TryGetValue("text-scaling-factor", out var value) && value.Signature.Value == "d"
+        && value.GetDouble() is var factor and >= 0.5 and <= 3 ? factor : null;
 }

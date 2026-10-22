@@ -1,3 +1,4 @@
+using DBusValue = Runic.Platform.Linux.DBus.DBusValue;
 using Microsoft.Win32.SafeHandles;
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
@@ -6,6 +7,38 @@ using TUnit.Core;
 
 internal sealed class DesktopPortalTests
 {
+    [Test, DisplayName("desktop portals: GNOME's text-scaling-factor is the appearance's text scale")]
+    public void TextScale()
+    {
+        static DesktopAppearance Read(DBusValue? factor)
+        {
+            var namespaces = new Dictionary<string, Dictionary<string, DBusValue>>
+            {
+                ["org.freedesktop.appearance"] = new() { ["color-scheme"] = DBusValue.From(1u) },
+            };
+            if (factor is { } value) namespaces["org.gnome.desktop.interface"] = new() { ["text-scaling-factor"] = value };
+            return PortalDesktopSettings.Read(namespaces);
+        }
+        Check(Read(null) is { TextScale: null, ColorScheme: DesktopColorScheme.Dark }, "no GNOME namespace, as on Plasma");
+        Check(Read(DBusValue.From(1.25)) is { TextScale: 1.25, ColorScheme: DesktopColorScheme.Dark }, "Large Text");
+        Check(Read(DBusValue.From(0.5)).TextScale == 0.5 && Read(DBusValue.From(3d)).TextScale == 3, "the range's ends");
+        Check(Read(DBusValue.From(0d)).TextScale is null && Read(DBusValue.From(3.5)).TextScale is null
+            && Read(DBusValue.From(double.NaN)).TextScale is null, "out-of-range factors are ignored");
+        Check(Read(DBusValue.From(2u)).TextScale is null, "a wrongly typed factor is ignored");
+        Check(PortalDesktopSettings.Read(new() { ["org.gnome.desktop.interface"] = new() { ["text-scaling-factor"] = DBusValue.From(1.5) } })
+            is { TextScale: 1.5, ColorScheme: DesktopColorScheme.NoPreference }, "the text scale without the appearance namespace");
+    }
+
+    [Test, DisplayName("notifications: an unmatched activation keeps only a link LaunchUriAsync can open on Linux (SEC-09)")]
+    public void UntrustedLinks()
+    {
+        Check(PortalNotifications.UntrustedLink(null) is null, "no link");
+        foreach (var kept in new[] { "https://example.org/a?b=c", "http://example.org/", "mailto:a@example.org?subject=Hi" })
+            Check(PortalNotifications.UntrustedLink(new Uri(kept))?.OriginalString == kept, kept + " is kept");
+        foreach (var dropped in new[] { "runic-test://result/1", "ms-settings:display", "mailto:a@example.org?attach=/etc/passwd", "ftp://example.org/", "javascript:alert(1)" })
+            Check(PortalNotifications.UntrustedLink(new Uri(dropped)) is null, dropped + " is dropped");
+    }
+
     [Test, Explicit, Category("DBus"), DisplayName("desktop portals: settings, notification permission/actions, installed activation and owned file descriptors")]
     public async Task DesktopPortalsAsync()
     {
@@ -93,6 +126,29 @@ internal sealed class DesktopPortalTests
         var received = await cold.Task.WaitAsync(TimeSpan.FromSeconds(3));
         Check(received is { NotificationId: "previous-process", ActionId: "open", PlatformContext: { ActivationToken: "test-wayland-token", StartupId: "test-x11-id" } }, "cold activation preserves platform context across worker dispatch");
         Check(!received.ToString().Contains("test-wayland-token", StringComparison.Ordinal), "activation diagnostics do not expose focus tokens");
+        // SEC-09: any session-bus peer can call ActivateAction. An unknown notification is untrusted and keeps only a link
+        // LaunchUriAsync could open; a notification this process showed carries its own link, whatever the target says.
+        Check(!received.IsTrusted && received.ActivationUri is null, "an unmatched activation is untrusted and drops a custom-scheme link");
+        var activations = System.Threading.Channels.Channel.CreateUnbounded<DesktopNotificationActivation>();
+        installed.Activated += (_, activation) => activations.Writer.TryWrite(activation);
+        async Task<DesktopNotificationActivation> ActivateAsync(string target)
+        {
+            await connection.CallMethodAsync(Activation(connection, appId, target));
+            return await activations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        Check(await ActivateAsync("previous-process\nopen\nhttps://example.org/news") is { IsTrusted: false, ActivationUri.AbsoluteUri: "https://example.org/news" },
+            "an unmatched activation keeps an https link");
+        Check(await ActivateAsync("previous-process\nopen\nmailto:a@example.org?attach=/etc/passwd") is { IsTrusted: false, ActivationUri: null },
+            "an unmatched activation drops a link LaunchUriAsync refuses");
+        Check(await installed.ShowAsync(new("shown", "Shown", "Body") { Actions = [new("open", "Open")], ActivationUri = new Uri("runic-test://result/2") })
+            is PlatformResult<PlatformUnit>.Success, "installed notification submission");
+        // The fake portal invokes the action at once, through the portal path.
+        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is { IsTrusted: true, ActivationUri.AbsoluteUri: "runic-test://result/2" },
+            "a portal action of a shown notification is trusted");
+        Check(await ActivateAsync("shown\nopen\nhttps://evil.example/") is { IsTrusted: true, NotificationId: "shown", ActivationUri.AbsoluteUri: "runic-test://result/2" },
+            "a forged link for a shown notification is replaced by the application's own");
+        Check(await ActivateAsync("shown\nunknown-action\nhttps://evil.example/") is { IsTrusted: false, ActionId: "unknown-action" },
+            "an action the notification does not have is unmatched");
         foreach (var (error, denied) in new[] { ("org.freedesktop.portal.Error.Failed", false), ("org.freedesktop.portal.Error.NotAllowed", true) })
         {
             service.RegistrationError = error;
@@ -122,12 +178,12 @@ internal sealed class DesktopPortalTests
         service.RegistrationError = null;
         Console.WriteLine("PASS desktop portals: settings, notification permission/actions, installed activation and owned file descriptors.");
     }
-    private static MessageBuffer Activation(DBusConnection connection, string destination)
+    private static MessageBuffer Activation(DBusConnection connection, string destination, string target = "previous-process\nopen\nrunic-test://result/1")
     {
         using var writer = connection.GetMessageWriter();
         writer.WriteMethodCallHeader(destination: destination, path: "/org/runic/PortalTests", @interface: "org.freedesktop.Application", member: "ActivateAction", signature: "sava{sv}");
         writer.WriteString("runic-notification");
-        writer.WriteArray(new[] { VariantValue.String("previous-process\nopen\nrunic-test://result/1") });
+        writer.WriteArray(new[] { VariantValue.String(target) });
         var data = writer.WriteDictionaryStart();
         writer.WriteDictionaryEntryStart(); writer.WriteString("activation-token"); writer.WriteVariant(VariantValue.String("test-wayland-token"));
         writer.WriteDictionaryEntryStart(); writer.WriteString("desktop-startup-id"); writer.WriteVariant(VariantValue.String("test-x11-id"));

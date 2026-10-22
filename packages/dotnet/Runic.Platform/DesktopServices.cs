@@ -26,8 +26,9 @@ public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopC
     /// large again; null when the desktop has no such setting or it could not be read. Multiply font sizes by it, as a
     /// CSS root font size would be, independently of the display scale.
     /// </summary>
-    /// <remarks>Windows reports the Accessibility "Text size" setting (1 to 2.25). macOS has no system-wide setting that
-    /// applications can read and reports null; the Linux provider does not read it yet.</remarks>
+    /// <remarks>Windows reports the Accessibility "Text size" setting (1 to 2.25), and Linux GNOME's text scaling factor
+    /// (0.5 to 3) where the Settings portal exposes it. macOS has no system-wide setting that applications can read and
+    /// reports null.</remarks>
     /// <exception cref="ArgumentOutOfRangeException">The value is not a finite number greater than 0.</exception>
     public double? TextScale
     {
@@ -63,10 +64,11 @@ public sealed record DesktopNotificationActivation(string NotificationId, string
     /// Whether the provider matched this activation to a notification the application showed, so that
     /// <see cref="NotificationId"/>, <see cref="ActionId"/> and <see cref="ActivationUri"/> are the ones the application
     /// supplied. False for an activation the provider could not match, such as a Linux activation that arrives after a
-    /// restart, which any process on the session bus can also send: validate its identifiers and link against the
-    /// application's own state.
+    /// restart, which any process on the session bus can also send: validate its identifiers against the
+    /// application's own state, and its <see cref="ActivationUri"/> is null unless it is an http, https or mailto URI.
     /// </summary>
-    /// <remarks>Windows and macOS activations are trusted; Linux activations are not trusted yet.</remarks>
+    /// <remarks>Windows and macOS activations, and Linux activations of a notification shown by the running process, are
+    /// trusted.</remarks>
     public bool IsTrusted { get; init; }
 
     /// <summary>Short-lived desktop activation data. Dispatch promptly; do not persist it.</summary>
