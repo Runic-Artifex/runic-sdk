@@ -2,7 +2,8 @@ import { readFileSync, rmSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
-import { platforms, nativeLegs, wpfLegs, packagingLegs, platformRules, neutralPaths, matchesPath } from "./platforms.mjs";
+import { platforms, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, platformRules, neutralPaths, matchesPath }
+  from "./platforms.mjs";
 
 export const managedGroups = ["platform", "assets", "navigation", "application"];
 // Suites that another job runs instead of the managed job. Runic.Desktop.Tests drives browsers and
@@ -84,7 +85,8 @@ export function nodePackages() {
 // Jobs that always run: `plan`, `build` (which also checks generated files and packs the
 // package candidates) and `engineering` (workflow lint, contracts, Markdown links). `verify`
 // accepts a skipped job only when it is listed here and the plan skipped it.
-export const skippableJobs = ["managed", "web", "node-26", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging"];
+export const skippableJobs = ["managed", "web", "node-26", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging",
+  "screen-readers"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -108,18 +110,22 @@ export function affectedPlatforms(files) {
 // and platform rules. `files` lists every path a pull request adds, changes, deletes or
 // renames (both names); `null` means unknown. An empty list is treated as unknown too, so a
 // failed or empty diff can never skip jobs. Any unowned path that is not engineering-only
-// (see engineeringOnly in eng/run.mjs) affects every component.
+// (see engineeringOnly in eng/run.mjs) affects every component. `screenReaders` is whether a file
+// the screen reader legs read changed (screenReaderPaths).
 export function affected(files) {
   const full = files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
-  return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files), ...affectedPlatforms(files) };
+  return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files),
+    screenReaders: full || files.some(file => screenReaderPaths.some(path => matchesPath(file, path))), ...affectedPlatforms(files) };
 }
 
 // The legs of a platform-dependent job: those without a platform, and those whose platform is planned.
 const legs = (list, planned) => list.filter(leg => !leg.platform || planned.includes(leg.platform));
 
 // The jobs, suites and legs to run for the affected components and platforms, as defined by
-// this checkout. Without platforms (an older base planner) every leg runs.
-export function planFor({ full, components, platforms: planned = platforms, why = everyPlatform("the base planner plans no platforms").why }) {
+// this checkout. Without platforms (an older base planner) every leg runs, and without screenReaders every
+// screen reader leg of the planned platforms.
+export function planFor({ full, components, screenReaders: readers = true, platforms: planned = platforms,
+  why = everyPlatform("the base planner plans no platforms").why }) {
   const has = (...names) => names.some(name => components.includes(name));
   const managed = managedGroups.filter(group =>
     managedTests(root, "linux").some(test => test.group === group && (full || has(owner(test.path)))));
@@ -135,6 +141,8 @@ export function planFor({ full, components, platforms: planned = platforms, why 
   // The template's packaging recipes build, install and open real packages on each OS; the platform packages they
   // exercise select them through the packaging component's dependencies.
   const packaging = full || has("packaging") ? legs(packagingLegs, planned) : [];
+  // NVDA and Orca read the accessibility fixture in the embedded window.
+  const screenReaders = full || readers ? legs(screenReaderLegs, planned) : [];
   const run = {
     managed: managed.length > 0,
     // One job runs each planned web package's tests and the framework consumers in named steps.
@@ -148,6 +156,7 @@ export function planFor({ full, components, platforms: planned = platforms, why 
     // The musl RIDs run the same native checks in Alpine.
     "native-musl": native.length > 0,
     packaging: packaging.length > 0,
+    "screen-readers": screenReaders.length > 0,
   };
   return {
     full,
@@ -158,6 +167,7 @@ export function planFor({ full, components, platforms: planned = platforms, why 
     native: { include: native },
     wpf: { include: wpf },
     packaging: { include: packaging },
+    "screen-readers": { include: screenReaders },
     platforms: platforms.filter(platform => planned.includes(platform)),
     why: platforms.filter(platform => planned.includes(platform)).map(platform => `${platform}: ${why[platform]}`).join("; ")
       || "no Windows or macOS leg: the changed files need none",
@@ -177,10 +187,12 @@ export function parseAffected(text) {
     if (typeof value?.full !== "boolean" || !Array.isArray(value.components) || !value.components.every(name => known.includes(name)))
       return null;
     const { full, components } = value;
+    // A base planner older than the screen reader legs gives no screenReaders: they then run.
+    const readers = typeof value.screenReaders === "boolean" ? { screenReaders: value.screenReaders } : {};
     if (Array.isArray(value.platforms) && value.platforms.every(platform => platforms.includes(platform))
       && value.platforms.every(platform => typeof value.why?.[platform] === "string"))
-      return { full, components, platforms: value.platforms, why: value.why };
-    return { full, components };
+      return { full, components, ...readers, platforms: value.platforms, why: value.why };
+    return { full, components, ...readers };
   } catch {}
   return null;
 }
@@ -200,6 +212,7 @@ export function outputs(result) {
     `native=${JSON.stringify(result.native)}`,
     `wpf=${JSON.stringify(result.wpf)}`,
     `packaging=${JSON.stringify(result.packaging)}`,
+    `screen-readers=${JSON.stringify(result["screen-readers"])}`,
     `platforms=${JSON.stringify(result.platforms)}`,
     `why=${JSON.stringify(result.why)}`,
     `skip=${JSON.stringify(result.skip)}`,

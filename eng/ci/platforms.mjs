@@ -25,6 +25,15 @@ export const wpfLegs = [
   { os: "windows-2025", rid: "win-x64", platform: "win-x64" },
   { os: "windows-11-arm", rid: "win-arm64", platform: "win-arm64" },
 ];
+// The screen readers whose speech the accessibility probe checks (Runic.Desktop.AccessibilityProbe --screen-reader),
+// one job each; VoiceOver runs in the native job's macOS leg. They are speech checks, not release jobs.
+export const screenReaderLegs = [
+  { reader: "orca", os: "ubuntu-24.04" },
+  { reader: "nvda", os: "windows-2025", platform: "win-x64" },
+];
+// The paths that plan the screen reader legs: the embedded windows, the accessibility fixture and the probe.
+export const screenReaderPaths = ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Gtk4",
+  "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.Gtk4.Smoke", "tests/native/Runic.Desktop.AccessibilityProbe"];
 export const packagingLegs = [
   { os: "windows-latest", target: "windows", platform: "win-x64" },
   { os: "macos-26", target: "macos", platform: "osx-arm64" },

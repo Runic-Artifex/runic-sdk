@@ -1,40 +1,36 @@
 using System.Globalization;
+using System.IO;
 
 // Started by the accessibility fixture (Runic.Desktop.WebViewSmoke and Runic.Desktop.Gtk4.Smoke, --accessibility) with
 // its process ID. Reads and changes the fixture's page through the platform accessibility API, as a screen reader does,
-// checks what each host is expected to expose (Expectations.cs) and writes a receipt. On macOS, --voiceover also runs
-// VoiceOver and checks what it speaks.
+// checks what each host is expected to expose (Expectations.cs) and writes a receipt. --screen-reader also runs a screen
+// reader, VoiceOver on macOS, NVDA on Windows or Orca on Linux, and checks what it speaks (SpeechScenario.cs).
 //
-//   Runic.Desktop.AccessibilityProbe --pid <pid> --host gtk3|gtk4|webview2|wkwebview [--receipt <file>] [--voiceover]
-//       [--survey]
+//   Runic.Desktop.AccessibilityProbe --pid <pid> --host gtk3|gtk4|webview2|wkwebview [--receipt <file>]
+//       [--screen-reader voiceover|nvda|orca] [--nvda <nvda.exe>] [--survey]
 //
-// --survey reports every check without failing, to learn what a new host or engine version exposes.
+// --survey reports every check without failing, to learn what a new host or engine version exposes. The screen
+// reader's own log goes beside the receipt.
 var pid = int.Parse(Argument("--pid") ?? throw new ArgumentException("--pid is required."), CultureInfo.InvariantCulture);
 var host = Argument("--host") ?? throw new ArgumentException("--host is required.");
 var receiptPath = Argument("--receipt");
 var survey = args.Contains("--survey", StringComparer.Ordinal);
-var voiceOver = args.Contains("--voiceover", StringComparer.Ordinal);
+var screenReaderName = Argument("--screen-reader");
 
 using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(4));
-var report = new Report(host, survey);
+var report = new Report(host, survey) { ScreenReader = screenReaderName };
+ScreenReader? screenReader = null;
 try
 {
-#if !WINDOWS
-    if (voiceOver && OperatingSystem.IsMacOS()) await VoiceOverScenario.StartAsync(deadline.Token);
-#endif
+    screenReader = ScreenReader.Create(screenReaderName, Argument("--nvda"),
+        Path.GetDirectoryName(Path.GetFullPath(receiptPath ?? Path.Combine(Path.GetTempPath(), "runic-accessibility", "receipt.json")))!);
+    if (screenReader is not null) await screenReader.StartAsync(deadline.Token);
     await using var client = await CreateClientAsync(pid, deadline.Token);
     report.Api = client.Api;
-    using var scenario = new Scenario(client, report, Expectations.For(host, voiceOver));
+    var expectations = Expectations.For(host, screenReaderName);
+    using var scenario = new Scenario(client, report, expectations);
     await scenario.RunAsync(deadline.Token);
-    if (voiceOver)
-    {
-#if WINDOWS
-        throw new PlatformNotSupportedException("--voiceover runs on macOS.");
-#else
-        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("--voiceover runs on macOS.");
-        await new VoiceOverScenario(client, report, Expectations.For(host, voiceOver), scenario.Kept).RunAsync(deadline.Token);
-#endif
-    }
+    if (screenReader is not null) await new SpeechScenario(client, report, expectations, screenReader, scenario.Kept).RunAsync(deadline.Token);
     await scenario.FinishAsync(deadline.Token);
 }
 catch (Exception error)
@@ -43,9 +39,7 @@ catch (Exception error)
 }
 finally
 {
-#if !WINDOWS
-    if (voiceOver && OperatingSystem.IsMacOS()) await VoiceOverScenario.QuitAsync();
-#endif
+    if (screenReader is not null) await screenReader.QuitAsync();
     if (receiptPath is not null) report.Write(receiptPath);
 }
 return report.ExitCode;
