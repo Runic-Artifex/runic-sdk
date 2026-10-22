@@ -16,7 +16,9 @@ diagnostics numbers them from `100`, so the two never share a number: the D-Bus
 source generator reports `RUNICDBUS001` to `RUNICDBUS012`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
 Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
-experimental Desktop families number from `RUNICDESK100`.
+experimental Desktop families number from `RUNICDESK100`. The Navigation
+ReactiveUI build targets report `RUNICNAV002`, after the retired `RUNICNAV001`,
+so an experimental Navigation family would be `RUNICNAV100`.
 
 ## Suppressing a diagnostic
 

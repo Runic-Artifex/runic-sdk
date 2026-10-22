@@ -5,20 +5,24 @@ regions to ReactiveUI 26 (the `ReactiveUI.Primitives` flavor). It depends on
 `Runic.Navigation` and `ReactiveUI` only: no `Runic.Application.Views`, generator or
 host, so it works in a WPF or console app. It provides, in the
 `Runic.Navigation.ReactiveUI` namespace, `WhenCurrentChanged()`,
-`WhenCurrentEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`,
-`WhenIsBusyChanged()` and `CreateBackCommand()` for `NavigationRegion<TContent>`
-(in `ReactiveNavigationRegionExtensions`); `WhenNavigatedTo()`,
+`WhenCurrentEntryChanged()`, `WhenHistoryChanged()`, `WhenCanGoBackChanged()`,
+`WhenIsTransitioningChanged()`, `WhenIsBusyChanged()` and `CreateBackCommand()` for
+`NavigationRegion<TContent>` (in `ReactiveNavigationRegionExtensions`); `WhenNavigatedTo()`,
 `WhenNavigatedFrom()`, `CreateCompleteCommand()`, `CreateDismissCommand()` and
 `CreateCloseCommand()` for an entry's `NavigationEntryContext` (in
 `ReactiveNavigationEntryExtensions`); and
 `ReactiveLeaveConfirmation.WithInteraction()`, a leave confirmation asked through a
-ReactiveUI `Interaction`.
+ReactiveUI `Interaction`; and `ReactiveNavigationRegionGuard.WithInteraction()`, a
+guard for a whole region asked the same way.
 
 Apps that use the System.Reactive distribution of ReactiveUI reference
 [`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md)
 instead. Runic Views apps reference this package next to
 `Runic.Application.Views.ReactiveUI`, which no longer brings it, so an app without
-navigation does not reference it.
+navigation does not reference it. A project whose references contain both
+navigation adapters, directly or through another package or project, gets build
+warning [`RUNICNAV002`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicnav002)
+(since 0.11).
 
 ```sh
 dotnet add package Runic.Navigation.ReactiveUI --prerelease
@@ -196,6 +200,12 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   `WhenCurrentEntryChanged()` emits each `NavigationEntry<TContent>`, also when two
   entries present the same borrowed or shared instance, as after
   `ReplaceAsync(NavigationTarget.Share(current))`.
+- `WhenHistoryChanged()` emits the region's `History`, the retained entries
+  below the current entry from bottom to top, as an
+  `IReadOnlyList<NavigationEntry<TContent>>` snapshot: on subscription, then
+  each different history, in the commit turn of a push, Back, reset or
+  history clean-up. A replace changes only the current entry and does not emit.
+  Bind a history list or breadcrumb to it (since 0.11).
 - `WhenCanGoBackChanged()` emits whether the region has Back history.
   `WhenIsTransitioningChanged()` emits whether it has an unsettled transition,
   including one started by another caller. They emit initial values and then
@@ -207,7 +217,7 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   task completes, while departed entries retire. Use it for a region created
   with `Admission = NavigationAdmission.RejectWhileBusy`, which refuses
   requests as `Rejected(Busy)` meanwhile.
-- All five emit the initial value on the subscribing thread, inside `Subscribe`,
+- All six emit the initial value on the subscribing thread, inside `Subscribe`,
   and later values on the model turn that raises the change. Content changes
   arrive on the navigation's commit turn. Use `ObserveOn` to deliver elsewhere.
   They never complete, and stop when the subscription is disposed.
@@ -443,11 +453,26 @@ A question for a whole region rather than one page, such as unsaved work
 anywhere in a window, is an `INavigationRegionGuard` registered with
 `region.AddDepartureGuard(guard)` or `navigator.AddDepartureGuard(guard)` (see
 [Guards for a whole region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#guards-for-a-whole-region)).
-It can ask through an `Interaction` the same way: its
-`NavigationRegionDeparture` has the `ModelContext` and `OnCommitted` of a
-`NavigationDeparture`. It is asked after the pages' guards, or before them
-with `Order = NavigationRegionGuardOrder.BeforeEntries` for a precondition
-that should refuse before any page asks.
+`ReactiveNavigationRegionGuard.WithInteraction(interaction, prompt,
+hasUnsavedChanges, discard)` (since 0.11) creates one that asks through an
+`Interaction`:
+
+```csharp
+_leaveWindow = Main.AddDepartureGuard(ReactiveNavigationRegionGuard.WithInteraction(ConfirmLeaveWindow,
+    departure => new LeaveWindowRequest(departure.Entries.Count), _ => editors.AnyDirty, editors.RevertAll));
+```
+
+`prompt` and `hasUnsavedChanges` receive the `NavigationRegionDeparture` and
+run in one model turn; nothing is asked without unsaved changes. A yes lets the
+transition depart, and `discard` runs in its commit turn only if it commits
+(`OnCommitted`): when a later guard vetoes the transition, it does not run. The question is
+asked as for `ReactiveLeaveConfirmation.WithInteraction`: superseded or
+cancelled transitions dispose the `Handle` subscription, an unanswered question
+fails closed with event 1060, and handlers run latest first. The options of
+`AddDepartureGuard` decide when it is asked: after the pages' guards by default,
+or before them with `Order = NavigationRegionGuardOrder.BeforeEntries` for a
+precondition that should refuse before any page asks, and not for a retaining
+push unless `AskOnRetain`.
 
 ## Native command composition
 

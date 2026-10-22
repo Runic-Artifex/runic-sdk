@@ -8,6 +8,8 @@
     <Description>ReactiveUI observables, commands and interaction leave confirmation for Runic.Navigation regions and entries.</Description>
     <PackageTags>runic-artifex;navigation;reactiveui;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Packs buildTransitive/$(PackageId).props with the diagnostics help links (eng/build/release-links.targets). -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
@@ -17,6 +19,8 @@
     <PackageReference Include="ReactiveUI.Primitives" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <!-- RUNICNAV002: both navigation flavors in one application. -->
+    <None Include="buildTransitive/Runic.Navigation.ReactiveUI.targets" Pack="true" PackagePath="buildTransitive/Runic.Navigation.ReactiveUI.targets" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

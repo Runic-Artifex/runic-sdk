@@ -38,13 +38,17 @@ export const packageLayouts = {
   // Runic.Application.Views (W240-001 §9). `requires` lists dependencies that must be present and
   // `forbidden` patterns that no dependency may match.
   "Runic.Navigation.ReactiveUI": {
-    files: ["README.md", "Runic.Navigation.ReactiveUI.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.xml"],
+    files: ["README.md", "Runic.Navigation.ReactiveUI.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.xml",
+      // RUNICNAV002: both navigation flavors in one application.
+      "buildTransitive/Runic.Navigation.ReactiveUI.props", "buildTransitive/Runic.Navigation.ReactiveUI.targets"],
     requires: ["Runic.Navigation", "ReactiveUI"],
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.Application/i, /^ReactiveUI\.Reactive$/i],
   },
   "Runic.Navigation.ReactiveUI.Reactive": {
-    files: ["README.md", "Runic.Navigation.ReactiveUI.Reactive.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.Reactive.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.Reactive.xml"],
+    files: ["README.md", "Runic.Navigation.ReactiveUI.Reactive.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.Reactive.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.Reactive.xml",
+      // RUNICNAV002: both navigation flavors in one application.
+      "buildTransitive/Runic.Navigation.ReactiveUI.Reactive.props", "buildTransitive/Runic.Navigation.ReactiveUI.Reactive.targets"],
     requires: ["Runic.Navigation", "ReactiveUI.Reactive"],
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.Application/i, /^ReactiveUI$/i],

@@ -309,7 +309,8 @@ of the same major without changes by its author. That includes:
   | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |
   | `RUNICDESK` | The Runic.Desktop build targets; experimental Desktop APIs |
   | `RUNICASSETS` | Experimental APIs of Runic.Assets |
-  | `RUNICNAV`, `RUNICWPF` | Retired: graduated experimental families of Navigation and Runic.Application.Views.Wpf |
+  | `RUNICNAV` | The Runic.Navigation.ReactiveUI build targets (since 0.11); `RUNICNAV001`, the graduated experimental Navigation ID, is retired |
+  | `RUNICWPF` | Retired: graduated experimental family of Runic.Application.Views.Wpf |
   | `RUNICP` | `@runic-artifex/vite-plugin-runic` |
   | `RAPPCLI`, `RAPPDEV`, `RAPPSIZE` | `dotnet runic` |
   | `RCLI` | The Runic.CommandLine codes the tools report, and `dotnet runic doctor` checks (`RCLI81xx`) |
