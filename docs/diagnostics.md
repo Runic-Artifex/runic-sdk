@@ -69,6 +69,7 @@ and severities are open.
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
 | [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
 | [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
+| [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
 
 ### RUNICBRIDGE001
 
@@ -470,6 +471,25 @@ only. A plain `ICommand` takes `[RunicCommandKey]` instead of
 `[RunicCommandInput]`. A key type that is not a Bridge value is
 `RUNICBRIDGE003` at `{Model}.{Command}.key`. See
 [Commands whose parameter has no wire form](../packages/dotnet/Runic.Application.Views/README.md#commands-whose-parameter-has-no-wire-form).
+
+### RUNICBRIDGE029
+
+A warning from the `Runic.Application.Views` build targets.
+`RunicApplicationFrontendPackageManager` has a value other than `npm`, `pnpm`
+or `bun`, compared without case, such as `yarn`. The build then treats it as
+npm: the default install and build commands are npm's (`npm ci` and
+`npm run build`), and [`RUNICBRIDGE026`](#runicbridge026) looks for
+`package-lock.json`. It is reported for a frontend with a `package.json` that
+the build installs or builds with a default command; a project that sets both
+`RunicApplicationFrontendInstallCommand` and
+`RunicApplicationFrontendBuildCommand`, or turns the frontend build off, is not
+checked. An empty value selects the default and is not reported. Since 0.11;
+earlier releases did not report the value.
+
+**Fix:** set `RunicApplicationFrontendPackageManager` to `npm`, `pnpm` or
+`bun`, or remove it to follow `packageManager` in `package.json`, then the lock
+file. For another package manager, set `RunicApplicationFrontendInstallCommand`
+and `RunicApplicationFrontendBuildCommand` to its commands.
 
 ## dotnet runic
 

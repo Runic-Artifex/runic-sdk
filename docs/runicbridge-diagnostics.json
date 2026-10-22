@@ -135,6 +135,11 @@
       "id": "RUNICBRIDGE027",
       "severity": "error",
       "title": "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"
+    },
+    {
+      "id": "RUNICBRIDGE029",
+      "severity": "warning",
+      "title": "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"
     }
   ]
 }

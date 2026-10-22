@@ -1056,7 +1056,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019` and `020` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020` and `029` are warnings; the generator's
 (`013` and `020`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -1097,7 +1097,7 @@ an extension point.
 | --- | --- | --- |
 | `RunicApplicationFrontendDirectory` | `$(MSBuildProjectDirectory)/Frontend` | Frontend package directory. |
 | `RunicApplicationFrontendGeneratedDirectory` | `<frontend>/src/generated` | Generated TypeScript clients. |
-| `RunicApplicationFrontendPackageManager` | `packageManager` in `package.json`, then `pnpm-lock.yaml`, `bun.lock`, else `npm` | Selects the default build and install commands. |
+| `RunicApplicationFrontendPackageManager` | `packageManager` in `package.json`, then `pnpm-lock.yaml`, `bun.lock`, else `npm` | `npm`, `pnpm` or `bun`: selects the default build and install commands. Another value, such as `yarn`, uses the npm commands and warns with [`RUNICBRIDGE029`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge029) unless the project sets both commands. |
 | `RunicApplicationFrontendBuildCommand` | `npm run build`, `pnpm run build`, or `bun run --bun build` | Production frontend build. |
 | `RunicApplicationFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs before the frontend build when `package.json` or a lock file changed since the last install (stamp: `obj/runic-bridge-frontend-install.stamp`), or when declared dependencies have no `node_modules`. A `package.json` without dependencies needs no `node_modules`. |
 | `RunicApplicationFrontendAllowUnlockedInstall` | `false` | The default install is locked: when `package.json` declares dependencies and the package manager's lock file (`package-lock.json` or `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `bun.lock` or `bun.lockb`) is missing, the build fails with [`RUNICBRIDGE026`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge026) before installing. Set `true` to run `npm install`, `pnpm install` or `bun install` (with `--ignore-scripts`) without one instead. |
@@ -1467,7 +1467,7 @@ No wrapper command is needed.
   parameter cannot have a key.
 
 The generator reports a misplaced attribute or an unusable resolver as
-[`RUNICBRIDGE027`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge027).
+[`RUNICBRIDGE029`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge029).
 
 ## Operation results and parameterised queries
 

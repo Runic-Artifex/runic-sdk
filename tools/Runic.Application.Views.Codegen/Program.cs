@@ -1760,6 +1760,8 @@ static class BridgeDiagnosticCodes
     internal const string FrontendLock = "RUNICBRIDGE026";
     /// <summary>A RunicCommandKey declaration is misplaced, or its resolver is missing or has an unsupported shape.</summary>
     internal const string CommandKey = "RUNICBRIDGE027";
+    /// <summary>Warning: RunicApplicationFrontendPackageManager is not npm, pnpm or bun.</summary>
+    internal const string PackageManager = "RUNICBRIDGE029";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1793,6 +1795,7 @@ static class BridgeDiagnosticCodes
         (ReactiveUiAdapter, "error", "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"),
         (FrontendLock, "error", "The frontend declares dependencies but has no lock file for the default install"),
         (CommandKey, "error", "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"),
+        (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
