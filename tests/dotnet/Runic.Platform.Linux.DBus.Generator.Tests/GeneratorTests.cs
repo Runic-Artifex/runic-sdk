@@ -134,6 +134,95 @@ internal sealed class GeneratorTests
             "generated code does not suppress member hiding warnings");
     }
 
+    // The generated code is API in the consumer's assembly: pin its shape for the test interface, which uses every type.
+    // Run with RUNIC_UPDATE_GOLDEN=1 to rewrite the files after an intended change.
+    [Test, DisplayName("the generated proxy and service match the golden files")]
+    public void GoldenOutput()
+    {
+        string root = WorkspaceRoot();
+        string xml = File.ReadAllText(Path.Combine(root, "tests", "dotnet", "Runic.Platform.Linux.DBus.Tests", "Interfaces", "org.runic.Test.Media.xml"));
+        var (output, diagnostics, sources) = Run([("org.runic.Test.Media.xml", xml,
+            new() { ["RunicDBusMode"] = "Proxy,Service", ["RunicDBusNamespace"] = "Runic.Platform.Linux.DBus.Tests.Generated" })]);
+        Check(diagnostics.IsEmpty && output.GetDiagnostics().All(static d => d.Severity < DiagnosticSeverity.Warning), "the test interface generates cleanly");
+        bool update = Environment.GetEnvironmentVariable("RUNIC_UPDATE_GOLDEN") == "1";
+        foreach (var source in sources)
+        {
+            // The header names the generator's version, which changes with every build of a release.
+            string actual = System.Text.RegularExpressions.Regex.Replace(source.SourceText.ToString().ReplaceLineEndings("\n"),
+                "(Runic\\.Platform\\.Linux\\.DBus\\.Generator\"?,? \"?)[0-9][^ \")]*", "$1<version>");
+            // A .golden suffix keeps the files out of the build.
+            string golden = Path.Combine(root, "tests", "dotnet", "Runic.Platform.Linux.DBus.Generator.Tests", "golden", source.HintName + ".golden");
+            if (update) { File.WriteAllText(golden, actual); continue; }
+            Check(File.Exists(golden) && File.ReadAllText(golden).ReplaceLineEndings("\n") == actual,
+                $"{source.HintName} differs from {golden}. Review the change and run with RUNIC_UPDATE_GOLDEN=1.");
+        }
+    }
+
+    [Test, DisplayName("diagnostics point into the XML file: at the element, at the parser's position, or at the start")]
+    public void Locations()
+    {
+        static Location Locate(string id, string text, Dictionary<string, string> metadata)
+        {
+            var diagnostic = Run([("A.xml", text, metadata)]).Diagnostics.Single(d => d.Id == id);
+            Check(diagnostic.Location.Kind == LocationKind.ExternalFile && diagnostic.Location.GetLineSpan().Path == "/project/A.xml",
+                $"{id} is located in the file: {diagnostic.Location}");
+            return diagnostic.Location;
+        }
+        static int Line(Location location) => location.GetLineSpan().StartLinePosition.Line + 1;
+        var proxy = new Dictionary<string, string> { ["RunicDBusMode"] = "Proxy", ["RunicDBusNamespace"] = "N" };
+        Check(Line(Locate("RUNICDBUS001", Interface, new() { ["RunicDBusMode"] = "Handler", ["RunicDBusNamespace"] = "N" })) == 1, "a metadata error at the start");
+        var xml = Locate("RUNICDBUS005", "<node>\n  <interface name=\"a.b\">\n  </node>", proxy);
+        Check(Line(xml) == 3, $"an XML error at the parser's line: {xml.GetLineSpan()}");
+        var member = Locate("RUNICDBUS011", "<node>\n  <interface name=\"a.b\">\n    <method name=\"Bad-Name\"/>\n  </interface>\n</node>", proxy);
+        Check(Line(member) == 3 && member.GetLineSpan().StartLinePosition.Character == 5 && member.SourceSpan.Start == "<node>\n  <interface name=\"a.b\">\n    <".Length,
+            $"a member error at its element: {member.GetLineSpan()} {member.SourceSpan}");
+        var collision = Locate("RUNICDBUS012", "<node>\n  <interface name=\"a.b\">\n    <method name=\"Ok\"/>\n    <method name=\"Call\"/>\n  </interface>\n</node>", proxy);
+        Check(Line(collision) == 4, $"a collision at the member that collides: {collision.GetLineSpan()}");
+        Check(Line(Locate("RUNICDBUS007", "<node>\n\n  <interface name=\"nodots\"/>\n</node>", proxy)) == 3, "an interface error at the interface");
+        var duplicate = Run([("A.xml", Interface, proxy), ("B.xml", Interface, proxy)]).Diagnostics.First(static d => d.Id == "RUNICDBUS010");
+        Check(duplicate.Location.GetLineSpan().Path == "/project/A.xml" && duplicate.AdditionalLocations.Single().GetLineSpan().Path == "/project/B.xml",
+            "a duplicate type points at both files");
+    }
+
+    [Test, DisplayName("RUNICDBUS013 warns about Deprecated and, for proxies, NoReply annotations, and still generates")]
+    public void IgnoredAnnotations()
+    {
+        const string Annotated = """
+            <node>
+              <interface name="org.example.Old">
+                <annotation name="org.freedesktop.DBus.Deprecated" value="true"/>
+                <method name="Fire"><annotation name="org.freedesktop.DBus.Method.NoReply" value="true"/></method>
+                <method name="Read"><annotation name="org.freedesktop.DBus.Deprecated" value="false"/></method>
+                <property name="Level" type="u" access="read"><annotation name="org.freedesktop.DBus.Deprecated" value="true"/></property>
+                <signal name="Gone"><annotation name="org.gtk.GDBus.C.Name" value="true"/></signal>
+              </interface>
+            </node>
+            """;
+        static List<Diagnostic> Warnings(string mode) => [.. Run([("Old.xml", Annotated, new() { ["RunicDBusMode"] = mode, ["RunicDBusNamespace"] = "N" })])
+            .Diagnostics.Where(static d => d.Id == "RUNICDBUS013")];
+        var both = Warnings("Proxy,Service");
+        Check(both.Count == 3 && both.All(static d => d.Severity == DiagnosticSeverity.Warning), $"three warnings, once per file: {string.Join("; ", both)}");
+        string text = string.Join("\n", both.Select(static d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture)));
+        Check(text.Contains("interface org.example.Old", StringComparison.Ordinal) && text.Contains("property org.example.Old.Level", StringComparison.Ordinal)
+            && text.Contains("org.freedesktop.DBus.Method.NoReply annotation of the method org.example.Old.Fire", StringComparison.Ordinal), text);
+        Check(Warnings("Service").Count == 2, "a service has no reply to skip, so NoReply is not reported");
+        Check(Line(both.Single(static d => d.GetMessage(System.Globalization.CultureInfo.InvariantCulture).Contains("NoReply", StringComparison.Ordinal)).Location) == 4,
+            "the warning points at the annotation");
+        var (output, diagnostics, sources) = Run([("Old.xml", Annotated, new() { ["RunicDBusMode"] = "Proxy,Service", ["RunicDBusNamespace"] = "N" })]);
+        Check(sources.Length == 2 && diagnostics.All(static d => d.Severity == DiagnosticSeverity.Warning)
+            && output.GetDiagnostics().All(static d => d.Severity < DiagnosticSeverity.Warning), "the code is still generated and compiles");
+        Check(both[0].Descriptor.HelpLinkUri.EndsWith("docs/diagnostics.md#runicdbus013", StringComparison.Ordinal), both[0].Descriptor.HelpLinkUri);
+
+        static int Line(Location location) => location.GetLineSpan().StartLinePosition.Line + 1;
+    }
+
+    private static string WorkspaceRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx"))) return directory.FullName;
+        throw new InvalidOperationException("Could not locate the Runic SDK workspace root.");
+    }
+
     private static void Expect(string id, params (string Name, string Text, Dictionary<string, string> Metadata)[] files)
     {
         var diagnostics = Run(files).Diagnostics;

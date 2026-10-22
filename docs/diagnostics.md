@@ -1037,7 +1037,9 @@ command line, for example `<RunicElevatedHelper>` to
 `Runic.Platform.Linux.DBus` generates proxies and services from introspection XML
 listed as `AdditionalFiles` with `RunicDBusMode` metadata. The
 [package guide](../packages/dotnet/Runic.Platform.Linux.DBus/README.md#generate-proxies-and-services)
-describes the metadata. Each error names the XML file; nothing is generated for it.
+describes the metadata. Each diagnostic names the XML file and points at the
+element or line it concerns. Nothing is generated for a file with an error; a
+warning leaves the generated code unchanged.
 
 ### RUNICDBUS001
 
@@ -1138,6 +1140,30 @@ other collisions compiled with the inherited member silently hidden.
 cannot be generated; call it with `DBusProxy.CallAsync`, `GetPropertyAsync` or
 `WatchSignalAsync`, or answer it in a `DBusObject` you write yourself, and leave it
 out of the XML the generator reads.
+
+### RUNICDBUS013
+
+Warning. The XML has a standard D-Bus annotation, set to `true`, that the
+generated code does not carry out:
+
+- `org.freedesktop.DBus.Deprecated` on an interface, method, signal or property:
+  the generated members are not marked `[Obsolete]`.
+- `org.freedesktop.DBus.Method.NoReply` on a method, in `Proxy` mode: the
+  generated `<Method>Async` waits for a reply that the service may never send.
+  A service ignores the annotation, since a caller that asks for no reply
+  discards one.
+
+The file is generated as before; each annotation is reported once per file.
+Annotations that are `false`, `org.freedesktop.DBus.Property.EmitsChangedSignal`,
+which the generator applies, and annotations of other tools, such as
+`org.gtk.GDBus.*`, are not reported.
+
+**Fix:** for a deprecated member, prefer its replacement, and remove the
+annotation from the project's copy of the XML, or the member if the application
+does not use it. For a `NoReply` method, pass a cancellation token or set the
+proxy's `Timeout`, or call it with `DBusProxy.CallAsync` and leave it out of the
+XML. To accept the warning for the whole project, add `RUNICDBUS013` to
+`NoWarn`.
 
 ## Privileged actions on Windows
 

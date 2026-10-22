@@ -107,6 +107,9 @@ public sealed class DBusException : Exception
     public const string PropertyReadOnly = "org.freedesktop.DBus.Error.PropertyReadOnly";
     /// <summary>The error name of a denied request.</summary>
     public const string AccessDenied = "org.freedesktop.DBus.Error.AccessDenied";
+    /// <summary>The error name of a call that got no reply in time: the call's <see cref="DBusMethodCall.Timeout"/>
+    /// passed, or the bus gave up waiting for the service.</summary>
+    public const string NoReply = "org.freedesktop.DBus.Error.NoReply";
 
     /// <summary>Creates an error with a D-Bus error name, such as <c>org.example.Error.NotFound</c>, and a message.</summary>
     /// <exception cref="ArgumentException"><paramref name="errorName"/> is not a valid D-Bus error name.</exception>
@@ -177,14 +180,37 @@ public sealed record DBusMethodCall(string? Destination, DBusObjectPath Path, st
     /// <summary>The call's options.</summary>
     public DBusCallOptions Options { get; init; }
 
+    /// <summary>How long to wait for the reply; <see langword="null"/>, the default, waits until the bus or the service
+    /// replies or the call is cancelled.</summary>
+    /// <remarks>When the time passes, the call throws <see cref="DBusException"/> with <see cref="DBusException.NoReply"/>
+    /// and a later reply is ignored. The service may still have carried out the call. <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>
+    /// also waits without a limit.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero, negative other than
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>, or longer than <see cref="Task.WaitAsync(TimeSpan)"/> accepts.</exception>
+    public TimeSpan? Timeout
+    {
+        get;
+        init => field = DBusTimeouts.Check(value);
+    }
+
     /// <summary>Compares two calls by content.</summary>
     public bool Equals(DBusMethodCall? other) =>
         ReferenceEquals(this, other) || other is not null && Destination == other.Destination && Path == other.Path && Interface == other.Interface
-            && Member == other.Member && Options == other.Options && DBusContent.SequenceEqual(Arguments, other.Arguments);
+            && Member == other.Member && Options == other.Options && Timeout == other.Timeout && DBusContent.SequenceEqual(Arguments, other.Arguments);
 
     /// <inheritdoc />
     public override int GetHashCode() =>
-        HashCode.Combine(Destination, Path, Interface, Member, Options, DBusContent.SequenceHash(Arguments));
+        HashCode.Combine(Destination, Path, Interface, Member, Options, Timeout, DBusContent.SequenceHash(Arguments));
+}
+
+internal static class DBusTimeouts
+{
+    // Task.WaitAsync accepts at most uint.MaxValue - 1 milliseconds.
+    private static readonly TimeSpan Longest = TimeSpan.FromMilliseconds(uint.MaxValue - 1d);
+
+    internal static TimeSpan? Check(TimeSpan? value) =>
+        value is not { } timeout || timeout == System.Threading.Timeout.InfiniteTimeSpan || timeout > TimeSpan.Zero && timeout <= Longest ? value
+            : throw new ArgumentOutOfRangeException(nameof(value), timeout, "A D-Bus call timeout is positive, Timeout.InfiniteTimeSpan or null.");
 }
 
 /// <summary>A received signal.</summary>
@@ -248,6 +274,33 @@ public sealed record DBusSignalFilter
     public string? Member { get; init; }
     /// <summary>The first argument, when it is a string.</summary>
     public string? Arg0 { get; init; }
+
+    /// <summary>String arguments by position, from 0 to 63, as the match rule's <c>argN</c> keys: the argument at each
+    /// position must be a string equal to the value.</summary>
+    /// <remarks>Position 0 is the same key as <see cref="Arg0"/>; setting both to different values is an error.</remarks>
+    public ImmutableDictionary<int, string> Arguments { get; init => field = value ?? throw new ArgumentNullException(nameof(value)); } =
+        ImmutableDictionary<int, string>.Empty;
+
+    /// <summary>Path arguments by position, from 0 to 63, as the match rule's <c>argNpath</c> keys: the argument at each
+    /// position must be a string or object path that equals the value, or that is a prefix of the other ending in
+    /// <c>/</c>. <c>/aa/</c> matches <c>/aa/</c>, <c>/aa/bb</c> and <c>/</c>, but not <c>/aab</c>.</summary>
+    public ImmutableDictionary<int, string> ArgumentPaths { get; init => field = value ?? throw new ArgumentNullException(nameof(value)); } =
+        ImmutableDictionary<int, string>.Empty;
+
+    /// <summary>A namespace of bus or interface names, as the match rule's <c>arg0namespace</c> key: the first argument
+    /// must be a string that equals it or starts with it followed by a dot. <c>org.example</c> matches
+    /// <c>org.example</c> and <c>org.example.Player</c>, but not <c>org.examples</c>.</summary>
+    public string? Arg0Namespace { get; init; }
+
+    /// <summary>Compares two filters by their keys.</summary>
+    public bool Equals(DBusSignalFilter? other) =>
+        ReferenceEquals(this, other) || other is not null && Sender == other.Sender && Path == other.Path && PathNamespace == other.PathNamespace
+            && Interface == other.Interface && Member == other.Member && Arg0 == other.Arg0 && Arg0Namespace == other.Arg0Namespace
+            && DBusContent.DictionaryEqual(Arguments, other.Arguments) && DBusContent.DictionaryEqual(ArgumentPaths, other.ArgumentPaths);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Sender, Path, PathNamespace, Interface, Member, Arg0, Arg0Namespace,
+        HashCode.Combine(DBusContent.DictionaryHash(Arguments), DBusContent.DictionaryHash(ArgumentPaths)));
 }
 
 /// <summary>Properties of one interface that changed, from <c>org.freedesktop.DBus.Properties.PropertiesChanged</c>.</summary>
@@ -318,6 +371,40 @@ internal static class DBusContent
         int hash = entries.Count;
         // Order-independent, since dictionaries with the same entries are equal in any order.
         foreach (var (key, value) in entries) hash ^= HashCode.Combine(key, value);
+        return hash;
+    }
+
+    internal static bool DictionaryEqual(ImmutableDictionary<int, string>? left, ImmutableDictionary<int, string>? right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left is null || right is null || left.Count != right.Count) return false;
+        foreach (var (key, value) in left)
+            if (!right.TryGetValue(key, out var other) || !string.Equals(value, other, StringComparison.Ordinal)) return false;
+        return true;
+    }
+
+    internal static int DictionaryHash(ImmutableDictionary<int, string>? entries)
+    {
+        if (entries is null) return 0;
+        int hash = entries.Count;
+        foreach (var (key, value) in entries) hash ^= HashCode.Combine(key, value);
+        return hash;
+    }
+
+    internal static bool InterfacesEqual(ImmutableDictionary<string, ImmutableDictionary<string, DBusValue>> left,
+        ImmutableDictionary<string, ImmutableDictionary<string, DBusValue>> right)
+    {
+        if (ReferenceEquals(left, right)) return true;
+        if (left.Count != right.Count) return false;
+        foreach (var (key, value) in left)
+            if (!right.TryGetValue(key, out var other) || !DictionaryEqual(value, other)) return false;
+        return true;
+    }
+
+    internal static int InterfacesHash(ImmutableDictionary<string, ImmutableDictionary<string, DBusValue>> entries)
+    {
+        int hash = entries.Count;
+        foreach (var (key, value) in entries) hash ^= HashCode.Combine(key, DictionaryHash(value));
         return hash;
     }
 }

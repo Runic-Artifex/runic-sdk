@@ -47,6 +47,7 @@ internal static class DBusWire
                 writer.WriteSignature(inner.Signature.Value);
                 Write(ref writer, inner);
                 break;
+            case 'a' when payload is DBusValue.BytesBox bytes: writer.WriteArray(bytes.Bytes.AsSpan()); break;
             case 'a' when signature[1] == '{':
                 var dictionary = writer.WriteDictionaryStart();
                 foreach (var entry in ((DBusValue.DictionaryBox)payload).Entries)
@@ -119,6 +120,7 @@ internal static class DBusWire
                 if (!DBusSignatures.IsSingleCompleteType(inner))
                     throw new DBusException(DBusException.InvalidArgs, $"The variant signature \"{inner}\" is not one complete type.");
                 return DBusValue.FromWire("v", new DBusValue.VariantBox(Read(ref reader, inner, depth)));
+            case 'a' when signature[1] == 'y': return DBusValue.BytesFromWire(reader.ReadArrayOfByte());
             case 'a' when signature[1] == '{':
             {
                 string key = signature[2..3], value = signature[3..^1];

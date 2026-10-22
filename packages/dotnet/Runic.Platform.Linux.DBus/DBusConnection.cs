@@ -126,12 +126,18 @@ public sealed class DBusConnection : IAsyncDisposable
             }
             finally { writer.Dispose(); }
             var reply = _wire.CallMethodAsync(message, static (reply, _) => DBusWire.ReadBody(reply));
-            try { return await reply.WaitAsync(cancellationToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            try
             {
-                // A reply that arrives after cancellation may carry file descriptors nobody will read.
+                return await (call.Timeout is { } timeout ? reply.WaitAsync(timeout, cancellationToken) : reply.WaitAsync(cancellationToken))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is TimeoutException || error is OperationCanceledException && cancellationToken.IsCancellationRequested)
+            {
+                // A reply that arrives after cancellation or the timeout may carry file descriptors nobody will read.
                 _ = reply.ContinueWith(static task => { foreach (var value in task.Result) DBusWire.CloseHandles(value); },
                     CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                if (error is TimeoutException)
+                    throw new DBusException(DBusException.NoReply, $"{call.Interface}.{call.Member} got no reply within {call.Timeout}.", error);
                 throw;
             }
         }
@@ -141,15 +147,23 @@ public sealed class DBusConnection : IAsyncDisposable
     /// <summary>Starts receiving the signals that match <paramref name="filter"/>.</summary>
     /// <returns>A subscription that is active when this completes, so no signal emitted afterwards is missed. Enumerate it
     /// once, and dispose it to stop receiving.</returns>
+    /// <remarks>The bus applies the filter's keys, except <see cref="DBusSignalFilter.Arguments"/> and
+    /// <see cref="DBusSignalFilter.ArgumentPaths"/> after the first argument, which the connection checks itself; the bus
+    /// still sends those signals to the connection.</remarks>
+    /// <exception cref="ArgumentException">An argument position is outside 0–63, <see cref="DBusSignalFilter.Arg0"/> and
+    /// position 0 of <see cref="DBusSignalFilter.Arguments"/> differ, or <see cref="DBusSignalFilter.Arg0Namespace"/> is
+    /// not a namespace of bus or interface names.</exception>
     /// <exception cref="DBusException">The bus refused the subscription, or the connection closed.</exception>
     public async ValueTask<DBusSignalSubscription> SubscribeAsync(DBusSignalFilter filter, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(filter);
+        var arguments = DBusSignalMatch.Check(filter);
         cancellationToken.ThrowIfCancellationRequested();
         var rule = new MatchRule
         {
             Type = MessageType.Signal, Sender = filter.Sender, Path = filter.Path?.Value, PathNamespace = filter.PathNamespace?.Value,
-            Interface = filter.Interface, Member = filter.Member, Arg0 = filter.Arg0,
+            Interface = filter.Interface, Member = filter.Member, Arg0 = filter.Arg0 ?? filter.Arguments.GetValueOrDefault(0),
+            Arg0Path = filter.ArgumentPaths.GetValueOrDefault(0), Arg0Namespace = filter.Arg0Namespace,
         };
         var signals = Channel.CreateUnbounded<DBusSignal>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
         try
@@ -157,8 +171,13 @@ public sealed class DBusConnection : IAsyncDisposable
             var writer = signals.Writer;
             var match = await _wire.AddMatchAsync(rule, static (message, _) => ReadSignal(message), (Notification<DBusSignal> notification) =>
                 {
-                    // A signal that arrives after the subscription closed is never read; close its descriptors.
-                    if (notification.HasValue) { if (!writer.TryWrite(notification.Value)) DBusSignalSubscription.CloseHandles(notification.Value); }
+                    // A signal that arrives after the subscription closed, or that the argument keys reject, is never read;
+                    // close its descriptors.
+                    if (notification.HasValue)
+                    {
+                        if (!(arguments?.Matches(notification.Value) ?? true) || !writer.TryWrite(notification.Value))
+                            DBusSignalSubscription.CloseHandles(notification.Value);
+                    }
                     else if (notification.IsCompletion) writer.TryComplete(Translate(notification.Exception) ?? notification.Exception);
                 }, emitOnCapturedContext: false, ObserverFlags.EmitOnConnectionClosed | ObserverFlags.EmitOnReaderFailed)
                 .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -368,4 +387,72 @@ public sealed class DBusSignalSubscription : IAsyncEnumerable<DBusSignal>, IAsyn
     {
         foreach (var argument in signal.Arguments) DBusWire.CloseHandles(argument);
     }
+}
+
+// The argument keys of a signal filter, checked by the connection: the bus applies only those of the first argument
+// that Tmds.DBus.Protocol's match rules carry, and two subscriptions on one connection must not see each other's signals.
+internal sealed class DBusSignalMatch
+{
+    private const int MaximumArgument = 63;
+    private readonly ImmutableArray<(int Index, string Value)> _strings;
+    private readonly ImmutableArray<(int Index, string Value)> _paths;
+    private readonly string? _namespace;
+
+    private DBusSignalMatch(ImmutableArray<(int, string)> strings, ImmutableArray<(int, string)> paths, string? @namespace)
+    {
+        _strings = strings;
+        _paths = paths;
+        _namespace = @namespace;
+    }
+
+    // Validates the filter; returns null when it has no argument keys.
+    internal static DBusSignalMatch? Check(DBusSignalFilter filter)
+    {
+        foreach (var (index, value) in filter.Arguments.Concat(filter.ArgumentPaths))
+        {
+            if (index is < 0 or > MaximumArgument)
+                throw new ArgumentException($"The argument position {index} is outside 0–{MaximumArgument}.", nameof(filter));
+            ArgumentNullException.ThrowIfNull(value, nameof(filter));
+        }
+        if (filter.Arg0 is { } arg0 && filter.Arguments.TryGetValue(0, out var first) && !string.Equals(arg0, first, StringComparison.Ordinal))
+            throw new ArgumentException("Arg0 and position 0 of Arguments differ; set one of them.", nameof(filter));
+        if (filter.Arg0Namespace is { } ns && !DBusNames.IsNameNamespace(ns))
+            throw new ArgumentException($"\"{ns}\" is not a namespace of bus or interface names.", nameof(filter));
+        // Arg0 on its own keeps the matching it has always had, by the bus and Tmds.DBus.Protocol.
+        var match = new DBusSignalMatch([.. filter.Arguments.Select(static entry => (entry.Key, entry.Value))],
+            [.. filter.ArgumentPaths.Select(static entry => (entry.Key, entry.Value))], filter.Arg0Namespace);
+        return match._strings.IsEmpty && match._paths.IsEmpty && match._namespace is null ? null : match;
+    }
+
+    internal bool Matches(DBusSignal signal)
+    {
+        var arguments = signal.Arguments;
+        foreach (var (index, value) in _strings)
+            if (index >= arguments.Length || arguments[index] is not { Signature.Value: "s" } argument
+                || !string.Equals(argument.GetString(), value, StringComparison.Ordinal)) return false;
+        foreach (var (index, value) in _paths)
+        {
+            if (index >= arguments.Length) return false;
+            string? text = arguments[index] switch
+            {
+                { Signature.Value: "s" } argument => argument.GetString(),
+                { Signature.Value: "o" } argument => argument.GetObjectPath().Value,
+                _ => null,
+            };
+            if (text is null || !PathMatches(text, value)) return false;
+        }
+        if (_namespace is { } ns)
+        {
+            if (arguments.IsEmpty || arguments[0] is not { Signature.Value: "s" } first) return false;
+            string name = first.GetString();
+            if (!name.StartsWith(ns, StringComparison.Ordinal) || name.Length != ns.Length && name[ns.Length] != '.') return false;
+        }
+        return true;
+    }
+
+    // argNpath: equal, or one is a prefix of the other that ends in '/'.
+    private static bool PathMatches(string argument, string value) =>
+        string.Equals(argument, value, StringComparison.Ordinal)
+        || value.EndsWith('/') && argument.StartsWith(value, StringComparison.Ordinal)
+        || argument.EndsWith('/') && value.StartsWith(argument, StringComparison.Ordinal);
 }

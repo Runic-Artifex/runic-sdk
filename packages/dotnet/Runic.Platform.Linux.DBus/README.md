@@ -51,6 +51,10 @@ build containers. Read a value with the getter for its type, such as `GetInt32()
 `IsDefault` is true only for `default(DBusValue)`, which holds nothing; an empty
 container such as an `as` without items is not the default.
 
+An `ay` keeps its bytes as one block, however it was created or received, so a
+large file or image costs about its length in memory. `GetByteArray()` returns
+those bytes without copying them; `GetItems()` still lists them as `y` values.
+
 | D-Bus | Create | Read |
 | --- | --- | --- |
 | `y` `b` `n` `q` `i` `u` `x` `t` `d` | `From(byte)` … `From(double)` | `GetByte()` … `GetDouble()` |
@@ -68,6 +72,19 @@ arguments)` returns the reply's values; `GetPropertyAsync`, `GetAllPropertiesAsy
 and `SetPropertyAsync` use `org.freedesktop.DBus.Properties`. Set
 `DBusCallOptions.AllowInteractiveAuthorization` when the service may ask the user
 for a password, as UDisks2 does through Polkit.
+
+A call waits for its reply until the bus or the service answers or its token is
+cancelled. To bound the wait, set `Timeout` on the proxy, which covers every call
+and property access through it (including generated proxies), or on a single
+`DBusMethodCall`:
+
+```csharp
+var upower = new DBusProxy(bus, "org.freedesktop.UPower", "/org/freedesktop/UPower") { Timeout = TimeSpan.FromSeconds(5) };
+```
+
+A call that times out throws `DBusException` with `DBusException.NoReply`, the
+error the bus also sends when it gives up waiting, and ignores a later reply. The
+service may still have carried out the call.
 
 Signals and property changes arrive as `IAsyncEnumerable` streams, in the order the
 connection received them. `SubscribeAsync`, `SubscribePropertiesAsync` and
@@ -89,10 +106,44 @@ content, like the values they carry. The connection creates signals and
 `DBusProxy.ReadPropertyChanges` creates property changes, so neither has a public
 constructor; a `DBusMethodCall` is a request you create.
 
+A `DBusSignalFilter` sets the match rule's keys: `Sender`, `Path`, `PathNamespace`,
+`Interface`, `Member`, and for arguments `Arg0` (or `Arguments`, string arguments
+by position 0–63), `ArgumentPaths` (`argNpath`: a path argument equal to the value,
+or below it when the value ends in `/`) and `Arg0Namespace` (a bus or interface
+name equal to the value or below it, such as `org.mpris.MediaPlayer2` for every
+player). The bus applies the keys of the first argument; the connection itself
+checks the keys of later arguments, so those signals still reach the connection.
+
 `WatchPropertiesAsync` and `WatchSignalAsync` are shorter forms that subscribe when
 enumeration starts. `DBusConnection.WatchNameOwnerAsync(name)` reports a bus name's
 owner, first the current one and then every change, so an application notices when
 a service starts or stops.
+
+## Follow a service's objects
+
+Services such as UDisks2, BlueZ and NetworkManager list their objects through
+`org.freedesktop.DBus.ObjectManager`. `DBusObjectManagerProxy` reads them:
+`GetManagedObjectsAsync` returns each object's interfaces with their properties,
+and `ReadInterfaceChanges` reads the `InterfacesAdded` and `InterfacesRemoved`
+signals of `SubscribeInterfaceChangesAsync`. Subscribe first, so no object added in
+between is missed:
+
+```csharp
+var manager = new DBusObjectManagerProxy(bus, "org.freedesktop.UDisks2", "/org/freedesktop/UDisks2");
+await using var changes = await manager.SubscribeInterfaceChangesAsync(cancellationToken);
+var objects = await manager.GetManagedObjectsAsync(cancellationToken);
+var drives = objects.Where(static entry => entry.Value.ContainsKey("org.freedesktop.UDisks2.Drive")).Select(static entry => entry.Key).ToHashSet();
+await foreach (var signal in changes.WithCancellation(cancellationToken))
+{
+    if (DBusObjectManagerProxy.ReadInterfaceChanges(signal) is not { } change) continue;
+    if (change.Added.ContainsKey("org.freedesktop.UDisks2.Drive")) drives.Add(change.Path);
+    if (change.Removed.Contains("org.freedesktop.UDisks2.Drive")) drives.Remove(change.Path);
+}
+```
+
+`WatchInterfaceChangesAsync` is the shorter form that subscribes when enumeration
+starts. The objects' own property changes arrive as `PropertiesChanged`; subscribe
+to them with a `DBusSignalFilter` whose `PathNamespace` is the manager's path.
 
 ## Offer a service
 
@@ -201,11 +252,17 @@ already uses, such as a method `Call` (`CallAsync`) or a signal `Properties`
 D-Bus types map to C# as follows: `y b n q i u x t d s` to `byte`, `bool`,
 `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `double` and `string`; `o`
 and `g` to `DBusObjectPath` and `DBusSignature`; `h` to `SafeHandle`; `v` to
-`DBusValue`; arrays to `ImmutableArray<T>`, dictionaries to
-`ImmutableDictionary<TKey, TValue>` and structures to tuples. A reply or
+`DBusValue`; arrays to `ImmutableArray<T>` (an `ay` as one block of bytes),
+dictionaries to `ImmutableDictionary<TKey, TValue>` and structures to tuples. A reply or
 property of another type than the XML declares throws `DBusException` with
 `org.freedesktop.DBus.Error.InvalidArgs`. The generator reports problems in the
-XML as [`RUNICDBUS` diagnostics](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#d-bus-source-generator).
+XML as [`RUNICDBUS` diagnostics](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#d-bus-source-generator),
+located at the XML element or line they concern, so the IDE opens the file there.
+It warns (`RUNICDBUS013`) about an `org.freedesktop.DBus.Deprecated` annotation,
+and in proxies about `org.freedesktop.DBus.Method.NoReply`, because the generated
+code does not carry them out: a deprecated member is not marked obsolete, and a
+proxy method waits for a reply, so bound it with a cancellation token or the
+proxy's `Timeout`.
 Generated code uses only this package's public API and works with NativeAOT.
 
 The generator adapts parts of Tmds.DBus.Generator, under the MIT License; the
@@ -221,7 +278,8 @@ run concurrently, also with each other, so an object that keeps state guards it.
 Method calls throw `DBusException` for an error reply: branch on `ErrorName`, such
 as `org.freedesktop.DBus.Error.ServiceUnknown` or a service's own error. The
 message is the peer's text, meant for logs. A closed connection reports
-`DBusException.Disconnected`, and cancelling a call's token throws
+`DBusException.Disconnected`, a call past its `Timeout` reports
+`DBusException.NoReply`, and cancelling a call's token throws
 `OperationCanceledException` and ignores the reply. Higher-level Runic services
 built on this package report their outcomes as `PlatformResult`.
 
