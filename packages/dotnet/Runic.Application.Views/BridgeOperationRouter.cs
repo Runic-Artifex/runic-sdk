@@ -136,8 +136,8 @@ internal sealed class BridgeOperationRouter : IDisposable
     internal ValueTask<BridgeOperationCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
         _operations.BeginCloseAsync(timeout, cancellationToken);
 
-    internal BridgeOperationRegistry.BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation) =>
-        _operations.TryBeginAwaited(callerCancellation);
+    internal BridgeOperationRegistry.BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation,
+        out bool atCapacity) => _operations.TryBeginAwaited(callerCancellation, out atCapacity);
 
     private string Status(IBridgeArguments arguments) =>
         TryReadIdentity(arguments, out var routeIdentity)

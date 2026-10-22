@@ -186,7 +186,6 @@ public sealed class BridgeInteractionRouter : IDisposable
     private const int MaximumNameLength = 128;
     private const int MaximumContractLength = 256;
     private const int MaximumPresentationLength = 256;
-    private const int MaximumPayloadBytes = 64 * 1024;
 
     private readonly object _gate = new();
     private readonly WindowContentSession _session;
@@ -622,9 +621,9 @@ public sealed class BridgeInteractionRouter : IDisposable
             throw new ArgumentException("The interaction identity is too long.");
     }
 
-    private static void ValidateJsonPayload(string json)
+    private void ValidateJsonPayload(string json)
     {
-        if (Encoding.UTF8.GetByteCount(json) > MaximumPayloadBytes) throw new ArgumentException("The interaction payload is too large.");
+        if (!BridgeInputLimit.Fits(json, _session.MaximumInputBytes)) throw new ArgumentException("The interaction payload is too large.");
         using var _ = JsonDocument.Parse(json);
     }
 
@@ -636,9 +635,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         return value;
     }
 
-    private static WaitRequest ParseWait(string json)
+    private WaitRequest ParseWait(string json)
     {
-        if (Encoding.UTF8.GetByteCount(json) > MaximumPayloadBytes) throw new ArgumentException("The wait request is too large.");
+        if (!BridgeInputLimit.Fits(json, _session.MaximumInputBytes)) throw new ArgumentException("The wait request is too large.");
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var route = root.GetProperty("route").GetString() ?? "";
@@ -654,9 +653,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         return new WaitRequest(route, presentationId, handlers, generation);
     }
 
-    private static ControlRequest ParseControl(string json)
+    private ControlRequest ParseControl(string json)
     {
-        if (Encoding.UTF8.GetByteCount(json) > MaximumPayloadBytes) throw new ArgumentException("The control request is too large.");
+        if (!BridgeInputLimit.Fits(json, _session.MaximumInputBytes)) throw new ArgumentException("The control request is too large.");
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var route = root.GetProperty("route").GetString() ?? "";
@@ -671,9 +670,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         return new ControlRequest(route, presentationId, generation, handlers);
     }
 
-    private static ControlWaitRequest ParseControlWait(string json)
+    private ControlWaitRequest ParseControlWait(string json)
     {
-        if (Encoding.UTF8.GetByteCount(json) > MaximumPayloadBytes) throw new ArgumentException("The control wait request is too large.");
+        if (!BridgeInputLimit.Fits(json, _session.MaximumInputBytes)) throw new ArgumentException("The control wait request is too large.");
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var route = root.GetProperty("route").GetString() ?? "";
@@ -683,9 +682,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         return new ControlWaitRequest(route, presentationId);
     }
 
-    private static InteractionReply ParseReply(string json)
+    private InteractionReply ParseReply(string json)
     {
-        if (Encoding.UTF8.GetByteCount(json) > MaximumPayloadBytes) throw new ArgumentException("The interaction reply is too large.");
+        if (!BridgeInputLimit.Fits(json, _session.MaximumInputBytes)) throw new ArgumentException("The interaction reply is too large.");
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var kind = root.GetProperty("kind").GetString() ?? "";

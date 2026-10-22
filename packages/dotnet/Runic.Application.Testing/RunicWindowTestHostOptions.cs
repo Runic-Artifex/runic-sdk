@@ -47,6 +47,12 @@ public sealed class RunicWindowTestHostOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// The largest Bridge input of the window, in UTF-8 bytes
+    /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>). <see langword="null"/>, the default, is 1 MiB.
+    /// </summary>
+    public int? MaximumInputBytes { get; init; }
+
+    /// <summary>
     /// How long a driver waits for a state publication. Delivery runs off the calling
     /// thread, so this is real time. Defaults to five seconds.
     /// </summary>

@@ -1,0 +1,202 @@
+using System.Globalization;
+using System.Text.Json;
+using Runic.Application.Views;
+using TUnit.Core;
+
+namespace Runic.Application.Testing.Tests;
+
+internal sealed class BridgeLimitsTests
+{
+    private const int DefaultLimit = WindowContentSessionOptions.DefaultMaximumInputBytes;
+
+    [Test]
+    public void SetterAndCommandValuesShareTheDefaultLimit()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model);
+        var route = host.RootRoute;
+        var large = new string('x', DefaultLimit + 1);
+
+        RequireRejected(host.Transport.Call($"{route}SetText", new(StringValue: large)), "invalid-input",
+            "A setter value over 1 MiB was not rejected.");
+        Require(model.Text.Length == 0, "A setter value over 1 MiB was applied.");
+        // The limit counts UTF-8 bytes: 600 000 two-byte characters are 1.2 MB.
+        RequireRejected(host.Transport.Call($"{route}SetText", new(StringValue: new string('é', 600_000))), "invalid-input",
+            "A setter value of 1.2 MB in UTF-8 was not rejected.");
+        // Above the former 64 KiB limit of checked writes.
+        RequireOk(host.Transport.Call($"{route}WriteText", new(StringValue: CheckedWrite(model.Text, new string('y', 100_000)))),
+            "A checked write of 100 KB was refused.");
+        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('x', DefaultLimit))),
+            "A setter value of 1 MiB was refused.");
+        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('y', 100_000))),
+            "A setter value of 100 KB was refused.");
+
+        RequireRejected(host.Transport.Call($"{route}Echo", new(StringValue: JsonSerializer.Serialize(large))), "invalid-input",
+            "A command argument over 1 MiB was not rejected.");
+        Require(model.Text.Length == 100_000, "A command argument over 1 MiB ran the command.");
+    }
+
+    [Test]
+    public void ALoweredLimitAppliesToEveryInput()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model, maximumInputBytes: 4_096);
+        var route = host.RootRoute;
+        var over = new string('x', 4_097);
+
+        RequireRejected(host.Transport.Call($"{route}SetText", new(StringValue: over)), "invalid-input",
+            "A setter value over a lowered limit was not rejected.");
+        RequireOk(host.Transport.Call($"{route}SetText", new(StringValue: new string('x', 4_096))),
+            "A setter value at a lowered limit was refused.");
+        RequireRejected(host.Transport.Call($"{route}WriteText", new(StringValue: CheckedWrite(model.Text, over))), "invalid-input",
+            "A checked write over a lowered limit was not rejected.");
+        RequireRejected(host.Transport.Call($"{route}Echo", new(StringValue: JsonSerializer.Serialize(over))), "invalid-input",
+            "A command argument over a lowered limit was not rejected.");
+        Require(model.Text.Length == 4_096, "An input over a lowered limit changed the model.");
+
+        // An interaction reply is limited too: invalid before its identity is looked at.
+        var reply = JsonSerializer.Serialize(new
+        {
+            kind = "answered", requestId = "unknown", route, presentationId = "page:1", ownerEpoch = 1, name = "confirm",
+            contract = "c", output = new string('z', 4_096),
+        });
+        Require(host.Transport.Call(BridgeInteractionRouter.ReplyRoute, new(StringValue: reply)).Contains("invalid-request"),
+            "An interaction reply over a lowered limit was not an invalid request.");
+        using var defaultHost = Host(new BridgeLimitsViewModel());
+        Require(!defaultHost.Transport.Call(BridgeInteractionRouter.ReplyRoute, new(StringValue: reply)).Contains("invalid-request"),
+            "An interaction reply under the default limit was an invalid request.");
+    }
+
+    [Test]
+    public void ARaisedLimitAcceptsLargerInputs()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model, maximumInputBytes: 4 * DefaultLimit);
+        var value = new string('x', 2 * DefaultLimit);
+        RequireOk(host.Transport.Call($"{host.RootRoute}SetText", new(StringValue: value)), "A setter value under a raised limit was refused.");
+        RequireOk(host.Transport.Call($"{host.RootRoute}Echo", new(StringValue: JsonSerializer.Serialize(value))),
+            "A command argument under a raised limit was refused.");
+        Require(model.Text.Length == value.Length, "A value under a raised limit was not applied.");
+    }
+
+    [Test]
+    public void LimitsOutsideTheRangeAreRefused()
+    {
+        foreach (var invalid in new[] { 0, 1_023, 64 * 1_048_576 + 1 })
+        {
+            using var transport = new InMemoryBridgeTransport();
+            RequireThrows<ArgumentOutOfRangeException>(() =>
+                new WindowContentSession(transport, new WindowContentSessionOptions { MaximumInputBytes = invalid }).Dispose(),
+                $"A session accepted the input limit {invalid}.");
+            RequireThrows<ArgumentOutOfRangeException>(() => new RunicWindowOptions { MaximumInputBytes = invalid }.ThrowIfInvalid(),
+                $"Window options accepted the input limit {invalid}.");
+        }
+        using var minimum = new InMemoryBridgeTransport();
+        new WindowContentSession(minimum, new WindowContentSessionOptions { MaximumInputBytes = 1_024 }).Dispose();
+        new RunicWindowOptions { MaximumInputBytes = 64 * 1_048_576 }.ThrowIfInvalid();
+    }
+
+    private static string CheckedWrite(string expected, string value) => JsonSerializer.Serialize(new
+    {
+        requestId = Guid.NewGuid().ToString("N"), expectedVersion = 0, expectedValue = expected, value,
+    });
+
+    private static void RequireThrows<TException>(Action action, string message) where TException : Exception
+    {
+        try { action(); }
+        catch (TException) { return; }
+        throw new InvalidOperationException(message);
+    }
+
+    [Test]
+    public void OutOfRangeNumbersAreRejected()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model);
+        var route = host.RootRoute;
+
+        RequireRejected(host.Transport.Call($"{route}SetCount", new(Int64Value: (long)int.MaxValue + 1)), "invalid-input",
+            "An out-of-range int setter value was not rejected.");
+        RequireRejected(host.Transport.Call($"{route}Take", new(StringValue: "4294967296")), "invalid-input",
+            "An out-of-range int command argument was not rejected.");
+        Require(model.Count == 0, "An out-of-range value was applied.");
+
+        RequireRejected(host.Transport.Call($"{route}SetLarge", new(StringValue: JsonSerializer.Serialize(new string('9', 4_097)))),
+            "invalid-input", "A number string over 4 096 characters was not rejected.");
+        var digits = new string('9', 4_096);
+        RequireOk(host.Transport.Call($"{route}SetLarge", new(StringValue: JsonSerializer.Serialize(digits))),
+            "A number string of 4 096 characters was refused.");
+        Require(model.Large.ToString(CultureInfo.InvariantCulture) == digits, "A 4 096-digit number was not read.");
+    }
+
+    [Test]
+    public async Task AwaitedCommandsAreBoundedPerWindowAsync()
+    {
+        var model = new BridgeLimitsViewModel();
+        using var host = Host(model);
+        var route = host.RootRoute;
+        var running = Enumerable.Range(0, 64).Select(_ => host.Transport.CallAsync($"{route}Hold").AsTask()).ToArray();
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (model.Held < 64 && DateTime.UtcNow < deadline) await Task.Delay(10);
+        Require(model.Held == 64, $"Only {model.Held} awaited commands started.");
+
+        using (var refused = JsonDocument.Parse(await host.Transport.CallAsync($"{route}Hold")))
+        {
+            var error = refused.RootElement.GetProperty("error");
+            Require(!refused.RootElement.GetProperty("ok").GetBoolean() && error.GetProperty("kind").GetString() == "rejected"
+                && !error.TryGetProperty("reason", out _), $"A 65th awaited command was not rejected: {refused.RootElement}");
+        }
+        Require(model.Held == 64, "The 65th awaited command ran.");
+
+        model.Release();
+        foreach (var reply in await Task.WhenAll(running)) RequireOk(reply, "A held awaited command failed.");
+        RequireOk(await host.Transport.CallAsync($"{route}Hold"), "An awaited command was refused after the others ended.");
+    }
+
+    [Test]
+    public void NumberStringsAreBounded()
+    {
+        using var accepted = JsonDocument.Parse(JsonSerializer.Serialize(new string('1', 4_096)));
+        Require(BridgeWire.ReadBigInteger(accepted.RootElement).ToString(CultureInfo.InvariantCulture).Length == 4_096, "A 4 096-digit integer was refused.");
+        foreach (var read in new Func<JsonElement, object>[]
+        {
+            value => BridgeWire.ReadBigInteger(value), value => BridgeWire.ReadDecimal(value),
+            value => BridgeWire.ReadInt64(value), value => BridgeWire.ReadUInt64(value),
+        })
+        {
+            using var rejected = JsonDocument.Parse(JsonSerializer.Serialize(new string('1', 4_097)));
+            try
+            {
+                read(rejected.RootElement);
+                throw new InvalidOperationException("A number string over 4 096 characters was read.");
+            }
+            catch (FormatException) { }
+        }
+    }
+
+    private static RunicWindowTestHost<BridgeLimitsViewModel> Host(BridgeLimitsViewModel model, int? maximumInputBytes = null) =>
+        new(model, (transport, content, vm) => new BridgeLimitsBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions
+            {
+                RootRoute = "bridgeLimits", ViewLocator = new TestViewLocator(), MaximumInputBytes = maximumInputBytes,
+            });
+
+    private static void RequireOk(string reply, string message)
+    {
+        using var document = JsonDocument.Parse(reply);
+        Require(document.RootElement.GetProperty("ok").GetBoolean(), $"{message} {reply}");
+    }
+
+    private static void RequireRejected(string reply, string reason, string message)
+    {
+        using var document = JsonDocument.Parse(reply);
+        var error = document.RootElement.GetProperty("error");
+        Require(error.ValueKind == JsonValueKind.Object && error.GetProperty("kind").GetString() == "rejected"
+            && error.GetProperty("reason").GetString() == reason, $"{message} {reply}");
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+}

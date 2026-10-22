@@ -8,6 +8,22 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class GeneratedInteractionTests
 {
     [Test]
+    public void InteractionMountsAreBoundedPerOwner()
+    {
+        using var model = new GeneratedInteractionViewModel();
+        using var host = new RunicWindowTestHost<GeneratedInteractionViewModel>(model,
+            (transport, content, vm) => new GeneratedInteractionBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "generatedInteraction", ViewLocator = new TestViewLocator() });
+        string Mount(string token, string connection = "connection") => host.Transport.Call("generatedInteractionMount",
+            new(StringValue: token, ClientKey: "client", ConnectionKey: connection));
+        for (var index = 0; index < 64; index++)
+            Require(Mount($"page:{index}") == "ok", $"Presentation {index} did not mount.");
+        Require(Mount("page:64") == "invalid", "A 65th interaction presentation of one owner was mounted.");
+        Require(Mount("page:0") == "ok", "An exact duplicate interaction mount was refused.");
+        Require(Mount("page:64", "other") == "ok", "Another connection's first interaction presentation was limited.");
+    }
+
+    [Test]
     public async Task GeneratedInteractionDeliversTypedBrowserAnswersAsync()
     {
         using var model = new GeneratedInteractionViewModel();

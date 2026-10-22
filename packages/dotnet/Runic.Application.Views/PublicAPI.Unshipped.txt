@@ -23,3 +23,8 @@ Runic.Application.Views.RunicPathChangeKind.Changed = 0 -> Runic.Application.Vie
 Runic.Application.Views.RunicPathChangeKind.Created = 1 -> Runic.Application.Views.RunicPathChangeKind
 Runic.Application.Views.RunicPathChangeKind.Deleted = 2 -> Runic.Application.Views.RunicPathChangeKind
 override Runic.Application.Views.RunicPathChangeEntry.ToString() -> string!
+const Runic.Application.Views.WindowContentSessionOptions.DefaultMaximumInputBytes = 1048576 -> int
+Runic.Application.Views.WindowContentSessionOptions.MaximumInputBytes.get -> int?
+Runic.Application.Views.WindowContentSessionOptions.MaximumInputBytes.init -> void
+Runic.Application.Views.RunicWindowOptions.MaximumInputBytes.get -> int?
+Runic.Application.Views.RunicWindowOptions.MaximumInputBytes.init -> void

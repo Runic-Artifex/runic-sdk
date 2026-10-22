@@ -18,6 +18,11 @@ public sealed record PageReference(
 /// </summary>
 public sealed class WindowContentSession : IDisposable
 {
+    // Mount tokens are "{browserSession}:{presentation}". One browser client and connection
+    // mounts at most MaximumMountsPerOwner presentations of one route.
+    private const int MaximumMountTokenLength = 256;
+    private const int MaximumMountsPerOwner = 64;
+
     private readonly object _gate = new();
     private readonly IBridgeTransport _transport;
     private readonly IRunicViewLocator? _viewLocator;
@@ -82,6 +87,7 @@ public sealed class WindowContentSession : IDisposable
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
+        MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
@@ -226,6 +232,9 @@ public sealed class WindowContentSession : IDisposable
 
     /// <summary>Whether this window's Bridge error replies carry exception detail, read once when it opens.</summary>
     internal bool IncludesFailureDetail { get; }
+
+    /// <summary>The largest Bridge input in UTF-8 bytes (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>).</summary>
+    internal int MaximumInputBytes { get; }
 
     // Content and interaction request ids. A custom source must keep them
     // unique, because an id names a route.
@@ -1021,12 +1030,14 @@ public sealed class WindowContentSession : IDisposable
         private string Mount(IBridgeArguments arguments)
         {
             var token = arguments.GetString();
-            if (token.Length is 0 or > 256 || token.IndexOf(':') <= 0) return "invalid";
+            if (token.Length is 0 or > MaximumMountTokenLength || token.IndexOf(':') <= 0) return "invalid";
             lock (_gate)
             {
                 if (_disposed) return Generated.BridgeFailure.Released;
                 var owner = new MountOwner(arguments.ClientKey, arguments.ConnectionKey);
-                if (!_presentations.TryAdd(token, owner)) return _presentations[token].Matches(arguments) ? "ok" : "ignored";
+                if (_presentations.TryGetValue(token, out var existing)) return existing.Matches(arguments) ? "ok" : "ignored";
+                if (_presentations.Values.Count(mounted => mounted == owner) >= MaximumMountsPerOwner) return "invalid";
+                _presentations.Add(token, owner);
                 _owner._interactions.OnPresentationMounted(_route, token, owner.ClientKey, owner.ConnectionKey);
                 return "ok";
             }
@@ -1145,10 +1156,11 @@ public sealed class WindowContentSession : IDisposable
         {
             var token = arguments.GetString();
             var separator = token.IndexOf(':');
-            if (separator <= 0 || separator == token.Length - 1)
+            if (token.Length > MaximumMountTokenLength || separator <= 0 || separator == token.Length - 1)
                 return "invalid";
             var releases = new List<MountRelease>();
             MountOwner owner;
+            var limited = false;
             lock (_gate)
             {
                 // A suspended route has no bridge to present.
@@ -1177,7 +1189,10 @@ public sealed class WindowContentSession : IDisposable
                         if (SupersedeMountCore(oldToken) is { } release) releases.Add(release);
                 }
                 owner = new MountOwner(clientKey, arguments.ConnectionKey);
-                if (!_mounts.TryAdd(token, owner))
+                // A superseded token above still completes its release below.
+                limited = !_mounts.ContainsKey(token) &&
+                    _mounts.Values.Count(mounted => mounted == owner) >= MaximumMountsPerOwner;
+                if (!limited && !_mounts.TryAdd(token, owner))
                 {
                     // Exact duplicate delivery from the same browser is
                     // idempotent. Another client or connection may not claim
@@ -1186,6 +1201,7 @@ public sealed class WindowContentSession : IDisposable
                 }
             }
             foreach (var release in releases) CompleteRelease(release);
+            if (limited) return "invalid";
             try
             {
                 RunLifecycle(() => CompleteMount(token, owner));
