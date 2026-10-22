@@ -22,6 +22,23 @@ internal sealed class MacAppKitNativeTests
         await StatusItemQueueAsync();
         await LoginItemAsync();
         await PresentationAsync(cancellationToken);
+        await FilterChoiceAsync();
+    }
+
+    // The file panel's filter pop-up (ShowsFilterChoice): the registered target class swaps allowedContentTypes. The
+    // panel is never shown; choosing in a shown panel is a manual check.
+    private static async Task FilterChoiceAsync()
+    {
+        var observed = await MacOsFilePicker.FilterChoice.InspectAsync(
+        [
+            new FileDialogFilter("Images", ["png", "jpg"]) { MimeTypes = ["image/gif"] },
+            new FileDialogFilter("Text", ["txt"]),
+            new FileDialogFilter("Text", ["md"]) { MimeTypes = ["text/*"] },
+            new FileDialogFilter("All files", ["*"]),
+        ]).AsTask().WaitAsync(Step);
+        Require(observed is [(3, "Images"), (1, "Text"), (2, "Text"), (0, "All files")],
+            "Unexpected filter pop-up: " + string.Join(", ", observed.Select(static item => $"{item.Count} {item.Selected}")));
+        Pass("the filter pop-up keeps filters with the same name and swaps the panel's types for the chosen filter");
     }
 
     private static async Task StatusItemAsync()

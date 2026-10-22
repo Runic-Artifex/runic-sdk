@@ -35,6 +35,15 @@ A picker that cannot show a dialog throws `NativeBackendUnavailableException`, w
 the backend reports as `Unavailable(BackendUnavailable)`. A picker that returns more
 than one selection also returns `true` from `SupportsMultipleSelection`; otherwise
 `OpenFilesAsync` reports `Unavailable(BackendUnavailable)` without showing a dialog.
+A directory picker that implements
+`INativeDirectoryPicker.SelectDirectoriesAsync(initialDirectory, cancellationToken)`
+returns `true` from `SupportsMultipleDirectorySelection`, which `OpenDirectoriesAsync`
+and the `platform.directories.openMultiple` capability follow the same way. The
+request's `ShowsFilterChoice` asks for a filter choice where the dialog has none of
+its own; a picker reports the filter the user left selected as the first
+selection's `NativeFileSelection.SelectedFilter`, and the backend passes it on as
+`PickerResult<T>.Selected.SelectedFilter` only when it is one of the request's
+filters.
 The backend releases the access of every selection it does not hand to a lease,
 including after a failure or cancellation, and reports the native error of a failed
 selection or commit in the `Diagnostic` of the result.

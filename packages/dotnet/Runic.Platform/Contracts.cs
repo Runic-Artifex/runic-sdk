@@ -206,6 +206,14 @@ public abstract record PickerResult<T> where T : IAsyncDisposable
         public Selected(T value) { ArgumentNullException.ThrowIfNull(value); Value = value; }
         /// <summary>The acquired resource.</summary>
         public T Value { get; }
+        /// <summary>The filter that was active when the user confirmed the dialog, one of the options' filters.</summary>
+        /// <remarks>
+        /// <see langword="null"/> when the dialog offered no filters, for a directory selection, and when the dialog
+        /// does not report its filter: Windows always reports it, macOS only with a filter pop-up
+        /// (<c>ShowsFilterChoice</c>), the Linux GTK chooser always and the xdg-desktop-portal FileChooser when the
+        /// portal returns <c>current_filter</c>. The selection itself may still match no filter.
+        /// </remarks>
+        public FileDialogFilter? SelectedFilter { get; init; }
         /// <summary>Deconstructs the selection, for example in <c>result is PickerResult&lt;IReadFileLease&gt;.Selected(var lease)</c>.</summary>
         /// <param name="value">The acquired resource.</param>
         public void Deconstruct(out T value) => value = Value;
@@ -243,8 +251,9 @@ public abstract record FileCommitResult
 /// <remarks>
 /// A filter is a hint to the dialog: it limits which files the dialog shows, but the user can still choose or type a
 /// name that matches no filter on some platforms, and Runic does not reject such a selection. Validate the content
-/// you read. Extensions match case-insensitively on every platform. macOS shows no filter pop-up: its panel offers
-/// the files of every filter at once.
+/// you read. Extensions match case-insensitively on every platform. macOS shows no filter pop-up unless
+/// <see cref="OpenFileOptions.ShowsFilterChoice"/> or <see cref="SaveFileOptions.ShowsFilterChoice"/> asks for one:
+/// without it, its panel offers the files of every filter at once.
 /// </remarks>
 /// <param name="Name">The name the dialog shows, in the user's language.</param>
 /// <param name="Extensions">
@@ -262,6 +271,19 @@ public sealed record FileDialogFilter(string Name, ImmutableArray<string> Extens
     /// <summary>Extensions without the leading dot, or <c>*</c> for every file.</summary>
     public ImmutableArray<string> Extensions { get => _extensions; init => _extensions = ValidExtensions(value); }
 
+    /// <summary>MIME types the filter also matches, such as <c>image/png</c>, or <c>image/*</c> for every image; empty by
+    /// default.</summary>
+    /// <remarks>
+    /// MIME types widen the filter where the dialog matches content types: macOS adds the corresponding uniform type
+    /// identifiers, and the Linux GTK chooser and xdg-desktop-portal FileChooser match the file's MIME type. Windows
+    /// filters by extension only and ignores them, so <see cref="Extensions"/> stays required. Types match without
+    /// regard to case.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A type is not <c>type/subtype</c> or <c>type/*</c> made of MIME token
+    /// characters.</exception>
+    public ImmutableArray<string> MimeTypes { get => _mimeTypes; init => _mimeTypes = ValidMimeTypes(value); }
+    private readonly ImmutableArray<string> _mimeTypes = [];
+
     /// <summary>Whether the filter matches every file.</summary>
     public bool MatchesAllFiles => _extensions.Contains("*");
 
@@ -273,6 +295,27 @@ public sealed record FileDialogFilter(string Name, ImmutableArray<string> Extens
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (name.Contains('\0')) throw new ArgumentException("A filter name cannot contain NUL.", nameof(name));
         return name;
+    }
+
+    // RFC 6838 restricted names: type "/" subtype, each 1 to 127 characters; the subtype may be "*".
+    private static ImmutableArray<string> ValidMimeTypes(ImmutableArray<string> mimeTypes)
+    {
+        if (mimeTypes.IsDefaultOrEmpty) return [];
+        foreach (var mimeType in mimeTypes)
+        {
+            int slash = mimeType?.IndexOf('/') ?? -1;
+            if (slash < 0 || !IsMimeName(mimeType.AsSpan(0, slash)) || mimeType.AsSpan(slash + 1) is var subtype && !(subtype is "*" || IsMimeName(subtype)))
+                throw new ArgumentException($"Use a MIME type such as \"image/png\" or \"image/*\": \"{mimeType}\".", nameof(mimeTypes));
+        }
+        return mimeTypes;
+    }
+
+    private static bool IsMimeName(ReadOnlySpan<char> name)
+    {
+        if (name.Length is 0 or > 127 || !char.IsAsciiLetterOrDigit(name[0])) return false;
+        foreach (char character in name)
+            if (!char.IsAsciiLetterOrDigit(character) && "!#$&^_.+-".IndexOf(character) < 0) return false;
+        return true;
     }
 
     private static ImmutableArray<string> ValidExtensions(ImmutableArray<string> extensions)
@@ -306,9 +349,18 @@ public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.Requi
     /// version 4 ignores it when opening files.</remarks>
     /// <exception cref="ArgumentException">The path is not fully qualified or contains NUL.</exception>
     public string? InitialDirectory { get => _initialDirectory; init => _initialDirectory = FileDialogOptions.ValidDirectory(value); }
+
+    /// <summary>Whether macOS adds a pop-up to the panel for choosing one of <see cref="Filters"/>; <see langword="false"/>
+    /// by default.</summary>
+    /// <remarks>
+    /// Without it a macOS panel offers the files of every filter at once and reports no
+    /// <see cref="PickerResult{T}.Selected.SelectedFilter"/>. With it, the panel shows the first filter's files and the
+    /// pop-up switches between filters. Windows and Linux always show their own filter choice and ignore this value.
+    /// </remarks>
+    public bool ShowsFilterChoice { get; init; }
 }
 
-/// <summary>Options for selecting one existing local directory.</summary>
+/// <summary>Options for selecting existing local directories.</summary>
 /// <param name="OwnerPolicy">The required dialog ownership.</param>
 public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
 {
@@ -339,6 +391,15 @@ public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPoli
     /// <remarks>A directory that does not exist is ignored by the platform.</remarks>
     /// <exception cref="ArgumentException">The path is not fully qualified or contains NUL.</exception>
     public string? InitialDirectory { get => _initialDirectory; init => _initialDirectory = FileDialogOptions.ValidDirectory(value); }
+
+    /// <summary>Whether macOS adds a pop-up to the panel for choosing one of <see cref="Filters"/>; <see langword="false"/>
+    /// by default.</summary>
+    /// <remarks>
+    /// Without it a macOS panel offers the files of every filter at once and reports no
+    /// <see cref="PickerResult{T}.Selected.SelectedFilter"/>. With it, the panel shows the first filter's files and the
+    /// pop-up switches between filters. Windows and Linux always show their own filter choice and ignore this value.
+    /// </remarks>
+    public bool ShowsFilterChoice { get; init; }
 }
 
 internal static class FileDialogOptions
@@ -394,6 +455,20 @@ public interface IFileDialogs
     }
     /// <summary>Selects and acquires a save destination.</summary>
     ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default);
+    /// <summary>Selects one or more directories and acquires access to each for C# filesystem operations.</summary>
+    /// <remarks>
+    /// Each lease keeps its directory's access, as <see cref="OpenDirectoryAsync"/> does, until it, the list or the
+    /// presentation is disposed. The default implementation returns <see cref="PickerResult{T}.Unavailable"/> with
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>; a provider that implements multiple directory
+    /// selection overrides it and reports the <c>platform.directories.openMultiple</c> capability.
+    /// </remarks>
+    ValueTask<PickerResult<IDirectoryLeaseList>> OpenDirectoriesAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PickerResult<IDirectoryLeaseList>>(new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
 }
 
 /// <summary>Owns access to one local directory until disposed or its presentation closes.</summary>
@@ -409,6 +484,10 @@ public interface IDirectoryLease : IAsyncDisposable
     /// <summary>The exact local path for C# filesystem operations. Throws after access is released; a saved copy does not retain the access grant.</summary>
     string LocalPath { get; }
 }
+
+/// <summary>The directory leases of one multiple selection, in the order the dialog returned them.</summary>
+/// <remarks>Disposing the list releases every lease in it; a lease disposed on its own stays released.</remarks>
+public interface IDirectoryLeaseList : IReadOnlyList<IDirectoryLease>, IAsyncDisposable;
 
 /// <summary>Owns acquired read access until disposed or its presentation closes.</summary>
 public interface IReadFileLease : IAsyncDisposable

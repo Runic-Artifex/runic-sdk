@@ -156,8 +156,9 @@ internal sealed class FileDialogOptionsTests
     {
         Check(WindowsFilePicker.FilterSpecs([Images, Everything]).SequenceEqual([("Images", "*.png;*.jpg"), ("All files", "*.*")]), "Windows filter specifications");
         Check(WindowsFilePicker.FilterSpecs([]).Length == 0 && WindowsFilePicker.FilterSpecs(default).Length == 0, "no Windows filters");
-        Check(MacOsFilePicker.AllowedExtensions([Images, new("Pictures", ["PNG", "gif"])]) is ["png", "jpg", "gif"], "macOS allows the union of every filter");
-        Check(MacOsFilePicker.AllowedExtensions([Images, Everything]) is null && MacOsFilePicker.AllowedExtensions([]) is null,
+        Check(MacOsFilePicker.AllowedTypes([Images, new("Pictures", ["PNG", "gif"])], showsChoice: false)?.Select(static type => type.Value).ToArray() is ["png", "jpg", "gif"],
+            "macOS allows the union of every filter");
+        Check(MacOsFilePicker.AllowedTypes([Images, Everything], showsChoice: false) is null && MacOsFilePicker.AllowedTypes([], showsChoice: false) is null,
             "macOS stays unrestricted with an all-files filter or none");
     }
 

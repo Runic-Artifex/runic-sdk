@@ -137,6 +137,8 @@ public static class PlatformCapabilityIds
     public const string MenuBar = "platform.menus.bar";
     /// <summary>Showing native context menus through <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>.</summary>
     public const string ContextMenu = "platform.menus.context";
+    /// <summary>Selecting several directories through <see cref="IFileDialogs.OpenDirectoriesAsync"/>.</summary>
+    public const string DirectoriesOpenMultiple = "platform.directories.openMultiple";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -150,6 +152,7 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.DialogsOwned, PlatformCapabilityIds.ClipboardReadText, PlatformCapabilityIds.ClipboardWriteText,
         PlatformCapabilityIds.FilesLaunch, PlatformCapabilityIds.FilesOpenMultiple, PlatformCapabilityIds.UrisLaunch,
         PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu,
+        PlatformCapabilityIds.DirectoriesOpenMultiple,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
@@ -203,6 +206,12 @@ public static class WindowPlatformServices
         {
             ArgumentNullException.ThrowIfNull(options);
             return Pick<IDirectoryLease>(cancellationToken);
+        }
+
+        public ValueTask<PickerResult<IDirectoryLeaseList>> OpenDirectoriesAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            return Pick<IDirectoryLeaseList>(cancellationToken);
         }
 
         public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
