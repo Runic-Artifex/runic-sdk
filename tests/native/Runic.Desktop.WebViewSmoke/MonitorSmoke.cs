@@ -284,6 +284,8 @@ internal static partial class MonitorSmoke
         private static async Task<Probe> ProbeAsync(DesktopSurface surface, DesktopWindow window)
         {
             await window.FocusAsync();
+            // The runner's console can keep the foreground; topmost puts the window above it for the pixel and the click.
+            await window.InvokeNativeAsync(handle => _ = SetWindowPos(handle, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)); // HWND_TOPMOST, NOSIZE|NOMOVE|SHOWWINDOW
             var geometry = JsonDocument.Parse(await ScriptAsync(surface,
                 "const r = document.getElementById('target').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, ratio: devicePixelRatio });")
                 ?? "{}").RootElement;
@@ -352,6 +354,7 @@ internal static partial class MonitorSmoke
         [LibraryImport("user32.dll")] private static partial nint GetDC(nint window);
         [LibraryImport("user32.dll")] private static partial int ReleaseDC(nint window, nint context);
         [LibraryImport("gdi32.dll")] private static partial uint GetPixel(nint context, int x, int y);
+        [LibraryImport("user32.dll")] private static partial int SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
     }
 
     private static partial class MacOS
