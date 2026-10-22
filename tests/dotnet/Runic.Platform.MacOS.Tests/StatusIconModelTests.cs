@@ -45,7 +45,7 @@ internal sealed class StatusIconModelTests
         var menu = MacStatusMenu.Build(
         [
             new DesktopMenuItem("Open window", "open"),
-            new DesktopMenuItem("Check daily", "daily") { IsChecked = true },
+            new DesktopMenuItem("Check daily", "daily") { IsChecked = true, CommandParameter = "08:00" },
             new DesktopMenuSeparator(),
             new DesktopMenu("More",
             [
@@ -65,6 +65,8 @@ internal sealed class StatusIconModelTests
         Check(menu.Entries[4] is { Label: "Quit_now", Tag: 5 }, $"{menu.Entries[4]}");
         Check(menu.CommandFor(1) == "open" && menu.CommandFor(4) == "disabled" && menu.CommandFor(5) == "quit", "Tags route to IDs.");
         Check(menu.CommandFor(0) is null && menu.CommandFor(6) is null && menu.CommandFor(-1) is null, "Foreign tags route nowhere.");
+        // An activation carries the chosen item's parameter.
+        Check(menu.ParameterFor(2) == "08:00" && menu.ParameterFor(1) is null && menu.ParameterFor(6) is null, "Tags route to parameters.");
         Check(MacStatusMenu.Build([]) is { Entries.Length: 0, Commands.Length: 0 }, "Empty menu.");
     }
 

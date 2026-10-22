@@ -24,6 +24,7 @@ public sealed class DesktopHost : IAsyncDisposable
         _core = CreateCore(options, options.Port);
         _logger = options.LoggerFactory?.CreateLogger(DesktopLog.Category);
         _menuBar = [.. options.MenuBar];
+        if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
         if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
     }
 
@@ -33,21 +34,24 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <summary>Gets the menus of the menu bar: <see cref="DesktopHostOptions.MenuBar"/>, or those of the last <see cref="SetMenuBar"/>.</summary>
     public IReadOnlyList<DesktopMenu> MenuBar => Volatile.Read(ref _menuBar);
 
-    /// <summary>Occurs after <see cref="SetMenuBar"/> has replaced the menus, so command sources can follow new command ids.</summary>
+    /// <summary>Occurs after <see cref="SetMenuBar"/> has replaced the menus, so command sources and pages that render the bar can follow them.</summary>
     public event EventHandler? MenuBarChanged;
 
     /// <summary>
-    /// Replaces the application's menus in the macOS menu bar, for example with titles in a new language after a
-    /// locale change. The standard menus stay.
+    /// Replaces the application's menus in every window's menu bar, for example with titles in a new language after a
+    /// locale change, or with new checked state. The standard menus stay.
     /// </summary>
     /// <param name="menus">The new menus; empty removes the application's menus.</param>
     /// <exception cref="ArgumentException">A menu or item is incomplete; see <see cref="DesktopHostOptions.MenuBar"/>.</exception>
-    /// <remarks>On macOS the bar changes on the main thread, which <see cref="DesktopEventLoop"/> runs, as soon as it can.</remarks>
+    /// <remarks>
+    /// Each window's bar changes on its UI thread as soon as it can; on macOS that is the main thread, which
+    /// <see cref="DesktopEventLoop"/> runs.
+    /// </remarks>
     public void SetMenuBar(IReadOnlyList<DesktopMenu> menus)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(menus);
-        _ = DesktopMenuBar.Check(menus, OperatingSystem.IsMacOS());
+        _ = DesktopMenuBar.Check(menus, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
         IReadOnlyList<DesktopMenu> copy = [.. menus];
         Volatile.Write(ref _menuBar, copy);
         Internal.MacOsWkWebViewHost.RequestMenuBar(copy);
@@ -164,9 +168,10 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         List<DesktopDiagnostic> diagnostics = [];
+        DesktopPresentationPreflight? preflight = null;
         try
         {
-            var preflight = GetPresentationPreflight(options);
+            preflight = GetPresentationPreflight(options);
             diagnostics.AddRange(preflight.Diagnostics);
             diagnostics.AddRange(preflight.OptionDiagnostics);
         }
@@ -174,8 +179,12 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             diagnostics.Add(DesktopWindowOptionValidation.Invalid(error.Message));
         }
-        // The menu bar's shortcuts that the standard menus keep, and that Windows and Linux show no menu bar.
-        diagnostics.AddRange(DesktopMenuBar.Check(MenuBar, OperatingSystem.IsMacOS()));
+        // The menu bar's shortcuts that the platform keeps, its radio groups, and whether the window can show it.
+        var platform = DesktopMenuPlanner.CurrentPlatform;
+        var presentation = options?.MenuBarPresentation ?? DesktopMenuBarPresentation.Native;
+        var nativeBar = platform == MenuPlatform.MacOS
+            || preflight?.Preferred.Capabilities.HasFlag(DesktopWindowCapabilities.MenuBar) == true;
+        diagnostics.AddRange(DesktopMenuBar.Check(MenuBar, platform, presentation, nativeBar));
 
         if (_logger is { } logger)
         {
@@ -253,7 +262,10 @@ public sealed class DesktopHost : IAsyncDisposable
             _options.ConnectionTimeout,
             _options.DiagnosticSink,
             _logger,
-            _options.BrowserLaunchAttempts);
+            _options.BrowserLaunchAttempts)
+        {
+            MenuHost = this,
+        };
         var engine = new WebUiWindow(core, path, security, runtime);
         var surface = new DesktopSurface(this, id, engine, isolatedCore, windowHostFactory);
         if (!_surfaces.TryAdd(id, surface))
@@ -442,7 +454,7 @@ public sealed class DesktopHost : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(options), "ConnectionTimeout must be positive.");
         }
         ArgumentNullException.ThrowIfNull(options.MenuBar);
-        _ = DesktopMenuBar.Check(options.MenuBar, OperatingSystem.IsMacOS());
+        _ = DesktopMenuBar.Check(options.MenuBar, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
         if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
         {
             throw new ArgumentOutOfRangeException(

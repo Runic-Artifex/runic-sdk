@@ -24,6 +24,18 @@ public sealed record LinuxDesktopOptions
     /// as the window host factory, and a configured Linux factory must report this backend.
     /// </remarks>
     public LinuxEmbeddedBackend? EmbeddedBackend { get; init; }
+
+    /// <summary>
+    /// Gets whether an embedded window with the <see cref="DesktopMenuBarPresentation.Native"/> menu bar puts it into
+    /// the desktop's global menu where one is shown, such as KDE Plasma's Global Menu or the title bar's application menu
+    /// button; <see langword="true"/> by default.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="false"/> always shows the bar in the window. Where the desktop shows no global menu, such as on
+    /// GNOME, the bar is in the window either way, and it moves when a global menu appears or goes away
+    /// (<see cref="DesktopWindow.MenuBarPlacementChanged"/>).
+    /// </remarks>
+    public bool GlobalMenu { get; init; } = true;
 }
 
 /// <summary>An optional Linux provider identifying its native toolkit.</summary>

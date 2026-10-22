@@ -16,3 +16,29 @@ Runic.Platform.PlatformResult<T>.Succeeded.get -> bool
 Runic.Platform.PlatformResult<T>.TryGetValue(out T value) -> bool
 static Runic.Platform.DesktopServiceStatus.Get(object! service) -> Runic.Platform.CapabilityStatus!
 static Runic.Platform.DesktopThumbnails.MaximumScale.get -> int
+Runic.Platform.DesktopContextMenuOptions
+Runic.Platform.DesktopContextMenuOptions.<Clone>$() -> Runic.Platform.DesktopContextMenuOptions!
+Runic.Platform.DesktopContextMenuOptions.DesktopContextMenuOptions() -> void
+Runic.Platform.DesktopContextMenuOptions.Equals(Runic.Platform.DesktopContextMenuOptions? other) -> bool
+Runic.Platform.DesktopContextMenuOptions.X.get -> double?
+Runic.Platform.DesktopContextMenuOptions.X.init -> void
+Runic.Platform.DesktopContextMenuOptions.Y.get -> double?
+Runic.Platform.DesktopContextMenuOptions.Y.init -> void
+Runic.Platform.DesktopMenu.AccessKey.get -> char?
+Runic.Platform.DesktopMenu.AccessKey.init -> void
+Runic.Platform.DesktopMenuItem.AccessKey.get -> char?
+Runic.Platform.DesktopMenuItem.AccessKey.init -> void
+Runic.Platform.DesktopMenuItem.CommandParameter.get -> string?
+Runic.Platform.DesktopMenuItem.CommandParameter.init -> void
+Runic.Platform.DesktopMenuItem.RadioGroup.get -> string?
+Runic.Platform.DesktopMenuItem.RadioGroup.init -> void
+Runic.Platform.DesktopStatusIconActivation.CommandParameter.get -> string?
+Runic.Platform.DesktopStatusIconActivation.CommandParameter.init -> void
+Runic.Platform.IWindowPlatformServices.ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> items, Runic.Platform.DesktopContextMenuOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopMenuItem?>!>
+const Runic.Platform.PlatformCapabilityIds.ContextMenu = "platform.menus.context" -> string!
+const Runic.Platform.PlatformCapabilityIds.MenuBar = "platform.menus.bar" -> string!
+override Runic.Platform.DesktopContextMenuOptions.Equals(object? obj) -> bool
+override Runic.Platform.DesktopContextMenuOptions.GetHashCode() -> int
+override Runic.Platform.DesktopContextMenuOptions.ToString() -> string!
+static Runic.Platform.DesktopContextMenuOptions.operator !=(Runic.Platform.DesktopContextMenuOptions? left, Runic.Platform.DesktopContextMenuOptions? right) -> bool
+static Runic.Platform.DesktopContextMenuOptions.operator ==(Runic.Platform.DesktopContextMenuOptions? left, Runic.Platform.DesktopContextMenuOptions? right) -> bool

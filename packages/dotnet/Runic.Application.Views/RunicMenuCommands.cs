@@ -22,14 +22,15 @@ namespace Runic.Application.Views;
 /// }
 /// </code>
 /// An item follows its command's <see cref="ICommand.CanExecute"/> (and stays disabled when the menu bar declares it
-/// disabled), read with a <see langword="null"/> parameter and
-/// updated on <see cref="ICommand.CanExecuteChanged"/>, and runs <see cref="ICommand.Execute"/> in the model turn. A
-/// command with a required parameter cannot be a menu command. An id the ViewModel returns <see langword="null"/>
-/// for falls to the application's commands (<c>RunicDesktopHost.UseApplicationMenu</c>), and is disabled without one.
+/// disabled), read with the item's command parameter (<c>DesktopMenuItem.CommandParameter</c>, <see langword="null"/>
+/// for none) and updated on <see cref="ICommand.CanExecuteChanged"/>, and runs <see cref="ICommand.Execute"/> with the
+/// same parameter in the model turn, so one command can serve several items, such as one per recent file. An id the
+/// ViewModel returns <see langword="null"/> for falls to the application's commands
+/// (<c>RunicDesktopHost.UseApplicationMenu</c>), and is disabled without one.
 /// </para>
 /// <para>
-/// Runic Desktop shows the menu bar on macOS. On Windows and Linux, and on CS-WebUI, there is no native menu bar in
-/// this release: render one in the page, bound to the same commands through the generated client.
+/// Runic Desktop shows the menu bar natively, and a page can render the same bar with the window's
+/// <c>MenuBarPresentation</c> set to <c>Page</c>: its items run through the same commands.
 /// </para>
 /// </remarks>
 public interface IRunicMenuCommandSource

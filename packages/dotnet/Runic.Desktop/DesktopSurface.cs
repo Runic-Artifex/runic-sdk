@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using Runic.Platform;
+
 namespace Runic.Desktop;
 
 /// <summary>Owns content, capabilities, sessions, requests, and optional presentations for one namespace.</summary>
@@ -407,6 +410,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetAllowedPermissions(options.AllowedPermissions);
         _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
+        _engine.SetMenuBarPresentation(options.MenuBarPresentation);
     }
 
     private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }
@@ -550,6 +554,10 @@ public sealed class DesktopSurface : IAsyncDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "PresentationPolicy contains an unsupported value.");
         }
+        if (!Enum.IsDefined(options.MenuBarPresentation))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "MenuBarPresentation contains an unsupported value.");
+        }
         if ((options.AllowedPermissions & ~supported) != 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "AllowedPermissions contains an unsupported value.");
@@ -635,6 +643,7 @@ public sealed class DesktopWindow : IAsyncDisposable
             _stateSource = _engine.EmbeddedHostIdentity;
             _engine.EmbeddedWindowStateChanged += OnEngineStateChanged;
             _engine.EmbeddedFilesDropped += OnEngineFilesDropped;
+            _engine.EmbeddedMenuBarPlacementChanged += OnEngineMenuBarPlacementChanged;
             _state = _engine.EmbeddedWindowState;
             _raisedState = _state;
         }
@@ -679,6 +688,7 @@ public sealed class DesktopWindow : IAsyncDisposable
         {
             _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
             _engine.EmbeddedFilesDropped -= OnEngineFilesDropped;
+            _engine.EmbeddedMenuBarPlacementChanged -= OnEngineMenuBarPlacementChanged;
             return;
         }
         Volatile.Write(ref _state, state);
@@ -695,10 +705,11 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// the default, leaves them to <see cref="DesktopHost.MenuCommands"/>.
     /// </summary>
     /// <remarks>
-    /// On macOS an item of <see cref="DesktopHostOptions.MenuBar"/> asks the key window's target first: it is enabled
-    /// while <see cref="IDesktopMenuCommandTarget.CanExecute"/> returns <see langword="true"/> and runs
-    /// <see cref="IDesktopMenuCommandTarget.Execute"/> when chosen or when its shortcut is pressed. Runic Windows set it
-    /// for a root ViewModel that implements <c>IRunicMenuCommandSource</c>. Windows and Linux have no menu bar yet.
+    /// An item of <see cref="DesktopHostOptions.MenuBar"/> asks the window's target first: on macOS the key window's.
+    /// It is enabled while <see cref="IDesktopMenuCommandTarget.CanExecute"/> returns <see langword="true"/> and runs
+    /// <see cref="IDesktopMenuCommandTarget.Execute"/> when chosen, when its shortcut is pressed, or through
+    /// <see cref="TryExecuteMenuItemAsync"/>. Runic Windows set it for a root ViewModel that implements
+    /// <c>IRunicMenuCommandSource</c>.
     /// </remarks>
     public IDesktopMenuCommandTarget? MenuCommands
     {
@@ -708,6 +719,123 @@ public sealed class DesktopWindow : IAsyncDisposable
             Volatile.Write(ref _menuCommands, value);
             if (AcceptsState) _engine.SetEmbeddedMenuCommands(value);
         }
+    }
+
+    /// <summary>Gets where the window shows the menu bar of <see cref="DesktopHostOptions.MenuBar"/> now.</summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="DesktopMenuBarPlacement.Global"/> on macOS, where the application menu bar holds the declared menus for
+    /// every presentation; <see cref="DesktopMenuBarPlacement.Window"/> for a bar in the window, and on Linux
+    /// <see cref="DesktopMenuBarPlacement.Global"/> while the desktop's global menu shows it. A window with
+    /// <see cref="DesktopMenuBarPresentation.Page"/> elsewhere reports <see cref="DesktopMenuBarPlacement.Page"/> once its
+    /// host supports the in-page bar, and <see cref="DesktopMenuBarPlacement.None"/> before that. An installed browser, a
+    /// window host without <see cref="DesktopWindowCapabilities.MenuBar"/>, the <see cref="DesktopMenuBarPresentation.None"/>
+    /// presentation and a closed window report <see cref="DesktopMenuBarPlacement.None"/>.
+    /// </para>
+    /// <para>A page that renders the bar itself does so only while the placement is <see cref="DesktopMenuBarPlacement.Page"/>.</para>
+    /// </remarks>
+    public DesktopMenuBarPlacement MenuBarPlacement => IsOpen && Browser == BrowserKind.Embedded
+        ? _engine.EmbeddedMenuBarPlacement
+        : DesktopMenuBarPlacement.None;
+
+    /// <summary>Occurs after <see cref="MenuBarPlacement"/> has changed, for example when a Linux desktop's global menu appeared or went away.</summary>
+    /// <remarks>
+    /// Raised on the thread pool. A handler that throws is logged (event 3017, <c>MenuBarPlacementHandlerFailed</c>) and
+    /// does not stop later events.
+    /// </remarks>
+    public event EventHandler? MenuBarPlacementChanged;
+
+    private void OnEngineMenuBarPlacementChanged(object host)
+    {
+        if (!ReferenceEquals(host, _stateSource))
+        {
+            _engine.EmbeddedMenuBarPlacementChanged -= OnEngineMenuBarPlacementChanged;
+            return;
+        }
+        ThreadPool.UnsafeQueueUserWorkItem(static window =>
+        {
+            if (!window.AcceptsState || window.MenuBarPlacementChanged is not { } handlers) return;
+            foreach (EventHandler handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(window, EventArgs.Empty);
+                }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    if (window._engine.Logger is { } logger)
+                        Internal.DesktopLog.MenuBarPlacementHandlerFailed(logger, error, Internal.DesktopLog.ErrorType(error));
+                    else
+                        System.Diagnostics.Trace.TraceError($"A DesktopWindow.MenuBarPlacementChanged handler failed with {error.GetType().FullName}.");
+                }
+            }
+        }, this, preferLocal: false);
+    }
+
+    /// <summary>Runs a menu item's command as the native menu bar does, and returns whether a command ran.</summary>
+    /// <param name="item">The item, usually one of <see cref="DesktopHost.MenuBar"/>, such as the one a page's menu bar chose.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window's UI thread.</param>
+    /// <returns>
+    /// <see langword="true"/> when a target ran the item; <see langword="false"/> when the item is disabled
+    /// (<see cref="DesktopMenuItem.IsEnabled"/>) or neither <see cref="MenuCommands"/> nor
+    /// <see cref="DesktopHost.MenuCommands"/> can run it now.
+    /// </returns>
+    /// <remarks>
+    /// The one command path of the native bar, a global menu, shortcuts and an in-page bar: the window's target, then the
+    /// application's, each asked <see cref="IDesktopMenuCommandTarget.CanExecute"/> before
+    /// <see cref="IDesktopMenuCommandTarget.Execute"/>, on the window's UI thread where the window has one. A target that
+    /// throws is logged (event 3014) and does not reach the caller. It works for every presentation, including an
+    /// installed browser.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="item"/> breaks a menu item rule.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask<bool> TryExecuteMenuItemAsync(DesktopMenuItem item, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        DesktopMenuRules.Title(item.Title, "The menu item");
+        DesktopMenuRules.Item(item, $"the menu item '{item.Title}'");
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(!IsOpen, this);
+        return new ValueTask<bool>(_engine.TryExecuteMenuItemAsync(item, MenuCommands, cancellationToken));
+    }
+
+    /// <summary>Shows a native context menu over the window and returns the item the user chose.</summary>
+    /// <param name="items">
+    /// The menu's entries: the rules of <see cref="DesktopMenuItem"/> and <see cref="DesktopMenu"/>, at most four nested
+    /// submenus and 256 entries, and at least one entry. Command ids may repeat; <see cref="DesktopMenu.Role"/> is ignored.
+    /// </param>
+    /// <param name="options">Where the menu opens, in CSS pixels of the page's viewport; <see langword="null"/> opens it at the pointer.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window, and closes the open menu.</param>
+    /// <returns>
+    /// The chosen item, one of <paramref name="items"/>, or <see langword="null"/> when the user dismissed the menu, a
+    /// later context menu of the window replaced it, or the window closed.
+    /// </returns>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.ContextMenu"/>. The menu is modal for the window. Disabled items and
+    /// the items of disabled submenus cannot be chosen, and a shortcut is shown as a hint without being registered. The
+    /// caller runs the chosen item's command, for example with its <see cref="DesktopMenuItem.CommandParameter"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="items"/> is empty or breaks a menu rule, or <paramref name="options"/> sets only one coordinate or one
+    /// that is not finite.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items,
+        DesktopContextMenuOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        WindowPlatformServices.CheckContextMenu(items, options, cancellationToken);
+        Task<DesktopMenuItem?>? menu = null;
+        // Admitted like every window operation, but awaited outside the window gate: the menu stays open while other
+        // operations, a closing window or the next context menu run.
+        await _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ContextMenu, () =>
+        {
+            menu = _engine.ShowContextMenuAsync(items, options ?? new DesktopContextMenuOptions(), cancellationToken);
+            return ValueTask.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
+        return await menu!.ConfigureAwait(false);
     }
 
     /// <summary>Occurs when the user drops files onto the embedded window, with their native paths.</summary>

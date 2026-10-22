@@ -426,33 +426,93 @@ id and the rule.
 An item runs its command on the key window's `DesktopWindow.MenuCommands`, an
 `IDesktopMenuCommandTarget`, or else on `DesktopHost.MenuCommands`, also when
 no window is open. The target receives the `DesktopMenuItem` and reads its
-`CommandId`. AppKit asks `CanExecute` whenever it shows a menu or matches a key,
-on its main thread, so keep it cheap; an item that no target can run is
-disabled. An item or menu declared with `IsEnabled = false` is disabled without
-asking, a disabled menu disables its items too, and `IsChecked` shows a check
-mark as declared: build the bar again with `SetMenuBar` when the state changes.
-Runic Windows bind these to ViewModel commands; see
+`CommandId` and `CommandParameter`, so one command can serve several items,
+such as one per recent file or zoom level. AppKit asks `CanExecute` whenever it
+shows a menu or matches a key, on its main thread, so keep it cheap; an item
+that no target can run is disabled. An item or menu declared with
+`IsEnabled = false` is disabled without asking, a disabled menu disables its
+items too, and `IsChecked` shows a check mark as declared: build the bar again
+with `SetMenuBar` when the state changes. Items with the same `RadioGroup` in
+one menu are radio items, of which one is checked (`DesktopHost.Validate`
+reports `menu-radio-checked` for more); macOS shows them with the check mark.
+`AccessKey` is a letter or digit that Windows and Linux underline and open with
+Alt; Runic places the marker, so titles stay literal text. A target that throws
+is logged as event 3014, `MenuCommandFailed`, and the item counts as not
+runnable. Runic Windows bind these to ViewModel commands; see
 [Menu bar commands](../Runic.Application.Views/README.md#menu-bar-commands).
 
 `DesktopShortcut` writes shortcuts once for every platform: `Primary` is ⌘ on
 macOS and Ctrl elsewhere, `Alt` is ⌥, and `Control` is ⌃ on macOS and Ctrl
 elsewhere. `ToDisplayString()` shows `⇧⌘S` on macOS and `Ctrl+Shift+S`
-elsewhere. An item's shortcut is its macOS key equivalent, with three rules:
+elsewhere. An item's shortcut is its macOS key equivalent, with two rules:
 
 - The standard menus keep their shortcuts: ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H,
   ⌥⌘H, ⌘W and ⌘M. An item declaring one is shown without it, and
   `DesktopHost.Validate` reports `menu-shortcut-reserved`; a second item with
-  the same shortcut reports `menu-shortcut-duplicate`.
+  the same shortcut reports `menu-shortcut-duplicate`. Windows and Linux keep
+  Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A, Alt+F4 and F10
+  the same way.
 - The focused page sees a key first. Only when the page does not call
   `preventDefault()` on it does the menu bar answer it, as the zoom keys do.
-- Items run commands without a parameter.
 
-Windows and Linux show no native menu bar in this release, and
-`DesktopHost.Validate` reports `menu-bar-unsupported` for a declared one. Render
-the menu bar and context menus in the page there, bound to the same commands;
-the web view keeps its own context menu unless the page handles `contextmenu`
-and calls `preventDefault()`. Native menu bars and context menus on Windows and
-Linux, and global shortcuts, are planned for later releases.
+### Where the bar is shown
+
+`DesktopWindowOptions.MenuBarPresentation` chooses it per window:
+
+| Presentation | Bar | Shortcuts |
+| --- | --- | --- |
+| `Native`, the default | macOS: the application menu bar. A window host with `DesktopWindowCapabilities.MenuBar`: natively, in the window or a global menu | Matched by the host |
+| `Page` | No native bar: the page renders `DesktopHost.MenuBar` and runs items with `DesktopWindow.TryExecuteMenuItemAsync` | Matched by the host |
+| `None` | No bar anywhere | Matched by the host |
+
+`DesktopMenuBarPresentation` is closed. `DesktopWindow.MenuBarPlacement` says
+where the bar is now (`None`, `Window`, `Global` or `Page`; the set is open),
+and `MenuBarPlacementChanged` is raised on the thread pool when it moves, for
+example when a desktop's global menu appears; a handler that throws is logged
+as event 3017, `MenuBarPlacementHandlerFailed`. A page renders a bar only while
+the placement is `Page`. The macOS application menu bar is shared by every
+window, so there the declared menus stay for `Page` and `None` too, the
+placement is `Global`, and `DesktopHost.Validate` reports
+`menu-bar-page-native` as a warning. `LinuxDesktopOptions.GlobalMenu`, `true` by
+default, lets a Linux window put its bar into the desktop's global menu, such
+as KDE Plasma's; `false` keeps it in the window.
+
+`TryExecuteMenuItemAsync(item)` is the bar's own command path: the item's
+`IsEnabled`, the window's target, then the application's, each asked
+`CanExecute` before `Execute`, on the window's UI thread where it has one. It
+returns `false` when nothing ran, and works for installed browsers too, so an
+application without Runic Windows can render `DesktopHost.MenuBar` in its page,
+follow `DesktopHost.MenuBarChanged`, and run the chosen items.
+
+This release shows the native bar on macOS. The Windows and GTK embedded windows
+do not show it yet: for a declared bar with `Native` they, an installed browser
+and a window host without `DesktopWindowCapabilities.MenuBar` make
+`DesktopHost.Validate` report `menu-bar-unsupported`, and `Page` or `None`
+avoid it. Windows and Linux bars will have no standard Edit, View or Window
+menus and no translated standard titles: the application declares the menus it
+wants. A window host shows the bar by implementing `IDesktopMenuWindowHost`:
+Runic Desktop calls `SetMenuBarAsync` after the window opens and after every
+`SetMenuBar`, passes `DesktopWindowHostOptions.MenuBarPresentation`, and sets
+`MenuCommands` to the command path above. A failed `SetMenuBarAsync` is
+reported as the window's `menu-bar-failed` diagnostic (event 3010).
+
+### Context menus
+
+`DesktopWindow.ShowContextMenuAsync(items, options)` shows a native context
+menu over a window with `DesktopWindowCapabilities.ContextMenu` and returns the
+chosen `DesktopMenuItem`, or `null` when the user dismissed it, a later context
+menu of the window replaced it, or the window closed. Cancelling the token
+closes the menu. Items follow the menu rules with the status icon's limits
+(four nested submenus, 256 entries); command ids may repeat, `Role` is ignored,
+and shortcuts are shown as hints without being registered. `options.X` and `Y`
+place it in CSS pixels of the page's viewport, the event's `clientX` and
+`clientY`; without them it opens at the pointer. The page asks through an
+ordinary command, such as `showRowMenu(key, x, y)` from its `contextmenu`
+handler, after calling `preventDefault()`; ViewModels use
+`IWindowPlatformServices.ShowContextMenuAsync`. The macOS window shows an
+AppKit menu over the web view; the web view keeps its own context menu where
+the page does not handle `contextmenu`. Global shortcuts are planned for later
+releases.
 
 ## File drops
 

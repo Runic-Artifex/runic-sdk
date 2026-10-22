@@ -49,6 +49,47 @@ public interface IWindowPlatformServices : IPlatformCapabilities
         return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
             new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
     }
+
+    /// <summary>Shows a native context menu for the window and returns the item the user chose.</summary>
+    /// <param name="items">
+    /// The menu's entries: the rules of <see cref="DesktopMenuItem"/> and <see cref="DesktopMenu"/>, at most four nested
+    /// submenus and 256 entries, and at least one entry. Command ids may repeat; <see cref="DesktopMenu.Role"/> is ignored.
+    /// </param>
+    /// <param name="options">Where the menu opens; <see langword="null"/> opens it at the pointer.</param>
+    /// <param name="cancellationToken">Closes the menu, which then throws <see cref="OperationCanceledException"/>.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> with the chosen item, one of <paramref name="items"/>, or with
+    /// <see langword="null"/> when the user dismissed the menu, a later context menu of the window replaced it, or it
+    /// closed with the window. <see cref="PlatformResult{T}.Unavailable"/>:
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/> before the window opens or on a host without a native
+    /// owner, <see cref="PlatformUnavailableReason.OwnerClosed"/> once it closed, and
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> when the window has no native context menus
+    /// (<see cref="PlatformCapabilityIds.ContextMenu"/>).
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The menu is modal for the window. Disabled items and items of disabled submenus cannot be chosen; a shortcut is
+    /// shown as a hint and not registered. The result is the item record, so the caller runs its command, for example
+    /// with <see cref="DesktopMenuItem.CommandParameter"/> as the row the menu is for.
+    /// </para>
+    /// <para>
+    /// A page asks for the menu through an ordinary command, for example <c>showRowMenu(key, x, y)</c> from its
+    /// <c>contextmenu</c> event, after calling <c>preventDefault()</c> so the web view's own menu stays closed.
+    /// An implementation that does not override this member checks the arguments and reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="items"/> is empty or breaks a menu rule, or <paramref name="options"/> sets only one coordinate or one
+    /// that is not a finite number.
+    /// </exception>
+    ValueTask<PlatformResult<DesktopMenuItem?>> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items,
+        DesktopContextMenuOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        WindowPlatformServices.CheckContextMenu(items, options, cancellationToken);
+        return ValueTask.FromResult<PlatformResult<DesktopMenuItem?>>(
+            new PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+    }
 }
 
 /// <summary>How a screen-reader announcement relates to what the screen reader is saying, as ARIA live regions do.</summary>
@@ -88,6 +129,14 @@ public static class PlatformCapabilityIds
     public const string FilesOpenMultiple = "platform.files.openMultiple";
     /// <summary>Opening URIs through <see cref="IDesktopFileLauncher.LaunchUriAsync"/>.</summary>
     public const string UrisLaunch = "platform.uris.launch";
+    /// <summary>The window shows its menu bar natively, in the window or in the desktop's global menu bar.</summary>
+    /// <remarks>
+    /// Unavailable for a window without a native bar, including one that renders the bar in its page; the in-page menu
+    /// bar reports its own placement.
+    /// </remarks>
+    public const string MenuBar = "platform.menus.bar";
+    /// <summary>Showing native context menus through <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>.</summary>
+    public const string ContextMenu = "platform.menus.context";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -100,12 +149,14 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.FilesOpen, PlatformCapabilityIds.FilesSave, PlatformCapabilityIds.DirectoriesOpen,
         PlatformCapabilityIds.DialogsOwned, PlatformCapabilityIds.ClipboardReadText, PlatformCapabilityIds.ClipboardWriteText,
         PlatformCapabilityIds.FilesLaunch, PlatformCapabilityIds.FilesOpenMultiple, PlatformCapabilityIds.UrisLaunch,
+        PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>
-    /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher and
-    /// <see cref="IWindowPlatformServices.AnnounceAsync"/> <see cref="PlatformResult{T}.Unavailable"/>; nothing throws
+    /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher,
+    /// <see cref="IWindowPlatformServices.AnnounceAsync"/> and <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>
+    /// <see cref="PlatformResult{T}.Unavailable"/>; nothing throws
     /// except for invalid arguments and caller cancellation.
     /// </remarks>
     public static IWindowPlatformServices Unavailable(PlatformUnavailableReason reason)
@@ -119,6 +170,21 @@ public static class WindowPlatformServices
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    // The argument checks of IWindowPlatformServices.ShowContextMenuAsync, shared by its implementations.
+    internal static void CheckContextMenu(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions? options,
+        CancellationToken cancellationToken)
+    {
+        DesktopMenuRules.ContextMenu(items);
+        if (options is not null)
+        {
+            if (options.X.HasValue != options.Y.HasValue)
+                throw new ArgumentException("Set both X and Y of the context menu position, or neither.", nameof(options));
+            if (options.X is { } x && !double.IsFinite(x) || options.Y is { } y && !double.IsFinite(y))
+                throw new ArgumentException("The context menu position must be finite numbers.", nameof(options));
+        }
         cancellationToken.ThrowIfCancellationRequested();
     }
 
@@ -188,6 +254,13 @@ public static class WindowPlatformServices
         {
             CheckAnnouncement(message, priority, cancellationToken);
             return Result<PlatformUnit>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<DesktopMenuItem?>> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items,
+            DesktopContextMenuOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            CheckContextMenu(items, options, cancellationToken);
+            return Result<DesktopMenuItem?>(cancellationToken);
         }
 
         private ValueTask<PickerResult<T>> Pick<T>(CancellationToken cancellationToken) where T : IAsyncDisposable

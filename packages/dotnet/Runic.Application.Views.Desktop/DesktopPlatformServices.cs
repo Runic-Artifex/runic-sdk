@@ -761,6 +761,53 @@ public static partial class DesktopPlatformServices
         }
     }
 
+    private static readonly CapabilityStatus MenuAvailable = new CapabilityStatus.Available();
+    private static readonly CapabilityStatus MenuBackendUnavailable = new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+    private static readonly CapabilityStatus MenuOwnerClosed = new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed);
+
+    // The menu capabilities of a window: a native bar where it is placed in the window or a global bar, and context
+    // menus where the window has them. A window of another host, such as WPF, has neither.
+    internal static IEnumerable<KeyValuePair<string, CapabilityStatus>> MenuStatuses(DesktopWindow? window)
+    {
+        if (window is not null && !window.IsOpen)
+        {
+            yield return new(PlatformCapabilityIds.MenuBar, MenuOwnerClosed);
+            yield return new(PlatformCapabilityIds.ContextMenu, MenuOwnerClosed);
+            yield break;
+        }
+        yield return new(PlatformCapabilityIds.MenuBar,
+            window?.MenuBarPlacement is DesktopMenuBarPlacement.Window or DesktopMenuBarPlacement.Global ? MenuAvailable : MenuBackendUnavailable);
+        yield return new(PlatformCapabilityIds.ContextMenu,
+            window?.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu) == true ? MenuAvailable : MenuBackendUnavailable);
+    }
+
+    // IWindowPlatformServices.ShowContextMenuAsync for a Desktop window: its native context menu, or the reason it has none.
+    internal static async ValueTask<PlatformResult<DesktopMenuItem?>> ShowContextMenuAsync(DesktopWindow? window,
+        ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions? options, CancellationToken cancellationToken)
+    {
+        // The unavailable services check the arguments as every implementation does.
+        if (window is null || window.Browser != BrowserKind.Embedded)
+            return await Unavailable(PlatformUnavailableReason.OwnerUnavailable).ConfigureAwait(false);
+        if (!window.IsOpen) return await Unavailable(PlatformUnavailableReason.OwnerClosed).ConfigureAwait(false);
+        if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu))
+            return await Unavailable(PlatformUnavailableReason.BackendUnavailable).ConfigureAwait(false);
+        try
+        {
+            return new PlatformResult<DesktopMenuItem?>.Success(
+                await window.ShowContextMenuAsync(items, options, cancellationToken).ConfigureAwait(false));
+        }
+        catch (ObjectDisposedException) { return new PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (Exception error) when (error is NotSupportedException or DesktopException { Code: "window-capability-unavailable" })
+        {
+            return new PlatformResult<DesktopMenuItem?>.Unavailable(window.IsOpen
+                ? PlatformUnavailableReason.BackendUnavailable
+                : PlatformUnavailableReason.OwnerClosed);
+        }
+
+        ValueTask<PlatformResult<DesktopMenuItem?>> Unavailable(PlatformUnavailableReason reason) =>
+            WindowPlatformServices.Unavailable(reason).ShowContextMenuAsync(items, options, cancellationToken);
+    }
+
     [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ValueTask<PlatformResult<PlatformUnit>> PresentWindows(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
@@ -857,7 +904,8 @@ public static partial class DesktopPlatformServices
         public IDesktopFileLauncher FileLauncher => _launcher;
 
         public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation,
-            _files.GetSnapshot().Statuses.SetItems(_clipboard.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses));
+            _files.GetSnapshot().Statuses.SetItems(_clipboard.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses)
+                .SetItems(MenuStatuses(window: null)));
 
         public async ValueTask DisposeAsync()
         {
@@ -942,7 +990,19 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     }
 
     /// <inheritdoc />
-    public CapabilitySnapshot GetSnapshot() => Current.GetSnapshot();
+    /// <remarks>The menu capabilities follow the Desktop window, whose menus need no platform provider.</remarks>
+    public CapabilitySnapshot GetSnapshot()
+    {
+        DesktopWindow? window;
+        IWindowPlatformServices current;
+        lock (_gate)
+        {
+            current = Current;
+            window = _disposal is null && _bound is not null ? _window : null;
+        }
+        var snapshot = current.GetSnapshot();
+        return window is null ? snapshot : new(snapshot.Generation, snapshot.Statuses.SetItems(DesktopPlatformServices.MenuStatuses(window)));
+    }
 
     /// <summary>Asks the screen reader to announce a message for the window, such as the result of an action.</summary>
     /// <param name="message">The text to speak, in the page's language.</param>
@@ -989,6 +1049,22 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             _ => throw new ArgumentOutOfRangeException(nameof(priority)),
         };
         return AnnounceAsync(message, desktopPriority, cancellationToken);
+    }
+
+    // Explicit, as the default member is: the window's native context menu once it opens.
+    ValueTask<PlatformResult<DesktopMenuItem?>> IWindowPlatformServices.ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items,
+        DesktopContextMenuOptions? options, CancellationToken cancellationToken)
+    {
+        DesktopWindow? window;
+        lock (_gate)
+        {
+            if (_disposal is not null || _bound is null) return Current.ShowContextMenuAsync(items, options, cancellationToken);
+            window = _window;
+        }
+        // A window of another host, such as WPF, shows no Desktop context menu.
+        return window is null
+            ? WindowPlatformServices.Unavailable(PlatformUnavailableReason.BackendUnavailable).ShowContextMenuAsync(items, options, cancellationToken)
+            : DesktopPlatformServices.ShowContextMenuAsync(window, items, options, cancellationToken);
     }
 
     /// <summary>Stops the services: waits for platform operations, then releases file access the window still owns.</summary>

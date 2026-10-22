@@ -64,6 +64,10 @@ public sealed record DesktopStatusIconActivation(DesktopStatusIconActivationKind
 {
     /// <summary>Short-lived desktop activation data for raising a window. Dispatch promptly; do not persist it.</summary>
     public DesktopActivationContext? PlatformContext { get; init; }
+
+    /// <summary>Gets the <see cref="DesktopMenuItem.CommandParameter"/> of the chosen item for <see cref="DesktopStatusIconActivationKind.MenuItem"/>; otherwise <see langword="null"/>.</summary>
+    /// <remarks>Untrusted input like <see cref="CommandId"/>: check it against the application's own state.</remarks>
+    public string? CommandParameter { get; init; }
 }
 
 /// <summary>An application's icon in the desktop's status area, with or without an open window.</summary>

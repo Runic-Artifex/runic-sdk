@@ -45,6 +45,12 @@ export const traceAllowList = [
   // A DesktopWindow.Closed handler that threw (event 3013).
   { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
     fragment: 'TraceError($"A DesktopWindow.Closed handler failed with' },
+  // A DesktopWindow.MenuBarPlacementChanged handler that threw (event 3017).
+  { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
+    fragment: 'TraceError($"A DesktopWindow.MenuBarPlacementChanged handler failed with' },
+  // A menu command target that threw (event 3014).
+  { file: 'packages/dotnet/Runic.Desktop/Internal/MenuCommandChain.cs',
+    fragment: 'TraceError($"A menu command target\'s {member} failed for' },
   ...[
     'TraceWarning($"{BridgeHandshakeExpiredCode}: Bridge WebSocket {connectionId} sent no token check',
     'TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.")',

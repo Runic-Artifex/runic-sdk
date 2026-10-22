@@ -78,6 +78,42 @@ internal sealed class MenuCommandChecks
         }
     }
 
+    // B10: an item's CommandParameter is the command's parameter, for CanExecute and Execute, and availability is
+    // cached per command id and parameter.
+    [Test, NotInParallel(Order = 21)]
+    public async Task ItemsPassTheirParameterToTheCommand()
+    {
+        IReadOnlyList<DesktopMenu> bar =
+        [
+            new("View",
+            [
+                new DesktopMenuItem("Small", "view.zoom") { RadioGroup = "zoom", IsChecked = false, CommandParameter = "0.8" },
+                new DesktopMenuItem("Large", "view.zoom") { RadioGroup = "zoom", IsChecked = true, CommandParameter = "1.5" },
+                new DesktopMenuItem("Huge", "view.zoom") { RadioGroup = "zoom", IsChecked = false, CommandParameter = "4" },
+            ]),
+        ];
+        await using var provider = new ServiceCollection().BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = bar,
+        });
+        var zoom = new ParameterCommand(static parameter => parameter is "0.8" or "1.5");
+        using var menu = new RunicDesktopHost(provider, desktop).UseApplicationMenu(new Dictionary<string, ICommand> { ["view.zoom"] = zoom });
+        var target = desktop.MenuCommands ?? throw new InvalidOperationException("The application commands were not bound.");
+        var items = bar[0].Items.Cast<DesktopMenuItem>().ToArray();
+        Require(target.CanExecute(items[0]) && target.CanExecute(items[1]) && !target.CanExecute(items[2]),
+            "CanExecute was not asked with each item's parameter.");
+        Require(!target.CanExecute(new DesktopMenuItem("Other", "view.zoom") { CommandParameter = "2" }),
+            "A parameter no item of the bar passes was reported runnable.");
+        target.Execute(items[1]);
+        await WaitAsync(() => zoom.Executed.Contains("1.5"), "Execute did not receive the item's parameter.");
+        target.Execute(items[2]);
+        await Task.Delay(50);
+        Require(!zoom.Executed.Contains("4"), "An item whose command cannot run with its parameter ran.");
+        zoom.Allow = static parameter => parameter is "4";
+        await WaitAsync(() => target.CanExecute(items[2]) && !target.CanExecute(items[0]), "CanExecuteChanged did not refresh each parameter.");
+    }
+
     // vdesk-01: application commands are application-wide and released. A second host on the same Desktop host cannot
     // silently replace them, and disposing the result unbinds them and their CanExecuteChanged subscriptions.
     [Test, NotInParallel(Order = 20)]
@@ -150,6 +186,20 @@ sealed class TestCommand(Action? execute = null) : ICommand
         execute?.Invoke();
         Executed.TrySetResult();
     }
+}
+
+sealed class ParameterCommand(Func<object?, bool> allow) : ICommand
+{
+    private Func<object?, bool> _allow = allow;
+    public System.Collections.Concurrent.ConcurrentBag<object?> Executed { get; } = [];
+    public Func<object?, bool> Allow
+    {
+        get => _allow;
+        set { _allow = value; CanExecuteChanged?.Invoke(this, EventArgs.Empty); }
+    }
+    public event EventHandler? CanExecuteChanged;
+    public bool CanExecute(object? parameter) => _allow(parameter);
+    public void Execute(object? parameter) => Executed.Add(parameter);
 }
 
 sealed class MenuViewModel : INotifyPropertyChanged, IRunicMenuCommandSource

@@ -126,8 +126,12 @@ and must never be treated as a path or used for an access decision.
 
 An application menu bar is declared by the host, never by page content: its
 items name commands by id, which the key window's command target runs, or else
-the application's. An item is enabled only while a target can run its command,
-and the platform's standard menu shortcuts stay with the standard menus. A
+the application's, with the item's command parameter. An item is enabled only
+while a target can run its command, and the platform's standard menu shortcuts
+stay with the standard menus. A window shows the bar natively, leaves it to the
+page, which runs items through the same command path, or shows none; it reports
+where the bar is. A context menu returns the chosen item to the caller and never
+runs a command itself. A
 shortcut is written once with a platform-neutral primary modifier: Command on
 Apple platforms, Ctrl elsewhere. The shared shortcut cases are in
 [fixtures/shortcuts.json](fixtures/shortcuts.json).

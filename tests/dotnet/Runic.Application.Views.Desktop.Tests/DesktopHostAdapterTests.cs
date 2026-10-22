@@ -6,6 +6,7 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
+using Runic.Platform;
 using Runic.Platform.Runtime;
 using TUnit.Core;
 using static DesktopChecks;
@@ -579,20 +580,33 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public List<NativeDispatchHost> Hosts { get; } = [];
     public bool SupportsDispatch { get; init; } = true;
     public bool Announces { get; init; }
+    public bool ContextMenus { get; init; }
     // A window host that reports its state, from this state at open, or none when it is null.
     public DesktopWindowState? InitialState { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
-        var host = new NativeDispatchHost { SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState };
+        var host = new NativeDispatchHost
+        {
+            SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
+        };
         Hosts.Add(host);
         return host;
     }
 }
 
 // A headless embedded host whose "native thread" is a dedicated worker.
-sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost
+sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost
 {
+    // Context menus choose their first item.
+    public bool ContextMenus { get; init; }
+    public IDesktopMenuCommandTarget? MenuCommands { get; set; }
+    public DesktopMenuBarPlacement MenuBarPlacement => DesktopMenuBarPlacement.None;
+    public event EventHandler? MenuBarPlacementChanged { add { } remove { } }
+    public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    public ValueTask<DesktopMenuItem?> ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items,
+        DesktopContextMenuOptions options, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(items.OfType<DesktopMenuItem>().FirstOrDefault());
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
     public void Drop(DesktopFileDropEventArgs drop) => FilesDropped?.Invoke(this, drop);
     public DesktopWindowState? InitialState { get; init; }
@@ -616,6 +630,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) |
+        (ContextMenus ? DesktopWindowCapabilities.ContextMenu : DesktopWindowCapabilities.None) |
         (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State);
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)

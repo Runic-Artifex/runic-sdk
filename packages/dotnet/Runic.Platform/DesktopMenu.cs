@@ -6,7 +6,8 @@ namespace Runic.Platform;
 /// <summary>An entry of a menu: a <see cref="DesktopMenuItem"/>, a <see cref="DesktopMenuSeparator"/> or a submenu.</summary>
 /// <remarks>
 /// <para>
-/// One model serves the Runic Desktop menu bar (<c>DesktopHostOptions.MenuBar</c>) and status icon menus
+/// One model serves the Runic Desktop menu bar (<c>DesktopHostOptions.MenuBar</c>), context menus
+/// (<see cref="IWindowPlatformServices.ShowContextMenuAsync"/>) and status icon menus
 /// (<see cref="DesktopStatusIconState.Menu"/>).
 /// </para>
 /// <para>
@@ -34,12 +35,20 @@ public sealed record DesktopMenu(string Title, ImmutableArray<DesktopMenuEntry> 
 
     /// <summary>Gets whether the menu can be opened; a disabled menu also disables its entries.</summary>
     public bool IsEnabled { get; init; } = true;
+
+    /// <summary>Gets the menu's access key, a letter or digit of the title's language, or <see langword="null"/> for none.</summary>
+    /// <remarks>
+    /// Windows and Linux underline it in the title and open the menu with Alt and the key; Runic places the marker, so
+    /// the title stays literal text. When the title does not contain the key, it is shown after the title, as in
+    /// <c>Fichier (F)</c>. macOS and status icon menus ignore it.
+    /// </remarks>
+    public char? AccessKey { get; init; }
 }
 
 /// <summary>A menu item that runs a command.</summary>
 /// <param name="Title">
 /// The visible title, literal text in the user's language: not blank, at most 128 characters. Mnemonic markers such as
-/// <c>&amp;</c> or <c>_</c> are shown as written.
+/// <c>&amp;</c> or <c>_</c> are shown as written; set <see cref="AccessKey"/> for an access key.
 /// </param>
 /// <param name="CommandId">
 /// The command the item runs: an application-owned routing key, never a command line. It has 1 to 64 ASCII letters,
@@ -47,9 +56,9 @@ public sealed record DesktopMenu(string Title, ImmutableArray<DesktopMenuEntry> 
 /// </param>
 /// <remarks>
 /// In the menu bar the key window's command target, or the application's, runs the item, and the same command id may
-/// appear on more than one item. In a status icon menu choosing the item raises
-/// <see cref="IDesktopStatusIcon.Activated"/> with its <see cref="DesktopStatusIconActivation.CommandId"/>, and command
-/// ids are unique.
+/// appear on more than one item. A context menu returns the chosen item. In a status icon menu choosing the item raises
+/// <see cref="IDesktopStatusIcon.Activated"/> with its <see cref="DesktopStatusIconActivation.CommandId"/> and
+/// <see cref="DesktopStatusIconActivation.CommandParameter"/>, and command ids are unique.
 /// </remarks>
 public sealed record DesktopMenuItem(string Title, string CommandId) : DesktopMenuEntry
 {
@@ -57,7 +66,9 @@ public sealed record DesktopMenuItem(string Title, string CommandId) : DesktopMe
     /// <remarks>
     /// On the macOS menu bar it is the item's key equivalent. A shortcut of the standard Edit, Window or application
     /// menus, such as ⌘C or ⌘Q, stays theirs: the item is shown without it and <c>DesktopHost.Validate</c> reports
-    /// <c>menu-shortcut-reserved</c>. The focused page sees a key first and can keep it with <c>preventDefault()</c>.
+    /// <c>menu-shortcut-reserved</c>; Windows and Linux reserve the editing and window shortcuts, such as Ctrl+C and
+    /// Alt+F4, the same way. The focused page sees a key first and can keep it with <c>preventDefault()</c>. A context
+    /// menu shows the shortcut as a hint and does not register it.
     /// </remarks>
     public DesktopShortcut? Shortcut { get; init; }
 
@@ -66,11 +77,54 @@ public sealed record DesktopMenuItem(string Title, string CommandId) : DesktopMe
     public bool IsEnabled { get; init; } = true;
 
     /// <summary>Gets <see langword="null"/> for a plain item; <see langword="true"/> or <see langword="false"/> for a check item and its state.</summary>
+    /// <remarks>With <see cref="RadioGroup"/> set, the item is a radio item and this is whether it is the group's chosen one.</remarks>
     public bool? IsChecked { get; init; }
+
+    /// <summary>Gets the text passed to the item's command, or <see langword="null"/> for none: at most 1024 characters, without NUL.</summary>
+    /// <remarks>
+    /// The command target receives the item and reads it with <see cref="CommandId"/>, so one command can serve several
+    /// items, such as a recent file or a zoom level per item. Runic Windows pass it to the ViewModel command's
+    /// <c>CanExecute</c> and <c>Execute</c>. Like the command id it is an application-owned value: never a command line
+    /// or a path the application has not checked.
+    /// </remarks>
+    public string? CommandParameter { get; init; }
+
+    /// <summary>Gets the item's access key, a letter or digit of the title's language, or <see langword="null"/> for none.</summary>
+    /// <remarks>
+    /// Windows and Linux underline it in the title and choose the item with the key while its menu is open; Runic places
+    /// the marker, so the title stays literal text. When the title does not contain the key, it is shown after the
+    /// title, as in <c>Enregistrer (S)</c>. macOS and status icon menus ignore it.
+    /// </remarks>
+    public char? AccessKey { get; init; }
+
+    /// <summary>Gets the radio group the item belongs to, or <see langword="null"/> for a plain or check item.</summary>
+    /// <remarks>
+    /// The group name follows the command id rule. A radio item needs a non-null <see cref="IsChecked"/>; the items of a
+    /// group are those of one menu level with the same name, and at most one of them is checked
+    /// (<c>menu-radio-checked</c> otherwise). Windows and Linux show a radio mark; macOS shows the check mark, as AppKit
+    /// has no radio look. Runic shows the state as declared: choosing an item runs its command, which updates the
+    /// state and declares the menu again.
+    /// </remarks>
+    public string? RadioGroup { get; init; }
 }
 
 /// <summary>A line between groups of menu entries.</summary>
 public sealed record DesktopMenuSeparator : DesktopMenuEntry;
+
+/// <summary>Where a context menu opens, for <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>.</summary>
+/// <remarks>
+/// Set <see cref="X"/> and <see cref="Y"/> together, or neither to open the menu at the pointer. A page that opens a menu
+/// from its <c>contextmenu</c> event passes the event's <c>clientX</c> and <c>clientY</c>, also for a menu the keyboard
+/// opened, whose event carries the focused element's position.
+/// </remarks>
+public sealed record DesktopContextMenuOptions
+{
+    /// <summary>Gets the horizontal position in CSS pixels from the left of the page's viewport, or <see langword="null"/> for the pointer.</summary>
+    public double? X { get; init; }
+
+    /// <summary>Gets the vertical position in CSS pixels from the top of the page's viewport, or <see langword="null"/> for the pointer.</summary>
+    public double? Y { get; init; }
+}
 
 /// <summary>Where a <see cref="DesktopMenu"/> goes in the menu bar.</summary>
 /// <remarks>This set is open: a minor release may add values.</remarks>

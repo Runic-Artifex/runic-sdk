@@ -588,14 +588,34 @@ public sealed partial class EditorViewModel : ObservableObject, IRunicMenuComman
 
 The host asks once for each id when the Window opens, and again after
 `DesktopHost.SetMenuBar`, in the ViewModel's model turn. An item is enabled
-while its declared `IsEnabled` and its command's `CanExecute(null)` are `true`,
-following `CanExecuteChanged`, and runs `Execute(null)` in the model turn; a
-failure is logged as event 2004,
-`DesktopMenuCommandFailed`. An id the ViewModel returns `null` for goes to the
-application's commands, `RunicDesktopHost.UseApplicationMenu`, such as New or
-Settings…, which also run while no Window is open. Runic Desktop shows the menu
-bar on macOS; elsewhere, and on CS-WebUI, render menus in the page, bound to the
-same commands.
+while its declared `IsEnabled` and its command's `CanExecute(parameter)` are
+`true`, following `CanExecuteChanged`, and runs `Execute(parameter)` in the
+model turn, where `parameter` is the item's `CommandParameter` (`null` for
+none). One command can therefore serve several items, such as one per zoom
+level in a radio group:
+
+```csharp
+new DesktopMenu("View",
+[
+    new DesktopMenuItem("Small", "view.zoom") { RadioGroup = "zoom", IsChecked = zoom == 0.8, CommandParameter = "0.8" },
+    new DesktopMenuItem("Large", "view.zoom") { RadioGroup = "zoom", IsChecked = zoom == 1.5, CommandParameter = "1.5" },
+])
+```
+
+A failure is logged as event 2004, `DesktopMenuCommandFailed`. An id the
+ViewModel returns `null` for goes to the application's commands,
+`RunicDesktopHost.UseApplicationMenu`, such as New or Settings…, which also run
+while no Window is open. Runic Desktop shows the menu bar natively on macOS. A
+Window whose `DesktopWindowOptions.MenuBarPresentation` is `Page` renders the
+bar in its page instead and runs its items through
+`DesktopWindow.TryExecuteMenuItemAsync`, which uses the same commands; see
+[the Desktop guide](../Runic.Desktop/README.md#where-the-bar-is-shown). On
+CS-WebUI, render menus in the page, bound to the same commands.
+
+A ViewModel shows a context menu with
+`IWindowPlatformServices.ShowContextMenuAsync`, from a command the page runs in
+its `contextmenu` handler, and runs the chosen item itself; see
+[Runic.Platform](../Runic.Platform/README.md#menus).
 
 ### Keyboard shortcuts in the page
 
@@ -627,7 +647,7 @@ saveButton.setAttribute("aria-keyshortcuts", "Control+S Meta+S");
   keys: ⌘Q, ⌘W, ⌘H and ⌘M on macOS, Alt+F4 on Windows, F12 and the zoom keys in
   embedded windows. A key the page handles with `preventDefault()` does not
   reach a menu item with the same shortcut, so declare a command's shortcut on
-  the macOS menu item or in the page, not both.
+  the menu item or in the page, not both.
 - **Make shortcuts discoverable.** Show them beside the control or in the
   page's menus with `formatShortcut`, and set `aria-keyshortcuts` so screen
   readers announce them. Global shortcuts, which work while the application is

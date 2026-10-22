@@ -162,14 +162,16 @@ public sealed class DesktopMenuBarTests
         IReadOnlyList<DesktopMenu> bar = [new("Tools", [Item("Run", "tools.run", "Primary+C")])];
         await using var host = await DesktopHost.StartAsync(new() { MenuBar = bar });
         Assert.Equal(bar, host.MenuBar);
-        Assert.Contains(host.Validate().Diagnostics, static item => item.Code == DesktopMenuBar.ReservedCode);
+        // A window without a native bar has no reserved shortcuts to report; one whose page renders the bar does.
+        DesktopWindowOptions page = new() { MenuBarPresentation = DesktopMenuBarPresentation.Page };
+        Assert.Contains(host.Validate(page).Diagnostics, static item => item.Code == DesktopMenuBar.ReservedCode);
         var changed = 0;
         host.MenuBarChanged += (_, _) => changed++;
         IReadOnlyList<DesktopMenu> translated = [new("Werkzeuge", [Item("Ausführen", "tools.run", "Primary+R")])];
         host.SetMenuBar(translated);
         Assert.Equal(1, changed);
         Assert.Equal("Werkzeuge", host.MenuBar[0].Title);
-        Assert.DoesNotContain(host.Validate().Diagnostics, static item => item.Code == DesktopMenuBar.ReservedCode);
+        Assert.DoesNotContain(host.Validate(page).Diagnostics, static item => item.Code == DesktopMenuBar.ReservedCode);
         Assert.Throws<ArgumentException>(() => host.SetMenuBar([new("", [])]));
         Assert.Equal(1, changed);
         await Assert.ThrowsAsync<ArgumentException>(async () => await DesktopHost.StartAsync(new() { MenuBar = [new("Tools", [Item("Run", "")])] }));

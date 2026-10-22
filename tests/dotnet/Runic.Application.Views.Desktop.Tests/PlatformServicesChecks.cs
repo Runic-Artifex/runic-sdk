@@ -220,6 +220,64 @@ internal sealed class PlatformServicesChecks
             "IWindowPlatformServices.AnnounceAsync of stopped services did not report the owner closed.");
     }
 
+    // B10: a ViewModel shows a native context menu through IWindowPlatformServices and gets the chosen item; a window
+    // without context menus, or none, reports why, and the snapshot reports both menu capabilities.
+    [Test, NotInParallel(Order = 17)]
+    public async Task ContextMenusReachTheEmbeddedWindowOrReportWhyNot()
+    {
+        System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> menu =
+            [new DesktopMenuItem("Rename", "row.rename") { CommandParameter = "row-7" }, new DesktopMenuSeparator()];
+        await using (var provider = CreateProvider())
+        {
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = new NativeDispatchFactory { ContextMenus = true }, WaitForConnection = false,
+            });
+            var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            var services = window.ViewModel.Platform;
+            Require(window.ViewModel.SnapshotBeforeOpen.Statuses[PlatformCapabilityIds.ContextMenu]
+                is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable), "The context menu capability was available before the window opened.");
+            try
+            {
+                Require(await services.ShowContextMenuAsync(menu, new DesktopContextMenuOptions { X = 12, Y = 34 })
+                    is PlatformResult<DesktopMenuItem?>.Success(var chosen) && ReferenceEquals(chosen, menu[0]),
+                    "IWindowPlatformServices.ShowContextMenuAsync did not return the item the window's menu chose.");
+                var statuses = services.GetSnapshot().Statuses;
+                Require(statuses[PlatformCapabilityIds.ContextMenu] is CapabilityStatus.Available
+                    && statuses[PlatformCapabilityIds.MenuBar] is CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+                    "The snapshot did not report context menus and no native menu bar.");
+                await ((DesktopBridgeWindow<FileViewModel>)window.Host).Window.CloseAsync();
+                Require(await services.ShowContextMenuAsync(menu) is PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                    "The context menu of a closed window did not report the owner closed.");
+            }
+            finally
+            {
+                await window.DisposeAsync();
+            }
+        }
+
+        await using (var provider = CreateProvider())
+        {
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
+            await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            Require(await window.ViewModel.Platform.ShowContextMenuAsync(menu) is PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+                "A window host without context menus did not report the backend unavailable.");
+            var rejected = false;
+            try { _ = await window.ViewModel.Platform.ShowContextMenuAsync([]); }
+            catch (ArgumentException) { rejected = true; }
+            Require(rejected, "An empty context menu was accepted.");
+        }
+
+        IWindowPlatformServices unbound = new DesktopWindowPlatformServices();
+        Require(await unbound.ShowContextMenuAsync(menu) is PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "The context menu of a window that has not opened did not report the owner unavailable.");
+        Require(unbound.GetSnapshot().Statuses[PlatformCapabilityIds.MenuBar] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "The menu bar capability of a window that has not opened was not unavailable.");
+        await ((DesktopWindowPlatformServices)unbound).DisposeAsync();
+        Require(await unbound.ShowContextMenuAsync(menu) is PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "The context menu of stopped services did not report the owner closed.");
+    }
+
     // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is
     // shown, so that the compositor gives it focus. Without a context, for a hidden window and for a window without
     // native dispatch nothing is presented, and a presentation that fails does not fail the open.

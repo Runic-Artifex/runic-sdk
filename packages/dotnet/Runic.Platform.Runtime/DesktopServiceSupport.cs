@@ -189,11 +189,12 @@ internal static class DesktopServiceValidation
                     throw new ArgumentNullException(nameof(entries), "Status icon menus cannot contain null entries.");
                 case DesktopMenuItem item:
                     DesktopMenuRules.Title(item.Title, "A status icon menu item");
-                    DesktopMenuRules.CommandId(item.CommandId, $"the status icon menu item '{item.Title}'");
+                    DesktopMenuRules.Item(item, $"the status icon menu item '{item.Title}'");
                     if (!ids.Add(item.CommandId)) throw new ArgumentException($"The command id '{item.CommandId}' appears twice; status icon menu command ids must be unique.");
                     break;
                 case DesktopMenu submenu:
                     DesktopMenuRules.Title(submenu.Title, "A status icon submenu");
+                    DesktopMenuRules.AccessKey(submenu.AccessKey, $"the status icon submenu '{submenu.Title}'");
                     Menu(submenu.Items, ids, depth + 1, ref count);
                     break;
                 default:

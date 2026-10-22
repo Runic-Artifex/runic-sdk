@@ -63,6 +63,30 @@ internal sealed class StatusIconMenuRuleTests
     }
 
     [Test]
+    public void SharedParameterAccessKeyAndRadioRulesApplyToStatusIconMenus()
+    {
+        var rules = Rules();
+        foreach (var parameter in Values(rules, "commandParameters", "valid")) Validate(new DesktopMenuItem("Run", "id") { CommandParameter = parameter });
+        foreach (var parameter in Values(rules, "commandParameters", "invalid"))
+            Rejects(() => Validate(new DesktopMenuItem("Run", "id") { CommandParameter = parameter }), "an invalid command parameter");
+        foreach (var key in Values(rules, "accessKeys", "valid"))
+        {
+            Validate(new DesktopMenuItem("Run", "id") { AccessKey = key[0] });
+            Validate(new DesktopMenu("More", []) { AccessKey = key[0] });
+        }
+        foreach (var key in Values(rules, "accessKeys", "invalid"))
+        {
+            Rejects(() => Validate(new DesktopMenuItem("Run", "id") { AccessKey = key[0] }), $"the access key '{key}'");
+            Rejects(() => Validate(new DesktopMenu("More", []) { AccessKey = key[0] }), $"the submenu access key '{key}'");
+        }
+        foreach (var group in Values(rules, "radioGroups", "valid")) Validate(new DesktopMenuItem("Small", "id") { RadioGroup = group, IsChecked = true });
+        foreach (var group in Values(rules, "radioGroups", "invalid").Concat(Values(rules, "radioGroups", "reserved")))
+            Rejects(() => Validate(new DesktopMenuItem("Small", "id") { RadioGroup = group, IsChecked = true }), $"the radio group '{group}'");
+        var noState = Rejects(() => Validate(new DesktopMenuItem("Small", "id") { RadioGroup = "zoom" }), "a radio item without IsChecked");
+        Check(noState.Message.Contains("IsChecked", StringComparison.Ordinal), "the message names IsChecked");
+    }
+
+    [Test]
     public void StatusIconMenusKeepTheirOwnLimits()
     {
         var duplicate = Rejects(() => Validate(new DesktopMenuItem("One", "a"), new DesktopMenu("More", [new DesktopMenuItem("Two", "a")])), "a repeated command id");

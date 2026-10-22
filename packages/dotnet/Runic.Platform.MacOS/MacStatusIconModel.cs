@@ -23,20 +23,27 @@ internal enum MacMenuEntryKind
 // One NSMenuItem. A command's tag is its index in MacStatusMenu.Commands plus one; 0 is no command.
 internal sealed record MacMenuEntry(MacMenuEntryKind Kind, string Label, bool Enabled, bool? Checked, int Tag, ImmutableArray<MacMenuEntry> Children);
 
-// The NSMenu built from a state when the menu opens, with the command IDs its tags route to.
+// The NSMenu built from a state when the menu opens, with the command IDs and parameters its tags route to.
 internal sealed record MacStatusMenu(ImmutableArray<MacMenuEntry> Entries, ImmutableArray<string> Commands)
 {
+    internal ImmutableArray<string?> Parameters { get; init; } = [];
+
     internal static MacStatusMenu Build(ImmutableArray<DesktopMenuEntry> items)
     {
         var commands = ImmutableArray.CreateBuilder<string>();
-        var entries = Add(items, commands);
-        return new MacStatusMenu(entries, commands.ToImmutable());
+        var parameters = ImmutableArray.CreateBuilder<string?>();
+        var entries = Add(items, commands, parameters);
+        return new MacStatusMenu(entries, commands.ToImmutable()) { Parameters = parameters.ToImmutable() };
     }
 
     // The command a menu item's tag routes to, or null for a tag from no command of this menu.
     internal string? CommandFor(long tag) => tag >= 1 && tag <= Commands.Length ? Commands[(int)tag - 1] : null;
 
-    private static ImmutableArray<MacMenuEntry> Add(ImmutableArray<DesktopMenuEntry> items, ImmutableArray<string>.Builder commands)
+    // The command parameter of the item a tag routes to, or null.
+    internal string? ParameterFor(long tag) => tag >= 1 && tag <= Parameters.Length ? Parameters[(int)tag - 1] : null;
+
+    private static ImmutableArray<MacMenuEntry> Add(ImmutableArray<DesktopMenuEntry> items, ImmutableArray<string>.Builder commands,
+        ImmutableArray<string?>.Builder parameters)
     {
         var entries = ImmutableArray.CreateBuilder<MacMenuEntry>(items.Length);
         foreach (var item in items)
@@ -45,10 +52,11 @@ internal sealed record MacStatusMenu(ImmutableArray<MacMenuEntry> Entries, Immut
             {
                 case DesktopMenuItem command:
                     commands.Add(command.CommandId);
+                    parameters.Add(command.CommandParameter);
                     entries.Add(new MacMenuEntry(MacMenuEntryKind.Command, command.Title, command.IsEnabled, command.IsChecked, commands.Count, []));
                     break;
                 case DesktopMenu submenu:
-                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Submenu, submenu.Title, submenu.IsEnabled, null, 0, Add(submenu.Items, commands)));
+                    entries.Add(new MacMenuEntry(MacMenuEntryKind.Submenu, submenu.Title, submenu.IsEnabled, null, 0, Add(submenu.Items, commands, parameters)));
                     break;
                 case DesktopMenuSeparator:
                     entries.Add(new MacMenuEntry(MacMenuEntryKind.Separator, "", true, null, 0, []));
