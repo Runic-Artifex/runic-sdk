@@ -14,6 +14,9 @@ namespace Runic.Application.Views.Desktop;
 /// <remarks>
 /// A window reloads the last HTML document it loaded from the surface, or else its start page. Only the path is kept:
 /// its query, its hash and routes set with <c>history.pushState</c> are not, because the surface never sees them.
+/// A reload reaches only a connected page. A page that loaded its document before a change and connects after it,
+/// for example one that was still loading or reconnecting when the change was published, is reloaded when it
+/// connects.
 /// </remarks>
 internal sealed class DevelopmentAssets
 {
@@ -87,6 +90,7 @@ internal sealed class DevelopmentAssets
         private readonly DevelopmentAssets _owner;
         private readonly object _windowsGate = new();
         private readonly List<Window> _windows = [];
+        private long _version;
 
         private Shared(DevelopmentAssets owner, (string, string) key, DevelopmentDirectoryAssetSource source,
             DevelopmentDirectoryAssetSource? webRoot)
@@ -105,6 +109,9 @@ internal sealed class DevelopmentAssets
         internal DevelopmentDirectoryAssetSource? WebRoot { get; }
         internal ContentHandler Primary { get; }
         internal ContentHandler? Fallback { get; }
+
+        /// <summary>The number of changes published so far.</summary>
+        internal long Version => Interlocked.Read(ref _version);
 
         internal static Shared Create(DevelopmentAssets owner, (string Directory, string StartPage) key, string webRoot,
             ILogger logger)
@@ -147,6 +154,8 @@ internal sealed class DevelopmentAssets
 
         private void OnChanged(object? sender, AssetSourceChangedEventArgs change)
         {
+            // After the source replaced its manifest: a document served at the new version has the new content.
+            Interlocked.Increment(ref _version);
             Window[] windows;
             lock (_windowsGate) windows = [.. _windows];
             foreach (var window in windows) window.Reload();
@@ -166,7 +175,9 @@ internal sealed class DevelopmentAssets
         private readonly string _startPage;
         private readonly ILogger _logger;
         private DesktopSurface? _surface;
+        private IDisposable? _connections;
         private string? _document;
+        private long _documentVersion;
         private int _disposed;
 
         internal Window(Shared shared, string startPage, ILogger logger)
@@ -187,11 +198,21 @@ internal sealed class DevelopmentAssets
         internal void Attach(DesktopSurface surface)
         {
             Volatile.Write(ref _surface, surface);
+            // A reload reaches only the pages connected when it is sent; a page that connects with an older document
+            // missed one.
+            _connections = surface.SubscribeConnectionEvents(connection =>
+            {
+                if (connection.Kind == DesktopConnectionEventKind.Connected &&
+                    Interlocked.Read(ref _documentVersion) != _shared.Version)
+                    Reload();
+            });
             _shared.Add(this);
         }
 
         private async ValueTask<ContentResponse?> ResolveAsync(ContentRequest request, CancellationToken cancellationToken)
         {
+            // Read before the content: a change published meanwhile counts as one this document may not have.
+            var version = _shared.Version;
             var response = await _shared.Primary(request, cancellationToken).ConfigureAwait(false);
             if (response is { StatusCode: 404 } && _shared.Fallback is { } fallback &&
                 await fallback(request, cancellationToken).ConfigureAwait(false) is { StatusCode: not 404 } served)
@@ -199,7 +220,10 @@ internal sealed class DevelopmentAssets
             if (response is { StatusCode: 200 } &&
                 StringComparer.Ordinal.Equals(request.Method, "GET") &&
                 response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true)
+            {
                 Volatile.Write(ref _document, request.Path);
+                Interlocked.Exchange(ref _documentVersion, version);
+            }
             return response;
         }
 
@@ -231,6 +255,7 @@ internal sealed class DevelopmentAssets
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _connections?.Dispose();
             _shared.Remove(this);
         }
     }

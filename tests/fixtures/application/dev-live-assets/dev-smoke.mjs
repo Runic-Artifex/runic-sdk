@@ -5,7 +5,7 @@
 //   node tests/fixtures/application/dev-live-assets/dev-smoke.mjs
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree, launchChromium, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
@@ -46,6 +46,13 @@ const detail = async () => `${browser ? await browser.diagnostics() : "browser: 
 const until = (condition, label, timeout) => waitFor(condition, { label, detail, timeout });
 const marker = () => browser.evaluate('document.querySelector("#marker")?.textContent ?? null');
 const withMarker = text => original.replace('<p id="marker">one</p>', `<p id="marker">${text}</p>`);
+// Saves the page as an editor's atomic save does. writeFile truncates before it writes, and Bun's fs.watch reports
+// both as one change: build.mjs could copy the page while it is empty and see no later change, leaving an empty
+// dist/index.html that the window then rightly shows.
+const save = async text => {
+  await writeFile(`${page}.tmp`, text);
+  await rename(`${page}.tmp`, page);
+};
 
 try {
   const started = await until(() => dev.exitCode !== null ? { exited: dev.exitCode }
@@ -66,10 +73,11 @@ try {
   await until(async () => (await marker()) === "two", "the reload after a dist/ change", 20_000);
 
   // The frontend watcher copies an edited page into dist/; the window follows it too.
-  await writeFile(page, withMarker("three"));
+  await save(withMarker("three"));
   await until(async () => (await marker()) === "three", "the reload after the watcher rebuilt dist/", 20_000);
   console.log("DEV_LIVE_ASSETS_OK|served-live|www-fallback|reload-on-dist-change|reload-after-watcher");
 } finally {
+  await rm(`${page}.tmp`, { force: true });
   await writeFile(page, original);
   try { await browser?.close(); }
   finally {

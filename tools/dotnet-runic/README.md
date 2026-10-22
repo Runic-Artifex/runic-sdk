@@ -69,7 +69,9 @@ each change, so frontend edits reach the window without a rebuild:
 
 A window reloads the last HTML page it loaded, such as `settings.html`, or
 else its start page; the page's query, hash and `history.pushState` route are
-not kept. The Bridge reconnects as after any reload. On Linux and macOS the
+not kept. The Bridge reconnects as after any reload. A page that was still
+loading or reconnecting when a change arrived reloads once its Bridge
+connects. On Linux and macOS the
 window keeps serving the directory it opened, so a frontend build that deletes
 and recreates the output directory itself, rather than its contents as
 `vite build --watch` does, needs `dev` to be restarted. A CS-WebUI window keeps
