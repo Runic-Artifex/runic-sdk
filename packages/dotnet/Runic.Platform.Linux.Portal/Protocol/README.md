@@ -1,25 +1,32 @@
 # Portal protocol generation
 
-The Registry, Notification, Inhibit, Request, Settings, OpenURI, FileChooser and
-Trash XML files are unmodified upstream inputs, pinned to the
-commit and SHA-256 hashes in `upstream.json`. Their original license headers are
+The Registry, Notification, Inhibit, Request, Settings, OpenURI, FileChooser,
+Background and Trash XML files are upstream inputs, pinned to the commit and SHA-256
+hashes in `upstream.json`. Every file is unmodified except
+`org.freedesktop.portal.Settings.xml`, whose deprecated `Read` method is removed
+(the provider uses `ReadAll`, and the generator warns about the `Deprecated`
+annotation as RUNICDBUS013); its manifest entry keeps upstream's hash as
+`upstreamSha256` and says what changed. Their original license headers are
 preserved; `COPYING` is upstream's license text. They are not relicensed under the
 SDK's license.
 
-`Tmds.DBus.Generator` 0.95.1 consumes these `AdditionalFiles` at compile time and
-produces internal proxies using `Tmds.DBus.Protocol` 0.95.1. The generator is a
-private build dependency, not a consumer/runtime dependency. Normal builds do not
-fetch XML or introspect the user's session. Generated C# stays under `obj`.
+Runic.Platform.Linux.DBus's source generator consumes these `AdditionalFiles` at
+compile time and produces internal proxies on Runic.Platform.Linux.DBus. The
+generator is a private build dependency, not a consumer/runtime dependency. Normal
+builds do not fetch XML or introspect the user's session. Generated C# stays under
+`obj`.
 
-The provider uses generated Registry.Register, Notification.Add/Remove and
-ActionInvoked decoding, Inhibit.Inhibit, Settings.ReadAll,
-OpenURI.OpenURI/OpenFile/OpenDirectory, FileChooser.OpenFile/SaveFile,
-Trash.TrashFile, Request.Close and version reads. Option and notification dictionaries, desktop
-identity, bus-name ownership, early-action tracking, the signal subscriptions made
-before a request (Request.Response across the sender's request-path namespace and
-the namespace-filtered Settings.SettingChanged), returned-handle validation,
-borrowed file descriptors, portal version guards, deadlines, cancellation,
-permission mapping and application callbacks remain handwritten. Generated members
+The provider uses the generated proxies' interface names, Registry.Register,
+Notification.RemoveNotification, Trash.TrashFile, Request.Close and version reads.
+Calls that send an `a{sv}` of options (FileChooser, OpenURI, Inhibit, Background,
+Notification.AddNotification) and replies with dictionaries a peer controls
+(Settings.ReadAll, Request.Response results) are written and read by hand, so the
+options keep their order and a repeated key keeps its last value instead of failing
+the read. Desktop identity, bus-name ownership, early-action tracking, the signal
+subscriptions made before a request (Request.Response across the sender's
+request-path namespace and the namespace-filtered Settings.SettingChanged),
+returned-handle validation, file descriptors, portal version guards, deadlines,
+cancellation, permission mapping and application callbacks remain handwritten. Generated members
 for newer portal versions do not mean the public Runic API uses those features.
 
 Run `direnv exec . node eng/portals/check-protocol.mjs` from the SDK root for an
@@ -40,5 +47,5 @@ direnv exec . dbus-run-session -- artifacts/portal-generation-pilot/Runic.Platfo
 For generated-source inspection, build the provider with
 `-p:EmitCompilerGeneratedFiles=true -p:CompilerGeneratedFilesOutputPath=obj/portal-generated`.
 
-References: [Tmds documentation](https://tmds.github.io/Tmds.DBus/),
+References: [Runic.Platform.Linux.DBus](../../Runic.Platform.Linux.DBus/README.md),
 [upstream portal definitions](https://github.com/flatpak/xdg-desktop-portal/tree/1.22.1/data).

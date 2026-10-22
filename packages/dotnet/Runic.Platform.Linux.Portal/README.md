@@ -5,8 +5,8 @@ desktop portals, D-Bus services and freedesktop.org specifications, independent 
 GTK. It also serves the portal file dialogs, file handoff and URI opening that
 Runic's hosts create for each window. The session portal chooses the desktop
 backend: a GTK Runic window can therefore use KDE's file chooser on Plasma. This
-package uses the MIT-licensed `Tmds.DBus.Protocol` 0.95.1 with NativeAOT-compatible
-bindings; Registry and Notification bindings are generated from pinned upstream XML.
+package makes its D-Bus calls through Runic.Platform.Linux.DBus, with NativeAOT-compatible
+proxies generated at build time from pinned upstream portal XML.
 Every type is annotated `[SupportedOSPlatform("linux")]`, and `PortalApplication`
 throws `PlatformNotSupportedException` on another operating system.
 
@@ -22,11 +22,11 @@ var volumes = portals.CreateVolumes();
 
 `PortalApplication` is the package's entry point. It is immutable and has no
 connection or disposal requirement. Its services all use one application ID,
-registering each owned host connection before portal calls, and report setup
+registering it with the portal before the first portal call, and report setup
 problems to one [diagnostic sink](#diagnostics). Windows and macOS have static
 providers instead (`WindowsPlatformProvider`, `MacOSPlatformProvider`), because
 there the process carries its identity (the AppUserModelID or the bundle); the
-portals identify an application by the desktop ID it registers on each connection.
+portals identify an application by the desktop ID it registers on its connection.
 
 File dialogs, file handoff and URI opening belong to a window. Runic.Application.Views.Desktop's
 `DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()` create them for
@@ -38,11 +38,16 @@ the empty parent window identifier, so it works without a window and is not tied
 one, as the Windows and macOS inhibition is. An application without a window uses
 `CreateUnparentedFileDialogs()` for dialogs that the portal shows without a parent.
 
+The services of a process share one session-bus connection per desktop identity:
+the application's ID, or desktop-inferred identity for the window services that
+Runic's hosts create (inside Flatpak and Snap the sandbox supplies the identity, so
+there is one). Volumes use one system-bus connection. A connection that closes is
+replaced on the next request; the shared connections stay open for the process.
 Calls are bound to a specific portal service owner. An interrupted operation
-returns unavailable; it is never replayed automatically. Notifications detect
-portal replacement and recreate/register their connection before the next call.
-File operations open a fresh identified connection per request. Settings keep one
-connection and watch `SettingChanged` signals, reconnecting after portal replacement.
+returns unavailable; it is never replayed automatically, and a pending request ends
+as unavailable when the portal service is replaced or exits. After a portal restart
+the next call registers the application ID with the new portal first. Settings
+watch `SettingChanged` signals and follow a replaced portal.
 The appearance comes from the portal's `org.freedesktop.appearance` keys, so it is
 only as complete as the portal and its backend. Ubuntu 24.04 (xdg-desktop-portal 1.18
 with the GNOME backend 46) publishes the colour scheme and contrast, so the accent
@@ -225,10 +230,14 @@ which program is calling. Any program in the user's session can therefore
 activate the icon or click a menu item, as the status area does. Do not bind a
 destructive or irreversible action to a menu item without a confirmation in the
 application's own window. The icon checks every call's signature and bounds
-what calls can cost. `Activated` runs one activation at a time, and up to 32
-more wait while a handler runs; later ones are dropped and reported once as
-`status-icon-activations-dropped`, so return from the handler quickly. A menu
-call takes at most 1024 entry IDs or events, and repeated IDs are answered once.
+what calls can cost. The item and the menu each answer one call at a time, in the
+order the status area sent them, and refuse calls beyond a short queue with
+`org.freedesktop.DBus.Error.LimitsExceeded`. `Activated` runs one activation at a
+time, and up to 32 more wait while a handler runs; later ones are dropped and
+reported once as `status-icon-activations-dropped`, so return from the handler
+quickly. A menu call takes at most 1024 entry IDs or events, and repeated IDs are
+answered once. A second icon shown at the same time uses a session-bus connection
+of its own, since status areas look for each icon at fixed object paths.
 
 Plasma fills a submenu when it first opens, so the first hover over a submenu
 can show nothing. The VM checks in `nixos/status-icon` drive the icon through

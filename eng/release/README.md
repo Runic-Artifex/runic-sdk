@@ -425,8 +425,8 @@ Third-party packages:
 - The `Microsoft.Extensions.*` abstractions, such as dependency injection and
   logging, follow .NET's own compatibility and are not bounded.
 - A dependency that no API exposes may move to any version in any release. An
-  example is `Tmds.DBus.Protocol` (0.x), which Runic.Platform.Linux.DBus and
-  Runic.Platform.Linux.Portal use internally.
+  example is `Tmds.DBus.Protocol` (0.x), which Runic.Platform.Linux.DBus uses
+  internally.
 
 ### Supported platforms
 

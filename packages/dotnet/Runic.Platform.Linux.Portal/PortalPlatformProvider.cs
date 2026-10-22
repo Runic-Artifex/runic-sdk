@@ -1,6 +1,6 @@
 using Runic.Platform.Runtime;
 using System.Threading.Channels;
-using Tmds.DBus.Protocol;
+using Runic.Platform.Linux.DBus;
 using System.Text;
 
 namespace Runic.Platform.Linux.Portal;
@@ -181,7 +181,7 @@ internal static class PortalRequest
             { throw new OwnerClosedException(); }
             finally { await monitor.DisposeAsync().ConfigureAwait(false); }
         }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or DllNotFoundException or EntryPointNotFoundException or NativeBackendUnavailableException or ChannelClosedException)
+        catch (Exception error) when (error is DBusException or TimeoutException or DllNotFoundException or EntryPointNotFoundException or NativeBackendUnavailableException or ChannelClosedException)
         {
             var diagnostic = parentExported
                 ? new PortalDiagnostic("portal-request-unavailable", "The desktop portal could not complete the request.", "Ensure the session D-Bus service and a desktop-appropriate xdg-desktop-portal backend are running.")

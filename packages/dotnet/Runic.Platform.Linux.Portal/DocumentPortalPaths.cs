@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Runic.Platform.Linux.DBus;
 using Runic.Platform.Runtime;
-using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -51,24 +51,17 @@ internal sealed partial class DocumentPortalPaths(Func<CancellationToken, ValueT
     // confirmed as a document; it is then treated as a host path.
     internal static async ValueTask<string?> QueryMountPointAsync(CancellationToken cancellationToken)
     {
-        if (DBusAddress.Session is not { } address) return null;
         try
         {
-            using var connection = new DBusConnection(address);
-            await connection.ConnectAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-            byte[] bytes = await connection.CallMethodAsync(GetMountPoint(connection), static (message, _) => message.GetBodyReader().ReadArrayOfByte())
-                .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-            int length = Array.IndexOf(bytes, (byte)0);
-            return new UTF8Encoding(false, true).GetString(bytes, 0, length < 0 ? bytes.Length : length);
+            var connection = (await PortalBus.Session(null, null).ConnectAsync(cancellationToken).ConfigureAwait(false)).Connection;
+            var reply = await connection.CallMethodAsync(new DBusMethodCall("org.freedesktop.portal.Documents", new DBusObjectPath("/org/freedesktop/portal/documents"),
+                "org.freedesktop.portal.Documents", "GetMountPoint") { Options = DBusCallOptions.NoAutoStart }, cancellationToken)
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            if (reply is not [{ Signature.Value: "ay" } path]) return null;
+            var bytes = path.GetByteArray().AsSpan();
+            int length = bytes.IndexOf((byte)0);
+            return new UTF8Encoding(false, true).GetString(length < 0 ? bytes : bytes[..length]);
         }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or IOException or DecoderFallbackException) { return null; }
-    }
-
-    private static MessageBuffer GetMountPoint(DBusConnection connection)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: "org.freedesktop.portal.Documents", path: "/org/freedesktop/portal/documents",
-            @interface: "org.freedesktop.portal.Documents", member: "GetMountPoint", flags: MessageFlags.NoAutoStart);
-        return writer.CreateMessage();
+        catch (Exception error) when (error is DBusException or TimeoutException or IOException or DecoderFallbackException or NativeBackendUnavailableException) { return null; }
     }
 }

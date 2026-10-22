@@ -1,19 +1,6 @@
 <!-- The UDisks2 members Runic uses, written from the UDisks2 D-Bus API reference
      (https://storaged.org/doc/udisks2-api/latest/). Not a copy of udisks' introspection data. -->
 <node>
-  <interface name="org.freedesktop.DBus.ObjectManager">
-    <method name="GetManagedObjects">
-      <arg name="objects" type="a{oa{sa{sv}}}" direction="out"/>
-    </method>
-    <signal name="InterfacesAdded">
-      <arg name="object" type="o"/>
-      <arg name="interfaces" type="a{sa{sv}}"/>
-    </signal>
-    <signal name="InterfacesRemoved">
-      <arg name="object" type="o"/>
-      <arg name="interfaces" type="as"/>
-    </signal>
-  </interface>
   <interface name="org.freedesktop.UDisks2.Block">
     <property name="Device" type="ay" access="read"/>
     <property name="PreferredDevice" type="ay" access="read"/>

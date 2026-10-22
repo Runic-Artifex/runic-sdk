@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Runic.Platform.Linux.DBus;
 using Runic.Platform.Runtime;
-using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -259,12 +258,10 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
     {
         string name = entry.Id[..^DesktopSuffix.Length];
         if (!IsBusName(name)) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.InvalidData);
-        var connected = options.BusAddress is { } address
-            ? await Runic.Platform.Linux.DBus.DBusConnection.ConnectToAddressAsync(address, cancellationToken).ConfigureAwait(false)
-            : await Runic.Platform.Linux.DBus.DBusConnection.ConnectAsync(DBusBus.Session, cancellationToken).ConfigureAwait(false);
-        if (connected is not PlatformResult<Runic.Platform.Linux.DBus.DBusConnection>.Success(var bus))
+        var connected = await PortalBus.Session(options.BusAddress, PortalConnection.RegisteredIdentity(_application))
+            .TryConnectAsync(cancellationToken).ConfigureAwait(false);
+        if (connected is not PlatformResult<DBusConnection>.Success(var bus))
             return entry.Exec is null ? new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable) : null;
-        await using (bus.ConfigureAwait(false))
         {
             var proxy = new DBusProxy(bus, name, new DBusObjectPath("/" + name.Replace('.', '/').Replace('-', '_')));
             var platformData = DBusValue.VariantDictionary([]);
@@ -370,15 +367,14 @@ internal sealed partial class LinuxDesktopApplications(DesktopApplicationsOption
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(2));
-            using var session = await PortalConnection.OpenAsync(options.BusAddress, "org.freedesktop.portal.Desktop", _application, deadline.Token).ConfigureAwait(false);
-            var values = await new Protocol.Settings(session.Connection, session.Destination, "/org/freedesktop/portal/desktop")
-                .ReadAllAsync(["org.gnome.desktop.interface"]).WaitAsync(deadline.Token).ConfigureAwait(false);
+            var session = await PortalConnection.OpenAsync(options.BusAddress, "org.freedesktop.portal.Desktop", _application, deadline.Token).ConfigureAwait(false);
+            var values = await PortalDesktopSettings.ReadAllAsync(session, ["org.gnome.desktop.interface"], deadline.Token).ConfigureAwait(false);
             if (values.TryGetValue("org.gnome.desktop.interface", out var settings) && settings.TryGetValue("icon-theme", out var value)
-                && value.Type == VariantValueType.String && IconThemeLookup.IsThemeName(value.GetString()))
+                && value.Signature.Value == "s" && IconThemeLookup.IsThemeName(value.GetString()))
                 theme = value.GetString();
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException or InvalidOperationException) { }
+        catch (Exception error) when (error is DBusException or TimeoutException or NativeBackendUnavailableException or InvalidOperationException) { }
         lock (_gate) _portalTheme = (theme, Stopwatch.GetTimestamp());
         return theme;
     }

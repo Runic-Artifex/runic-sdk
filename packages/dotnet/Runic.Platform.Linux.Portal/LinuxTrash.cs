@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
+using Runic.Platform.Linux.DBus;
 using Runic.Platform.Runtime;
-using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -207,28 +207,27 @@ internal sealed partial class LinuxTrash(PortalApplication? application = null, 
             return error == ELOOP ? Unavailable() : Failure(error);
         }
         using var file = new SafeFileHandle(fd, ownsHandle: true);
-        PortalConnection? session = null;
         try
         {
-            session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
+            var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, session.OwnerChanged);
             deadline.CancelAfter(PortalTimeout);
+            // The connection sends a duplicate of the descriptor; this method closes its own.
             uint result = await new Protocol.Trash(session.Connection, session.Destination, "/org/freedesktop/portal/desktop")
-                .TrashFileAsync(new PortalTransport.BorrowedHandle(file)).WaitAsync(deadline.Token).ConfigureAwait(false);
+                .TrashFileAsync(file, cancellationToken: deadline.Token).AsTask().WaitAsync(deadline.Token).ConfigureAwait(false);
             // The portal reports 0 when it cannot trash the item, including when the sandbox may not write it.
             return result == 1 ? new PlatformResult<PlatformUnit>.Success(default)
                 : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, new PlatformDiagnostic("portal", result));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (DBusErrorReplyException error) when (error.ErrorName == "org.freedesktop.DBus.Error.AccessDenied")
+        catch (DBusException error) when (error.ErrorName == "org.freedesktop.DBus.Error.AccessDenied")
         { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, new PlatformDiagnostic(error.ErrorName, 0)); }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or OperationCanceledException or NativeBackendUnavailableException)
+        catch (Exception error) when (error is DBusException or TimeoutException or OperationCanceledException or NativeBackendUnavailableException)
         {
             application?.Diagnose("trash-portal-unavailable", "The Trash portal could not move the item to the trash.",
                 "Ensure the session D-Bus service and xdg-desktop-portal are running; the Trash portal serves Flatpak and Snap applications.");
             return Unavailable();
         }
-        finally { session?.Dispose(); }
     }
 
     private static PlatformResult<PlatformUnit> Unavailable() => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);

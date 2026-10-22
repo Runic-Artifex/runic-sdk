@@ -1,12 +1,14 @@
+using System.Collections.Immutable;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Runic.Platform.Linux.DBus;
 using Runic.Platform.Runtime;
-using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
 // The freedesktop.org Secret Service API (org.freedesktop.secrets), served by GNOME Keyring, KeePassXC, KWallet and
-// others. Every request opens its own connection and session and closes both, so a restarted service needs no
+// others. Every request opens its own session on the shared connection and closes it, so a restarted service needs no
 // recovery. Items carry libsecret's generic schema attributes, which secret-tool and keytar also use.
 internal sealed class SecretServiceStore(string? address = null, string destination = SecretServiceStore.ServiceName,
     PortalApplication? application = null, bool requireEncryption = false) : IDesktopSecretStore
@@ -95,11 +97,14 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
             { throw new NativeBackendUnavailableException(); }
         }
         catch (SecretServiceFailure failure) { return new PlatformResult<T>.Failed(failure.Code, failure.Diagnostic); }
-        catch (DBusErrorReplyException error)
+        catch (DBusException error)
         {
             var diagnostic = PortalErrors.Reply(error);
             switch (error.ErrorName)
             {
+                case DBusException.Disconnected:
+                    Unavailable();
+                    return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
                 case "org.freedesktop.Secret.Error.IsLocked":
                     return new PlatformResult<T>.Failed(PlatformFailureCode.Locked, diagnostic);
                 case "org.freedesktop.DBus.Error.AccessDenied":
@@ -112,7 +117,7 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
                     return new PlatformResult<T>.Failed(PlatformFailureCode.Other, diagnostic);
             }
         }
-        catch (Exception error) when (error is NativeBackendUnavailableException or DBusExceptionBase or TimeoutException)
+        catch (Exception error) when (error is NativeBackendUnavailableException or TimeoutException)
         {
             Unavailable();
             return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
@@ -139,7 +144,7 @@ internal sealed class SecretServiceFailure(PlatformFailureCode code, PlatformDia
     internal PlatformDiagnostic? Diagnostic { get; } = diagnostic;
 }
 
-internal sealed class SecretServiceClient : IDisposable
+internal sealed class SecretServiceClient
 {
     private const string ServicePath = "/org/freedesktop/secrets";
     private const string ServiceInterface = "org.freedesktop.Secret.Service";
@@ -149,8 +154,6 @@ internal sealed class SecretServiceClient : IDisposable
     internal const string EncryptedAlgorithm = "dh-ietf1024-sha256-aes128-cbc-pkcs7";
     internal const string PlainAlgorithm = "plain";
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(5);
-
-    private delegate void BodyWriter(ref MessageWriter writer);
 
     private readonly PortalConnection _session;
     private string _sessionPath = "/";
@@ -166,13 +169,15 @@ internal sealed class SecretServiceClient : IDisposable
     internal static async Task<SecretServiceClient> OpenAsync(string? address, string destination, bool requireEncryption,
         PortalApplication? application, CancellationToken cancellationToken)
     {
-        var client = new SecretServiceClient(await PortalConnection.OpenAsync(address, destination, null, cancellationToken).ConfigureAwait(false));
+        // The Secret Service is no portal: the connection of the application's identity serves it without registering.
+        var session = await PortalConnection.OpenAsync(address, destination, null, cancellationToken).ConfigureAwait(false);
+        var client = new SecretServiceClient(session);
         try
         {
             await client.OpenSessionAsync(requireEncryption, application, cancellationToken).ConfigureAwait(false);
             return client;
         }
-        catch { client.Dispose(); throw; }
+        catch { await client.CloseAsync().ConfigureAwait(false); throw; }
     }
 
     private async Task OpenSessionAsync(bool requireEncryption, PortalApplication? application, CancellationToken cancellationToken)
@@ -182,35 +187,18 @@ internal sealed class SecretServiceClient : IDisposable
         {
             var privateKey = SecretServiceDh.PrivateKey(privateBytes);
             byte[] publicKey = SecretServiceDh.PublicKey(privateKey);
-            (byte[] peer, string path) = await Connection.CallMethodAsync(Call(ServicePath, ServiceInterface, "OpenSession", "sv",
-                (ref MessageWriter writer) =>
-                {
-                    writer.WriteString(EncryptedAlgorithm);
-                    writer.WriteSignature("ay");
-                    writer.WriteArray(publicKey);
-                }), static (message, _) =>
-            {
-                var reader = message.GetBodyReader();
-                var output = reader.ReadVariantValue();
-                return (output.GetArray<byte>(), reader.ReadObjectPathAsString());
-            }).WaitAsync(cancellationToken).ConfigureAwait(false);
-            _sessionPath = path;
-            _key = SecretServiceDh.DeriveKey(privateKey, peer);
+            var reply = Expect(await CallAsync(ServicePath, ServiceInterface, "OpenSession",
+                [DBusValue.From(EncryptedAlgorithm), DBusValue.Variant(DBusValue.ByteArray(publicKey))], cancellationToken).ConfigureAwait(false), "vo");
+            var peer = reply[0].GetVariant().GetByteArray();
+            _sessionPath = reply[1].GetObjectPath().Value;
+            _key = SecretServiceDh.DeriveKey(privateKey, peer.AsSpan());
             Algorithm = EncryptedAlgorithm;
         }
-        catch (DBusErrorReplyException error) when (error.ErrorName == "org.freedesktop.DBus.Error.NotSupported" && !requireEncryption)
+        catch (DBusException error) when (error.ErrorName == "org.freedesktop.DBus.Error.NotSupported" && !requireEncryption)
         {
-            _sessionPath = await Connection.CallMethodAsync(Call(ServicePath, ServiceInterface, "OpenSession", "sv",
-                static (ref MessageWriter writer) =>
-                {
-                    writer.WriteString(PlainAlgorithm);
-                    writer.WriteVariantString("");
-                }), static (message, _) =>
-            {
-                var reader = message.GetBodyReader();
-                _ = reader.ReadVariantValue();
-                return reader.ReadObjectPathAsString();
-            }).WaitAsync(cancellationToken).ConfigureAwait(false);
+            var reply = Expect(await CallAsync(ServicePath, ServiceInterface, "OpenSession",
+                [DBusValue.From(PlainAlgorithm), DBusValue.Variant(DBusValue.From(""))], cancellationToken).ConfigureAwait(false), "vo");
+            _sessionPath = reply[1].GetObjectPath().Value;
             Algorithm = PlainAlgorithm;
             application?.Diagnose("secret-service-plain-session",
                 "The Secret Service does not support encrypted sessions, so secrets cross the session bus unencrypted.",
@@ -219,23 +207,20 @@ internal sealed class SecretServiceClient : IDisposable
         finally { CryptographicOperations.ZeroMemory(privateBytes); }
     }
 
-    internal Task<(string[] Unlocked, string[] Locked)> SearchAsync(string service, string account, CancellationToken cancellationToken) =>
-        Connection.CallMethodAsync(Call(ServicePath, ServiceInterface, "SearchItems", "a{ss}",
-            (ref MessageWriter writer) => WriteAttributes(ref writer, service, account, schema: false)), static (message, _) =>
-        {
-            var reader = message.GetBodyReader();
-            return (Paths(reader.ReadArrayOfObjectPath()), Paths(reader.ReadArrayOfObjectPath()));
-        }).WaitAsync(cancellationToken);
+    internal async Task<(string[] Unlocked, string[] Locked)> SearchAsync(string service, string account, CancellationToken cancellationToken)
+    {
+        var reply = Expect(await CallAsync(ServicePath, ServiceInterface, "SearchItems", [Attributes(service, account, schema: false)], cancellationToken)
+            .ConfigureAwait(false), "aoao");
+        return (Paths(reply[0]), Paths(reply[1]));
+    }
 
     // Unlocks one item or collection, asking the user when the service needs to.
     internal async Task UnlockAsync(string path, CancellationToken cancellationToken)
     {
-        (string[] unlocked, string prompt) = await Connection.CallMethodAsync(Call(ServicePath, ServiceInterface, "Unlock", "ao",
-            (ref MessageWriter writer) => writer.WriteArray(new[] { new ObjectPath(path) })), static (reply, _) =>
-        {
-            var reader = reply.GetBodyReader();
-            return (Paths(reader.ReadArrayOfObjectPath()), reader.ReadObjectPathAsString());
-        }).WaitAsync(cancellationToken).ConfigureAwait(false);
+        var reply = Expect(await CallAsync(ServicePath, ServiceInterface, "Unlock", [DBusValue.ObjectPathArray([new DBusObjectPath(path)])], cancellationToken)
+            .ConfigureAwait(false), "aoo");
+        string[] unlocked = Paths(reply[0]);
+        string prompt = reply[1].GetObjectPath().Value;
         if (unlocked.Contains(path) || prompt == "/") return;
         // A service that cannot show its unlock prompt leaves the store locked.
         await PromptAsync(prompt, PlatformFailureCode.Locked, cancellationToken).ConfigureAwait(false);
@@ -243,46 +228,32 @@ internal sealed class SecretServiceClient : IDisposable
 
     internal async Task<byte[]> GetSecretAsync(string item, CancellationToken cancellationToken)
     {
-        string session = _sessionPath;
-        (byte[] parameters, byte[] value) = await Connection.CallMethodAsync(Call(item, ItemInterface, "GetSecret", "o",
-            (ref MessageWriter writer) => writer.WriteObjectPath(session)), static (reply, _) =>
+        var reply = Expect(await CallAsync(item, ItemInterface, "GetSecret", [DBusValue.From(new DBusObjectPath(_sessionPath))], cancellationToken)
+            .ConfigureAwait(false), "(oayays)");
+        var fields = reply[0].GetFields();
+        var parameters = fields[1].GetByteArray();
+        var value = fields[2].GetByteArray();
+        try
         {
-            var reader = reply.GetBodyReader();
-            reader.AlignStruct();
-            _ = reader.ReadObjectPathAsString();
-            byte[] parameters = reader.ReadArrayOfByte();
-            byte[] value = reader.ReadArrayOfByte();
-            _ = reader.ReadString();
-            return (parameters, value);
-        }).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (_key is null) return value;
-        try { return SecretServiceDh.Decrypt(_key, parameters, value); }
-        catch (CryptographicException) { throw new SecretServiceFailure(PlatformFailureCode.InvalidData); }
-        finally { CryptographicOperations.ZeroMemory(value); }
+            if (_key is null) return [.. value];
+            try { return SecretServiceDh.Decrypt(_key, parameters.AsSpan(), value.AsSpan()); }
+            catch (CryptographicException) { throw new SecretServiceFailure(PlatformFailureCode.InvalidData); }
+        }
+        finally { Zero(value); }
     }
 
     // The collection behind the "default" alias, created as libsecret does when the service has none.
     internal async Task<string> DefaultCollectionAsync(CancellationToken cancellationToken)
     {
-        string collection = await Connection.CallMethodAsync(Call(ServicePath, ServiceInterface, "ReadAlias", "s",
-            static (ref MessageWriter writer) => writer.WriteString("default")),
-            static (reply, _) => reply.GetBodyReader().ReadObjectPathAsString()).WaitAsync(cancellationToken).ConfigureAwait(false);
+        string collection = Expect(await CallAsync(ServicePath, ServiceInterface, "ReadAlias", [DBusValue.From("default")], cancellationToken)
+            .ConfigureAwait(false), "o")[0].GetObjectPath().Value;
         if (collection != "/") return collection;
-        (collection, string prompt) = await Connection.CallMethodAsync(Call(ServicePath, ServiceInterface, "CreateCollection", "a{sv}s",
-            static (ref MessageWriter writer) =>
-            {
-                var properties = writer.WriteDictionaryStart();
-                writer.WriteDictionaryEntryStart();
-                writer.WriteString(CollectionInterface + ".Label");
-                writer.WriteVariantString("Default keyring");
-                writer.WriteDictionaryEnd(properties);
-                writer.WriteString("default");
-            }), static (reply, _) =>
-        {
-            var reader = reply.GetBodyReader();
-            return (reader.ReadObjectPathAsString(), reader.ReadObjectPathAsString());
-        }).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (prompt != "/") collection = (await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false)).GetObjectPathAsString();
+        var created = Expect(await CallAsync(ServicePath, ServiceInterface, "CreateCollection",
+            [DBusValue.VariantDictionary([KeyValuePair.Create(CollectionInterface + ".Label", DBusValue.From("Default keyring"))]), DBusValue.From("default")],
+            cancellationToken).ConfigureAwait(false), "oo");
+        collection = created[0].GetObjectPath().Value;
+        string prompt = created[1].GetObjectPath().Value;
+        if (prompt != "/") collection = (await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false)).GetObjectPath().Value;
         if (collection == "/") throw new SecretServiceFailure(PlatformFailureCode.Other);
         return collection;
     }
@@ -291,49 +262,35 @@ internal sealed class SecretServiceClient : IDisposable
     {
         byte[] parameters = [], value = secret;
         if (_key is not null) (parameters, value) = SecretServiceDh.Encrypt(_key, secret);
-        string session = _sessionPath;
-        MessageBuffer message;
+        // The message's copy of the secret is cleared too once the call is written.
+        DBusValue sent = DBusValue.ByteArray(value);
+        if (!ReferenceEquals(value, secret)) CryptographicOperations.ZeroMemory(value);
+        ImmutableArray<DBusValue> reply;
         try
         {
-            message = Call(collection, CollectionInterface, "CreateItem", "a{sv}(oayays)b", (ref MessageWriter writer) =>
-            {
-                var properties = writer.WriteDictionaryStart();
-                writer.WriteDictionaryEntryStart();
-                writer.WriteString(ItemInterface + ".Label");
-                // A label people recognise in Seahorse, KeePassXC or KWallet.
-                writer.WriteVariantString(service + " (" + account + ")");
-                writer.WriteDictionaryEntryStart();
-                writer.WriteString(ItemInterface + ".Attributes");
-                writer.WriteSignature("a{ss}");
-                WriteAttributes(ref writer, service, account, schema: true);
-                writer.WriteDictionaryEnd(properties);
-                writer.WriteStructureStart();
-                writer.WriteObjectPath(session);
-                writer.WriteArray(parameters);
-                writer.WriteArray(value);
-                writer.WriteString("text/plain");
-                writer.WriteBool(true);
-            });
+            reply = Expect(await CallAsync(collection, CollectionInterface, "CreateItem",
+            [
+                DBusValue.VariantDictionary(
+                [
+                    // A label people recognise in Seahorse, KeePassXC or KWallet.
+                    KeyValuePair.Create(ItemInterface + ".Label", DBusValue.From(service + " (" + account + ")")),
+                    KeyValuePair.Create(ItemInterface + ".Attributes", Attributes(service, account, schema: true)),
+                ]),
+                DBusValue.Struct(DBusValue.From(new DBusObjectPath(_sessionPath)), DBusValue.ByteArray(parameters), sent, DBusValue.From("text/plain")),
+                DBusValue.From(true),
+            ], cancellationToken).ConfigureAwait(false), "oo");
         }
-        finally { if (!ReferenceEquals(value, secret)) CryptographicOperations.ZeroMemory(value); }
-        (_, string prompt) = await Connection.CallMethodAsync(message, static (reply, _) =>
-        {
-            var reader = reply.GetBodyReader();
-            return (reader.ReadObjectPathAsString(), reader.ReadObjectPathAsString());
-        }).WaitAsync(cancellationToken).ConfigureAwait(false);
+        finally { Zero(sent.GetByteArray()); }
+        string prompt = reply[1].GetObjectPath().Value;
         if (prompt != "/") await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<bool> DeleteItemAsync(string item, CancellationToken cancellationToken)
     {
         string prompt;
-        try
-        {
-            prompt = await Connection.CallMethodAsync(Call(item, ItemInterface, "Delete", null, null),
-                static (reply, _) => reply.GetBodyReader().ReadObjectPathAsString()).WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
+        try { prompt = Expect(await CallAsync(item, ItemInterface, "Delete", [], cancellationToken).ConfigureAwait(false), "o")[0].GetObjectPath().Value; }
         // Another client removed it first.
-        catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.Secret.Error.NoSuchObject" or "org.freedesktop.DBus.Error.UnknownObject")
+        catch (DBusException error) when (error.ErrorName is "org.freedesktop.Secret.Error.NoSuchObject" or "org.freedesktop.DBus.Error.UnknownObject")
         { return false; }
         if (prompt != "/") await PromptAsync(prompt, PlatformFailureCode.Other, cancellationToken).ConfigureAwait(false);
         return true;
@@ -341,30 +298,23 @@ internal sealed class SecretServiceClient : IDisposable
 
     // Shows a prompt and waits for its Completed signal. A prompt the service cannot show reports failure; one the user
     // dismissed reports UserDismissed; cancellation dismisses it.
-    private async Task<VariantValue> PromptAsync(string prompt, PlatformFailureCode failure, CancellationToken cancellationToken)
+    private async Task<DBusValue> PromptAsync(string prompt, PlatformFailureCode failure, CancellationToken cancellationToken)
     {
-        var completed = new TaskCompletionSource<(bool Dismissed, VariantValue Result)>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var subscription = await Connection.AddMatchAsync(new MatchRule
+        var completed = new TaskCompletionSource<(bool Dismissed, DBusValue Result)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var subscription = await Connection.SubscribeAsync(new DBusSignalFilter
         {
-            Type = MessageType.Signal, Sender = Destination, Path = prompt, Interface = PromptInterface, Member = "Completed",
-        }, static (message, _) =>
+            Sender = Destination, Path = new DBusObjectPath(prompt), Interface = PromptInterface, Member = "Completed",
+        }, cancellationToken).ConfigureAwait(false);
+        _ = PortalValues.PumpAsync(subscription, signal =>
         {
-            var reader = message.GetBodyReader();
-            return (reader.ReadBool(), reader.ReadVariantValue());
-        }, notification =>
-        {
-            if (notification.HasValue) completed.TrySetResult(notification.Value);
-            else if (notification.IsCompletion) completed.TrySetException(notification.Exception ?? new NativeBackendUnavailableException());
-        }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (signal.Arguments is [{ Signature.Value: "b" } dismissed, { Signature.Value: "v" } result]) completed.TrySetResult((dismissed.GetBoolean(), result.GetVariant()));
+            else completed.TrySetException(new InvalidOperationException("Completed carries another type."));
+        }, error => completed.TrySetException(error ?? new NativeBackendUnavailableException()));
         try
         {
             // No window to parent the prompt to: the service shows it on its own.
-            try
-            {
-                await Connection.CallMethodAsync(Call(prompt, PromptInterface, "Prompt", "s",
-                    static (ref MessageWriter writer) => writer.WriteString(""))).WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (DBusErrorReplyException error) { throw new SecretServiceFailure(failure, PortalErrors.Reply(error)); }
+            try { await CallAsync(prompt, PromptInterface, "Prompt", [DBusValue.From("")], cancellationToken).ConfigureAwait(false); }
+            catch (DBusException error) when (error.ErrorName != DBusException.Disconnected) { throw new SecretServiceFailure(failure, PortalErrors.Reply(error)); }
             var (dismissed, result) = await completed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             if (dismissed) throw new SecretServiceFailure(PlatformFailureCode.UserDismissed);
             return result;
@@ -379,61 +329,47 @@ internal sealed class SecretServiceClient : IDisposable
 
     private async Task DismissAsync(string prompt)
     {
-        try { await Connection.CallMethodAsync(Call(prompt, PromptInterface, "Dismiss", null, null)).WaitAsync(CleanupTimeout).ConfigureAwait(false); }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or ObjectDisposedException) { /* Closing the connection ends the prompt's client. */ }
+        try { await CallAsync(prompt, PromptInterface, "Dismiss", [], CancellationToken.None).AsTask().WaitAsync(CleanupTimeout).ConfigureAwait(false); }
+        catch (Exception error) when (error is DBusException or TimeoutException) { /* Closing the connection ends the prompt's client. */ }
     }
 
-    private MessageBuffer Call(string path, string @interface, string member, string? signature, BodyWriter? body)
+    private ValueTask<ImmutableArray<DBusValue>> CallAsync(string path, string @interface, string member, ImmutableArray<DBusValue> arguments,
+        CancellationToken cancellationToken) =>
+        Connection.CallMethodAsync(new DBusMethodCall(Destination, new DBusObjectPath(path), @interface, member) { Arguments = arguments }, cancellationToken);
+
+    // A reply of another shape than the method's is invalid data.
+    private static ImmutableArray<DBusValue> Expect(ImmutableArray<DBusValue> reply, string signature) =>
+        string.Concat(reply.Select(static value => value.Signature.Value)) == signature ? reply
+            : throw new InvalidOperationException($"The Secret Service replied \"{string.Concat(reply.Select(static value => value.Signature.Value))}\", not \"{signature}\".");
+
+    private static DBusValue Attributes(string service, string account, bool schema)
     {
-        var writer = Connection.GetMessageWriter();
-        try
-        {
-            writer.WriteMethodCallHeader(destination: Destination, path: path, @interface: @interface, member: member, signature: signature);
-            body?.Invoke(ref writer);
-            return writer.CreateMessage();
-        }
-        finally { writer.Dispose(); }
+        var attributes = new List<KeyValuePair<DBusValue, DBusValue>>();
+        if (schema) attributes.Add(KeyValuePair.Create(DBusValue.From("xdg:schema"), DBusValue.From(SecretServiceStore.GenericSchema)));
+        attributes.Add(KeyValuePair.Create(DBusValue.From("service"), DBusValue.From(service)));
+        attributes.Add(KeyValuePair.Create(DBusValue.From("account"), DBusValue.From(account)));
+        return DBusValue.Dictionary("s", "s", attributes);
     }
 
-    private static void WriteAttributes(ref MessageWriter writer, string service, string account, bool schema)
+    private static string[] Paths(DBusValue paths) => [.. paths.GetObjectPathArray().Select(static path => path.Value)];
+
+    // Clears secret bytes that a D-Bus value holds; the value is not used afterwards.
+    private static void Zero(ImmutableArray<byte> bytes)
     {
-        var attributes = writer.WriteDictionaryStart();
-        if (schema)
-        {
-            writer.WriteDictionaryEntryStart();
-            writer.WriteString("xdg:schema");
-            writer.WriteString(SecretServiceStore.GenericSchema);
-        }
-        writer.WriteDictionaryEntryStart();
-        writer.WriteString("service");
-        writer.WriteString(service);
-        writer.WriteDictionaryEntryStart();
-        writer.WriteString("account");
-        writer.WriteString(account);
-        writer.WriteDictionaryEnd(attributes);
+        if (!bytes.IsDefaultOrEmpty) CryptographicOperations.ZeroMemory(ImmutableCollectionsMarshal.AsArray(bytes));
     }
 
-    private static string[] Paths(ObjectPath[] paths) => Array.ConvertAll(paths, static path => path.ToString());
-
-    // Closes the session, then the connection. Disconnecting closes the session too, so a failed Close is ignored.
+    // Closes the session. Disconnecting closes it too, so a failed Close is ignored.
     internal async ValueTask CloseAsync()
     {
-        if (_sessionPath != "/")
-        {
-            try
-            {
-                await Connection.CallMethodAsync(Call(_sessionPath, "org.freedesktop.Secret.Session", "Close", null, null))
-                    .WaitAsync(CleanupTimeout).ConfigureAwait(false);
-            }
-            catch (Exception error) when (error is DBusExceptionBase or TimeoutException or ObjectDisposedException or InvalidOperationException) { }
-        }
-        Dispose();
-    }
-
-    public void Dispose()
-    {
         if (_key is not null) CryptographicOperations.ZeroMemory(_key);
-        _session.Dispose();
+        if (_sessionPath == "/") return;
+        try
+        {
+            await CallAsync(_sessionPath, "org.freedesktop.Secret.Session", "Close", [], CancellationToken.None).AsTask()
+                .WaitAsync(CleanupTimeout).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is DBusException or TimeoutException) { }
     }
 }
 

@@ -300,7 +300,5 @@ built on this package report their outcomes as `PlatformResult`.
 | Linux in Flatpak | Session bus names need `--talk-name` or `--own-name`, the system bus `--system-talk-name`; without them the bus refuses the calls with an access error. |
 | Windows, macOS | Not applicable: there is no D-Bus. `ConnectAsync` returns `Unavailable(ProviderNotConfigured)`. |
 
-Runic.Platform.Linux.Portal keeps its own internal D-Bus code for the portals and
-uses this package only to activate desktop applications
-(`org.freedesktop.Application`); both packages use the same Tmds.DBus.Protocol
-version.
+Runic.Platform.Linux.Portal makes all of its D-Bus calls through this package, on
+connections it shares across its services.
