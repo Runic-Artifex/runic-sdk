@@ -602,7 +602,9 @@ jobs:
           path: artifacts/packages
       - name: Install the Desktop template runtimes
         if: matrix.desktop-smoke == '1'
-        run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
       - name: Permit the WebKit sandbox on Ubuntu
         if: matrix.desktop-smoke == '1'
         run: eng/ci/permit-webkit-sandbox.sh
@@ -695,7 +697,9 @@ jobs:
           overwrite: true
       - name: Install Linux native WebView prerequisites
         if: runner.os == 'Linux'
-        run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh

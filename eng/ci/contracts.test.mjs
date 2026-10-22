@@ -302,7 +302,7 @@ test('template lanes cover every framework once and run the creator check in one
   assert.deepEqual(second?.env, { RUNIC_TEMPLATE_FRAMEWORKS: '${{ matrix.second }}', RUNIC_TEMPLATE_CREATOR: '0', RUNIC_TEMPLATE_DESKTOP_SMOKE: '0' });
   assert.equal(steps.find(item => item.uses?.startsWith('actions/download-artifact@'))?.id, 'candidates');
   assert.equal(second.if, "${{ !cancelled() && steps.candidates.outcome == 'success' && matrix.second }}");
-  const install = steps.findIndex(item => item.run?.includes('libwebkitgtk-6.0-4'));
+  const install = steps.findIndex(item => item.uses === './.github/actions/apt-install' && item.with.packages.split(' ').includes('libwebkitgtk-6.0-4'));
   assert.ok(install >= 0 && install < steps.indexOf(step));
   assert.ok(node >= 0 && node < steps.indexOf(step));
   assert.equal(steps[install].if, "matrix.desktop-smoke == '1'");
