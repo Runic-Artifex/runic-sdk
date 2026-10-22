@@ -56,6 +56,33 @@ internal static class MacOsWebContent
     // navigation delegate, whatever AllowDownloads says.
     internal static nint ForNavigationResponse(bool canShowMimeType) => canShowMimeType ? PolicyAllow : PolicyCancel;
 
+    // WKPermissionDecisionGrant and WKPermissionDecisionDeny (NSInteger, macOS 12); Prompt (0) is never answered.
+    internal const nint PermissionGrant = 1;
+    internal const nint PermissionDeny = 2;
+
+    // webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler: (SEC-37). As WebView2 and
+    // WebKitGTK, the MediaCapture grant covers camera and microphone (WKMediaCaptureType Camera 0, Microphone 1,
+    // CameraAndMicrophone 2) for the presented origin only: the requesting origin, the requesting frame's origin and the
+    // top-level document must all have it. Without the grant the request is denied, as on the other hosts; macOS still
+    // asks the user for the application's own camera and microphone access.
+    internal static nint ForMediaCapture(bool granted, Uri presented, string? requestingOrigin, string? frameOrigin, string? topLevelUrl, nint type) =>
+        granted && type is 0 or 1 or 2 &&
+        PresentationSecurityPolicy.IsSameOrigin(presented, requestingOrigin) &&
+        PresentationSecurityPolicy.IsSameOrigin(presented, frameOrigin) &&
+        PresentationSecurityPolicy.IsSameOrigin(presented, topLevelUrl)
+            ? PermissionGrant
+            : PermissionDeny;
+
+    // A WKSecurityOrigin's protocol, host and port (0 for the scheme's default) as an origin URL, or null.
+    internal static string? OriginUrl(string? protocol, string? host, long port)
+    {
+        if (string.IsNullOrEmpty(protocol) || string.IsNullOrEmpty(host)) return null;
+        var authority = host.Contains(':', StringComparison.Ordinal) ? $"[{host}]" : host;
+        return port is > 0 and <= ushort.MaxValue
+            ? $"{protocol}://{authority}:{port.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : $"{protocol}://{authority}";
+    }
+
     // Calls a decision handler, an Objective-C block void (^)(NSInteger policy). A block literal starts with isa,
     // int flags, int reserved and its invoke function, which takes the block and then the block's arguments.
     internal static unsafe void InvokePolicyHandler(nint block, nint policy)

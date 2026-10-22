@@ -637,6 +637,111 @@ public sealed class DesktopApiTests
     public void MediaCaptureGrantIsBoundToThePresentedOrigin(string? requester, bool expected) =>
         Assert.Equal(expected, Internal.PresentationSecurityPolicy.IsSameOrigin(new Uri("http://127.0.0.1:4100/surface/"), requester));
 
+    // SEC-37 on macOS: WKUIDelegate's media capture decision.
+    [Test]
+    [DisplayName("MacOsMediaCaptureFollowsTheGrantAndThePresentedOrigin(granted: $granted, origin: $origin, frame: $frame, top: $top, type: $type, expected: $expected)")]
+    [Arguments(true, "http://127.0.0.1:4100", "http://127.0.0.1:4100", "http://127.0.0.1:4100/surface/index.html", 0, true)]
+    [Arguments(true, "http://127.0.0.1:4100", "http://127.0.0.1:4100", "http://127.0.0.1:4100/surface/", 1, true)]
+    [Arguments(true, "http://127.0.0.1:4100", "http://127.0.0.1:4100", "http://127.0.0.1:4100/surface/", 2, true)]
+    [Arguments(false, "http://127.0.0.1:4100", "http://127.0.0.1:4100", "http://127.0.0.1:4100/surface/", 0, false)]
+    [Arguments(true, "http://127.0.0.1:4100", "http://127.0.0.1:4100", "http://127.0.0.1:4100/surface/", 3, false)]
+    [Arguments(true, "https://camera.example", "https://camera.example", "http://127.0.0.1:4100/surface/", 0, false)]
+    [Arguments(true, "http://127.0.0.1:4100", "https://camera.example", "http://127.0.0.1:4100/surface/", 0, false)]
+    [Arguments(true, "http://127.0.0.1:4100", "http://127.0.0.1:4100", "https://camera.example/", 0, false)]
+    [Arguments(true, null, "http://127.0.0.1:4100", "http://127.0.0.1:4100/surface/", 0, false)]
+    [Arguments(true, "http://127.0.0.1:4100", null, "http://127.0.0.1:4100/surface/", 0, false)]
+    public void MacOsMediaCaptureFollowsTheGrantAndThePresentedOrigin(
+        bool granted, string? origin, string? frame, string? top, int type, bool expected) =>
+        Assert.Equal(
+            expected ? Internal.MacOsWebContent.PermissionGrant : Internal.MacOsWebContent.PermissionDeny,
+            Internal.MacOsWebContent.ForMediaCapture(granted, new Uri("http://127.0.0.1:4100/surface/"), origin, frame, top, type));
+
+    [Test]
+    public void MacOsSecurityOriginsBecomeOriginUrls()
+    {
+        Assert.Equal("http://127.0.0.1:4100", Internal.MacOsWebContent.OriginUrl("http", "127.0.0.1", 4100));
+        Assert.Equal("https://example.com", Internal.MacOsWebContent.OriginUrl("https", "example.com", 0));
+        Assert.Equal("http://[::1]:4100", Internal.MacOsWebContent.OriginUrl("http", "::1", 4100));
+        Assert.Null(Internal.MacOsWebContent.OriginUrl("", "", 0));
+        Assert.Null(Internal.MacOsWebContent.OriginUrl("file", null, 0));
+    }
+
+    // SEC-37 on WebKitGTK: the subframes the isolated-world script reports decide whether the page may use the grant.
+    [Test]
+    public void WebKitGtkMediaGrantRequiresSubframesOfThePresentedOrigin()
+    {
+        var frames = new Internal.WebKitGtkMediaFrames(new Uri("http://127.0.0.1:4100/surface/"));
+        Assert.False(frames.HasForeignFrames);
+
+        frames.Receive("+a http://127.0.0.1:4100");
+        Assert.False(frames.HasForeignFrames);
+        frames.Receive("+b https://camera.example");
+        Assert.True(frames.HasForeignFrames);
+        frames.Receive("+c null");
+        frames.Receive("-b");
+        Assert.True(frames.HasForeignFrames);
+        frames.Receive("-c");
+        Assert.False(frames.HasForeignFrames);
+
+        frames.Receive("+d http://127.0.0.1:4101");
+        frames.Receive("+e http://localhost:4100");
+        Assert.True(frames.HasForeignFrames);
+        frames.Receive("0");
+        Assert.False(frames.HasForeignFrames);
+
+        frames.Receive("+f about:blank");
+        Assert.True(frames.HasForeignFrames);
+        frames.Reset();
+        Assert.False(frames.HasForeignFrames);
+
+        foreach (var malformed in new[] { null, "", "+", "+ http://evil.example", "+g", "-", "00", "x" })
+        {
+            frames.Receive(malformed);
+        }
+        Assert.False(frames.HasForeignFrames);
+    }
+
+    // SEC-05: surface pages may be framed only by the surface's own origin and its additional origins.
+    [Test]
+    public async Task SurfaceResponsesRefuseFramingByOtherOrigins()
+    {
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("safe") });
+        await using var additional = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Html("safe"),
+            Security = DesktopSecurityPolicy.Default with
+            {
+                AdditionalOrigins = [new Uri("https://Dev.Example"), new Uri("http://localhost:5173")],
+            },
+        });
+        using var client = new HttpClient();
+
+        using var response = await client.GetAsync(surface.Url);
+        Assert.Equal("frame-ancestors 'self'", response.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Equal("SAMEORIGIN", response.Headers.GetValues("X-Frame-Options").Single());
+        using var missing = await client.GetAsync(new Uri(surface.Url, "missing.html"));
+        Assert.Equal("frame-ancestors 'self'", missing.Headers.GetValues("Content-Security-Policy").Single());
+
+        using var withOrigins = await client.GetAsync(additional.Url);
+        Assert.Equal(
+            "frame-ancestors 'self' http://localhost:5173 https://dev.example:443",
+            withOrigins.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Equal("SAMEORIGIN", withOrigins.Headers.GetValues("X-Frame-Options").Single());
+    }
+
+    // SEC-24: the WebSocket subprotocol carrying the credential is compared in constant time, and only whole.
+    [Test]
+    public void SessionCredentialMatchesOnlyAWholeOfferedProtocol()
+    {
+        const string expected = "runic-desktop.0123456789abcdef";
+        Assert.True(WebUiWindow.OffersCredential(["other", expected], expected));
+        Assert.False(WebUiWindow.OffersCredential([], expected));
+        Assert.False(WebUiWindow.OffersCredential(["runic-desktop.0123456789abcde"], expected));
+        Assert.False(WebUiWindow.OffersCredential([expected + "0"], expected));
+        Assert.False(WebUiWindow.OffersCredential(["RUNIC-DESKTOP.0123456789ABCDEF"], expected));
+    }
+
     [Test]
     public async Task LocalContentDeniesMediaCaptureByDefault()
     {
@@ -1230,7 +1335,11 @@ public sealed class DesktopApiTests
         await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded }))
         {
             var injected = Assert.IsType<string>(factory.Host?.Options?.DocumentStartScript);
-            Assert.Contains($"[\"http://127.0.0.1:{surface.Url.Port}\"].includes(globalThis.location.origin)", injected, StringComparison.Ordinal);
+            Assert.Contains($"const admitted = [\"http://127.0.0.1:{surface.Url.Port}\"];", injected, StringComparison.Ordinal);
+            Assert.Contains("if (!admitted.includes(globalThis.location.origin)) return;", injected, StringComparison.Ordinal);
+            // SEC-05: a frame under a foreign document gets nothing.
+            Assert.Contains("globalThis.location.ancestorOrigins", injected, StringComparison.Ordinal);
+            Assert.Contains("try { top = globalThis.top.location.origin; } catch { return; }", injected, StringComparison.Ordinal);
             Assert.Contains($"token: {token},", injected, StringComparison.Ordinal);
             Assert.Contains($"sessionCredential: \"{credential}\"", injected, StringComparison.Ordinal);
             foreach (var path in new[] { "webui.js", "runic-desktop.js" })

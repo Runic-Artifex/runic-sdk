@@ -169,8 +169,9 @@ public sealed class ConfigurationValidationTests
             IsPosition);
     }
 
+    // SEC-11: Chromium cannot limit an automatic grant to one origin, so it asks the user instead.
     [Test]
-    public async Task ExplicitChromiumGrantIsNotReported()
+    public async Task ExplicitChromiumGrantIsReportedAsAskingTheUser()
     {
         await using var host = await DesktopHost.StartAsync();
 
@@ -180,7 +181,11 @@ public sealed class ConfigurationValidationTests
             AllowedPermissions = DesktopPermissionGrant.MediaCapture,
         });
 
-        Assert.Empty(preflight.OptionDiagnostics);
+        var grant = Assert.Single(preflight.OptionDiagnostics);
+        Assert.Equal("permission-grant-unsupported", grant.Code);
+        Assert.Equal(DesktopDiagnosticSeverity.Warning, grant.Severity);
+        Assert.Equal("DesktopWindowOptions.AllowedPermissions", grant.Option);
+        Assert.Contains("asks the user", grant.Message, StringComparison.Ordinal);
     }
 
     [Test]

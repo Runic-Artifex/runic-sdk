@@ -17,6 +17,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private WebUiEmbeddedHostOptions? _options;
     private Uri? _presentedUrl;
     private readonly WebKitGtkWebProcess _webProcess = new();
+    // With the MediaCapture grant only: the page's subframes, which the grant depends on.
+    private WebKitGtkMediaFrames? _mediaFrames;
     private int _dispatcherLease;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
@@ -304,6 +306,12 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // Control and the wheel, which WebKit would otherwise scroll with.
         Api.Connect(_webView, "key-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnUnhandledKeyPress, this, after: true);
         Api.Connect(contentManager, "script-message-received::" + WebKitGtkKeyboard.ZoomMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnZoomMessage, this);
+        if ((options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
+        {
+            _mediaFrames = new WebKitGtkMediaFrames(url);
+            Api.AddMediaFramesScript(contentManager);
+            Api.Connect(contentManager, "script-message-received::" + WebKitGtkMediaFrames.MessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnMediaFramesMessage, this);
+        }
         if (Api.CanReceiveFileDrops)
         {
             // Before WebKit's handlers: the drop's paths come from GTK, the page only reports the label of its target.
@@ -607,12 +615,30 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnMediaFramesMessage(nint manager, nint message, nint context)
+    {
+        try
+        {
+            // Also before the window reports itself open: a frame the first page loads must not be missed.
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host)
+            {
+                host._mediaFrames?.Receive(Api.GetMessageString(message));
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnWebProcessTerminated(nint webView, int reason, nint context)
     {
         try
         {
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host && host._webView == webView)
             {
+                host._mediaFrames?.Reset();
                 var (reload, diagnostic) = host._webProcess.Terminated(reason, Environment.TickCount64);
                 if (reload)
                 {
@@ -642,11 +668,12 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         return 1;
     }
 
-    // WebKitGTK does not identify the requesting frame; the top-level document must
-    // still have the presented origin. Screen capture is not part of the grant.
+    // WebKitGTK does not identify the requesting frame: the top-level document must have the presented origin, and so
+    // must every subframe (WebKitGtkMediaFrames). Screen capture is not part of the grant.
     private bool AllowsMediaCapture(nint webView, nint request) =>
         _options is { } options && (options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0 &&
         _presentedUrl is { } presented &&
+        _mediaFrames is { HasForeignFrames: false } &&
         Api.IsCameraOrMicrophoneRequest(request) &&
         PresentationSecurityPolicy.IsSameOrigin(presented, Api.WebKitWebViewGetUri(webView));
 
@@ -1198,21 +1225,29 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
 
         // The drop script runs in the keyboard script's isolated world, where the page cannot reach its handler.
-        internal void AddFileDropScript(nint manager)
+        internal void AddFileDropScript(nint manager) =>
+            AddIsolatedScript(manager, FileDropSupport.WebKitScript, FileDropSupport.WebKitMessageHandler, allFrames: false, "file drop");
+
+        // In every frame, in the same isolated world.
+        internal void AddMediaFramesScript(nint manager) =>
+            AddIsolatedScript(manager, WebKitGtkMediaFrames.Script, WebKitGtkMediaFrames.MessageHandler, allFrames: true, "media frames");
+
+        private void AddIsolatedScript(nint manager, string text, string handlerName, bool allFrames, string purpose)
         {
-            using var source = Utf8String.Create(FileDropSupport.WebKitScript);
-            using var handler = Utf8String.Create(FileDropSupport.WebKitMessageHandler);
+            using var source = Utf8String.Create(text);
+            using var handler = Utf8String.Create(handlerName);
             using var world = Utf8String.Create(WebKitGtkKeyboard.ScriptWorld);
             if (((delegate* unmanaged[Cdecl]<nint, byte*, byte*, int>)WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer)(
                 manager, handler.Pointer, world.Pointer) == 0)
             {
-                throw new InvalidOperationException("WebKitGTK could not register the file drop message handler.");
+                throw new InvalidOperationException($"WebKitGTK could not register the {purpose} message handler.");
             }
+            // WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES (0) or _TOP_FRAME (1), at WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START (0).
             var script = ((delegate* unmanaged[Cdecl]<byte*, int, int, byte*, nint, nint, nint>)WebKitUserScriptNewForWorldPointer)(
-                source.Pointer, 1, 0, world.Pointer, 0, 0);
+                source.Pointer, allFrames ? 0 : 1, 0, world.Pointer, 0, 0);
             if (script == 0)
             {
-                throw new InvalidOperationException("WebKitGTK could not create the file drop script.");
+                throw new InvalidOperationException($"WebKitGTK could not create the {purpose} script.");
             }
             try
             {

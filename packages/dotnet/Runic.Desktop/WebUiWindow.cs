@@ -62,6 +62,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly PresentationSecurityPolicy? _securityPolicy;
     private readonly PresentationSurfaceRuntimeOptions? _runtimeOptions;
     private readonly string _sessionCredential;
+    private string? _frameAncestorsPolicy;
     private Process? _browserProcess;
     private Task _browserOutputClosed = Task.CompletedTask;
     private IWebUiEmbeddedHost? _embeddedHost;
@@ -2398,6 +2399,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ? ($"({DocumentBootstrapProperty}?.token ?? 0)", $"({DocumentBootstrapProperty}?.sessionCredential ?? \"\")")
             : (_token.ToString(System.Globalization.CultureInfo.InvariantCulture), EncodeJavaScriptString(_sessionCredential));
 
+    private string FrameAncestorsPolicy => _frameAncestorsPolicy ??= CreateFrameAncestorsPolicy(_securityPolicy?.AdditionalOrigins);
+
+    // The additional origins are canonical (scheme://host:port), which is a valid CSP host source.
+    internal static string CreateFrameAncestorsPolicy(IEnumerable<string>? additionalOrigins) =>
+        string.Join(' ', (additionalOrigins ?? []).Order(StringComparer.Ordinal).Prepend("frame-ancestors 'self'"));
+
     private string CreateDocumentStartScript()
     {
         var url = Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.");
@@ -2409,10 +2416,26 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 : $"{origin.Scheme}://{origin.IdnHost}:{origin.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
             .Distinct(StringComparer.Ordinal)
             .Select(EncodeJavaScriptString);
+        // SEC-05: a frame receives the credentials only when the document and every document that contains it have an
+        // admitted origin, so an external page cannot frame the surface to connect. location.ancestorOrigins is in
+        // WebKit and Chromium; where it is missing, a top document whose origin cannot be read is foreign.
         return $$"""
             (() => {
               "use strict";
-              if (![{{string.Join(", ", origins)}}].includes(globalThis.location.origin)) return;
+              const admitted = [{{string.Join(", ", origins)}}];
+              if (!admitted.includes(globalThis.location.origin)) return;
+              if (globalThis.top !== globalThis) {
+                const ancestors = globalThis.location.ancestorOrigins;
+                if (ancestors) {
+                  for (let index = 0; index < ancestors.length; index++) {
+                    if (!admitted.includes(ancestors[index])) return;
+                  }
+                } else {
+                  let top;
+                  try { top = globalThis.top.location.origin; } catch { return; }
+                  if (!admitted.includes(top)) return;
+                }
+              }
               Object.defineProperty(globalThis, Symbol.for("runic-desktop.bootstrap"), {
                 value: Object.freeze({
                   token: {{_token.ToString(System.Globalization.CultureInfo.InvariantCulture)}},
@@ -2541,6 +2564,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         context.Response.Headers.CacheControl = NoCache;
         context.Response.Headers.XContentTypeOptions = "nosniff";
+        // SEC-05: only the surface's own documents and its additional origins may frame its pages. Browsers that apply
+        // frame-ancestors ignore X-Frame-Options; it covers those that do not.
+        context.Response.Headers.ContentSecurityPolicy = FrameAncestorsPolicy;
+        context.Response.Headers.XFrameOptions = "SAMEORIGIN";
         if ((_allowedPermissions & DesktopPermissionGrant.MediaCapture) == 0)
         {
             context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=()";
@@ -2714,7 +2741,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         var expected = $"runic-desktop.{_sessionCredential}";
         var offered = context.WebSockets.WebSocketRequestedProtocols;
-        if (!offered.Contains(expected, StringComparer.Ordinal))
+        if (!OffersCredential(offered, expected))
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
                 DesktopErrorCategory.AuthenticationDenied,
@@ -2726,6 +2753,19 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
 
         return expected;
+    }
+
+    // Compares in constant time (SEC-24), so the time a refusal takes says nothing about how much of an offered
+    // credential matched.
+    internal static bool OffersCredential(IEnumerable<string> offered, string expected)
+    {
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        var found = false;
+        foreach (var protocol in offered)
+        {
+            found |= CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(protocol), expectedBytes);
+        }
+        return found;
     }
 
     private bool AllowMultipleClients => _securityPolicy?.AllowMultipleClients ?? WebUiApplication.MultiClient;
