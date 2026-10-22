@@ -221,17 +221,19 @@ internal sealed partial class WindowsMonitors : DesktopMonitorSource
     protected override IDisposable Subscribe(Action changed)
     {
         if (!OperatingSystem.IsWindows()) return new Subscription(null);
+        ManualResetEventSlim? ready = null;
         lock (s_watchGate)
         {
             s_watchers.Add(changed);
             if (s_watchThread is null)
             {
-                var ready = new ManualResetEventSlim();
-                s_watchThread = new Thread(() => RunWatch(ready)) { IsBackground = true, Name = "Runic Desktop monitors" };
+                var started = ready = new ManualResetEventSlim();
+                s_watchThread = new Thread(() => RunWatch(started)) { IsBackground = true, Name = "Runic Desktop monitors" };
                 s_watchThread.Start();
-                ready.Wait();
             }
         }
+        // Outside the lock, which the thread takes: once the window exists, no change is missed.
+        ready?.Wait();
         return new Subscription(changed);
     }
 
