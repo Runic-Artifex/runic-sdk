@@ -31,17 +31,21 @@ internal static class PackerApplication
 
     // No ParseSettings: CommandApp's defaults read RUNIC_COMMANDLINE_OUTPUT, RUNIC_COMMANDLINE_NO_INPUT and option
     // environment fallbacks from the process environment. Its default exit codes are those of every Runic tool.
-    internal static CommandApp CreateApp(ICommandConsole console) => new(CreateCatalog())
-    {
-        Name = "Runic.Assets.Packer",
-        Version = "0.2",
-        HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
-        Console = console,
-        OutcomeSink = PackerOutcomeSink.Instance,
-    };
+    // The presenter writes the human output; JSON output keeps the standard envelope. Tests pass a presenter that
+    // observes the invocation's context and then delegates to PresentAsync.
+    internal static CommandApp CreateApp(ICommandConsole console, CommandOutcomePresenter<PackerResult>? presenter = null) =>
+        new(CreateCatalog(presenter))
+        {
+            Name = "Runic.Assets.Packer",
+            Version = "0.2",
+            HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
+            Console = console,
+        };
 
-    internal static CommandCatalog CreateCatalog() =>
-        GeneratedCommandCatalog.Create(builder => builder.OutputSelector(FormatOptionName, FormerFormatOptionName));
+    internal static CommandCatalog CreateCatalog(CommandOutcomePresenter<PackerResult>? presenter = null) =>
+        GeneratedCommandCatalog.Create(builder => builder
+            .OutputSelector(FormatOptionName, FormerFormatOptionName)
+            .PresentOutcome("pack", presenter ?? PresentAsync));
 
     [Command("pack", Description = "Package a directory as a Runic asset archive.")]
     [DefaultCommand]
@@ -174,6 +178,25 @@ internal static class PackerApplication
         CommandOutcome.Failure<PackerResult>(category,
             new CommandFault(code, message, details) { HelpUri = new Uri(RunicReleaseLinks.Diagnostic(code)) });
 
+    // Human output: the archive length on success; on failure the full message for a person at the terminal, with
+    // the paths and the underlying reason that the JSON fault leaves out, and the fault's help link.
+    internal static ValueTask PresentAsync(CommandOutcomePresentation<PackerResult> presentation, CancellationToken cancellationToken)
+    {
+        CommandOutcome<PackerResult> outcome = presentation.Outcome;
+        ICommandConsole console = presentation.Context.Console;
+        if (outcome.Succeeded && outcome.Value is { } result)
+        {
+            return console.WriteOutAsync(
+                $"Packed a canonical Runic Assets archive into {result.ArchiveLength} bytes.{Environment.NewLine}".AsMemory(),
+                cancellationToken);
+        }
+
+        string message = outcome.Fault is { } fault
+            ? HumanMessage(fault) + (fault.HelpUri is { } help ? Environment.NewLine + $"Help for {fault.Code}: {help.AbsoluteUri}" : "")
+            : "The archive could not be packed.";
+        return console.WriteErrorAsync((message + Environment.NewLine).AsMemory(), cancellationToken);
+    }
+
     // The full message for a person at the terminal, with the paths and the
     // underlying reason that the machine-readable message leaves out.
     internal static string HumanMessage(CommandFault fault)
@@ -207,36 +230,6 @@ internal static class PackerApplication
         excludedPaths.Add(AssetPath.Normalize(relative.Replace(Path.DirectorySeparatorChar, '/')));
     }
 
-    private sealed class PackerOutcomeSink : ICommandOutcomeSink
-    {
-        public static PackerOutcomeSink Instance { get; } = new();
-
-        public ValueTask WriteAsync<TResult>(
-            CommandDescriptor command,
-            CommandExecutionContext context,
-            CommandOutcome<TResult> outcome,
-            ICommandResultCodec<TResult> codec,
-            int exitCode,
-            IReadOnlyList<CommandDiagnostic> diagnostics,
-            CancellationToken cancellationToken)
-        {
-            if (context.OutputMode == CommandOutputMode.Json)
-                return new CommandOutputDispatcher().WriteAsync(command, context, outcome, codec, exitCode, diagnostics, cancellationToken);
-            if (outcome.Succeeded && outcome.Value is PackerResult result)
-            {
-                return context.Console.WriteOutAsync(
-                    $"Packed a canonical Runic Assets archive into {result.ArchiveLength} bytes.{Environment.NewLine}".AsMemory(),
-                    cancellationToken);
-            }
-
-            string message = outcome.Fault is { } fault
-                ? HumanMessage(fault) + (fault.HelpUri is { } help ? Environment.NewLine + $"Help for {fault.Code}: {help.AbsoluteUri}" : "")
-                : "The archive could not be packed.";
-            return context.Console.WriteErrorAsync(
-                (message + Environment.NewLine).AsMemory(),
-                cancellationToken);
-        }
-    }
 }
 
 // The runic.assets.pack-result/1 payload is { "archiveLength": <bytes> }; the name is spelled

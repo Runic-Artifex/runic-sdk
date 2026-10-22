@@ -77,26 +77,44 @@ internal sealed class PackerContractTests
     }
 
     // The packer once built ParseSettings without an environment reader, so RUNIC_COMMANDLINE_NO_INPUT and option
-    // environment fallbacks never reached it. Without settings of its own, CommandApp reads RUNIC_COMMANDLINE_OUTPUT,
-    // RUNIC_COMMANDLINE_NO_INPUT and the fallbacks from the process environment for each run; settings of its own
-    // must read the same variables. (CommandApp passes prompt state only to the handler's context, and the packer has
-    // no prompts, so the reader is what the test can observe.)
+    // environment fallbacks never reached it. The packer has no prompts, so the test observes the input state where
+    // Command Line passes it on: the context its outcome presenter receives, on an interactive console.
     [Test, DisplayName("RUNIC_COMMANDLINE_NO_INPUT reaches the packer")]
-    public void PackerReadsNoInputFromTheEnvironment()
+    public async Task PackerReadsNoInputFromTheEnvironment()
     {
         const string noInput = "RUNIC_COMMANDLINE_NO_INPUT";
         string? previous = Environment.GetEnvironmentVariable(noInput);
         try
         {
+            Environment.SetEnvironmentVariable(noInput, null);
+            (bool interactive, string error) = await RunWithPromptsObservedAsync().ConfigureAwait(false);
+            True(interactive, "Prompts are disabled on an interactive console without RUNIC_COMMANDLINE_NO_INPUT. " + error);
+
             Environment.SetEnvironmentVariable(noInput, "1");
-            Runic.CommandLine.ParseSettings? settings = PackerApplication.CreateApp(new Runic.CommandLine.SystemCommandConsole()).ParseSettings;
-            True(settings is null || settings.GetEnvironmentVariable?.Invoke(noInput) == "1",
-                "The packer's parse settings do not read RUNIC_COMMANDLINE_NO_INPUT from the process environment.");
+            (interactive, error) = await RunWithPromptsObservedAsync().ConfigureAwait(false);
+            True(!interactive, "RUNIC_COMMANDLINE_NO_INPUT=1 did not disable prompts in the packer's invocation. " + error);
         }
         finally
         {
             Environment.SetEnvironmentVariable(noInput, previous);
         }
+    }
+
+    // Runs the packer in-process on a missing source directory (RAS1001) and reports whether prompts could ask.
+    private static async Task<(bool Interactive, string Error)> RunWithPromptsObservedAsync()
+    {
+        using var directory = new TemporaryDirectory();
+        var console = new InteractiveConsole();
+        bool? interactive = null;
+        int exitCode = await PackerApplication.CreateApp(console, (presentation, cancellationToken) =>
+        {
+            interactive = new Runic.CommandLine.CommandPrompts(presentation.Context).IsInteractive;
+            return PackerApplication.PresentAsync(presentation, cancellationToken);
+        }).RunAsync([Path.Combine(directory.Path, "missing"), Path.Combine(directory.Path, "out.runic-assets")]).ConfigureAwait(false);
+        Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(console.Error.Contains("RAS1001", StringComparison.Ordinal), console.Error);
+        True(interactive.HasValue, "The packer's outcome presenter did not run.");
+        return (interactive!.Value, console.Error);
     }
 
     private static async Task<string> ExitCodeAsync(params string[] arguments)
@@ -168,6 +186,25 @@ internal sealed class PackerContractTests
             {
                 Directory.Delete(Path, recursive: true);
             }
+        }
+    }
+
+    private sealed class InteractiveConsole : Runic.CommandLine.ICommandConsole
+    {
+        private readonly System.Text.StringBuilder _error = new();
+
+        public string Error => _error.ToString();
+        public bool IsInteractive => true;
+        public bool IsInputRedirected => false;
+        public bool IsOutputRedirected => false;
+        public bool IsErrorRedirected => false;
+        public ValueTask<string?> ReadLineAsync(System.Threading.CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
+        public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, System.Threading.CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, System.Threading.CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, System.Threading.CancellationToken cancellationToken)
+        {
+            _error.Append(value.Span);
+            return ValueTask.CompletedTask;
         }
     }
 }
