@@ -1,1 +1,5 @@
 #nullable enable
+Runic.Platform.IWindowPlatformServices.AnnounceAsync(string! message, Runic.Platform.PlatformAnnouncementPriority priority = Runic.Platform.PlatformAnnouncementPriority.Polite, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.PlatformAnnouncementPriority
+Runic.Platform.PlatformAnnouncementPriority.Assertive = 1 -> Runic.Platform.PlatformAnnouncementPriority
+Runic.Platform.PlatformAnnouncementPriority.Polite = 0 -> Runic.Platform.PlatformAnnouncementPriority

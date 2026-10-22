@@ -123,6 +123,55 @@ internal sealed class Program
         Check(attachment.Disposals == 1, $"Re-entrant close released the attachment {attachment.Disposals} times.");
     }
 
+    // The child presentation opens with the view's WebContent; RunicViewHost passes its own through it.
+    [Test, NotInParallel("WpfSuite", Order = 20)]
+    public async Task OpenAppliesTheViewsWebContent()
+    {
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, Model, IDisposable>>((_, _) => new BorrowedService());
+        await using var services = collection.BuildServiceProvider();
+        var factory = new FakeFactory();
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
+        await using var view = await services.CreateWpfViewAsync(host, HtmlOptions(), new Model());
+        Check(ReferenceEquals(view.WebContent, DesktopWebContentPolicy.Default), "A view's WebContent did not default to DesktopWebContentPolicy.Default.");
+        try
+        {
+            view.WebContent = null!;
+            Check(false, "A null WebContent was accepted.");
+        }
+        catch (ArgumentNullException) { }
+        var policy = new DesktopWebContentPolicy { AllowDownloads = true, DevTools = true };
+        view.WebContent = policy;
+        await view.OpenAsync();
+        Check(factory.Host.Options?.WebContent is { AllowDownloads: true, DevTools: true },
+            $"The child presentation did not open with the view's WebContent: {factory.Host.Options?.WebContent}.");
+    }
+
+    // RunicViewHost on an application-owned DesktopHost: each view's surface presents through its own factory, on the
+    // shared listener, and releasing a view releases only its surface.
+    [Test, NotInParallel("WpfSuite", Order = 21)]
+    public async Task ViewsOnASharedDesktopHostPresentThroughTheirOwnFactories()
+    {
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, Model, IDisposable>>((_, _) => new BorrowedService());
+        await using var services = collection.BuildServiceProvider();
+        var unused = new FakeFactory();
+        FakeFactory first = new(), second = new();
+        await using var shared = await DesktopHost.StartAsync(new() { WindowHostFactory = unused, WaitForConnection = false });
+        var one = await services.CreateWpfViewForModelAsync(shared, first, HtmlOptions(), new Model(), null, CancellationToken.None);
+        await using var two = await services.CreateWpfViewForModelAsync(shared, second, HtmlOptions(), new Model(), null, CancellationToken.None);
+        await one.OpenAsync();
+        await two.OpenAsync();
+        Check(first.Host.IsOpen && second.Host.IsOpen && unused.Host.Options is null,
+            "The views did not present through their own window host factories.");
+        Check(one.Surface.Url.Port == shared.Port && two.Surface.Url.Port == shared.Port && one.Surface.Url != two.Surface.Url,
+            "The views did not serve separate surfaces from the shared listener.");
+        await one.DisposeAsync();
+        Check(!first.Host.IsOpen && second.Host.IsOpen, "Releasing one view closed the other's presentation.");
+        await using var later = await shared.CreateSurfaceAsync(HtmlOptions());
+        Check(later.Url.Port == shared.Port, "Releasing a view disposed the shared Desktop host.");
+    }
+
     internal static DesktopSurfaceOptions HtmlOptions() => new()
     { Content = new DesktopContent.Html("<!doctype html><script src=\"webui.js\"></script><input id=\"editor\" aria-label=\"Editor\">") };
     internal static void Check(bool condition, string message)

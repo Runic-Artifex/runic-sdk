@@ -130,6 +130,16 @@ them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
 capabilities all report that reason. Tests can use the same instance.
 
+`AnnounceAsync(message, priority)` asks the screen reader to speak a status
+message for the window, such as "Saved", through the platform's accessibility
+API: the native counterpart of an ARIA live region. `PlatformAnnouncementPriority.Polite`,
+the default, waits for what the screen reader is saying and `Assertive`
+interrupts it, as `aria-live` does; the enum is closed. It returns `Success`, or
+`Unavailable` with `OwnerUnavailable` before the window opens or without a native
+owner, `OwnerClosed` after it closed and `BackendUnavailable` when the window
+cannot announce. An `IWindowPlatformServices` implementation that does not
+override it reports `OwnerUnavailable`.
+
 The capability identifiers are constants of `PlatformCapabilityIds`, so a typo
 does not compile:
 
@@ -217,7 +227,7 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| Announcements and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |

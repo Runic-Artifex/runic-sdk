@@ -27,7 +27,9 @@ public sealed partial class RunicWebView : HwndHost
 
     /// <summary>Creates a Desktop host factory that presents one surface at a time in this control.</summary>
     /// <remarks>
-    /// For <see cref="DesktopHostOptions.WindowHostFactory"/>, as <see cref="RunicViewHost"/> uses it.
+    /// For <see cref="DesktopHostOptions.WindowHostFactory"/>, as <see cref="RunicViewHost"/> uses it for the Desktop
+    /// host it starts itself. On a <see cref="RunicViewHost.Desktop"/> the application shares, the host presents its
+    /// own surface through it instead.
     /// </remarks>
     public IDesktopWindowHostFactory CreateWindowHostFactory() => new HostFactory(this);
 

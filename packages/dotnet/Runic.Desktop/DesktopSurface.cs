@@ -11,6 +11,8 @@ public sealed class DesktopSurface : IAsyncDisposable
     private readonly Guid _id;
     private readonly WebUiWindow _engine;
     private readonly Internal.PresentationHostCore? _isolatedCore;
+    // The surface's own embedded-window factory, or null for the host's DesktopHostOptions.WindowHostFactory.
+    private readonly IDesktopWindowHostFactory? _windowHostFactory;
     private readonly SemaphoreSlim _windowGate = new(1, 1);
     private DesktopWindow? _window;
     private int _disposed;
@@ -19,12 +21,14 @@ public sealed class DesktopSurface : IAsyncDisposable
         DesktopHost host,
         Guid id,
         WebUiWindow engine,
-        Internal.PresentationHostCore? isolatedCore)
+        Internal.PresentationHostCore? isolatedCore,
+        IDesktopWindowHostFactory? windowHostFactory = null)
     {
         _host = host;
         _id = id;
         _engine = engine;
         _isolatedCore = isolatedCore;
+        _windowHostFactory = windowHostFactory;
     }
 
     /// <summary>Gets the surface URL.</summary>
@@ -466,7 +470,7 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     private async Task OpenCheckedAsync(BrowserKind browser, CancellationToken cancellationToken)
     {
-        var availability = _host.GetPresentation(browser);
+        var availability = _host.GetPresentation(browser, _windowHostFactory);
         if (!availability.IsAvailable)
         {
             var diagnostic = availability is { Diagnostics: [var first, ..] } ? first : DesktopHost.Unavailable(browser).Diagnostics[0];

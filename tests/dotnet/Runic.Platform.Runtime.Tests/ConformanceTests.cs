@@ -69,6 +69,47 @@ internal sealed class ConformanceTests
         catch (ArgumentOutOfRangeException) { }
     }
 
+    // An implementation of IWindowPlatformServices written before AnnounceAsync keeps compiling and reports the owner
+    // unavailable; WindowPlatformServices.Unavailable reports its own reason. Both check their arguments.
+    [Test, DisplayName("WINDOW: announcements without an implementation report why")]
+    public async Task AnnouncementsWithoutAnImplementation()
+    {
+        IWindowPlatformServices custom = new MinimalWindowServices();
+        if (await custom.AnnounceAsync("Saved") is not PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await custom.AnnounceAsync("Failed", PlatformAnnouncementPriority.Assertive) is not PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable))
+            throw new InvalidOperationException("The default AnnounceAsync did not report the owner unavailable.");
+        foreach (var reason in new[] { PlatformUnavailableReason.OwnerClosed, PlatformUnavailableReason.OwnerUnavailable })
+        {
+            if (await WindowPlatformServices.Unavailable(reason).AnnounceAsync("Saved") is not PlatformResult<PlatformUnit>.Unavailable(var reported) || reported != reason)
+                throw new InvalidOperationException($"Unavailable window services did not announce {reason}.");
+        }
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        foreach (var services in new[] { custom, WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerClosed) })
+        {
+            await Rejects<ArgumentNullException>(() => services.AnnounceAsync(null!));
+            await Rejects<ArgumentException>(() => services.AnnounceAsync(" "));
+            await Rejects<ArgumentOutOfRangeException>(() => services.AnnounceAsync("Saved", (PlatformAnnouncementPriority)2));
+            await Rejects<OperationCanceledException>(() => services.AnnounceAsync("Saved", cancellationToken: cancelled.Token));
+        }
+
+        static async Task Rejects<TException>(Func<ValueTask<PlatformResult<PlatformUnit>>> announce) where TException : Exception
+        {
+            try { await announce(); }
+            catch (TException) { return; }
+            throw new InvalidOperationException($"AnnounceAsync did not throw {typeof(TException).Name}.");
+        }
+    }
+
+    private sealed class MinimalWindowServices : IWindowPlatformServices
+    {
+        private readonly IWindowPlatformServices _inner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        public IFileDialogs FileDialogs => _inner.FileDialogs;
+        public ITextClipboard Clipboard => _inner.Clipboard;
+        public IDesktopFileLauncher FileLauncher => _inner.FileLauncher;
+        public CapabilitySnapshot GetSnapshot() => _inner.GetSnapshot();
+    }
+
     [Test, DisplayName("PICK: native owner closes after admission before dispatch")]
     public async Task NativeOwnerDispatchRace()
     {

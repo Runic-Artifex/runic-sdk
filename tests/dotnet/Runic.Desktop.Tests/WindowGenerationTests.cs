@@ -127,11 +127,50 @@ public sealed class WindowGenerationTests
         Assert.Equal(1, native.Mutations);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => window.MoveAsync(1, 2).AsTask());
     }
+    // A surface created with its own window host factory, as RunicViewHost does on a shared DesktopHost, opens its
+    // embedded window and checks availability through that factory; the host's factory serves only its other surfaces.
+    [Test]
+    public async Task ASurfaceWithItsOwnWindowHostFactoryOpensThroughIt()
+    {
+        var hostFactory = new Factory();
+        var surfaceFactory = new Factory();
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = hostFactory, WaitForConnection = false });
+        await using var own = await host.CreateSurfaceAsync(null, surfaceFactory, CancellationToken.None);
+        await using var window = await own.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+        Assert.Single(surfaceFactory.Hosts);
+        Assert.Empty(hostFactory.Hosts);
+        Assert.True(surfaceFactory.Hosts[0].IsOpen);
+
+        await using var shared = await host.CreateSurfaceAsync();
+        await using var other = await shared.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+        Assert.Single(hostFactory.Hosts);
+        Assert.Single(surfaceFactory.Hosts);
+        Assert.Equal(own.Url.Port, shared.Url.Port);
+
+        await own.DisposeAsync();
+        Assert.False(surfaceFactory.Hosts[0].IsOpen);
+        Assert.True(hostFactory.Hosts[0].IsOpen);
+        Assert.True(other.IsOpen);
+    }
+
+    [Test]
+    public async Task ASurfaceWithAnUnsupportedWindowHostFactoryReportsTheEmbeddedWindowUnavailable()
+    {
+        var hostFactory = new Factory();
+        var surfaceFactory = new Factory { Supported = false };
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = hostFactory, WaitForConnection = false });
+        await using var surface = await host.CreateSurfaceAsync(null, surfaceFactory, CancellationToken.None);
+        await Assert.ThrowsAsync<DesktopException>(() => surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded }).AsTask());
+        Assert.Empty(surfaceFactory.Hosts);
+        Assert.Empty(hostFactory.Hosts);
+        await Assert.ThrowsAsync<ArgumentNullException>(() => host.CreateSurfaceAsync(null, null!, CancellationToken.None).AsTask());
+    }
 
     private sealed class Factory : IDesktopWindowHostFactory
     {
         internal List<RecordingHost> Hosts { get; } = [];
-        public bool IsSupported => true;
+        internal bool Supported { get; init; } = true;
+        public bool IsSupported => Supported;
         public IDesktopWindowHost Create() { var host = new RecordingHost(); Hosts.Add(host); return host; }
     }
 

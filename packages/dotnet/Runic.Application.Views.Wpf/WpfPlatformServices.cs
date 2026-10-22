@@ -1,7 +1,10 @@
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using Runic.Application.Views.Desktop;
+using Runic.Desktop;
 using Runic.Platform;
 using Runic.Platform.Runtime;
 
@@ -10,7 +13,7 @@ namespace Runic.Application.Views.Wpf;
 /// <summary>Native platform services for the application's own WPF windows.</summary>
 public static class WpfPlatformServices
 {
-    /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard and launcher owned by it.</summary>
+    /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher and screen-reader announcements owned by it.</summary>
     /// <param name="window">The window, on its own thread.</param>
     /// <returns>
     /// Services for a ViewModel that takes <see cref="IWindowPlatformServices"/>, as on Runic Desktop, where
@@ -24,6 +27,12 @@ public static class WpfPlatformServices
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, as does a window that closed before this call. Once
     /// the window closes the services wait for the operations in progress, release the file access they acquired and
     /// report <see cref="PlatformUnavailableReason.OwnerClosed"/>; they need no disposal.
+    /// </para>
+    /// <para>
+    /// <see cref="IWindowPlatformServices.AnnounceAsync"/> raises a UI Automation notification from the window's
+    /// automation peer, which Narrator and NVDA speak: polite messages are queued, assertive ones replace those not yet
+    /// spoken. It reports <see cref="PlatformResult{T}.Success"/> once the window raised it, also when no screen reader
+    /// listens.
     /// </para>
     /// <para>
     /// Register them per window, for example <c>services.AddSingleton(WpfPlatformServices.ForWindow(mainWindow))</c>
@@ -40,7 +49,8 @@ public static class WpfPlatformServices
         var owner = new WpfWindowOwner(window);
         void Bind()
         {
-            if (owner.Attach()) services.BindWindows(owner);
+            if (owner.Attach())
+                services.BindWindows(owner, (message, priority, cancellationToken) => AnnounceAsync(window, owner, message, priority, cancellationToken));
         }
         void OnSourceInitialized(object? sender, EventArgs args)
         {
@@ -97,6 +107,38 @@ public static class WpfPlatformServices
 
     private static readonly PlatformResult<PlatformUnit> Closed =
         new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+
+    private static readonly PlatformResult<PlatformUnit> Announced = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+
+    // The notification Runic.Desktop's WebView2 window raises (WindowsWebView2Host.RaiseNotification): kind Other,
+    // polite messages queued (All), assertive ones replacing those not yet spoken (ImportantMostRecent).
+    internal const string AnnouncementActivityId = "Runic.Desktop.Announcement";
+
+    private static async ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(Window window, WpfWindowOwner owner, string message,
+        DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
+    {
+        var dispatcher = window.Dispatcher;
+        if (!owner.IsAvailable || dispatcher.HasShutdownStarted) return Closed;
+        try
+        {
+            return await dispatcher.InvokeAsync(() =>
+            {
+                // Check again on the window's thread: the window may have closed while the work was queued.
+                if (!owner.IsAvailable) return Closed;
+                var peer = UIElementAutomationPeer.FromElement(window) ?? UIElementAutomationPeer.CreatePeerForElement(window);
+                peer.RaiseNotificationEvent(AutomationNotificationKind.Other,
+                    priority == DesktopAnnouncementPriority.Assertive
+                        ? AutomationNotificationProcessing.ImportantMostRecent
+                        : AutomationNotificationProcessing.All,
+                    message, AnnouncementActivityId);
+                return Announced;
+            }, DispatcherPriority.Normal, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && dispatcher.HasShutdownStarted)
+        {
+            return Closed;
+        }
+    }
 
     private static PlatformResult<PlatformUnit> Present(Window window)
     {

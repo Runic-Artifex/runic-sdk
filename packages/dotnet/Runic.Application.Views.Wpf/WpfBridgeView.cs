@@ -22,6 +22,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     private Task<RunicWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _opening;
+    private DesktopWebContentPolicy _webContent = DesktopWebContentPolicy.Default;
     // Drops reach the ViewModel one after another; closing cancels them.
     private readonly CancellationTokenSource _dropStop = new();
     private Task _drops = Task.CompletedTask;
@@ -45,10 +46,26 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     public DesktopSurface Surface { get; }
     object IWpfBridgeView.ViewModel => ViewModel;
 
+    /// <summary>
+    /// Gets or sets what the child presentation's page may do beyond the application's origins: external navigation,
+    /// downloads and developer tools. The default is <see cref="DesktopWebContentPolicy.Default"/>.
+    /// </summary>
+    /// <remarks>The next <see cref="OpenAsync"/> applies it, as <see cref="DesktopWindowOptions.WebContent"/>; an open presentation keeps its policy.</remarks>
+    /// <exception cref="ArgumentNullException">The value is <see langword="null"/>.</exception>
+    public DesktopWebContentPolicy WebContent
+    {
+        get => Volatile.Read(ref _webContent);
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            Volatile.Write(ref _webContent, value);
+        }
+    }
+
     /// <summary>Opens the child presentation after its RunicWebView enters the loaded WPF visual tree.</summary>
     /// <remarks>
     /// The presentation is always the embedded WebView2, without a browser fallback: the WPF window owns the layout,
-    /// size and placement that window options would set.
+    /// size and placement that window options would set. It applies <see cref="WebContent"/>.
     /// </remarks>
     public async ValueTask OpenAsync(CancellationToken cancellationToken = default)
     {
@@ -56,6 +73,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
         {
             Browser = BrowserKind.Embedded,
             PresentationPolicy = DesktopPresentationPolicy.RequestedOnly,
+            WebContent = WebContent,
         };
         lock (_gate)
         {
@@ -189,6 +207,7 @@ internal interface IWpfBridgeView : IAsyncDisposable
 {
     object ViewModel { get; }
     DesktopSurface Surface { get; }
+    DesktopWebContentPolicy WebContent { get; set; }
     ValueTask OpenAsync(CancellationToken cancellationToken = default);
 }
 
@@ -201,8 +220,11 @@ public static class WpfBridgeViewExtensions
     // The Bridge registered for the model's class or its nearest base class; the generic factory for that class.
     [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Runic.Application.Views.Wpf is not trimmed or AOT-compiled; WPF isn't.")]
     [UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "Runic.Application.Views.Wpf is not trimmed or AOT-compiled; WPF isn't.")]
+    // With a window host factory, the surface presents through it instead of the DesktopHost's own, as RunicViewHost
+    // does on a DesktopHost the application shares between hosts.
     internal static Task<IWpfBridgeView> CreateWpfViewForModelAsync(this IServiceProvider services, DesktopHost desktop,
-        DesktopSurfaceOptions surfaceOptions, object viewModel, IRunicModelContext? modelContext, CancellationToken cancellationToken)
+        IDesktopWindowHostFactory? windowHostFactory, DesktopSurfaceOptions surfaceOptions, object viewModel,
+        IRunicModelContext? modelContext, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(viewModel);
@@ -211,7 +233,7 @@ public static class WpfBridgeViewExtensions
             if (services.GetService(BridgeFactoryType(typeof(Func<,,,>), type)) is null
                 && services.GetService(BridgeFactoryType(typeof(Func<,,>), type)) is null) continue;
             return (Task<IWpfBridgeView>)CreateTypedMethod.MakeGenericMethod(type)
-                .Invoke(null, [services, desktop, surfaceOptions, viewModel, modelContext, cancellationToken])!;
+                .Invoke(null, [services, desktop, windowHostFactory, surfaceOptions, viewModel, modelContext, cancellationToken])!;
         }
         throw new InvalidOperationException(
             $"No generated Bridge is registered for {viewModel.GetType().FullName} or its base classes. Declare a RunicView for it and call AddRunicViews().");
@@ -223,15 +245,23 @@ public static class WpfBridgeViewExtensions
         : definition.MakeGenericType(typeof(IBridgeTransport), model, typeof(IDisposable));
 
     private static async Task<IWpfBridgeView> CreateTypedAsync<TViewModel>(IServiceProvider services, DesktopHost desktop,
-        DesktopSurfaceOptions surfaceOptions, object viewModel, IRunicModelContext? modelContext, CancellationToken cancellationToken)
+        IDesktopWindowHostFactory? windowHostFactory, DesktopSurfaceOptions surfaceOptions, object viewModel,
+        IRunicModelContext? modelContext, CancellationToken cancellationToken)
         where TViewModel : class =>
-        await services.CreateWpfViewAsync(desktop, surfaceOptions, (TViewModel)viewModel, modelContext, cancellationToken).ConfigureAwait(false);
+        await CreateWpfViewCoreAsync(services, desktop, windowHostFactory, surfaceOptions, (TViewModel)viewModel, modelContext,
+            cancellationToken).ConfigureAwait(false);
 
     /// <summary>Attaches the generated Bridge to an existing model without creating a model, DI scope, or navigation engine.</summary>
     /// <remarks>The caller owns services, model, model context, and DesktopHost. This result owns only its surface and session.</remarks>
-    public static async ValueTask<WpfBridgeView<TViewModel>> CreateWpfViewAsync<TViewModel>(
+    public static ValueTask<WpfBridgeView<TViewModel>> CreateWpfViewAsync<TViewModel>(
         this IServiceProvider services, DesktopHost desktop, DesktopSurfaceOptions surfaceOptions,
         TViewModel viewModel, IRunicModelContext? modelContext = null, CancellationToken cancellationToken = default)
+        where TViewModel : class =>
+        CreateWpfViewCoreAsync(services, desktop, windowHostFactory: null, surfaceOptions, viewModel, modelContext, cancellationToken);
+
+    private static async ValueTask<WpfBridgeView<TViewModel>> CreateWpfViewCoreAsync<TViewModel>(
+        IServiceProvider services, DesktopHost desktop, IDesktopWindowHostFactory? windowHostFactory,
+        DesktopSurfaceOptions surfaceOptions, TViewModel viewModel, IRunicModelContext? modelContext, CancellationToken cancellationToken)
         where TViewModel : class
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -252,7 +282,9 @@ public static class WpfBridgeViewExtensions
         {
             // Lent, so a release after the application disposed its services logs to Trace instead of throwing.
             var loggerFactory = LentLoggerFactory.From(services);
-            surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
+            surface = windowHostFactory is null
+                ? await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false)
+                : await desktop.CreateSurfaceAsync(surfaceOptions, windowHostFactory, cancellationToken).ConfigureAwait(false);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
             content = new WindowContentSession(transport, new WindowContentSessionOptions
             {

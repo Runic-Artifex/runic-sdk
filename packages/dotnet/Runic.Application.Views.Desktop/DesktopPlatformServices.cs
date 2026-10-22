@@ -644,7 +644,9 @@ public static partial class DesktopPlatformServices
     /// reader there. A closed window reports <see cref="PlatformUnavailableReason.OwnerClosed"/>, and a custom window
     /// host without <see cref="DesktopWindowCapabilities.Announcements"/>
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. A ViewModel takes
-    /// <see cref="DesktopWindowPlatformServices"/> and calls its <see cref="DesktopWindowPlatformServices.AnnounceAsync"/>.
+    /// <see cref="IWindowPlatformServices"/> and calls its <see cref="IWindowPlatformServices.AnnounceAsync"/>, which
+    /// works on every host, or takes <see cref="DesktopWindowPlatformServices"/> and calls its
+    /// <see cref="DesktopWindowPlatformServices.AnnounceAsync"/>.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="message"/> is empty or white space.</exception>
     /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
@@ -814,6 +816,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private IWindowPlatformServices _current = NotOpen;
     private IWindowPlatformServices? _bound;
     private DesktopWindow? _window;
+    private Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? _announcer;
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
 
@@ -846,15 +849,18 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         }
     }
 
-    // A window of another Windows host, such as WPF, without a Desktop window to announce through.
+    // A window of another Windows host, such as WPF, without a Desktop window: announcements go to the host's own
+    // announcer, which checks its window, or report the owner unavailable without one.
     [SupportedOSPlatform("windows")]
-    internal void BindWindows(INativeWindowOwner owner)
+    internal void BindWindows(INativeWindowOwner owner,
+        Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? announcer = null)
     {
         lock (_gate)
         {
             if (_bound is not null) throw new InvalidOperationException("The platform services are already bound to a window.");
             if (_disposal is not null) return;
             _bound = DesktopPlatformServices.CreateForWindowsOwner(owner, out _provider);
+            _announcer = announcer;
             Volatile.Write(ref _current, _bound);
         }
     }
@@ -869,7 +875,10 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     /// <remarks>
     /// Announces as <see cref="DesktopPlatformServices.AnnounceAsync(IRunicWindow, string, DesktopAnnouncementPriority, CancellationToken)"/>
     /// does, with the same results. Before the window opens it reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>,
-    /// and after these services stop <see cref="PlatformUnavailableReason.OwnerClosed"/>.
+    /// and after these services stop <see cref="PlatformUnavailableReason.OwnerClosed"/>. The services of a WPF window,
+    /// from <c>WpfPlatformServices.ForWindow</c>, announce through the window's UI Automation peer.
+    /// <see cref="IWindowPlatformServices.AnnounceAsync"/> announces the same way, with
+    /// <see cref="PlatformAnnouncementPriority"/>.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="message"/> is empty or white space.</exception>
     public ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(string message,
@@ -877,14 +886,33 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         DesktopWindow? window;
+        Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? announcer;
         lock (_gate)
         {
             if (_disposal is not null)
                 return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
                     new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed));
             window = _window;
+            announcer = _announcer;
         }
-        return DesktopPlatformServices.AnnounceAsync(window, message, priority, cancellationToken);
+        if (announcer is null) return DesktopPlatformServices.AnnounceAsync(window, message, priority, cancellationToken);
+        if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        cancellationToken.ThrowIfCancellationRequested();
+        return announcer(message, priority, cancellationToken);
+    }
+
+    // Explicit, so a caller of the concrete type keeps binding to the overload above.
+    ValueTask<PlatformResult<PlatformUnit>> IWindowPlatformServices.AnnounceAsync(string message, PlatformAnnouncementPriority priority,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        var desktopPriority = priority switch
+        {
+            PlatformAnnouncementPriority.Polite => DesktopAnnouncementPriority.Polite,
+            PlatformAnnouncementPriority.Assertive => DesktopAnnouncementPriority.Assertive,
+            _ => throw new ArgumentOutOfRangeException(nameof(priority)),
+        };
+        return AnnounceAsync(message, desktopPriority, cancellationToken);
     }
 
     /// <summary>Stops the services: waits for platform operations, then releases file access the window still owns.</summary>
