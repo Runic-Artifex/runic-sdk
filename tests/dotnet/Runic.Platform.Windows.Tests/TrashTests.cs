@@ -111,6 +111,8 @@ internal sealed class TrashTests
             // Emptying deletes everything in the bin: only on an ephemeral CI runner.
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
             {
+                // Removing the parent above deleted the restored file; recycle a new one.
+                File.WriteAllText(file, "again");
                 Check(await trash.MoveToTrashAsync(file) is PlatformResult<PlatformUnit>.Success, "the file was recycled again");
                 var emptied = await trash.EmptyAsync();
                 Console.WriteLine($"Empty: {emptied}");
