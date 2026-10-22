@@ -4,6 +4,12 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Views.CsWebUi;
 
+// The WebUI window of a CsWebUiBridgeWindow of any ViewModel type.
+internal interface ICsWebUiNativeWindowSource
+{
+    WebUiWindow NativeWindow { get; }
+}
+
 /// <summary>
 /// Owns one CS-WebUI window, its DI scope, and its Bridge attachments.
 /// <see cref="RunicCsWebUiHost"/> creates it; <see cref="RunicWindow{TViewModel}.Host"/> returns it.
@@ -13,7 +19,7 @@ namespace Runic.Application.Views.CsWebUi;
 /// synchronous <c>Dispose</c>: accepted operations can keep the DI scope alive after
 /// the visible window closes, as with every <see cref="IBridgeWindow"/> host.
 /// </remarks>
-public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewModel : class
+public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNativeWindowSource where TViewModel : class
 {
     private readonly object _closeGate = new();
     private readonly IServiceScope _scope;
@@ -58,6 +64,8 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
 
     /// <summary>The underlying CS-WebUI window.</summary>
     public WebUiWindow Window => _window;
+
+    WebUiWindow ICsWebUiNativeWindowSource.NativeWindow => _window;
 
     // Shows the content with the application's presentation, WebUI's recommended presentation (an installed
     // browser in app mode, then the system default browser, then the platform WebView) or only in the WebView.

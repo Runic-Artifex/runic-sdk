@@ -110,6 +110,8 @@ static int ProbeWindowClose()
         await using var window = await host.OpenWindowAsync<ProbeWindow>();
         if (window.ViewModel is null || !ReferenceEquals(window.DataContext, window.ViewModel))
             throw new InvalidOperationException("The Window was not given its ViewModel.");
+        if (!ReferenceEquals(CsWebUiPlatformServices.GetNativeWindow(window), ((CsWebUiBridgeWindow<ProbeViewModel>)window.Host).Window))
+            throw new InvalidOperationException("GetNativeWindow did not return the Window's WebUI window.");
         var close = await window.CloseAsync(TimeSpan.Zero);
         await close.Completion;
         if (!close.Drained || close.RemainingOperations != 0)

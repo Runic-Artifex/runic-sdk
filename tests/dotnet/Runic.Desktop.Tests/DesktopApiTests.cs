@@ -848,6 +848,76 @@ public sealed class DesktopApiTests
         }
     }
 
+    // I-024: an embedded window hides and shows without closing.
+    [Test]
+    public async Task EmbeddedWindowsHideAndShowWithoutClosing()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+
+        Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.Visibility));
+        await window.HideAsync();
+        Assert.True(window.IsOpen);
+        await window.SetVisibleAsync(true);
+        await window.SetVisibleAsync(false);
+        Assert.Equal([false, true, false], factory.Host!.Visibility.ToArray());
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await window.SetVisibleAsync(true, cancelled.Token));
+
+        await window.CloseAsync();
+        Assert.Equal(DesktopWindowCapabilities.None, window.Capabilities);
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await window.HideAsync());
+    }
+
+    // I-024: Closed is raised once, on the thread pool, whatever closed the window; a throwing handler does not stop
+    // the others.
+    [Test]
+    public async Task ClosedIsRaisedOnceWhenTheUserOrTheApplicationClosesTheWindow()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+
+        await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
+        {
+            var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            var raised = 0;
+            var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.Closed += (_, _) => throw new InvalidOperationException("A failing handler.");
+            window.Closed += (sender, _) =>
+            {
+                Interlocked.Increment(ref raised);
+                closed.TrySetResult(ReferenceEquals(sender, window) && Thread.CurrentThread.IsThreadPoolThread && !window.IsOpen);
+            };
+            await Task.Delay(50);
+            Assert.Equal(0, Volatile.Read(ref raised));
+
+            factory.Host!.CloseByUser();
+            Assert.True(await closed.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+            await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.Delay(200);
+            Assert.Equal(1, Volatile.Read(ref raised));
+        }
+
+        await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
+        {
+            var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.Closed += (_, _) => closed.TrySetResult();
+            await window.CloseAsync();
+            await closed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            // Disposing the surface closes its window too.
+            var next = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            var nextClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            next.Closed += (_, _) => nextClosed.TrySetResult();
+            await surface.DisposeAsync();
+            await nextClosed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
     [Test]
     public async Task OnlyDirectoryContentServesLocalFiles()
     {
@@ -1515,8 +1585,19 @@ public sealed class DesktopApiTests
             Position = (x, y);
             return ValueTask.CompletedTask;
         }
-        public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+        internal ConcurrentQueue<bool> Visibility { get; } = new();
+        public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Visibility.Enqueue(visible);
+            return ValueTask.CompletedTask;
+        }
+        // The user closes the native window.
+        internal void CloseByUser()
+        {
+            IsOpen = false;
+            Closed?.Invoke(this, EventArgs.Empty);
+        }
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask DisposeAsync()
         {

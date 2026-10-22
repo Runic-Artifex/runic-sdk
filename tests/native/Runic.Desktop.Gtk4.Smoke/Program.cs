@@ -281,9 +281,11 @@ static async Task RunAsync()
     {
         throw new PlatformNotSupportedException("GTK 4 and WebKitGTK 6 are not available for the native smoke.");
     }
-    if (factory.Capabilities.HasFlag(DesktopWindowCapabilities.Move))
+    // GTK 4 positions windows only on X11 (I-146); on Wayland the compositor places them.
+    var x11 = Gtk4X11Placement.IsActive;
+    if (factory.Capabilities.HasFlag(DesktopWindowCapabilities.Move) != x11)
     {
-        throw new InvalidOperationException("GTK 4 must not advertise unsupported global window movement.");
+        throw new InvalidOperationException($"GTK 4 advertised window movement {factory.Capabilities.HasFlag(DesktopWindowCapabilities.Move)} with X11 {x11}.");
     }
 
     await using var host = factory.Create();
@@ -298,9 +300,9 @@ static async Task RunAsync()
     {
         throw new InvalidOperationException("GTK 4 host did not create a native window.");
     }
-    if (host.Capabilities.HasFlag(DesktopWindowCapabilities.Move))
+    if (host.Capabilities.HasFlag(DesktopWindowCapabilities.Move) != x11)
     {
-        throw new InvalidOperationException("GTK 4 host advertised unsupported global window movement.");
+        throw new InvalidOperationException("GTK 4 host advertised window movement on a display that has no window positions.");
     }
 
     var owner = new HostOwner((IDesktopNativeDispatchWindowHost)host);
@@ -429,6 +431,7 @@ static async Task ExerciseCancelledQueuedOpenAsync(Gtk4WindowHostFactory factory
 [SupportedOSPlatform("linux")]
 static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
 {
+    var x11 = Gtk4X11Placement.IsActive;
     Console.WriteLine("GTK4 smoke: exercising explicit DesktopHost integration and bridge.");
     var profile = new DesktopHostOptions().WithGtk4();
     if (profile.WindowHostFactory is not Gtk4WindowHostFactory || profile.Linux.EmbeddedBackend != LinuxEmbeddedBackend.Gtk4WebKit6)
@@ -462,7 +465,8 @@ static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
         Hidden = true,
         ConfirmCloseAsync = _ => ValueTask.FromResult(decisions.Dequeue()),
     });
-    if (window.Capabilities.HasFlag(DesktopWindowCapabilities.Move) ||
+    if (window.Capabilities.HasFlag(DesktopWindowCapabilities.Move) != x11 ||
+        !window.Capabilities.HasFlag(DesktopWindowCapabilities.Visibility) ||
         await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "GTK4 bridge")
     {
         throw new InvalidOperationException("GTK 4 DesktopHost bridge or capability contract failed.");
@@ -490,13 +494,93 @@ static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
         throw new InvalidOperationException("GTK 4 did not reopen a DesktopHost window on the same application runner.");
     }
     await restartedWindow.CloseAsync();
-    await ExerciseWindowStateAsync(host);
+    await ExerciseVisibilityAndClosedAsync(host);
+    await ExerciseWindowStateAsync(host, x11);
+    if (x11) await ExerciseX11PositionAsync(host);
     await FileDropGtk4Smoke.RunAsync(host);
 }
 
+// I-024: a window hides and shows without closing, and Closed is raised once when it closes.
+static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
+{
+    await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+    {
+        Content = new DesktopContent.Html("<!doctype html><title>GTK4 visibility</title><script src=\"webui.js\"></script>"),
+    });
+    var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+    var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var raised = 0;
+    window.Closed += (_, _) =>
+    {
+        Interlocked.Increment(ref raised);
+        closed.TrySetResult();
+    };
+    async Task<bool> MappedAsync()
+    {
+        var mapped = false;
+        await window.InvokeNativeAsync(handle => mapped = Gtk4Native.WidgetGetMapped(handle));
+        return mapped;
+    }
+    await window.HideAsync();
+    for (var waited = 0; await MappedAsync() && waited < 5000; waited += 20) await Task.Delay(20);
+    if (await MappedAsync() || !window.IsOpen)
+        throw new InvalidOperationException("HideAsync did not unmap the GTK 4 window or closed it.");
+    if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "GTK4 visibility")
+        throw new InvalidOperationException("The hidden GTK 4 window's page stopped answering.");
+    await window.SetVisibleAsync(true);
+    for (var waited = 0; !await MappedAsync() && waited < 5000; waited += 20) await Task.Delay(20);
+    if (!await MappedAsync())
+        throw new InvalidOperationException("SetVisibleAsync(true) did not map the GTK 4 window again.");
+    // Closes as the title bar's close button does, through the window's close request.
+    if (!await window.RequestCloseAsync())
+        throw new InvalidOperationException("The GTK 4 window refused to close.");
+    await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+    await Task.Delay(200);
+    if (window.IsOpen || Volatile.Read(ref raised) != 1)
+        throw new InvalidOperationException($"DesktopWindow.Closed was raised {raised} times for one user close.");
+    Console.WriteLine("GTK4 smoke: hide, show and the Closed event passed.");
+}
+
+// I-146: on X11 a window opens at its requested position, reports it in its state and moves.
+static async Task ExerciseX11PositionAsync(DesktopHost host)
+{
+    const string page = "<!doctype html><title>GTK4 position</title><script src=\"webui.js\"></script>";
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(page) }))
+    {
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, X = 120, Y = 90, Width = 400, Height = 300 });
+        var opened = await WaitForStateAsync(window, static state => state is { X: 120, Y: 90 }, "the position 120,90");
+        if (opened.Placement is not { X: 120, Y: 90 })
+            throw new InvalidOperationException($"The GTK 4 placement did not keep the position: {opened}.");
+        await window.MoveAsync(200, 150);
+        var moved = await WaitForStateAsync(window, static state => state is { X: 200, Y: 150, Placement: { X: 200, Y: 150 } }, "the position 200,150");
+        Console.WriteLine($"GTK4 smoke: X11 window opened at {opened.X},{opened.Y} and moved to {moved.X},{moved.Y}.");
+        await window.CloseAsync();
+    }
+    // A hidden window takes its position when it is first shown.
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(page) }))
+    {
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true, X = 60, Y = 40 });
+        await window.SetVisibleAsync(true);
+        await WaitForStateAsync(window, static state => state is { X: 60, Y: 40 }, "the position 60,40 of a window shown later");
+        await window.CloseAsync();
+    }
+    // A saved placement is restored with its position, kept on a monitor.
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(page) }))
+    {
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            Placement = new DesktopWindowPlacement { X = 30, Y = 20, Width = 320, Height = 240 },
+        });
+        await WaitForStateAsync(window, static state => state is { X: 30, Y: 20 }, "the restored position 30,20");
+        await window.CloseAsync();
+    }
+    Console.WriteLine("GTK4 smoke: X11 position, move, deferred position and placement restore passed.");
+}
+
 // W315-001: GTK 4 reports the size and maximized state, keeps the restored size in the placement, and restores a
-// placement fitted to a monitor, ignoring its position.
-static async Task ExerciseWindowStateAsync(DesktopHost host)
+// placement fitted to a monitor; on Wayland it ignores the position, on X11 it keeps the window on a monitor.
+static async Task ExerciseWindowStateAsync(DesktopHost host, bool x11)
 {
     const string page = "<!doctype html><title>GTK4 state</title><script src=\"webui.js\"></script>";
     DesktopWindowPlacement saved;
@@ -511,8 +595,9 @@ static async Task ExerciseWindowStateAsync(DesktopHost host)
             throw new InvalidOperationException("The GTK 4 window did not advertise its state.");
         var opened = await WaitForStateAsync(window, static _ => true, "an initial state");
         Console.WriteLine($"GTK4 smoke: window state opened as {opened}.");
-        if (opened.X is not null || opened.Placement.X is not null || opened.Width >= 20_000 || opened.Placement.Width >= 20_000)
-            throw new InvalidOperationException($"The GTK 4 placement was not fitted to a monitor without a position: {opened}.");
+        if (opened.Width >= 20_000 || opened.Placement.Width >= 20_000
+            || (x11 ? opened.X is not >= 0 || opened.Y is not >= 0 : opened.X is not null || opened.Placement.X is not null))
+            throw new InvalidOperationException($"The GTK 4 placement was not fitted to a monitor (X11 {x11}): {opened}.");
         var changed = 0;
         window.StateChanged += (_, _) => Interlocked.Increment(ref changed);
         await window.ResizeAsync(420, 300);
@@ -560,6 +645,14 @@ internal sealed class HostOwner(IDesktopNativeDispatchWindowHost host) : INative
             }
             action(host.NativeHandle);
         }, cancellationToken);
+}
+
+[SupportedOSPlatform("linux")]
+internal static partial class Gtk4Native
+{
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_mapped")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.I4)]
+    internal static partial bool WidgetGetMapped(nint widget);
 }
 
 internal static class SmokeMode

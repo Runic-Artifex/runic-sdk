@@ -63,6 +63,10 @@ internal static partial class DesktopLog
         Message = "A DesktopWindow.FilesDropped handler failed with {ErrorType}.")]
     internal static partial void FileDropHandlerFailed(ILogger logger, Exception exception, string errorType);
 
+    [LoggerMessage(EventId = 3013, EventName = "WindowClosedHandlerFailed", Level = LogLevel.Error,
+        Message = "A DesktopWindow.Closed handler failed with {ErrorType}.")]
+    internal static partial void WindowClosedHandlerFailed(ILogger logger, Exception exception, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

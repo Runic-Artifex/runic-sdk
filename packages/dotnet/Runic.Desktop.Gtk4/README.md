@@ -65,26 +65,37 @@ callback finishes, then exits GTK. This main-thread model avoids the current
 WebKitGTK exit-time threading defect ([WebKit bug 284807](https://bugs.webkit.org/show_bug.cgi?id=284807)).
 Each view owns a separate WebKit context.
 
-GTK4 deliberately omits `Move` and rejects global position, centering,
-transparent, high-contrast, profile-path, custom-argument, and icon-file
-options; `DesktopHost.Validate` reports each one as a `window-option-unsupported`
+GTK4 rejects centering, transparent, high-contrast, profile-path,
+custom-argument, and icon-file options, and on Wayland a global position;
+`DesktopHost.Validate` reports each one as a `window-option-unsupported`
 error before a window opens. It supports independent minimum dimensions.
 Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` selects the
 GTK 4 window services when the process runs this backend: portal-first file dialogs,
 parented through `Runic.Platform.Linux.Gtk4`, so KDE uses its own picker.
 
-GTK 4 has no window position: it neither reports nor sets where a top-level
-window is, on X11 or Wayland, so the compositor places every window. The window
-reports `DesktopWindowCapabilities.State`: `DesktopWindow.State` has the content
-size, maximized and full-screen state, and a `null` position.
-`State.Placement` holds GTK's default size, which GTK 4 updates when the user
-resizes the window and keeps while it is maximized, so it is the restored
-(unmaximized) size to save. Restoring `DesktopWindowOptions.Placement` applies
-its size and maximized state and ignores its position, without the
-`window-option-unsupported` error an explicit `X` and `Y` cause, so a placement
-saved with GTK 3 or on another machine still opens. GTK 4 cannot tell which
-monitor the compositor will choose, so the restored size is fitted to the
-largest monitor, and a work area without panels is not available. See
+GTK 4 itself has no window position API. On X11 Runic reads and sets the
+position of the window's X window through Xlib, as GTK 3 did: `X` and `Y` open
+the window there, the window reports `DesktopWindowCapabilities.Move` and
+`MoveAsync` moves it, and `DesktopWindow.State` and its `Placement` report the
+position in logical pixels: the top-left corner of the frame the window manager
+draws, or of GTK's own decorations without their shadow. A hidden window takes
+its position when it is first shown. The window manager may still adjust a
+requested position, as with GTK 3. Whether a process uses X11 follows GDK:
+`GDK_BACKEND`, else Wayland when `WAYLAND_DISPLAY` is set and X11 otherwise.
+
+On Wayland the compositor places every window: an explicit `X` and `Y` are
+rejected, the window has no `Move`, and the position in `State` is `null`.
+
+The window reports `DesktopWindowCapabilities.State`: `DesktopWindow.State` has
+the content size, maximized and full-screen state. `State.Placement` holds GTK's
+default size, which GTK 4 updates when the user resizes the window and keeps
+while it is maximized, so it is the restored (unmaximized) size to save.
+Restoring `DesktopWindowOptions.Placement` applies its size and maximized state,
+without the `window-option-unsupported` error an explicit `X` and `Y` cause on
+Wayland, so a placement saved with GTK 3 or on another machine still opens. On
+X11 its position is applied too, kept on a monitor's work area as GTK 3 does; on
+Wayland GTK 4 cannot tell which monitor the compositor will choose, so the
+position is ignored and the restored size is fitted to the largest monitor. See
 [Window state and restore](../Runic.Desktop/README.md#window-state-and-restore).
 
 The window reports `DesktopWindowCapabilities.FileDrop` once it finds WebKit's

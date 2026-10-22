@@ -111,7 +111,10 @@ The same Window and `async host => ...` body run on CS-WebUI with
   It exposes `ViewModel`, `Surface`, `Window`, `WaitForCloseAsync`, and `CloseAsync`, which
   stops new operations and waits for accepted ones before releasing the scope.
   `RunicDesktopHost.GetSurface(window)` returns the `Surface` of any Window of
-  this host without naming its ViewModel type, and `null` for another host's.
+  this host without naming its ViewModel type, and `null` for another host's;
+  `DesktopPlatformServices.GetWindow(window)` returns its `DesktopWindow` the
+  same way, also `null` under `RUNIC_APPLICATION_SERVE_ONLY=1`, for example to
+  hide it with `HideAsync` or subscribe to `Closed`.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `RunicWindowCloseResult`.
 - A Window with `GuardClose` (see
@@ -350,6 +353,14 @@ The same Window and `async host => ...` body run on CS-WebUI with
   bus with either toolkit; Windows uses the volume management API and ejects as
   "Safely Remove Hardware" does; macOS uses Disk Arbitration. See
   [Volumes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#volumes).
+- The secret store and the application database are registered without an
+  application ID, also by `AddRunicPlatformServices(applicationId)`.
+  `DesktopPlatformServices.CreateSecretStore(applicationId)` and
+  `CreateApplications(applicationId)` create them for an ID, checked as the
+  overload above checks it; on Linux their portal requests and diagnostics then
+  carry it, and the application database's portal connection registers it as
+  notifications do. Register one before calling `AddRunicPlatformServices` to
+  use it. Secrets are stored the same way with or without an ID.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativeWindowOwner`, which the services above bind to. The
   window services (file dialogs, the clipboard and file handoff) are created only

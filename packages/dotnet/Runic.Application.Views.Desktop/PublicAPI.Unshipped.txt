@@ -1,1 +1,4 @@
 #nullable enable
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateApplications(string! applicationId) -> Runic.Platform.IDesktopApplications!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string! applicationId) -> Runic.Platform.IDesktopSecretStore!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.GetWindow(Runic.Application.Views.IRunicWindow! window) -> Runic.Desktop.DesktopWindow?

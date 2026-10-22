@@ -865,7 +865,7 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <summary>Gets the platform-window operations the open window supports.</summary>
     /// <remarks>Only embedded windows report capabilities; installed browsers and closed windows report <see cref="DesktopWindowCapabilities.None"/>.</remarks>
     public DesktopWindowCapabilities Capabilities => IsOpen && Browser == BrowserKind.Embedded
-        ? _engine.WindowCapabilities |
+        ? _engine.WindowCapabilities | DesktopWindowCapabilities.Visibility |
           (_engine.SupportsCloseConfirmation ? DesktopWindowCapabilities.CloseConfirmation : DesktopWindowCapabilities.None)
         : DesktopWindowCapabilities.None;
 
@@ -885,6 +885,41 @@ public sealed class DesktopWindow : IAsyncDisposable
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Focus,
             () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken);
     }
+
+    /// <summary>Shows or hides the window without closing it.</summary>
+    /// <param name="visible"><see langword="true"/> to show the window; <see langword="false"/> to hide it.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the native window has been shown or hidden.</returns>
+    /// <remarks>
+    /// <para>
+    /// Requires <see cref="DesktopWindowCapabilities.Visibility"/>, which every embedded window reports; an installed
+    /// browser cannot be hidden. A hidden window stays open: <see cref="IsOpen"/> stays <see langword="true"/>, its page
+    /// keeps running and its Bridge stays connected, and <see cref="WaitForCloseAsync"/> keeps waiting. A window opened
+    /// with <see cref="DesktopWindowOptions.Hidden"/> is shown the same way. Whether showing also activates the window is
+    /// up to the platform and window manager; <see cref="FocusAsync"/> shows and activates it everywhere.
+    /// </para>
+    /// <para>
+    /// Only the application can show a hidden window again, so keep a way to reach it, such as a status icon or a second
+    /// launch that calls <see cref="FocusAsync"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
+    {
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Visibility,
+            () => _engine.SetEmbeddedVisibleAsync(visible, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>Hides the window without closing it, as <see cref="SetVisibleAsync"/> with <see langword="false"/>.</summary>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the native window has been hidden.</returns>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Visibility"/>. <see cref="SetVisibleAsync"/> or <see cref="FocusAsync"/> shows it again.</remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask HideAsync(CancellationToken cancellationToken = default) => SetVisibleAsync(false, cancellationToken);
 
     /// <summary>Asks the screen reader to announce a message, such as the result of an action.</summary>
     /// <param name="message">The text to speak, in the page's language.</param>
@@ -971,6 +1006,91 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) =>
         RequireAndMove(x, y, cancellationToken);
+
+    private readonly object _closedGate = new();
+    private EventHandler? _closedHandlers;
+    private int _closedMonitor;
+    private int _closedRaised;
+
+    /// <summary>Occurs once after the window has closed.</summary>
+    /// <remarks>
+    /// <para>
+    /// Raised whatever closed the window: the user, <see cref="RequestCloseAsync"/>, <see cref="CloseAsync"/>, disposing
+    /// the surface or host, a host shutdown, or the user closing an installed browser's window or the browser itself. It
+    /// is the event counterpart of <see cref="WaitForCloseAsync"/>, like <c>Window.Closed</c> in WPF and Avalonia:
+    /// <see cref="IsOpen"/> is then <see langword="false"/> and <see cref="State"/> holds the last state to save. The
+    /// native window's resources may still be being released; <see cref="WaitForCloseAsync"/> waits for that too.
+    /// </para>
+    /// <para>
+    /// Raised on the thread pool, never on the window's native thread. Watching starts when the first handler is added,
+    /// so a handler added after the window closed is still called once if the event has not been raised yet; a handler
+    /// added after the event was raised is not called. A handler that throws is logged (event 3013,
+    /// <c>WindowClosedHandlerFailed</c>) and does not stop the other handlers. An installed browser's window is noticed
+    /// within a fraction of a second, as <see cref="WaitForCloseAsync"/> notices it. On macOS and with the GTK 4 host the
+    /// process main thread must run <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>.
+    /// </para>
+    /// </remarks>
+    public event EventHandler? Closed
+    {
+        add
+        {
+            if (value is null) return;
+            lock (_closedGate) _closedHandlers += value;
+            if (Interlocked.Exchange(ref _closedMonitor, 1) == 0)
+            {
+                _ = Task.Run(MonitorCloseAsync);
+            }
+        }
+        remove
+        {
+            lock (_closedGate) _closedHandlers -= value;
+        }
+    }
+
+    private static readonly TimeSpan ClosePollInterval = TimeSpan.FromMilliseconds(100);
+
+    private async Task MonitorCloseAsync()
+    {
+        // The embedded host reports its close at once; a browser presentation is polled like WaitForCloseAsync polls it.
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnPresentationClosed(object? sender, EventArgs args) => signal.TrySetResult();
+        _engine.PresentationClosed += OnPresentationClosed;
+        try
+        {
+            while (IsOpen && !signal.Task.IsCompleted && !_closed.Task.IsCompleted)
+            {
+                await Task.WhenAny(signal.Task, _closed.Task, Task.Delay(ClosePollInterval)).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _engine.PresentationClosed -= OnPresentationClosed;
+        }
+        // The native release that follows may need the thread that owns the window; WaitForCloseAsync joins it.
+        RaiseClosed();
+    }
+
+    private void RaiseClosed()
+    {
+        if (Interlocked.Exchange(ref _closedRaised, 1) != 0) return;
+        EventHandler? handlers;
+        lock (_closedGate) handlers = _closedHandlers;
+        if (handlers is null) return;
+        foreach (EventHandler handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(this, EventArgs.Empty);
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                if (_engine.Logger is { } logger)
+                    Internal.DesktopLog.WindowClosedHandlerFailed(logger, error, Internal.DesktopLog.ErrorType(error));
+                else
+                    System.Diagnostics.Trace.TraceError($"A DesktopWindow.Closed handler failed with {error.GetType().FullName}.");
+            }
+        }
+    }
 
     /// <summary>Waits until this presentation closes while servicing platform window events.</summary>
     /// <param name="cancellationToken">Stops this caller's wait; it does not close the window.</param>

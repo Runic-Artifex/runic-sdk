@@ -11,6 +11,9 @@ internal interface IDesktopNativeOwnerSource
     DesktopNativeOwner? NativeOwnerOrNull { get; }
 
     DesktopSurface Surface { get; }
+
+    // The presentation, also after it closed; null before it opens and while serving without one.
+    DesktopWindow? WindowOrNull { get; }
 }
 
 /// <summary>Owns one Desktop surface, presentation, ViewModel scope, and Views session.</summary>
@@ -79,6 +82,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             : "The window serves without a presentation (RUNIC_APPLICATION_SERVE_ONLY), so it has no native owner.");
 
     DesktopNativeOwner? IDesktopNativeOwnerSource.NativeOwnerOrNull => Volatile.Read(ref _nativeOwner);
+    DesktopWindow? IDesktopNativeOwnerSource.WindowOrNull => Volatile.Read(ref _presentation);
 
     internal void Attach(IDisposable attachment)
     {

@@ -1,1 +1,5 @@
 #nullable enable
+Runic.Desktop.DesktopWindow.Closed -> System.EventHandler?
+Runic.Desktop.DesktopWindow.HideAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowCapabilities.Visibility = 1024 -> Runic.Desktop.DesktopWindowCapabilities

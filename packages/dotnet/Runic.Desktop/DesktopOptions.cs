@@ -340,6 +340,7 @@ public sealed record DesktopWebContentPolicy
 }
 
 /// <summary>Identifies a platform-window operation reported by a presentation.</summary>
+/// <remarks>Open: a later minor release can add operations, so test for the flags you use.</remarks>
 [Flags]
 public enum DesktopWindowCapabilities
 {
@@ -380,6 +381,12 @@ public enum DesktopWindowCapabilities
     /// The window reports files the user drops onto it, with their native paths (<see cref="DesktopWindow.FilesDropped"/>).
     /// </summary>
     FileDrop = 1 << 9,
+
+    /// <summary>
+    /// The window can be hidden and shown again without closing it (<see cref="DesktopWindow.SetVisibleAsync"/> and
+    /// <see cref="DesktopWindow.HideAsync"/>). Every embedded window reports it.
+    /// </summary>
+    Visibility = 1 << 10,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

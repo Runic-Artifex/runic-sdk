@@ -421,6 +421,13 @@ static async Task ExerciseFirstWindowAsync(DesktopSurface surface, DesktopWindow
         throw new InvalidOperationException("The embedded window did not advertise announcements.");
     await window.AnnounceAsync("Runic Desktop smoke announcement");
     await window.AnnounceAsync("Runic Desktop smoke alert", DesktopAnnouncementPriority.Assertive);
+    // I-024: a hidden window stays open and its page keeps answering; showing it brings it back.
+    if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.Visibility))
+        throw new InvalidOperationException("The embedded window did not advertise visibility.");
+    await window.HideAsync();
+    if (!window.IsOpen || await surface.ExecuteJavaScriptAsync("return 41 + 1;", TimeSpan.FromSeconds(10)) != "42")
+        throw new InvalidOperationException("Hiding the embedded window closed it or stopped its page.");
+    await window.SetVisibleAsync(true);
     await window.FocusAsync();
     await window.MinimizeAsync();
     await window.ToggleMaximizedAsync();
@@ -431,6 +438,13 @@ static async Task ExerciseCloseGuardAsync(DesktopSurface surface, DesktopWindow 
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
     if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation))
         throw new InvalidOperationException("The native host did not advertise close confirmation.");
+    var closedEvents = 0;
+    var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    window.Closed += (_, _) =>
+    {
+        Interlocked.Increment(ref closedEvents);
+        closed.TrySetResult();
+    };
     await NativeCloseRequest.SendAsync(window.NativeHandle).WaitAsync(timeout.Token);
     await guard.Entered.Task.WaitAsync(timeout.Token);
     // The native loop and bridge must remain responsive while the decision is outstanding.
@@ -447,7 +461,12 @@ static async Task ExerciseCloseGuardAsync(DesktopSurface surface, DesktopWindow 
     guard.Decision.SetResult(true);
     if (!await allowed) throw new InvalidOperationException("An approved native close request was denied.");
     AssertClosed(window);
-    Console.WriteLine("Native close interception passed: deferred decision, responsive bridge, veto, retry, approval.");
+    // I-024: the vetoed requests raised nothing; the approved close raises Closed once.
+    await closed.Task.WaitAsync(timeout.Token);
+    await Task.Delay(200, timeout.Token);
+    if (Volatile.Read(ref closedEvents) != 1)
+        throw new InvalidOperationException($"DesktopWindow.Closed was raised {closedEvents} times.");
+    Console.WriteLine("Native close interception passed: deferred decision, responsive bridge, veto, retry, approval, Closed.");
 }
 
 static async Task ExerciseRestartedWindowAsync(DesktopSurface surface)

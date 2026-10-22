@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.CsWebUi.CsWebUiPlatformServices
+static Runic.Application.Views.CsWebUi.CsWebUiPlatformServices.GetNativeWindow(Runic.Application.Views.IRunicWindow! window) -> CsWebUi.WebUiWindow?
