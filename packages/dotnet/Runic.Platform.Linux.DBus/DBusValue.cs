@@ -94,6 +94,12 @@ public readonly struct DBusValue : IEquatable<DBusValue>
         foreach (var item in values)
             if (item._signature != element)
                 throw new ArgumentException($"An item of signature \"{item.Signature}\" is not \"{element}\".", nameof(items));
+        if (element == "y")
+        {
+            var bytes = new byte[values.Length];
+            for (int index = 0; index < bytes.Length; index++) bytes[index] = (byte)values[index]._value!;
+            return new("ay", new BytesBox(ImmutableCollectionsMarshal.AsImmutableArray(bytes)));
+        }
         return new("a" + element, new ArrayBox(values));
     }
 
@@ -112,12 +118,8 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     }
 
     /// <summary>Creates an <c>ay</c> value.</summary>
-    public static DBusValue ByteArray(ReadOnlySpan<byte> items)
-    {
-        var values = ImmutableArray.CreateBuilder<DBusValue>(items.Length);
-        foreach (byte item in items) values.Add(From(item));
-        return new("ay", new ArrayBox(values.MoveToImmutable()));
-    }
+    /// <remarks>The value keeps the bytes as one block, so a large <c>ay</c> costs about its length in memory.</remarks>
+    public static DBusValue ByteArray(ReadOnlySpan<byte> items) => new("ay", new BytesBox(ImmutableCollectionsMarshal.AsImmutableArray(items.ToArray())));
 
     /// <summary>Creates a dictionary, such as <c>a{sv}</c>, from entries whose keys have a basic type.</summary>
     /// <exception cref="ArgumentException">The key signature is not a basic type, the value signature is not one complete type,
@@ -200,8 +202,13 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     public DBusValue GetVariant() => Get<VariantBox>("v").Value;
 
     /// <summary>Gets the items of an array that is not a dictionary.</summary>
-    public ImmutableArray<DBusValue> GetItems() =>
-        _value is ArrayBox array ? array.Items : throw Mismatch("an array");
+    /// <remarks>For an <c>ay</c>, <see cref="GetByteArray"/> reads the bytes without creating a value for each.</remarks>
+    public ImmutableArray<DBusValue> GetItems() => _value switch
+    {
+        ArrayBox array => array.Items,
+        BytesBox bytes => [.. bytes.Bytes.Select(static item => From(item))],
+        _ => throw Mismatch("an array"),
+    };
 
     /// <summary>Gets the entries of a dictionary, in message order.</summary>
     public ImmutableArray<KeyValuePair<DBusValue, DBusValue>> GetEntries() =>
@@ -219,7 +226,8 @@ public readonly struct DBusValue : IEquatable<DBusValue>
         _signature == "ao" ? [.. GetItems().Select(static item => item.GetObjectPath())] : throw Mismatch("ao");
 
     /// <summary>Gets the bytes of an <c>ay</c> value.</summary>
-    public ImmutableArray<byte> GetByteArray() => _signature == "ay" ? [.. GetItems().Select(static item => item.GetByte())] : throw Mismatch("ay");
+    /// <remarks>The bytes are the value's own, not a copy.</remarks>
+    public ImmutableArray<byte> GetByteArray() => _value is BytesBox bytes ? bytes.Bytes : throw Mismatch("ay");
 
     /// <summary>Gets an <c>a{sv}</c> value as a dictionary of the values inside its variants.</summary>
     public ImmutableDictionary<string, DBusValue> GetVariantDictionary() => _signature == "a{sv}"
@@ -245,6 +253,7 @@ public readonly struct DBusValue : IEquatable<DBusValue>
         {
             (null, null) => true,
             (ArrayBox left, ArrayBox right) => left.Items.SequenceEqual(right.Items),
+            (BytesBox left, BytesBox right) => left.Bytes.AsSpan().SequenceEqual(right.Bytes.AsSpan()),
             (StructBox left, StructBox right) => left.Fields.SequenceEqual(right.Fields),
             (DictionaryBox left, DictionaryBox right) => left.Entries.SequenceEqual(right.Entries),
             (VariantBox left, VariantBox right) => left.Value.Equals(right.Value),
@@ -265,6 +274,7 @@ public readonly struct DBusValue : IEquatable<DBusValue>
         switch (_value)
         {
             case ArrayBox array: foreach (var item in array.Items) hash.Add(item); break;
+            case BytesBox bytes: hash.AddBytes(bytes.Bytes.AsSpan()); break;
             case StructBox structure: foreach (var field in structure.Fields) hash.Add(field); break;
             case DictionaryBox dictionary: foreach (var entry in dictionary.Entries) { hash.Add(entry.Key); hash.Add(entry.Value); } break;
             case VariantBox variant: hash.Add(variant.Value); break;
@@ -301,6 +311,15 @@ public readonly struct DBusValue : IEquatable<DBusValue>
             case IFormattable value: text.Append(value.ToString(null, CultureInfo.InvariantCulture)); break;
             case VariantBox variant: text.Append('<'); variant.Value.Format(text); text.Append('>'); break;
             case ArrayBox array: Join(text, '[', array.Items, ']'); break;
+            case BytesBox bytes:
+                text.Append('[');
+                for (int index = 0; index < bytes.Bytes.Length; index++)
+                {
+                    if (index > 0) text.Append(", ");
+                    text.Append(bytes.Bytes[index].ToString(CultureInfo.InvariantCulture));
+                }
+                text.Append(']');
+                break;
             case StructBox structure: Join(text, '(', structure.Fields, ')'); break;
             case DictionaryBox dictionary:
                 text.Append('{');
@@ -330,12 +349,15 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     // Internal constructors for values read from a message, whose signature the wire reader already checked.
     internal static DBusValue FromWire(string signature, object value) => new(signature, value);
     internal static DBusValue ArrayFromWire(string signature, ImmutableArray<DBusValue> items) => new(signature, new ArrayBox(items));
+    internal static DBusValue BytesFromWire(byte[] bytes) => new("ay", new BytesBox(ImmutableCollectionsMarshal.AsImmutableArray(bytes)));
     internal static DBusValue DictionaryFromWire(string signature, ImmutableArray<KeyValuePair<DBusValue, DBusValue>> entries) => new(signature, new DictionaryBox(entries));
     internal static DBusValue StructFromWire(string signature, ImmutableArray<DBusValue> fields) => new(signature, new StructBox(fields));
     internal object? Payload => _value;
 
     internal sealed record VariantBox(DBusValue Value);
     internal sealed record ArrayBox(ImmutableArray<DBusValue> Items);
+    // An ay keeps its bytes packed instead of one boxed value per byte.
+    internal sealed record BytesBox(ImmutableArray<byte> Bytes);
     internal sealed record StructBox(ImmutableArray<DBusValue> Fields);
     internal sealed record DictionaryBox(ImmutableArray<KeyValuePair<DBusValue, DBusValue>> Entries);
 }

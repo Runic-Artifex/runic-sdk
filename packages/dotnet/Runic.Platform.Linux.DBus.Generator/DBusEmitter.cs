@@ -350,7 +350,7 @@ internal static class DBusEmitter
     private static readonly string[] ObjectMembers = ["Equals", "GetHashCode", "GetType", "ToString", "MemberwiseClone", "Finalize", "ReferenceEquals"];
 
     // DBusProxy's members. A generated member must not hide or overload them, except the designed WatchPropertiesAsync overload.
-    private static readonly string[] ProxyMembers = ["CallAsync", "Connection", "Destination", "Path", "GetPropertyAsync", "SetPropertyAsync",
+    private static readonly string[] ProxyMembers = ["CallAsync", "Connection", "Destination", "Path", "Timeout", "GetPropertyAsync", "SetPropertyAsync",
         "GetAllPropertiesAsync", "SubscribePropertiesAsync", "SubscribeSignalAsync", "WatchPropertiesAsync", "WatchSignalAsync", "ReadPropertyChanges"];
 
     // DBusObject's members, which the generated service overrides or calls.
@@ -361,38 +361,38 @@ internal static class DBusEmitter
     {
         var names = new Names(name, ObjectMembers.Concat(ProxyMembers).Concat(["InterfaceName", "GetPropertiesAsync"]));
         foreach (var method in Members(element, "method"))
-            names.Add(Prettify(MemberName(method, iface)) + "Async", $"method {iface}.{MemberName(method, iface)}");
+            names.Add(Prettify(MemberName(method, iface)) + "Async", $"method {iface}.{MemberName(method, iface)}", method);
         foreach (var property in properties)
         {
-            if (property.Readable) names.Add("Get" + Prettify(property.Name) + "Async", $"property {iface}.{property.Name}");
-            if (property.Writable) names.Add("Set" + Prettify(property.Name) + "Async", $"property {iface}.{property.Name}");
+            if (property.Readable) names.Add("Get" + Prettify(property.Name) + "Async", $"property {iface}.{property.Name}", property.Element);
+            if (property.Writable) names.Add("Set" + Prettify(property.Name) + "Async", $"property {iface}.{property.Name}", property.Element);
         }
         foreach (var signal in Members(element, "signal"))
         {
             string member = MemberName(signal, iface);
-            names.Add("Watch" + Prettify(member) + "Async", $"signal {iface}.{member}");
-            names.Add("Read" + Prettify(member), $"signal {iface}.{member}");
+            names.Add("Watch" + Prettify(member) + "Async", $"signal {iface}.{member}", signal);
+            names.Add("Read" + Prettify(member), $"signal {iface}.{member}", signal);
         }
         // The properties class: one property per readable D-Bus property, next to Invalidated and Read.
         var values = new Names(name + "Properties", ObjectMembers.Concat(["Invalidated", "Read"]));
         foreach (var property in properties.Where(static p => p.Readable))
-            values.Add(Prettify(property.Name).TrimStart('@'), $"property {iface}.{property.Name}");
+            values.Add(Prettify(property.Name).TrimStart('@'), $"property {iface}.{property.Name}", property.Element);
     }
 
     private static void CheckServiceNames(string name, List<(XElement Element, string Name, string Constant)> interfaces)
     {
         var names = new Names(name, ObjectMembers.Concat(ServiceMembers));
-        foreach (var (_, iface, constant) in interfaces) names.Add(constant, $"the constant of interface {iface}");
+        foreach (var (element, iface, constant) in interfaces) names.Add(constant, $"the constant of interface {iface}", element);
         foreach (var (element, iface, _) in interfaces)
         {
             foreach (var method in Members(element, "method"))
-                names.Add(Prettify(MemberName(method, iface)) + "Async", $"method {iface}.{MemberName(method, iface)}");
+                names.Add(Prettify(MemberName(method, iface)) + "Async", $"method {iface}.{MemberName(method, iface)}", method);
             foreach (var signal in Members(element, "signal"))
-                names.Add("Emit" + Prettify(MemberName(signal, iface)), $"signal {iface}.{MemberName(signal, iface)}");
+                names.Add("Emit" + Prettify(MemberName(signal, iface)), $"signal {iface}.{MemberName(signal, iface)}", signal);
             foreach (var property in Properties(element))
             {
-                names.Add(Prettify(property.Name).TrimStart('@'), $"property {iface}.{property.Name}");
-                names.Add("OnSet" + Prettify(property.Name) + "Async", $"property {iface}.{property.Name}");
+                names.Add(Prettify(property.Name).TrimStart('@'), $"property {iface}.{property.Name}", property.Element);
+                names.Add("OnSet" + Prettify(property.Name) + "Async", $"property {iface}.{property.Name}", property.Element);
             }
         }
     }
@@ -410,12 +410,12 @@ internal static class DBusEmitter
             _reserved = new HashSet<string>(reserved, StringComparer.Ordinal) { type };
         }
 
-        public void Add(string member, string source)
+        public void Add(string member, string source, XElement element)
         {
             if (_reserved.Contains(member))
-                throw new DBusNameCollisionException($"{_type}.{member}, generated for the {source}, would take the name of an inherited or generated member of {_type}.");
+                throw new DBusNameCollisionException($"{_type}.{member}, generated for the {source}, would take the name of an inherited or generated member of {_type}.", element);
             if (_generated.TryGetValue(member, out string? other))
-                throw new DBusNameCollisionException($"{_type}.{member} would be generated for both the {other} and the {source}.");
+                throw new DBusNameCollisionException($"{_type}.{member} would be generated for both the {other} and the {source}.", element);
             _generated.Add(member, source);
         }
     }
@@ -453,8 +453,9 @@ internal static class DBusEmitter
         public string Signature { get; } = signature;
     }
 
-    private sealed class Property(string name, string signature, string access, string emits)
+    private sealed class Property(XElement element, string name, string signature, string access, string emits)
     {
+        public XElement Element { get; } = element;
         public string Name { get; } = name;
         public string Signature { get; } = signature;
         public bool Readable => access is "read" or "readwrite";
@@ -462,12 +463,12 @@ internal static class DBusEmitter
         public string Emits { get; } = emits;
     }
 
-    private static IEnumerable<XElement> Members(XElement element, string kind) => element.Elements().Where(e => e.Name.LocalName == kind);
+    internal static IEnumerable<XElement> Members(XElement element, string kind) => element.Elements().Where(e => e.Name.LocalName == kind);
 
     private static string MemberName(XElement member, string iface)
     {
         string name = (string?)member.Attribute("name") ?? "";
-        if (!IsMemberName(name)) throw new DBusGenerationException($"A {member.Name.LocalName} of {iface} has the name '{name}', which is not a D-Bus member name.");
+        if (!IsMemberName(name)) throw new DBusGenerationException($"A {member.Name.LocalName} of {iface} has the name '{name}', which is not a D-Bus member name.", member);
         return name;
     }
 
@@ -480,7 +481,7 @@ internal static class DBusEmitter
             if (direction is not null && argDirection != direction) continue;
             string signature = (string?)arg.Attribute("type") ?? "";
             if (!Signatures.IsSingleCompleteType(signature))
-                throw new DBusGenerationException($"An argument of {(string?)member.Attribute("name")} has the type '{signature}', which is not one complete D-Bus type.");
+                throw new DBusGenerationException($"An argument of {(string?)member.Attribute("name")} has the type '{signature}', which is not one complete D-Bus type.", arg);
             args.Add(new Arg((string?)arg.Attribute("name"), signature));
         }
         return args;
@@ -494,15 +495,15 @@ internal static class DBusEmitter
             string name = MemberName(property, (string)element.Attribute("name")!);
             string signature = (string?)property.Attribute("type") ?? "";
             if (!Signatures.IsSingleCompleteType(signature))
-                throw new DBusGenerationException($"The property {name} has the type '{signature}', which is not one complete D-Bus type.");
+                throw new DBusGenerationException($"The property {name} has the type '{signature}', which is not one complete D-Bus type.", property);
             string access = (string?)property.Attribute("access") ?? "";
             if (access is not ("read" or "write" or "readwrite"))
-                throw new DBusGenerationException($"The property {name} has the access '{access}'; use read, write or readwrite.");
-            yield return new Property(name, signature, access, Annotation(property, "org.freedesktop.DBus.Property.EmitsChangedSignal") ?? defaultEmits);
+                throw new DBusGenerationException($"The property {name} has the access '{access}'; use read, write or readwrite.", property);
+            yield return new Property(property, name, signature, access, Annotation(property, "org.freedesktop.DBus.Property.EmitsChangedSignal") ?? defaultEmits);
         }
     }
 
-    private static string? Annotation(XElement element, string name) =>
+    internal static string? Annotation(XElement element, string name) =>
         element.Elements().Where(e => e.Name.LocalName == "annotation" && (string?)e.Attribute("name") == name).Select(e => (string?)e.Attribute("value")).FirstOrDefault();
 
     private static List<Parameter> Parameters(List<Arg> args, params string[] reserved)
@@ -579,6 +580,8 @@ internal static class DBusEmitter
         'v' => $"{Ns}DBusValue.Variant({expression})",
         'a' when signature[1] == '{' =>
             $"{Ns}DBusValue.Dictionary(\"{signature.Substring(2, 1)}\", \"{signature.Substring(3, signature.Length - 4)}\", global::System.Linq.Enumerable.Select({expression}, static entry => global::System.Collections.Generic.KeyValuePair.Create({ToValue("entry.Key", signature.Substring(2, 1))}, {ToValue("entry.Value", signature.Substring(3, signature.Length - 4))})))",
+        // An ay goes in and out as one block of bytes, not a value per byte.
+        'a' when signature == "ay" => $"{Ns}DBusValue.ByteArray({expression}.AsSpan())",
         'a' => $"{Ns}DBusValue.Array(\"{signature.Substring(1)}\", global::System.Linq.Enumerable.Select({expression}, static item => {ToValue("item", signature.Substring(1))}))",
         '(' => $"{Ns}DBusValue.Struct({string.Join(", ", Signatures.Split(signature.Substring(1, signature.Length - 2)).Select((field, index) => ToValue($"{expression}.Item{index + 1}", field)))})",
         _ => $"{Ns}DBusValue.From({expression})",
@@ -602,6 +605,7 @@ internal static class DBusEmitter
         'v' => $"{expression}.GetVariant()",
         'a' when signature[1] == '{' =>
             $"{Immutable}ImmutableDictionary.ToImmutableDictionary({expression}.GetEntries(), static entry => {FromValue("entry.Key", signature.Substring(2, 1))}, static entry => {FromValue("entry.Value", signature.Substring(3, signature.Length - 4))})",
+        'a' when signature == "ay" => $"{expression}.GetByteArray()",
         'a' => $"{Immutable}ImmutableArray.ToImmutableArray(global::System.Linq.Enumerable.Select({expression}.GetItems(), static item => {FromValue("item", signature.Substring(1))}))",
         '(' => StructFromValue(expression, signature),
         _ => throw new DBusGenerationException($"Unsupported type '{signature}'."),

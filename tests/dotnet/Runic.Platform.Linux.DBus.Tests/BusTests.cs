@@ -251,6 +251,128 @@ internal sealed class BusTests
             "an existing registration is kept");
     }
 
+    [Test, Explicit, Category("DBus"), DisplayName("a call that outlives its timeout fails with NoReply, from a call or a proxy")]
+    public async Task TimeoutAsync()
+    {
+        await using var service = await ConnectAsync();
+        await using var client = await ConnectAsync();
+        await using var export = service.Export(ObjectPath, new EchoObject());
+        var started = Stopwatch.StartNew();
+        var call = new DBusMethodCall(service.UniqueName, ObjectPath, Interface, "Sleep") { Arguments = [DBusValue.From(5000)], Timeout = TimeSpan.FromMilliseconds(200) };
+        Check(await ErrorAsync(() => client.CallMethodAsync(call)) is { ErrorName: DBusException.NoReply }, "the call times out with NoReply");
+        Check(started.Elapsed < TimeSpan.FromSeconds(4), $"the timeout ended the wait ({started.Elapsed})");
+        var proxy = new DBusProxy(client, service.UniqueName, ObjectPath) { Timeout = TimeSpan.FromMilliseconds(200) };
+        Check(await ErrorAsync(() => proxy.CallAsync(Interface, "Sleep", [DBusValue.From(5000)])) is { ErrorName: DBusException.NoReply }, "the proxy's timeout applies");
+        Check((await proxy.CallAsync(Interface, "Echo", [DBusValue.From(1)])) is [{ } one] && one.GetInt32() == 1, "a prompt reply arrives within the timeout");
+        Check((await proxy.GetPropertyAsync(Interface, "Volume")).GetDouble() == 0.5, "property reads go through the proxy's timeout too");
+        Check(await ErrorAsync(() => client.CallMethodAsync(call with { Timeout = System.Threading.Timeout.InfiniteTimeSpan, Arguments = [DBusValue.From(50)] })) is null,
+            "an infinite timeout waits");
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await ThrowsAsync<OperationCanceledException>(() => client.CallMethodAsync(call with { Timeout = TimeSpan.FromSeconds(30) }, cancel.Token).AsTask(),
+            "cancelling the token still cancels before the timeout");
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("argument keys of a signal filter deliver only the signals they match")]
+    public async Task ArgumentFiltersAsync()
+    {
+        await using var service = await ConnectAsync();
+        await using var client = await ConnectAsync();
+        var echo = new EchoObject();
+        await using var export = service.Export(ObjectPath, echo);
+        DBusSignalFilter Tagged() => new() { Sender = service.UniqueName, Path = ObjectPath, Interface = Interface, Member = "Tagged" };
+        await using var second = await client.SubscribeAsync(Tagged() with { Arguments = ImmutableDictionary<int, string>.Empty.Add(1, "keep") });
+        await using var path = await client.SubscribeAsync(Tagged() with { ArgumentPaths = ImmutableDictionary<int, string>.Empty.Add(2, "/org/runic/") });
+        await using var space = await client.SubscribeAsync(Tagged() with { Arg0Namespace = "org.runic" });
+        await using var first = await client.SubscribeAsync(Tagged() with { ArgumentPaths = ImmutableDictionary<int, string>.Empty.Add(0, "/org/runic/") });
+        await using var all = await client.SubscribeAsync(Tagged());
+        static DBusValue[] Args(string name, string tag, string objectPath) => [DBusValue.From(name), DBusValue.From(tag), DBusValue.From(new DBusObjectPath(objectPath))];
+        Check(echo.Tag(Args("org.runic.Player", "keep", "/org/runic/a")) && echo.Tag(Args("org.runicx", "drop", "/org/other"))
+            && echo.Tag(Args("org.runic", "drop", "/org/runicx")) && echo.Tag(Args("/org/runic/a/b", "keep", "/org")) && echo.Tag([DBusValue.From(5)]), "emitting");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        // Every signal reached the unfiltered subscription; the connection dispatches in order, so the others have theirs.
+        await using (var marks = all.GetAsyncEnumerator(timeout.Token))
+            for (int index = 0; index < 5; index++) Check(await marks.MoveNextAsync(), $"signal {index} arrived");
+        // What each subscription received is already buffered: read until it has nothing more for a moment.
+        static async Task<List<string>> FirstArgumentsAsync(DBusSignalSubscription subscription)
+        {
+            var seen = new List<string>();
+            using var idle = new CancellationTokenSource();
+            await using var signals = subscription.GetAsyncEnumerator(idle.Token);
+            while (true)
+            {
+                idle.CancelAfter(TimeSpan.FromMilliseconds(200));
+                try { if (!await signals.MoveNextAsync()) break; }
+                catch (OperationCanceledException) { break; }
+                var first = signals.Current.Arguments[0];
+                seen.Add(first.Signature.Value == "s" ? first.GetString() : first.ToString());
+            }
+            return seen;
+        }
+        Check((await FirstArgumentsAsync(second)).SequenceEqual(["org.runic.Player", "/org/runic/a/b"]), "arg1 matches the string");
+        // /org/runic/ matches /org/runic/a below it, but not /org/runicx, /org/other, or /org, which does not end in '/'.
+        Check((await FirstArgumentsAsync(path)).SequenceEqual(["org.runic.Player"]), "arg2path matches paths below the prefix");
+        Check((await FirstArgumentsAsync(space)).SequenceEqual(["org.runic.Player", "org.runic"]), "arg0namespace matches the name and names below it");
+        Check((await FirstArgumentsAsync(first)).SequenceEqual(["/org/runic/a/b"]), "arg0path matches a string argument below the prefix");
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("a filter with an argument position outside 0-63, conflicting arg0 keys or a bad namespace is refused")]
+    public async Task ArgumentFilterValidationAsync()
+    {
+        await using var client = await ConnectAsync();
+        await ThrowsAsync<ArgumentException>(() => client.SubscribeAsync(new DBusSignalFilter { Arguments = ImmutableDictionary<int, string>.Empty.Add(64, "x") }).AsTask(), "position 64");
+        await ThrowsAsync<ArgumentException>(() => client.SubscribeAsync(new DBusSignalFilter { ArgumentPaths = ImmutableDictionary<int, string>.Empty.Add(-1, "/") }).AsTask(), "position -1");
+        await ThrowsAsync<ArgumentException>(() => client.SubscribeAsync(new DBusSignalFilter { Arg0 = "a", Arguments = ImmutableDictionary<int, string>.Empty.Add(0, "b") }).AsTask(),
+            "different arg0 values");
+        await ThrowsAsync<ArgumentException>(() => client.SubscribeAsync(new DBusSignalFilter { Arg0Namespace = "org..runic" }).AsTask(), "a bad namespace");
+        await using var same = await client.SubscribeAsync(new DBusSignalFilter { Arg0 = "a", Arguments = ImmutableDictionary<int, string>.Empty.Add(0, "a") });
+        await using var single = await client.SubscribeAsync(new DBusSignalFilter { Arg0Namespace = "org" });
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("a large ay crosses the bus as one block of bytes")]
+    public async Task LargeByteArrayAsync()
+    {
+        await using var service = await ConnectAsync();
+        await using var client = await ConnectAsync();
+        await using var export = service.Export(ObjectPath, new EchoObject());
+        var bytes = new byte[4 * 1024 * 1024];
+        new Random(20).NextBytes(bytes);
+        var reply = await new DBusProxy(client, service.UniqueName, ObjectPath).CallAsync(Interface, "Echo",
+            [DBusValue.ByteArray(bytes), DBusValue.Array("ay", [DBusValue.ByteArray([1]), DBusValue.ByteArray([])])]);
+        Check(reply is [var echoed, var nested] && echoed.GetByteArray().AsSpan().SequenceEqual(bytes) && nested.GetItems()[0].GetByteArray() is [1]
+            && nested.GetItems()[1].GetByteArray().IsEmpty, "the bytes and nested byte arrays came back");
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("the ObjectManager proxy reads the managed objects and their interface changes")]
+    public async Task ObjectManagerAsync()
+    {
+        await using var service = await ConnectAsync();
+        await using var client = await ConnectAsync();
+        var manager = new ManagerObject();
+        await using var export = service.Export("/org/runic/Test", manager);
+        var proxy = new DBusObjectManagerProxy(client, service.UniqueName, "/org/runic/Test");
+        await using var changes = await proxy.SubscribeInterfaceChangesAsync();
+        var objects = await proxy.GetManagedObjectsAsync();
+        Check(objects.Count == 1 && objects["/org/runic/Test/Disk1"]["org.runic.Test.Disk"]["Size"].GetUInt64() == 42
+            && objects["/org/runic/Test/Disk1"]["org.runic.Test.Disk"]["Label"].GetString() == "data", "the objects with unwrapped properties");
+        Check(manager.Add("/org/runic/Test/Disk2", "org.runic.Test.Disk", 7) && manager.Remove("/org/runic/Test/Disk1", "org.runic.Test.Disk", "org.runic.Test.Partition"),
+            "emitting");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var signals = changes.GetAsyncEnumerator(timeout.Token);
+        Check(await signals.MoveNextAsync() && DBusObjectManagerProxy.ReadInterfaceChanges(signals.Current) is { } added
+            && added.Path.Value == "/org/runic/Test/Disk2" && added.Added["org.runic.Test.Disk"]["Size"].GetUInt64() == 7 && added.Removed.IsEmpty, "InterfacesAdded");
+        Check(await signals.MoveNextAsync() && DBusObjectManagerProxy.ReadInterfaceChanges(signals.Current) is { } removed
+            && removed.Path.Value == "/org/runic/Test/Disk1" && removed.Added.IsEmpty && removed.Removed.SequenceEqual(["org.runic.Test.Disk", "org.runic.Test.Partition"]),
+            "InterfacesRemoved");
+        await using var watch = proxy.WatchInterfaceChangesAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var first = watch.MoveNextAsync();
+        // The watch subscribes when enumeration starts; emit until it reports one.
+        while (!first.IsCompleted) { manager.Add("/org/runic/Test/Disk3", "org.runic.Test.Disk", 3); await Task.WhenAny(first.AsTask(), Task.Delay(50, timeout.Token)); }
+        Check(await first && watch.Current.Path.Value == "/org/runic/Test/Disk3", "WatchInterfaceChangesAsync reports changes");
+        var plain = new DBusObjectManagerProxy(client, service.UniqueName, ObjectPath);
+        var error = await ErrorAsync(() => plain.GetManagedObjectsAsync());
+        Check(error is { ErrorName: DBusException.UnknownMethod }, $"a path without a manager replies with an error: {error?.ErrorName}");
+    }
+
     private static async Task<DBusConnection> ConnectAsync() =>
         await DBusConnection.ConnectAsync(DBusBus.Session) is PlatformResult<DBusConnection>.Success(var connection) ? connection
             : throw new InvalidOperationException("Run the bus cases under dbus-run-session.");
@@ -333,5 +455,30 @@ internal sealed class BusTests
         public bool Ping(string text) => EmitSignal(Interface, "Pinged", DBusValue.From(text));
 
         public bool Hand(SafeHandle descriptor) => EmitSignal(Interface, "Handed", DBusValue.UnixFd(descriptor));
+
+        public bool Tag(DBusValue[] arguments) => EmitSignal(Interface, "Tagged", arguments);
+    }
+
+    // An org.freedesktop.DBus.ObjectManager with one disk to start with.
+    private sealed class ManagerObject : DBusObject
+    {
+        protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context)
+        {
+            if (context is not { Interface: DBusObjectManagerProxy.InterfaceName, Member: "GetManagedObjects" })
+                throw new DBusException(DBusException.UnknownMethod, context.Member);
+            var disk = Interfaces("org.runic.Test.Disk", DBusValue.VariantDictionary([KeyValuePair.Create("Size", DBusValue.From(42UL)),
+                KeyValuePair.Create("Label", DBusValue.From("data"))]));
+            return ValueTask.FromResult<ImmutableArray<DBusValue>>(
+                [DBusValue.Dictionary("o", "a{sa{sv}}", [KeyValuePair.Create(DBusValue.From(new DBusObjectPath("/org/runic/Test/Disk1")), disk)])]);
+        }
+
+        private static DBusValue Interfaces(string name, DBusValue properties) =>
+            DBusValue.Dictionary("s", "a{sv}", [KeyValuePair.Create(DBusValue.From(name), properties)]);
+
+        public bool Add(string path, string name, ulong size) => EmitSignal(DBusObjectManagerProxy.InterfaceName, "InterfacesAdded",
+            DBusValue.From(new DBusObjectPath(path)), Interfaces(name, DBusValue.VariantDictionary([KeyValuePair.Create("Size", DBusValue.From(size))])));
+
+        public bool Remove(string path, params string[] names) => EmitSignal(DBusObjectManagerProxy.InterfaceName, "InterfacesRemoved",
+            DBusValue.From(new DBusObjectPath(path)), DBusValue.StringArray(names));
     }
 }

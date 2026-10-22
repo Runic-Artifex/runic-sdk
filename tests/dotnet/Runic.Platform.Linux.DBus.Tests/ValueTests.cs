@@ -99,6 +99,63 @@ internal sealed class ValueTests
         }
     }
 
+    [Test, DisplayName("an ay keeps its bytes packed and equals the same bytes built item by item")]
+    public void PackedBytes()
+    {
+        var packed = DBusValue.ByteArray([1, 2, 255]);
+        var itemized = DBusValue.Array("y", [DBusValue.From((byte)1), DBusValue.From((byte)2), DBusValue.From((byte)255)]);
+        Check(packed == itemized && packed.GetHashCode() == itemized.GetHashCode() && itemized.GetByteArray() is [1, 2, 255], "both forms are one value");
+        Check(packed.GetItems() is [{ } one, _, { } last] && one.GetByte() == 1 && last.GetByte() == 255, "GetItems still lists the bytes as values");
+        Check(packed.GetByteArray() == packed.GetByteArray(), "GetByteArray returns the value's own bytes, not a copy");
+        Check(packed.ToString() == "[1, 2, 255]" && DBusValue.ByteArray([]).ToString() == "[]", "byte arrays format like other arrays");
+        Check(packed != DBusValue.ByteArray([1, 2]) && DBusValue.ByteArray([]) == DBusValue.Array("y", []) && DBusValue.ByteArray([]) != DBusValue.Array("n", []),
+            "content and type decide equality");
+        Throws<InvalidOperationException>(() => DBusValue.Array("n", []).GetByteArray(), "another array is no ay");
+    }
+
+    [Test, DisplayName("signal filters compare their argument keys by content")]
+    public void FilterEquality()
+    {
+        static DBusSignalFilter Filter(string value) => new()
+        {
+            Interface = "org.example.I", Arguments = ImmutableDictionary<int, string>.Empty.Add(1, value),
+            ArgumentPaths = ImmutableDictionary<int, string>.Empty.Add(2, "/a/"), Arg0Namespace = "org.example",
+        };
+        Check(Filter("x") == Filter("x") && Filter("x").GetHashCode() == Filter("x").GetHashCode(), "equal filters");
+        Check(Filter("x") != Filter("y") && Filter("x") != Filter("x") with { Arg0Namespace = null } && new DBusSignalFilter() == new DBusSignalFilter(), "different filters");
+        Check(new DBusSignalFilter().Arguments.IsEmpty && new DBusSignalFilter().ArgumentPaths.IsEmpty, "no argument keys by default");
+        Throws<ArgumentNullException>(() => _ = new DBusSignalFilter { Arguments = null! }, "null argument keys");
+    }
+
+    [Test, DisplayName("call timeouts are positive, infinite or unset")]
+    public void Timeouts()
+    {
+        var call = new DBusMethodCall("org.example.S", "/a", "org.example.I", "M");
+        Check(call.Timeout is null && call with { Timeout = TimeSpan.FromSeconds(1) } != call, "unset by default, and part of a call's content");
+        _ = call with { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+        Throws<ArgumentOutOfRangeException>(() => _ = call with { Timeout = TimeSpan.Zero }, "zero");
+        Throws<ArgumentOutOfRangeException>(() => _ = call with { Timeout = TimeSpan.FromSeconds(-1) }, "negative");
+        Throws<ArgumentOutOfRangeException>(() => _ = call with { Timeout = TimeSpan.FromDays(60) }, "beyond what Task.WaitAsync accepts");
+    }
+
+    [Test, DisplayName("ReadInterfaceChanges reads InterfacesAdded and InterfacesRemoved, and nothing else")]
+    public void InterfaceChanges()
+    {
+        static DBusSignal Signal(string member, params DBusValue[] arguments) => new(":1.2", "/m", DBusObjectManagerProxy.InterfaceName, member, [.. arguments]);
+        var properties = DBusValue.Dictionary("s", "a{sv}", [KeyValuePair.Create(DBusValue.From("org.example.Disk"),
+            DBusValue.VariantDictionary([KeyValuePair.Create("Size", DBusValue.From(1UL))]))]);
+        var added = DBusObjectManagerProxy.ReadInterfaceChanges(Signal("InterfacesAdded", DBusValue.From(new DBusObjectPath("/m/a")), properties));
+        Check(added is { Path.Value: "/m/a", Removed.IsEmpty: true } && added.Added["org.example.Disk"]["Size"].GetUInt64() == 1, "added");
+        var again = DBusObjectManagerProxy.ReadInterfaceChanges(Signal("InterfacesAdded", DBusValue.From(new DBusObjectPath("/m/a")), properties))!;
+        Check(added == again && added!.GetHashCode() == again.GetHashCode(), "changes compare by content");
+        var removed = DBusObjectManagerProxy.ReadInterfaceChanges(Signal("InterfacesRemoved", DBusValue.From(new DBusObjectPath("/m/a")), DBusValue.StringArray(["x", "y"])));
+        Check(removed is { Added.IsEmpty: true } && removed.Removed.SequenceEqual(["x", "y"]) && removed != added, "removed");
+        Check(DBusObjectManagerProxy.ReadInterfaceChanges(Signal("InterfacesAdded", DBusValue.From("/m/a"), properties)) is null, "a string path is the wrong type");
+        Check(DBusObjectManagerProxy.ReadInterfaceChanges(Signal("Other", DBusValue.From(new DBusObjectPath("/m/a")), properties)) is null, "another member");
+        Check(DBusObjectManagerProxy.ReadInterfaceChanges(new DBusSignal(":1.2", "/m", "org.example.I", "InterfacesAdded",
+            [DBusValue.From(new DBusObjectPath("/m/a")), properties])) is null, "another interface");
+    }
+
     [Test, DisplayName("values refuse what D-Bus cannot carry")]
     public void Validation()
     {

@@ -32,13 +32,26 @@ public class DBusProxy
     /// <summary>The object.</summary>
     public DBusObjectPath Path { get; }
 
+    /// <summary>How long each call through this proxy waits for its reply, including property reads and writes;
+    /// <see langword="null"/>, the default, waits until the bus or the service replies or the call is cancelled.</summary>
+    /// <remarks>Set it when creating the proxy, such as <c>new DBusProxy(bus, name, path) { Timeout = TimeSpan.FromSeconds(5) }</c>.
+    /// A call that times out throws <see cref="DBusException"/> with <see cref="DBusException.NoReply"/>; see
+    /// <see cref="DBusMethodCall.Timeout"/>.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero, negative other than
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>, or longer than <see cref="Task.WaitAsync(TimeSpan)"/> accepts.</exception>
+    public TimeSpan? Timeout
+    {
+        get;
+        init => field = DBusTimeouts.Check(value);
+    }
+
     /// <summary>Calls a method of the object and returns its reply's values.</summary>
     /// <exception cref="DBusException">The object replied with an error, or the connection closed.</exception>
     public ValueTask<ImmutableArray<DBusValue>> CallAsync(string interfaceName, string member, ImmutableArray<DBusValue> arguments = default,
         DBusCallOptions options = DBusCallOptions.None, CancellationToken cancellationToken = default) =>
         Connection.CallMethodAsync(new DBusMethodCall(Destination, Path, interfaceName, member)
         {
-            Arguments = arguments.IsDefault ? [] : arguments, Options = options,
+            Arguments = arguments.IsDefault ? [] : arguments, Options = options, Timeout = Timeout,
         }, cancellationToken);
 
     /// <summary>Reads one property, unwrapped from its variant.</summary>

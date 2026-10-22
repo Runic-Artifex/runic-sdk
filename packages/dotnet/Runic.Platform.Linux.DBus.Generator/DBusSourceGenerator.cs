@@ -40,7 +40,7 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
                 options.TryGetValue("build_metadata.AdditionalFiles.RunicDBusVisibility", out string? visibility);
                 options.TryGetValue("build_metadata.AdditionalFiles.RunicDBusClassName", out string? className);
                 var text = pair.Left.GetText(cancellationToken)?.ToString();
-                return new InputFile(System.IO.Path.GetFileName(pair.Left.Path), text, mode!, ns, visibility, className);
+                return new InputFile(pair.Left.Path, text, mode!, ns, visibility, className);
             })
             .Where(static file => file is not null)
             .Select(static (file, _) => file!)
@@ -60,10 +60,13 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
         foreach (var group in units.GroupBy(static unit => unit.Namespace, StringComparer.Ordinal))
         {
             // Two files must not generate the same type in one namespace.
-            var names = group.SelectMany(static unit => unit.TypeNames.Select(name => (name, unit.FileName))).GroupBy(static entry => entry.name).Where(static entry => entry.Count() > 1).ToList();
+            var names = group.SelectMany(static unit => unit.TypeNames.Select(name => (name, unit))).GroupBy(static entry => entry.name).Where(static entry => entry.Count() > 1).ToList();
             foreach (var duplicate in names)
-                output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.DuplicateTypeName, Location.None, duplicate.Key, group.Key,
-                    string.Join(", ", duplicate.Select(static entry => entry.FileName).Distinct())));
+            {
+                var files = duplicate.Select(static entry => entry.unit.Input).GroupBy(static input => input.Path).Select(static inputs => inputs.First()).ToList();
+                output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.DuplicateTypeName, files[0].Locate(), files.Skip(1).Select(static input => input.Locate()),
+                    duplicate.Key, group.Key, string.Join(", ", files.Select(static input => input.FileName))));
+            }
             if (names.Count > 0) continue;
             foreach (var unit in group)
             {
@@ -74,11 +77,11 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
                 }
                 catch (DBusNameCollisionException error)
                 {
-                    output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.NameCollision, Location.None, unit.FileName, error.Message));
+                    output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.NameCollision, unit.Input.Locate(error.Node), unit.FileName, error.Message));
                 }
                 catch (DBusGenerationException error)
                 {
-                    output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidMember, Location.None, unit.FileName, error.Message));
+                    output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidMember, unit.Input.Locate(error.Node), unit.FileName, error.Message));
                 }
             }
         }
@@ -92,20 +95,51 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
         if (modes.Count == 0 || modes.Any(static mode => !string.Equals(mode, "Proxy", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(mode, "Service", StringComparison.OrdinalIgnoreCase)))
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidMode, Location.None, input.FileName, input.Mode));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidMode, input.Locate(), input.FileName, input.Mode));
             return [];
         }
         if (ParseNode(output, input) is not { } node) return [];
-        return modes.Select(static mode => string.Equals(mode, "Service", StringComparison.OrdinalIgnoreCase)).Distinct()
+        var services = modes.Select(static mode => string.Equals(mode, "Service", StringComparison.OrdinalIgnoreCase)).Distinct().ToList();
+        ReportIgnoredAnnotations(output, input, node.Interfaces, proxy: services.Contains(false));
+        return services
             .Where(service => !(node.ClassName is not null && !service && node.Interfaces.Count > 1 && Report(output, input, node.ClassName)))
-            .Select(service => new GenerationUnit(input.FileName, node.Namespace, service, node.IsPublic, node.ClassName, node.Interfaces))
+            .Select(service => new GenerationUnit(input, node.Namespace, service, node.IsPublic, node.ClassName, node.Interfaces))
             .ToList();
     }
 
     private static bool Report(SourceProductionContext output, InputFile input, string className)
     {
-        output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidClassName, Location.None, input.FileName, className));
+        output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidClassName, input.Locate(), input.FileName, className));
         return true;
+    }
+
+    // Standard annotations whose meaning the generated code does not carry out (RUNICDBUS013), once per file. The
+    // EmitsChangedSignal annotation is applied; annotations of other tools, such as org.gtk.GDBus.*, are not D-Bus's own.
+    private static void ReportIgnoredAnnotations(SourceProductionContext output, InputFile input, List<XElement> interfaces, bool proxy)
+    {
+        foreach (var element in interfaces)
+        {
+            string iface = (string)element.Attribute("name")!;
+            foreach (var target in new[] { element }.Concat(element.Elements().Where(static e => e.Name.LocalName is "method" or "signal" or "property")))
+            {
+                string what = target == element ? $"interface {iface}" : $"{target.Name.LocalName} {iface}.{(string?)target.Attribute("name")}";
+                foreach (var annotation in target.Elements().Where(static e => e.Name.LocalName == "annotation"))
+                {
+                    string name = (string?)annotation.Attribute("name") ?? "";
+                    if (!string.Equals(((string?)annotation.Attribute("value"))?.Trim(), "true", StringComparison.OrdinalIgnoreCase)) continue;
+                    string? effect = name switch
+                    {
+                        "org.freedesktop.DBus.Deprecated" => "the generated members are not marked obsolete",
+                        // A service replies anyway, and a caller that asked for no reply ignores it; a proxy waits for one.
+                        "org.freedesktop.DBus.Method.NoReply" when proxy && target.Name.LocalName == "method" =>
+                            "the generated proxy method waits for a reply that the service may never send; pass a cancellation token or set the proxy's Timeout",
+                        _ => null,
+                    };
+                    if (effect is not null)
+                        output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.IgnoredAnnotation, input.Locate(annotation), input.FileName, name, what, effect));
+                }
+            }
+        }
     }
 
     private sealed class Node(string ns, bool isPublic, string? className, List<XElement> interfaces)
@@ -120,7 +154,7 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
     {
         if (string.IsNullOrWhiteSpace(input.Namespace))
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.MissingNamespace, Location.None, input.FileName));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.MissingNamespace, input.Locate(), input.FileName));
             return null;
         }
         bool isPublic;
@@ -128,24 +162,24 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
         else if (string.Equals(input.Visibility, "public", StringComparison.OrdinalIgnoreCase)) isPublic = true;
         else
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidVisibility, Location.None, input.FileName, input.Visibility));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidVisibility, input.Locate(), input.FileName, input.Visibility));
             return null;
         }
         if (input.Text is null)
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.UnreadableFile, Location.None, input.FileName));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.UnreadableFile, input.Locate(), input.FileName));
             return null;
         }
         XDocument document;
-        try { document = XDocument.Parse(input.Text); }
+        try { document = XDocument.Parse(input.Text, LoadOptions.SetLineInfo); }
         catch (System.Xml.XmlException error)
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidXml, Location.None, input.FileName, error.Message));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidXml, input.Locate(error.LineNumber, error.LinePosition), input.FileName, error.Message));
             return null;
         }
         if (document.Root?.Name.LocalName != "node")
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidRoot, Location.None, input.FileName, document.Root?.Name.LocalName ?? ""));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidRoot, input.Locate(document.Root), input.FileName, document.Root?.Name.LocalName ?? ""));
             return null;
         }
         var interfaces = new List<XElement>();
@@ -154,20 +188,20 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
             string name = (string?)element.Attribute("name") ?? "";
             if (!DBusEmitter.IsInterfaceName(name))
             {
-                output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidInterfaceName, Location.None, input.FileName, name));
+                output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidInterfaceName, input.Locate(element), input.FileName, name));
                 continue;
             }
             interfaces.Add(element);
         }
         if (interfaces.Count == 0)
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.NoInterfaces, Location.None, input.FileName));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.NoInterfaces, input.Locate(document.Root), input.FileName));
             return null;
         }
         string? className = string.IsNullOrWhiteSpace(input.ClassName) ? null : input.ClassName!.Trim();
         if (className is not null && !SyntaxFacts(className))
         {
-            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidClassName, Location.None, input.FileName, className));
+            output.ReportDiagnostic(Diagnostic.Create(DBusDiagnostics.InvalidClassName, input.Locate(), input.FileName, className));
             return null;
         }
         return new Node(input.Namespace!.Trim(), isPublic, className, interfaces);
@@ -183,25 +217,54 @@ public sealed class DBusSourceGenerator : IIncrementalGenerator
         return metadata < 0 ? version : version.Substring(0, metadata);
     }
 
-    private sealed class InputFile(string fileName, string? text, string mode, string? ns, string? visibility, string? className) : IEquatable<InputFile>
-    {
-        public string FileName { get; } = fileName;
-        public string? Text { get; } = text;
-        public string Mode { get; } = mode;
-        public string? Namespace { get; } = ns;
-        public string? Visibility { get; } = visibility;
-        public string? ClassName { get; } = className;
-
-        public bool Equals(InputFile? other) => other is not null && FileName == other.FileName && Text == other.Text && Mode == other.Mode
-            && Namespace == other.Namespace && Visibility == other.Visibility && ClassName == other.ClassName;
-        public override bool Equals(object? obj) => Equals(obj as InputFile);
-        public override int GetHashCode() => (FileName, Text, Mode, Namespace, Visibility, ClassName).GetHashCode();
-    }
 }
 
-internal sealed class GenerationUnit(string fileName, string ns, bool service, bool isPublic, string? className, List<XElement> interfaces)
+// One AdditionalFiles item with its metadata. Diagnostics point into it: at an XML element, or at its start.
+internal sealed class InputFile(string path, string? text, string mode, string? ns, string? visibility, string? className) : IEquatable<InputFile>
 {
-    public string FileName { get; } = fileName;
+    private SourceText? _source;
+
+    public string Path { get; } = path;
+    public string FileName => System.IO.Path.GetFileName(Path);
+    public string? Text { get; } = text;
+    public string Mode { get; } = mode;
+    public string? Namespace { get; } = ns;
+    public string? Visibility { get; } = visibility;
+    public string? ClassName { get; } = className;
+
+    public Location Locate(XObject? node = null) =>
+        node is System.Xml.IXmlLineInfo info && info.HasLineInfo() ? Locate(info.LineNumber, info.LinePosition) : Locate(0, 0);
+
+    // Lines and positions count from 1, as XML line information does; 0 is the start of the file.
+    public Location Locate(int line, int position)
+    {
+        var start = new LinePosition(Math.Max(line - 1, 0), Math.Max(position - 1, 0));
+        int offset = 0;
+        if (Text is not null)
+        {
+            _source ??= SourceText.From(Text);
+            if (start.Line < _source.Lines.Count)
+            {
+                var row = _source.Lines[start.Line];
+                offset = Math.Min(row.Start + start.Character, row.End);
+                start = new LinePosition(start.Line, offset - row.Start);
+            }
+            else start = default;
+        }
+        else start = default;
+        return Location.Create(Path, new TextSpan(offset, 0), new LinePositionSpan(start, start));
+    }
+
+    public bool Equals(InputFile? other) => other is not null && Path == other.Path && Text == other.Text && Mode == other.Mode
+        && Namespace == other.Namespace && Visibility == other.Visibility && ClassName == other.ClassName;
+    public override bool Equals(object? obj) => Equals(obj as InputFile);
+    public override int GetHashCode() => (Path, Text, Mode, Namespace, Visibility, ClassName).GetHashCode();
+}
+
+internal sealed class GenerationUnit(InputFile input, string ns, bool service, bool isPublic, string? className, List<XElement> interfaces)
+{
+    public InputFile Input { get; } = input;
+    public string FileName => Input.FileName;
     public string Namespace { get; } = ns;
     public bool Service { get; } = service;
     public bool IsPublic { get; } = isPublic;
@@ -216,10 +279,17 @@ internal sealed class GenerationUnit(string fileName, string ns, bool service, b
         : Interfaces.SelectMany(element => new[] { ProxyClassName(element), ProxyClassName(element) + "Properties" });
 }
 
-internal sealed class DBusGenerationException(string message) : Exception(message);
+// The node, when known, is the XML element the diagnostic points at.
+internal sealed class DBusGenerationException(string message, XObject? node = null) : Exception(message)
+{
+    public XObject? Node { get; } = node;
+}
 
 // A generated member would take the name of an inherited or another generated member (RUNICDBUS012).
-internal sealed class DBusNameCollisionException(string message) : Exception(message);
+internal sealed class DBusNameCollisionException(string message, XObject? node = null) : Exception(message)
+{
+    public XObject? Node { get; } = node;
+}
 
 internal static class DBusDiagnostics
 {
@@ -244,6 +314,9 @@ internal static class DBusDiagnostics
         "The type '{0}' would be generated more than once in namespace '{1}', from {2}; set RunicDBusClassName or another RunicDBusNamespace");
     public static readonly DiagnosticDescriptor InvalidMember = Error("RUNICDBUS011", "Invalid interface member", "'{0}': {1}");
     public static readonly DiagnosticDescriptor NameCollision = Error("RUNICDBUS012", "Generated member name collision", "'{0}': {1}");
+    public static readonly DiagnosticDescriptor IgnoredAnnotation = new("RUNICDBUS013", "Ignored D-Bus annotation",
+        "'{0}': the {1} annotation of the {2} is ignored; {3}", Category, DiagnosticSeverity.Warning, isEnabledByDefault: true,
+        helpLinkUri: RunicReleaseLinks.Diagnostic("RUNICDBUS013"));
 
     private static DiagnosticDescriptor Error(string id, string title, string message) =>
         new(id, title, message, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, helpLinkUri: RunicReleaseLinks.Diagnostic(id));

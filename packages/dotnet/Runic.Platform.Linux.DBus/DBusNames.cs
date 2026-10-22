@@ -35,6 +35,9 @@ internal static class DBusNames
 
     internal static bool IsWellKnownBusName(string value) => !value.StartsWith(':') && IsBusName(value);
 
+    // The arg0namespace match key: a well-known bus name or interface name, or a prefix of one of at least one element.
+    internal static bool IsNameNamespace(string value) => IsDottedName(value, allowHyphen: true, allowDigitStart: false, allowColon: false, minimumElements: 1);
+
     internal static bool IsMemberName(string value)
     {
         if (value.Length is 0 or > MaximumNameLength || char.IsAsciiDigit(value[0])) return false;
@@ -43,7 +46,7 @@ internal static class DBusNames
         return true;
     }
 
-    private static bool IsDottedName(string value, bool allowHyphen, bool allowDigitStart, bool allowColon)
+    private static bool IsDottedName(string value, bool allowHyphen, bool allowDigitStart, bool allowColon, int minimumElements = 2)
     {
         if (value.Length is 0 or > MaximumNameLength) return false;
         int elements = 0;
@@ -54,7 +57,7 @@ internal static class DBusNames
                 if (!IsNameCharacter(character) && !(allowHyphen && character == '-') && !(allowColon && character == ':')) return false;
             elements++;
         }
-        return elements >= 2;
+        return elements >= minimumElements;
     }
 
     private static bool IsNameCharacter(char character) => char.IsAsciiLetterOrDigit(character) || character == '_';
