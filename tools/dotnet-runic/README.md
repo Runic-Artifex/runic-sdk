@@ -25,7 +25,8 @@ restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
 `--no-dotnet-watch`, and `--dry-run` select parts of that loop. `dev` installs
 the frontend packages itself and passes
 `RunicApplicationFrontendInstallEnabled=false`, so the build does not install
-them a second time; with `--no-restore` nothing
+them a second time (and `RunicApplicationFrontendDelivery=Files`, so a project
+that embeds its frontend serves it live while developing); with `--no-restore` nothing
 installs them, and a frontend that declares dependencies but has no
 `node_modules` stops with `RAPPDEV1008`. When `dotnet watch` restarts or `dev`
 stops the Window, the application's expected exit code after SIGTERM or Ctrl+C

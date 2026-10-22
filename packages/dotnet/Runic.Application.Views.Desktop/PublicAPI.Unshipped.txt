@@ -12,3 +12,5 @@ static Runic.Application.Views.Desktop.DesktopPlatformServices.ExportApplication
 static Runic.Application.Views.Desktop.DesktopPlatformServices.GetLaunch(System.Collections.Generic.IEnumerable<string!>! arguments) -> Runic.Platform.ApplicationLaunch!
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.ContentSecurityPolicy.get -> string?
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.ContentSecurityPolicy.init -> void
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.Assets.get -> Runic.Assets.IAssetSource?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.Assets.init -> void

@@ -71,6 +71,7 @@ and severities are open.
 | [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
 | [`RUNICBRIDGE028`](#runicbridge028) | Warning | Generator | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
+| [`RUNICBRIDGE030`](#runicbridge030) | Warning | Build targets | `RunicApplicationFrontendDelivery` is unknown, or Embedded cannot apply |
 
 ### RUNICBRIDGE001
 
@@ -511,6 +512,29 @@ earlier releases did not report the value.
 `bun`, or remove it to follow `packageManager` in `package.json`, then the lock
 file. For another package manager, set `RunicApplicationFrontendInstallCommand`
 and `RunicApplicationFrontendBuildCommand` to its commands.
+
+### RUNICBRIDGE030
+
+A warning from the `Runic.Application.Views` build targets.
+`RunicApplicationFrontendDelivery` cannot take effect, so the build copies the
+frontend to the web root (`www/`), as `Files` does. It is reported when:
+
+- the value is neither `Files` nor `Embedded`, compared without case;
+- the value is `Embedded`, but the application runs on the CS-WebUI host,
+  which serves the frontend from a folder, or on no single Runic Desktop host
+  (a project that references several hosts sets `RunicApplicationHost` to
+  `desktop`);
+- the value is `Embedded`, but the project sets `RunicAssetsDist` or
+  `RunicAssetsEmbeddedArchive` itself.
+
+A build that does not copy the frontend (`RunicApplicationFrontendCopyEnabled=false`,
+as `dotnet runic dev` sets it for a development server) uses `Files` without a
+warning. Since 0.11.
+
+**Fix:** set `RunicApplicationFrontendDelivery` to `Files` or `Embedded`. Use
+`Embedded` with `Runic.Application.Views.Desktop`, and remove `RunicAssetsDist`
+and `RunicAssetsEmbeddedArchive` from the project: `Embedded` sets them itself.
+To serve another archive, set `RunicDesktopHostOptions.Assets`.
 
 ## dotnet runic
 

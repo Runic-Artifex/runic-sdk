@@ -98,6 +98,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Placement = options.Placement;
         _includeFailureDetail = options.IncludeFailureDetail;
         _contentSecurityPolicy = options.ContentSecurityPolicy;
+        _assets = options.Assets;
         // The range of WindowContentSessionOptions.MaximumInputBytes, checked before a Window opens.
         if (options.MaximumInputBytes is < 1_024 or > 67_108_864)
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
@@ -108,6 +109,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     private readonly bool? _includeFailureDetail;
     private readonly int? _maximumInputBytes;
     private readonly string? _contentSecurityPolicy;
+    private readonly Runic.Assets.IAssetSource? _assets;
 
     // A Window's own choice of Bridge failure detail, or else the application's default.
     internal bool? IncludeFailureDetailFor(RunicWindowOptions options) => options.IncludeFailureDetail ?? _includeFailureDetail;
@@ -380,9 +382,15 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 development = _developmentAssets.Open(live, opening.Options.StartPage, contentRoot,
                     (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            // Then RunicDesktopHostOptions.Assets or the build's embedded frontend, unless the Window names a content root.
+            var archive = SurfaceOptions is null && development is null && opening.Options.ContentRoot is null
+                ? _assets ?? FrontendArchive.FromBuild
+                : null;
             var surfaceOptions = SurfaceOptions ?? new DesktopSurfaceOptions
             {
-                Content = development?.Content ?? new DesktopContent.Directory(contentRoot, opening.Options.StartPage),
+                Content = development?.Content
+                    ?? (archive is not null ? FrontendArchive.CreateContent(archive, opening.Options.StartPage) : null)
+                    ?? new DesktopContent.Directory(contentRoot, opening.Options.StartPage),
             };
             if (Resources is { } chooseResources && chooseResources(opening.Window) is { } resources)
                 surfaceOptions = surfaceOptions with { Resources = resources };

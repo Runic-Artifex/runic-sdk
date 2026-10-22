@@ -64,11 +64,13 @@ The same Window and `async host => ...` body run on CS-WebUI with
   to `RunicDesktopHost.Run(provider, desktopOptions, hostOptions, async host => ...)`,
   or to `new RunicDesktopHost(provider, desktop, hostOptions)` for a host on a
   `DesktopHost` you started yourself. `RunicDesktopHost.DefaultWindowOptions` opens
-  the embedded WebView and falls back to an installed browser. To serve a
-  frontend embedded with `Runic.Assets` instead of `www/`, set `SurfaceOptions`
-  to `new DesktopSurfaceOptions { Content = new DesktopContent.Handler(assets.ToDesktopContentHandler()) }`
-  from `Runic.Assets.Desktop`; see
-  [Runic.Assets or the Views `www/` folder](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Assets/README.md#runicassets-or-the-views-www-folder).
+  the embedded WebView and falls back to an installed browser. A build with
+  `RunicApplicationFrontendDelivery=Embedded` embeds the frontend in the
+  assembly, and the host serves that archive in place of `www/`; see
+  [Ship the frontend inside the executable](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#ship-the-frontend-inside-the-executable).
+  `RunicDesktopHostOptions.Assets` serves another `IAssetSource`, such as an
+  archive read with `AssetArchive.ReadAsync`. `SurfaceOptions`, a Window's
+  `ContentRoot` and `dotnet runic dev`'s live frontend take precedence.
 - `RunicDesktopHostOptions.ContentSecurityPolicy` sends a `Content-Security-Policy`
   with the HTML of every Window's surface, unless `SurfaceOptions` set one of
   their own (`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of

@@ -483,13 +483,18 @@ internal static class DevApplication
     /// Development server properties plus <c>RunicApplicationFrontendInstallEnabled=false</c>:
     /// dev installs the frontend packages itself before the build, and with
     /// <c>--no-restore</c> nothing installs them behind the caller's back.
+    /// <c>RunicApplicationFrontendDelivery=Files</c>: dev serves the frontend from its development server or its
+    /// output directory, beside the host scripts in <c>www/</c>, never from an embedded archive.
     /// </summary>
     internal static IReadOnlyList<string> CreateBuildProperties(
         DevProjectConfiguration configuration,
         DevOptions options,
         string prefix)
     {
-        var properties = new List<string>(CreateDevelopmentServerProperties(configuration, options, prefix));
+        var properties = new List<string>(CreateDevelopmentServerProperties(configuration, options, prefix))
+        {
+            $"{prefix}RunicApplicationFrontendDelivery=Files",
+        };
         if (!options.Restore || configuration.NodeEnabled)
         {
             properties.Add($"{prefix}RunicApplicationFrontendInstallEnabled=false");

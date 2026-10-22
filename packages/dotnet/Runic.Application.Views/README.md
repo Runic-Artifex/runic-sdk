@@ -1076,7 +1076,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028` and `029` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029` and `030` are warnings; the generator's
 (`013`, `020` and `028`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -1092,6 +1092,35 @@ of a check that passes stay in the command output. A
 failed command that reports no such error gets one summary error instead:
 `RUNICBRIDGE024` (an internal generator error) for the generator,
 `RUNICBRIDGE016` for the frontend commands.
+
+## Ship the frontend inside the executable
+
+By default the build copies the frontend to `www/` next to the application.
+With `RunicApplicationFrontendDelivery` set to `Embedded`, it packs the same
+files into the application assembly as a Runic Assets archive instead, so the
+build and publish output have no `www/`, and a single-file or NativeAOT
+executable carries its frontend:
+
+```xml
+<PropertyGroup>
+  <RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>
+</PropertyGroup>
+```
+
+The application needs no code for it. The build composes the tree in
+`obj/<configuration>/<framework>/runic-www/`, packs it as `RunicAssetsDist`
+(the Runic.Assets defaults apply: `.git` and `.env*` are left out, and source
+maps warn with `RAS1005`), and names the resource in the
+`Runic.Application.FrontendArchive` runtime option. `RunicDesktopHost` and the
+WPF `RunicViewHost` then serve the archive in place of the web root, with each
+Window's `StartPage` at its root. A Window's `ContentRoot`, the host's
+`SurfaceOptions` and `dotnet runic dev`, which builds with `Files` and serves
+the live frontend, still take precedence. `RunicDesktopHostOptions.Assets`
+serves another source, such as an archive read at run time.
+
+`Embedded` needs the Runic Desktop host (`Runic.Application.Views.Desktop`,
+which brings Runic.Assets); the CS-WebUI host serves a folder and builds as
+`Files` with `RUNICBRIDGE030`.
 
 ## Build properties
 
@@ -1127,6 +1156,7 @@ an extension point.
 | `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
 | `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
+| `RunicApplicationFrontendDelivery` | `Files` | `Files` copies the frontend to the web root. `Embedded` packs the same tree (referenced projects' frontends, this project's output and the host's `runic-views.js`) into the assembly with Runic.Assets, and the Runic Desktop and WPF hosts serve it; see [Ship the frontend inside the executable](#ship-the-frontend-inside-the-executable). Closed: another value, the CS-WebUI host, or a project that sets `RunicAssetsDist` itself warns with [`RUNICBRIDGE030`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge030) and builds as `Files`. |
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
 | `RunicApplicationFrontendCompositionType` | `<RootNamespace>.RunicViewsComposition` (host adapters), with the namespace made a valid C# name | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |

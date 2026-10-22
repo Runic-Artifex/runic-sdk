@@ -23,13 +23,14 @@ Runic has two ways to ship a frontend, and they do not share settings:
   its frontend inside the executable. `Runic.Assets.AspNetCore` and
   `Runic.Assets.Desktop` serve it.
 
-A Views application can serve an embedded archive instead of `www/` by setting
-`RunicDesktopHost.SurfaceOptions` to a `DesktopSurfaceOptions` whose `Content`
-is `new DesktopContent.Handler(assets.ToDesktopContentHandler())`. The archive
-must then hold everything the build copies to `www/`, including the host's
-`runic-views.js` client, and `dotnet runic dev` then serves it instead of the
-live `dist/`. A build property that connects the two pipelines is planned for a
-later 1.x release.
+A Views application on Runic Desktop embeds its frontend with one build
+property, `<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>`:
+the Views build composes what it would copy to `www/`, including the host's
+`runic-views.js`, packs it as `RunicAssetsDist`, and the host serves the archive
+without application code; `dotnet runic dev` keeps serving the live frontend.
+See [Ship the frontend inside the executable](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#ship-the-frontend-inside-the-executable).
+Do not set `RunicAssetsDist` in such a project. To serve an archive from
+elsewhere, set `RunicDesktopHostOptions.Assets`.
 
 ## Install
 

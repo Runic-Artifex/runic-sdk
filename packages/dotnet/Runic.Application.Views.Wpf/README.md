@@ -66,7 +66,9 @@ derive from it only to style it.
 
 `ContentRoot` (default `www`) is the built frontend's directory relative to the
 application's base directory, and `StartPage` the page to open in it (default
-`index.html`), as `RunicWindowOptions.StartPage` is for a Runic Window. Set `SurfaceOptions` for anything else. `ModelContext` defaults
+`index.html`), as `RunicWindowOptions.StartPage` is for a Runic Window. With
+`RunicApplicationFrontendDelivery=Embedded`, a host without `ContentRoot`
+serves the frontend the build embedded in the application instead. Set `SurfaceOptions` for anything else. `ModelContext` defaults
 to the `IRunicModelContext` registered in `Services`; pass the navigator's
 dispatcher context when navigation and the web View present the same model.
 `State`, `Error` and `StateChanged` report progress; `Surface` is the open
