@@ -175,12 +175,12 @@ internal static class DoctorOutcome
             details.TryAdd(check.Name, DoctorCommandResult.StatusName(check.Status));
         }
         // A failed envelope has no payload, so the checks travel in fault.data and JSON readers need no second run.
-        return CommandOutcome.FailureWithData<DoctorCommandResult>(
+        return CommandOutcome.Failure<DoctorCommandResult>(
             CommandExitCategory.CommandFailure,
             new CommandFault(FaultCode, "Doctor checks failed.", details),
-            CommandFailureData.Create(PayloadTypeName, result, DoctorCommandJsonContext.Default.DoctorCommandResult),
             json ? DoctorCommandResult.CreateDiagnostics(run.Report, path, threshold) : [],
-            json ? null : Program.WithHelpLink(boundedHumanOutput, FaultCode));
+            json ? null : Program.WithHelpLink(boundedHumanOutput, FaultCode),
+            failureData: CommandFailureData.Create(PayloadTypeName, result, DoctorCommandJsonContext.Default.DoctorCommandResult));
     }
 }
 
@@ -195,5 +195,6 @@ internal sealed record DoctorCheckResult(
     [property: JsonPropertyName("message")] string Message,
     [property: JsonPropertyName("remediation")] string? Remediation);
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(DoctorCommandResult))]
 internal sealed partial class DoctorCommandJsonContext : JsonSerializerContext;

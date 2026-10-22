@@ -6,16 +6,19 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
 internal static class DevApplication
 {
     internal static async Task<int> RunAsync(
+        CommandExecutionContext context,
         DevOptions options,
         CancellationToken cancellationToken,
         Action<DevProjectConfiguration>? evaluated = null)
     {
+        ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(options);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnetHost = ResolveDotNetHost();
@@ -33,8 +36,9 @@ internal static class DevApplication
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
         // an IDE or terminal ends only this process. A repeated signal must not
-        // exit before those process trees are stopped.
-        using IDisposable protectShutdown = ToolSignalCancellation.ProtectShutdown();
+        // exit before those process trees are stopped. These handlers also stop on SIGHUP, which Command Line does
+        // not handle.
+        using IDisposable protectShutdown = context.ProtectShutdown();
         Action<PosixSignalContext> stopHandler = context =>
         {
             context.Cancel = true;

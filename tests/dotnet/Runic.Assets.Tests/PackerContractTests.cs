@@ -76,6 +76,29 @@ internal sealed class PackerContractTests
         Equal("1", await ExitCodeAsync(site, archive, "--trusted-generated-output").ConfigureAwait(false));
     }
 
+    // The packer once built ParseSettings without an environment reader, so RUNIC_COMMANDLINE_NO_INPUT and option
+    // environment fallbacks never reached it. Without settings of its own, CommandApp reads RUNIC_COMMANDLINE_OUTPUT,
+    // RUNIC_COMMANDLINE_NO_INPUT and the fallbacks from the process environment for each run; settings of its own
+    // must read the same variables. (CommandApp passes prompt state only to the handler's context, and the packer has
+    // no prompts, so the reader is what the test can observe.)
+    [Test, DisplayName("RUNIC_COMMANDLINE_NO_INPUT reaches the packer")]
+    public void PackerReadsNoInputFromTheEnvironment()
+    {
+        const string noInput = "RUNIC_COMMANDLINE_NO_INPUT";
+        string? previous = Environment.GetEnvironmentVariable(noInput);
+        try
+        {
+            Environment.SetEnvironmentVariable(noInput, "1");
+            Runic.CommandLine.ParseSettings? settings = PackerApplication.CreateApp(new Runic.CommandLine.SystemCommandConsole()).ParseSettings;
+            True(settings is null || settings.GetEnvironmentVariable?.Invoke(noInput) == "1",
+                "The packer's parse settings do not read RUNIC_COMMANDLINE_NO_INPUT from the process environment.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(noInput, previous);
+        }
+    }
+
     private static async Task<string> ExitCodeAsync(params string[] arguments)
     {
         (int exitCode, _, _) = await RunPackerAsync(arguments).ConfigureAwait(false);

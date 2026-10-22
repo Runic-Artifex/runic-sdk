@@ -841,17 +841,17 @@ internal sealed class ToolTests
         (_, string help) = RunCli("doctor", "--help");
         Contains(help, "--format");
         DoesNotContain(help, "--output");
-        // Arguments after -- belong to the application.
-        SequenceEqual(["dev", "--format", "json", "--", "--output", "json"],
-            Runic.Tools.Shared.OutputSelectorAlias.Rewrite(["dev", "--output", "json", "--", "--output", "json"], "--output"));
-        string[] unchanged = ["dev", "--", "--output=json"];
-        True(ReferenceEquals(unchanged, Runic.Tools.Shared.OutputSelectorAlias.Rewrite(unchanged, "--output")), "Nothing to rewrite keeps the arguments.");
+        // The catalog declares the selector and its hidden alias, so completion and help read the same spelling.
+        Runic.CommandLine.CommandCatalog catalog = Runic.Application.Tool.Program.CreateCatalog();
+        Equal("--format", catalog.OutputSelector);
+        SequenceEqual(["--output"], catalog.OutputSelectorAliases);
     }
 
     [Test, DisplayName("every Runic tool exit code follows one table")]
     public void ExitCodesFollowTheRunicTable()
     {
-        var policy = ToolExitCodePolicy.Instance;
+        // dotnet runic uses Command Line's default policy, whose codes are the Runic tool table.
+        Runic.CommandLine.DefaultExitCodePolicy policy = Runic.CommandLine.DefaultExitCodePolicy.Instance;
         Equal(0, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Success));
         Equal(1, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.CommandFailure));
         Equal(1, policy.GetExitCode(Runic.CommandLine.CommandExitCategory.Unavailable));
@@ -870,6 +870,8 @@ internal sealed class ToolTests
         SequenceEqual(["support", "preview", "--format", "json", "--editor-diagnostics=e.zip"], preview!.Arguments);
         True(SupportForwarding.TryParse(["support", "--mode=Remove", "--destination", "s.json", "--format", "json"], out SupportForwarding? remove), "--mode= selects the subcommand.");
         SequenceEqual(["support", "remove", "--destination", "s.json", "--format", "json"], remove!.Arguments);
+        True(SupportForwarding.TryParse(["--output", "json", "support", "--output=json", "--", "--output"], out SupportForwarding? alias), "support follows a leading --output.");
+        SequenceEqual(["support", "preview", "--format", "json", "--format=json", "--", "--output"], alias!.Arguments);
         False(SupportForwarding.TryParse(["doctor", "support"], out _), "support must be the command.");
         False(SupportForwarding.TryParse([], out _), "No arguments run dev.");
 
@@ -888,10 +890,10 @@ internal sealed class ToolTests
 
         // Without the Translations tool, the hidden command names where support went.
         var outcome = Runic.Application.Tool.Program.Support();
-        False(outcome.IsSuccess, "support without the Translations tool fails.");
+        False(outcome.Succeeded, "support without the Translations tool fails.");
         Equal(Runic.CommandLine.CommandExitCategory.Unavailable, outcome.ExitCategory);
         Equal("RAPPCLI1012", outcome.Fault!.Code);
-        Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
+        Runic.CommandLine.CommandCatalog catalog = Runic.Application.Tool.Program.CreateCatalog();
         True(catalog.Commands.Single(command => command.Name == "support").Help.Hidden, "support is a hidden alias.");
     }
 
@@ -1038,7 +1040,7 @@ internal sealed class ToolTests
         var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult);
-        True(response.Success, "--fail-on never reports a completed inspection as a successful envelope.");
+        True(response.Succeeded, "--fail-on never reports a completed inspection as a successful envelope.");
         DoctorCommandResult payload = response.Payload!;
         False(payload.Healthy, "A missing lock file makes the project unhealthy.");
         Equal("desktop", payload.Host);
@@ -1201,7 +1203,7 @@ internal sealed class ToolTests
     [Test, DisplayName("every command option is described")]
     public void EveryOptionIsDescribed()
     {
-        Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
+        Runic.CommandLine.CommandCatalog catalog = Runic.Application.Tool.Program.CreateCatalog();
         foreach (Runic.CommandLine.CommandDescriptor command in catalog.Commands)
         {
             True(!string.IsNullOrWhiteSpace(command.Help.Description), $"{command.Name} needs a description.");
@@ -1223,7 +1225,7 @@ internal sealed class ToolTests
     [Test, DisplayName("--runtime/--rid, --aot/--no-aot and --self-contained/--no-self-contained are spelled alike in every command")]
     public void RidAndAotOptionsMatchAcrossCommands()
     {
-        Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
+        Runic.CommandLine.CommandCatalog catalog = Runic.Application.Tool.Program.CreateCatalog();
         string[] rid = ["--rid", "--runtime", "-r"];
         int ridCommands = 0;
         foreach (Runic.CommandLine.CommandDescriptor command in catalog.Commands)
@@ -1452,8 +1454,8 @@ internal sealed class ToolTests
             var run = new DoctorRun(project, report);
             foreach (Runic.CommandLine.CommandOutputMode mode in new[] { Runic.CommandLine.CommandOutputMode.Human, Runic.CommandLine.CommandOutputMode.Json })
             {
-                True(DoctorOutcome.Create(run, mode, DoctorFailOn.Fail, path, "report", "report").IsSuccess, $"--fail-on fail ({mode}) succeeds.");
-                False(DoctorOutcome.Create(run, mode, DoctorFailOn.Warn, path, "report", "report").IsSuccess, $"--fail-on warn ({mode}) fails.");
+                True(DoctorOutcome.Create(run, mode, DoctorFailOn.Fail, path, "report", "report").Succeeded, $"--fail-on fail ({mode}) succeeds.");
+                False(DoctorOutcome.Create(run, mode, DoctorFailOn.Warn, path, "report", "report").Succeeded, $"--fail-on warn ({mode}) fails.");
             }
         }
     }
@@ -2136,40 +2138,6 @@ internal sealed class ToolTests
         File.WriteAllText(path, content);
     }
 
-    [Test, DisplayName("a repeated signal forces exit unless shutdown is protected")]
-    public void RepeatedSignalForcesExitUnlessProtected()
-    {
-        var exits = new List<int>();
-        using (ToolSignalCancellation signals = ToolSignalCancellation.CreateForTest(exits.Add))
-        {
-            True(signals.Handle(PosixSignal.SIGTERM), "The first signal was not cancelled.");
-            True(signals.Token.IsCancellationRequested, "The first signal did not cancel the command.");
-            Equal(0, exits.Count);
-            signals.Handle(PosixSignal.SIGTERM);
-            SequenceEqual<int>([143], exits);
-        }
-
-        exits.Clear();
-        using (ToolSignalCancellation signals = ToolSignalCancellation.CreateForTest(exits.Add))
-        {
-            IDisposable protection = ToolSignalCancellation.ProtectShutdown();
-            try
-            {
-                signals.Handle(PosixSignal.SIGINT);
-                signals.Handle(PosixSignal.SIGINT);
-                signals.Handle(PosixSignal.SIGQUIT);
-                Equal(0, exits.Count);
-            }
-            finally
-            {
-                protection.Dispose();
-            }
-            protection.Dispose();
-            signals.Handle(PosixSignal.SIGQUIT);
-            SequenceEqual<int>([131], exits);
-        }
-    }
-
     [Test, DisplayName("stopping the host signals dotnet run, not dotnet watch")]
     public void StopSignalsDotNetRunNotWatch()
     {
@@ -2309,11 +2277,11 @@ internal sealed class ToolTests
         True(ProcessTreeSignal.HasExited(pid), $"Process {pid} is still running after the stop.");
     }
 
-    // Proves the RunAsync wiring (HandleCancelKeyPress = false plus the tool's token):
-    // a SIGTERM while doctor waits for MSBuild cancels the command (RCLI4000, internal
-    // failure exit code) instead of the default termination. A second signal is not
-    // sent: it could coalesce with the first or arrive after the process has exited;
-    // RepeatedSignalForcesExitUnlessProtected covers the forced exit.
+    // Proves the RunAsync wiring (Command Line's termination signal handling): a SIGTERM
+    // while doctor waits for MSBuild cancels the command (RCLI4000, exit code 130) instead
+    // of the default termination. A second signal is not sent: it could coalesce with the
+    // first or arrive after the process has exited; Runic Command Line's tests cover the
+    // forced exit and CommandExecutionContext.ProtectShutdown.
     [Test, DisplayName("SIGTERM cancels a running command through the tool's handler")]
     public void SigtermCancelsRunningCommand()
     {

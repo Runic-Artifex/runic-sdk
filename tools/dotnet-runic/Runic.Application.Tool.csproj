@@ -25,7 +25,6 @@
     <PackageReference Include="Runic.CommandLine" />
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk4NativeLibraries.cs" Link="Shared/Gtk4NativeLibraries.cs" />
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk3NativeLibraries.cs" Link="Shared/Gtk3NativeLibraries.cs" />
-    <Compile Include="../Shared/OutputSelectorAlias.cs" Link="Shared/OutputSelectorAlias.cs" />
   </ItemGroup>
   <Import Project="../../eng/build/application.targets" />
   <ItemGroup>

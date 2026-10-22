@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj" />
+    <ProjectReference Include="../../../tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj" />
     <EmbeddedResource Include="TestAssets/index.html" LogicalName="Runic.Assets.Tests.index.html" />
     <EmbeddedResource Include="TestAssets/app.css" LogicalName="Runic.Assets.Tests.app.css" />
   </ItemGroup>

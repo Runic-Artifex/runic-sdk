@@ -201,12 +201,13 @@ internal sealed class CreateTests
     }
 
     // W319-003 D13: 0 success, 1 the project could not be created, 2 usage or validation,
-    // 3 internal failure, 130 cancelled.
+    // 3 internal failure, 130 cancelled. Runic Command Line's default policy has these codes.
     [Test, DisplayName("exit codes follow the Runic tool table")]
     public void ExitCodesFollowTheToolTable()
     {
+        IExitCodePolicy policy = Runic.Create.Program.CreateApp(new CaptureConsole(), _ => null).ExitCodePolicy;
         string codes = string.Join(",", Enum.GetValues<CommandExitCategory>().Select(category =>
-            $"{category}={CreateExitCodePolicy.Instance.GetExitCode(category).ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+            $"{category}={policy.GetExitCode(category).ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
         Equal(
             "Success=0,Usage=2,Validation=2,Cancelled=130,Unavailable=1,CommandFailure=1,HostFailure=3",
             codes);
@@ -261,16 +262,32 @@ internal sealed class CreateTests
             JsonSerializer.Serialize(result, CreateJsonContext.Default.CreateResult));
     }
 
-    // Runic.CommandLine 0.7 calls a console interactive when standard input and standard error are
-    // terminals. The creator's questions are written to standard output, so with standard output
-    // redirected it must not ask and uses the defaults, as before.
-    [Test, DisplayName("redirected standard output uses the defaults instead of asking")]
-    public void RedirectedOutputDoesNotAsk()
+    // The questions are Command Line prompts on standard error, so redirected standard output still asks. Without a
+    // terminal that can redraw they are numbered plain lines answered with a line of input; Enter takes the default.
+    [Test, DisplayName("an interactive console asks each question on standard error")]
+    public void InteractiveConsoleAsks()
     {
-        var console = new CaptureConsole { IsInteractive = true };
+        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "y", "", ""]) };
         int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
+        True(exitCode == 0, console.Error.ToString());
+        True(console.Answers.Count == 0, "Every question was asked.");
+        string error = console.Error.ToString();
+        True(error.Contains("Create a Runic application", StringComparison.Ordinal), error);
+        True(error.Contains("Frontend", StringComparison.Ordinal) && error.Contains("Test project", StringComparison.Ordinal), error);
+        string output = console.Output.ToString();
+        True(output.Contains("dotnet new runic-app --name MyApp --frontend vue", StringComparison.Ordinal), output);
+        True(output.Contains("--tests", StringComparison.Ordinal) && !output.Contains("--nix", StringComparison.Ordinal), output);
+    }
+
+    [Test, DisplayName("RUNIC_COMMANDLINE_NO_INPUT uses the defaults instead of asking")]
+    public void NoInputDoesNotAsk()
+    {
+        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2"]) };
+        int exitCode = Runic.Create.Program.CreateApp(console, name => name == "RUNIC_COMMANDLINE_NO_INPUT" ? "1" : null)
+            .RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
         Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + console.Error);
-        True(console.Output.ToString().Contains("dotnet new runic-app --name MyApp", StringComparison.Ordinal), console.Output.ToString());
+        True(console.Answers.Count == 1, "No question was asked.");
+        True(console.Output.ToString().Contains("dotnet new runic-app --name MyApp --frontend react", StringComparison.Ordinal), console.Output.ToString());
     }
 
     private static (int ExitCode, string Output, string Error) Run(params string[] arguments)
@@ -294,7 +311,9 @@ internal sealed class CreateTests
         public bool IsInputRedirected => true;
         public bool IsInteractive { get; init; }
         public bool IsOutputRedirected => true;
-        public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
+        public Queue<string> Answers { get; init; } = new();
+        public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(Answers.TryDequeue(out string? answer) ? answer : null);
 
         public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
         {

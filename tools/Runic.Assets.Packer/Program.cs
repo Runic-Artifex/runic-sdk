@@ -9,17 +9,11 @@ using Runic.Assets;
 using Runic.Assets.Packer;
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
-using Runic.Tools.Shared;
 
 return await PackerApplication.RunAsync(args).ConfigureAwait(false);
 
 internal static class PackerApplication
 {
-    private const int FailureExitCode = 1;
-    private const int UsageExitCode = 2;
-    private const int InternalExitCode = 3;
-    private const int CancelledExitCode = 130;
-
     /// <summary>Selects human or JSON output, as for every Runic tool.</summary>
     private const string FormatOptionName = "--format";
 
@@ -33,18 +27,21 @@ internal static class PackerApplication
     private const string SourceDirectoryDetail = "sourceDirectory";
     private const string EntryPointDetail = "entryPoint";
     private const string ReasonDetail = "reason";
-    public static Task<int> RunAsync(string[] args) => new CommandApp(GeneratedCommandCatalog.Create())
+    public static Task<int> RunAsync(string[] args) => CreateApp(new Runic.CommandLine.Spectre.SpectreCommandConsole()).RunAsync(args);
+
+    // No ParseSettings: CommandApp's defaults read RUNIC_COMMANDLINE_OUTPUT, RUNIC_COMMANDLINE_NO_INPUT and option
+    // environment fallbacks from the process environment. Its default exit codes are those of every Runic tool.
+    internal static CommandApp CreateApp(ICommandConsole console) => new(CreateCatalog())
     {
         Name = "Runic.Assets.Packer",
         Version = "0.2",
         HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
-        Console = new Runic.CommandLine.Spectre.SpectreCommandConsole(),
-        ExitCodePolicy = PackerExitCodePolicy.Instance,
+        Console = console,
         OutcomeSink = PackerOutcomeSink.Instance,
-        ParseSettings = new ParseSettings(
-            Environment.GetEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName),
-            transportOutputOptionName: FormatOptionName),
-    }.RunAsync(OutputSelectorAlias.Rewrite(args, FormerFormatOptionName));
+    };
+
+    internal static CommandCatalog CreateCatalog() =>
+        GeneratedCommandCatalog.Create(builder => builder.OutputSelector(FormatOptionName, FormerFormatOptionName));
 
     [Command("pack", Description = "Package a directory as a Runic asset archive.")]
     [DefaultCommand]
@@ -174,7 +171,8 @@ internal static class PackerApplication
         string code,
         string message,
         IReadOnlyDictionary<string, string>? details = null) =>
-        CommandOutcome.Failure<PackerResult>(category, new CommandFault(code, message, details));
+        CommandOutcome.Failure<PackerResult>(category,
+            new CommandFault(code, message, details) { HelpUri = new Uri(RunicReleaseLinks.Diagnostic(code)) });
 
     // The full message for a person at the terminal, with the paths and the
     // underlying reason that the machine-readable message leaves out.
@@ -224,7 +222,7 @@ internal static class PackerApplication
         {
             if (context.OutputMode == CommandOutputMode.Json)
                 return new CommandOutputDispatcher().WriteAsync(command, context, outcome, codec, exitCode, diagnostics, cancellationToken);
-            if (outcome.IsSuccess && outcome.Value is PackerResult result)
+            if (outcome.Succeeded && outcome.Value is PackerResult result)
             {
                 return context.Console.WriteOutAsync(
                     $"Packed a canonical Runic Assets archive into {result.ArchiveLength} bytes.{Environment.NewLine}".AsMemory(),
@@ -232,33 +230,19 @@ internal static class PackerApplication
             }
 
             string message = outcome.Fault is { } fault
-                ? HumanMessage(fault) + Environment.NewLine + $"Help for {fault.Code}: {RunicReleaseLinks.Diagnostic(fault.Code)}"
+                ? HumanMessage(fault) + (fault.HelpUri is { } help ? Environment.NewLine + $"Help for {fault.Code}: {help.AbsoluteUri}" : "")
                 : "The archive could not be packed.";
             return context.Console.WriteErrorAsync(
                 (message + Environment.NewLine).AsMemory(),
                 cancellationToken);
         }
     }
-
-    private sealed class PackerExitCodePolicy : IExitCodePolicy
-    {
-        public static PackerExitCodePolicy Instance { get; } = new();
-
-        public int GetExitCode(CommandExitCategory category) => category switch
-        {
-            CommandExitCategory.Success => CommandExitCodes.Success,
-            CommandExitCategory.Usage or CommandExitCategory.Validation => UsageExitCode,
-            CommandExitCategory.Unavailable or CommandExitCategory.CommandFailure => FailureExitCode,
-            CommandExitCategory.Cancelled => CancelledExitCode,
-            _ => InternalExitCode,
-        };
-    }
-
 }
 
 // The runic.assets.pack-result/1 payload is { "archiveLength": <bytes> }; the name is spelled
 // out so that the JSON context's options cannot rename it.
 internal sealed record PackerResult([property: JsonPropertyName("archiveLength")] long ArchiveLength);
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(PackerResult))]
 internal sealed partial class PackerJsonContext : JsonSerializerContext;

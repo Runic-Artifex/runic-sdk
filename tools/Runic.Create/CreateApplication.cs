@@ -33,17 +33,16 @@ internal static partial class CreateApplication
         CancellationToken cancellationToken)
     {
         var console = new SpectreCommandConsole(context.Console);
-        // The questions are Spectre prompts on standard output. Runic.CommandLine 0.7 counts a
-        // console as interactive when standard input and standard error are terminals, so also
-        // require standard output to be one: redirected output keeps using the defaults.
-        bool interactive = context.Console.IsInteractive && !context.Console.IsOutputRedirected &&
-            !request.UseDefaults && context.OutputMode == CommandOutputMode.Human;
+        // The questions are Command Line prompts on standard error. They ask only on an interactive console with
+        // human output, without --yes and unless RUNIC_COMMANDLINE_NO_INPUT is set; otherwise the defaults apply.
+        var prompts = new CommandPrompts(context, interactive: !request.UseDefaults);
+        bool interactive = prompts.IsInteractive;
         TemplateOptionModel model = TemplateOptionModel.Load();
 
         if (!TryResolveExplicit(model, request.Options, out Dictionary<string, TemplateChoice> explicitChoices, out string? usage))
             return Failure(CommandExitCategory.Usage, "RCREATE001", usage!);
 
-        string name = request.Name ?? (interactive ? AskName() : DefaultName);
+        string name = request.Name ?? (interactive ? await AskNameAsync(prompts, cancellationToken).ConfigureAwait(false) : DefaultName);
         if (!IsValidName(name))
         {
             return Failure(CommandExitCategory.Usage, "RCREATE002",
@@ -53,7 +52,7 @@ internal static partial class CreateApplication
         bool Given(TemplateToggle toggle) => request.Toggles.TryGetValue(toggle.LongName, out bool on) && on;
         if (interactive && (explicitChoices.Count < model.Options.Count || !model.Toggles.All(Given)))
         {
-            AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[bold]Create a Runic application[/] [grey]· {0}[/]", Markup.Escape(version));
+            await prompts.IntroAsync($"Create a Runic application · {version}", cancellationToken).ConfigureAwait(false);
         }
         var selections = new List<OptionSelection>();
         foreach (TemplateOption option in model.Options)
@@ -67,12 +66,17 @@ internal static partial class CreateApplication
             }
             TemplateChoice choice = explicitChoices.TryGetValue(option.LongName, out TemplateChoice? given)
                 ? given
-                : interactive ? Ask(option) : option.Default;
+                : interactive ? await AskAsync(prompts, option, cancellationToken).ConfigureAwait(false) : option.Default;
             selections.Add(new OptionSelection(option, choice));
         }
 
         // A toggle the user did not pass is asked for, or stays off.
-        TemplateToggle[] enabled = model.Toggles.Where(toggle => Given(toggle) || (interactive && Ask(toggle))).ToArray();
+        var enabled = new List<TemplateToggle>();
+        foreach (TemplateToggle toggle in model.Toggles)
+        {
+            if (Given(toggle) || (interactive && await AskAsync(prompts, toggle, cancellationToken).ConfigureAwait(false)))
+                enabled.Add(toggle);
+        }
 
         var plan = new CreatePlan(name, request.Directory, version, selections, request.TemplateSource, enabled);
         string directory = Path.GetFullPath(plan.Directory);
@@ -137,40 +141,26 @@ internal static partial class CreateApplication
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9_.-]{0,99}$")]
     private static partial Regex ProjectName();
 
-    private static string AskName() => AnsiConsole.Prompt(
-        new TextPrompt<string>("[bold]Project name[/]")
-            .DefaultValue(DefaultName)
-            .Validate(value => IsValidName(value)
-                ? ValidationResult.Success()
-                : ValidationResult.Error("Start with a letter and use letters, digits, '.', '_' or '-'.")));
+    private static async Task<string> AskNameAsync(CommandPrompts prompts, CancellationToken cancellationToken) =>
+        await prompts.TextAsync("Project name", DefaultName,
+            value => IsValidName(value) ? null : "Start with a letter and use letters, digits, '.', '_' or '-'.",
+            cancellationToken).ConfigureAwait(false);
 
-    private static TemplateChoice Ask(TemplateOption option)
+    private static async Task<TemplateChoice> AskAsync(CommandPrompts prompts, TemplateOption option, CancellationToken cancellationToken)
     {
         bool packageManager = option.LongName == "package-manager";
-        TemplateChoice choice = AnsiConsole.Prompt(
-            new SelectionPrompt<TemplateChoice>()
-                .Title($"[bold]{Markup.Escape(option.DisplayName)}[/] [grey]{Markup.Escape(option.Description)}[/]")
-                .AddChoices(option.Choices)
-                .DefaultValue(option.Default)
-                .UseConverter(item =>
-                {
-                    string label = $"{Markup.Escape(item.DisplayName)} [grey]{Markup.Escape(item.Description)}[/]";
-                    return packageManager && !IsOnPath(item.Value) ? label + " [yellow](not found on PATH)[/]" : label;
-                }));
-        AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[grey]{0}:[/] {1}", Markup.Escape(option.DisplayName), Markup.Escape(choice.DisplayName));
-        return choice;
+        CommandPromptChoice<TemplateChoice>[] choices = option.Choices
+            .Select(item => new CommandPromptChoice<TemplateChoice>(item, item.DisplayName,
+                packageManager && !IsOnPath(item.Value) ? $"{item.Description} (not found on PATH)" : item.Description))
+            .ToArray();
+        int defaultIndex = Math.Max(0, option.Choices.ToList().IndexOf(option.Default));
+        return await prompts.SelectAsync($"{option.DisplayName}: {option.Description}", choices, defaultIndex, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    private static bool Ask(TemplateToggle toggle)
-    {
-        bool on = AnsiConsole.Prompt(
-            new ConfirmationPrompt($"[bold]{Markup.Escape(toggle.DisplayName)}[/] [grey]{Markup.Escape(toggle.Description)}[/]")
-            {
-                DefaultValue = false,
-            });
-        AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[grey]{0}:[/] {1}", Markup.Escape(toggle.DisplayName), on ? "Yes" : "No");
-        return on;
-    }
+    private static async Task<bool> AskAsync(CommandPrompts prompts, TemplateToggle toggle, CancellationToken cancellationToken) =>
+        await prompts.ConfirmAsync($"{toggle.DisplayName}: {toggle.Description}", defaultValue: false, cancellationToken)
+            .ConfigureAwait(false);
 
     private static string DescribePlan(CreatePlan plan) => string.Join('\n',
     [
