@@ -113,6 +113,31 @@ internal sealed class PlatformHelpersTests
     [Test, DisplayName("INSTANCE: ClaimAsync with args forwards them as ApplicationLaunch.FromProcess does")]
     public async Task ClaimWithArgumentsAsync()
     {
+        // These overloads use the per-user runtime directory. On Linux that is XDG_RUNTIME_DIR, which containers such as
+        // the Alpine CI job do not set: use a private one, so the test neither depends on it nor touches the user's.
+        string? runtime = null, previousRuntime = null, previousFlatpak = null;
+        if (OperatingSystem.IsLinux())
+        {
+            runtime = Path.Combine(Path.GetTempPath(), "runic-xdg-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(runtime, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            (previousRuntime, previousFlatpak) = (Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR"), Environment.GetEnvironmentVariable("FLATPAK_ID"));
+            Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", runtime);
+            Environment.SetEnvironmentVariable("FLATPAK_ID", null);
+        }
+        try { await ClaimWithArgumentsCoreAsync(); }
+        finally
+        {
+            if (runtime is not null)
+            {
+                Environment.SetEnvironmentVariable("XDG_RUNTIME_DIR", previousRuntime);
+                Environment.SetEnvironmentVariable("FLATPAK_ID", previousFlatpak);
+                Directory.Delete(runtime, recursive: true);
+            }
+        }
+    }
+
+    private static async Task ClaimWithArgumentsCoreAsync()
+    {
         string applicationId = "org.example.RunicTest" + Guid.NewGuid().ToString("N")[..12];
         var first = await ApplicationInstance.ClaimAsync(applicationId, ["--first"]);
         Check(first is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary }, "The first claim is the running instance: " + first);
