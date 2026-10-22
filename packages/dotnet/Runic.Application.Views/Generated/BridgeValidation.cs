@@ -28,7 +28,32 @@ public static class BridgeValidation
 
     /// <summary>Writes <c>{ hasErrors, truncated, errors }</c> for <paramref name="root"/>.</summary>
     public static void Write(Utf8JsonWriter writer, object root,
-        IReadOnlyList<BridgeDataSubscriptionMember> members)
+        IReadOnlyList<BridgeDataSubscriptionMember> members) => WriteCore(writer, root, members, null);
+
+    /// <summary>
+    /// Writes <c>{ hasErrors, truncated, errors }</c> for <paramref name="root"/>, reading each object's
+    /// object-level errors with <paramref name="readObjectErrors"/>.
+    /// </summary>
+    /// <param name="writer">The snapshot writer.</param>
+    /// <param name="root">The ViewModel.</param>
+    /// <param name="members">The ViewModel's generated member metadata.</param>
+    /// <param name="readObjectErrors">
+    /// Returns an object's errors in place of <see cref="INotifyDataErrorInfo.GetErrors(string?)"/> with
+    /// <see langword="null"/>, or <see langword="null"/> to use that call. An entry is read as an entry of
+    /// <c>GetErrors(null)</c>: a <see cref="ValidationResult"/> reports at the paths of its
+    /// <see cref="ValidationResult.MemberNames"/> and any other entry at the object's path. Generated
+    /// code passes a reader for ViewModels that keep their validations in a ReactiveUI.Validation
+    /// <c>ValidationContext</c>.
+    /// </param>
+    public static void Write(Utf8JsonWriter writer, object root,
+        IReadOnlyList<BridgeDataSubscriptionMember> members, Func<object, IEnumerable?> readObjectErrors)
+    {
+        ArgumentNullException.ThrowIfNull(readObjectErrors);
+        WriteCore(writer, root, members, readObjectErrors);
+    }
+
+    private static void WriteCore(Utf8JsonWriter writer, object root,
+        IReadOnlyList<BridgeDataSubscriptionMember> members, Func<object, IEnumerable?>? readObjectErrors)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(root);
@@ -40,7 +65,7 @@ public static class BridgeValidation
         using (var errors = new Utf8JsonWriter(bytes))
         {
             errors.WriteStartArray();
-            collector = new Collector(errors);
+            collector = new Collector(errors, readObjectErrors);
             collector.Visit(root, members);
             hasErrors = collector.HasErrors;
             errors.WriteEndArray();
@@ -75,9 +100,10 @@ public static class BridgeValidation
             yield return new BridgeValidationChild(entry.Key, entry.Value);
     }
 
-    private sealed class Collector(Utf8JsonWriter writer)
+    private sealed class Collector(Utf8JsonWriter writer, Func<object, IEnumerable?>? readObjectErrors)
     {
         private readonly Utf8JsonWriter _writer = writer;
+        private readonly Func<object, IEnumerable?>? _readObjectErrors = readObjectErrors;
         private readonly HashSet<NodeKey> _ancestors = new(NodeKeyComparer.Instance);
         private readonly List<object> _path = [];
         private int _nodes;
@@ -101,11 +127,18 @@ public static class BridgeValidation
             var nodePath = _path.ToArray();
             try
             {
+                var objectErrors = _readObjectErrors?.Invoke(owner);
                 if (owner is INotifyDataErrorInfo errors)
                 {
                     _hasErrors |= errors.HasErrors;
-                    AddErrors(errors.GetErrors(null), nodePath, members, nodePath);
+                    // INotifyDataErrorInfo implementations such as ObservableValidator and
+                    // ReactiveValidationObject return every property's errors for null as well.
+                    // GetErrors(member) below reports a ValidationResult that names a presented
+                    // member, so the object-level read does not repeat it.
+                    AddErrors(objectErrors ?? errors.GetErrors(null), nodePath, members, nodePath,
+                        skipPresentedMembers: true);
                 }
+                else AddErrors(objectErrors, nodePath, members, nodePath, skipPresentedMembers: false);
 
                 foreach (var member in members)
                 {
@@ -118,7 +151,8 @@ public static class BridgeValidation
                         if (owner is INotifyDataErrorInfo propertyErrors)
                         {
                             _hasErrors |= propertyErrors.HasErrors;
-                            AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, members, nodePath);
+                            AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, members, nodePath,
+                                skipPresentedMembers: false);
                         }
 
                         var value = member.Read(owner);
@@ -158,7 +192,8 @@ public static class BridgeValidation
         }
 
         private void AddErrors(IEnumerable? values, IReadOnlyList<object> defaultPath,
-            IReadOnlyList<BridgeDataSubscriptionMember> members, IReadOnlyList<object> nodePath)
+            IReadOnlyList<BridgeDataSubscriptionMember> members, IReadOnlyList<object> nodePath,
+            bool skipPresentedMembers)
         {
             if (values is null) return;
             foreach (var value in values)
@@ -170,14 +205,36 @@ public static class BridgeValidation
                         AddMessage(message.Message, message.Code, message.Severity, message.MemberPaths, defaultPath, members, nodePath);
                         break;
                     case ValidationResult result:
+                        var memberNames = result.MemberNames;
+                        if (skipPresentedMembers && !TryUnpresented(ref memberNames, members)) break;
                         AddMessage(result.ErrorMessage ?? "Invalid value.", null, null,
-                            result.MemberNames, defaultPath, members, nodePath);
+                            memberNames, defaultPath, members, nodePath);
                         break;
                     default:
                         AddMessage(value?.ToString() ?? "Invalid value.", null, null, null, defaultPath, members, nodePath);
                         break;
                 }
             }
+        }
+
+        // Keeps the member names that GetErrors(member) does not ask for. False when the result
+        // names members and every one of them is presented, so the member read reports it.
+        private static bool TryUnpresented(ref IEnumerable<string> memberNames,
+            IReadOnlyList<BridgeDataSubscriptionMember> members)
+        {
+            List<string>? remaining = null;
+            var any = false;
+            foreach (var name in memberNames)
+            {
+                any = true;
+                if (!string.IsNullOrWhiteSpace(name) && members.Any(member => !member.IsPathTransparent &&
+                        string.Equals(member.PropertyName, name, StringComparison.Ordinal))) continue;
+                (remaining ??= []).Add(name);
+            }
+            if (!any) return true;
+            if (remaining is null) return false;
+            memberNames = remaining;
+            return true;
         }
 
         private void AddMessage(string message, string? code, string? severity,

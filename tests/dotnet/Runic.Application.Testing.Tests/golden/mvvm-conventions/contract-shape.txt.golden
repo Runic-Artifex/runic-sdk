@@ -70,6 +70,12 @@ dto:GeneratedReactiveViewModel.SaveCommand.result:ReactiveUI.Primitives.RxVoid
 dto-constructors:GeneratedReactiveViewModel.SaveCommand.result:
 command-cardinality:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:SaveCommand:single
 validation-errors:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:False
+model:Runic.Application.Testing.Tests.ReactivePasswordViewModel:public-name:ReactivePassword
+member:Runic.Application.Testing.Tests.ReactivePasswordViewModel:NewPassword:wire:newPassword:state:access:write
+wire:ReactivePasswordViewModel.newPassword:type:System.String:nullable:False
+member:Runic.Application.Testing.Tests.ReactivePasswordViewModel:ConfirmPassword:wire:confirmPassword:state:access:write
+wire:ReactivePasswordViewModel.confirmPassword:type:System.String:nullable:False
+validation-errors:Runic.Application.Testing.Tests.ReactivePasswordViewModel:True
 model:Runic.Application.Testing.Tests.ToolkitCancelViewModel:public-name:ToolkitCancel
 member:Runic.Application.Testing.Tests.ToolkitCancelViewModel:CancelledCount:wire:cancelledCount:state:access:read
 wire:ToolkitCancelViewModel.cancelledCount:type:System.Int32:nullable:False

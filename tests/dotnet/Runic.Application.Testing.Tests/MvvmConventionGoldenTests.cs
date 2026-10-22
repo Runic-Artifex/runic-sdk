@@ -18,6 +18,8 @@ internal sealed class MvvmConventionGoldenTests
         (typeof(TypedReactiveViewModel), "typedReactive"),
         (typeof(GeneratedReactiveViewModel), "generatedReactive"),
         (typeof(GeneratedInteractionViewModel), "generatedInteraction"),
+        // #478: the ValidationContext reader of a ReactiveValidationObject.
+        (typeof(ReactivePasswordViewModel), "reactivePassword"),
     ];
 
     [Test]

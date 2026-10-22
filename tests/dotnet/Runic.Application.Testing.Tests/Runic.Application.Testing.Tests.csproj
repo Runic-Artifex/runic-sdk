@@ -34,6 +34,8 @@
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <!-- #478: a ReactiveValidationObject read through its ValidationContext. -->
+    <PackageReference Include="RunicArtifex.ReactiveUI.Validation" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <!-- Compiles small invalid ViewModel assemblies for generator diagnostics tests. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />

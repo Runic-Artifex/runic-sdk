@@ -45,6 +45,10 @@
     <PackageVersion Include="ReactiveUI.Primitives" Version="[9.0.0, 10)" />
     <PackageVersion Include="ReactiveUI.Primitives.Reactive" Version="[9.0.0, 10)" />
     <PackageVersion Include="System.Reactive" Version="[7.0.0, 8)" />
+    <!-- Test-only: the Bridge's ValidationContext reader (#478) against both flavors of the RunicArtifex
+         ReactiveUI.Validation fork. No shipped package references them. -->
+    <PackageVersion Include="RunicArtifex.ReactiveUI.Validation" Version="9.0.0-runic.9" />
+    <PackageVersion Include="RunicArtifex.ReactiveUI.Validation.Reactive" Version="9.0.0-runic.9" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="4.2.0" />
     <PackageVersion Include="Splat" Version="21.0.0" />
     <!-- Used only by compiler contract tests to validate emitted instances against draft 2020-12 schemas. -->
