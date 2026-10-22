@@ -585,15 +585,33 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
-            if (Hosts.TryGetValue(Api.SendNint(notification, "object"), out var host) && host.IsOpen)
-            {
-                host._fullScreenTransition = false;
-                host.UpdateState();
-            }
+            EndFullScreenTransition(Api.SendNint(notification, "object"));
         }
         catch
         {
             // Never unwind through AppKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void FullScreenTransitionFailed(nint self, nint selector, nint window)
+    {
+        try
+        {
+            EndFullScreenTransition(window);
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    private static void EndFullScreenTransition(nint window)
+    {
+        if (Hosts.TryGetValue(window, out var host) && host.IsOpen)
+        {
+            host._fullScreenTransition = false;
+            host.UpdateState();
         }
     }
 
@@ -1208,10 +1226,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionStarted, "v@:@");
         }
-        foreach (var selector in (string[])["windowDidEnterFullScreen:", "windowDidExitFullScreen:", "windowDidFailToEnterFullScreen:",
-            "windowDidFailToExitFullScreen:"])
+        foreach (var selector in (string[])["windowDidEnterFullScreen:", "windowDidExitFullScreen:"])
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionEnded, "v@:@");
+        }
+        // These two pass the window itself, not a notification.
+        foreach (var selector in (string[])["windowDidFailToEnterFullScreen:", "windowDidFailToExitFullScreen:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionFailed, "v@:@");
         }
         Api.RegisterClassPair(type);
         return type;

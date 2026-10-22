@@ -232,10 +232,12 @@ internal static partial class MonitorSmoke
             var child = GetWindow(handle, 5); // GW_CHILD
             Require(child != 0, "the WebView2 child window");
             Require(((long)GetWindowLongPtr(child, GwlExStyle) & WsExLayoutRtl) == 0, "a WebView2 child without WS_EX_LAYOUTRTL");
+            // WebView2 takes the closest language it ships for its UI and navigator.language: ar for ar-EG.
             var language = await ScriptAsync(surface, "return navigator.language;");
-            Require(language == "ar-EG", $"navigator.language ar-EG, got {language}");
-            var accept = await ScriptAsync(surface, "return JSON.stringify(navigator.languages);");
-            Console.WriteLine($"Right to left: navigator.languages {accept}.");
+            var languages = await ScriptAsync(surface, "return JSON.stringify(navigator.languages);");
+            Console.WriteLine($"Right to left: navigator.language {language}, navigator.languages {languages}.");
+            Require(language is not null && (language == "ar" || language.StartsWith("ar-", StringComparison.Ordinal)),
+                $"navigator.language in Arabic for Language ar-EG, got {language}");
 
             await window.FocusAsync();
             await Task.Delay(500);

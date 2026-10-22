@@ -842,7 +842,8 @@ Two window options opt in to more, and change nothing unless set:
   `DesktopStatusIconState.LayoutDirection`. macOS ignores the option: AppKit lays
   windows out for the bundle's localization.
 - `DesktopWindowOptions.Language`, a BCP 47 tag such as `ar-EG`, sets WebView2's
-  language: its built-in text, `navigator.language` and `Accept-Language`.
+  language: its built-in text, `navigator.language` and `Accept-Language`;
+  WebView2 takes the closest language it ships, such as `ar` for `ar-EG`.
   Windows sharing a `ProfilePath` must use the same language, as for
   `BrowserArguments`. WKWebView ignores it and uses the application's preferred
   languages.

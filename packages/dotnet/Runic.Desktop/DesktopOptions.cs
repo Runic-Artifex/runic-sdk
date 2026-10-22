@@ -628,8 +628,9 @@ public sealed record DesktopWindowOptions
     /// <para>
     /// The language of the web view's built-in text, such as its context menu and form validation messages, its
     /// <c>navigator.language</c> and the <c>Accept-Language</c> it sends: WebView2's environment language on Windows and
-    /// WebKitGTK's preferred languages on Linux. macOS ignores it: WKWebView uses the application's preferred languages.
-    /// A page still sets its own <c>lang</c>. Installed browsers ignore it.
+    /// WebKitGTK's preferred languages on Linux. WebView2 takes the closest language it ships, such as <c>ar</c> for
+    /// <c>ar-EG</c>, for its own text and <c>navigator.language</c>. macOS ignores it: WKWebView uses the application's
+    /// preferred languages. A page still sets its own <c>lang</c>. Installed browsers ignore it.
     /// </para>
     /// <para>
     /// WebView2 requires every window sharing a <see cref="ProfilePath"/> to use the same language, as for
