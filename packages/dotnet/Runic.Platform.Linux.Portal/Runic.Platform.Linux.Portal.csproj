@@ -20,7 +20,9 @@
     <AdditionalFiles Include="Protocol/*.xml" RunicDBusMode="Proxy" RunicDBusNamespace="Runic.Platform.Linux.Portal.Protocol" />
     <AdditionalFiles Include="UDisks/org.freedesktop.UDisks2.xml" RunicDBusMode="Proxy" RunicDBusNamespace="Runic.Platform.Linux.Portal.UDisks" />
     <AdditionalFiles Include="Thumbnails/org.freedesktop.thumbnails.Thumbnailer1.xml" RunicDBusMode="Proxy" RunicDBusNamespace="Runic.Platform.Linux.Portal.Thumbnails" />
-    <None Remove="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json;UDisks/*.xml;Thumbnails/*.xml" />
+    <!-- D-Bus activation: the application answers org.freedesktop.Application at its object path. -->
+    <AdditionalFiles Include="Activation/org.freedesktop.Application.xml" RunicDBusMode="Service" RunicDBusNamespace="Runic.Platform.Linux.Portal.Activation" />
+    <None Remove="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json;UDisks/*.xml;Thumbnails/*.xml;Activation/*.xml" />
     <None Include="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" Pack="true" PackagePath="protocol/" />
     <InternalsVisibleTo Include="Runic.Platform.Linux.Portal.Tests" />
     <!-- Shipping packages pin each other exactly; GTK 3 shares document-portal classification. -->

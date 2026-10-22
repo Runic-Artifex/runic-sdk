@@ -303,7 +303,8 @@ public static partial class DesktopPlatformServices
     /// <remarks>
     /// Nothing is written until <see cref="IDesktopOpenRegistration.RegisterAsync"/>, which an application calls when
     /// the user agrees; it never makes the application the default. macOS checks that the bundle's <c>Info.plist</c>
-    /// declares each item and registers the bundle with Launch Services; Windows writes the user's
+    /// declares each item and registers the bundle with Launch Services; Linux writes a desktop entry and MIME
+    /// definitions in <c>XDG_DATA_HOME</c> (<c>PortalApplication.CreateOpenRegistration</c>); Windows writes the user's
     /// <c>HKEY_CURRENT_USER\Software\Classes</c> keys and lists the application in Settings, Default apps. A packaged
     /// or sandboxed process, whose package
     /// declares what it opens, reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>; elsewhere every
@@ -324,6 +325,7 @@ public static partial class DesktopPlatformServices
         if (OperatingSystem.IsWindows()) registration = Optional(() => OperatingSystem.IsWindows() ? CreateWindowsOpenRegistration(applicationId) : null);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsMacOS()) registration = CreateMacOSOpenRegistration();
+        else if (OperatingSystem.IsLinux()) registration = CreatePortalOpenRegistration(applicationId, logger);
 #endif
         return registration ?? DesktopOpenRegistrations.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -336,6 +338,16 @@ public static partial class DesktopPlatformServices
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopOpenRegistration CreateMacOSOpenRegistration() => MacOSPlatformProvider.CreateOpenRegistration();
+
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopOpenRegistration CreatePortalOpenRegistration(string applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateOpenRegistration();
+
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ValueTask<PlatformResult<IAsyncDisposable>> ExportPortalApplicationAsync(string applicationId, IApplicationInstance instance,
+        CancellationToken cancellationToken) => new PortalApplication(applicationId).ExportApplicationAsync(instance, cancellationToken);
 #endif
 
     /// <summary>
@@ -347,8 +359,9 @@ public static partial class DesktopPlatformServices
     /// <param name="instance">The running instance from <c>ApplicationInstance.ClaimAsync</c>: each activation arrives as
     /// one of its launches, and open requests created for it take the files and URLs.</param>
     /// <param name="cancellationToken">Cancels before the bus name is owned.</param>
-    /// <returns>The export to dispose when the application ends, which releases the bus name; every other operating
-    /// system reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</returns>
+    /// <returns>The export to dispose when the application ends, which releases the bus name, as
+    /// <c>PortalApplication.ExportApplicationAsync</c> describes; every other operating system reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</returns>
     /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
     public static ValueTask<PlatformResult<IAsyncDisposable>> ExportApplicationAsync(string applicationId, IApplicationInstance instance,
         CancellationToken cancellationToken = default)
@@ -356,6 +369,9 @@ public static partial class DesktopPlatformServices
         ValidateApplicationId(applicationId);
         ArgumentNullException.ThrowIfNull(instance);
         cancellationToken.ThrowIfCancellationRequested();
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) return ExportPortalApplicationAsync(applicationId, instance, cancellationToken);
+#endif
         return ValueTask.FromResult<PlatformResult<IAsyncDisposable>>(new PlatformResult<IAsyncDisposable>.Unavailable(
             OperatingSystem.IsLinux() ? PlatformUnavailableReason.ProviderNotConfigured : PlatformUnavailableReason.BackendUnavailable));
     }

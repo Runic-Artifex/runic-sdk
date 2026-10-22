@@ -333,8 +333,9 @@ guide covers publish modes, signing and packaging per platform.
 `packaging/package.mjs` packages the application on the platform it runs on.
 It reads `ApplicationId`, `ApplicationTitle`, `Version`,
 `Description`, `PackageProjectUrl`, `RunicApplicationPublisher`,
-`RunicApplicationUrlSchemes`, `RunicApplicationFileTypes` and
-`RunicApplicationWebLinkHosts` from the project file, publishes with NativeAOT, fills the `{{...}}` fields of
+`RunicApplicationUrlSchemes`, `RunicApplicationFileTypes`,
+`RunicApplicationWebLinkHosts` and `RunicApplicationDBusActivatable` from the
+project file, publishes with NativeAOT, fills the `{{...}}` fields of
 the manifests in `packaging/` and writes the package to `artifacts/package/`.
 Run it with Node 22 or later (or Bun) from the project directory:
 
@@ -394,9 +395,17 @@ conforms to `public.data`, as the application's own type; for a standard type,
 such as Markdown, edit the generated entry to name the system's type instead.
 In the MSIX manifest each becomes a `uap3:FileTypeAssociation` with
 `MultiSelectModel="Player"`, so files the user opens together reach one
-process; read them with `DesktopPlatformServices.GetLaunch(args)`. The desktop
-entry keeps a commented example: a MIME type with a shared-mime-info
-definition for a type of your own.
+process; read them with `DesktopPlatformServices.GetLaunch(args)`. In the
+desktop entry each is a MIME type (its own, or
+`application/x-<last part of the ID>-<extension>`), whose shared-mime-info
+definition the Flatpak installs and exports.
+
+`RunicApplicationDBusActivatable` set to `true` adds `DBusActivatable=true` to
+the desktop entry and a D-Bus service file to the Flatpak: GNOME and KDE then
+start the application through the session bus and deliver later opens to the
+running process. The application must then serve the activation, after
+claiming its instance:
+`await DesktopPlatformServices.ExportApplicationAsync(ApplicationIdentity.Id, instance)`.
 
 `RunicApplicationWebLinkHosts` lists hosts, such as `notes.example.org`, whose
 `https` links open the application; pass the same hosts as

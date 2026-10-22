@@ -19,6 +19,8 @@
     <RunicApplicationUrlSchemes>runic-packaging-probe</RunicApplicationUrlSchemes>
     <!-- Two files of this type opened at once reach one packaged process (MultiSelectModel="Player"). -->
     <RunicApplicationFileTypes>.runicprobe</RunicApplicationFileTypes>
+    <!-- The Flatpak exports a D-Bus service file and the desktop entry sets DBusActivatable=true. -->
+    <RunicApplicationDBusActivatable>true</RunicApplicationDBusActivatable>
     <!-- The template's ApplicationIdentity.cs with its Desktop part. -->
     <DefineConstants>$(DefineConstants);desktopHost</DefineConstants>
     <ApplicationIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.ico</ApplicationIcon>

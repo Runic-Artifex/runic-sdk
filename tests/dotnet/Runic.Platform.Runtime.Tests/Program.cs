@@ -18,6 +18,13 @@ internal static class Program
         // The running instance in another process, for the forwarding test (ApplicationInstanceTests).
         if (args is ["--instance-primary", var directory]) return ApplicationInstanceTests.RunPrimaryAsync(directory).GetAwaiter().GetResult();
         if (args is ["--instance-replier", var replierDirectory]) return ApplicationInstanceTests.RunReplierAsync(replierDirectory).GetAwaiter().GetResult();
+        // Started by the D-Bus daemon from the service file of the D-Bus activation test (OpenRequestsTests).
+        if (args is ["--open-probe", var activationId, var activationScheme, "--dbus-probe", var activationLog])
+            return OpenRequestsTests.RunDBusProbeAsync(activationId, activationScheme, activationLog).GetAwaiter().GetResult();
+        // Started by gio through the desktop entry the open-registration test registered (OpenRequestsTests): the
+        // probe's ID and scheme come from gio's environment.
+        if (Environment.GetEnvironmentVariable("RUNIC_OPEN_PROBE")?.Split(' ') is [var probeId2, var probeScheme2])
+            return OpenRequestsTests.RunProbeAsync(probeId2, probeScheme2, args).GetAwaiter().GetResult();
         // The running instance that a desktop registration starts, for the open-request test (OpenRequestsTests).
         if (args is ["--open-probe", var probeId, var probeScheme, .. var probeArguments])
             return OpenRequestsTests.RunProbeAsync(probeId, probeScheme, probeArguments).GetAwaiter().GetResult();

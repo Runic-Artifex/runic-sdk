@@ -8,8 +8,8 @@
 //   node packaging/package.mjs flatpak [--gpg-sign <key id>]
 //
 // It reads the application's identity from the project file (ApplicationId, ApplicationTitle, Version,
-// RunicApplicationUrlSchemes, RunicApplicationFileTypes, RunicApplicationWebLinkHosts, RunicApplicationPublisher, Description,
-// PackageProjectUrl), publishes it with NativeAOT for the platform,
+// RunicApplicationUrlSchemes, RunicApplicationFileTypes, RunicApplicationWebLinkHosts, RunicApplicationDBusActivatable,
+// RunicApplicationPublisher, Description, PackageProjectUrl), publishes it with NativeAOT for the platform,
 // fills the {{...}} fields of the manifests next to this script and writes the package to artifacts/package. Without
 // signing options the package is unsigned (Windows), ad-hoc signed (macOS) or unsigned (Flatpak): install it to test
 // it; sign it to ship it. See the README's "Package it" section.
@@ -77,6 +77,10 @@ export function webLinkHosts(value) {
       throw new Error(`RunicApplicationWebLinkHosts has '${host}', which is not a host name such as notes.example.org.`);
   return hosts;
 }
+
+// The MIME type a file type has on Linux: its own, or application/x-<last part of the ID>-<extension> for one without.
+export const linuxMimeType = (id, type) =>
+  type.mimeType ?? `application/x-${id.split(".").pop().toLowerCase()}-${type.extension.slice(1).replace(/[^a-z0-9.+-]/g, "-")}`;
 
 // The uniform type identifier the macOS bundle exports for one of its file types.
 export const typeIdentifier = (id, extension) => `${id}.${extension.slice(1).replace(/[^A-Za-z0-9.-]/g, "-")}`;
@@ -177,7 +181,22 @@ export function manifestFields(identity, target, rid = "") {
   } else {
     fields.ReleaseDate = new Date().toISOString().slice(0, 10);
     fields.Homepage = xml.homepage;
-    fields.MimeTypes = schemes.length === 0 ? "" : `MimeType=${schemes.map(scheme => `x-scheme-handler/${scheme};`).join("")}\n`;
+    const mimeTypes = [...schemes.map(scheme => `x-scheme-handler/${scheme}`), ...types.map(type => linuxMimeType(identity.id, type))];
+    fields.MimeTypes = mimeTypes.length === 0 ? "" : `MimeType=${mimeTypes.map(type => `${type};`).join("")}\n`;
+    fields.DBusActivatable = identity.dbusActivatable ? "DBusActivatable=true\n" : "";
+    // The file types' definitions, which flatpak-builder compiles into the sandbox's MIME database and Flatpak exports.
+    fields.MimeInfo = types.length === 0 ? "" : `<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">${types.map(type => `
+  <mime-type type="${escapeXml(linuxMimeType(identity.id, type))}">
+    <comment>${xml.name} document (${type.extension})</comment>
+    <glob pattern="*${type.extension}"/>
+  </mime-type>`).join("")}
+</mime-info>
+`;
+    fields.ExtraInstalls = (types.length === 0 ? "" : `
+      - install -Dm644 ${identity.id}.mime.xml /app/share/mime/packages/${identity.id}.xml`)
+      + (identity.dbusActivatable ? `
+      - install -Dm644 ${identity.id}.service /app/share/dbus-1/services/${identity.id}.service` : "");
     // The reverse-DNS prefix of the ID, as AppStream names developers.
     fields.DeveloperId = identity.id.split(".").slice(0, -1).join(".");
   }
@@ -202,7 +221,7 @@ function findProject(option) {
 
 function readIdentity(project, options) {
   const names = ["ApplicationId", "ApplicationTitle", "Version", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes",
-    "RunicApplicationWebLinkHosts", "RunicApplicationPublisher", "Description", "PackageProjectUrl", "AssemblyName"];
+    "RunicApplicationWebLinkHosts", "RunicApplicationDBusActivatable", "RunicApplicationPublisher", "Description", "PackageProjectUrl", "AssemblyName"];
   const output = run("dotnet", ["msbuild", project, ...names.map(name => `-getProperty:${name}`)], { capture: true });
   const properties = JSON.parse(output).Properties;
   const id = checkApplicationId(properties.ApplicationId ?? "");
@@ -213,6 +232,7 @@ function readIdentity(project, options) {
     urlSchemes: urlSchemes(properties.RunicApplicationUrlSchemes),
     fileTypes: fileTypes(properties.RunicApplicationFileTypes),
     webLinkHosts: webLinkHosts(properties.RunicApplicationWebLinkHosts),
+    dbusActivatable: /^true$/i.test(properties.RunicApplicationDBusActivatable ?? ""),
     publisher: options.publisher || properties.RunicApplicationPublisher || "CN=Example",
     description: properties.Description || properties.ApplicationTitle || properties.AssemblyName,
     homepage: properties.PackageProjectUrl || "https://example.com",
@@ -342,6 +362,8 @@ function packageFlatpak(project, identity, options, output) {
   const fields = manifestFields(identity, "flatpak");
   writeFileSync(join(stage, `${identity.id}.desktop`), fill(template("linux", "app.desktop"), fields));
   writeFileSync(join(stage, `${identity.id}.metainfo.xml`), fill(template("linux", "app.metainfo.xml"), fields));
+  if (fields.MimeInfo) writeFileSync(join(stage, `${identity.id}.mime.xml`), fields.MimeInfo);
+  if (identity.dbusActivatable) writeFileSync(join(stage, `${identity.id}.service`), fill(template("linux", "app.service"), fields));
   cpSync(join(here, "..", "icons", "icon.png"), join(stage, "icon.png"));
   cpSync(join(here, "..", "icons", "icon.svg"), join(stage, "icon.svg"));
   const manifest = join(output, `${identity.id}.yml`);

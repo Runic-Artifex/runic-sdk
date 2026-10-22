@@ -15,7 +15,7 @@ files across launches (W319 0.11 B16, I-069).
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
-| Linux | Implemented: the desktop starts the application with the files or URLs as arguments (`Exec=… %U`); `ApplicationInstance` forwards a later launch to the running instance; `DesktopOpenRequests.FromLaunch` takes the registered URLs and existing files. | Portable tests for the parser and for delivery through the instance. A desktop entry with `x-scheme-handler` and `text/plain` opened with `gio open` in an isolated session reaches the running instance (CI, JIT and NativeAOT; also locally in that isolated session). |
+| Linux | Implemented: the desktop starts the application with the files or URLs as arguments (`Exec=… %U`); `ApplicationInstance` forwards a later launch to the running instance; `DesktopOpenRequests.FromLaunch` takes the registered URLs and existing files. Registration: a marked desktop entry and MIME definitions in `XDG_DATA_HOME`. D-Bus activation: `PortalApplication.ExportApplicationAsync` serves `org.freedesktop.Application`. | Portable tests for the parser, delivery through the instance, the entry and MIME XML writer, foreign entries refused without writes, and `ActivateAction`'s `Exec` mapping. D-Bus (dbus-run-session, JIT and NativeAOT): `Activate` with a token, `Open` into the open requests, `ActivateAction`, a taken name refused, the name released. CI isolated session: a desktop entry written through `IDesktopOpenRegistration` opened with `gio open` reaches the running instance, a packaged entry is refused; a D-Bus service file in `XDG_DATA_HOME` starts the activatable probe for `Open` (cold), then `Open`, `Activate` and `ActivateAction` reach it (warm). Packaging job: the Flatpak exports `DBusActivatable=true`, the file type's MIME definition and the service file. Manual: GNOME Shell and KDE launching a `DBusActivatable` application. |
 | Windows | Implemented: the shell starts the application with `"%1"`, then as on Linux. Registration: per-user `HKCU\Software\Classes` keys, `Capabilities` and `RegisteredApplications`. MSIX: `GetLaunch` reads the activation (protocol URI, every file), login startup uses the package's `StartupTask`. | The same portable tests. Registration round trip, update from a new path, foreign user and machine keys refused with nothing written, in a scratch key (JIT and NativeAOT). CI: a URL protocol registered through `IDesktopOpenRegistration` opened by the shell reaches the running instance, a foreign protocol is refused, JIT and NativeAOT. Packaging job: the MSIX probe is activated by its protocol (`GetLaunch` sees `Protocol`), its `StartupTask` is turned on and off, and two `.runicprobe` files opened together through the shell (`FolderItems.InvokeVerbEx`, as Explorer opens a selection) reach one process. Manual: Default apps listing, Explorer multi-select, `AppUriHandler` on a verified domain. |
 | macOS | Implemented: LaunchServices sends the open-documents (`odoc`) and get-URL (`GURL`) Apple events to the running application, at launch and later. Runic.Platform.MacOS installs `NSAppleEventManager` handlers before the application finishes launching. Launches from a terminal also forward their arguments. With `WebLinkHosts`, a Runic application delegate receives universal links. Registration: `LSRegisterURL` of the running bundle after checking its `Info.plist`. Bookmarks: security-scoped inside the App Sandbox. | CI, JIT and NativeAOT: `odoc` and `GURL` events dispatched through `NSAppleEventManager`'s handler table; synthetic web-browsing `NSUserActivity` objects passed to the delegate at launch and later, also through an application's own delegate class; a bundle around the NativeAOT test executable registers itself with `LSRegisterURL` and is listed for its scheme and plain text, then, registered with `lsregister`, launched by `open -a … file` and by `open <scheme>://…`, receives each at launch; bookmarks round trip, follow a moved file and report a deleted one, unsandboxed and in the ad-hoc signed App Sandbox fixture, where a file outside the container gets none. Manual: universal links on a Mac with the Associated Domains entitlement and an `apple-app-site-association` file. |
 
@@ -62,6 +62,9 @@ public interface IDesktopBookmarkAccess : IAsyncDisposable { string LocalPath { 
 // Runic.Platform.MacOS
 public static IDesktopOpenRegistration MacOSPlatformProvider.CreateOpenRegistration();
 public static IDesktopFileBookmarks MacOSPlatformProvider.CreateFileBookmarks();
+// Runic.Platform.Linux.Portal
+public IDesktopOpenRegistration PortalApplication.CreateOpenRegistration();
+public ValueTask<PlatformResult<IAsyncDisposable>> PortalApplication.ExportApplicationAsync(IApplicationInstance instance, CancellationToken cancellationToken = default);
 // Runic.Platform.Windows
 public static IDesktopOpenRegistration WindowsPlatformProvider.CreateOpenRegistration(string applicationId);
 public static ApplicationLaunch WindowsPlatformProvider.GetLaunch(IEnumerable<string> arguments);
@@ -135,6 +138,33 @@ when the user agrees, and never makes the application the default.
   and updates; a key without it in the user's or machine's classes whose
   command differs is a conflict. `SHChangeNotify(SHCNE_ASSOCCHANGED)` follows
   each change.
+
+- Linux: outside a sandbox, `$XDG_DATA_HOME/applications/<id>.desktop` with
+  `Exec="<exe>" %U`, `MimeType=` and `X-Runic-Registered=true`, and for a file
+  type the shared MIME-info database does not give its extension, a definition
+  in `$XDG_DATA_HOME/mime/packages/<id>.xml`; then `update-mime-database` and
+  `update-desktop-database` where installed. An entry of the ID in
+  `XDG_DATA_DIRS`, or one without the marker, is the package's: `Conflict`
+  with `open-registration-foreign-entry`. A registration replaces the
+  application's earlier one. Flatpak and Snap: `Unavailable`.
+
+### D-Bus activation
+
+`PortalApplication.ExportApplicationAsync(instance)`
+(`DesktopPlatformServices.ExportApplicationAsync(id, instance)`) owns the
+application ID on the session bus (`DoNotQueue`) and serves a generated
+`org.freedesktop.Application` service at the ID's object path. `Activate` is a
+launch of `instance` without arguments, `Open` a launch with the URIs (so open
+requests created for the instance take them), and `ActivateAction` a launch
+with the `Exec` arguments of the installed entry's `[Desktop Action <name>]`,
+listed in `Actions`; its parameter is not used. `activation-token` and
+`desktop-startup-id` in the platform data become the launch's
+`PlatformContext`. The launch goes to the instance's `Launched` handlers
+directly (a Runtime hook), not through the instance socket. Another process
+owning the name is `ResourceBusy` with `dbus-activation-name-taken`. Portal
+notifications of the same ID share the name and the object, which answers
+their `ActivateAction` too. The application calls it explicitly; Runic does
+not infer it from an installed entry.
 
 ### MSIX activation
 
@@ -216,8 +246,11 @@ MimeType=x-scheme-handler/org.example.notes;text/markdown;application/x-example-
   not set itself as default without asking (`xdg-mime default`, or
   `IDesktopApplications.SetDefaultApplicationAsync`, see
   [desktop applications](desktop-applications.md)).
-- Not used: D-Bus activation (`DBusActivatable=true` and
-  `org.freedesktop.Application.Open`).
+- D-Bus activation: `DBusActivatable=true` in the entry and a D-Bus service
+  file `share/dbus-1/services/<application ID>.service` (`Name=` the ID,
+  `Exec=` the program), with the running instance serving
+  `ExportApplicationAsync`. The desktop then starts the application through the
+  bus and delivers later opens to the running process.
 
 ### Windows
 

@@ -14,10 +14,10 @@ const packaging = resolve(root, "tools/Runic.Application.Templates/content/runic
 const manifests = {
   windows: ["windows/AppxManifest.xml"],
   macos: ["macos/Info.plist"],
-  flatpak: ["linux/app.desktop", "linux/app.metainfo.xml", "linux/flatpak.yml"],
+  flatpak: ["linux/app.desktop", "linux/app.metainfo.xml", "linux/flatpak.yml", "linux/app.service"],
 };
-const identity = (schemes, types = [], hosts = []) => ({
-  id: "org.example.Notes", name: "Notes & Co", version: "2.1.0-preview.3", urlSchemes: schemes, fileTypes: types, webLinkHosts: hosts,
+const identity = (schemes, types = [], hosts = [], dbusActivatable = false) => ({
+  id: "org.example.Notes", name: "Notes & Co", version: "2.1.0-preview.3", urlSchemes: schemes, fileTypes: types, webLinkHosts: hosts, dbusActivatable,
   publisher: "CN=Example Ltd, O=Example Ltd", description: "Notes <for> everyone", homepage: "https://example.org/notes?a=1&b=2",
   executable: "Notes",
 });
@@ -69,7 +69,7 @@ test("package.mjs fills every field of its manifests, escaped, with and without 
   for (const [target, files] of Object.entries(manifests))
     for (const schemes of [[], ["org.example.notes", "notes-x"]]) {
       const types = schemes.length ? [{ extension: ".notes", mimeType: "application/x-example-notes" }, { extension: ".tar.gz" }] : [];
-      const fields = manifestFields(identity(schemes, types, schemes.length ? ["notes.example.org"] : []), target);
+      const fields = manifestFields(identity(schemes, types, schemes.length ? ["notes.example.org"] : [], schemes.length > 0), target);
       for (const file of files) {
         const text = fill(readFileSync(resolve(packaging, file), "utf8"), fields);
         assert.doesNotMatch(text, /\{\{|\}\}/, file);
@@ -99,14 +99,26 @@ test("package.mjs fills every field of its manifests, escaped, with and without 
         }
         if (file === "linux/app.desktop") {
           assert.match(text, /^Exec=Notes %U$/m);
-          assert.equal(text.match(/^MimeType=(.*)$/m)?.[1], schemes.length ? "x-scheme-handler/org.example.notes;x-scheme-handler/notes-x;" : undefined);
+          assert.equal(text.match(/^MimeType=(.*)$/m)?.[1], schemes.length
+            ? "x-scheme-handler/org.example.notes;x-scheme-handler/notes-x;application/x-example-notes;application/x-notes-tar.gz;" : undefined);
+          assert.equal(/^DBusActivatable=true$/m.test(text), schemes.length > 0);
           assert.ok(text.endsWith("\n"));
         }
         if (file === "linux/app.metainfo.xml") {
           assert.match(text, /<developer id="org\.example">/);
           assert.match(text, /<url type="homepage">https:\/\/example\.org\/notes\?a=1&amp;b=2<\/url>/);
         }
-        if (file === "linux/flatpak.yml") assert.match(text, /^app-id: org\.example\.Notes$/m);
+        if (file === "linux/flatpak.yml") {
+          assert.match(text, /^app-id: org\.example\.Notes$/m);
+          assert.equal(/install -Dm644 org\.example\.Notes\.mime\.xml \/app\/share\/mime\/packages\/org\.example\.Notes\.xml$/m.test(text), types.length > 0);
+          assert.equal(/install -Dm644 org\.example\.Notes\.service \/app\/share\/dbus-1\/services\/org\.example\.Notes\.service$/m.test(text), schemes.length > 0);
+        }
+        if (file === "linux/app.service") assert.equal(text, "[D-BUS Service]\nName=org.example.Notes\nExec=/app/bin/Notes\n");
+      }
+      if (target === "flatpak" && types.length > 0) {
+        parsesAsXml(fields.MimeInfo, "mime.xml");
+        assert.match(fields.MimeInfo, /<mime-type type="application\/x-example-notes">\s*<comment>Notes &amp; Co document \(\.notes\)<\/comment>\s*<glob pattern="\*\.notes"\/>/);
+        assert.match(fields.MimeInfo, /<mime-type type="application\/x-notes-tar\.gz">/);
       }
     }
 });
@@ -116,7 +128,7 @@ test("the packaging probe declares what the template's packaging reads", () => {
   const template = readFileSync(resolve(packaging, "../RunicWindowApp.csproj"), "utf8");
   // W319-003 D17: the identity uses the MSBuild names ApplicationId and ApplicationTitle, which the assembly
   // metadata that ApplicationIdentity.cs reads repeats.
-  for (const property of ["ApplicationId", "ApplicationTitle", "Version", "Description", "PackageProjectUrl", "RunicApplicationPublisher", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes"]) {
+  for (const property of ["ApplicationId", "ApplicationTitle", "Version", "Description", "PackageProjectUrl", "RunicApplicationPublisher", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes", "RunicApplicationDBusActivatable"]) {
     assert.match(probe, new RegExp(`<${property}>[^<]+</${property}>`), property);
     assert.match(template, new RegExp(`<${property}>`), property);
   }

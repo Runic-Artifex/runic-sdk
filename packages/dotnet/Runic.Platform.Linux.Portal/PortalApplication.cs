@@ -88,6 +88,91 @@ public sealed class PortalApplication
     /// connects to nothing; the first request does.</remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "A factory of the provider instance, as the other services are; the volumes need no identity.")]
     public IDesktopVolumes CreateVolumes() => new UDisksVolumes();
+    /// <summary>Creates the registration of this application's URL schemes and file types with the desktop, for the
+    /// current user.</summary>
+    /// <remarks>
+    /// <para>Outside a sandbox it writes the desktop entry <c>$XDG_DATA_HOME/applications/&lt;application ID&gt;.desktop</c>
+    /// (<c>Exec="&lt;executable&gt;" %U</c>, <c>MimeType=</c> with <c>x-scheme-handler/&lt;scheme&gt;</c> and the file
+    /// types, <c>X-Runic-Registered=true</c>) and, for a file type whose extension the shared MIME-info database does not
+    /// give its <see cref="DesktopFileType.MimeType"/>, a definition in <c>$XDG_DATA_HOME/mime/packages/&lt;application ID&gt;.xml</c>,
+    /// then runs <c>update-mime-database</c> and <c>update-desktop-database</c> where they are installed. A registration
+    /// replaces the application's earlier one. A file type without a MIME type uses the database's type for its
+    /// extension, <see cref="PlatformFailureCode.InvalidData"/> when it has none.</para>
+    /// <para>An entry of this ID that the application's package installed in <c>XDG_DATA_DIRS</c>, or one in
+    /// <c>XDG_DATA_HOME</c> without the marker, is <see cref="PlatformFailureCode.Conflict"/> and reports
+    /// <c>open-registration-foreign-entry</c>; nothing is written. Inside Flatpak or Snap, whose manifest exports the
+    /// entry and MIME definitions, every request reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// It never sets a default (<c>mimeapps.list</c>).</para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">This object has no <see cref="ApplicationId"/>, which names the entry.</exception>
+    public IDesktopOpenRegistration CreateOpenRegistration() => new LinuxOpenRegistration(this, ApplicationId
+        ?? throw new InvalidOperationException("Create the PortalApplication with the application's ID, which names its desktop entry."));
+
+    /// <summary>
+    /// Serves D-Bus activation of the running instance: owns the application ID on the session bus and answers
+    /// <c>org.freedesktop.Application</c> at the object path derived from it, as a desktop entry with
+    /// <c>DBusActivatable=true</c> requires.
+    /// </summary>
+    /// <param name="instance">The running instance from <c>ApplicationInstance.ClaimAsync</c>. Each activation arrives as
+    /// one of its launches: <c>Activate</c> without arguments, <c>Open</c> with the URIs as arguments, which open
+    /// requests created for the instance take, and <c>ActivateAction</c> with the <c>Exec</c> arguments of the installed
+    /// entry's <c>[Desktop Action &lt;name&gt;]</c> (the action's parameter is not used). The <c>activation-token</c> or
+    /// <c>desktop-startup-id</c> becomes the launch's <see cref="ApplicationLaunch.PlatformContext"/>.</param>
+    /// <param name="cancellationToken">Cancels before the name is owned.</param>
+    /// <returns>The export, whose disposal releases the name; <see cref="PlatformFailureCode.ResourceBusy"/>, with
+    /// <c>dbus-activation-name-taken</c>, when another process owns the application ID, and
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> without a session bus.</returns>
+    /// <remarks>
+    /// Call it once the instance is claimed, before the first window: the desktop starts a D-Bus-activatable
+    /// application through its D-Bus service file and waits for the name. A call that comes while the instance is
+    /// ending fails back to the caller. Notifications of this object share the name and the object path.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">This object has no <see cref="ApplicationId"/>.</exception>
+    public ValueTask<PlatformResult<IAsyncDisposable>> ExportApplicationAsync(IApplicationInstance instance, CancellationToken cancellationToken = default) =>
+        ExportApplicationAsync(instance, null, DesktopApplicationsOptions.FromProcess(), cancellationToken);
+
+    internal async ValueTask<PlatformResult<IAsyncDisposable>> ExportApplicationAsync(IApplicationInstance instance, string? address,
+        DesktopApplicationsOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        string id = ApplicationId ?? throw new InvalidOperationException("Create the PortalApplication with the application's ID, which names its bus name.");
+        cancellationToken.ThrowIfCancellationRequested();
+        Linux.DBus.DBusConnection connection;
+        try { connection = (await PortalBus.Session(address, PortalConnection.RegisteredIdentity(this)).ConnectAsync(cancellationToken).ConfigureAwait(false)).Connection; }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<IAsyncDisposable>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (TimeoutException) { return new PlatformResult<IAsyncDisposable>.Failed(PlatformFailureCode.IOError); }
+        ApplicationBusObject shared;
+        try { shared = await ApplicationBusObject.AcquireAsync(connection, id, cancellationToken).ConfigureAwait(false); }
+        catch (ApplicationBusObject.NameTakenException)
+        {
+            Diagnose("dbus-activation-name-taken", $"Another process owns {id} on the session bus.",
+                "Only the running instance serves D-Bus activation: claim the instance first, and export it once.");
+            return new PlatformResult<IAsyncDisposable>.Failed(PlatformFailureCode.ResourceBusy);
+        }
+        catch (Exception error) when (error is InvalidOperationException or Linux.DBus.DBusException or TimeoutException)
+        {
+            return new PlatformResult<IAsyncDisposable>.Failed(PlatformFailureCode.ResourceBusy);
+        }
+        if (shared.Activation is not null)
+        {
+            await shared.ReleaseAsync().ConfigureAwait(false);
+            throw new InvalidOperationException("The application's D-Bus activation is already exported; dispose that export first.");
+        }
+        shared.Activation = new ApplicationActivation(id, instance, options);
+        return new PlatformResult<IAsyncDisposable>.Success(new ApplicationExport(shared));
+    }
+
+    private sealed class ApplicationExport(ApplicationBusObject shared) : IAsyncDisposable
+    {
+        private int _disposed;
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            shared.Activation = null;
+            await shared.ReleaseAsync().ConfigureAwait(false);
+        }
+    }
+
     // File and URI handoffs for a window, for a host.
     internal IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }
