@@ -291,6 +291,104 @@ public static partial class DesktopPlatformServices
         MacOSPlatformProvider.CreateOpenRequests(options, instance, launch);
 #endif
 
+    /// <summary>
+    /// Creates the registration of the application's URL schemes and file types with the desktop, for the current
+    /// user, from the provider for the operating system.
+    /// </summary>
+    /// <param name="applicationId">
+    /// The application's ID, as for <see cref="CreateLoginStartup(string?)"/>: on Linux the reverse-DNS ID that names
+    /// the desktop entry the registration writes; on Windows the prefix of the file types' ProgIDs and the name under
+    /// which Settings lists the application. macOS registers the running bundle and ignores it.
+    /// </param>
+    /// <remarks>
+    /// Nothing is written until <see cref="IDesktopOpenRegistration.RegisterAsync"/>, which an application calls when
+    /// the user agrees; it never makes the application the default. macOS checks that the bundle's <c>Info.plist</c>
+    /// declares each item and registers the bundle with Launch Services. A packaged or sandboxed process, whose package
+    /// declares what it opens, reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>; elsewhere every
+    /// request reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection, string)"/>
+    /// registers one instance for the application.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
+    public static IDesktopOpenRegistration CreateOpenRegistration(string applicationId)
+    {
+        ValidateApplicationId(applicationId);
+        return CreateOpenRegistration(applicationId, null);
+    }
+
+    internal static IDesktopOpenRegistration CreateOpenRegistration(string applicationId, ILogger? logger)
+    {
+        IDesktopOpenRegistration? registration = null;
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsMacOS()) registration = CreateMacOSOpenRegistration();
+#endif
+        return registration ?? DesktopOpenRegistrations.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopOpenRegistration CreateMacOSOpenRegistration() => MacOSPlatformProvider.CreateOpenRegistration();
+#endif
+
+    /// <summary>
+    /// Serves the desktop's D-Bus activation of the application (<c>org.freedesktop.Application</c>) on Linux, so the
+    /// desktop delivers activations and opened files to the running instance without starting a process.
+    /// </summary>
+    /// <param name="applicationId">The reverse-DNS ID of the installed desktop entry, which names the application's bus
+    /// name and object path.</param>
+    /// <param name="instance">The running instance from <c>ApplicationInstance.ClaimAsync</c>: each activation arrives as
+    /// one of its launches, and open requests created for it take the files and URLs.</param>
+    /// <param name="cancellationToken">Cancels before the bus name is owned.</param>
+    /// <returns>The export to dispose when the application ends, which releases the bus name; every other operating
+    /// system reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</returns>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
+    public static ValueTask<PlatformResult<IAsyncDisposable>> ExportApplicationAsync(string applicationId, IApplicationInstance instance,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateApplicationId(applicationId);
+        ArgumentNullException.ThrowIfNull(instance);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<IAsyncDisposable>>(new PlatformResult<IAsyncDisposable>.Unavailable(
+            OperatingSystem.IsLinux() ? PlatformUnavailableReason.ProviderNotConfigured : PlatformUnavailableReason.BackendUnavailable));
+    }
+
+    /// <summary>This process's launch, with the files and URLs the operating system activated it with.</summary>
+    /// <param name="arguments">The process's arguments, as <c>Main</c> receives them.</param>
+    /// <returns>The launch to pass to <c>ApplicationInstance.ClaimAsync</c> and <see cref="CreateOpenRequests"/>.</returns>
+    /// <remarks>
+    /// The same as <see cref="ApplicationLaunch.FromProcess"/>, except where the operating system passes activation
+    /// outside the arguments, such as an MSIX package on Windows.
+    /// </remarks>
+    public static ApplicationLaunch GetLaunch(IEnumerable<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        return ApplicationLaunch.FromProcess(arguments);
+    }
+
+    /// <summary>Creates file bookmarks, which keep access to files across launches, from the provider for the operating
+    /// system.</summary>
+    /// <returns>File bookmarks; they hold no native resources between requests and need no disposal.</returns>
+    /// <remarks>
+    /// macOS creates security-scoped bookmarks inside the App Sandbox and ordinary bookmarks outside it; Windows and
+    /// Linux, where a path keeps its access, use the path itself. It needs no window.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopFileBookmarks CreateFileBookmarks()
+    {
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsMacOS()) return CreateMacOSFileBookmarks();
+#endif
+        return new PathFileBookmarks();
+    }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopFileBookmarks CreateMacOSFileBookmarks() => MacOSPlatformProvider.CreateFileBookmarks();
+#endif
+
     /// <summary>Creates secret storage in the user's credential store from the provider for the operating system.</summary>
     /// <returns>A secret store; it holds no native resources between requests and needs no disposal.</returns>
     /// <remarks>
@@ -1158,7 +1256,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMonitors"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
-    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application, without an application ID.
+    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopApplications"/>, <see cref="IDesktopThumbnails"/> and
+    /// <see cref="IDesktopFileBookmarks"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
@@ -1188,7 +1287,8 @@ public static class DesktopPlatformServiceCollectionExtensions
 
     /// <summary>
     /// Registers the same services as <see cref="AddRunicPlatformServices(IServiceCollection)"/>, with notifications,
-    /// the status icon, login startup and inhibition for the application identified by <paramref name="applicationId"/>.
+    /// the status icon, login startup and inhibition for the application identified by <paramref name="applicationId"/>,
+    /// and its <see cref="IDesktopOpenRegistration"/> (<see cref="DesktopPlatformServices.CreateOpenRegistration(string)"/>).
     /// </summary>
     /// <param name="services">The application's services.</param>
     /// <param name="applicationId">
@@ -1227,6 +1327,10 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateTrash(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateFileTransfers());
+        services.TryAddSingleton(static _ => DesktopPlatformServices.CreateFileBookmarks());
+        if (applicationId is not null)
+            services.TryAddSingleton(provider => DesktopPlatformServices.CreateOpenRegistration(applicationId,
+                provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateVolumes());
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateApplications(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));

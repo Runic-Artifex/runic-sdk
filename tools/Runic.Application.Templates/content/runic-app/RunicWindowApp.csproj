@@ -21,6 +21,12 @@
     <!-- URL schemes the application opens, separated by semicolons, such as the redirect of an OAuth sign-in. The
          packages register them; see "Package it" in the README. -->
     <RunicApplicationUrlSchemes></RunicApplicationUrlSchemes>
+    <!-- File types the application opens, separated by semicolons: an extension with its dot, optionally with its MIME
+         type, such as .notes=application/x-example-notes. The packages declare each as the application's own type. -->
+    <RunicApplicationFileTypes></RunicApplicationFileTypes>
+    <!-- Hosts whose https links the application opens, separated by semicolons, such as notes.example.org: Windows app
+         URI handlers and macOS universal links, which also need a file on each host; see the README. -->
+    <RunicApplicationWebLinkHosts></RunicApplicationWebLinkHosts>
 <!--#endif -->
     <!-- The Explorer and taskbar icon; icons/ holds the same placeholder as SVG and PNG. -->
     <ApplicationIcon>icons/icon.ico</ApplicationIcon>

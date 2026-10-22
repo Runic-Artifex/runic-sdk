@@ -13,16 +13,9 @@
   <key>CFBundleVersion</key><string>{{BundleVersion}}</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
-  <key>NSHighResolutionCapable</key><true/>{{UrlSchemes}}
-  <!-- A document type the application opens:
-  <key>CFBundleDocumentTypes</key>
-  <array>
-    <dict>
-      <key>CFBundleTypeName</key><string>Notes document</string>
-      <key>CFBundleTypeRole</key><string>Editor</string>
-      <key>LSItemContentTypes</key><array><string>org.example.notes.document</string></array>
-    </dict>
-  </array>
-  and its UTExportedTypeDeclarations entry with UTTypeIdentifier, UTTypeConformsTo and the file extension. -->
+  <key>NSHighResolutionCapable</key><true/>{{UrlSchemes}}{{DocumentTypes}}
+  <!-- Universal links for RunicApplicationWebLinkHosts need the com.apple.developer.associated-domains entitlement
+       (applinks:<host>), which a provisioning profile grants, and an apple-app-site-association file on each host;
+       see the README. -->
 </dict>
 </plist>

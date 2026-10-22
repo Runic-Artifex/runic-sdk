@@ -1105,8 +1105,9 @@ jobs:
         run: |
           eng/ci/macos-appearance.sh "dotnet tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll"
           eng/ci/macos-appearance.sh ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests
-      # Open requests: odoc and GURL Apple events the test process sends itself, then a bundle around the NativeAOT
-      # executable that LaunchServices launches with a document and with a URL (eng/ci/macos-open-probe.sh).
+      # Open requests: odoc and GURL Apple events the test process sends itself, synthetic universal links through the
+      # application delegate and NSURL bookmarks, then a bundle around the NativeAOT executable that registers itself
+      # with LSRegisterURL and that LaunchServices launches with a document and with a URL (eng/ci/macos-open-probe.sh).
       - name: Verify macOS open events with JIT and NativeAOT
         if: runner.os == 'macOS'
         timeout-minutes: 8
@@ -1165,6 +1166,20 @@ jobs:
           codesign --force --deep --sign - --entitlements tests/native/platform-sandbox/entitlements.plist artifacts/platform-sandbox/RunicPlatform.app
           codesign --verify --deep --strict artifacts/platform-sandbox/RunicPlatform.app
           tar -czf artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz -C artifacts/platform-sandbox RunicPlatform.app
+      # Security-scoped bookmarks in the App Sandbox: a file in the container round trips, moves and is deleted; a file
+      # outside the container, which the user never chose, gets no bookmark (MacBookmarksNativeTests.RunSandboxProbe).
+      - name: Verify security-scoped bookmarks in the macOS sandbox fixture
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          deadline() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          outside="$HOME/runic-bookmark-outside-$GITHUB_RUN_ID.txt"
+          echo probe > "$outside"
+          status=0
+          deadline 90 artifacts/platform-sandbox/RunicPlatform.app/Contents/MacOS/Runic.Platform.Runtime.Tests --bookmark-probe "$outside" || status=$?
+          rm -f "$outside"
+          exit $status
       - name: Retain macOS sandbox permission fixture
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

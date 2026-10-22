@@ -10,7 +10,9 @@ namespace Runic.Platform.MacOS;
 // in the bundle's Info.plist, before and after launch. The handlers replace AppKit's, which would look for an
 // NSApplication delegate that Runic does not set. finishLaunching installs AppKit's handlers and then dispatches the
 // launch's own open event, so they are installed again when it posts NSApplicationWillFinishLaunchingNotification,
-// and creating them after launch is refused.
+// and creating them after launch is refused. With web link hosts, a Runic application delegate (or, when the application
+// set its own, a method added to its class) receives universal links: NSUserActivity web-browsing activities, which
+// AppKit hands only to the delegate, before or after launch.
 internal static partial class MacOpenEvents
 {
     // AEEventClass and AEEventID four-character codes.
@@ -19,7 +21,9 @@ internal static partial class MacOpenEvents
     private const uint DirectObject = 0x2D2D2D2D, FileUrlType = 0x6675726C;      // '----', 'furl'
 
     private static readonly Lock Gate = new();
-    private static nint s_handler;
+    private const string ContinueActivity = "application:continueUserActivity:restorationHandler:";
+    private const string BrowsingWeb = "NSUserActivityTypeBrowsingWeb";
+    private static nint s_handler, s_delegate;
     private static OpenRequestQueue? s_queue;
     private static DesktopOpenOptions? s_options;
 
@@ -48,7 +52,66 @@ internal static partial class MacOpenEvents
             }
             SetHandlers();
             s_queue = queue; s_options = options;
+            if (!options.WebLinkHosts.IsEmpty) SetDelegate();
         }
+    }
+
+    // Universal links reach only the application delegate: Runic's, or the method added to the application's own.
+    internal static unsafe void SetDelegate()
+    {
+        var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+        nint current = Send(application, Sel("delegate"));
+        if (current == 0)
+        {
+            // NSApplication does not retain its delegate; this one lives for the process.
+            if (s_delegate == 0) s_delegate = Send(Send(DelegateClass.Value, Sel("alloc")), Sel("init"));
+            Arg(application, Sel("setDelegate:"), s_delegate);
+        }
+        else if (current != s_delegate && BoolArg(current, Sel("respondsToSelector:"), Sel(ContinueActivity)) == 0)
+            AddMethod(ObjectClass(current), Sel(ContinueActivity), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, byte>)&Continue, ContinueTypes);
+    }
+
+    // BOOL is bool on arm64 and signed char on x86_64.
+    private static string ContinueTypes => (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B" : "c") + "@:@@@?";
+
+    private static readonly Lazy<nint> DelegateClass = new(CreateDelegateClass);
+
+    private static unsafe nint CreateDelegateClass()
+    {
+        var type = AllocateClass(Class("NSObject"), "RunicApplicationDelegate", 0);
+        if (type == 0) throw new InvalidOperationException("The application delegate class already exists.");
+        string boolean = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B" : "c";
+        AddMethod(type, Sel(ContinueActivity), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, byte>)&Continue, ContinueTypes);
+        // Without an answer AppKit warns on macOS 14 and later; restorable state is secure-coded either way.
+        AddMethod(type, Sel("applicationSupportsSecureRestorableState:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&SupportsSecureRestorableState, boolean + "@:@");
+        RegisterClass(type);
+        return type;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte SupportsSecureRestorableState(nint self, nint selector, nint application) => 1;
+
+    // A web-browsing activity whose page is on one of the web link hosts is an open request; AppKit handles every other.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte Continue(nint self, nint selector, nint application, nint activity, nint restorationHandler)
+    {
+        try
+        {
+            using var pool = new Pool();
+            OpenRequestQueue? queue; DesktopOpenOptions? options;
+            lock (Gate) { queue = s_queue; options = s_options; }
+            if (queue is null || options is null || options.WebLinkHosts.IsEmpty || activity == 0) return 0;
+            if (Text(Send(activity, Sel("activityType"))) != BrowsingWeb) return 0;
+            nint url = Send(activity, Sel("webpageURL"));
+            if (url == 0) return 0;
+            // Only the web link rules: a custom scheme or a file never arrives as a web-browsing activity.
+            var request = DesktopOpenRequests.FromLaunch(new ApplicationLaunch([Text(Send(url, Sel("absoluteString")))], "/"),
+                new DesktopOpenOptions([]) { WebLinkHosts = options.WebLinkHosts });
+            if (request is null) return 0;
+            queue.Post(request);
+            return 1;
+        }
+        catch { return 0; /* A delegate method must not throw into AppKit; a malformed activity opens nothing. */ }
     }
 
     private static void SetHandlers()
@@ -85,7 +148,14 @@ internal static partial class MacOpenEvents
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void WillFinishLaunching(nint self, nint selector, nint notification)
     {
-        try { SetHandlers(); }
+        try
+        {
+            SetHandlers();
+            DesktopOpenOptions? options;
+            lock (Gate) options = s_options;
+            // The application may have set its delegate since the open requests were created.
+            if (options is { WebLinkHosts.IsEmpty: false }) SetDelegate();
+        }
         catch { /* A notification observer must not throw into AppKit. */ }
     }
 
@@ -129,6 +199,7 @@ internal static partial class MacOpenEvents
     [LibraryImport(ObjC, EntryPoint = "objc_allocateClassPair", StringMarshalling = StringMarshalling.Utf8)] private static partial nint AllocateClass(nint parent, string name, nuint extra);
     [LibraryImport(ObjC, EntryPoint = "objc_registerClassPair")] private static partial void RegisterClass(nint type);
     [LibraryImport(ObjC, EntryPoint = "class_addMethod", StringMarshalling = StringMarshalling.Utf8)] private static partial byte AddMethod(nint type, nint selector, nint implementation, string types);
+    [LibraryImport(ObjC, EntryPoint = "object_getClass")] private static partial nint ObjectClass(nint value);
 }
 
 // Apple events and, through the single instance, the arguments of later launches, such as a command line's.

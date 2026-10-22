@@ -2,7 +2,7 @@
 
 The macOS provider of the Runic.Platform services for macOS arm64. `MacOSPlatformProvider` creates the application-scoped services, including the status icon and login startup, without a window; the services take no application ID because macOS identifies the application by its bundle. Every factory is annotated `[SupportedOSPlatform("macos")]` and throws `PlatformNotSupportedException` on another operating system; the privileged actions report unavailable instead, because generated code registers them everywhere. The window services (AppKit file dialogs, the clipboard and file handoff) belong to a window: Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and `AddRunicPlatformServices()` create them for each window. Native handles and selected paths remain in C#.
 
-File panels are owned sheets. Filters restrict the panel to the union of their extensions and MIME types through `UTType` content types (macOS 11 and later; `image/*` and the other top-level wildcards map to their abstract types), and a save panel may add the first allowed extension to a name typed without one. AppKit shows no filter pop-up of its own: with `ShowsFilterChoice`, Runic adds an `NSPopUpButton` accessory listing the filters, which switches the panel to the chosen filter's types and is reported as the result's `SelectedFilter`; without it the user cannot switch between filters and `SelectedFilter` is `null`. `OpenFilesAsync` and `OpenDirectoriesAsync` use `allowsMultipleSelection`, with security-scoped access for each selected URL, and the initial folder sets `directoryURL`. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: atomic replacement reports unavailable before changing the target. Bookmarks are outside this preview.
+File panels are owned sheets. Filters restrict the panel to the union of their extensions and MIME types through `UTType` content types (macOS 11 and later; `image/*` and the other top-level wildcards map to their abstract types), and a save panel may add the first allowed extension to a name typed without one. AppKit shows no filter pop-up of its own: with `ShowsFilterChoice`, Runic adds an `NSPopUpButton` accessory listing the filters, which switches the panel to the chosen filter's types and is reported as the result's `SelectedFilter`; without it the user cannot switch between filters and `SelectedFilter` is `null`. `OpenFilesAsync` and `OpenDirectoriesAsync` use `allowsMultipleSelection`, with security-scoped access for each selected URL, and the initial folder sets `directoryURL`. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: atomic replacement reports unavailable before changing the target. Keeping access across launches is `CreateFileBookmarks()` (below).
 
 Clipboard reads distinguish no text (`null`) from empty text, enforce a UTF-16 character bound before copying to managed memory, and detect concurrent pasteboard replacement. The clipboard uses ApplicationServices C Pasteboard APIs and CoreFoundation to report OSStatus failures without Objective-C exception unwinding. Writes use the native API's actual outcome once native mutation begins. Presentation dispatch must stop accepting new work before scoped shutdown; existing panel cancellation and native resource release drain on AppKit's main queue even after the owner becomes unavailable.
 
@@ -101,6 +101,37 @@ terminal. Create it on the main thread before the first window or status icon:
 the launch's own event is sent as the application finishes launching, so
 creating it later throws `InvalidOperationException`. The events arrive while
 the Desktop event loop runs. URLs with schemes not in the options are ignored.
+
+With `WebLinkHosts`, universal links to those hosts are requests too. AppKit
+hands a universal link (an `NSUserActivity` of type
+`NSUserActivityTypeBrowsingWeb`) only to the application delegate, so Runic
+sets a delegate that implements `application:continueUserActivity:restorationHandler:`
+and `applicationSupportsSecureRestorableState:` (YES) and nothing else; an
+application with its own delegate, set before or after, gets the first method
+added to the delegate's class where it has none. macOS delivers universal links
+only to a bundle signed with the Associated Domains entitlement
+(`com.apple.developer.associated-domains` with `applinks:<host>`), which a
+provisioning profile from an Apple Developer account grants, and each host
+serves `/.well-known/apple-app-site-association` naming the application. CI
+tests the delivery with synthetic activities; the association is the
+application's to verify.
+
+`CreateOpenRegistration()` registers the running bundle with Launch Services
+(`LSRegisterURL`), as launching it from Finder does. Launch Services reads
+schemes and types only from `Info.plist`, so registration first checks that
+`CFBundleURLTypes` and `CFBundleDocumentTypes` (with the extensions of their
+exported or imported types) declare every item, `InvalidData` otherwise.
+`IsRegisteredAsync` asks `NSWorkspace` whether Launch Services lists the bundle
+for each scheme and extension. A bundle stays registered until it is deleted, so
+`UnregisterAsync`, and every request outside a bundle, report `Unavailable`.
+
+`CreateFileBookmarks()` creates `NSURL` bookmarks. Inside the App Sandbox they
+are security-scoped (the bundle needs `com.apple.security.files.bookmarks.app-scope`),
+and resolving one starts `startAccessingSecurityScopedResource` until the
+access is disposed; outside it they are ordinary bookmarks. Both follow a file
+that was moved or renamed, and report `IsStale` when the bookmark should be
+created again.
+
 See the [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
 
 ## Trash

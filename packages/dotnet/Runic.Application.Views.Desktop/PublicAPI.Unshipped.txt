@@ -6,3 +6,7 @@ Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishUtf8Async(string! 
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.get -> int?
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.init -> void
 Runic.Application.Views.Desktop.DesktopWindowPlatformServices.Monitors.get -> Runic.Platform.IDesktopMonitors!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateFileBookmarks() -> Runic.Platform.IDesktopFileBookmarks!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateOpenRegistration(string! applicationId) -> Runic.Platform.IDesktopOpenRegistration!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.ExportApplicationAsync(string! applicationId, Runic.Platform.IApplicationInstance! instance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.IAsyncDisposable!>!>
+static Runic.Application.Views.Desktop.DesktopPlatformServices.GetLaunch(System.Collections.Generic.IEnumerable<string!>! arguments) -> Runic.Platform.ApplicationLaunch!

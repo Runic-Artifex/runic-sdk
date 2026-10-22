@@ -8,7 +8,8 @@
 //   node packaging/package.mjs flatpak [--gpg-sign <key id>]
 //
 // It reads the application's identity from the project file (ApplicationId, ApplicationTitle, Version,
-// RunicApplicationUrlSchemes, RunicApplicationPublisher, Description, PackageProjectUrl), publishes it with NativeAOT for the platform,
+// RunicApplicationUrlSchemes, RunicApplicationFileTypes, RunicApplicationWebLinkHosts, RunicApplicationPublisher, Description,
+// PackageProjectUrl), publishes it with NativeAOT for the platform,
 // fills the {{...}} fields of the manifests next to this script and writes the package to artifacts/package. Without
 // signing options the package is unsigned (Windows), ad-hoc signed (macOS) or unsigned (Flatpak): install it to test
 // it; sign it to ship it. See the README's "Package it" section.
@@ -51,6 +52,35 @@ export function urlSchemes(value) {
   return schemes;
 }
 
+// File types as ".notes" or ".notes=application/x-example-notes", in lower case: an extension every platform accepts in a
+// manifest, a uniform type identifier and a glob.
+export function fileTypes(value) {
+  const types = [];
+  for (const entry of (value ?? "").split(/[;,\s]+/).filter(Boolean)) {
+    const [extension, mimeType, extra] = entry.split("=");
+    const lower = extension.toLowerCase();
+    if (extra !== undefined || !/^\.[a-z0-9]+([.+-][a-z0-9]+)*$/.test(lower) || lower.length > 64)
+      throw new Error(`RunicApplicationFileTypes has '${entry}', which is not an extension with its dot, such as .notes or .notes=application/x-example-notes.`);
+    if (mimeType !== undefined && !/^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$/i.test(mimeType))
+      throw new Error(`RunicApplicationFileTypes has '${entry}', whose MIME type is not type/subtype.`);
+    if (types.some(type => type.extension === lower)) throw new Error(`RunicApplicationFileTypes has ${lower} twice.`);
+    types.push({ extension: lower, mimeType: mimeType?.toLowerCase() });
+  }
+  return types;
+}
+
+// Host names whose https links the application opens, in lower case, without a port, path or wildcard.
+export function webLinkHosts(value) {
+  const hosts = (value ?? "").split(/[;,\s]+/).filter(Boolean).map(host => host.toLowerCase());
+  for (const host of hosts)
+    if (host.length > 253 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host))
+      throw new Error(`RunicApplicationWebLinkHosts has '${host}', which is not a host name such as notes.example.org.`);
+  return hosts;
+}
+
+// The uniform type identifier the macOS bundle exports for one of its file types.
+export const typeIdentifier = (id, extension) => `${id}.${extension.slice(1).replace(/[^A-Za-z0-9.-]/g, "-")}`;
+
 // MSIX and Info.plist need numeric versions: 1.2.3-preview.4 becomes 1.2.3 and 1.2.3.0.
 export function numericVersion(version, parts) {
   const numbers = (version ?? "1.0.0").split(/[-+]/)[0].split(".").map(part => Number.parseInt(part, 10) || 0);
@@ -72,6 +102,7 @@ export function fill(template, fields) {
 export function manifestFields(identity, target, rid = "") {
   const xml = Object.fromEntries(Object.entries(identity).map(([key, value]) => [key, escapeXml(value)]));
   const schemes = identity.urlSchemes;
+  const types = identity.fileTypes ?? [];
   const fields = {
     ApplicationId: identity.id,
     ApplicationName: xml.name,
@@ -101,6 +132,30 @@ export function manifestFields(identity, target, rid = "") {
       <key>CFBundleURLSchemes</key><array>${schemes.map(scheme => `<string>${scheme}</string>`).join("")}</array>
     </dict>
   </array>`;
+    // Each file type is the application's own: a document type and the uniform type identifier it exports.
+    fields.DocumentTypes = types.length === 0 ? "" : `
+  <key>CFBundleDocumentTypes</key>
+  <array>${types.map(type => `
+    <dict>
+      <key>CFBundleTypeName</key><string>${xml.name} document (${type.extension})</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>LSItemContentTypes</key><array><string>${typeIdentifier(identity.id, type.extension)}</string></array>
+    </dict>`).join("")}
+  </array>
+  <key>UTExportedTypeDeclarations</key>
+  <array>${types.map(type => `
+    <dict>
+      <key>UTTypeIdentifier</key><string>${typeIdentifier(identity.id, type.extension)}</string>
+      <key>UTTypeDescription</key><string>${xml.name} document (${type.extension})</string>
+      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key><array><string>${type.extension.slice(1)}</string></array>${type.mimeType ? `
+        <key>public.mime-type</key><array><string>${escapeXml(type.mimeType)}</string></array>` : ""}
+      </dict>
+    </dict>`).join("")}
+  </array>`;
   } else {
     fields.ReleaseDate = new Date().toISOString().slice(0, 10);
     fields.Homepage = xml.homepage;
@@ -128,8 +183,8 @@ function findProject(option) {
 }
 
 function readIdentity(project, options) {
-  const names = ["ApplicationId", "ApplicationTitle", "Version", "RunicApplicationUrlSchemes", "RunicApplicationPublisher", "Description",
-    "PackageProjectUrl", "AssemblyName"];
+  const names = ["ApplicationId", "ApplicationTitle", "Version", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes",
+    "RunicApplicationWebLinkHosts", "RunicApplicationPublisher", "Description", "PackageProjectUrl", "AssemblyName"];
   const output = run("dotnet", ["msbuild", project, ...names.map(name => `-getProperty:${name}`)], { capture: true });
   const properties = JSON.parse(output).Properties;
   const id = checkApplicationId(properties.ApplicationId ?? "");
@@ -138,6 +193,8 @@ function readIdentity(project, options) {
     name: properties.ApplicationTitle || properties.AssemblyName,
     version: properties.Version || "1.0.0",
     urlSchemes: urlSchemes(properties.RunicApplicationUrlSchemes),
+    fileTypes: fileTypes(properties.RunicApplicationFileTypes),
+    webLinkHosts: webLinkHosts(properties.RunicApplicationWebLinkHosts),
     publisher: options.publisher || properties.RunicApplicationPublisher || "CN=Example",
     description: properties.Description || properties.ApplicationTitle || properties.AssemblyName,
     homepage: properties.PackageProjectUrl || "https://example.com",

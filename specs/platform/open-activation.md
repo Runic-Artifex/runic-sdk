@@ -5,15 +5,19 @@ An application registers URL schemes, such as an OAuth callback
 files and URLs the user opens, at launch and while it runs, in its running
 instance (planning item W315-007). `IDesktopOpenRequests` in Runic.Platform is
 the contract; registration belongs to the application's package (W315-014),
-and this document lists what each platform needs.
+and this document lists what each platform needs. An application that installs
+itself registers at run time with `IDesktopOpenRegistration`; `https` links to
+the application's own hosts (macOS universal links, Windows app URI handlers)
+arrive as requests too, and `IDesktopFileBookmarks` keeps access to opened
+files across launches (W319 0.11 B16, I-069).
 
-## Delivery matrix — 2026-10-17
+## Delivery matrix — 2026-10-22
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
 | Linux | Implemented: the desktop starts the application with the files or URLs as arguments (`Exec=… %U`); `ApplicationInstance` forwards a later launch to the running instance; `DesktopOpenRequests.FromLaunch` takes the registered URLs and existing files. | Portable tests for the parser and for delivery through the instance. A desktop entry with `x-scheme-handler` and `text/plain` opened with `gio open` in an isolated session reaches the running instance (CI, JIT and NativeAOT; also locally in that isolated session). |
 | Windows | Implemented: the shell starts the application with `"%1"`, then as on Linux. | The same portable tests. CI: a per-user URL protocol under `HKCU\Software\Classes` opened by the shell reaches the running instance, JIT and NativeAOT. File types use the same command and are not checked separately. |
-| macOS | Implemented: LaunchServices sends the open-documents (`odoc`) and get-URL (`GURL`) Apple events to the running application, at launch and later. Runic.Platform.MacOS installs `NSAppleEventManager` handlers before the application finishes launching. Launches from a terminal also forward their arguments. | CI, JIT and NativeAOT: `odoc` and `GURL` events dispatched through `NSAppleEventManager`'s handler table; a bundle around the NativeAOT test executable, registered with `lsregister`, launched by `open -a … file` and by `open <scheme>://…`, receives each at launch. |
+| macOS | Implemented: LaunchServices sends the open-documents (`odoc`) and get-URL (`GURL`) Apple events to the running application, at launch and later. Runic.Platform.MacOS installs `NSAppleEventManager` handlers before the application finishes launching. Launches from a terminal also forward their arguments. With `WebLinkHosts`, a Runic application delegate receives universal links. Registration: `LSRegisterURL` of the running bundle after checking its `Info.plist`. Bookmarks: security-scoped inside the App Sandbox. | CI, JIT and NativeAOT: `odoc` and `GURL` events dispatched through `NSAppleEventManager`'s handler table; synthetic web-browsing `NSUserActivity` objects passed to the delegate at launch and later, also through an application's own delegate class; a bundle around the NativeAOT test executable registers itself with `LSRegisterURL` and is listed for its scheme and plain text, then, registered with `lsregister`, launched by `open -a … file` and by `open <scheme>://…`, receives each at launch; bookmarks round trip, follow a moved file and report a deleted one, unsandboxed and in the ad-hoc signed App Sandbox fixture, where a file outside the container gets none. Manual: universal links on a Mac with the Associated Domains entitlement and an `apple-app-site-association` file. |
 
 ## Contract
 
@@ -32,6 +36,37 @@ public static IDesktopOpenRequests ApplicationInstance.CreateOpenRequests(Deskto
 public static IDesktopOpenRequests MacOSPlatformProvider.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
 // Runic.Application.Views.Desktop: the provider for the operating system
 public static IDesktopOpenRequests DesktopPlatformServices.CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null);
+
+// Web links, registration and bookmarks (Runic.Platform)
+public sealed record DesktopOpenOptions { public ImmutableArray<string> WebLinkHosts { get; init; } = []; }
+public sealed record DesktopFileType(string Extension) { public string? MimeType { get; init; } public string? Description { get; init; } public string? IconPath { get; init; } }
+public sealed record DesktopOpenRegistration(string DisplayName)
+{
+    public ImmutableArray<string> UrlSchemes { get; init; } = [];
+    public ImmutableArray<DesktopFileType> FileTypes { get; init; } = [];
+    public string? Executable { get; init; }
+}
+public interface IDesktopOpenRegistration
+{
+    ValueTask<PlatformResult<bool>> IsRegisteredAsync(DesktopOpenRegistration registration, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<PlatformUnit>> RegisterAsync(DesktopOpenRegistration registration, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<bool>> UnregisterAsync(DesktopOpenRegistration registration, CancellationToken cancellationToken = default);
+}
+public static class DesktopOpenRegistrations { public static IDesktopOpenRegistration Unavailable(PlatformUnavailableReason reason); }
+public interface IDesktopFileBookmarks
+{
+    ValueTask<PlatformResult<ImmutableArray<byte>>> CreateAsync(string path, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<IDesktopBookmarkAccess>> ResolveAsync(ImmutableArray<byte> bookmark, CancellationToken cancellationToken = default);
+}
+public interface IDesktopBookmarkAccess : IAsyncDisposable { string LocalPath { get; } bool IsStale { get; } }
+// Runic.Platform.MacOS
+public static IDesktopOpenRegistration MacOSPlatformProvider.CreateOpenRegistration();
+public static IDesktopFileBookmarks MacOSPlatformProvider.CreateFileBookmarks();
+// Runic.Application.Views.Desktop
+public static IDesktopOpenRegistration DesktopPlatformServices.CreateOpenRegistration(string applicationId);
+public static IDesktopFileBookmarks DesktopPlatformServices.CreateFileBookmarks();
+public static ApplicationLaunch DesktopPlatformServices.GetLaunch(IEnumerable<string> arguments);
+public static ValueTask<PlatformResult<IAsyncDisposable>> DesktopPlatformServices.ExportApplicationAsync(string applicationId, IApplicationInstance instance, CancellationToken cancellationToken = default);
 ```
 
 - Items are absolute URIs: `file:` URIs for files, and URIs with a registered
@@ -46,6 +81,11 @@ public static IDesktopOpenRequests DesktopPlatformServices.CreateOpenRequests(De
   argument stays with the application's own parser: options, their values, and
   URLs with schemes the application did not register. A URL is never read as a
   path. At most 1024 items of at most 32 KiB each.
+- With `WebLinkHosts`, `FromLaunch` also takes an `https` URL whose host is
+  one of them exactly (compared without regard to case, internationalized names
+  by their ASCII form), with the default port and no user information. Every
+  other `https` URL stays with the application, so the default, no hosts,
+  changes nothing.
 - The open requests are not registered by `AddRunicPlatformServices()`: they
   need the instance from `ApplicationInstance.ClaimAsync`, and on macOS they
   must exist before the first window. The application creates them in `Main`
@@ -59,6 +99,61 @@ like command-line arguments: parse and validate a URL before acting on it, do
 not run or load anything it names, and confirm anything destructive with the
 user. On Windows, register the command with `"%1"` quoted, so a URL cannot add
 arguments.
+
+### Run-time registration
+
+`IDesktopOpenRegistration` registers schemes and file types for the current
+user, for an application that installs itself (a zip, an AppImage, `dotnet
+run`). It writes nothing until `RegisterAsync`, which the application calls
+when the user agrees, and never makes the application the default.
+
+- Every item is checked before anything is written. An item another
+  application, or the application's package, registered is `Failed(Conflict)`
+  with a diagnostic, and nothing is written; an entry the registration wrote
+  itself is updated.
+- A packaged or sandboxed process (MSIX, Flatpak, Snap) reports
+  `Unavailable(BackendUnavailable)`: its package declares what it opens.
+- `UrlSchemes` follow the rules of `DesktopOpenOptions.UrlSchemes` and exclude
+  `http` and `https`, which belong to browsers; `FileTypes` are extensions with
+  their dot.
+- macOS: Launch Services takes schemes and types only from `Info.plist`, so
+  `RegisterAsync` checks that the running bundle declares every item
+  (`Failed(InvalidData)` otherwise) and registers the bundle with
+  `LSRegisterURL`. `IsRegisteredAsync` asks whether Launch Services lists the
+  bundle for each item. `UnregisterAsync`, and every request of a process
+  outside a bundle, report `Unavailable`: Launch Services forgets a deleted
+  bundle.
+
+### Universal links and app URI handlers
+
+`DesktopOpenOptions.WebLinkHosts` lists the hosts whose `https` links the
+application opens.
+
+- macOS: AppKit hands a universal link (an `NSUserActivity` of type
+  `NSUserActivityTypeBrowsingWeb`) only to the application delegate. With web
+  link hosts, Runic sets a delegate that implements
+  `application:continueUserActivity:restorationHandler:` and
+  `applicationSupportsSecureRestorableState:` (YES); an application that sets
+  its own delegate gets the first method added to its class where it has none
+  (`class_addMethod`). The delegate is set with the open requests, before the
+  application finishes launching, and checked again when it finishes. A link
+  whose host is listed becomes a request; any other activity is left to AppKit.
+- The association is the application's (D037.12): the bundle's Associated
+  Domains entitlement (`com.apple.developer.associated-domains` with
+  `applinks:<host>`), which a provisioning profile grants, and
+  `https://<host>/.well-known/apple-app-site-association` naming the
+  application's team and bundle identifier. Runic tests the delivery with
+  synthetic activities; the consuming project verifies its association.
+
+### Bookmarks
+
+`IDesktopFileBookmarks` keeps access to a file across launches. On macOS a
+bookmark is an `NSURL` bookmark, security-scoped inside the App Sandbox (the
+bundle needs `com.apple.security.files.bookmarks.app-scope`); resolving it
+starts `startAccessingSecurityScopedResource` until the access is disposed.
+Elsewhere the bookmark is the path's UTF-8 bytes, and resolving it checks the
+item still exists: Windows and Linux keep a path's access, including a
+Flatpak's document-portal paths.
 
 ## Registration
 
@@ -152,13 +247,9 @@ The bundle's `Info.plist`:
   `odoc` or `GURL` event is sent as the application finishes launching, so later
   creation throws `InvalidOperationException`.
 - A sandboxed application may read an opened file for the session; keeping
-  access across launches needs a security-scoped bookmark, which is not
-  provided.
+  access across launches needs a security-scoped bookmark
+  (`IDesktopFileBookmarks`).
 
 ## Out of scope for 1.0
 
-- Registration APIs: writing Windows keys, a desktop entry or MIME definitions
-  at run time, and a `dotnet runic package` integration (W315-014).
-- D-Bus activation on Linux, MSIX activation contracts beyond arguments,
-  universal links and `NSUserActivity` on macOS.
-- Security-scoped bookmarks for sandboxed macOS applications.
+- A `dotnet runic package` integration of the registration (W315-014, B26).

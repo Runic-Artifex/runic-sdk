@@ -1,1 +1,3 @@
 #nullable enable
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileBookmarks() -> Runic.Platform.IDesktopFileBookmarks!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateOpenRegistration() -> Runic.Platform.IDesktopOpenRegistration!

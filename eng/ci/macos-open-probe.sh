@@ -3,6 +3,7 @@
 # Runic.Platform.Runtime.Tests executable, whose Info.plist registers a URL scheme and plain text. The executable
 # notices it runs from a bundle (MacOpenEventsNativeTests.RunBundleProbe), creates its open requests before
 # finishing launching, and writes the first request's items to <bundle name>.log beside the bundle.
+# Before that, the bundle registers itself through IDesktopOpenRegistration (--registration-probe).
 # CI runners only: it registers the bundle with LaunchServices, and unregisters it at the end.
 # Usage: macos-open-probe.sh <directory of the NativeAOT test executable>
 set -euo pipefail
@@ -56,6 +57,9 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 codesign --force --sign - "$app"
+# The registration API first: it checks the Info.plist declarations and registers the bundle with LSRegisterURL
+# (MacOpenEventsNativeTests.RunRegistrationProbe). lsregister then registers it again for the launches below.
+"$app/Contents/MacOS/Runic.Platform.Runtime.Tests" --registration-probe
 "$lsregister" -f "$app"
 
 wait_for_log() {

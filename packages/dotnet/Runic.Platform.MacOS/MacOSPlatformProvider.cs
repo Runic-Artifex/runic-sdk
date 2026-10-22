@@ -44,9 +44,15 @@ public static class MacOSPlatformProvider
     /// <param name="instance">The running instance, or <see langword="null"/> without single instance.</param>
     /// <param name="launch">This process's launch, or <see langword="null"/>.</param>
     /// <remarks>
-    /// Call it on the main thread before the first window or status icon, because the system sends the open event of
+    /// <para>Call it on the main thread before the first window or status icon, because the system sends the open event of
     /// the launch itself as the application finishes launching; one instance per process. The events arrive while
-    /// the Desktop event loop runs.
+    /// the Desktop event loop runs.</para>
+    /// <para>With <see cref="DesktopOpenOptions.WebLinkHosts"/>, universal links to those hosts are requests too: AppKit
+    /// hands them to the application delegate (<c>application:continueUserActivity:restorationHandler:</c>), so Runic
+    /// sets one that answers only that and <c>applicationSupportsSecureRestorableState:</c> (YES); an application that
+    /// sets its own delegate, before or after, gets the method added to the delegate's class where it has none. The
+    /// bundle needs the Associated Domains entitlement (<c>applinks:</c> each host, which a provisioning profile grants)
+    /// and each host an <c>apple-app-site-association</c> file.</para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">Not on the main thread, after the application finished launching,
     /// or while another instance is alive.</exception>
@@ -56,6 +62,33 @@ public static class MacOSPlatformProvider
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
         return new MacOpenRequests(options, instance, launch);
     }
+
+    /// <summary>Creates the registration of the running application bundle with Launch Services.</summary>
+    /// <remarks>
+    /// Launch Services takes URL schemes and file types only from the bundle's <c>Info.plist</c>
+    /// (<c>CFBundleURLTypes</c>, <c>CFBundleDocumentTypes</c>): <see cref="IDesktopOpenRegistration.RegisterAsync"/>
+    /// checks that the bundle declares every item, <see cref="PlatformFailureCode.InvalidData"/> otherwise, and
+    /// registers the bundle (<c>LSRegisterURL</c>), as launching it from Finder would. <see cref="DesktopOpenRegistration.DisplayName"/>,
+    /// <see cref="DesktopOpenRegistration.Executable"/> and the file types' descriptions and icons come from the bundle.
+    /// <see cref="IDesktopOpenRegistration.IsRegisteredAsync"/> asks Launch Services whether it lists the bundle for each
+    /// scheme and type. A registered bundle stays registered until it is deleted, so
+    /// <see cref="IDesktopOpenRegistration.UnregisterAsync"/> and every request of a process outside an application
+    /// bundle report <see cref="PlatformUnavailableReason.BackendUnavailable"/>. It needs no window and no AppKit event loop.
+    /// </remarks>
+    public static IDesktopOpenRegistration CreateOpenRegistration()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacOpenRegistration(); }
+
+    /// <summary>Creates file bookmarks: security-scoped bookmarks inside the App Sandbox, ordinary <c>NSURL</c> bookmarks
+    /// outside it.</summary>
+    /// <remarks>
+    /// A sandboxed application keeps access to a file the user opened or chose by storing its bookmark; resolving the
+    /// bookmark starts security-scoped access (<c>startAccessingSecurityScopedResource</c>) until the access is disposed.
+    /// The sandboxed bundle needs the <c>com.apple.security.files.bookmarks.app-scope</c> entitlement. A bookmark created
+    /// outside the sandbox resolves inside it only to files the sandbox already lets the application read. It needs no
+    /// window and no AppKit event loop.
+    /// </remarks>
+    public static IDesktopFileBookmarks CreateFileBookmarks()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacFileBookmarks(); }
 
     /// <summary>Creates secret storage in the user's default keychain, as generic passwords.</summary>
     /// <remarks>Each secret is an item with the secret's service and account, labelled with the service. The Keychain

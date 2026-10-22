@@ -27,6 +27,18 @@ public sealed record DesktopOpenOptions(ImmutableArray<string> UrlSchemes)
 {
     /// <summary>Whether the application registered file types, so that file paths and <c>file:</c> URIs are delivered.</summary>
     public bool IncludeFiles { get; init; }
+
+    /// <summary>
+    /// Hosts, such as <c>notes.example.org</c>, whose <c>https</c> links the application opens: macOS universal links
+    /// and Windows app URI handlers. Empty by default. Compared without regard to case; no wildcards.
+    /// </summary>
+    /// <remarks>
+    /// A link is delivered only when its host is one of these exactly, with the default port and no user name or
+    /// password; every other <c>https</c> URL stays with the application's own parser. The association itself is the
+    /// application's: an Associated Domains entitlement and an <c>apple-app-site-association</c> file on macOS, a
+    /// <c>uap3:AppUriHandler</c> and a <c>windows-app-web-link</c> file on Windows.
+    /// </remarks>
+    public ImmutableArray<string> WebLinkHosts { get; init; } = [];
 }
 
 /// <summary>Requests to open files and URLs, from this launch, later launches and, on macOS, the system's open events.</summary>
@@ -59,10 +71,12 @@ public static class DesktopOpenRequests
     /// <summary>
     /// The files and URLs among a launch's arguments: the desktop passes them as arguments on Linux and Windows.
     /// </summary>
-    /// <returns>The request, or <see langword="null"/> when no argument is a registered URL or, with
+    /// <returns>The request, or <see langword="null"/> when no argument is a registered URL or web link or, with
     /// <see cref="DesktopOpenOptions.IncludeFiles"/>, a file.</returns>
     /// <remarks>
-    /// An argument is a URL when it is an absolute URI with one of <see cref="DesktopOpenOptions.UrlSchemes"/>. With
+    /// An argument is a URL when it is an absolute URI with one of <see cref="DesktopOpenOptions.UrlSchemes"/>, or an
+    /// <c>https</c> URL of one of <see cref="DesktopOpenOptions.WebLinkHosts"/> with the default port and no user
+    /// information. With
     /// <see cref="DesktopOpenOptions.IncludeFiles"/>, an argument is a file when it is a <c>file:</c> URI, or a path of an
     /// existing file or directory that does not start with <c>-</c>; a relative path is resolved against the launch's
     /// working directory. Every other
@@ -92,6 +106,31 @@ public static class DesktopOpenRequests
         foreach (string scheme in options.UrlSchemes)
             if (!IsScheme(scheme) || scheme.Equals("file", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException($"'{scheme}' is not a URL scheme an application registers.", nameof(options));
+        if (options.WebLinkHosts.IsDefault) throw new ArgumentException("Supply the web link hosts, or none.", nameof(options));
+        foreach (string host in options.WebLinkHosts)
+            if (!IsWebLinkHost(host))
+                throw new ArgumentException($"'{host}' is not a host name, such as notes.example.org.", nameof(options));
+    }
+
+    // A DNS name without a port, user information, wildcard or trailing dot.
+    private static bool IsWebLinkHost(string host) =>
+        !string.IsNullOrEmpty(host) && host.Length <= 253 && host[^1] != '.' && Uri.CheckHostName(host) == UriHostNameType.Dns
+        && Uri.TryCreate("https://" + host + "/", UriKind.Absolute, out var uri) && uri.IdnHost.Equals(Ascii(host), StringComparison.OrdinalIgnoreCase);
+
+    private static string Ascii(string host)
+    {
+        try { return new System.Globalization.IdnMapping().GetAscii(host); }
+        catch (ArgumentException) { return ""; }
+    }
+
+    private static bool IsWebLink(Uri url, DesktopOpenOptions options)
+    {
+        if (options.WebLinkHosts.IsDefaultOrEmpty || !url.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.Ordinal)
+            || url.UserInfo.Length != 0 || !url.IsDefaultPort || url.HostNameType != UriHostNameType.Dns)
+            return false;
+        foreach (string host in options.WebLinkHosts)
+            if (url.IdnHost.Equals(Ascii(host), StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     private static Uri? Parse(string argument, string workingDirectory, DesktopOpenOptions options)
@@ -104,8 +143,8 @@ public static class DesktopOpenRequests
             string scheme = argument[..colon];
             if (scheme.Equals("file", StringComparison.OrdinalIgnoreCase))
                 return options.IncludeFiles && Uri.TryCreate(argument, UriKind.Absolute, out var file) && file.IsFile ? file : null;
-            return options.UrlSchemes.Contains(scheme, StringComparer.OrdinalIgnoreCase)
-                && Uri.TryCreate(argument, UriKind.Absolute, out var url) ? url : null;
+            if (!Uri.TryCreate(argument, UriKind.Absolute, out var url)) return null;
+            return options.UrlSchemes.Contains(scheme, StringComparer.OrdinalIgnoreCase) || IsWebLink(url, options) ? url : null;
         }
         if (!options.IncludeFiles || argument.StartsWith('-')) return null;
         try

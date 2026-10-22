@@ -2,6 +2,10 @@
 
 The native CI job retains an ad-hoc signed sandboxed NativeAOT app. Signing is
 preparation for a manual test; it does not count as a user permission grant.
+CI also runs it with `--bookmark-probe <file outside the container>`, which
+checks security-scoped bookmarks of a file in the container
+(`com.apple.security.files.bookmarks.app-scope`) and that the file outside the
+container, which the user never chose, gets none.
 
 Extract the retained tarball to preserve executable permissions.
 On Apple Silicon macOS, create a small text file outside the application's
