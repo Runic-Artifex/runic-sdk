@@ -318,9 +318,19 @@ example in a model turn, and handles the exception. Run the command with
 with `ObserveBridgeExceptions` to take over its logging.
 
 Two Bridges that present one ViewModel log an exception once. The Bridge
-unsubscribes when it detaches; a command that no Bridge presents, such as one
-on a retained page or in a WPF View, keeps ReactiveUI's behaviour. Subscribe to
-its `ThrownExceptions`, or set ReactiveUI's handler with the builder's
+unsubscribes when it detaches and every execution that a Bridge call or
+`RunAsync` started has ended (since 0.11). An execution that was cancelled ends
+when its work stops, which can be after the Bridge detached, for example when a
+retiring navigation entry cancels its operation: ReactiveUI then reports the
+cancellation on `ThrownExceptions`, which the Bridge still observes, so it never
+reaches ReactiveUI's default handler. Another failure that such an execution
+reports after the call stopped awaiting it reached no caller, so it is logged
+as event 1042 with the logger of the Bridge that detached last (through `Trace`
+when no Bridge presented the command). A cancelled `CreateFromObservable`
+execution ends without telling Runic, so its command stays observed while it
+exists. Otherwise a command that no Bridge presents, such as one on a retained
+page or in a WPF View, keeps ReactiveUI's behaviour. Subscribe to its
+`ThrownExceptions`, or set ReactiveUI's handler with the builder's
 `WithExceptionHandler`, for those.
 
 To handle a command's exceptions yourself, use `ObserveBridgeExceptions` or
@@ -382,7 +392,11 @@ without a result:
   `CreateFromTask` body, and the task is cancelled.
 - A failure is rethrown unchanged and counted as received by the caller, so it
   is never logged as `ReactiveCommandFailed` (event 1042), inside or outside a
-  Bridge call, whether the code lets it propagate, wraps it or handles it.
+  Bridge call, whether the code lets it propagate, wraps it or handles it. A
+  failure that arrives after the token cancelled the task reaches no caller and
+  is logged as a fire-and-forget failure is. The command's `ThrownExceptions`
+  stay observed until the execution ended, so its late cancellation does not
+  reach ReactiveUI's default handler.
 - The command's notifications follow the model turn that started it, as for any
   execution started in a turn.
 

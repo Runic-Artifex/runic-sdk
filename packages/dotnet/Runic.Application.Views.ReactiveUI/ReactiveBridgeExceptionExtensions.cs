@@ -132,6 +132,16 @@ public static class ReactiveBridgeExceptionExtensions
 //   ThrownExceptions in the failing execution's execution context, which descends from the call: Runic's schedulers
 //   and a UI dispatcher restore it per item, and the immediate scheduler runs inline. A call whose flow raised it
 //   hands it to the enclosing call when it ends; the outermost one logs it.
+// The subscription also lasts until every execution that Runic started (a Bridge call, RunAsync) has ended (I-188):
+// ReactiveUI reports a cancelled execution's end on ThrownExceptions when its work stops, which can be after the call
+// returned and the Bridge detached, as when a retiring navigation entry cancels its operation. Without a subscriber,
+// ReactiveUI's default handler would end the process. An execution has ended when its observer received its end and,
+// for a failure, when ThrownExceptions delivered that failure. ReactiveUI calls the observer after it scheduled the
+// delivery on the output scheduler, so the delivery can come before or after. A failure reported after every Bridge
+// detached is logged with the logger of the Bridge that detached last, or written to Trace when no Bridge presented the
+// command.
+// An execution that ReactiveUI ends by unsubscribing, without telling its observer (a cancelled CreateFromObservable
+// execution), never counts as ended: the command then stays observed, and its failures logged, for its lifetime.
 internal sealed class BridgeCommandFailures
 {
     private static readonly ConditionalWeakTable<object, BridgeCommandFailures> States = [];
@@ -141,9 +151,16 @@ internal sealed class BridgeCommandFailures
     private readonly Lock _gate = new();
     private readonly List<Logging> _loggings = [];
     private readonly List<Exception> _held = [];
+    // The failures that ended an execution's observer and that ThrownExceptions has not delivered yet, and those that
+    // ThrownExceptions delivered while executions ran and that no execution's observer has received yet.
+    private readonly List<Exception> _awaited = [];
+    private readonly List<Exception> _delivered = [];
     private IDisposable? _subscription;
+    private Logging? _detached;
+    private string? _sourceName;
     private int _claims;
     private int _calls;
+    private int _executions;
 
     internal static BridgeCommandFailures For(object source) =>
         States.GetValue(source, static _ => new BridgeCommandFailures());
@@ -156,17 +173,33 @@ internal sealed class BridgeCommandFailures
         lock (_gate)
         {
             _loggings.Add(logging);
-            if (_subscription is null)
+            try { Subscribe(source); }
+            catch
             {
-                try { _subscription = source.ThrownExceptions.Subscribe(new Observer(this)); }
-                catch
-                {
-                    _loggings.Remove(logging);
-                    throw;
-                }
+                _loggings.Remove(logging);
+                throw;
             }
         }
         return logging;
+    }
+
+    // Observes source's ThrownExceptions from one execution that Runic starts until that execution ended, also after
+    // the call that started it returned and after every Bridge detached. Call it before subscribing to the execution.
+    internal Execution BeginExecution(IHandleObservableErrors source)
+    {
+        lock (_gate)
+        {
+            Subscribe(source);
+            _executions++;
+        }
+        return new Execution(this);
+    }
+
+    private void Subscribe(IHandleObservableErrors source)
+    {
+        if (_subscription is not null) return;
+        _subscription = source.ThrownExceptions.Subscribe(new Observer(this));
+        _sourceName ??= source.GetType().Name;
     }
 
     internal IDisposable Claim()
@@ -184,6 +217,22 @@ internal sealed class BridgeCommandFailures
     }
 
     private void OnNext(Exception error)
+    {
+        bool ended;
+        lock (_gate)
+        {
+            ended = _awaited.Remove(error);
+            if (ended) Ended();
+            else if (_executions > 0) _delivered.Add(error);
+        }
+        try { Handle(error); }
+        finally
+        {
+            if (ended) ReleaseIfIdle();
+        }
+    }
+
+    private void Handle(Exception error)
     {
         if (ReactiveBridgeExceptionExtensions.IsReported(error) || IsReceived(error)) return;
         if (ModelTurnFlow.CurrentCall is { } scope && scope.TryHold(this, error)) return;
@@ -216,21 +265,70 @@ internal sealed class BridgeCommandFailures
     internal void Report(Exception error)
     {
         Logging? logging;
-        lock (_gate) logging = _claims > 0 || _loggings.Count == 0 ? null : _loggings[0];
-        if (logging is not null)
-            ReactiveLog.CommandFailed(logging.Logger, error, logging.Name, error.GetType().FullName ?? error.GetType().Name);
+        string? sourceName;
+        bool detached;
+        lock (_gate)
+        {
+            if (_claims > 0) return;
+            detached = _loggings.Count == 0;
+            logging = detached ? _detached : _loggings[0];
+            sourceName = _sourceName;
+        }
+        var errorType = error.GetType().FullName ?? error.GetType().Name;
+        if (logging is null)
+        {
+            ReactiveLog.CommandFailed(TraceLogger.Instance, error, sourceName ?? "ReactiveCommand", errorType);
+            return;
+        }
+        try { ReactiveLog.CommandFailed(logging.Logger, error, logging.Name, errorType); }
+        // The logger of a detached Bridge can belong to a Window whose logger factory is disposed.
+        catch (Exception) when (detached)
+        {
+            ReactiveLog.CommandFailed(TraceLogger.Instance, error, logging.Name, errorType);
+        }
     }
 
     private void Remove(Logging logging)
     {
-        IDisposable? subscription = null;
         lock (_gate)
         {
-            if (!_loggings.Remove(logging) || _loggings.Count != 0) return;
+            if (!_loggings.Remove(logging)) return;
+            if (_loggings.Count == 0) _detached = logging;
+        }
+        ReleaseIfIdle();
+    }
+
+    private void Ended()
+    {
+        // Deliveries that no execution claimed came from executions that Runic did not start.
+        if (--_executions == 0) _delivered.Clear();
+    }
+
+    // Ends the subscription once no Bridge presents the command and every execution that Runic started has ended.
+    private void ReleaseIfIdle()
+    {
+        IDisposable? subscription;
+        lock (_gate)
+        {
+            if (_loggings.Count != 0 || _executions != 0) return;
             subscription = _subscription;
             _subscription = null;
         }
         subscription?.Dispose();
+    }
+
+    private void EndExecution(Exception? error)
+    {
+        lock (_gate)
+        {
+            if (error is not null && !_delivered.Remove(error))
+            {
+                _awaited.Add(error);
+                return;
+            }
+            Ended();
+        }
+        ReleaseIfIdle();
     }
 
     // Marks the exception that a Bridge execution's observer received; the Bridge reports it. The exceptions it wraps
@@ -251,6 +349,17 @@ internal sealed class BridgeCommandFailures
         {
             owner.EndCall();
             scope.End();
+        }
+    }
+
+    // One execution that Runic started. End is called when the execution's observer receives its end.
+    internal sealed class Execution(BridgeCommandFailures owner)
+    {
+        private int _ended;
+
+        internal void End(Exception? error)
+        {
+            if (Interlocked.Exchange(ref _ended, 1) == 0) owner.EndExecution(error);
         }
     }
 

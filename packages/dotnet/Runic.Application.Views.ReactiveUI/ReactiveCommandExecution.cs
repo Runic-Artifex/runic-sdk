@@ -41,20 +41,17 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;
         TResult? result = default;
-        using var call = BridgeCommandFailures.For(command).BeginCall();
-        using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        var failures = BridgeCommandFailures.For(command);
+        using var call = failures.BeginCall();
+        using var cancellation = cancellationToken.Register(() => Cancel(completion, cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
+        using var subscription = Run(failures, call, command, input, new Observer<TResult>(
             value =>
             {
                 count++;
                 if (count == 1) result = value;
             },
-            error =>
-            {
-                BridgeCommandFailures.MarkReceived(error);
-                completion.TrySetException(error);
-            },
+            error => Fail(completion, error),
             () =>
             {
                 if (count == 1) completion.TrySetResult(result!);
@@ -76,16 +73,13 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;
         TResult? result = default;
-        using var call = BridgeCommandFailures.For(command).BeginCall();
-        using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        var failures = BridgeCommandFailures.For(command);
+        using var call = failures.BeginCall();
+        using var cancellation = cancellationToken.Register(() => Cancel(completion, cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
+        using var subscription = Run(failures, call, command, input, new Observer<TResult>(
             value => { count++; result = value; },
-            error =>
-            {
-                BridgeCommandFailures.MarkReceived(error);
-                completion.TrySetException(error);
-            },
+            error => Fail(completion, error),
             () =>
             {
                 if (count == 0) completion.TrySetException(new InvalidOperationException("Reactive command produced no result."));
@@ -108,20 +102,18 @@ public static class ReactiveCommandExecution
 
     // ExecuteCompletion, and RunAsync for hand-written code (#471): completes after zero or more values; a failure is
     // marked received before it is rethrown, and held while the call runs, so it is never logged as event 1042.
+    // A failure that arrives after the call was cancelled reaches no caller and is logged as a fire-and-forget one is.
     internal static async Task CompletionAsync<TInput, TResult>(
         IReactiveCommand<TInput, TResult> command, TInput input, CancellationToken cancellationToken)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var call = BridgeCommandFailures.For(command).BeginCall();
-        using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        var failures = BridgeCommandFailures.For(command);
+        using var call = failures.BeginCall();
+        using var cancellation = cancellationToken.Register(() => Cancel(completion, cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
+        using var subscription = Run(failures, call, command, input, new Observer<TResult>(
             _ => { },
-            error =>
-            {
-                BridgeCommandFailures.MarkReceived(error);
-                completion.TrySetException(error);
-            },
+            error => Fail(completion, error),
             () => completion.TrySetResult()));
         await completion.Task.ConfigureAwait(false);
     }
@@ -146,10 +138,11 @@ public static class ReactiveCommandExecution
         ArgumentNullException.ThrowIfNull(encode);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // A stream can run for as long as the client keeps it open, so its flow holds no failures until it ends.
-        using var call = BridgeCommandFailures.For(command).BeginCall(holdsFlow: false);
-        using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        var failures = BridgeCommandFailures.For(command);
+        using var call = failures.BeginCall(holdsFlow: false);
+        using var cancellation = cancellationToken.Register(() => Cancel(completion, cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new Observer<TResult>(
+        using var subscription = Run(failures, call, command, input, new Observer<TResult>(
             value =>
             {
                 bool published;
@@ -163,11 +156,7 @@ public static class ReactiveCommandExecution
                 }
                 if (!published) completion.TrySetResult();
             },
-            error =>
-            {
-                BridgeCommandFailures.MarkReceived(error);
-                completion.TrySetException(error);
-            },
+            error => Fail(completion, error),
             () => completion.TrySetResult()));
         await completion.Task.ConfigureAwait(false);
         return BridgeOperationResult.Stream(stream);
@@ -220,6 +209,54 @@ public static class ReactiveCommandExecution
 
     private static readonly ConditionalWeakTable<object, State> States = [];
 
+    // Starts one execution in the call's flow. Its ThrownExceptions stay observed until it ended, also after the call
+    // was cancelled and returned and after the Bridge detached (I-188): ReactiveUI reports a cancelled token-taking
+    // execution when its work stops, and without a subscriber its default handler would end the process.
+    private static IDisposable Run<TInput, TResult>(BridgeCommandFailures failures, BridgeCommandFailures.Call call,
+        IReactiveCommand<TInput, TResult> command, TInput input, IObserver<TResult> observer)
+    {
+        var execution = failures.BeginExecution(command);
+        try { return ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new ExecutionObserver<TResult>(observer, execution)); }
+        catch
+        {
+            execution.End(null);
+            throw;
+        }
+    }
+
+    // Settles the call with the execution's failure and marks it received, unless the call already ended: after a
+    // cancellation no caller receives the failure, so the failure logging reports it. The lock orders the check with
+    // the cancellation.
+    private static void Fail(TaskCompletionSource completion, Exception error)
+    {
+        lock (completion)
+        {
+            if (completion.Task.IsCompleted) return;
+            BridgeCommandFailures.MarkReceived(error);
+            completion.TrySetException(error);
+        }
+    }
+
+    private static void Fail<T>(TaskCompletionSource<T> completion, Exception error)
+    {
+        lock (completion)
+        {
+            if (completion.Task.IsCompleted) return;
+            BridgeCommandFailures.MarkReceived(error);
+            completion.TrySetException(error);
+        }
+    }
+
+    private static void Cancel(TaskCompletionSource completion, CancellationToken cancellationToken)
+    {
+        lock (completion) completion.TrySetCanceled(cancellationToken);
+    }
+
+    private static void Cancel<T>(TaskCompletionSource<T> completion, CancellationToken cancellationToken)
+    {
+        lock (completion) completion.TrySetCanceled(cancellationToken);
+    }
+
     // Interface-only implementations do not promise an ICommand adapter. A
     // generated bridge uses its owned observation when available; direct
     // callers otherwise sample CanExecute without retaining a subscription.
@@ -254,6 +291,25 @@ public static class ReactiveCommandExecution
         }
 
         public void OnNext(T value) => next(value);
+    }
+
+    // Ends the execution's tracking after the call's observer handled its end. ReactiveUI calls it also after the call
+    // disposed its subscription, when a cancelled task ends.
+    private sealed class ExecutionObserver<T>(IObserver<T> inner, BridgeCommandFailures.Execution execution) : IObserver<T>
+    {
+        public void OnCompleted()
+        {
+            try { inner.OnCompleted(); }
+            finally { execution.End(null); }
+        }
+
+        public void OnError(Exception error)
+        {
+            try { inner.OnError(error); }
+            finally { execution.End(error); }
+        }
+
+        public void OnNext(T value) => inner.OnNext(value);
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",

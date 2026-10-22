@@ -158,7 +158,9 @@ await using (var navigator = new RunicNavigator(new RunicNavigatorOptions { Mode
     if (await retireShell.Main.PushAsync(NavigationTarget.Own(retirePage)) is not NavigationResult<FlavorRetirePageModel>.Committed)
         throw new InvalidOperationException("The retirement page was not pushed.");
     var upload = retireHost.Root.View<FlavorRetirePageModel>(vm => vm.Main).Start(vm => vm.UploadCommand);
+    var late = retireHost.Root.View<FlavorRetirePageModel>(vm => vm.Main).Start(vm => vm.LateCommand);
     await retirePage.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    await retirePage.LateStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
     if (await retireShell.Main.ClearAsync() is not NavigationResult<FlavorRetirePageModel>.Committed)
         throw new InvalidOperationException("The retirement page was not cleared.");
     var uploadStatus = await upload.WaitAsync().WaitAsync(TimeSpan.FromSeconds(10));
@@ -168,6 +170,22 @@ await using (var navigator = new RunicNavigator(new RunicNavigatorOptions { Mode
     while (retirePage.Disposed == 0 && DateTime.UtcNow < disposeDeadline) await Task.Delay(10);
     if (retirePage.Disposed != 1 || !retirePage.EndedBeforeDispose)
         throw new InvalidOperationException("The navigator did not dispose the page after its Cancel operation ended.");
+    if ((await late.WaitAsync().WaitAsync(TimeSpan.FromSeconds(10))).Kind is not RunicOperationStatusKind.Cancelled)
+        throw new InvalidOperationException("Retiring the page did not cancel its late Cancel operation.");
+
+    // I-188: the page is disposed and its Bridge detached; the late work now reports its cancellation on
+    // ThrownExceptions, which the application does not observe. The process must survive it.
+    var lateIdle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (retirePage.LateCommand.IsExecuting.Subscribe(executing => { if (!executing) lateIdle.TrySetResult(); }))
+    {
+        retirePage.LateRelease.TrySetResult();
+        await lateIdle.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+    for (var turn = 0; turn < 5; turn++)
+    {
+        await Task.Delay(50);
+        await context.InvokeAsync(() => { });
+    }
 }
 
 Console.WriteLine("REACTIVEUI_REACTIVE_FLAVOR_OK");

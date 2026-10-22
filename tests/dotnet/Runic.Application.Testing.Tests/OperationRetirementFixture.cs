@@ -20,6 +20,8 @@ public sealed partial class RetireDetailView : RunicView<RetireDetailViewModel>;
 
 public sealed partial class RetireToolkitPageView : RunicView<RetireToolkitPageViewModel>;
 
+public sealed partial class RetireLatePageView : RunicView<RetireLatePageViewModel>;
+
 /// <summary>Content of the retirement shell's region.</summary>
 public interface IRetirePage : INotifyPropertyChanged
 {
@@ -137,6 +139,46 @@ public sealed class RetireReactivePageViewModel : ReactiveObject, IRetirePage, I
     }
 }
 
+// I-188: Cancel operations whose work notices the cancellation only once the test releases it, so ReactiveUI reports
+// their end on ThrownExceptions after the page's Bridge detached. The ViewModel does not subscribe to ThrownExceptions.
+public sealed class RetireLatePageViewModel : ReactiveObject, IRetirePage, IDisposable
+{
+    private int _disposed;
+
+    public RetireLatePageViewModel(IRunicModelContext context)
+    {
+        var scheduler = ReactiveSchedulers.For(context);
+        UploadCommand = ReactiveCommand.CreateFromTask(token => RunLateAsync(failure: null, token), outputScheduler: scheduler);
+        ExportCommand = ReactiveCommand.CreateFromTask(token => RunLateAsync(Failure, token), outputScheduler: scheduler);
+    }
+
+    public string Title => "late";
+
+    internal TaskCompletionSource UploadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource ExportStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal InvalidOperationException Failure { get; } = new("disk full");
+    internal int Disposed => Volatile.Read(ref _disposed);
+
+    // Ends cancelled once released.
+    [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+    public ReactiveCommand<RxVoid, RxVoid> UploadCommand { get; }
+
+    // Fails with Failure once released, after its call was cancelled: no caller receives it.
+    [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+    public ReactiveCommand<RxVoid, RxVoid> ExportCommand { get; }
+
+    public void Dispose() => Interlocked.Increment(ref _disposed);
+
+    private async Task RunLateAsync(Exception? failure, CancellationToken cancellationToken)
+    {
+        (failure is null ? UploadStarted : ExportStarted).TrySetResult();
+        await Release.Task.ConfigureAwait(false);
+        if (failure is not null) throw failure;
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+}
+
 // Presented by RetireReactivePageViewModel.Detail; its operation starts on its own route.
 public sealed class RetireDetailViewModel : ReactiveObject
 {
@@ -191,5 +233,6 @@ internal sealed class RetireViewLocator : IRunicViewLocator
         : typeof(TView) == typeof(RetireReactivePageView) ? (TView)(object)new RetireReactivePageView()
         : typeof(TView) == typeof(RetireDetailView) ? (TView)(object)new RetireDetailView()
         : typeof(TView) == typeof(RetireToolkitPageView) ? (TView)(object)new RetireToolkitPageView()
+        : typeof(TView) == typeof(RetireLatePageView) ? (TView)(object)new RetireLatePageView()
         : throw new InvalidOperationException($"Unexpected View {typeof(TView).Name}.");
 }

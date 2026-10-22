@@ -156,17 +156,26 @@ namespace ReactiveUiReactiveFlavorProof
                 try { await Task.Delay(Timeout.Infinite, token); }
                 finally { Volatile.Write(ref _ended, 1); }
             }, outputScheduler: commandScheduler);
-            // The cancellation also reaches ThrownExceptions, possibly after the page's Bridge stopped observing it;
-            // without a subscriber ReactiveUI's default handler would end the process.
-            _thrown = UploadCommand.ThrownExceptions.Subscribe(_ => { });
+            // I-188: no ThrownExceptions subscriber. This work notices its cancellation only after the test released it,
+            // so ReactiveUI reports the cancellation after the page's Bridge detached; the Bridge keeps observing the
+            // command until then, so ReactiveUI's default handler, which ends the process, does not receive it.
+            LateCommand = ReactiveCommand.CreateFromTask(async token =>
+            {
+                LateStarted.TrySetResult();
+                await LateRelease.Task.ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+            }, outputScheduler: commandScheduler);
         }
-
-        private readonly IDisposable _thrown;
 
         [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
         public ReactiveCommand<Unit, Unit> UploadCommand { get; }
 
+        [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+        public ReactiveCommand<Unit, Unit> LateCommand { get; }
+
         internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource LateStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource LateRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int Disposed { get; private set; }
         internal bool EndedBeforeDispose { get; private set; }
 
