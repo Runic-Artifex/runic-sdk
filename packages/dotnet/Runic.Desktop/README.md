@@ -509,10 +509,17 @@ A call to a name with no registration is not invoked, replies empty, and reports
 a `capability-not-admitted` error to `DiagnosticSink` that names the capability.
 A page can call a capability just after its owner released it, for example a
 page removed from a navigation region unmounts after the snapshot that removed
-it. A name released shortly before (the host remembers the last 256) is treated
-as such a late call: nothing is invoked, no diagnostic is reported, and the reply
-is `{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}`,
+it. A name released shortly before is treated as such a late call: nothing is
+invoked, no diagnostic is reported, and the reply is
+`{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}`,
 the envelope CS-WebUI sends for an unbound route.
+
+Each window remembers released names in groups. A group is the names released
+in one run with no capability registered in between, such as every route of a
+View tree a navigation released, however large. The window keeps the newest 256
+groups and forgets whole groups, oldest first, once they hold more than 16 384
+names; the newest group is always kept. A call to a name the window has
+forgotten is treated as unregistered and reports `capability-not-admitted`.
 
 ## Accessibility
 

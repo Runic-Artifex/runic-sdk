@@ -514,6 +514,8 @@ sealed class CloseGuardScript
 sealed class GuardedPage(CloseGuardScript script) : INavigationDepartureGuard
 {
     public string Title { get; } = "Draft";
+    // A list page: each row is content with a View of its own.
+    public IReadOnlyList<object> Rows { get; init; } = [];
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
         script.AskAsync(cancellationToken);
 }
@@ -554,7 +556,8 @@ sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm
         if (vm.Main.Current is { } page)
         {
             writer.WriteString("title", page.Title);
-            writer.WriteString("page", content.Present(vm, "Main", "page", page, static (_, _, _) => new PageBridge()).Id);
+            writer.WriteString("page", content.Present(vm, "Main", "page", page, (transport, presented, route) =>
+                presented.Rows.Count == 0 ? new PageBridge() : new ListPageBridge(transport, content, presented, route)).Id);
         }
         else
         {
@@ -569,6 +572,41 @@ sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm
     private sealed class PageBridge : IDisposable
     {
         public void Dispose() { }
+    }
+
+    // What the generator writes for a page with a collection of content: the snapshot presents every row, and
+    // disposing the bridge releases the rows with it, so the page and its rows are released as one tree.
+    private sealed class ListPageBridge : IDisposable
+    {
+        private readonly WindowContentSession _content;
+        private readonly GuardedPage _page;
+        private readonly IDisposable _snapshot;
+
+        public ListPageBridge(IBridgeTransport transport, WindowContentSession content, GuardedPage page, string route)
+        {
+            _content = content;
+            _page = page;
+            _snapshot = transport.Bind($"{route}Snapshot", _ => JsonSerializer.Serialize(page.Rows.Select(row =>
+                content.PresentItem(page, "Rows", "row", row, static (rows, _, rowRoute) => new RowBridge(rows, rowRoute)).Id)));
+        }
+
+        public void Dispose()
+        {
+            _snapshot.Dispose();
+            _content.ClearOwner(_page);
+        }
+    }
+
+    // A row's Snapshot route and four setters; the content session adds its Mount and Unmount.
+    private sealed class RowBridge(IBridgeTransport transport, string route) : IDisposable
+    {
+        private readonly IDisposable[] _routes =
+            [.. new[] { "Snapshot", "SetName", "SetCount", "SetDone", "SetNote" }.Select(name => transport.Bind(route + name, static _ => "ok"))];
+
+        public void Dispose()
+        {
+            foreach (var bound in _routes) bound.Dispose();
+        }
     }
 }
 
