@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Runic.Application.Views;
 using TUnit.Core;
@@ -125,7 +126,7 @@ internal sealed class BridgeLimitsTests
         var digits = new string('9', 4_096);
         RequireOk(host.Transport.Call($"{route}SetLarge", new(StringValue: JsonSerializer.Serialize(digits))),
             "A number string of 4 096 characters was refused.");
-        Require(model.Large.ToString() == digits, "A 4 096-digit number was not read.");
+        Require(model.Large.ToString(CultureInfo.InvariantCulture) == digits, "A 4 096-digit number was not read.");
     }
 
     [Test]
@@ -156,7 +157,7 @@ internal sealed class BridgeLimitsTests
     public void NumberStringsAreBounded()
     {
         using var accepted = JsonDocument.Parse(JsonSerializer.Serialize(new string('1', 4_096)));
-        Require(BridgeWire.ReadBigInteger(accepted.RootElement).ToString().Length == 4_096, "A 4 096-digit integer was refused.");
+        Require(BridgeWire.ReadBigInteger(accepted.RootElement).ToString(CultureInfo.InvariantCulture).Length == 4_096, "A 4 096-digit integer was refused.");
         foreach (var read in new Func<JsonElement, object>[]
         {
             value => BridgeWire.ReadBigInteger(value), value => BridgeWire.ReadDecimal(value),
