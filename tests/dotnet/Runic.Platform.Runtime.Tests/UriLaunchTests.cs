@@ -186,7 +186,7 @@ internal sealed class UriLaunchTests
     {
         string[] constants = [.. typeof(PlatformCapabilityIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Select(static field => (string)field.GetRawConstantValue()!)];
-        Check(constants.Length == 12 && constants.Distinct().Count() == constants.Length, "twelve distinct constants");
+        Check(constants.Length == 13 && constants.Distinct().Count() == constants.Length, "thirteen distinct constants");
         Check(WindowPlatformServices.CapabilityIds.Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)), "CapabilityIds holds every constant");
         Check(WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable).GetSnapshot().Statuses.Keys.Order(StringComparer.Ordinal)
             .SequenceEqual(constants.Order(StringComparer.Ordinal)), "the unavailable services report every constant");
