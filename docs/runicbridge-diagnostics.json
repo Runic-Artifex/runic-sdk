@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "diagnostics": [
+    {
+      "id": "RUNICBRIDGE001",
+      "severity": "error",
+      "title": "Invalid generator invocation or build configuration, generated output that cannot be written, or a missing generator"
+    },
+    {
+      "id": "RUNICBRIDGE002",
+      "severity": "error",
+      "title": "A CommunityToolkit ObservableValidator ViewModel in a Native AOT publish"
+    },
+    {
+      "id": "RUNICBRIDGE003",
+      "severity": "error",
+      "title": "A value type that is not a supported bridge value"
+    },
+    {
+      "id": "RUNICBRIDGE004",
+      "severity": "error",
+      "title": "Two generated names collide, or a command's client member is reserved in TypeScript"
+    },
+    {
+      "id": "RUNICBRIDGE005",
+      "severity": "error",
+      "title": "An assembly, a Runic View or a bridged member's type could not be loaded"
+    },
+    {
+      "id": "RUNICBRIDGE006",
+      "severity": "error",
+      "title": "No Window or View class, or an invalid class or View contract"
+    },
+    {
+      "id": "RUNICBRIDGE007",
+      "severity": "error",
+      "title": "A ViewModel class has an unsupported shape"
+    },
+    {
+      "id": "RUNICBRIDGE008",
+      "severity": "error",
+      "title": "A state property, ViewModel content member or append-only text has an unsupported shape"
+    },
+    {
+      "id": "RUNICBRIDGE009",
+      "severity": "error",
+      "title": "A command has an unsupported name or shape"
+    },
+    {
+      "id": "RUNICBRIDGE010",
+      "severity": "error",
+      "title": "A [RunicCollection] member is not a keyed collection of DTO rows"
+    },
+    {
+      "id": "RUNICBRIDGE011",
+      "severity": "error",
+      "title": "A ReactiveUI interaction is not a get-only property"
+    },
+    {
+      "id": "RUNICBRIDGE012",
+      "severity": "error",
+      "title": "A [RunicFailure] declaration is misplaced, repeated or names an unsupported type"
+    },
+    {
+      "id": "RUNICBRIDGE013",
+      "severity": "warning",
+      "title": "A ViewModel that a content slot admits has no View"
+    },
+    {
+      "id": "RUNICBRIDGE014",
+      "severity": "error",
+      "title": "The frontend directory or its package.json is missing"
+    },
+    {
+      "id": "RUNICBRIDGE015",
+      "severity": "warning",
+      "title": "A project declares Views, but generation is off"
+    },
+    {
+      "id": "RUNICBRIDGE016",
+      "severity": "error",
+      "title": "The frontend install or build command failed without a located error"
+    },
+    {
+      "id": "RUNICBRIDGE017",
+      "severity": "error",
+      "title": "A build property or item uses a former name"
+    },
+    {
+      "id": "RUNICBRIDGE018",
+      "severity": "error",
+      "title": "A referenced assembly already declares the generated composition type"
+    },
+    {
+      "id": "RUNICBRIDGE019",
+      "severity": "warning",
+      "title": "The build cannot tell which host's Views client to copy"
+    },
+    {
+      "id": "RUNICBRIDGE020",
+      "severity": "warning",
+      "title": "Types were skipped because an assembly they need could not be loaded"
+    },
+    {
+      "id": "RUNICBRIDGE021",
+      "severity": "error",
+      "title": "The external node_modules could not be linked"
+    },
+    {
+      "id": "RUNICBRIDGE022",
+      "severity": "error",
+      "title": "NoBuild=true finds no generated Bridge code to reuse"
+    },
+    {
+      "id": "RUNICBRIDGE023",
+      "severity": "error",
+      "title": "The application references Runic ReactiveUI adapters of both ReactiveUI flavors"
+    },
+    {
+      "id": "RUNICBRIDGE024",
+      "severity": "error",
+      "title": "An internal generator error"
+    },
+    {
+      "id": "RUNICBRIDGE025",
+      "severity": "error",
+      "title": "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"
+    },
+    {
+      "id": "RUNICBRIDGE026",
+      "severity": "error",
+      "title": "The frontend declares dependencies but has no lock file for the default install"
+    }
+  ]
+}

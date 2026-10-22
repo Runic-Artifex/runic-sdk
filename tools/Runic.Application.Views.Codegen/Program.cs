@@ -15,6 +15,13 @@ try
     {
         GenerateCompositionStub(args[2], args[1], args.Length == 5 ? args[4] : null);
     }
+    // The machine-readable RUNICBRIDGE list (docs/runicbridge-diagnostics.json), to standard output or a file.
+    else if (args.Length is 1 or 2 && args[0] == "--list-diagnostics")
+    {
+        var list = BridgeDiagnosticCodes.WriteList();
+        if (args.Length == 2) File.WriteAllText(args[1], list);
+        else Console.Out.Write(list);
+    }
     else if (args.Length >= 1 && args[0] == "--generate")
     {
         var aot = false;
@@ -1621,7 +1628,7 @@ static void WriteIfChanged(string path, string content)
 
 /// <summary>
 /// Diagnostic IDs. Each one has an entry in docs/diagnostics.md, which every
-/// report links to at the release tag, and a row in the Runic.Application.Views README.
+/// report links to at the release tag, with a row in its overview table, and an entry in All.
 /// </summary>
 static class BridgeDiagnosticCodes
 {
@@ -1657,10 +1664,89 @@ static class BridgeDiagnosticCodes
     internal const string Internal = "RUNICBRIDGE024";
     /// <summary>A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor.</summary>
     internal const string ReactiveUiAdapter = "RUNICBRIDGE025";
-    // RUNICBRIDGE014 to 019, 021 and 022 are reported by Runic.Application.Views.targets,
-    // as are RUNICBRIDGE001 for a missing generator and RUNICBRIDGE024 for a generator run
-    // that failed without reporting an error (docs/diagnostics.md lists each code with its
-    // severity and reporter).
+    // Reported by Runic.Application.Views.targets, as are RUNICBRIDGE001 for a missing generator
+    // and RUNICBRIDGE024 for a generator run that failed without reporting an error.
+    /// <summary>The frontend directory or its package.json is missing.</summary>
+    internal const string FrontendMissing = "RUNICBRIDGE014";
+    /// <summary>Warning: a project declares Views, but generation is off.</summary>
+    internal const string GenerationOff = "RUNICBRIDGE015";
+    /// <summary>The frontend install or build command failed without a located error.</summary>
+    internal const string FrontendBuild = "RUNICBRIDGE016";
+    /// <summary>A build property or item uses a former name.</summary>
+    internal const string FormerName = "RUNICBRIDGE017";
+    /// <summary>A referenced assembly already declares the generated composition type.</summary>
+    internal const string CompositionConflict = "RUNICBRIDGE018";
+    /// <summary>Warning: the build cannot tell which host's Views client to copy.</summary>
+    internal const string ClientHost = "RUNICBRIDGE019";
+    /// <summary>The external node_modules could not be linked.</summary>
+    internal const string NodeModulesLink = "RUNICBRIDGE021";
+    /// <summary>NoBuild=true finds no generated Bridge code to reuse.</summary>
+    internal const string NoBuildReuse = "RUNICBRIDGE022";
+    /// <summary>The application references Runic ReactiveUI adapters of both ReactiveUI flavors.</summary>
+    internal const string ReactiveUiFlavors = "RUNICBRIDGE023";
+    /// <summary>The frontend declares dependencies but has no lock file for the default install.</summary>
+    internal const string FrontendLock = "RUNICBRIDGE026";
+
+    // Every code with its severity and title, in ID order: the source of the machine-readable list
+    // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
+    // list against the docs/diagnostics.md overview table, whose Problem column is the title.
+    internal static readonly (string Id, string Severity, string Title)[] All =
+    [
+        (Invocation, "error", "Invalid generator invocation or build configuration, generated output that cannot be written, or a missing generator"),
+        (Aot, "error", "A CommunityToolkit ObservableValidator ViewModel in a Native AOT publish"),
+        (ValueType, "error", "A value type that is not a supported bridge value"),
+        (NameCollision, "error", "Two generated names collide, or a command's client member is reserved in TypeScript"),
+        (AssemblyLoad, "error", "An assembly, a Runic View or a bridged member's type could not be loaded"),
+        (View, "error", "No Window or View class, or an invalid class or View contract"),
+        (ViewModel, "error", "A ViewModel class has an unsupported shape"),
+        (State, "error", "A state property, ViewModel content member or append-only text has an unsupported shape"),
+        (Command, "error", "A command has an unsupported name or shape"),
+        (Collection, "error", "A [RunicCollection] member is not a keyed collection of DTO rows"),
+        (Interaction, "error", "A ReactiveUI interaction is not a get-only property"),
+        (Failure, "error", "A [RunicFailure] declaration is misplaced, repeated or names an unsupported type"),
+        (MissingView, "warning", "A ViewModel that a content slot admits has no View"),
+        (FrontendMissing, "error", "The frontend directory or its package.json is missing"),
+        (GenerationOff, "warning", "A project declares Views, but generation is off"),
+        (FrontendBuild, "error", "The frontend install or build command failed without a located error"),
+        (FormerName, "error", "A build property or item uses a former name"),
+        (CompositionConflict, "error", "A referenced assembly already declares the generated composition type"),
+        (ClientHost, "warning", "The build cannot tell which host's Views client to copy"),
+        (SkippedTypes, "warning", "Types were skipped because an assembly they need could not be loaded"),
+        (NodeModulesLink, "error", "The external node_modules could not be linked"),
+        (NoBuildReuse, "error", "NoBuild=true finds no generated Bridge code to reuse"),
+        (ReactiveUiFlavors, "error", "The application references Runic ReactiveUI adapters of both ReactiveUI flavors"),
+        (Internal, "error", "An internal generator error"),
+        (ReactiveUiAdapter, "error", "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"),
+        (FrontendLock, "error", "The frontend declares dependencies but has no lock file for the default install"),
+    ];
+
+    // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
+    // version only adds members; the set of IDs and of severities is open.
+    internal static string WriteList()
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
+        {
+            Indented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        }))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("schemaVersion", 1);
+            writer.WriteStartArray("diagnostics");
+            foreach (var (id, severity, title) in All)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", id);
+                writer.WriteString("severity", severity);
+                writer.WriteString("title", title);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(buffer.ToArray()).ReplaceLineEndings("\n") + "\n";
+    }
 }
 
 /// <summary>A generator diagnostic with its ID and the declaration it concerns.</summary>

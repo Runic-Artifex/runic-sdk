@@ -34,6 +34,12 @@ the cached generation. Every other code fails the build. The
 [generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
 of the Runic.Application.Views guide links here.
 
+[`runicbridge-diagnostics.json`](runicbridge-diagnostics.json) lists the same
+codes for tools: each with its `id`, `severity` (`error` or `warning`) and
+`title`, the Problem column below. The generator writes it from its code table
+(`--list-diagnostics`); `schemaVersion` 1 may gain members, and the sets of IDs
+and severities are open.
+
 | ID | Severity | Reported by | Problem |
 | --- | --- | --- | --- |
 | [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator is missing | Invalid generator invocation or build configuration, generated output that cannot be written, or a missing generator |

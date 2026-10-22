@@ -145,3 +145,20 @@ test('the Bridge overview table matches the entries and the reported severities'
   expect(listed.sort()).toEqual([...warnings].sort());
   expect(guide).not.toMatch(/^\| `RUNICBRIDGE\d+`/m);
 });
+
+// I-028: docs/runicbridge-diagnostics.json is the machine-readable RUNICBRIDGE list that the generator writes from
+// BridgeDiagnosticCodes.All (BridgeCodegen --list-diagnostics; Runic.Application.Testing.Tests checks that the file
+// is its current output). It lists every catalog entry in order, with the overview table's severity and its
+// Problem column, without code spans, as the title, and every code that BridgeDiagnosticCodes declares.
+test('the RUNICBRIDGE list matches the catalog and BridgeDiagnosticCodes', () => {
+  const list = JSON.parse(readFileSync(join(root, 'docs/runicbridge-diagnostics.json'), 'utf8'));
+  expect(list.schemaVersion).toBe(1);
+  for (const entry of list.diagnostics) expect(Object.keys(entry).sort()).toEqual(['id', 'severity', 'title']);
+  const rows = [...catalog.matchAll(/^\| \[`(RUNICBRIDGE\d+)`\]\(#runicbridge\d+\) \| (Error|Warning) \| [^|]+ \| ([^|]+) \|$/gm)]
+    .map(([, id, severity, problem]) => ({ id, severity: severity.toLowerCase(), title: problem.trim().replaceAll('`', '') }));
+  expect(rows.length).toBe([...catalog.matchAll(/^### (RUNICBRIDGE\d+)$/gm)].length);
+  expect(list.diagnostics).toEqual(rows);
+  const generator = readFileSync(join(root, 'tools/Runic.Application.Views.Codegen/Program.cs'), 'utf8');
+  const declared = [...generator.matchAll(/internal const string \w+ = "(RUNICBRIDGE\d+)"/g)].map(match => match[1]).sort();
+  expect(list.diagnostics.map(entry => entry.id)).toEqual(declared);
+});
