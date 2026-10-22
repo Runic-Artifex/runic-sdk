@@ -30,8 +30,13 @@ internal static class VerifierApplication
     // so a repeated Ctrl+C cannot skip the cleanup of created resources.
     internal static Task<int> RunAsync(string[] args) => CreateApplication().RunAsync(args);
 
-    // --format selects human or JSON output; --output, the former spelling, stays a hidden alias.
-    private static CommandApp CreateApplication() => new(GeneratedCommandCatalog.Create(builder => builder.OutputSelector("--format", "--output")))
+    // --format selects human or JSON output; --output, the former spelling, stays a hidden alias. Human output: the
+    // progress, summary and report path are already written, so the presenter only reports a fault. JSON output keeps
+    // the standard versioned envelope.
+    private static CommandApp CreateApplication() => new(GeneratedCommandCatalog.Create(builder => builder
+        .OutputSelector("--format", "--output")
+        .PresentOutcome<VerificationSummary>("local", PresentAsync)
+        .PresentOutcome<VerificationSummary>("domain", PresentAsync)))
     {
         Name = "Runic.AdminVerify",
         Version = typeof(WindowsAdministrationException).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
@@ -39,7 +44,6 @@ internal static class VerifierApplication
         HelpPresenter = new SpectreHelpPresenter(),
         Console = new SpectreCommandConsole(),
         ExitCodePolicy = VerifierExitCodePolicy.Instance,
-        OutcomeSink = VerifierOutcomeSink.Instance,
     };
 
     [Command("local",
@@ -183,21 +187,10 @@ internal static class VerifierApplication
         };
     }
 
-    // Human output: the progress, summary and report path are already written; only
-    // report a fault. JSON output keeps the standard versioned envelope.
-    private sealed class VerifierOutcomeSink : ICommandOutcomeSink
-    {
-        public static VerifierOutcomeSink Instance { get; } = new();
-        public ValueTask WriteAsync<TResult>(CommandDescriptor command, CommandExecutionContext context, CommandOutcome<TResult> outcome,
-            ICommandResultCodec<TResult> codec, int exitCode, IReadOnlyList<CommandDiagnostic> diagnostics, CancellationToken cancellationToken)
-        {
-            if (context.OutputMode == CommandOutputMode.Json)
-                return new CommandOutputDispatcher().WriteAsync(command, context, outcome, codec, exitCode, diagnostics, cancellationToken);
-            return outcome.Fault is { } fault
-                ? context.Console.WriteErrorAsync((fault.Message + Environment.NewLine).AsMemory(), cancellationToken)
-                : ValueTask.CompletedTask;
-        }
-    }
+    private static ValueTask PresentAsync(CommandOutcomePresentation<VerificationSummary> presentation, CancellationToken cancellationToken) =>
+        presentation.Outcome.Fault is { } fault
+            ? presentation.Context.Console.WriteErrorAsync((fault.Message + Environment.NewLine).AsMemory(), cancellationToken)
+            : ValueTask.CompletedTask;
 }
 
 internal sealed record Options(string Suite, bool Changes, bool ExpectDenied, string Output, string? Server, string? Domain,
