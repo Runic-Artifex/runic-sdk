@@ -227,16 +227,19 @@ public interface IDesktopFileBookmarks
 {
     /// <summary>Creates a bookmark for the file or directory at <paramref name="path"/>, which the application can
     /// access now, such as one the user opened or chose.</summary>
-    /// <returns>The bookmark; <see cref="PlatformFailureCode.NotFound"/> for a missing item and
-    /// <see cref="PlatformFailureCode.PermissionDenied"/> for one the sandbox does not let the application read.</returns>
+    /// <returns>The bookmark; <see cref="PlatformFailureCode.NotFound"/> for a missing item, and a failure such as
+    /// <see cref="PlatformFailureCode.PermissionDenied"/> or <see cref="PlatformFailureCode.IOError"/> (macOS reports
+    /// <c>NSFileReadUnknownError</c>) for one the sandbox does not let the application read.</returns>
     /// <exception cref="ArgumentException"><paramref name="path"/> is not fully qualified or contains NUL.</exception>
     ValueTask<PlatformResult<ImmutableArray<byte>>> CreateAsync(string path, CancellationToken cancellationToken = default);
 
     /// <summary>Resolves a bookmark from <see cref="CreateAsync"/> and starts accessing its file until the access is
     /// disposed.</summary>
-    /// <returns>The access; <see cref="PlatformFailureCode.NotFound"/> when the item no longer exists,
+    /// <returns>The access; <see cref="PlatformFailureCode.NotFound"/> when the item no longer exists (inside the macOS
+    /// App Sandbox a security-scoped bookmark of a deleted item reports <see cref="PlatformFailureCode.InvalidData"/>),
     /// <see cref="PlatformFailureCode.InvalidData"/> for bytes that are not a bookmark, and
-    /// <see cref="PlatformFailureCode.PermissionDenied"/> when the system refuses access.</returns>
+    /// <see cref="PlatformFailureCode.PermissionDenied"/> when the system refuses access. Treat any failure as a
+    /// bookmark to forget.</returns>
     /// <exception cref="ArgumentException"><paramref name="bookmark"/> is default or empty.</exception>
     ValueTask<PlatformResult<IDesktopBookmarkAccess>> ResolveAsync(ImmutableArray<byte> bookmark, CancellationToken cancellationToken = default);
 }
