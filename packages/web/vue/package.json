@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/vue",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Vue composables for generated Runic Views clients",
   "license": "MIT",
   "type": "module",
@@ -30,7 +30,7 @@
   },
   "peerDependencies": {
     "vue": ">=3.5.30 <4",
-    "@runic-artifex/views": "0.9.1"
+    "@runic-artifex/views": "0.10.0"
   },
   "devDependencies": {
     "@runic-artifex/views": "workspace:*",
