@@ -4,10 +4,49 @@
 // not shipped. Applications and generated projects use `dotnet runic dev`.
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readdirSync, watch } from "node:fs";
+import { existsSync, readdirSync, realpathSync, watch } from "node:fs";
 import { createServer } from "node:http";
 import { createServer as createTcpServer } from "node:net";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+// The coordinator listens on 127.0.0.1 only. It answers requests whose Host is a loopback name, so a page on
+// another site cannot reach it through DNS rebinding, and it serves a bounded number of event streams.
+export const maximumEventClients = 16;
+const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** Whether a Host header names this machine: 127.0.0.1, localhost or [::1], with any port (the dev proxies keep it). */
+export function isLoopbackHost(host) {
+  if (typeof host !== "string") return false;
+  const match = /^(\[[^\]]*\]|[^:]*)(?::\d{1,5})?$/.exec(host.trim().toLowerCase());
+  return match !== null && loopbackHosts.has(match[1]);
+}
+
+/**
+ * The coordinator's request handler: `/__runic_dev/status` and the `/__runic_dev/events` stream of restart
+ * generations. `state()` returns `{ generation, backendPort, frontendPort }`; `clients` holds the open streams.
+ */
+export function coordinatorHandler({ state, clients, maximumClients = maximumEventClients }) {
+  return (request, response) => {
+    if (!isLoopbackHost(request.headers.host)) {
+      response.writeHead(403).end();
+    } else if (request.url === "/__runic_dev/status") {
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(state()));
+    } else if (request.url === "/__runic_dev/events") {
+      if (clients.size >= maximumClients) {
+        response.writeHead(503, { "Retry-After": "1" }).end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+      response.write(`data: ${state().generation}\n\n`);
+      clients.add(response);
+      request.on("close", () => clients.delete(response));
+    } else {
+      response.writeHead(404).end();
+    }
+  };
+}
 
 function optionsFrom(args) {
   const options = { framework: "vanilla" };
@@ -76,8 +115,11 @@ async function stop(child) {
   } else if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 }
 
-const options = optionsFrom(process.argv.slice(2));
-const [backendPort, frontendPort, coordinatorPort] = await Promise.all([unusedPort(), unusedPort(), unusedPort()]);
+let options;
+let backendPort;
+let frontendPort;
+let coordinatorPort;
+let coordinator;
 let generation = 0;
 let backend;
 let frontend;
@@ -87,23 +129,9 @@ let pending = false;
 let closing = false;
 let timer;
 const clients = new Set();
-const root = dirname(options.project);
-let assembly;
 
-const coordinator = createServer((request, response) => {
-  if (request.url === "/__runic_dev/status") {
-    response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ generation, backendPort, frontendPort }));
-  } else if (request.url === "/__runic_dev/events") {
-    response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-    response.write(`data: ${generation}\n\n`);
-    clients.add(response);
-    request.on("close", () => clients.delete(response));
-  } else {
-    response.writeHead(404).end();
-  }
-});
-await new Promise(accept => coordinator.listen(coordinatorPort, "127.0.0.1", accept));
+let root;
+let assembly;
 
 async function buildBackend() {
   build = run("dotnet", ["build", options.project, "-c", "Release", "--nologo"], root);
@@ -216,21 +244,35 @@ async function close() {
   watcher?.close();
   await Promise.all([stop(build), stop(backend), stop(frontend)]);
   for (const client of clients) client.end();
-  coordinator.close();
+  coordinator?.close();
 }
 
 let watcher;
-try {
-  if (!await buildBackend()) throw new Error("Initial backend build failed.");
-  await startBackend();
-  await startFrontend();
-  generation = 1;
-  watcher = watch(root, { recursive: true }, (_, filename) => sourceChanged(filename?.replaceAll("\\", "/")));
-  console.log(`RUNIC_DEV_READY|http://127.0.0.1:${frontendPort}/|backend=${backendPort}|events=${coordinatorPort}`);
-  process.on("SIGINT", () => { close().then(() => process.exit(0)); });
-  process.on("SIGTERM", () => { close().then(() => process.exit(0)); });
-} catch (error) {
-  console.error(`runic views dev: ${error.message}`);
-  await close();
-  process.exitCode = 1;
+
+async function main() {
+  options = optionsFrom(process.argv.slice(2));
+  root = dirname(options.project);
+  [backendPort, frontendPort, coordinatorPort] = await Promise.all([unusedPort(), unusedPort(), unusedPort()]);
+  coordinator = createServer(coordinatorHandler({
+    state: () => ({ generation, backendPort, frontendPort }),
+    clients,
+  }));
+  await new Promise(accept => coordinator.listen(coordinatorPort, "127.0.0.1", accept));
+  try {
+    if (!await buildBackend()) throw new Error("Initial backend build failed.");
+    await startBackend();
+    await startFrontend();
+    generation = 1;
+    watcher = watch(root, { recursive: true }, (_, filename) => sourceChanged(filename?.replaceAll("\\", "/")));
+    console.log(`RUNIC_DEV_READY|http://127.0.0.1:${frontendPort}/|backend=${backendPort}|events=${coordinatorPort}`);
+    process.on("SIGINT", () => { close().then(() => process.exit(0)); });
+    process.on("SIGTERM", () => { close().then(() => process.exit(0)); });
+  } catch (error) {
+    console.error(`runic views dev: ${error.message}`);
+    await close();
+    process.exitCode = 1;
+  }
 }
+
+// Run only as a program; tests import the coordinator handler.
+if (process.argv[1] && existsSync(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) await main();

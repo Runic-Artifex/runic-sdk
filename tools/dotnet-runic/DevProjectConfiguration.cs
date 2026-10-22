@@ -53,6 +53,12 @@ internal sealed record DevProjectConfiguration(
 
     internal bool IsViewsWindowProject { get; init; }
 
+    /// <summary>
+    /// Whether the resolved Vite configuration has <c>runic()</c> from <c>@runic-artifex/vite-plugin-runic</c>, as
+    /// <see cref="ViteBuildInputs"/> reads it; null when dev did not resolve the configuration.
+    /// </summary>
+    internal bool? UsesRunicVitePlugin { get; init; }
+
     internal string ProjectAssetsFile { get; init; } = string.Empty;
 
     internal string FrontendCompilerWatchPattern { get; init; } = string.Empty;

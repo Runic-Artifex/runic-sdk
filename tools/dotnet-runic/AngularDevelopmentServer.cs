@@ -76,11 +76,17 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         {
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
             using var client = new HttpClient();
+            var documents = new List<(string Destination, string Document)>();
             foreach (string destination in configuration.DevelopmentServerDocuments)
             {
-                string document = await FrontendDevelopmentDocument.ReadAsync(
+                documents.Add((destination, await FrontendDevelopmentDocument.ReadAsync(
                         client, origin, destination, "Angular", cancellationToken)
-                    .ConfigureAwait(false);
+                    .ConfigureAwait(false)));
+            }
+            // The Angular server exits when another process holds the port; write nothing that such a process served.
+            ViteDevelopmentServer.ThrowIfExited(server.Completion, "Angular");
+            foreach ((string destination, string document) in documents)
+            {
                 FrontendDevelopmentDocument.Write(
                     configuration,
                     origin,

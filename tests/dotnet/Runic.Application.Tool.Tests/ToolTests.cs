@@ -401,6 +401,95 @@ internal sealed class ToolTests
         await running.DisposeAsync();
     }
 
+    [Test, DisplayName("Vite readiness needs the dev session that vite-plugin-runic confirms")]
+    public void ViteReadinessConfirmsTheSession() => VerifyViteSessionAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyViteSessionAsync()
+    {
+        var origin = new Uri("http://127.0.0.1:12345/");
+        var running = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string session = ViteDevelopmentServer.CreateSession();
+        True(System.Text.RegularExpressions.Regex.IsMatch(session, "^[0-9a-f]{64}$"), session);
+        False(session == ViteDevelopmentServer.CreateSession(), "Each start gets a new value.");
+
+        // The server this dev session started answers /__runic/state with the value it was given.
+        var own = new SessionHandler(session);
+        using (var client = new HttpClient(own))
+        {
+            await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", running.Task, client,
+                TimeSpan.FromSeconds(1), CancellationToken.None, session);
+        }
+        True(own.Paths.Contains("/__runic/state"), string.Join(", ", own.Paths));
+
+        // Another process on the port serves pages but cannot know the value, so it is never ready.
+        foreach (string? answer in new[] { null, ViteDevelopmentServer.CreateSession(), session[..32] })
+        {
+            using var client = new HttpClient(new SessionHandler(answer));
+            try
+            {
+                await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", running.Task, client,
+                    TimeSpan.FromMilliseconds(200), CancellationToken.None, session);
+                throw new InvalidOperationException("A server without this session's value was accepted as ready.");
+            }
+            catch (DevDevelopmentException error)
+            {
+                Equal("RAPPDEV1007", error.Code);
+                Contains(error.Message, "confirm this dev session");
+                Contains(error.Message, "vite-plugin-runic");
+                DoesNotContain(error.Message, session);
+            }
+        }
+
+        // Without a session (no runic() plugin) readiness stays as before.
+        using (var client = new HttpClient(new SessionHandler(null)))
+        {
+            await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", running.Task, client,
+                TimeSpan.FromSeconds(1), CancellationToken.None);
+        }
+
+        // An exited Vite process (the port was taken) fails readiness, so dev retries on another port.
+        Throws<DevDevelopmentException>(() => ViteDevelopmentServer.ThrowIfExited(Task.FromResult(1)));
+        ViteDevelopmentServer.ThrowIfExited(running.Task);
+    }
+
+    [Test, DisplayName("dev asks for the session confirmation when the Vite configuration has runic()")]
+    public void DevConfirmsSessionWithTheRunicPlugin()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[],\"runic\":true}") == true, "runic() is reported.");
+        True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[],\"runic\":false}") == false, "A configuration without runic() is reported.");
+        True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[]}") is null, "An older probe says nothing.");
+        Contains(ViteBuildInputs.CreateProbe(""), "plugin?.name === \"runic\"");
+
+        True(ViteDevelopmentServer.ConfirmsSession(configuration with { UsesRunicVitePlugin = true }), "The resolved configuration decides.");
+        False(ViteDevelopmentServer.ConfirmsSession(configuration with { UsesRunicVitePlugin = false }), "Without runic() nothing can confirm.");
+        // Unresolved (an external frontend compiler): the declared dependency decides.
+        False(ViteDevelopmentServer.ConfirmsSession(configuration), "No package.json declares the plugin.");
+        workspace.Write("Frontend/package.json", """{"devDependencies":{"@runic-artifex/vite-plugin-runic":"0.11.0"}}""");
+        True(ViteDevelopmentServer.ConfirmsSession(configuration), "A declared vite-plugin-runic is expected to confirm.");
+
+        string session = ViteDevelopmentServer.CreateSession();
+        Equal(session, ViteDevelopmentServer.CreateEnvironment(configuration, session)[ViteDevelopmentServer.SessionEnvironmentVariable]);
+        // The Window never gets the value.
+        Equal(false, HostProcessController.CreateDevelopmentEnvironment(configuration, new Dictionary<string, string?>())
+            .ContainsKey(ViteDevelopmentServer.SessionEnvironmentVariable));
+    }
+
+    private sealed class SessionHandler(string? answer) : HttpMessageHandler
+    {
+        internal List<string> Paths { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            lock (Paths) Paths.Add(request.RequestUri!.AbsolutePath);
+            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            if (request.RequestUri!.AbsolutePath == "/__runic/state" && answer is not null)
+                response.Headers.Add(ViteDevelopmentServer.SessionHeader, answer);
+            return Task.FromResult(response);
+        }
+    }
+
     private sealed class ReadinessHandler(bool ready = false) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(

@@ -632,6 +632,15 @@ loads. The message names the page and the server's response.
 check that the configured dev script starts with the frontend's own command,
 such as `npm run dev`.
 
+With `runic()` from `@runic-artifex/vite-plugin-runic` in the Vite
+configuration, the server is ready only when `/__runic/state` confirms the
+session that `dev` started it with (since 0.11). A message that names the
+session confirmation means that the plugin is older than `dotnet-runic`, or
+that another process answered on the port.
+
+**Fix:** use `@runic-artifex/vite-plugin-runic` from the release of
+`dotnet-runic`; `dotnet runic doctor` reports packages from another release.
+
 `dotnet runic dev` picks a free loopback port for the development server, and
 another process can take it before the server binds it. When the server exits
 reporting that its port is in use, the command starts it again on a new port,
