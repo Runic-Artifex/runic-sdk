@@ -80,11 +80,20 @@ the initial build, and `dev` prints
 An application that sets `RunicDesktopHostOptions.SurfaceOptions` serves its
 own content in `dev` too.
 
+Since 0.11, `dev` takes these options of `dotnet run` and `dotnet build`:
+
+| Option | Effect |
+| --- | --- |
+| `--launch-profile <name>` | Runs the Window with that profile from `Properties/launchSettings.json`, so its `environmentVariables` and `commandLineArgs` apply, under `dotnet watch` too. Without it the Window runs with `--no-launch-profile`, as before. A profile's variables replace `dev`'s defaults and `-e` values of the same name. |
+| `--no-build` | Skips `dev`'s own .NET restore and build, as `dotnet run --no-build` does, and starts from the existing build output; build the project with the same `--configuration` first. The frontend packages are still installed unless you pass `--no-restore`. `dotnet watch` still builds after C# edits. |
+| `-e`, `--environment NAME=VALUE` | Sets an environment variable for the Window process, as `dotnet run -e` does; repeat it for several. It wins over the defaults in the table below, so `-e DOTNET_ENVIRONMENT=Staging` runs the Window in `Staging`. The variables `dev` uses to describe the development server (`RUNIC_APPLICATION_*` below) are refused with `RAPPDEV1012`, and a value without `=` with `RAPPDEV1011`. `--dry-run` prints the names, never the values. |
+| `-v`, `--verbosity <level>` | Passes the MSBuild verbosity (`q[uiet]`, `m[inimal]`, `n[ormal]`, `d[etailed]` or `diag[nostic]`) to the restore, the build and `dotnet watch`. |
+
 `dev` passes these variables to the Window process:
 
 | Variable | Value |
 | --- | --- |
-| `DOTNET_ENVIRONMENT` | `Development`, unless you set it or `ASPNETCORE_ENVIRONMENT` |
+| `DOTNET_ENVIRONMENT` | `Development`, unless you set it or `ASPNETCORE_ENVIRONMENT`, in the environment or with `-e` |
 | `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS` | `5000`, unless you set it |
 | `DOTNET_WATCH_RESTART_ON_RUDE_EDIT` | `1` |
 | `RUNIC_APPLICATION_DEVELOPMENT_ASSETS` | Without a development server, the absolute frontend output directory; cleared while one runs. An internal contract with the Runic Desktop host, which reads it only in a `Development` environment. |
@@ -155,6 +164,21 @@ there is no D-Bus session bus or no installed `xdg-desktop-portal` (the
 `XDG_DATA_DIRS`), because the file dialogs and the file launcher use the portal.
 For CS-WebUI it reports that the services return `OwnerUnavailable`. The check
 describes this machine, so `--runtime` skips it.
+
+Since 0.11, two more checks warn without failing:
+
+- `views-package-versions` compares the installed `@runic-artifex/views`, found
+  in `node_modules` as Node.js resolves it, with the restored
+  `Runic.Application.Views`. A frontend whose packages were not reinstalled
+  after a .NET package update gets a warning that names both versions. The
+  check is omitted until the project is restored and the frontend packages are
+  installed.
+- `application-id` checks the project's `ApplicationId`: a reverse-DNS name of
+  ASCII letters and digits in at least two dot-separated parts, each starting
+  with a letter, at most 50 characters (`org.example.Notes`), which a D-Bus and
+  Flatpak name, a macOS bundle identifier and an MSIX package name all accept.
+  The template's packaging script applies the same rule. Another value warns;
+  a project without `ApplicationId` passes.
 
 ### Deployment checks for a target
 
@@ -260,9 +284,11 @@ diagnostics are warnings. The envelope replaces the message and drops the
 redacts the message key, which always names the check. `payload.checks` is the
 complete list.
 Check identifiers are `dotnet-sdk`, `views-window`, `javascript-runtime`,
-`package-manager`, `lock-file`, `compatibility-set`, `frontend-dev-server`,
-`vite-config`, `vite-entry`, `browser`, `views-hosts`, `desktop-runtime`,
-`wpf-runtime`, `gtk4-profile` and `platform-services`. With `--runtime`, the payload also lists
+`package-manager`, `lock-file`, `compatibility-set`, `views-package-versions`,
+`application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
+`browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
+`platform-services`; `views-package-versions` and `application-id` were added
+in 0.11. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
@@ -278,8 +304,10 @@ hidden alias until 2.0. The same `--format human|json` selects the output of
 A successful envelope carries the command's payload. A failed one carries a
 `fault` with a code from the [diagnostics
 catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#dotnet-runic),
-and, for `doctor` and `size`, the payload in `fault.data` when the command got
-far enough to produce one. Human-readable output is not a contract; the
+the code's catalog entry at this release in `fault.helpUri` (since 0.11; human
+output prints it after the fault line), and, for `doctor` and `size`, the
+payload in `fault.data` when the command got far enough to produce one. A
+cancelled command (`RCLI4000`) has no `helpUri`. Human-readable output is not a contract; the
 payloads are, under these identifiers:
 
 | Command | Payload |
@@ -387,10 +415,26 @@ dotnet runic size --project path/to/App.csproj --runtime linux-x64 --report meas
 
 As in `doctor`, the runtime identifier is `--runtime`, `--rid` or `-r`. `size`
 publishes with Native AOT unless you pass `--no-aot`; `--aot` states the default.
-It always publishes a self-contained, size-optimized build: it passes
-`Configuration` (`--configuration`, `Release` by default), `RuntimeIdentifier`,
-`PublishAot`, `SelfContained=true` and `OptimizationPreference=Size` to MSBuild,
-which override the project's values; the report lists the effective settings.
+It publishes a self-contained, size-optimized build unless you pass
+`--no-self-contained` (since 0.11; `--self-contained` states the default): it
+passes `Configuration` (`--configuration`, `Release` by default),
+`RuntimeIdentifier`, `PublishAot`, `SelfContained` (`true`, or `false` with
+`--no-self-contained`) and `OptimizationPreference=Size` to MSBuild, which
+override the project's values; the report lists the effective settings. A
+framework-dependent build needs `--no-aot` too, because Native AOT is always
+self-contained.
+
+`--property Name=Value` (since 0.11) passes another MSBuild property to the
+evaluation and the publish, as `dotnet publish -p` does; repeat it for several.
+It comes after the properties above, so `--property OptimizationPreference=Speed`
+measures a speed-optimized build. A `;` or `,` in the value is escaped, so each
+`--property` sets exactly one property. The properties that have their own
+options (`Configuration`, `RuntimeIdentifier`, `PublishAot`, `SelfContained`)
+are refused with `RAPPSIZE1006`, and a value that is not `Name=Value` with
+`RAPPSIZE1005`. Each property given this way is also listed in the report's
+`effectiveProperties`. `--property` has no `-p` short form, because `-p` is
+`--project` in every `dotnet runic` command. `-v`, `--verbosity <level>` sets the
+publish's MSBuild verbosity.
 
 `--report` names a file that must not exist yet, so `size` never replaces earlier
 evidence. Without it, each run writes a new
@@ -415,7 +459,8 @@ dotnet runic size --runtime linux-x64 --report measurements/linux.json \
 
 The report's schema is `runic.size/2`. Paths are absolute; `files[].path` is
 relative to the publish directory. Values in `effectiveProperties` are the
-evaluated MSBuild properties, empty when unspecified:
+evaluated MSBuild properties, empty when unspecified, including each
+`--property` name:
 
 ```json
 {
@@ -481,8 +526,8 @@ evaluated MSBuild properties, empty when unspecified:
 and `archive`, and kept `installedRuntimes` as one string.
 
 A missing `--runtime` (`RAPPSIZE1001`), `--verify-argument` without `--verify`
-(`RAPPSIZE1002`) or an existing `--report` (`RAPPSIZE1003`) is a usage error,
-exit code 2. A project whose publish settings MSBuild cannot evaluate
+(`RAPPSIZE1002`), an existing `--report` (`RAPPSIZE1003`) or an invalid
+`--property` (`RAPPSIZE1005`, `RAPPSIZE1006`) is a usage error, exit code 2. A project whose publish settings MSBuild cannot evaluate
 (`RAPPSIZE1004`), a failed publish or a failed verification exits 1.
 
 ## Support envelopes

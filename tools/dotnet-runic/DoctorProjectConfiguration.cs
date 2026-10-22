@@ -69,6 +69,9 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>True when the project references the optional GTK 4 Desktop provider.</summary>
     internal bool UsesGtk4 { get; init; }
 
+    /// <summary>The evaluated ApplicationId, the application's reverse-DNS identity; empty when the project sets none.</summary>
+    internal string ApplicationId { get; init; } = string.Empty;
+
     /// <summary>The package and project references the project declares directly, by package identity.</summary>
     internal IReadOnlyList<string> DirectReferences { get; init; } = [];
 
@@ -130,6 +133,7 @@ internal sealed record DoctorProjectConfiguration(
             StripSymbols = !Value("StripSymbols").Equals("false", StringComparison.OrdinalIgnoreCase),
             UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
             DirectReferences = references,
+            ApplicationId = Value("ApplicationId"),
         };
     }
 
@@ -197,7 +201,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,_RunicApplicationHostAdapter",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,_RunicApplicationHostAdapter,ApplicationId",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));

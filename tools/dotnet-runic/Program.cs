@@ -76,25 +76,41 @@ internal static partial class Program
         [Option("--no-frontend-watch", Description = "Build the frontend once instead of starting its development server or watcher.")] bool noFrontendWatch,
         [Option("--no-dotnet-watch", Description = "Run the application once instead of restarting it under dotnet watch after C# edits.")] bool noDotNetWatch,
         [Option("--dry-run", Description = "Print the evaluated project configuration and exit without changing files or starting processes.")] bool dryRun,
+        [Option("--no-build", Description = "Skip the .NET restore and build before the Window starts, as dotnet run --no-build does. dotnet watch still builds after C# edits.")] bool noBuild,
+        [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
-        [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug")
+        [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug",
+        [Option("--launch-profile", ValueName = "NAME", Description = "Run the Window with this profile from Properties/launchSettings.json. By default dev uses no launch profile.")] string launchProfile = "",
+        [Option("--verbosity", "-v", ValueName = "LEVEL", Choices = ["q", "quiet", "m", "minimal", "n", "normal", "d", "detailed", "diag", "diagnostic"], Description = VerbosityDescription)] string verbosity = "")
     {
-        var options = new DevOptions(
-            string.IsNullOrWhiteSpace(project) ? null : project,
-            configuration,
-            !noRestore,
-            !noFrontendWatch,
-            !noDotNetWatch,
-            dryRun,
-            applicationArguments);
         DevCommandResult? result = null;
         return ExecuteAsync(context, "dev",
-            async () => await DevApplication.RunAsync(context, options, cancellationToken,
-                evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false),
+            async () =>
+            {
+                var options = new DevOptions(
+                    string.IsNullOrWhiteSpace(project) ? null : project,
+                    configuration,
+                    !noRestore,
+                    !noFrontendWatch,
+                    !noDotNetWatch,
+                    dryRun,
+                    applicationArguments)
+                {
+                    Verbosity = string.IsNullOrEmpty(verbosity) ? null : verbosity,
+                    LaunchProfile = string.IsNullOrWhiteSpace(launchProfile) ? null : launchProfile,
+                    Build = !noBuild,
+                    Environment = ToolOptionValues.ParseEnvironment(environment),
+                };
+                return await DevApplication.RunAsync(context, options, cancellationToken,
+                    evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false);
+            },
             () => result, stream: !dryRun);
     }
+
+    private const string VerbosityDescription =
+        "The MSBuild verbosity of the builds the command runs: q[uiet], m[inimal], n[ormal], d[etailed] or diag[nostic]. Without it, each command uses its own default.";
 
     [Command("size", Description = "Measure a published application and write a size report.",
         Examples = ["dotnet runic size --runtime linux-x64 --report measurements/linux.json"])]
@@ -104,19 +120,28 @@ internal static partial class Program
         [Option("--aot", ConflictsWith = ["no-aot"], Description = "Publish with Native AOT, the default.")] bool aot,
         [Option("--no-aot", ConflictsWith = ["aot"], Description = "Publish without Native AOT.")] bool noAot,
         [Option("--verify-argument", AllowMultipleValues = true, Description = "An argument for the --verify executable. Repeat it for several arguments.")] IReadOnlyList<string> verifyArguments,
+        [Option("--self-contained", ConflictsWith = ["no-self-contained"], Description = "Publish self-contained, the default.")] bool selfContained,
+        [Option("--no-self-contained", ConflictsWith = ["self-contained"], Description = "Publish framework-dependent, with -p:SelfContained=false, for example to compare with a self-contained build. Combine it with --no-aot.")] bool noSelfContained,
+        [Option("--property", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Pass an MSBuild property to the evaluation and publish, as dotnet publish -p does, for example OptimizationPreference=Speed. Repeat it for several properties. Configuration, RuntimeIdentifier, PublishAot and SelfContained have their own options.")] IReadOnlyList<string> properties,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--runtime", "--rid", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
         [Option("--report", Description = "The JSON report to write. The file must not exist yet. Default: runic-size-<runtime>-<UTC time>.json in the current directory.")] string report = "",
-        [Option("--verify", Description = "An executable to run after a successful publish, as a path or a command on PATH, such as node. It receives the --verify-argument values, then the publish directory and the published application's path. A nonzero exit code fails the command.")] string verify = "")
+        [Option("--verify", Description = "An executable to run after a successful publish, as a path or a command on PATH, such as node. It receives the --verify-argument values, then the publish directory and the published application's path. A nonzero exit code fails the command.")] string verify = "",
+        [Option("--verbosity", "-v", ValueName = "LEVEL", Choices = ["q", "quiet", "m", "minimal", "n", "normal", "d", "detailed", "diag", "diagnostic"], Description = VerbosityDescription)] string verbosity = "")
     {
         SizeCommandResult? result = null;
         return ExecuteAsync(context, "size", async () =>
         {
             SizeRun run = await SizeApplication.RunAsync(new SizeOptions(
                 string.IsNullOrWhiteSpace(project) ? null : project, runtime,
-                configuration, report, aot || !noAot, verify, verifyArguments), cancellationToken).ConfigureAwait(false);
+                configuration, report, aot || !noAot, verify, verifyArguments)
+            {
+                SelfContained = !noSelfContained,
+                Properties = ToolOptionValues.ParseProperties(properties),
+                Verbosity = string.IsNullOrEmpty(verbosity) ? null : verbosity,
+            }, cancellationToken).ConfigureAwait(false);
             result = run.Result;
             return run.ExitCode;
         }, () => result, stream: true);
@@ -186,8 +211,11 @@ internal static partial class Program
                 return CommandOutcome.Success(payload.WithHumanOutput(output.ToString().TrimEnd()));
             if (exitCode == Cancelled)
                 return CommandOutcome.Failure<T>(CommandExitCategory.Cancelled, new CommandFault(CancelledCode, $"The {command} command was cancelled."));
-            var fault = new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully.");
-            string? human = WithHelpLink(BoundedHumanOutput(output), "RAPPCLI1000");
+            var fault = new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully.")
+            {
+                HelpUri = HelpUri("RAPPCLI1000"),
+            };
+            string? human = BoundedHumanOutput(output);
             return payload is null
                 ? CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, fault, diagnostics: [], human)
                 : CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, fault, diagnostics: [], human,
@@ -257,26 +285,28 @@ internal static partial class Program
         string? humanOutput = null)
     {
         bool containsPrivatePath = ContainsRootedPath(message);
-        string? detail = WithHelpLink(containsPrivatePath
+        string? detail = containsPrivatePath
             ? string.Concat(humanOutput, message, "\n")
-            : humanOutput, code);
+            : humanOutput;
         return CommandOutcome.Failure<T>(
             category,
             new CommandFault(
                 code,
                 containsPrivatePath
                     ? "The command could not be completed. See the local detail above."
-                    : message),
+                    : message)
+            {
+                HelpUri = HelpUri(code),
+            },
             diagnostics: [],
             detail);
     }
 
     /// <summary>
-    /// Ends human output with the fault code's catalog entry at this release's tag.
-    /// Runic.CommandLine writes it before the fault line and omits it from JSON output.
+    /// The fault code's entry in the diagnostics catalog at this release's tag. JSON output carries it as
+    /// <c>fault.helpUri</c>; human output writes it as <c>Help for {code}: {link}</c> after the fault line.
     /// </summary>
-    internal static string WithHelpLink(string? humanOutput, string code) =>
-        string.Concat(humanOutput, $"Help for {code}: {RunicReleaseLinks.Diagnostic(code)}\n");
+    internal static Uri HelpUri(string code) => new(RunicReleaseLinks.Diagnostic(code), UriKind.Absolute);
 
     private static string? WithDetail(string? humanOutput, string? localDetail) =>
         string.IsNullOrEmpty(localDetail) ? humanOutput : string.Concat(humanOutput, localDetail);

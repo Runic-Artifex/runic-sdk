@@ -1063,6 +1063,175 @@ internal sealed class ToolTests
         return project;
     }
 
+    [Test, DisplayName("dev passes --verbosity, --launch-profile, --no-build and -e on")]
+    public void DevPassesBuildAndRunOptions()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        var defaults = new DevOptions(null, "Debug", true, true, true, false, []);
+        // Without the new options the commands are those of 0.10.
+        DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, defaults)), "--verbosity");
+        DoesNotContain(string.Join(" ", DevApplication.CreateRestoreArguments(configuration, "Debug")), "--verbosity");
+        string watch = string.Join(" ", HostProcessController.CreateWatchArguments(configuration, defaults));
+        True(watch.EndsWith("run --no-launch-profile", StringComparison.Ordinal), watch);
+        True(string.Join(" ", HostProcessController.CreateRunArguments(configuration, defaults)).EndsWith("--no-launch-profile", StringComparison.Ordinal),
+            "dotnet run uses no launch profile by default.");
+
+        DevOptions options = defaults with
+        {
+            Verbosity = "detailed",
+            LaunchProfile = "Staging Profile",
+            Build = false,
+            Environment = ToolOptionValues.ParseEnvironment(["FEATURE_FLAG=on", "DOTNET_ENVIRONMENT=Staging", "EMPTY=", "URL=a=b"]),
+        };
+        IReadOnlyList<string> build = DevApplication.CreateBuildArguments(configuration, options);
+        SequenceEqual(["--verbosity", "detailed"], build.Skip(build.Count - 2).ToArray());
+        SequenceEqual(["--verbosity", "minimal"], DevApplication.CreateRestoreArguments(configuration, "Debug", "minimal").Skip(3).ToArray());
+        IReadOnlyList<string> watchArguments = HostProcessController.CreateWatchArguments(configuration, options);
+        Contains(string.Join(" ", watchArguments), "--verbosity detailed --no-restore --non-interactive run --launch-profile");
+        Equal("Staging Profile", watchArguments[^1]);
+        DoesNotContain(string.Join(" ", watchArguments), "--no-launch-profile");
+        IReadOnlyList<string> run = HostProcessController.CreateRunArguments(configuration, options);
+        SequenceEqual(["--launch-profile", "Staging Profile"], run.Skip(run.Count - 2).ToArray());
+        Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, options)), "--verbosity detailed");
+
+        // -e values reach the Window and win over dev's defaults, as dotnet run -e does.
+        IReadOnlyDictionary<string, string?> environment = HostProcessController.CreateDevelopmentEnvironment(
+            configuration, new Dictionary<string, string?>(), _ => null, options.Environment);
+        Equal("on", environment["FEATURE_FLAG"]);
+        Equal("Staging", environment["DOTNET_ENVIRONMENT"]);
+        Equal("", environment["EMPTY"]);
+        Equal("a=b", environment["URL"]);
+        // An ASP.NET Core environment given with -e counts as the developer's choice too.
+        Equal(false, HostProcessController.CreateDevelopmentEnvironment(configuration, new Dictionary<string, string?>(), _ => null,
+            ToolOptionValues.ParseEnvironment(["ASPNETCORE_ENVIRONMENT=Staging"])).ContainsKey("DOTNET_ENVIRONMENT"));
+
+        foreach (string malformed in new[] { "NAME", "=value", "TWO WORDS=x", " LEADING=x" })
+            Equal(ToolOptionValues.EnvironmentFormatCode, Throws<DevUsageException>(() => ToolOptionValues.ParseEnvironment([malformed])).Code);
+        foreach (string reserved in new[] { "RUNIC_APPLICATION_VITE_DEV_SERVER=x", "runic_application_frontend_kind=x",
+            "RUNIC_APPLICATION_DEV_PROJECT=x", "RUNIC_APPLICATION_DEVELOPMENT_ASSETS=x" })
+            Equal(ToolOptionValues.ReservedEnvironmentCode, Throws<DevUsageException>(() => ToolOptionValues.ParseEnvironment([reserved])).Code);
+    }
+
+    [Test, DisplayName("size passes --property, --self-contained and --verbosity on")]
+    public void SizePassesPublishOptions()
+    {
+        var defaults = new SizeOptions(null, "linux-x64", "Release", "", true, "", []);
+        SequenceEqual(["-p:Configuration=Release", "-p:RuntimeIdentifier=linux-x64", "-p:PublishAot=true",
+            "-p:SelfContained=true", "-p:OptimizationPreference=Size"], SizeApplication.CreateSettings(defaults));
+        var options = defaults with
+        {
+            SelfContained = false,
+            Properties = ToolOptionValues.ParseProperties(["OptimizationPreference=Speed", "DefineConstants=A;B,C", "Empty=", "_Private-Name=x"]),
+        };
+        SequenceEqual(["-p:Configuration=Release", "-p:RuntimeIdentifier=linux-x64", "-p:PublishAot=true",
+            "-p:SelfContained=false", "-p:OptimizationPreference=Size",
+            // After size's own properties, so they override its defaults; separators are escaped, one property each.
+            "-property:OptimizationPreference=Speed", "-property:DefineConstants=A%3BB%2CC", "-property:Empty=", "-property:_Private-Name=x"],
+            SizeApplication.CreateSettings(options));
+        foreach (string malformed in new[] { "Name", "=x", "1Name=x", "Na me=x", "Name;Other=x" })
+            Equal(ToolOptionValues.PropertyFormatCode, Throws<DevUsageException>(() => ToolOptionValues.ParseProperties([malformed])).Code);
+        foreach (string reserved in new[] { "Configuration=Debug", "runtimeidentifier=win-x64", "PublishAot=false", "SelfContained=false" })
+            Equal(ToolOptionValues.ReservedPropertyCode, Throws<DevUsageException>(() => ToolOptionValues.ParseProperties([reserved])).Code);
+    }
+
+    [Test, DisplayName("the 0.11 options are in help and completion and are checked")]
+    public void NewOptionsAreDeclared()
+    {
+        (_, string devHelp) = RunCli("dev", "--help");
+        foreach (string option in new[] { "--launch-profile", "--no-build", "--environment", "-e", "--verbosity", "-v" })
+            Contains(devHelp, option);
+        (_, string sizeHelp) = RunCli("size", "--help");
+        foreach (string option in new[] { "--property", "--self-contained", "--no-self-contained", "--verbosity" })
+            Contains(sizeHelp, option);
+        (int completionExit, string completion) = RunCli("completion", "bash");
+        Equal(0, completionExit);
+        foreach (string option in new[] { "--launch-profile", "--no-build", "--environment", "--verbosity", "--property", "--no-self-contained", "diagnostic" })
+            Contains(completion, option);
+
+        string missing = Path.Combine(Path.GetTempPath(), "runic-missing-" + Guid.NewGuid().ToString("N"), "App.csproj");
+        // A verbosity outside MSBuild's levels and conflicting switches are usage errors before any work.
+        Equal(2, RunCli("dev", "--verbosity", "loud", "--project", missing).ExitCode);
+        Equal(2, RunCli("size", "--self-contained", "--no-self-contained", "--runtime", "linux-x64", "--project", missing).ExitCode);
+        (int environmentExit, string environmentOutput) = RunCli("dev", "--format", "json", "-e", "NAME", "--project", missing);
+        Equal(2, environmentExit);
+        using (JsonDocument document = JsonDocument.Parse(environmentOutput))
+            Equal(ToolOptionValues.EnvironmentFormatCode, document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        (int propertyExit, string propertyOutput) = RunCli("size", "--format", "json", "--runtime", "linux-x64", "--property", "SelfContained=false", "--project", missing);
+        Equal(2, propertyExit);
+        using (JsonDocument document = JsonDocument.Parse(propertyOutput))
+            Equal(ToolOptionValues.ReservedPropertyCode, document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+    }
+
+    [Test, DisplayName("JSON faults link their catalog entry in fault.helpUri")]
+    public void JsonFaultsCarryHelpUri()
+    {
+        string missing = Path.Combine(Path.GetTempPath(), "runic-missing-" + Guid.NewGuid().ToString("N"), "App.csproj");
+        (int exitCode, string output) = RunCli("doctor", "--format", "json", "--project", missing);
+        Equal(2, exitCode);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            string helpUri = document.RootElement.GetProperty("fault").GetProperty("helpUri").GetString()!;
+            True(helpUri.StartsWith("https://github.com/Runic-Artifex/runic-sdk/blob/", StringComparison.Ordinal)
+                && helpUri.EndsWith("/docs/diagnostics.md#rappdev1002", StringComparison.Ordinal), helpUri);
+        }
+    }
+
+    [Test, DisplayName("doctor compares the installed @runic-artifex/views with Runic.Application.Views")]
+    public void DoctorComparesViewsPackageVersions()
+    {
+        using var workspace = new TestWorkspace();
+        string assets = workspace.Write("obj/project.assets.json",
+            """{"libraries":{"Runic.Application.Views/0.11.0":{"type":"package"},"Runic.Application.Views.Desktop/0.11.0":{"type":"package"}}}""");
+        string frontend = Path.Combine(workspace.Root, "Frontend");
+        Directory.CreateDirectory(frontend);
+        var project = new DoctorProjectConfiguration(
+            Path.Combine(workspace.Root, "App.csproj"), workspace.Root, "net10.0", true, frontend, assets,
+            "linux-x64", "/src/main.ts", Path.Combine(frontend, "vite.config.ts"), true, RunicViewsHost.Desktop);
+        List<DoctorCheck> checks = [];
+        // Not installed yet: nothing to compare, and compatibility-set already reports an unrestored project.
+        DoctorChecks.CheckViewsPackageVersions(checks, project);
+        Equal(0, checks.Count);
+        // A workspace root's node_modules counts, as Node.js resolves it.
+        workspace.Write("node_modules/@runic-artifex/views/package.json", """{"name":"@runic-artifex/views","version":"0.11.0"}""");
+        DoctorChecks.CheckViewsPackageVersions(checks, project);
+        Equal(DoctorStatus.Pass, checks.Single().Status);
+        Equal("views-package-versions", checks.Single().Name);
+        // The frontend's own node_modules is nearer; a stale install warns and names both versions.
+        workspace.Write("Frontend/node_modules/@runic-artifex/views/package.json", """{"name":"@runic-artifex/views","version":"0.10.0"}""");
+        checks.Clear();
+        DoctorChecks.CheckViewsPackageVersions(checks, project);
+        DoctorCheck stale = checks.Single();
+        Equal(DoctorStatus.Warning, stale.Status);
+        Contains(stale.Message, "@runic-artifex/views 0.10.0");
+        Contains(stale.Message, "Runic.Application.Views 0.11.0");
+        // A prerelease label distinguishes releases.
+        workspace.Write("Frontend/node_modules/@runic-artifex/views/package.json", """{"version":"0.11.0-preview.1"}""");
+        checks.Clear();
+        DoctorChecks.CheckViewsPackageVersions(checks, project);
+        Equal(DoctorStatus.Warning, checks.Single().Status);
+    }
+
+    [Test, DisplayName("doctor checks the ApplicationId format")]
+    public void DoctorChecksApplicationId()
+    {
+        DoctorStatus Check(string id)
+        {
+            var project = new DoctorProjectConfiguration(
+                "/work/App.csproj", "/work", "net10.0", true, "/work/Frontend", "/work/obj/project.assets.json",
+                "linux-x64", "/src/main.ts", "/work/Frontend/vite.config.ts", true) { ApplicationId = id };
+            List<DoctorCheck> checks = [];
+            DoctorChecks.CheckApplicationId(checks, project);
+            Equal("application-id", checks.Single().Name);
+            return checks.Single().Status;
+        }
+        // The rule of the template's packaging script (tests/engineering/template-packaging.test.mjs).
+        foreach (string id in new[] { "org.example.Notes", "com.example.App2048Game", "a.b", "" })
+            Equal(DoctorStatus.Pass, Check(id));
+        foreach (string id in new[] { "Notes", "org.example.my-notes", "org.example.2048", "org..example", "org.example.Notes_App", $"org.example.{new string('a', 40)}" })
+            Equal(DoctorStatus.Warning, Check(id));
+    }
+
     private static (int ExitCode, string Output) RunCli(params string[] arguments)
     {
         var console = new CapturingConsole();
@@ -1202,10 +1371,12 @@ internal sealed class ToolTests
                 Runic.CommandLine.CommandExitCategory.Usage, "RAPPDEV1002", message);
             Equal("The command could not be completed. See the local detail above.", outcome.Fault!.Message);
             Contains(outcome.HumanOutput ?? string.Empty, message);
-            // Human output ends with the code's catalog entry at the release tag.
-            True(outcome.HumanOutput!.EndsWith("/docs/diagnostics.md#rappdev1002\n", StringComparison.Ordinal)
-                && outcome.HumanOutput.Contains("Help for RAPPDEV1002: https://github.com/Runic-Artifex/runic-sdk/blob/v", StringComparison.Ordinal),
-                outcome.HumanOutput);
+            // The fault links the code's catalog entry at the release tag: fault.helpUri in JSON, a "Help for" line
+            // after the fault in human output. The link is not part of the local detail.
+            string helpUri = outcome.Fault.HelpUri!.AbsoluteUri;
+            True(helpUri.StartsWith("https://github.com/Runic-Artifex/runic-sdk/blob/v", StringComparison.Ordinal)
+                && helpUri.EndsWith("/docs/diagnostics.md#rappdev1002", StringComparison.Ordinal), helpUri);
+            DoesNotContain(outcome.HumanOutput!, "Help for");
         }
         foreach (string message in new[]
         {
