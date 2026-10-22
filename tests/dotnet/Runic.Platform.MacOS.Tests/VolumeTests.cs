@@ -263,7 +263,13 @@ internal sealed partial class VolumeTests
             try { File.WriteAllText(Path.Combine(readOnlyPath, "written.txt"), "x"); throw new InvalidOperationException("Volume check failed: a read-only mount accepted a write."); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.WriteLine($"Write to the read-only mount: {error.GetType().Name}"); }
             Check(await volumes.UnmountAsync(volumeHfs.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "the read-only mount is unmounted");
-            await WaitForAsync(changes.Reader, v => v.Id == volumeHfs.Id && v.MountPaths.IsEmpty && v.CanMount, timeout.Token);
+            // The mount and unmount can fall within one settle interval of the watch, which then reports no change: list instead.
+            for (var deadline = DateTime.UtcNow.AddSeconds(30); ; await Task.Delay(200, timeout.Token))
+            {
+                if (await volumes.ListAsync(timeout.Token) is PlatformResult<ImmutableArray<DesktopVolume>>.Success(var now)
+                    && now.Any(v => v.Id == volumeHfs.Id && v.MountPaths.IsEmpty && v.CanMount)) break;
+                if (DateTime.UtcNow > deadline) throw new InvalidOperationException("Volume check failed: the read-only mount was not unmounted.");
+            }
             var mounted = await volumes.MountAsync(volumeHfs.Id, timeout.Token);
             Console.WriteLine($"Mount: {mounted}");
             Check(mounted is PlatformResult<DesktopVolume>.Success { Value.MountPaths: [var path] } && Directory.Exists(path), $"the volume is mounted again: {mounted}");
