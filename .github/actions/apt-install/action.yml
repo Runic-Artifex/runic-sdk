@@ -41,3 +41,10 @@ runs:
       run: |
         # shellcheck disable=SC2086 # one package per word
         eng/ci/apt-install.sh $PACKAGES
+    # TEMPORARY (I-179 measurement, reverted before merge): save this pull request's archives
+    # so a second run can measure a warm cache. Pull requests do not save caches otherwise.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.head_ref == 'ci/apt-cache'
+      with:
+        path: /var/cache/runic-apt/*.deb
+        key: ${{ steps.apt.outputs.prefix }}${{ steps.apt.outputs.image }}
