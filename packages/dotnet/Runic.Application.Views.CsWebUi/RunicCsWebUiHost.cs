@@ -188,6 +188,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         {
             cancellationToken.ThrowIfCancellationRequested();
             var viewModel = opening.ViewModel;
+            CsWebUiLog.WarnIfNativeLibraryUnchecked(scope.ServiceProvider);
             window = new WebUiWindow();
             transport = new RebindableBridgeTransport(new CsWebUiBridgeTransport(window));
             content = new WindowContentSession(transport, new WindowContentSessionOptions

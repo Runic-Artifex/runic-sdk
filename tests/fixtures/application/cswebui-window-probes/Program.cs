@@ -170,8 +170,12 @@ static async Task ProbeMissingBridgeAsync()
 
 // CS-WebUI cannot keep a browser window open when the user closes it: a Window with GuardClose opens unguarded and
 // logs WindowCloseGuardUnavailable once. RequestCloseAsync, the application asking, is still guarded.
+// Also: a WebUI library that the application selects, here the bundled one, is logged once as event 2101, because
+// Runic cannot check its version (SEC-23).
 static int ProbeCloseGuard()
 {
+    var nativeLibrary = BundledNativeLibrary();
+    Environment.SetEnvironmentVariable("CSWEBUI_NATIVE_LIBRARY", nativeLibrary);
     var services = new ServiceCollection();
     services.AddScoped<GuardedProbeViewModel>();
     services.AddRunicViews();
@@ -199,6 +203,13 @@ static int ProbeCloseGuard()
             entry.Message.Contains(nameof(GuardedProbeWindow), StringComparison.Ordinal) &&
             entry.Message.Contains("CS-WebUI", StringComparison.Ordinal)))
         throw new InvalidOperationException("A guarded Window on CS-WebUI was not logged once as event 1053:\n" +
+            string.Join('\n', entries.Select(static entry => entry.ToString())));
+    if (entries.Count(static entry => entry.EventId.Id == 2101) != 1 || !entries.Any(entry =>
+            entry is { Category: "Runic.Application.Views.CsWebUi", Level: LogLevel.Warning } &&
+            entry.EventId is { Id: 2101, Name: "CsWebUiNativeLibraryUnchecked" } &&
+            entry.Message.Contains(nativeLibrary, StringComparison.Ordinal) &&
+            entry.Message.Contains("efac0e24", StringComparison.Ordinal)))
+        throw new InvalidOperationException("The WebUI library from CSWEBUI_NATIVE_LIBRARY was not logged once as event 2101:\n" +
             string.Join('\n', entries.Select(static entry => entry.ToString())));
     Console.WriteLine("FIRST_WINDOW_CLOSE_GUARD_OK");
     return 0;
@@ -234,6 +245,19 @@ static int ProbeShowFailure()
     }
     Console.WriteLine("FIRST_WINDOW_SHOW_FAILURE_OK");
     return 0;
+}
+
+// The WebUI library CsWebUi.Native bundles: beside the executable when published, under runtimes/<rid>/native otherwise.
+static string BundledNativeLibrary()
+{
+    var name = OperatingSystem.IsWindows() ? "webui-2.dll" : OperatingSystem.IsMacOS() ? "libwebui-2.dylib" : "libwebui-2.so";
+    var candidates = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, name),
+        Path.Combine(AppContext.BaseDirectory, "runtimes", System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, "native", name),
+    };
+    return candidates.FirstOrDefault(File.Exists) ??
+        throw new InvalidOperationException("The bundled WebUI library was not found at " + string.Join(" or ", candidates));
 }
 
 static void RequireShowFailure(string browserPath, Func<RunicWindowDiagnostic, WebUiException, bool> expected)
