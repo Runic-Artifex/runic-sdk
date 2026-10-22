@@ -199,14 +199,28 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     /// detaches. <see langword="null"/> when the command reports its failures only to its caller.
     /// </summary>
     public Func<T, Microsoft.Extensions.Logging.ILogger, IDisposable>? ObserveFailures { get; init; }
+
+    /// <summary>
+    /// Resolves the decoded wire key of a <see cref="RunicCommandKeyAttribute"/> command to the command's parameter
+    /// in the Bridge call's model turn, or returns <see langword="null"/> when the key names no object.
+    /// <see langword="null"/> for a command whose argument is its parameter.
+    /// </summary>
+    public Func<T, object?, object?>? ResolveArgument { get; init; }
+
+    /// <summary>
+    /// Resolves the decoded wire key of a <see cref="RunicCommandKeyAttribute"/> command to the command's parameter
+    /// asynchronously, or returns <see langword="null"/> when the key names no object. It starts in the Bridge call's
+    /// model turn; availability and execution run in a new turn. <see langword="null"/> unless the resolver is asynchronous.
+    /// </summary>
+    public Func<T, object?, CancellationToken, ValueTask<object?>>? ResolveArgumentAsync { get; init; }
 }
 
 // Detail is present only when the window allows local failure detail.
 // Failure is the encoded declared failure of a domain-failed reply, which
 // never carries detail (D-1).
-// Reason refines Kind with an open kebab-case token (protocol 3): "unavailable"
-// and "invalid-input" under "rejected"; "unresolved-key" is reserved for wire-key
-// command parameters and not sent yet.
+// Reason refines Kind with an open kebab-case token (protocol 3): "unavailable",
+// "invalid-input" and "unresolved-key" (a wire key that resolves to nothing)
+// under "rejected".
 internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null, string? Failure = null, string? Reason = null)
 {
     internal const string DomainFailed = "domain-failed";
@@ -215,6 +229,10 @@ internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureD
     internal const string Released = "released";
     internal const string Unavailable = "unavailable";
     internal const string InvalidInput = "invalid-input";
+    internal const string UnresolvedKey = "unresolved-key";
+
+    internal static BridgeFailure KeyNotResolved(string command) =>
+        new("rejected", $"{command} has no object for this key.", Reason: UnresolvedKey);
 }
 
 /// <summary>The Views wire protocol described in specs/application/README.md.</summary>
@@ -497,7 +515,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             foreach (var command in commands)
             {
                 var captured = command;
-                bindings.Add(command.ExecuteAsync is null && command.ExecuteResultAsync is null && command.ExecuteStreamAsync is null
+                // An asynchronous key resolver makes every route of the command asynchronous; the wire is the same.
+                var resolvesAsync = command.ResolveArgumentAsync is not null;
+                bindings.Add(command.ExecuteAsync is null && command.ExecuteResultAsync is null && command.ExecuteStreamAsync is null && !resolvesAsync
                     ? transport.Bind($"{name}{command.Name}", e => _modelTurn.Run(() => Execute(captured, e)))
                     : transport.BindAsync($"{name}{command.Name}", (e, token) => ExecuteAsync(captured, e, token)));
                 // The familiar awaited command route stays the default. A
@@ -506,9 +526,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 // content session with a generated contract fingerprint.
                 if (content is not null && contractFingerprint is not null
                     && (captured.ExecuteAsync is not null || captured.ExecuteResultAsync is not null || captured.ExecuteStreamAsync is not null))
-                    bindings.Add(transport.Bind($"{name}Start{captured.Name}",
-                        e => _modelTurn.Run(() => StartOperation(content, captured, e))));
-                bindings.Add(transport.Bind($"{name}Can{command.Name}", e => _modelTurn.Run(() => QueryAvailability(captured, e))));
+                    bindings.Add(resolvesAsync
+                        ? transport.BindAsync($"{name}Start{captured.Name}", (e, token) => StartOperationAsync(content, captured, e, token))
+                        : transport.Bind($"{name}Start{captured.Name}", e => _modelTurn.Run(() => StartOperation(content, captured, e))));
+                bindings.Add(resolvesAsync
+                    ? transport.BindAsync($"{name}Can{command.Name}", (e, token) => QueryAvailabilityAsync(captured, e, token))
+                    : transport.Bind($"{name}Can{command.Name}", e => _modelTurn.Run(() => QueryAvailability(captured, e))));
             }
             _bindings = [.. bindings];
             _subscribedCommands = [.. subscribedCommands];
@@ -662,7 +685,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
             try
             {
-                var argument = ReadArgument(descriptor, arguments);
+                if (!TryResolve(descriptor, ReadArgument(descriptor, arguments), out var argument))
+                {
+                    call.Complete(BridgeCallOutcome.Rejected);
+                    return EncodeTerminal(BridgeFailure.KeyNotResolved(descriptor.Name));
+                }
                 var command = descriptor.Get(_vm);
                 if (!IsAvailable(descriptor, argument))
                 {
@@ -718,6 +745,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The window is closing."));
         var cancellation = admission?.Token ?? token;
         Task<BridgeOperationResult>? execution = null;
+        Task<object?>? resolution = null;
         var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
         try
         {
@@ -725,14 +753,28 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var rejection = _modelTurn.Run(() =>
             {
                 if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-                var argument = ReadArgument(descriptor, arguments);
+                var key = ReadArgument(descriptor, arguments);
                 rejected = BridgeCallOutcome.Rejected;
-                if (!IsAvailable(descriptor, argument))
-                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
-                using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                execution = InvokeCommandAsync(descriptor, argument, cancellation);
-                return null;
+                // An asynchronous resolver starts in this turn; the command is admitted in the next.
+                if (descriptor.ResolveArgumentAsync is { } resolveAsync)
+                {
+                    resolution = resolveAsync(_vm, key, cancellation).AsTask();
+                    return null;
+                }
+                return TryResolve(descriptor, key, out var argument) ? Begin(argument)
+                    : EncodeTerminal(BridgeFailure.KeyNotResolved(descriptor.Name));
             });
+            if (rejection is null && resolution is not null)
+            {
+                var resolved = await resolution.ConfigureAwait(false);
+                rejected = BridgeCallOutcome.Released;
+                rejection = _modelTurn.Run(() =>
+                {
+                    if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
+                    rejected = BridgeCallOutcome.Rejected;
+                    return resolved is null ? EncodeTerminal(BridgeFailure.KeyNotResolved(descriptor.Name)) : Begin(resolved);
+                });
+            }
             if (rejection is not null)
             {
                 call.Complete(rejected);
@@ -764,6 +806,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
             var detail = BridgeFailureDetails.Capture(error, IncludesFailureDetail);
             return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
+        }
+
+        // In a model turn: checks availability with the command's parameter and starts the command.
+        string? Begin(object? argument)
+        {
+            if (!IsAvailable(descriptor, argument))
+                return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
+            using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+            execution = InvokeCommandAsync(descriptor, argument, cancellation);
+            return null;
         }
     }
 
@@ -801,15 +853,52 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         descriptor.CanExecute?.Invoke(_vm, argument)
         ?? (descriptor.Get(_vm) is ICommand command && command.CanExecute(argument));
 
+    // The command's parameter for a decoded argument: the argument itself, or the object a synchronous key
+    // resolver returns for it. False when the key names no object.
+    private bool TryResolve(CommandDescriptor<T> descriptor, object? key, out object? argument)
+    {
+        if (descriptor.ResolveArgument is not { } resolve)
+        {
+            argument = key;
+            return true;
+        }
+        argument = resolve(_vm, key);
+        return argument is not null;
+    }
+
     private string QueryAvailability(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
     {
         lock (_modelGate)
         {
             if (IsInactive) return "false";
-            try { return IsAvailable(descriptor, ReadArgument(descriptor, arguments)) ? "true" : "false"; }
+            try { return TryResolve(descriptor, ReadArgument(descriptor, arguments), out var argument) && IsAvailable(descriptor, argument) ? "true" : "false"; }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
             { return "false"; }
         }
+    }
+
+    // can<Command>(key) of a command with an asynchronous key resolver: an unresolved key, a closing window and a
+    // cancelled resolution answer false. The resolution is awaited window work, as an awaited command is.
+    private async ValueTask<string> QueryAvailabilityAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
+    {
+        using var admission = _content?.Operations.TryBeginAwaited(token, out _);
+        if (_content is not null && admission is null) return "false";
+        try
+        {
+            Task<object?>? resolution = null;
+            var inactive = _modelTurn.Run(() =>
+            {
+                if (IsInactive) return true;
+                resolution = descriptor.ResolveArgumentAsync!(_vm, ReadArgument(descriptor, arguments), admission?.Token ?? token).AsTask();
+                return false;
+            });
+            if (inactive) return "false";
+            var resolved = await resolution!.ConfigureAwait(false);
+            return _modelTurn.Run(() => !IsInactive && resolved is not null && IsAvailable(descriptor, resolved)) ? "true" : "false";
+        }
+        catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException
+            or OperationCanceledException or ObjectDisposedException)
+        { return "false"; }
     }
 
     private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, object? argument, CancellationToken token)
@@ -818,7 +907,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             return await executeStream(_vm, new BridgeOperationExecution(descriptor.CreateStream!()), token, argument).ConfigureAwait(false);
         if (descriptor.ExecuteResultAsync is { } executeResult)
             return await executeResult(_vm, token, argument).ConfigureAwait(false);
-        await descriptor.ExecuteAsync!(_vm, token, argument).ConfigureAwait(false);
+        // A synchronous command reaches the awaited route only through an asynchronous key resolver.
+        if (descriptor.ExecuteAsync is null)
+        {
+            ((ICommand)descriptor.Get(_vm)).Execute(argument);
+            return BridgeOperationResult.None;
+        }
+        await descriptor.ExecuteAsync(_vm, token, argument).ConfigureAwait(false);
         return BridgeOperationResult.None;
     }
 
@@ -830,64 +925,138 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
             try
             {
-                string requestId;
-                object? argument = null;
-                if (descriptor.ReadArgument is null) requestId = arguments.GetString();
-                else
-                {
-                    var payload = arguments.GetString();
-                    if (!BridgeInputLimit.Fits(payload, MaximumInputBytes)) throw new FormatException("The command input is too large.");
-                    using var document = JsonDocument.Parse(payload);
-                    requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
-                    argument = ReadArgument(descriptor, new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
-                }
-                _ = BridgeOperationIdentity.Create(OperationContract(), requestId);
-                var canonicalInput = descriptor.EncodeArgument?.Invoke(argument) ?? WriteJson(writer =>
-                {
-                    switch (argument)
-                    {
-                        case null: writer.WriteNullValue(); break;
-                        case string value: writer.WriteStringValue(value); break;
-                        case int value: writer.WriteNumberValue(value); break;
-                        case bool value: writer.WriteBooleanValue(value); break;
-                        default: throw new FormatException("The command needs a generated input codec.");
-                    }
-                });
-                var request = new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
-                var admission = descriptor.ExecuteStreamAsync is { } executeStream
-                    ? content.Operations.Accept(request, () => IsAvailable(descriptor, argument), descriptor.CreateStream!(),
-                        (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
-                        {
-                            using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                            return executeStream(_vm, execution, cancellation, argument);
-                        }))
-                    : content.Operations.Accept(request,
-                    () => IsAvailable(descriptor, argument),
-                    cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
-                    {
-                        using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                        return InvokeCommandAsync(descriptor, argument, cancellation);
-                    }));
+                var request = ReadOperationStart(descriptor, arguments, out var key);
+                // The registry asks only for a new request id, so a repeated start observes its operation
+                // before the key is resolved again.
+                var admission = AcceptOperation(content, descriptor, arguments, request, () =>
+                    !TryResolve(descriptor, key, out var argument) ? (BridgeFailure.UnresolvedKey, null)
+                    : IsAvailable(descriptor, argument) ? (null, argument) : (BridgeFailure.Unavailable, argument));
                 var reply = BridgeOperationRouter.EncodeAdmission(admission);
                 call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
                 return reply;
             }
-            catch (OperationCanceledException)
-            {
-                call.Complete(BridgeCallOutcome.Cancelled);
-                return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled.");
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
-            {
-                call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
-            }
             catch (Exception error)
             {
+                return OperationStartFailure(ref call, descriptor, error);
+            }
+        }
+    }
+
+    // start<Command>(key) of a command with an asynchronous key resolver. The resolution starts in a model turn and
+    // is awaited window work; the operation is admitted in a new turn, which still lets a repeated request id observe
+    // its operation, whatever the key resolves to now.
+    private async ValueTask<string> StartOperationAsync(WindowContentSession content, CommandDescriptor<T> descriptor,
+        IBridgeArguments arguments, CancellationToken token)
+    {
+        using var awaited = content.Operations.TryBeginAwaited(token, out var atCapacity);
+        if (awaited is null)
+            return atCapacity
+                ? EncodeOperationStartFailure("rejected", $"{descriptor.Name} was not started: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.")
+                : EncodeOperationStartFailure(BridgeFailure.Released, "The window is closing.");
+        var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
+        try
+        {
+            BridgeOperationRequest? request = null;
+            Task<object?>? resolution = null;
+            var released = _modelTurn.Run(() =>
+            {
+                if (IsInactive) return true;
+                request = ReadOperationStart(descriptor, arguments, out var key);
+                resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited.Token).AsTask();
+                return false;
+            });
+            object? resolved = null;
+            if (!released) resolved = await resolution!.ConfigureAwait(false);
+            var admission = released ? null : _modelTurn.Run(() => IsInactive ? null
+                : AcceptOperation(content, descriptor, arguments, request!.Value, () =>
+                    resolved is null ? (BridgeFailure.UnresolvedKey, null)
+                    : IsAvailable(descriptor, resolved) ? (null, resolved) : (BridgeFailure.Unavailable, resolved)));
+            if (admission is null)
+            {
+                call.Complete(BridgeCallOutcome.Released);
+                return EncodeOperationStartFailure(BridgeFailure.Released, "The Bridge is closed.");
+            }
+            call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
+            return BridgeOperationRouter.EncodeAdmission(admission);
+        }
+        catch (Exception error)
+        {
+            return OperationStartFailure(ref call, descriptor, error);
+        }
+    }
+
+    // The request of an operation start and its decoded argument, the key of a key-resolved command. The digest
+    // that identifies the request is the argument's canonical JSON.
+    private BridgeOperationRequest ReadOperationStart(CommandDescriptor<T> descriptor, IBridgeArguments arguments, out object? argument)
+    {
+        string requestId;
+        argument = null;
+        if (descriptor.ReadArgument is null) requestId = arguments.GetString();
+        else
+        {
+            var payload = arguments.GetString();
+            if (!BridgeInputLimit.Fits(payload, MaximumInputBytes)) throw new FormatException("The command input is too large.");
+            using var document = JsonDocument.Parse(payload);
+            requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
+            argument = ReadArgument(descriptor, new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
+        }
+        _ = BridgeOperationIdentity.Create(OperationContract(), requestId);
+        var decoded = argument;
+        var canonicalInput = descriptor.EncodeArgument?.Invoke(decoded) ?? WriteJson(writer =>
+        {
+            switch (decoded)
+            {
+                case null: writer.WriteNullValue(); break;
+                case string value: writer.WriteStringValue(value); break;
+                case int value: writer.WriteNumberValue(value); break;
+                case bool value: writer.WriteBooleanValue(value); break;
+                default: throw new FormatException("The command needs a generated input codec.");
+            }
+        });
+        return new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
+    }
+
+    // Admits an operation. admit runs only for a new request id and returns why it cannot start (null when it can)
+    // and the command's parameter.
+    private BridgeOperationAdmissionReply AcceptOperation(WindowContentSession content, CommandDescriptor<T> descriptor,
+        IBridgeArguments arguments, BridgeOperationRequest request, Func<(string? Refusal, object? Argument)> admit)
+    {
+        object? argument = null;
+        Func<string?> refusal = () =>
+        {
+            var (reason, value) = admit();
+            argument = value;
+            return reason;
+        };
+        return descriptor.ExecuteStreamAsync is { } executeStream
+            ? content.Operations.AcceptUnlessRefused(request, refusal, descriptor.CreateStream!(),
+                (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
+                {
+                    using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+                    return executeStream(_vm, execution, cancellation, argument);
+                }))
+            : content.Operations.AcceptUnlessRefused(request, refusal,
+                cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
+                {
+                    using var invocation = EnterInvocation(descriptor, arguments, cancellation);
+                    return InvokeCommandAsync(descriptor, argument, cancellation);
+                }));
+    }
+
+    private string OperationStartFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, Exception error)
+    {
+        switch (error)
+        {
+            case OperationCanceledException:
+                call.Complete(BridgeCallOutcome.Cancelled);
+                return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled.");
+            case ArgumentException or FormatException or JsonException or InvalidOperationException:
+                call.Complete(BridgeCallOutcome.Rejected);
+                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
+            default:
                 call.Complete(BridgeCallOutcome.Failed, error);
                 ViewsLog.OperationAdmissionFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
-            }
         }
     }
 

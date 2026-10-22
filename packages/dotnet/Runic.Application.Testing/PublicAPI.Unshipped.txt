@@ -13,3 +13,4 @@ Runic.Application.Testing.RunicTestOperation.ReadStream(long cursor = 0) -> Runi
 override Runic.Application.Testing.RunicOperationStreamPage.ToString() -> string!
 Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.get -> int?
 Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.init -> void
+Runic.Application.Testing.RunicCallReply<TModel>.ErrorReason.get -> string?

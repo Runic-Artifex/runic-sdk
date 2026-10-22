@@ -28,3 +28,10 @@ Runic.Application.Views.WindowContentSessionOptions.MaximumInputBytes.get -> int
 Runic.Application.Views.WindowContentSessionOptions.MaximumInputBytes.init -> void
 Runic.Application.Views.RunicWindowOptions.MaximumInputBytes.get -> int?
 Runic.Application.Views.RunicWindowOptions.MaximumInputBytes.init -> void
+Runic.Application.Views.RunicCommandKeyAttribute
+Runic.Application.Views.RunicCommandKeyAttribute.Resolver.get -> string!
+Runic.Application.Views.RunicCommandKeyAttribute.RunicCommandKeyAttribute(string! resolver) -> void
+Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgument.get -> System.Func<T, object?, object?>?
+Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgument.init -> void
+Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgumentAsync.get -> System.Func<T, object?, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<object?>>?
+Runic.Application.Views.Generated.CommandDescriptor<T>.ResolveArgumentAsync.init -> void

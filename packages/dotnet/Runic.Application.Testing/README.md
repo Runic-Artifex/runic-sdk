@@ -175,7 +175,9 @@ already have. A `RunicViewDriver<T>` has:
   `SetJson` with the wire JSON of a DTO, list or union.
 - `ExecuteAsync(vm => vm.SaveCommand, argumentJson)`, which waits for an
   asynchronous command, and `CanExecute(command, argumentJson)` for commands with
-  an argument. A reply has `Succeeded`, `ErrorKind`, `ErrorMessage` and `State`;
+  an argument. A reply has `Succeeded`, `ErrorKind`, `ErrorReason` (since 0.11:
+  `unavailable`, `invalid-input` or `unresolved-key` for a `rejected` call),
+  `ErrorMessage` and `State`;
   `ThrowIfFailed()` throws for a failed call, as `NavigationResult` does. A
   command's declared failure (`[RunicFailure]`) replies with `ErrorKind`
   `domain-failed` and the encoded failure as `Failure`, such as
@@ -375,8 +377,8 @@ section.
 - The enums say in their documentation whether they are closed or open.
   `RunicCollectionChangeKind` and `RunicPublicationKind` are closed. The operation,
   admission, cancellation and receipt kinds are open: a minor release may add a
-  value, so a `switch` over one needs a default arm. `ErrorKind` is a string because
-  BridgeError kinds are an open set that Runic.Application.Views owns.
+  value, so a `switch` over one needs a default arm. `ErrorKind` and `ErrorReason` are
+  strings because BridgeError kinds and reasons are open sets that Runic.Application.Views owns.
 - The package has no test-framework types. Failures throw `InvalidOperationException`
   or `TimeoutException`, so it works with TUnit, xUnit, NUnit and MSTest alike, as
   `Runic.CommandLine.Testing` and ASP.NET Core's `WebApplicationFactory` do.

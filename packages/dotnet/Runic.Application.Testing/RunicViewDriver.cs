@@ -99,12 +99,19 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         return new(route, json);
     }
 
+    // The can and start routes of a command with an asynchronous key resolver are asynchronous; the call waits for
+    // the resolver as a synchronous route call waits for its model turn.
+    private string CallBlocking(string route, BridgeTestArguments arguments) => _transport.IsAsync(route)
+        ? _transport.CallAsync(route, arguments).AsTask().GetAwaiter().GetResult()
+        : _transport.Call(route, arguments);
+
     /// <summary>Asks whether a command with an argument can execute (<c>can{Command}(input)</c>).</summary>
+    /// <remarks>For a command with an asynchronous key resolver, waits until the resolver finishes.</remarks>
     public bool CanExecute(Expression<Func<TModel, object?>> command, string argumentJson)
     {
         ArgumentNullException.ThrowIfNull(argumentJson);
         var route = $"{Route}Can{RunicMembers.CommandName(RunicMembers.Property(command))}";
-        var reply = _transport.Call(route, new(StringValue: argumentJson));
+        var reply = CallBlocking(route, new(StringValue: argumentJson));
         return reply switch
         {
             "true" => true,
@@ -131,7 +138,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WriteRawValue(argumentJson);
             writer.WriteEndObject();
         });
-        var admission = _transport.Call($"{Route}Start{member}", new(StringValue: payload));
+        var admission = CallBlocking($"{Route}Start{member}", new(StringValue: payload));
         return new(_transport, $"{typeof(TModel).FullName}:{Fingerprint.Value}:{Route}", member, requestId, admission);
     }
 

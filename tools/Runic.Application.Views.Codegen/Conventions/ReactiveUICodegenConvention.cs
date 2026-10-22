@@ -97,11 +97,13 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
         internal override RunicCommandResultCardinality Cardinality => contract.Cardinality;
 
         private string CommandType(GeneratedCommandPlan plan) =>
-            $"global::ReactiveUI.IReactiveCommand<{plan.InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
+            $"global::ReactiveUI.IReactiveCommand<{plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
 
         internal override string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan)
         {
-            var inputType = plan.InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input);
+            // The command's parameter; a RunicCommandKey command's codec encodes its key instead.
+            var inputType = plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input);
+            var keyType = plan.InputGraph?.RootCSharpType() ?? inputType;
             var typed = $"({CommandType(plan)})vm.{property.Name}";
             var helper = Helper(contract.Flavor);
             var input = contract.HasInput ? $"({inputType})argument!" : Void(contract.Input);
@@ -109,7 +111,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
                 ? $", ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}"
                 : "";
             var canonical = contract.HasInput
-                ? $", EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({inputType})argument!))"
+                ? $", EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))"
                 : "";
             var canExecute = $", CanExecute: (vm, argument) => {helper}.CanExecute({typed}, {input})";
             var subscribe = $", Subscribe: (vm, changed) => {helper}.Observe({typed}, changed)";

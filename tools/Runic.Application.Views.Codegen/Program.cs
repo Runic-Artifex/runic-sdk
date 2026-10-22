@@ -688,20 +688,25 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             .Select(convention => InspectCommand(model, command, () => convention.InspectCommand(command))).ToArray()
             .FirstOrDefault(candidate => candidate is not null);
         var plainInput = command.GetCustomAttribute<RunicCommandInputAttribute>(true);
+        // A RunicCommandKey command sends its resolver's key; its own parameter has no wire form.
+        var key = CommandKey(model, command, source, library, plainInput, nullability, honorJsonIgnore);
         var plan = library is { } typed
-            ? new GeneratedCommandPlan(typed.HasStringArgument, typed.IsAsync, Command: typed,
-                InputGraph: typed.Input is { } input ? BridgeTypeGraph.Discover(input,
+            ? new GeneratedCommandPlan(key is null && typed.HasStringArgument, typed.IsAsync, Command: typed,
+                InputGraph: key?.KeyGraph ?? (typed.Input is { } input ? BridgeTypeGraph.Discover(input,
                     ContractNullability.Argument(command, nullability, typed.ContractArguments, 0),
-                    $"{model.Name}.{command.Name}.input", source, honorJsonIgnore, BridgeValueDirection.FromPage) : null,
+                    $"{model.Name}.{command.Name}.input", source, honorJsonIgnore, BridgeValueDirection.FromPage) : null),
                 ResultGraph: typed.Result is { } result ? BridgeTypeGraph.Discover(result,
                     typed.ResultNullability(command, nullability),
                     $"{model.Name}.{command.Name}.result", source, honorJsonIgnore, BridgeValueDirection.ToPage) : null)
+            { Key = key }
             : plainInput is not null
                 ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
                     rootPath: $"{model.Name}.{command.Name}.input", origin: source, honorJsonIgnore: honorJsonIgnore,
                     direction: BridgeValueDirection.FromPage))
+            : key is not null
+                ? GeneratedCommandPlan.Plain(key.KeyGraph) with { Key = key }
             : throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
-                $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput.", source);
+                $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput or RunicCommandKey.", source);
         if (plan.Command?.SelectsResultCardinality != true && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
                 $"{model.Name}.{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; a CommunityToolkit command has the single result of its Task<T> method, and a plain command has none.", source);
@@ -731,6 +736,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     + (owner == model ? "." : $"; {owner.Name} declares it on a member the Bridge does not expose."), member);
     // A base property that a bridged command overrides passes its declaration
     // to the override (attributes on properties are inherited), so it is valid.
+    // RunicCommandKey, like RunicFailure, belongs to a bridged command or its [RelayCommand] method.
+    for (var owner = model; owner is not null && owner != typeof(object); owner = owner.BaseType)
+        foreach (var member in owner.GetProperties(AllDeclared).Concat<MemberInfo>(owner.GetMethods(AllDeclared)).OrderBy(member => member.MetadataToken))
+            if (BridgeAttributeNames.Has(member, "Runic.Application.Views.RunicCommandKeyAttribute") && !failureOwners.Contains(member)
+                && !OverriddenByCommand(member))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+                    $"{model.Name}.{member.Name}: RunicCommandKey applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method"
+                    + (owner == model ? "." : $"; {owner.Name} declares it on a member the Bridge does not expose."), member);
     bool OverriddenByCommand(MemberInfo member) => member is PropertyInfo baseProperty && commands.Any(command =>
         command.Name == baseProperty.Name && command.GetMethod is { } getter && baseProperty.GetMethod is { } baseGetter
         && getter.GetBaseDefinition() == baseGetter.GetBaseDefinition() && getter != baseGetter);
@@ -1125,10 +1138,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var plan = commandPlans[command];
         var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
-        XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command], plan.Command));
+        var documentation = CommandDocumentation(command, commandSources[command], plan.Command);
+        // A RunicCommandKey command (#472) sends the key; .NET resolves it to the command's parameter.
+        var unresolved = plan.Key is null ? null
+            : $"Rejects with a `BridgeError` of kind `rejected` and reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.";
+        XmlDocumentation.Append(ts, "  ", unresolved is null ? documentation
+            : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved);
         var reply = plan.FailureGraph is { } declaredFailure
             ? $"{Ref("BridgeOutcome")}<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
         ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;");
+        if (plan.Key is not null)
+            XmlDocumentation.Append(ts, "  ", $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.");
         if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
     }
     foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
@@ -1139,6 +1159,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"  /**");
         ts.AppendLine($"   * Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;");
         ts.AppendLine($"   * the default is a random id. A start with a request id that .NET already admitted returns that operation.");
+        if (plan.Key is not null)
+            ts.AppendLine($"   * A new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.");
         ts.AppendLine($"   */");
         ts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;");
         ts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
@@ -1493,6 +1515,54 @@ static string MockModulePath(string typescriptPath) =>
 // the command property or its [RelayCommand] method, naming a value type the
 // Bridge can encode. Errors in the type's shape are RUNICBRIDGE003 at
 // {Model}.{Command}.failure.
+// The key resolver of a RunicCommandKey command, or null (#472).
+static GeneratedKeyPlan? CommandKey(Type model, PropertyInfo command, MemberInfo source, MvvmCommand? library,
+    RunicCommandInputAttribute? plainInput, NullabilityInfoContext nullability, bool honorJsonIgnore)
+{
+    var declarations = BridgeCommandSources.KeyDeclarations(model, command);
+    if (declarations.Count == 0) return null;
+    var name = $"{model.Name}.{command.Name}";
+    if (declarations.Count > 1)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: declare RunicCommandKey once, on the command property or on its [RelayCommand] method, not on both.", source);
+    var (declaredOn, resolverName) = declarations[0];
+    MemberInfo location = declaredOn == "method" ? source : command;
+    if (plainInput is not null)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: RunicCommandKey replaces RunicCommandInput, whose key is the resolver's parameter. Declare one of them.", location);
+    if (library is { Input: null })
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: RunicCommandKey resolves a command's parameter, but this command takes none.", location);
+    var methods = BridgeCommandSources.KeyResolvers(model, resolverName);
+    if (methods.Count == 0)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: the RunicCommandKey resolver '{resolverName}' is not a method of {model.Name}.", location);
+    if (methods.Count > 1)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: the RunicCommandKey resolver {model.Name}.{resolverName} is overloaded. Name a method with one signature.", methods[^1]);
+    var resolver = methods[0];
+    if (!(resolver.IsPublic || resolver.IsAssembly || resolver.IsFamilyOrAssembly))
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: the RunicCommandKey resolver {model.Name}.{resolverName} must be public or internal, so the generated Bridge can call it.", resolver);
+    var returned = resolver.ReturnType;
+    var isAsync = returned.IsGenericType && (returned.GetGenericTypeDefinition() == typeof(Task<>) || returned.GetGenericTypeDefinition() == typeof(ValueTask<>));
+    var resolved = isAsync ? returned.GenericTypeArguments[0] : returned;
+    var parameters = resolver.GetParameters();
+    var takesToken = isAsync && parameters.Length == 2 && parameters[1].ParameterType == typeof(CancellationToken);
+    if (resolver.IsGenericMethodDefinition || parameters.Length != (takesToken ? 2 : 1)
+        || parameters[0].ParameterType.IsByRef || parameters[0].IsOut || parameters[0].ParameterType == typeof(CancellationToken))
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: the RunicCommandKey resolver {model.Name}.{resolverName} must take the key as its only parameter, and an asynchronous resolver may add a CancellationToken.", resolver);
+    var parameter = library?.Input ?? Nullable.GetUnderlyingType(resolved) ?? resolved;
+    if (resolved == typeof(void) || typeof(Task).IsAssignableFrom(resolved) || resolved.IsByRef
+        || !parameter.IsAssignableFrom(Nullable.GetUnderlyingType(resolved) ?? resolved))
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.CommandKey,
+            $"{name}: the RunicCommandKey resolver {model.Name}.{resolverName} returns {BridgeTypeGraph.CSharpType(returned).Replace("global::", "", StringComparison.Ordinal)}; it must return the command's parameter{(library is null ? "" : $" {BridgeTypeGraph.CSharpType(parameter).Replace("global::", "", StringComparison.Ordinal)}")}, or null when the key names no object, directly or as Task<T> or ValueTask<T>.", resolver);
+    var keyGraph = BridgeTypeGraph.Discover(parameters[0].ParameterType, nullability.Create(parameters[0]),
+        $"{name}.key", resolver, honorJsonIgnore, BridgeValueDirection.FromPage);
+    return new GeneratedKeyPlan(resolver, keyGraph, parameter, isAsync, takesToken);
+}
+
 static BridgeTypeGraph? FailureGraph(Type model, PropertyInfo command, MemberInfo source)
 {
     var declarations = BridgeCommandSources.FailureDeclarations(model, command);
@@ -1569,7 +1639,8 @@ static string? CommandDocumentation(PropertyInfo command, MethodInfo? source, Mv
 static string CommandParameterName(MethodInfo? source, GeneratedCommandPlan plan)
 {
     if (!plan.HasArgument) return "input";
-    var candidate = source?.GetParameters().FirstOrDefault(parameter => parameter.ParameterType != typeof(CancellationToken))?.Name;
+    var candidate = plan.Key is { } key ? key.Resolver.GetParameters()[0].Name
+        : source?.GetParameters().FirstOrDefault(parameter => parameter.ParameterType != typeof(CancellationToken))?.Name;
     if (candidate is null && plan.InputGraph?.Root is { Kind: BridgeWireKind.Dto or BridgeWireKind.Union or BridgeWireKind.Enum } root)
         candidate = LowerFirst(root.NonNullableType.Name.Split('`')[0]);
     if (candidate is null || !IsTypeScriptIdentifier(candidate)) return "input";
@@ -1687,6 +1758,8 @@ static class BridgeDiagnosticCodes
     internal const string ReactiveUiFlavors = "RUNICBRIDGE023";
     /// <summary>The frontend declares dependencies but has no lock file for the default install.</summary>
     internal const string FrontendLock = "RUNICBRIDGE026";
+    /// <summary>A RunicCommandKey declaration is misplaced, or its resolver is missing or has an unsupported shape.</summary>
+    internal const string CommandKey = "RUNICBRIDGE027";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1719,6 +1792,7 @@ static class BridgeDiagnosticCodes
         (Internal, "error", "An internal generator error"),
         (ReactiveUiAdapter, "error", "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"),
         (FrontendLock, "error", "The frontend declares dependencies but has no lock file for the default install"),
+        (CommandKey, "error", "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -1964,6 +2038,13 @@ sealed record GeneratedCommandPlan(
     internal bool HasArgument => InputGraph is not null || HasStringArgument;
     /// <summary>The generated TypeScript parameter name of the command argument.</summary>
     internal string ParameterName { get; init; } = "input";
+    /// <summary>The key resolver of a RunicCommandKey command, whose <see cref="InputGraph"/> is the key's.</summary>
+    internal GeneratedKeyPlan? Key { get; init; }
+    /// <summary>
+    /// The C# type the command's own parameter is cast to: the input's, or the resolved parameter of a
+    /// RunicCommandKey command, whose input is the key.
+    /// </summary>
+    internal string? ParameterCSharpType => Key is { } key ? BridgeTypeGraph.CSharpType(key.Parameter) : InputGraph?.RootCSharpType();
     /// <summary>True when the snapshot carries is&lt;Name&gt;Executing.</summary>
     internal bool HasExecutionState => Command?.HasExecutionState == true;
 
@@ -1980,7 +2061,10 @@ sealed record GeneratedCommandPlan(
             if (!descriptor.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
             descriptor = descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
         }
-        return CommandDescriptorSyntax.WithInitializer(descriptor, Command?.DescriptorInitializer(property, this));
+        var initializer = Command?.DescriptorInitializer(property, this);
+        if (Key is { } key)
+            initializer = (initializer is null ? "" : initializer + ", ") + key.Initializer(modelType);
+        return CommandDescriptorSyntax.WithInitializer(descriptor, initializer);
     }
 
     private string DescriptorCore(PropertyInfo property, string modelType)
@@ -1992,6 +2076,21 @@ sealed record GeneratedCommandPlan(
         var plainInputType = plainGraph.RootCSharpType();
         var name = property.Name[..^"Command".Length];
         return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
+    }
+}
+
+// The resolver of a RunicCommandKey command (#472): a ViewModel method from the key to the command's
+// parameter, or null when the key names no object.
+sealed record GeneratedKeyPlan(MethodInfo Resolver, BridgeTypeGraph KeyGraph, Type Parameter, bool IsAsync, bool TakesToken)
+{
+    // The CommandDescriptor's ResolveArgument or ResolveArgumentAsync assignment.
+    internal string Initializer(string modelType)
+    {
+        var target = Resolver.IsStatic ? modelType : "vm";
+        var key = $"({KeyGraph.RootCSharpType()})key!";
+        return IsAsync
+            ? $"ResolveArgumentAsync = async (vm, key, token) => await {target}.{Resolver.Name}({key}{(TakesToken ? ", token" : "")}).ConfigureAwait(false)"
+            : $"ResolveArgument = (vm, key) => {target}.{Resolver.Name}({key})";
     }
 }
 

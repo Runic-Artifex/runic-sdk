@@ -347,20 +347,29 @@ works on any `IHandleObservableErrors`, such as a `ReactiveObject`.
 ## Which call to use
 
 Hand-written code sometimes runs a command on behalf of a Bridge call or inside
-a model turn, for example a wrapper command that a Bridge presents and that runs
-a native command whose input has no wire form:
+a model turn, for example a command that a Bridge presents and that runs another
+command as one of its steps:
 
 ```csharp
 using Runic.Application.Views.ReactiveUI;
 
-public ItemsViewModel()
+public EditorViewModel()
 {
-    DeleteItemCommand = ReactiveCommand.CreateFromTask<Item>(DeleteAsync);
-    // Presented by the Bridge; DeleteItemCommand's input has no wire form.
-    DeleteItemByIdCommand = ReactiveCommand.CreateFromTask<ulong>(
-        (id, cancellationToken) => DeleteItemCommand.RunAsync(FindItem(id), cancellationToken));
+    SaveCommand = ReactiveCommand.CreateFromTask<Document>(SaveAsync);
+    // Presented by the Bridge; it saves, then closes the editor.
+    SaveAndCloseCommand = ReactiveCommand.CreateFromTask(async cancellationToken =>
+    {
+        await SaveCommand.RunAsync(Current, cancellationToken);
+        Close();
+    });
 }
 ```
+
+A wrapper that only looks up an object for a command whose input has no wire
+form is not needed since 0.11: present that command itself with
+`[RunicCommandKey]`, which resolves the page's key to the object inside the
+generated call (see
+[Commands whose parameter has no wire form](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#commands-whose-parameter-has-no-wire-form)).
 
 `RunAsync(input, cancellationToken)` (namespace `Runic.Application.Views.ReactiveUI`,
 since 0.11) runs a command the way a generated Bridge call runs a command
@@ -384,6 +393,7 @@ without a result:
 | Completion is needed and the command may produce no value | `await command.RunAsync(input, cancellationToken)` |
 | Fire and forget, with failures logged | `command.Execute(input).Subscribe()` or `InvokeCommand`; event 1042 reports failures |
 | A command that runs only from .NET and handles its own failures | `ObserveBridgeExceptions` on that command |
+| A wrapper that only looks up the input of a command whose input has no wire form | None: `[RunicCommandKey]` on that command |
 
 `RunAsync` is not the generated-code helper `ReactiveCommandExecution`
 (namespace `….Generated`), which hand-written code should not use. Both have the

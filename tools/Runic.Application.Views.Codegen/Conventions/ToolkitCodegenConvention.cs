@@ -68,11 +68,13 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
 
         internal override string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan)
         {
-            var toolkitType = contract.Input is null ? null : plan.InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input);
+            // The command's parameter; a RunicCommandKey command's codec encodes its key instead.
+            var toolkitType = contract.Input is null ? null : plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input);
+            var keyType = plan.InputGraph?.RootCSharpType() ?? toolkitType;
             var readArgument = contract.HasInput
                 ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
             var encodeArgument = contract.HasInput
-                ? $"EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({toolkitType})argument!))" : null;
+                ? $"EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))" : null;
             // IsRunning can change without CanExecuteChanged (for example with
             // concurrent executions), so publish on the command's own change.
             var subscribeRunning = contract.IsAsync

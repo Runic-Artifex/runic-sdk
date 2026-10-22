@@ -59,6 +59,7 @@ public static class BridgeContractShape
                 var cardinality = property.GetCustomAttribute<RunicCommandResultAttribute>(true)?.Cardinality
                     ?? RunicCommandResultCardinality.Single;
                 parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
+                AppendKey(parts, model, property);
                 AppendFailure(parts, model, property);
                 continue;
             }
@@ -75,6 +76,7 @@ public static class BridgeContractShape
                     && returned.GetGenericTypeDefinition() == typeof(Task<>))
                     AppendType(parts, returned.GenericTypeArguments[0], GenericAnnotation(nullability.Create(source.ReturnParameter), 0),
                         $"{model.Name}.{property.Name}.result", [], honorJsonIgnore);
+                AppendKey(parts, model, property);
                 AppendFailure(parts, model, property);
                 continue;
             }
@@ -104,6 +106,19 @@ public static class BridgeContractShape
             AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], honorJsonIgnore, property.GetCustomAttribute<RunicCodecAttribute>(true));
         }
         parts.Add($"validation-errors:{TypeName(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
+    }
+
+    // A RunicCommandKey command sends its resolver's key instead of its parameter. Only such commands add
+    // parts, so other models keep their fingerprint.
+    private static void AppendKey(List<string> parts, Type model, PropertyInfo command)
+    {
+        foreach (var (declaredOn, resolver) in BridgeCommandSources.KeyDeclarations(model, command))
+        {
+            parts.Add($"command-key:{TypeName(model)}:{command.Name}:{declaredOn}:{resolver}");
+            if (BridgeCommandSources.KeyResolvers(model, resolver) is [var method] && method.GetParameters() is [var key, ..])
+                AppendType(parts, key.ParameterType, new NullabilityInfoContext().Create(key), $"{model.Name}.{command.Name}.key", [],
+                    BridgeDtoContract.HonorsJsonIgnore(model.Assembly));
+        }
     }
 
     // Only declared commands add parts, so undeclared models keep their

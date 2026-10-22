@@ -132,6 +132,14 @@ example `counter`), or `content{id}` for presented content, where `id` is the
 window session with a generated contract fingerprint. Root `Mount` and `Unmount`
 routes exist only for a root bridge that exposes interactions.
 
+The input of a command with `[RunicCommandKey]` (since 0.11) is a key: .NET
+decodes it, resolves it to the command's parameter with the ViewModel's
+resolver, evaluates `CanExecute` with the resolved object and then runs the
+command. A key that resolves to nothing is `rejected` with reason
+`unresolved-key` and runs nothing; `Can{Command}` answers `"false"` for it, and
+`Start{Command}` rejects a new request with `reason` `unresolved-key`. The
+operation's input digest is the key's. The wire is otherwise unchanged.
+
 ## Reply envelope and state
 
 ```json
@@ -151,7 +159,7 @@ Protocol 3 defines these reasons:
 | --- | --- | --- |
 | `unavailable` | `rejected` | A command's `CanExecute` is false. |
 | `invalid-input` | `rejected` | A setter value, checked write or command argument does not decode, including a number outside its type's range, a number string longer than 4 096 characters or an input over the window's input limit (below), or the setter or command rejects it with `ArgumentException`, `FormatException` or `JsonException` (a setter also with `OverflowException`). |
-| `unresolved-key` | `rejected` | Reserved for a command parameter resolved from a wire key that resolves to nothing. No release sends it yet. |
+| `unresolved-key` | `rejected` | The key of a command with `[RunicCommandKey]` resolves to nothing (since 0.11; a 0.10 client already knows the token). |
 
 ```json
 { "ok": false, "state": { "revision": 12 }, "error": { "kind": "rejected", "message": "Delete is unavailable.", "reason": "unavailable" } }
@@ -285,7 +293,7 @@ A `Start` route admits a recoverable operation and answers
 
 `kind` is `accepted`, `duplicate`, `expired` or `rejected`; `reason` names a
 rejection (`owner-closing`, `owner-disposed`, `identity-conflict`, `capacity`,
-`unavailable`, `stream-capacity`). A failed admission before identity checks
+`unavailable`, `unresolved-key`, `stream-capacity`). A failed admission before identity checks
 answers `{kind, reason}`, with `detail` as in a reply error; it is `released`
 when the bridge was released, and a client reports it so. `contract` is
 `{ViewModel full name}:{fingerprint}:{route prefix}`. A request id is bound to the

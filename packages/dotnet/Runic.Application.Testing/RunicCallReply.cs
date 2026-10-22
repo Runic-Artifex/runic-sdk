@@ -17,6 +17,7 @@ public sealed class RunicCallReply<TModel> where TModel : class
         {
             ErrorKind = error.GetProperty("kind").GetString();
             ErrorMessage = error.GetProperty("message").GetString();
+            if (error.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String) ErrorReason = reason.GetString();
             if (error.TryGetProperty("failure", out var failure)) Failure = failure.Clone();
         }
     }
@@ -31,9 +32,16 @@ public sealed class RunicCallReply<TModel> where TModel : class
     /// The BridgeError kind of a failed call, such as <c>rejected</c> or <c>failed</c>, <c>released</c> for a
     /// released View or closed window, or <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>).
     /// Error kinds are an open set: a minor release may add kinds, so compare with the ones a test expects. A
-    /// <c>rejected</c> reply's <c>reason</c> (<c>unavailable</c>, <c>invalid-input</c>) is in <see cref="Json"/>.
+    /// <c>rejected</c> reply's reason is <see cref="ErrorReason"/>.
     /// </summary>
     public string? ErrorKind { get; }
+    /// <summary>
+    /// The reason that refines <see cref="ErrorKind"/>, or null: <c>unavailable</c> (the command's <c>CanExecute</c>
+    /// is false), <c>invalid-input</c> (the value or argument does not decode or is refused) or <c>unresolved-key</c>
+    /// (a <see cref="Runic.Application.Views.RunicCommandKeyAttribute"/> command's key names no object) for
+    /// <c>rejected</c>. Reasons are an open set: a minor release may add some.
+    /// </summary>
+    public string? ErrorReason { get; }
     /// <summary>The message of a failed call.</summary>
     public string? ErrorMessage { get; }
     /// <summary>The encoded declared failure of a <c>domain-failed</c> reply, such as <c>{"$case":"titleRequired"}</c>.</summary>

@@ -52,6 +52,17 @@ using (new FlavorModelBridge(transport, model))
     using var unavailableReply = JsonDocument.Parse(await transport.CallAsync("flavorModelDisable"));
     if (unavailableReply.RootElement.GetProperty("ok").GetBoolean())
         throw new InvalidOperationException("A genuinely disabled command was admitted after its first execution.");
+
+    // #472: a RunicCommandKey command of the System.Reactive flavor.
+    using (var unresolved = JsonDocument.Parse(await transport.CallAsync("flavorModelRemove", new BridgeTestArguments(StringValue: "8"))))
+    {
+        var error = unresolved.RootElement.GetProperty("error");
+        if (error.GetProperty("kind").GetString() != "rejected" || error.GetProperty("reason").GetString() != "unresolved-key" || model.Item.Removed)
+            throw new InvalidOperationException($"An unresolved key was not rejected with unresolved-key: {unresolved.RootElement}");
+    }
+    using (var removed = JsonDocument.Parse(await transport.CallAsync("flavorModelRemove", new BridgeTestArguments(StringValue: "7"))))
+        if (!removed.RootElement.GetProperty("ok").GetBoolean() || !model.Item.Removed)
+            throw new InvalidOperationException($"The keyed command did not run with its resolved item: {removed.RootElement}");
 }
 
 // #132: the window binds its root and each child it presents, including one the root
