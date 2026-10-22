@@ -288,28 +288,33 @@ internal sealed class ConformanceTests
     #endif
     }
 
-    // Last: it replaces ReactiveUI's global default exception handler.
+    // It replaces ReactiveUI's global default exception handler for the cases after it.
     // W130-029 M1: a ReactiveCommand also reports a declared failure on
     // ThrownExceptions. Without a subscriber it reaches RxState's default handler;
     // ObserveBridgeExceptions ignores it and still reports unexpected exceptions.
+    // An execution that Runic starts keeps the command observed until it ended (I-188).
     [Test, NotInParallel(Order = 11)]
     public async Task BridgeExceptionSemanticsAsync()
     {
         await using var context = new RunicModelContext();
         var scheduler = ReactiveSchedulers.For(context);
-        var handled = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
-        // ReactiveUIBuilder.WithExceptionHandler installs RxState's default handler
-        // for the process, so this runs last. (The test reset helpers are internal.)
-        RxAppBuilder.CreateReactiveUIBuilder().WithExceptionHandler(new ExceptionRecorder(handled.Enqueue)).BuildApp();
+        var handled = DefaultExceptionHandlerRecorder.Install();
+        handled.Clear();
         {
             var unobserved = ReactiveCommand.CreateFromTask<FlavorUnit, int>(
                 _ => Task.FromException<int>(new RunicFailureException("titleRequired")), scheduler);
-            await RequireThrowsAsync<RunicFailureException>(
-                () => ReactiveCommandExecution.Execute(unobserved, UnitValue(), CancellationToken.None),
-                "A declared failure did not reach the Bridge caller.");
+            // A plain execution's caller handles its failure, which still reaches ThrownExceptions.
+            unobserved.Execute(UnitValue()).Subscribe(new IgnoringObserver<int>());
             await WaitUntilAsync(() => !handled.IsEmpty, "A declared failure without a ThrownExceptions subscriber did not reach the default handler.");
             Require(handled.Single() is RunicFailureException, "The default handler did not receive the declared failure.");
             handled.Clear();
+            // The same failure of an execution that the Bridge runs is the caller's: the command is observed meanwhile.
+            await RequireThrowsAsync<RunicFailureException>(
+                () => ReactiveCommandExecution.Execute(unobserved, UnitValue(), CancellationToken.None),
+                "A declared failure did not reach the Bridge caller.");
+            await Task.Delay(100);
+            await context.InvokeAsync(() => { });
+            Require(handled.IsEmpty, "A declared failure of a Bridge execution reached the default handler.");
 
             var command = ReactiveCommand.CreateFromTask<bool, int>(unexpected => Task.FromException<int>(unexpected
                 ? new InvalidOperationException("disk full") : new RunicFailureException("titleRequired")), scheduler);
@@ -872,6 +877,28 @@ sealed class CallbackDisposable(Action dispose) : IDisposable
 {
     private Action? _dispose = dispose;
     public void Dispose() => Interlocked.Exchange(ref _dispose, null)?.Invoke();
+}
+
+// ReactiveUIBuilder.WithExceptionHandler installs RxState's default handler once for the process, so the first case
+// that needs it installs it and every later case reads the same queue. (The test reset helpers are internal.)
+static class DefaultExceptionHandlerRecorder
+{
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<Exception> Handled = new();
+    private static int _installed;
+
+    public static System.Collections.Concurrent.ConcurrentQueue<Exception> Install()
+    {
+        if (Interlocked.Exchange(ref _installed, 1) == 0)
+            RxAppBuilder.CreateReactiveUIBuilder().WithExceptionHandler(new ExceptionRecorder(Handled.Enqueue)).BuildApp();
+        return Handled;
+    }
+}
+
+sealed class IgnoringObserver<T> : IObserver<T>
+{
+    public void OnCompleted() { }
+    public void OnError(Exception error) { }
+    public void OnNext(T value) { }
 }
 
 sealed class ExceptionRecorder(Action<Exception> record) : IObserver<Exception>

@@ -167,6 +167,49 @@ internal sealed class OperationRetirementTests
         }
     }
 
+    // I-188: retirement cancels a ReactiveUI operation whose work ends after the page's Bridge detached. ReactiveUI then
+    // reports the end on ThrownExceptions, and the ViewModel has no subscriber: the Bridge keeps observing the command
+    // until the execution ended, so nothing reaches ReactiveUI's default handler, which ends the process. A failure that
+    // no caller received is logged as event 1042 with the window's logger.
+    [Test]
+    public async Task AReactiveOperationEndingAfterRetirementStaysObservedAsync()
+    {
+        const int ReactiveCommandFailed = 1042;
+        await using var window = new Window();
+        var page = new RetireLatePageViewModel(window.Context);
+        await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<IRetirePage>(page)));
+        var view = window.Host.Root.View<RetireLatePageViewModel>(vm => vm.Main);
+        var upload = view.Start(vm => vm.UploadCommand);
+        var export = view.Start(vm => vm.ExportCommand);
+        await Wait(Task.WhenAll(page.UploadStarted.Task, page.ExportStarted.Task));
+
+        await Wait(window.Shell.Main.BackAsync());
+        Require((await Wait(upload.WaitAsync())).Kind is RunicOperationStatusKind.Cancelled
+                && (await Wait(export.WaitAsync())).Kind is RunicOperationStatusKind.Cancelled,
+            "Retirement did not cancel the operations.");
+        await Until(() => page.Disposed == 1, "The page was not disposed after its cancelled operations ended.");
+
+        // The page and its Bridge are gone; now the work ends and ReactiveUI reports it.
+        var idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executing = 2;
+        using (page.UploadCommand.IsExecuting.Subscribe(new IdleObserver(() => { if (Interlocked.Decrement(ref executing) == 0) idle.TrySetResult(); })))
+        using (page.ExportCommand.IsExecuting.Subscribe(new IdleObserver(() => { if (Interlocked.Decrement(ref executing) == 0) idle.TrySetResult(); })))
+        {
+            page.Release.SetResult();
+            await Wait(idle.Task);
+        }
+        await Until(() => window.Logs.All(ReactiveCommandFailed).Any(), "The failure after retirement was not logged.");
+        for (var turn = 0; turn < 3; turn++)
+        {
+            await Task.Delay(20);
+            await window.Context.InvokeAsync(() => { });
+        }
+        var failed = window.Logs.All(ReactiveCommandFailed).ToArray();
+        Require(failed.Length == 1 && failed[0].Level == LogLevel.Error
+                && Equals(failed[0].State["Source"], "RetireLatePageViewModel.ExportCommand"),
+            $"After retirement Runic logged {string.Join(", ", failed.Select(entry => entry.Message))}; expected the export's failure once.");
+    }
+
     // The default: an operation without a declaration keeps running and the page is disposed at once (unchanged).
     [Test]
     public async Task KeepIsTheDefaultAsync()
@@ -232,6 +275,22 @@ internal sealed class OperationRetirementTests
             Host.Dispose();
             await Navigator.DisposeAsync();
             await Context.DisposeAsync();
+        }
+    }
+
+    // Calls idle once, when IsExecuting is false after it was true.
+    private sealed class IdleObserver(Action idle) : IObserver<bool>
+    {
+        private bool _wasExecuting;
+        private int _idle;
+
+        public void OnCompleted() { }
+        public void OnError(Exception error) { }
+
+        public void OnNext(bool value)
+        {
+            if (value) _wasExecuting = true;
+            else if (_wasExecuting && Interlocked.Exchange(ref _idle, 1) == 0) idle();
         }
     }
 
