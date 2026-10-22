@@ -239,9 +239,9 @@ bool offerRememberMe = DesktopServiceStatus.Get(secrets) is CapabilityStatus.Ava
 `DesktopAppearance.TextScale` is the desktop's text size preference as a factor of
 the default size: the Windows Accessibility "Text size" setting (1 to 2.25). macOS
 has no system-wide text size that applications can read, so it is `null` there, as
-on a desktop that has no such setting; the Linux provider does not read it yet. Multiply font sizes by it, for example a page's
-root font size; it is independent of the display scale. A watch reports a change
-of it like any other preference.
+on a desktop that has no such setting; the Linux provider does not read it yet.
+Multiply font sizes by it, for example a page's root font size; it is independent
+of the display scale. A watch reports a change of it like any other preference.
 
 A notification's `Activated` event is untrusted input. `DesktopNotificationActivation.IsTrusted`
 is `true` when the provider matched the activation to a notification the
