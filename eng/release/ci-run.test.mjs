@@ -10,9 +10,9 @@ const complete = () => [...releaseJobs, 'Native / linux-x64'].map(name => ({name
 const without = (name, conclusion) => complete().flatMap(job => job.name !== name ? [job] : conclusion ? [{name, conclusion}] : []);
 const jobs = byRun => async run => byRun[run.id] ?? complete();
 
-test('the release jobs are every Windows and macOS leg of the native, WPF, packaging and screen reader jobs', () => {
+test('the release jobs are every Windows and macOS leg of the native, WPF and packaging jobs', () => {
   expect(releaseJobs).toEqual(['Native / win-x64', 'Native / win-arm64', 'Native / osx-arm64', 'WPF navigation / win-x64',
-    'WPF navigation / win-arm64', 'Packaging / windows', 'Packaging / macos', 'Screen reader / nvda']);
+    'WPF navigation / win-arm64', 'Packaging / windows', 'Packaging / macos']);
 });
 test('selects the newest successful push, scheduled or manual run of ci.yml on main for the exact commit', async () => {
   expect(successfulCiRuns([run(1), run(3), run(2, {conclusion: 'failure'})], {repository, sha}).map(r => r.id)).toEqual([3, 1]);

@@ -146,7 +146,7 @@ screen reader's own logs are the `screen-reader-<reader>-<run>` artifact.
 
 Both legs run for changes to `Runic.Desktop`, `Runic.Desktop.Gtk4`, the WebView and
 GTK 4 smokes and the probe (`screenReaderPaths`), and with every job; NVDA only when
-`win-x64` is planned. Narrator stays a manual check.
+`win-x64` is planned. They are not release jobs (`releaseJobs`). Narrator stays a manual check.
 
 ## Affected-only pull requests
 

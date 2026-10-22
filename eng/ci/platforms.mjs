@@ -26,7 +26,7 @@ export const wpfLegs = [
   { os: "windows-11-arm", rid: "win-arm64", platform: "win-arm64" },
 ];
 // The screen readers whose speech the accessibility probe checks (Runic.Desktop.AccessibilityProbe --screen-reader),
-// one job each; VoiceOver runs in the native job's macOS leg.
+// one job each; VoiceOver runs in the native job's macOS leg. They are speech checks, not release jobs.
 export const screenReaderLegs = [
   { reader: "orca", os: "ubuntu-24.04" },
   { reader: "nvda", os: "windows-2025", platform: "win-x64" },
@@ -46,7 +46,6 @@ export const releaseJobs = [
   ...nativeLegs.filter(leg => leg.platform).map(leg => `Native / ${leg.rid}`),
   ...wpfLegs.map(leg => `WPF navigation / ${leg.rid}`),
   ...packagingLegs.filter(leg => leg.platform).map(leg => `Packaging / ${leg.target}`),
-  ...screenReaderLegs.filter(leg => leg.platform).map(leg => `Screen reader / ${leg.reader}`),
 ];
 
 // Path rules, first match wins. A path names a file or directory; a trailing `*` matches any
