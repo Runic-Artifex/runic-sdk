@@ -116,7 +116,6 @@ Runic.Desktop.DesktopException.Retryable.get -> bool
 Runic.Desktop.DesktopHost
 Runic.Desktop.DesktopHost.CreateSurfaceAsync(Runic.Desktop.DesktopSurfaceOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Desktop.DesktopSurface!>
 Runic.Desktop.DesktopHost.DisposeAsync() -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopHost.GetAvailability() -> Runic.Desktop.DesktopAvailabilityResult!
 Runic.Desktop.DesktopHost.GetPresentationPreflight(Runic.Desktop.DesktopWindowOptions? options = null) -> Runic.Desktop.DesktopPresentationPreflight!
 Runic.Desktop.DesktopHost.Port.get -> int
 Runic.Desktop.DesktopHostOptions
@@ -302,11 +301,6 @@ static Runic.Desktop.DesktopEventLoop.Run(System.Func<System.Threading.Tasks.Tas
 static Runic.Desktop.DesktopHost.StartAsync(Runic.Desktop.DesktopHostOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Desktop.DesktopHost!>
 static Runic.Desktop.DesktopHostOptions.operator !=(Runic.Desktop.DesktopHostOptions? left, Runic.Desktop.DesktopHostOptions? right) -> bool
 static Runic.Desktop.DesktopHostOptions.operator ==(Runic.Desktop.DesktopHostOptions? left, Runic.Desktop.DesktopHostOptions? right) -> bool
-static Runic.Desktop.DesktopPlatform.GetAvailability(string? browserFolder = null) -> Runic.Desktop.DesktopAvailabilityResult!
-static Runic.Desktop.DesktopPlatform.GetAvailability(string? browserFolder, Runic.Desktop.LinuxDesktopOptions! linux) -> Runic.Desktop.DesktopAvailabilityResult!
-static Runic.Desktop.DesktopPlatform.GetLinuxEmbeddedBackends() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.LinuxEmbeddedBackendAvailability!>!
-static Runic.Desktop.DesktopPlatform.IsBrowserAvailable(Runic.Desktop.BrowserKind browser, string? browserFolder = null) -> bool
-static Runic.Desktop.DesktopPlatform.IsEmbeddedWindowAvailable.get -> bool
 static Runic.Desktop.DesktopPlatform.IsHighContrast.get -> bool
 static Runic.Desktop.DesktopPresentationAvailability.operator !=(Runic.Desktop.DesktopPresentationAvailability? left, Runic.Desktop.DesktopPresentationAvailability? right) -> bool
 static Runic.Desktop.DesktopPresentationAvailability.operator ==(Runic.Desktop.DesktopPresentationAvailability? left, Runic.Desktop.DesktopPresentationAvailability? right) -> bool
@@ -502,99 +496,13 @@ Runic.Desktop.DesktopFileDropEventArgs.Paths.get -> System.Collections.Generic.I
 Runic.Desktop.DesktopFileDropEventArgs.Target.get -> string?
 Runic.Desktop.DesktopWindowCapabilities.FileDrop = 512 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindow.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
-abstract Runic.Desktop.DesktopMenuEntry.<Clone>$() -> Runic.Desktop.DesktopMenuEntry!
-override Runic.Desktop.DesktopMenu.<Clone>$() -> Runic.Desktop.DesktopMenu!
-override Runic.Desktop.DesktopMenuEntry.Equals(object? obj) -> bool
-override Runic.Desktop.DesktopMenuEntry.GetHashCode() -> int
-override Runic.Desktop.DesktopMenuEntry.ToString() -> string!
-override Runic.Desktop.DesktopMenu.Equals(object? obj) -> bool
-override Runic.Desktop.DesktopMenu.GetHashCode() -> int
-override Runic.Desktop.DesktopMenuBarItem.<Clone>$() -> Runic.Desktop.DesktopMenuBarItem!
-override Runic.Desktop.DesktopMenuBarItem.Equals(object? obj) -> bool
-override Runic.Desktop.DesktopMenuBarItem.GetHashCode() -> int
-override Runic.Desktop.DesktopMenuBarItem.ToString() -> string!
-override Runic.Desktop.DesktopMenuBarSeparator.<Clone>$() -> Runic.Desktop.DesktopMenuBarSeparator!
-override Runic.Desktop.DesktopMenuBarSeparator.Equals(object? obj) -> bool
-override Runic.Desktop.DesktopMenuBarSeparator.GetHashCode() -> int
-override Runic.Desktop.DesktopMenuBarSeparator.ToString() -> string!
-override Runic.Desktop.DesktopMenu.ToString() -> string!
-~override Runic.Desktop.DesktopShortcut.Equals(object obj) -> bool
-override Runic.Desktop.DesktopShortcut.GetHashCode() -> int
-override Runic.Desktop.DesktopShortcut.ToString() -> string!
-override sealed Runic.Desktop.DesktopMenu.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
-override sealed Runic.Desktop.DesktopMenuBarItem.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
-override sealed Runic.Desktop.DesktopMenuBarSeparator.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
 Runic.Desktop.DesktopHost.MenuBarChanged -> System.EventHandler?
-Runic.Desktop.DesktopHost.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenu!>!
 Runic.Desktop.DesktopHost.MenuCommands.get -> Runic.Desktop.IDesktopMenuCommandTarget?
 Runic.Desktop.DesktopHost.MenuCommands.set -> void
-Runic.Desktop.DesktopHostOptions.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenu!>!
 Runic.Desktop.DesktopHostOptions.MenuBar.init -> void
-Runic.Desktop.DesktopHost.SetMenuBar(System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenu!>! menus) -> void
-Runic.Desktop.DesktopMenu
-Runic.Desktop.DesktopMenu.Deconstruct(out string! Title, out System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenuEntry!>! Items) -> void
-Runic.Desktop.DesktopMenu.DesktopMenu(string! Title, System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenuEntry!>! Items) -> void
-Runic.Desktop.DesktopMenuEntry
-Runic.Desktop.DesktopMenuEntry.DesktopMenuEntry(Runic.Desktop.DesktopMenuEntry! original) -> void
-Runic.Desktop.DesktopMenu.Equals(Runic.Desktop.DesktopMenu? other) -> bool
-Runic.Desktop.DesktopMenuBarItem
-Runic.Desktop.DesktopMenuBarItem.CommandId.get -> string!
-Runic.Desktop.DesktopMenuBarItem.CommandId.init -> void
-Runic.Desktop.DesktopMenuBarItem.Deconstruct(out string! Title, out string! CommandId) -> void
-Runic.Desktop.DesktopMenuBarItem.DesktopMenuBarItem(string! Title, string! CommandId) -> void
-Runic.Desktop.DesktopMenuBarItem.Equals(Runic.Desktop.DesktopMenuBarItem? other) -> bool
-Runic.Desktop.DesktopMenu.Items.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenuEntry!>!
-Runic.Desktop.DesktopMenuBarItem.Shortcut.get -> Runic.Desktop.DesktopShortcut?
-Runic.Desktop.DesktopMenuBarItem.Shortcut.init -> void
-Runic.Desktop.DesktopMenu.Items.init -> void
-Runic.Desktop.DesktopMenuBarItem.Title.get -> string!
-Runic.Desktop.DesktopMenuBarItem.Title.init -> void
-Runic.Desktop.DesktopMenuRole
-Runic.Desktop.DesktopMenuRole.Application = 1 -> Runic.Desktop.DesktopMenuRole
-Runic.Desktop.DesktopMenuRole.File = 2 -> Runic.Desktop.DesktopMenuRole
-Runic.Desktop.DesktopMenu.Role.get -> Runic.Desktop.DesktopMenuRole
-Runic.Desktop.DesktopMenuRole.Help = 3 -> Runic.Desktop.DesktopMenuRole
-Runic.Desktop.DesktopMenu.Role.init -> void
-Runic.Desktop.DesktopMenuRole.None = 0 -> Runic.Desktop.DesktopMenuRole
-Runic.Desktop.DesktopMenuBarSeparator
-Runic.Desktop.DesktopMenuBarSeparator.DesktopMenuBarSeparator() -> void
-Runic.Desktop.DesktopMenuBarSeparator.Equals(Runic.Desktop.DesktopMenuBarSeparator? other) -> bool
-Runic.Desktop.DesktopMenu.Title.get -> string!
-Runic.Desktop.DesktopMenu.Title.init -> void
-Runic.Desktop.DesktopShortcut
-Runic.Desktop.DesktopShortcut.DesktopShortcut(string! key, Runic.Desktop.DesktopShortcutModifiers modifiers = Runic.Desktop.DesktopShortcutModifiers.Primary) -> void
-Runic.Desktop.DesktopShortcut.DesktopShortcut() -> void
-Runic.Desktop.DesktopShortcut.Equals(Runic.Desktop.DesktopShortcut other) -> bool
-Runic.Desktop.DesktopShortcut.Key.get -> string!
-Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcutModifiers.Alt = 4 -> Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcutModifiers.Control = 8 -> Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcut.Modifiers.get -> Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcutModifiers.None = 0 -> Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcutModifiers.Primary = 1 -> Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcutModifiers.Shift = 2 -> Runic.Desktop.DesktopShortcutModifiers
-Runic.Desktop.DesktopShortcut.ToDisplayString(bool macOS) -> string!
-Runic.Desktop.DesktopShortcut.ToDisplayString() -> string!
 Runic.Desktop.DesktopWindow.MenuCommands.get -> Runic.Desktop.IDesktopMenuCommandTarget?
 Runic.Desktop.DesktopWindow.MenuCommands.set -> void
 Runic.Desktop.IDesktopMenuCommandTarget
-Runic.Desktop.IDesktopMenuCommandTarget.CanExecute(string! commandId) -> bool
-Runic.Desktop.IDesktopMenuCommandTarget.Execute(string! commandId) -> void
-static Runic.Desktop.DesktopMenuEntry.operator !=(Runic.Desktop.DesktopMenuEntry? left, Runic.Desktop.DesktopMenuEntry? right) -> bool
-static Runic.Desktop.DesktopMenuEntry.operator ==(Runic.Desktop.DesktopMenuEntry? left, Runic.Desktop.DesktopMenuEntry? right) -> bool
-static Runic.Desktop.DesktopMenuBarItem.operator !=(Runic.Desktop.DesktopMenuBarItem? left, Runic.Desktop.DesktopMenuBarItem? right) -> bool
-static Runic.Desktop.DesktopMenuBarItem.operator ==(Runic.Desktop.DesktopMenuBarItem? left, Runic.Desktop.DesktopMenuBarItem? right) -> bool
-static Runic.Desktop.DesktopMenu.operator !=(Runic.Desktop.DesktopMenu? left, Runic.Desktop.DesktopMenu? right) -> bool
-static Runic.Desktop.DesktopMenu.operator ==(Runic.Desktop.DesktopMenu? left, Runic.Desktop.DesktopMenu? right) -> bool
-static Runic.Desktop.DesktopMenuBarSeparator.operator !=(Runic.Desktop.DesktopMenuBarSeparator? left, Runic.Desktop.DesktopMenuBarSeparator? right) -> bool
-static Runic.Desktop.DesktopMenuBarSeparator.operator ==(Runic.Desktop.DesktopMenuBarSeparator? left, Runic.Desktop.DesktopMenuBarSeparator? right) -> bool
-static Runic.Desktop.DesktopShortcut.operator !=(Runic.Desktop.DesktopShortcut left, Runic.Desktop.DesktopShortcut right) -> bool
-static Runic.Desktop.DesktopShortcut.operator ==(Runic.Desktop.DesktopShortcut left, Runic.Desktop.DesktopShortcut right) -> bool
-static Runic.Desktop.DesktopShortcut.Parse(string! text) -> Runic.Desktop.DesktopShortcut
-static Runic.Desktop.DesktopShortcut.TryParse(string? text, out Runic.Desktop.DesktopShortcut shortcut) -> bool
-virtual Runic.Desktop.DesktopMenuEntry.EqualityContract.get -> System.Type!
-virtual Runic.Desktop.DesktopMenuEntry.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
-virtual Runic.Desktop.DesktopMenuEntry.PrintMembers(System.Text.StringBuilder! builder) -> bool
 Runic.Desktop.DesktopWindow.InvokeNativeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.LinuxEmbeddedBackendAvailability.Deconstruct(out Runic.Desktop.LinuxEmbeddedBackend Backend, out bool LibrariesDiscovered, out System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! Diagnostics) -> void
 Runic.Desktop.LinuxEmbeddedBackendAvailability.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
@@ -608,8 +516,6 @@ Runic.Desktop.IDesktopWindowStateHost.StateChanged -> System.EventHandler?
 Runic.Desktop.IDesktopWindowStateHost
 Runic.Desktop.IDesktopEventLoopWindowHostFactory
 Runic.Desktop.ILinuxDesktopWindowHostFactory
-[RUNICDESK101]Runic.Desktop.PresentationCapabilityHandler
-[RUNICDESK101]virtual Runic.Desktop.PresentationCapabilityHandler.Invoke(Runic.Desktop.PresentationInvocation! invocation, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Desktop.PresentationResult>
 Runic.Desktop.IDesktopWindowHost.Closed -> System.EventHandler?
 Runic.Desktop.IDesktopWindowHost
 Runic.Desktop.DesktopWindowHostOptions
@@ -621,17 +527,6 @@ override Runic.Desktop.DesktopWindowHostOptions.Equals(object? obj) -> bool
 Runic.Desktop.DesktopWindowHostOptions.Equals(Runic.Desktop.DesktopWindowHostOptions? other) -> bool
 Runic.Desktop.DesktopWindowHostOptions.<Clone>$() -> Runic.Desktop.DesktopWindowHostOptions!
 Runic.Desktop.DesktopWindowHostOptions.DesktopWindowHostOptions() -> void
-[RUNICDESK101]Runic.Desktop.PresentationResult
-[RUNICDESK101]Runic.Desktop.PresentationResult.PresentationResult() -> void
-[RUNICDESK101]Runic.Desktop.PresentationInvocation
-[RUNICDESK101]Runic.Desktop.PresentationEventKind.Disconnected = 0 -> Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationEventKind.Navigation = 3 -> Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationEventKind.Invocation = 4 -> Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationEventKind.Connected = 1 -> Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationEventKind.Click = 2 -> Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration
-[RUNICDESK101]Runic.Desktop.PresentationSession
 Runic.Desktop.DesktopPresentationAvailability.DesktopPresentationAvailability(Runic.Desktop.BrowserKind Browser, bool IsAvailable, string? ExecutablePath, Runic.Desktop.DesktopWindowCapabilities Capabilities, System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! Diagnostics) -> void
 Runic.Desktop.LinuxEmbeddedBackendAvailability.LinuxEmbeddedBackendAvailability(Runic.Desktop.LinuxEmbeddedBackend Backend, bool LibrariesDiscovered, System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! Diagnostics) -> void
 Runic.Desktop.DesktopWindowOptions.Width.get -> int
@@ -654,7 +549,6 @@ Runic.Desktop.IDesktopWindowHost.SupportsDocumentStartScript.get -> bool
 Runic.Desktop.IDesktopWindowHost.SupportsCloseConfirmation.get -> bool
 Runic.Desktop.DesktopWindowHostOptions.CloseRequested.init -> void
 Runic.Desktop.DesktopWindowHostOptions.Width.get -> int
-[RUNICDESK101]Runic.Desktop.DesktopSurface.RegisterCapability(string! capability, Runic.Desktop.PresentationCapabilityHandler! handler) -> Runic.Desktop.PresentationCapabilityRegistration!
 Runic.Desktop.DesktopWindowHostOptions.Width.init -> void
 Runic.Desktop.IDesktopNativeDispatchWindowHost.CheckNativeAccess() -> bool
 Runic.Desktop.DesktopWindowHostOptions.Height.get -> int
@@ -688,7 +582,6 @@ Runic.Desktop.IDesktopWindowHost.AnnounceAsync(string! message, Runic.Desktop.De
 Runic.Desktop.DesktopWindowHostOptions.CloseRequested.get -> System.Action?
 Runic.Desktop.DesktopWindowState.Width.get -> int
 Runic.Desktop.DesktopWindowState.Height.get -> int
-[RUNICDESK101]Runic.Desktop.DesktopSurface.SubscribeConnectionEvents(System.Action<Runic.Desktop.PresentationInvocation!>! handler) -> System.IDisposable!
 Runic.Desktop.IDesktopWindowHost.NavigateAsync(System.Uri! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.ILinuxDesktopWindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
 Runic.Desktop.DesktopWindowPlacement.Width.get -> int
@@ -718,44 +611,51 @@ Runic.Desktop.DesktopWindowHostOptions.DocumentStartScript.init -> void
 Runic.Desktop.DesktopWindowHostOptions.AllowedPermissions.init -> void
 Runic.Desktop.DesktopWindowHostOptions.DiagnosticSink.init -> void
 static Runic.Desktop.LinuxDesktopRuntime.IsLibraryAvailable(string! libraryName) -> bool
-[RUNICDESK101]Runic.Desktop.DesktopSurface.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.DesktopSurface.ExecuteJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
-[RUNICDESK101]Runic.Desktop.DesktopSurface.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.Surface.get -> Runic.Desktop.DesktopSurface!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.Session.get -> Runic.Desktop.PresentationSession!
-[RUNICDESK101]Runic.Desktop.DesktopSurface.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.Kind.get -> Runic.Desktop.PresentationEventKind
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.Capability.get -> string!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.InvocationId.get -> ulong
-[RUNICDESK101]Runic.Desktop.PresentationSession.Id.get -> ulong
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.CorrelationId.get -> string!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.SessionId.get -> ulong
-[RUNICDESK101]Runic.Desktop.PresentationSession.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.ArgumentCount.get -> int
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetBytes(int index = 0) -> System.ReadOnlyMemory<byte>
-[RUNICDESK101]Runic.Desktop.PresentationSession.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationSession.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetString(int index = 0) -> string!
-[RUNICDESK101]static Runic.Desktop.PresentationResult.None.get -> Runic.Desktop.PresentationResult
-[RUNICDESK101]Runic.Desktop.PresentationSession.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]static Runic.Desktop.PresentationResult.FromInt64(long value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]static Runic.Desktop.PresentationResult.FromDouble(double value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]static Runic.Desktop.PresentationResult.FromBoolean(bool value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetInt64(int index = 0) -> long
-[RUNICDESK101]static Runic.Desktop.PresentationResult.FromString(string? value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(string! value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(long value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetDouble(int index = 0) -> double
-[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(double value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]static Runic.Desktop.PresentationResult.implicit operator Runic.Desktop.PresentationResult(bool value) -> Runic.Desktop.PresentationResult
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.GetBoolean(int index = 0) -> bool
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.RunJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.NavigateAsync(string! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration.Capability.get -> string!
-[RUNICDESK101]Runic.Desktop.PresentationCapabilityRegistration.Dispose() -> void
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.SendAsync(string! function, System.ReadOnlyMemory<byte> data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-[RUNICDESK101]Runic.Desktop.PresentationInvocation.CloseSessionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 static Runic.Desktop.LinuxDesktopRuntime.ClaimBackend(Runic.Desktop.LinuxEmbeddedBackend backend) -> void
 Runic.Desktop.DesktopWindow.IsFallback.get -> bool
 Runic.Desktop.DesktopWindow.ProcessId.get -> int
 Runic.Desktop.DesktopWindow.ResizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopAvailabilityResult.Embedded.get -> Runic.Desktop.DesktopPresentationAvailability!
+Runic.Desktop.DesktopAvailabilityResult.GetPresentation(Runic.Desktop.BrowserKind browser) -> Runic.Desktop.DesktopPresentationAvailability!
+Runic.Desktop.DesktopAvailabilityResult.LinuxBackends.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.LinuxEmbeddedBackendAvailability!>!
+Runic.Desktop.DesktopAvailabilityResult.LinuxBackends.init -> void
+static Runic.Desktop.DesktopPlatform.GetAvailability(Runic.Desktop.DesktopHostOptions? options = null) -> Runic.Desktop.DesktopAvailabilityResult!
+Runic.Desktop.DesktopConnectionEvent
+Runic.Desktop.DesktopConnectionEvent.Kind.get -> Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopConnectionEvent.Surface.get -> Runic.Desktop.DesktopSurface!
+Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopConnectionEventKind.Connected = 1 -> Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopConnectionEventKind.Disconnected = 0 -> Runic.Desktop.DesktopConnectionEventKind
+Runic.Desktop.DesktopSurface.ExecuteJavaScriptAsync(string! script, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<string!>
+Runic.Desktop.DesktopSurface.SubscribeConnectionEvents(System.Action<Runic.Desktop.DesktopConnectionEvent!>! handler) -> System.IDisposable!
+Runic.Desktop.DesktopHost.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
+Runic.Desktop.DesktopHost.SetMenuBar(System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>! menus) -> void
+Runic.Desktop.DesktopHostOptions.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
+Runic.Desktop.IDesktopMenuCommandTarget.CanExecute(Runic.Platform.DesktopMenuItem! item) -> bool
+Runic.Desktop.IDesktopMenuCommandTarget.Execute(Runic.Platform.DesktopMenuItem! item) -> void
+Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopExternalNavigation.AllowInWindow = 2 -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopExternalNavigation.Block = 1 -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopExternalNavigation.OpenInBrowser = 0 -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopWebContentPolicy
+Runic.Desktop.DesktopWebContentPolicy.AllowDownloads.get -> bool
+Runic.Desktop.DesktopWebContentPolicy.AllowDownloads.init -> void
+Runic.Desktop.DesktopWebContentPolicy.DesktopWebContentPolicy() -> void
+Runic.Desktop.DesktopWebContentPolicy.DevTools.get -> bool?
+Runic.Desktop.DesktopWebContentPolicy.DevTools.init -> void
+Runic.Desktop.DesktopWebContentPolicy.ExternalNavigation.get -> Runic.Desktop.DesktopExternalNavigation
+Runic.Desktop.DesktopWebContentPolicy.ExternalNavigation.init -> void
+Runic.Desktop.DesktopWindowHostOptions.AdditionalOrigins.get -> System.Collections.Generic.IReadOnlyList<System.Uri!>!
+Runic.Desktop.DesktopWindowHostOptions.AdditionalOrigins.init -> void
+Runic.Desktop.DesktopWindowHostOptions.WebContent.get -> Runic.Desktop.DesktopWebContentPolicy!
+Runic.Desktop.DesktopWindowHostOptions.WebContent.init -> void
+Runic.Desktop.DesktopWindowOptions.WebContent.get -> Runic.Desktop.DesktopWebContentPolicy!
+Runic.Desktop.DesktopWindowOptions.WebContent.init -> void
+static Runic.Desktop.DesktopWebContentPolicy.Default.get -> Runic.Desktop.DesktopWebContentPolicy!
+override Runic.Desktop.DesktopWebContentPolicy.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopWebContentPolicy.GetHashCode() -> int
+override Runic.Desktop.DesktopWebContentPolicy.ToString() -> string!
+Runic.Desktop.DesktopWebContentPolicy.<Clone>$() -> Runic.Desktop.DesktopWebContentPolicy!
+Runic.Desktop.DesktopWebContentPolicy.Equals(Runic.Desktop.DesktopWebContentPolicy? other) -> bool
+static Runic.Desktop.DesktopWebContentPolicy.operator !=(Runic.Desktop.DesktopWebContentPolicy? left, Runic.Desktop.DesktopWebContentPolicy? right) -> bool
+static Runic.Desktop.DesktopWebContentPolicy.operator ==(Runic.Desktop.DesktopWebContentPolicy? left, Runic.Desktop.DesktopWebContentPolicy? right) -> bool

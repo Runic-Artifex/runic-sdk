@@ -442,7 +442,6 @@ override Runic.Application.Views.Generated.BridgeOperationStreamRead.ToString() 
 static Runic.Application.Views.Generated.BridgeOperationStreamRead.operator !=(Runic.Application.Views.Generated.BridgeOperationStreamRead? left, Runic.Application.Views.Generated.BridgeOperationStreamRead? right) -> bool
 static Runic.Application.Views.Generated.BridgeOperationStreamRead.operator ==(Runic.Application.Views.Generated.BridgeOperationStreamRead? left, Runic.Application.Views.Generated.BridgeOperationStreamRead? right) -> bool
 Runic.Application.Views.Generated.BridgeProtocol
-const Runic.Application.Views.Generated.BridgeProtocol.Version = 2 -> int
 Runic.Application.Views.Generated.BridgeSnapshotWriter<T>
 virtual Runic.Application.Views.Generated.BridgeSnapshotWriter<T>.Invoke(System.Text.Json.Utf8JsonWriter! writer, T viewModel, long revision, System.Action<System.Text.Json.Utf8JsonWriter!>! writeFieldMetadata) -> void
 Runic.Application.Views.Generated.BridgeValidation
@@ -630,3 +629,4 @@ Runic.Application.Views.WindowContentSessionOptions.IncludeFailureDetail.get -> 
 Runic.Application.Views.WindowContentSessionOptions.IncludeFailureDetail.init -> void
 ~override Runic.Application.Views.Generated.BridgeValidationChild.Equals(object obj) -> bool
 ~override Runic.Application.Views.Generated.BridgeValidationChild.ToString() -> string
+const Runic.Application.Views.Generated.BridgeProtocol.Version = 3 -> int

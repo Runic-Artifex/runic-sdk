@@ -441,3 +441,6 @@ override Runic.Navigation.NavigationEntry.ToString() -> string!
 static Runic.Navigation.LeaveConfirmation.InDialog<TDialog>(Runic.Navigation.NavigationRegion<TDialog!>! dialogs, System.Func<Runic.Navigation.INavigationTarget<TDialog!>!>! dialog, System.Func<bool>! hasUnsavedChanges, System.Action? discard = null, bool askOnRetain = false) -> Runic.Navigation.LeaveConfirmation!
 static Runic.Navigation.NavigationArrival.operator !=(Runic.Navigation.NavigationArrival? left, Runic.Navigation.NavigationArrival? right) -> bool
 static Runic.Navigation.NavigationArrival.operator ==(Runic.Navigation.NavigationArrival? left, Runic.Navigation.NavigationArrival? right) -> bool
+Runic.Navigation.NavigationRegion.BackToAsync(Runic.Navigation.NavigationEntryId entry, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.NavigationRegion.ClearHistoryAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.RunicNavigator.IsBusy.get -> bool

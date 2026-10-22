@@ -1,8 +1,1 @@
 #nullable enable
-*REMOVED*Runic.Application.Testing.RunicServeOnlyApplication.GetDescendantProcesses() -> System.Collections.Generic.IReadOnlyList<System.Diagnostics.Process!>!
-override Runic.Application.Testing.RunicDescendantProcess.ToString() -> string!
-Runic.Application.Testing.RunicDescendantProcess
-Runic.Application.Testing.RunicDescendantProcess.HasExited() -> bool
-Runic.Application.Testing.RunicDescendantProcess.Id.get -> int
-Runic.Application.Testing.RunicDescendantProcess.StartTime.get -> System.DateTime?
-Runic.Application.Testing.RunicServeOnlyApplication.GetDescendantProcesses() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicDescendantProcess!>!
