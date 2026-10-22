@@ -516,8 +516,8 @@ and `RunicApplicationFrontendBuildCommand` to its commands.
 
 `dotnet runic` reports these codes as the fault of a failed command, except
 `RCLI8101` and `RCLI8102`, which mark individual doctor checks. Human
-output prints the link to the entry above the fault line; JSON output carries
-the code in `fault.code`. Usage errors exit with code 2, other failures with
+output prints the link to the entry after the fault line; JSON output carries
+the code in `fault.code` and, since 0.11, the link in `fault.helpUri`. Usage errors exit with code 2, other failures with
 code 1, and a cancelled command reports `RCLI4000` and exits with code 130. An
 unexpected internal failure reports `RCLI5000`, exits with code 3 and prints the
 exception to standard error; include it when you report the problem. See
@@ -658,6 +658,23 @@ development document names a file that is missing.
 
 **Fix:** check that `vite build` works in the frontend directory.
 
+### RAPPDEV1011
+
+A `dev -e` value is not `NAME=VALUE`: it has no `=`, an empty name or a
+name with spaces. Exit code 2. Since 0.11.
+
+**Fix:** pass each variable as `-e NAME=VALUE`; the value may be empty.
+
+### RAPPDEV1012
+
+`dev -e` names a variable that `dev` sets for the Window itself:
+`RUNIC_APPLICATION_VITE_*`, `RUNIC_APPLICATION_FRONTEND_*`,
+`RUNIC_APPLICATION_DEV_PROJECT` or `RUNIC_APPLICATION_DEVELOPMENT_ASSETS`.
+Exit code 2. Since 0.11.
+
+**Fix:** remove the variable; `dev` describes the development server and the
+frontend output to the Window with them.
+
 ### RAPPSIZE1001
 
 `size` needs a runtime identifier and got none. Exit code 2. Before 0.9 this was
@@ -688,6 +705,23 @@ The message includes the MSBuild output. This is a command failure, exit code 1.
 Before 0.9 this was `RTKSIZE1002`.
 
 **Fix:** check that the project restores and builds for the selected runtime.
+
+### RAPPSIZE1005
+
+A `size --property` value is not `Name=Value` with an MSBuild property name:
+letters, digits, `_` and `-`, starting with a letter or `_`. Exit code 2.
+Since 0.11.
+
+**Fix:** pass each property as `--property Name=Value`.
+
+### RAPPSIZE1006
+
+`size --property` sets `Configuration`, `RuntimeIdentifier`, `PublishAot` or
+`SelfContained`, which `size` sets from its own options. Exit code 2. Since
+0.11.
+
+**Fix:** use `--configuration`, `--runtime`, `--aot` or `--no-aot`, and
+`--self-contained` or `--no-self-contained`.
 
 ### RCLI4000
 

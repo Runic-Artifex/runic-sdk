@@ -54,11 +54,12 @@ internal static class DevApplication
             {
                 RequireInstalledFrontendPackages(configuration);
             }
-            if (options.Restore)
+            // --no-build implies no .NET restore, as for dotnet run; the frontend packages still follow --no-restore.
+            if (options.Restore && options.Build)
             {
                 using var phase = PhaseTimer.Start("Restoring Views Window dependencies");
                 await RequireSuccessAsync(dotnetHost, configuration.ProjectDirectory,
-                    CreateRestoreArguments(configuration, options.Configuration),
+                    CreateRestoreArguments(configuration, options.Configuration, options.Verbosity),
                     "RAPPDEV1006", "The .NET restore failed:", CommandRunner.DoctorHint(configuration.ProjectPath), stop.Token).ConfigureAwait(false);
                 phase.Complete();
             }
@@ -73,8 +74,11 @@ internal static class DevApplication
                 configuration = await ViteBuildInputs.ApplyAsync(configuration, stop.Token)
                     .ConfigureAwait(false);
             }
-            await BuildAsync(dotnetHost, configuration, options, stop.Token)
-                .ConfigureAwait(false);
+            if (options.Build)
+            {
+                await BuildAsync(dotnetHost, configuration, options, stop.Token)
+                    .ConfigureAwait(false);
+            }
             return await RunDevelopmentLoopAsync(
                 dotnetHost,
                 configuration,
@@ -454,6 +458,10 @@ internal static class DevApplication
         {
             arguments.Add("--no-restore");
         }
+        if (options.Verbosity is not null)
+        {
+            arguments.AddRange(["--verbosity", options.Verbosity]);
+        }
 
         return arguments;
     }
@@ -491,7 +499,8 @@ internal static class DevApplication
 
     internal static IReadOnlyList<string> CreateRestoreArguments(
         DevProjectConfiguration configuration,
-        string buildConfiguration)
+        string buildConfiguration,
+        string? verbosity = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var arguments = new List<string>
@@ -500,6 +509,10 @@ internal static class DevApplication
             configuration.ProjectPath,
             $"-p:Configuration={buildConfiguration}",
         };
+        if (verbosity is not null)
+        {
+            arguments.AddRange(["--verbosity", verbosity]);
+        }
         return arguments;
     }
 
@@ -580,6 +593,15 @@ internal static class DevApplication
                 "[dev] Compiler: external integration with diagnostics and compatible fragment refresh");
         }
 
+        if (options.LaunchProfile is not null)
+        {
+            Console.WriteLine($"[dev] Launch profile: {options.LaunchProfile}");
+        }
+        if (options.Environment.Count != 0)
+        {
+            // Only the names: a value can be a secret.
+            Console.WriteLine($"[dev] Environment: {string.Join(", ", options.Environment.Select(static variable => variable.Key).Distinct(StringComparer.Ordinal))}");
+        }
         if (options.DryRun)
         {
             Console.WriteLine("[dev] Dry run complete; no files or processes were changed.");

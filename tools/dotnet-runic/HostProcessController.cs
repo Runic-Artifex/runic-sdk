@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -132,7 +133,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             _dotnetHost,
             _configuration.ProjectDirectory,
             arguments,
-            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment),
+            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment, environment: _options.Environment),
             _options.WatchHost ? IsExpectedTerminationNotice : null);
         if (_options.WatchHost)
         {
@@ -160,12 +161,16 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--property:Optimize=false",
         ]);
         arguments.AddRange(DevApplication.CreateBuildProperties(configuration, options, "--property:"));
+        if (options.Verbosity is not null)
+        {
+            arguments.AddRange(["--verbosity", options.Verbosity]);
+        }
         arguments.AddRange([
             "--no-restore",
             "--non-interactive",
             "run",
-            "--no-launch-profile",
         ]);
+        arguments.AddRange(LaunchProfileArguments(options));
         return arguments;
     }
 
@@ -184,10 +189,17 @@ internal sealed class HostProcessController : IAsyncDisposable
             options.Configuration,
             "--no-restore",
             "--no-build",
-            "--no-launch-profile",
         };
+        arguments.AddRange(LaunchProfileArguments(options));
         return arguments;
     }
+
+    /// <summary>
+    /// <c>--launch-profile</c> selects a profile from <c>Properties/launchSettings.json</c>, whose variables and
+    /// arguments dotnet run applies; without it the Window runs with <c>--no-launch-profile</c>, as before 0.11.
+    /// </summary>
+    private static IReadOnlyList<string> LaunchProfileArguments(DevOptions options) =>
+        options.LaunchProfile is { } profile ? ["--launch-profile", profile] : ["--no-launch-profile"];
 
     internal static IReadOnlyList<string> CreateRestartBuildArguments(
         DevProjectConfiguration configuration,
@@ -204,16 +216,21 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--no-restore",
         };
         arguments.AddRange(DevApplication.CreateBuildProperties(configuration, options, "-property:"));
+        if (options.Verbosity is not null)
+        {
+            arguments.AddRange(["--verbosity", options.Verbosity]);
+        }
         return arguments;
     }
 
     internal static IReadOnlyDictionary<string, string?> CreateDevelopmentEnvironment(
         DevProjectConfiguration configuration,
         IReadOnlyDictionary<string, string?> developmentEnvironment,
-        Func<string, string?>? readEnvironment = null)
+        Func<string, string?>? readEnvironment = null,
+        IReadOnlyList<KeyValuePair<string, string>>? environment = null)
     {
         readEnvironment ??= Environment.GetEnvironmentVariable;
-        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        var variables = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             // Without a development server (its environment is empty), the Runic Desktop host serves the frontend
             // output directory live and reloads its windows on change. With one, the variable is cleared.
@@ -232,23 +249,31 @@ internal sealed class HostProcessController : IAsyncDisposable
         };
         // The app runs as a development host, so Bridge failures carry local
         // detail (IncludeFailureDetail). An environment the developer chose wins.
-        if (string.IsNullOrEmpty(readEnvironment("DOTNET_ENVIRONMENT")) &&
-            string.IsNullOrEmpty(readEnvironment("ASPNETCORE_ENVIRONMENT")))
+        // A variable given with -e counts as chosen too.
+        bool Chosen(string name) => !string.IsNullOrEmpty(readEnvironment(name)) ||
+            (environment ?? []).Any(variable => variable.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (!Chosen("DOTNET_ENVIRONMENT") && !Chosen("ASPNETCORE_ENVIRONMENT"))
         {
-            environment["DOTNET_ENVIRONMENT"] = "Development";
+            variables["DOTNET_ENVIRONMENT"] = "Development";
         }
         // dotnet watch sends SIGTERM (Ctrl+C on Windows) before a restart, but with hot reload off it kills the
         // application at once unless this is set.
         if (string.IsNullOrEmpty(readEnvironment(WatchCleanupTimeoutVariable)))
         {
-            environment[WatchCleanupTimeoutVariable] =
+            variables[WatchCleanupTimeoutVariable] =
                 ((int)StopGracePeriod.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        // -e values win over dev's defaults, as dotnet run -e does; they cannot name the variables below
+        // (ToolOptionValues.IsReservedEnvironmentVariable).
+        foreach ((string key, string value) in environment ?? [])
+        {
+            variables[key] = value;
         }
         foreach ((string key, string? value) in developmentEnvironment)
         {
-            environment[key] = value;
+            variables[key] = value;
         }
-        return environment;
+        return variables;
     }
 
     /// <summary>Exit codes of an application that stopped on SIGTERM or Ctrl+C: 128 + 15, 128 + 2, and Windows' STATUS_CONTROL_C_EXIT.</summary>

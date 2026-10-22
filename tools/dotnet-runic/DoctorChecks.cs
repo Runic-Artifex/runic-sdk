@@ -175,6 +175,8 @@ internal static class DoctorChecks
         _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         await CheckPackageManagerAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         CheckCompatibilitySet(checks, project);
+        CheckViewsPackageVersions(checks, project);
+        CheckApplicationId(checks, project);
         CheckFrontendDevelopment(checks, project);
         CheckBrowser(checks, project, runtime);
         bool probeDesktop = project.Hosts.Contains(RunicViewsHost.Desktop) && ProbesHost(project, RunicViewsHost.Desktop, runtime, target);
@@ -557,6 +559,107 @@ internal static class DoctorChecks
         checks.Add(selected > 0
             ? Pass("compatibility-set", $"{selected} Runic package(s) match {Authority.Id} ({Authority.ReleaseTrainVersion}).")
             : Warn("compatibility-set", $"No Runic package was selected by {Authority.Id}.", "Restore the generated Views Window project."));
+    }
+
+    internal const string ViewsNuGetPackage = "Runic.Application.Views";
+    internal const string ViewsNpmPackage = "@runic-artifex/views";
+
+    /// <summary>
+    /// Compares the installed <c>@runic-artifex/views</c> with the restored Runic.Application.Views. The generated
+    /// clients and the npm runtime speak one protocol version, so a frontend whose packages were not reinstalled after
+    /// a .NET update fails only at run time. The check is omitted until both are installed.
+    /// </summary>
+    internal static void CheckViewsPackageVersions(List<DoctorCheck> checks, DoctorProjectConfiguration project)
+    {
+        const string id = "views-package-versions";
+        string? dotnetVersion = RestoredVersion(project.ProjectAssetsFile, ViewsNuGetPackage);
+        string? npmVersion = InstalledNpmVersion(project.FrontendPackageDirectory, ViewsNpmPackage);
+        if (dotnetVersion is null || npmVersion is null) return;
+        // Build metadata (+sha) does not distinguish releases; a prerelease label does.
+        static string Release(string version) => version.Split('+')[0];
+        checks.Add(StringComparer.OrdinalIgnoreCase.Equals(Release(dotnetVersion), Release(npmVersion))
+            ? Pass(id, $"{ViewsNpmPackage} {npmVersion} matches {ViewsNuGetPackage} {dotnetVersion}.")
+            : Warn(id, $"The installed {ViewsNpmPackage} {npmVersion} differs from {ViewsNuGetPackage} {dotnetVersion}; the page and the .NET host may not understand each other.",
+                $"Use the same version of both packages, then reinstall the frontend packages, for example with 'dotnet runic dev', and rebuild."));
+    }
+
+    /// <summary>The version of a library in the restore graph, or null when the project is not restored or lacks it.</summary>
+    internal static string? RestoredVersion(string assetsFile, string identity)
+    {
+        try
+        {
+            if (!File.Exists(assetsFile)) return null;
+            using JsonDocument assets = JsonDocument.Parse(File.ReadAllBytes(assetsFile));
+            if (!assets.RootElement.TryGetProperty("libraries", out JsonElement libraries) || libraries.ValueKind != JsonValueKind.Object) return null;
+            foreach (JsonProperty library in libraries.EnumerateObject())
+            {
+                int separator = library.Name.LastIndexOf('/');
+                if (separator > 0 && library.Name.AsSpan(0, separator).Equals(identity, StringComparison.OrdinalIgnoreCase))
+                    return library.Name[(separator + 1)..];
+            }
+            return null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The version of an installed npm package, found as Node.js resolves it: in <c>node_modules</c> of the frontend
+    /// directory or of a parent, such as a workspace root. Null when it is not installed or unreadable.
+    /// </summary>
+    internal static string? InstalledNpmVersion(string frontendDirectory, string package)
+    {
+        for (DirectoryInfo? directory = new(frontendDirectory); directory is not null; directory = directory.Parent)
+        {
+            string manifest = Path.Combine(directory.FullName, "node_modules", package.Replace('/', Path.DirectorySeparatorChar), "package.json");
+            if (!File.Exists(manifest)) continue;
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(manifest));
+                return document.RootElement.ValueKind == JsonValueKind.Object &&
+                    document.RootElement.TryGetProperty("version", out JsonElement version) && version.ValueKind == JsonValueKind.String
+                    ? version.GetString()
+                    : null;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The rule of the runic-app template's packaging script: a reverse-DNS name of ASCII letters and digits, each part
+    /// starting with a letter, at most 50 characters, which a D-Bus and Flatpak name, a bundle identifier and an MSIX
+    /// package name all accept.
+    /// </summary>
+    internal static bool IsPortableApplicationId(string id)
+    {
+        if (id.Length is 0 or > 50) return false;
+        string[] parts = id.Split('.');
+        return parts.Length >= 2 && parts.All(static part =>
+            part.Length != 0 && char.IsAsciiLetter(part[0]) && part.All(char.IsAsciiLetterOrDigit));
+    }
+
+    /// <summary>
+    /// Checks the ApplicationId format. Packaging, single-instance activation and the macOS and polkit providers read
+    /// it; a malformed one builds and runs but fails when the application is packaged or registered.
+    /// </summary>
+    internal static void CheckApplicationId(List<DoctorCheck> checks, DoctorProjectConfiguration project)
+    {
+        const string id = "application-id";
+        if (project.ApplicationId.Length == 0)
+        {
+            checks.Add(Pass(id, "The project sets no ApplicationId. Set a reverse-DNS name such as org.example.Notes before you package the application."));
+            return;
+        }
+        checks.Add(IsPortableApplicationId(project.ApplicationId)
+            ? Pass(id, $"ApplicationId '{project.ApplicationId}' is a reverse-DNS name that every platform accepts.")
+            : Warn(id, $"ApplicationId '{project.ApplicationId}' is not a reverse-DNS name that every platform accepts.",
+                "Use ASCII letters and digits in at least two dot-separated parts, each starting with a letter, at most 50 characters, for example org.example.Notes."));
     }
 
     /// <summary>

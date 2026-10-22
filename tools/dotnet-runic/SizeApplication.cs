@@ -13,7 +13,17 @@ using System.Threading.Tasks;
 namespace Runic.Application.Tool;
 
 internal sealed record SizeOptions(string? Project, string Runtime,
-    string Configuration, string Report, bool Aot, string Verify, IReadOnlyList<string> VerifyArguments);
+    string Configuration, string Report, bool Aot, string Verify, IReadOnlyList<string> VerifyArguments)
+{
+    /// <summary>False with <c>--no-self-contained</c>, which publishes framework-dependent.</summary>
+    internal bool SelfContained { get; init; } = true;
+
+    /// <summary>The <c>--property</c> values, passed after size's own properties so that they override its defaults.</summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> Properties { get; init; } = [];
+
+    /// <summary>The MSBuild verbosity of the publish, from <c>--verbosity</c>; null leaves the dotnet default.</summary>
+    internal string? Verbosity { get; init; }
+}
 internal sealed record SizeFile(string Path, string Category, long Bytes, string Sha256);
 internal sealed record SizeVerification(string Status, int? ExitCode, string? Executable, IReadOnlyList<string> Arguments);
 internal sealed record SizeInstalledRuntime(string Name, string Version, string Directory);
@@ -62,15 +72,15 @@ internal static class SizeApplication
         if (File.Exists(reportPath))
             throw new DevUsageException("RAPPSIZE1003", "The report already exists. Select a new --report path to preserve prior evidence.");
         string dotnet = DevApplication.ResolveDotNetHost();
-        var settings = new List<string> { $"-p:Configuration={options.Configuration}",
-            $"-p:RuntimeIdentifier={options.Runtime}", $"-p:PublishAot={options.Aot.ToString().ToLowerInvariant()}",
-            "-p:SelfContained=true", "-p:OptimizationPreference=Size" };
+        IReadOnlyList<string> settings = CreateSettings(options);
+        string[] evaluated = [.. Properties, .. options.Properties.Select(static property => property.Key)
+            .Where(name => !Properties.Contains(name, StringComparer.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase)];
         async Task<CommandResult> Run(string executable, IReadOnlyList<string> arguments) =>
             await CommandRunner.RunAsync(executable, workingDirectory, arguments, cancellationToken).ConfigureAwait(false);
         async Task<Dictionary<string, string>> Evaluate()
         {
             CommandResult result = await Run(dotnet, ["msbuild", project, "-nologo", .. settings,
-                $"-getProperty:{string.Join(',', Properties)}"]);
+                $"-getProperty:{string.Join(',', evaluated)}"]);
             if (result.ExitCode != 0)
                 throw new DevDevelopmentException("RAPPSIZE1004", "Could not evaluate publish settings: " + result.CombinedOutput);
             using var json = JsonDocument.Parse(result.StandardOutput);
@@ -101,7 +111,8 @@ internal static class SizeApplication
         }
         catch (DevUsageException) { /* Source provenance is unavailable outside Git installations. */ }
         Console.WriteLine($"Publishing application for {options.Runtime}...");
-        CommandResult publish = await Run(dotnet, ["publish", project, "--nologo", .. settings, "--output", publishDirectory]);
+        CommandResult publish = await Run(dotnet, ["publish", project, "--nologo", .. settings, "--output", publishDirectory,
+            .. options.Verbosity is null ? [] : new[] { "--verbosity", options.Verbosity }]);
         await File.WriteAllTextAsync(logPath, publish.CombinedOutput, cancellationToken);
         Console.Write(publish.CombinedOutput);
         effective = await Evaluate();
@@ -143,6 +154,20 @@ internal static class SizeApplication
         var result = new SizeCommandResult(reportPath, options.Runtime, publish.ExitCode, report.TotalBytes, report.CompressedBytes,
             new SizeCommandVerification(verification.Status, verification.ExitCode));
         return new SizeRun(publish.ExitCode == 0 && verification.Status != "failed" ? Program.Success : Program.DevelopmentFailure, result);
+    }
+
+    /// <summary>
+    /// The global properties of the evaluation and the publish: size's own, then each <c>--property</c>, which can
+    /// override <c>OptimizationPreference</c> but not the properties that have their own options.
+    /// </summary>
+    internal static IReadOnlyList<string> CreateSettings(SizeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var settings = new List<string> { $"-p:Configuration={options.Configuration}",
+            $"-p:RuntimeIdentifier={options.Runtime}", $"-p:PublishAot={options.Aot.ToString().ToLowerInvariant()}",
+            $"-p:SelfContained={options.SelfContained.ToString().ToLowerInvariant()}", "-p:OptimizationPreference=Size" };
+        settings.AddRange(options.Properties.Select(ToolOptionValues.PropertyArgument));
+        return settings;
     }
 
     /// <summary>

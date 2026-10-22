@@ -177,9 +177,9 @@ internal static class DoctorOutcome
         // A failed envelope has no payload, so the checks travel in fault.data and JSON readers need no second run.
         return CommandOutcome.Failure<DoctorCommandResult>(
             CommandExitCategory.CommandFailure,
-            new CommandFault(FaultCode, "Doctor checks failed.", details),
+            new CommandFault(FaultCode, "Doctor checks failed.", details) { HelpUri = Program.HelpUri(FaultCode) },
             json ? DoctorCommandResult.CreateDiagnostics(run.Report, path, threshold) : [],
-            json ? null : Program.WithHelpLink(boundedHumanOutput, FaultCode),
+            json ? null : boundedHumanOutput,
             failureData: CommandFailureData.Create(PayloadTypeName, result, DoctorCommandJsonContext.Default.DoctorCommandResult));
     }
 }
