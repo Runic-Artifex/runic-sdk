@@ -183,11 +183,15 @@ Pages that load `runic-cswebui.js` keep working. The script adapts
 The script sends each Bridge call as soon as the page makes it, so several
 calls can reach WebUI at once. Runic relies on WebUI's fix for concurrent calls
 (webui-dev/webui#721): before it, native WebUI could assign one event slot to
-two calls that arrive together, and one of them then never received a reply.
-CsWebUi 2.5.0-beta.4.7, the lowest version this package accepts, bundles WebUI
-nightly `efac0e24dd4e6199dd7308c485906c90fb8816a2`, which includes the fix. An
-application that loads its own WebUI through `CSWEBUI_NATIVE_LIBRARY` needs that
-commit or a later one; with an older WebUI, Bridge replies can be lost.
+two calls that arrive together. One call could then run with the other's
+arguments or receive the other's reply, and one of them could receive no reply
+at all. CsWebUi 2.5.0-beta.4.7, the lowest version this package accepts,
+bundles WebUI nightly `efac0e24dd4e6199dd7308c485906c90fb8816a2`, which includes
+the fix. An application that loads its own WebUI through
+`CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath` needs that commit
+or a later one. WebUI reports no version or commit that Runic could check, so
+the host logs event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before
+the first window opens, when such a library is configured.
 Applications that keep their own copy of `runic-cswebui.js` should update it.
 
 The window binds all WebUI events because only that binding delivers
@@ -207,6 +211,35 @@ name and swaps the active managed handler as Views change; an inactive route
 returns the reply error `released` (Views protocol 3). CS-WebUI cannot remove a native route registration
 before its window closes. Retained page references reuse routes; new page
 identities still add routes.
+
+## Security
+
+This host adds no admission of its own. Runic Desktop checks the `Origin` of
+each connection, requires a per-surface session credential and binds an
+installed browser with a client cookie; in a CS-WebUI window, who can connect
+is decided by native WebUI alone: its local server, the token it writes into
+its `webui.js` and its single-client default. Treat these settings as security
+decisions:
+
+- **`SetPublic(true)`.** `ConfigureWindow` can call it on the `WebUiWindow`. The
+  window's server is then reachable from the network, not only from this
+  machine, and any client that can load the page can call the Bridge. Leave it
+  off unless the application authenticates its users itself.
+- **Serve-only mode.** With `RUNIC_APPLICATION_SERVE_ONLY=1` the window writes
+  its URL to standard output and waits for a client. The first local client to
+  connect gets the window, and on a shared machine that can be another user's
+  process. Use it for test harnesses on machines you control.
+- **Multiple clients.**
+  `WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, true)` lets
+  every client that reaches the server share the window.
+- **Your own WebUI build.** A library from `CSWEBUI_NATIVE_LIBRARY` or
+  `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24` (see
+  above); the host logs event 2101 when one is configured.
+
+Runic does not review native WebUI's admission. For a page that shows
+untrusted content, or a machine shared with other users, prefer Runic Desktop
+(`Runic.Application.Views.Desktop`), whose admission Runic implements and
+documents.
 
 See the [Runic.Application.Views package guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
 for Windows, Views, generated clients, and build properties.
