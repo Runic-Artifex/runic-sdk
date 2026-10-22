@@ -109,6 +109,8 @@ See the [opening files and URLs design](https://github.com/Runic-Artifex/runic-s
 `NSFileManager`, as Finder's Move to Trash does, so Finder can put them back. It
 needs no window and no AppKit event loop. A volume without a trash, such as a
 network volume, reports `Unavailable(BackendUnavailable)` and the item stays.
+macOS has no public interface for the Trash's contents, so `ListAsync`,
+`RestoreAsync` and `EmptyAsync` report `Unavailable(BackendUnavailable)`.
 See the [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
 
 ## Thumbnails
@@ -132,7 +134,14 @@ that refuses through Disk Arbitration, makes an unmount or eject
 `Failed(PermissionDenied)`. The startup disk's volumes (`/`, `/System/Volumes/…`,
 Recovery), images the system mounts under `/System` or hidden from Finder (such
 as Cryptex and simulator runtimes) and EFI system partitions are `IsSystem` and
-are never mounted, unmounted or ejected by the provider. See the
+are never mounted, unmounted or ejected by the provider. A locked APFS volume
+is listed `IsLocked` with `UnlockMethod = Passphrase` (its `AppleAPFSVolume`
+registry entry's `Locked`), and `MountAsync` reports it `Failed(Locked)`.
+`UnlockAsync(id, passphrase, token)` runs `diskutil apfs unlockVolume
+-stdinpassphrase` with the passphrase on its standard input, which also mounts
+the volume; a wrong passphrase is `Failed(Other)` with diskutil's exit status.
+`MountAsync(id, options, token)` passes `rdonly` and the options to
+`DADiskMountWithArguments`. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
 
 ## Desktop applications

@@ -74,8 +74,26 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
         return true;
     }
 
-    public Task<PlatformResult<string?>> MountAsync(string bsdName) =>
-        Operate<string?>(bsdName, static (disk, callback, context) => DADiskMount(disk, 0, 0, callback, context), mount: true);
+    public Task<PlatformResult<string?>> MountAsync(string bsdName, ImmutableArray<string> arguments) =>
+        arguments.IsDefaultOrEmpty
+            ? Operate<string?>(bsdName, static (disk, callback, context) => DADiskMount(disk, 0, 0, callback, context), mount: true)
+            : Operate<string?>(bsdName, (disk, callback, context) => MountWithArguments(disk, arguments, callback, context), mount: true);
+
+    // DADiskMountWithArguments takes a NULL-terminated array of CFStrings, which it copies into its request.
+    private static void MountWithArguments(nint disk, ImmutableArray<string> arguments, nint callback, nint context)
+    {
+        var strings = new nint[arguments.Length + 1];
+        try
+        {
+            for (int index = 0; index < arguments.Length; index++)
+                strings[index] = CFStringCreateWithCString(0, arguments[index], 0x08000100 /* kCFStringEncodingUTF8 */);
+            fixed (nint* list = strings) DADiskMountWithArguments(disk, 0, 0, callback, context, list);
+        }
+        finally { foreach (nint value in strings) if (value != 0) CFRelease(value); }
+    }
+
+    public Task<PlatformResult<PlatformUnit>> UnlockAsync(string bsdName, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken) =>
+        MacApfsUnlock.RunAsync(bsdName, passphrase, cancellationToken);
 
     public Task<PlatformResult<PlatformUnit>> UnmountAsync(string bsdName) =>
         Operate<PlatformUnit>(bsdName, static (disk, callback, context) => DADiskUnmount(disk, 0, callback, context), mount: false);
@@ -210,9 +228,66 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
                 Vendor = Text(Value("kDADiskDescriptionDeviceVendorKey"))?.Trim(),
                 Model = Text(Value("kDADiskDescriptionDeviceModelKey"))?.Trim(),
                 PhysicalDisk = PhysicalDisk(disk),
+                Encrypted = (Boolean(OptionalValue(description, "kDADiskDescriptionMediaEncryptedKey")) ?? false) || MediaFlag(disk, "Encrypted"),
+                Locked = MediaFlag(disk, "Locked"),
             };
         }
         finally { CFRelease(description); }
+    }
+
+    // A Boolean property of the disk's own IOMedia entry: an APFS volume's entry, AppleAPFSVolume, has Encrypted and
+    // Locked.
+    private static bool MediaFlag(nint disk, string key)
+    {
+        uint entry = DADiskCopyIOMedia(disk);
+        if (entry == 0) return false;
+        try
+        {
+            nint value = Property(entry, key);
+            try { return Boolean(value) == true; }
+            finally { if (value != 0) CFRelease(value); }
+        }
+        finally { _ = IOObjectRelease(entry); }
+    }
+
+    // A description key that older systems may not export.
+    private static nint OptionalValue(nint description, string key) =>
+        NativeLibrary.TryGetExport(s_library.Value, key, out nint symbol) ? CFDictionaryGetValue(description, *(nint*)symbol) : 0;
+
+    // For the native tests: the disk's Disk Arbitration description and its IOMedia entry's properties, as
+    // CFCopyDescription prints them, to record where macOS reports an APFS volume's encryption and lock state.
+    internal string? DescribeForTest(string bsdName)
+    {
+        if (!Start()) return null;
+        nint disk = DADiskCreateFromBSDName(0, _session, bsdName);
+        if (disk == 0) return null;
+        try
+        {
+            nint description = DADiskCopyDescription(disk);
+            string? arbitration = description == 0 ? null : Described(description);
+            uint entry = DADiskCopyIOMedia(disk);
+            string? registry = null;
+            if (entry != 0)
+            {
+                nint properties = 0;
+                if (IORegistryEntryCreateCFProperties(entry, &properties, 0, 0) == 0 && properties != 0) registry = Described(properties);
+                _ = IOObjectRelease(entry);
+            }
+            return $"Disk Arbitration: {arbitration}\nIOMedia: {registry}";
+        }
+        finally { CFRelease(disk); }
+
+        static string? Described(nint value)
+        {
+            try
+            {
+                nint text = CFCopyDescription(value);
+                if (text == 0) return null;
+                try { return Text(text); }
+                finally { CFRelease(text); }
+            }
+            finally { CFRelease(value); }
+        }
     }
 
     // The topmost whole IOMedia above the disk in the I/O Registry's service plane: for an APFS volume, the drive's
@@ -352,6 +427,9 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
     [LibraryImport(DiskArbitration)] private static partial nint DADiskCopyDescription(nint disk);
     [LibraryImport(DiskArbitration)] private static partial uint DADiskCopyIOMedia(nint disk);
     [LibraryImport(DiskArbitration)] private static partial void DADiskMount(nint disk, nint path, uint options, nint callback, nint context);
+    [LibraryImport(DiskArbitration)] private static partial void DADiskMountWithArguments(nint disk, nint path, uint options, nint callback, nint context, nint* arguments);
+    [LibraryImport(CoreFoundation)] private static partial nint CFCopyDescription(nint value);
+    [LibraryImport(IOKit)] private static partial int IORegistryEntryCreateCFProperties(uint entry, nint* properties, nint allocator, uint options);
     [LibraryImport(DiskArbitration)] private static partial void DADiskUnmount(nint disk, uint options, nint callback, nint context);
     [LibraryImport(DiskArbitration)] private static partial void DADiskEject(nint disk, uint options, nint callback, nint context);
     [LibraryImport(DiskArbitration)] private static partial int DADissenterGetStatus(nint dissenter);
@@ -375,4 +453,47 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
     [LibraryImport(System, StringMarshalling = StringMarshalling.Utf8)] private static partial nint dispatch_queue_create(string label, nint attributes);
     [LibraryImport(System)] private static partial void dispatch_sync_f(nint queue, nint context, delegate* unmanaged[Cdecl]<nint, void> work);
     [LibraryImport(System)] private static partial void dispatch_release(nint queue);
+}
+
+// diskutil apfs unlockVolume reads the passphrase from its standard input (-stdinpassphrase), never from its arguments.
+// The passphrase is encoded into a buffer of its own, written once and cleared; diskutil's output is read and dropped,
+// since it may name the volume. A failed unlock, such as a wrong passphrase, is its exit status.
+[SupportedOSPlatform("macos")]
+internal static class MacApfsUnlock
+{
+    private const string Diskutil = "/usr/sbin/diskutil";
+
+    internal static ImmutableArray<string> Arguments(string bsdName) => ["apfs", "unlockVolume", bsdName, "-stdinpassphrase"];
+
+    internal static async Task<PlatformResult<PlatformUnit>> RunAsync(string bsdName, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken)
+    {
+        var start = new global::System.Diagnostics.ProcessStartInfo(Diskutil)
+        {
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+        };
+        foreach (string argument in Arguments(bsdName)) start.ArgumentList.Add(argument);
+        byte[] secret = new byte[global::System.Text.Encoding.UTF8.GetMaxByteCount(passphrase.Length)];
+        int length = 0;
+        try
+        {
+            length = global::System.Text.Encoding.UTF8.GetBytes(passphrase.Span, secret);
+            using var process = global::System.Diagnostics.Process.Start(start);
+            if (process is null) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+            var output = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None);
+            var errors = process.StandardError.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None);
+            try
+            {
+                await process.StandardInput.BaseStream.WriteAsync(secret.AsMemory(0, length), CancellationToken.None).ConfigureAwait(false);
+                await process.StandardInput.BaseStream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (IOException) { } // diskutil exited before reading: its status says why.
+            finally { process.StandardInput.Close(); }
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await Task.WhenAll(output, errors).ConfigureAwait(false);
+            return process.ExitCode == 0 ? new PlatformResult<PlatformUnit>.Success(default)
+                : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, new PlatformDiagnostic("diskutil", process.ExitCode));
+        }
+        catch (global::System.ComponentModel.Win32Exception) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        finally { global::System.Security.Cryptography.CryptographicOperations.ZeroMemory(secret); }
+    }
 }

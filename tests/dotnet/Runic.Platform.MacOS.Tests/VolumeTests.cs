@@ -116,6 +116,56 @@ internal sealed partial class VolumeTests
         await Throws<ObjectDisposedException>(() => volumes.ListAsync().AsTask());
     }
 
+    [Test, DisplayName("volumes: a locked APFS volume is listed, refuses to mount and unlocks with its passphrase; mount options")]
+    public async Task LockedAndOptions()
+    {
+        var locked = new MacDisk("disk9s2") { VolumeKind = "apfs", Mountable = true, VolumeName = "Vault", Ejectable = true, Removable = true, PhysicalDisk = "disk9", Encrypted = true, Locked = true };
+        ImmutableArray<MacDisk> disks =
+        [
+            new("disk9") { Whole = true, Ejectable = true, Removable = true, Vendor = "Apple", Model = "Disk Image" },
+            new("disk9s1") { VolumeKind = "apfs", Mountable = true, VolumeName = "Plain", Ejectable = true, PhysicalDisk = "disk9" },
+            new("disk9s3") { VolumeKind = "apfs", Mountable = true, VolumeName = "Open", VolumePath = "/Volumes/Open", Ejectable = true, PhysicalDisk = "disk9", Encrypted = true },
+            locked,
+        ];
+        var listed = MacVolumes.Volumes(disks).ToDictionary(static v => v.Id);
+        Check(listed["disk9s2"] is { IsLocked: true, IsEncrypted: true, UnlockMethod: DesktopVolumeUnlockMethod.Passphrase, CanMount: false, CanEject: true },
+            $"a locked volume: {listed["disk9s2"]}");
+        Check(listed["disk9s3"] is { IsLocked: false, IsEncrypted: true, UnlockMethod: DesktopVolumeUnlockMethod.None }
+            && listed["disk9s1"] is { IsEncrypted: false, CanMount: true }, "unlocked and unencrypted volumes");
+
+        var source = new FakeSource { Disks = disks };
+        await using IDesktopVolumes volumes = new MacVolumes(source, TimeSpan.Zero);
+        Check(await volumes.MountAsync("disk9s2") is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Locked } && source.Calls.Count == 0,
+            "a locked volume does not mount");
+        Check(await volumes.UnlockAsync("disk9s2") is PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            "macOS has no system prompt for it");
+
+        source.Unlock = (name, passphrase) =>
+        {
+            if (passphrase != "correct horse") return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Other, new PlatformDiagnostic("diskutil", 1));
+            source.Disks = source.Disks.Replace(locked, locked with { Locked = false, VolumePath = "/Volumes/Vault" });
+            return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+        };
+        Check(await volumes.UnlockAsync("disk9s2", "wrong".AsMemory(), default) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "diskutil" },
+            "a wrong passphrase");
+        var unlocked = await volumes.UnlockAsync("disk9s2", "correct horse".AsMemory(), default);
+        Check(unlocked is PlatformResult<DesktopVolume>.Success { Value: { IsLocked: false, IsEncrypted: true, MountPaths: ["/Volumes/Vault"] } }, $"unlocked: {unlocked}");
+        Check(await volumes.UnlockAsync("disk9s2", "anything".AsMemory(), default) is PlatformResult<DesktopVolume>.Success && source.Calls is ["unlock disk9s2", "unlock disk9s2"],
+            "an unlocked volume needs no passphrase");
+        Check(await volumes.UnlockAsync("disk9s9", "x".AsMemory(), default) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.NotFound }, "an unknown volume");
+
+        source.Calls.Clear();
+        source.MountPath = "/Volumes/Plain";
+        Check(await volumes.MountAsync("disk9s1", new DesktopVolumeMountOptions { ReadOnly = true, Options = ["nobrowse"] }, default) is PlatformResult<DesktopVolume>.Success
+            && source.Calls is ["mount disk9s1"] && source.Arguments is ["rdonly", "nobrowse"], "mount options reach Disk Arbitration");
+        source.Calls.Clear();
+        Check(await volumes.MountAsync("disk9s1", new DesktopVolumeMountOptions(), default) is PlatformResult<DesktopVolume>.Success && source.Arguments.IsEmpty,
+            "the default options mount without arguments");
+#pragma warning disable CA1416 // Arguments is pure.
+        Check(MacApfsUnlock.Arguments("disk9s2") is ["apfs", "unlockVolume", "disk9s2", "-stdinpassphrase"], "the passphrase never is an argument");
+#pragma warning restore CA1416
+    }
+
     [Test, DisplayName("volumes: the watch reports a snapshot, then each change Disk Arbitration announces")]
     public async Task Watch()
     {
@@ -205,6 +255,15 @@ internal sealed partial class VolumeTests
             Check(await volumes.UnmountAsync(volumeHfs.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "the volume is unmounted");
             await WaitForAsync(changes.Reader, v => v.Id == volumeHfs.Id && v.MountPaths.IsEmpty && v.CanMount, timeout.Token);
             Check(await volumes.UnmountAsync(volumeHfs.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "unmounting it again succeeds");
+            // Mounted read-only through DADiskMountWithArguments: nothing can be written.
+            var readOnlyMount = await volumes.MountAsync(volumeHfs.Id, new DesktopVolumeMountOptions { ReadOnly = true }, timeout.Token);
+            Console.WriteLine($"Mount read-only: {readOnlyMount}");
+            if (readOnlyMount is not PlatformResult<DesktopVolume>.Success { Value.MountPaths: [var readOnlyPath] })
+                throw new InvalidOperationException($"Volume check failed: the read-only mount: {readOnlyMount}");
+            try { File.WriteAllText(Path.Combine(readOnlyPath, "written.txt"), "x"); throw new InvalidOperationException("Volume check failed: a read-only mount accepted a write."); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Console.WriteLine($"Write to the read-only mount: {error.GetType().Name}"); }
+            Check(await volumes.UnmountAsync(volumeHfs.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "the read-only mount is unmounted");
+            await WaitForAsync(changes.Reader, v => v.Id == volumeHfs.Id && v.MountPaths.IsEmpty && v.CanMount, timeout.Token);
             var mounted = await volumes.MountAsync(volumeHfs.Id, timeout.Token);
             Console.WriteLine($"Mount: {mounted}");
             Check(mounted is PlatformResult<DesktopVolume>.Success { Value.MountPaths: [var path] } && Directory.Exists(path), $"the volume is mounted again: {mounted}");
@@ -222,6 +281,7 @@ internal sealed partial class VolumeTests
             Console.WriteLine($"Attached: {Describe(volumeApfs)}");
             Check(volumeApfs is { FileSystem: "apfs", IsSystem: false, CanEject: true } && volumeApfs.DriveId == attached[^1],
                 $"the APFS volume belongs to the image's disk {attached[^1]}: {Describe(volumeApfs)}");
+            await EncryptedVolumeAsync(volumes, changes.Reader, volumeApfs, unique + "L", timeout.Token);
             var ejectedApfs = await EjectAsync(volumes, volumeApfs.Id, timeout.Token);
             Console.WriteLine($"Eject: {ejectedApfs}");
             Check(ejectedApfs is PlatformResult<PlatformUnit>.Success, $"the APFS image is ejected: {ejectedApfs}");
@@ -246,6 +306,56 @@ internal sealed partial class VolumeTests
             await volumes.DisposeAsync();
             try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
+    }
+
+    // An encrypted APFS volume added to the image's container and locked: listed locked, refused by MountAsync and
+    // unlocked with its passphrase. The descriptions record where macOS reports the encryption and lock state.
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static async Task EncryptedVolumeAsync(IDesktopVolumes volumes, ChannelReader<PlatformResult<DesktopVolumeChange>> changes, DesktopVolume plain, string name,
+        CancellationToken token)
+    {
+        const string passphrase = "runic-test-passphrase";
+        string container = Container().Match(plain.Id) is { Success: true } match ? match.Groups[1].Value : throw new InvalidOperationException($"No container for {plain.Id}");
+        RunAsAdministratorIfNeeded("diskutil", "apfs", "addVolume", container, "APFS", name, "-passphrase", passphrase);
+        var encrypted = await WaitForAsync(changes, v => v.DisplayName == name && !v.MountPaths.IsEmpty, token);
+        Console.WriteLine($"Encrypted volume: {Describe(encrypted)}");
+        using var source = new MacVolumeSource();
+        Console.WriteLine($"Unlocked {encrypted.Id}: {source.DescribeForTest(encrypted.Id)}");
+        Check(encrypted is { IsEncrypted: true, IsLocked: false, UnlockMethod: DesktopVolumeUnlockMethod.None }, $"an unlocked encrypted volume: {Describe(encrypted)}");
+
+        RunAsAdministratorIfNeeded("diskutil", "apfs", "lockVolume", encrypted.Id);
+        await Task.Delay(TimeSpan.FromSeconds(2), token);
+        Console.WriteLine($"Locked {encrypted.Id}: {source.DescribeForTest(encrypted.Id)}");
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+        wait.CancelAfter(TimeSpan.FromSeconds(30));
+        DesktopVolume locked;
+        try { locked = await WaitForAsync(changes, v => v.Id == encrypted.Id && v.IsLocked, wait.Token); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            var now = await volumes.ListAsync(token);
+            throw new InvalidOperationException($"Volume check failed: the locked volume is not listed as locked: {now}");
+        }
+        Console.WriteLine($"Locked volume: {Describe(locked)}");
+        Check(locked is { IsLocked: true, IsEncrypted: true, UnlockMethod: DesktopVolumeUnlockMethod.Passphrase, CanMount: false, MountPaths.IsEmpty: true },
+            $"the locked volume: {Describe(locked)}");
+        Check(await volumes.MountAsync(locked.Id, token) is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Locked }, "a locked volume does not mount");
+        Check(await volumes.UnlockAsync(locked.Id, token) is PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "no system prompt");
+        var wrong = await volumes.UnlockAsync(locked.Id, "not-the-passphrase".AsMemory(), token);
+        Console.WriteLine($"Unlock with a wrong passphrase: {wrong}");
+        Check(wrong is PlatformResult<DesktopVolume>.Failed { Code: PlatformFailureCode.Other, Diagnostic.Domain: "diskutil" }, $"a wrong passphrase: {wrong}");
+        var unlocked = await volumes.UnlockAsync(locked.Id, passphrase.ToCharArray(), token);
+        Console.WriteLine($"Unlock: {unlocked}");
+        Check(unlocked is PlatformResult<DesktopVolume>.Success { Value: { IsLocked: false, MountPaths.IsEmpty: false } }, $"the volume is unlocked and mounted: {unlocked}");
+    }
+
+    [GeneratedRegex(@"^(disk\d+)s\d+$")]
+    private static partial Regex Container();
+
+    // diskutil changes an attached image's container as its user on the runners; sudo -n is the fallback.
+    private static void RunAsAdministratorIfNeeded(string program, params string[] arguments)
+    {
+        try { Run(program, arguments); }
+        catch (InvalidOperationException) { Run("sudo", ["-n", program, .. arguments]); }
     }
 
     // Right after a mount or a closed file, macOS services such as Spotlight can hold a new volume
@@ -313,7 +423,8 @@ internal sealed partial class VolumeTests
 
     private static string Describe(DesktopVolume v) =>
         $"{v.Id} '{v.DisplayName}' [{string.Join(", ", v.MountPaths)}] {v.FileSystem} {v.Size} drive={v.DriveId} '{v.DriveName}' removable={v.IsRemovable} "
-        + $"readOnly={v.IsReadOnly} system={v.IsSystem} mount={v.CanMount} unmount={v.CanUnmount} eject={v.CanEject}";
+        + $"readOnly={v.IsReadOnly} system={v.IsSystem} mount={v.CanMount} unmount={v.CanUnmount} eject={v.CanEject} "
+        + $"locked={v.IsLocked} encrypted={v.IsEncrypted} unlock={v.UnlockMethod}";
 
     private static async Task<DesktopVolumeChange> Next(IAsyncEnumerator<PlatformResult<DesktopVolumeChange>> watch) =>
         await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopVolumeChange>.Success(var change)
@@ -359,14 +470,24 @@ internal sealed partial class VolumeTests
             foreach (var subscriber in subscribers) subscriber();
         }
 
-        public Task<PlatformResult<string?>> MountAsync(string bsdName)
+        internal ImmutableArray<string> Arguments;
+        internal Func<string, string, PlatformResult<PlatformUnit>>? Unlock;
+
+        public Task<PlatformResult<string?>> MountAsync(string bsdName, ImmutableArray<string> arguments)
         {
             Calls.Add("mount " + bsdName);
+            Arguments = arguments;
             return Task.FromResult<PlatformResult<string?>>(Result switch
             {
                 PlatformResult<PlatformUnit>.Failed failed => new PlatformResult<string?>.Failed(failed.Code),
                 _ => new PlatformResult<string?>.Success(MountPath),
             });
+        }
+
+        public Task<PlatformResult<PlatformUnit>> UnlockAsync(string bsdName, ReadOnlyMemory<char> passphrase, CancellationToken cancellationToken)
+        {
+            Calls.Add("unlock " + bsdName);
+            return Task.FromResult(Unlock?.Invoke(bsdName, passphrase.ToString()) ?? new PlatformResult<PlatformUnit>.Success(new PlatformUnit()));
         }
 
         public Task<PlatformResult<PlatformUnit>> UnmountAsync(string bsdName)

@@ -31,6 +31,33 @@ internal sealed class TrashTests
 #pragma warning restore CA1416
     }
 
+    // The $I record of a Recycle Bin item, in both versions; runs on every OS.
+    [Test]
+    public void RecycleInfoRecords()
+    {
+        var deleted = new DateTimeOffset(2026, 10, 22, 12, 30, 0, TimeSpan.Zero);
+        byte[] Header(long version, long size)
+        {
+            var bytes = new byte[24];
+            BitConverter.GetBytes(version).CopyTo(bytes, 0);
+            BitConverter.GetBytes(size).CopyTo(bytes, 8);
+            BitConverter.GetBytes(deleted.ToFileTime()).CopyTo(bytes, 16);
+            return bytes;
+        }
+        string original = @"C:\Users\runner\Documents\Report ä.txt";
+        byte[] path = Encoding.Unicode.GetBytes(original + "\0");
+        byte[] version2 = [.. Header(2, 1234), .. BitConverter.GetBytes(original.Length + 1), .. path];
+        Check(RecycleInfo.Parse(version2) is { OriginalPath: var p2, Size: 1234, DeletedAt: var d2 } && p2 == original && d2 == deleted, "version 2");
+        byte[] fixedPath = new byte[520];
+        path.CopyTo(fixedPath, 0);
+        Check(RecycleInfo.Parse([.. Header(1, 7), .. fixedPath]) is { OriginalPath: var p1, Size: 7 } && p1 == original, "version 1");
+        Check(RecycleInfo.Parse(version2.AsSpan(0, 30)) is null, "a truncated record");
+        Check(RecycleInfo.Parse([.. Header(3, 0), .. BitConverter.GetBytes(2), 0x41, 0, 0, 0]) is null, "an unknown version");
+        byte[] relative = Encoding.Unicode.GetBytes("relative\0");
+        Check(RecycleInfo.Parse([.. Header(2, 0), .. BitConverter.GetBytes(9), .. relative]) is null, "a relative path");
+        Check(RecycleInfo.Parse([.. Header(2, -1), .. BitConverter.GetBytes(original.Length + 1), .. path]) is { Size: null }, "an unknown size");
+    }
+
     // The runner's Recycle Bin. Each item has a name unique to this run and is removed from the bin afterwards.
     [Test, Explicit, Category("NativeTrash")]
     public async Task RecycleBinAsync()
@@ -52,6 +79,47 @@ internal sealed class TrashTests
             Check(recycled.Contains(file, StringComparer.OrdinalIgnoreCase) && recycled.Contains(Path.Combine(root, "folder"), StringComparer.OrdinalIgnoreCase),
                 $"the Recycle Bin records both original paths: {string.Join(", ", recycled)}");
             Check(await trash.MoveToTrashAsync(Path.Combine(root, "missing.txt")) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "missing");
+
+            // The bin's shell folder lists both items with their original paths; restoring puts them back.
+            var listed = await trash.ListAsync();
+            if (listed is not PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopTrashItem>>.Success(var items)) throw new InvalidOperationException($"Trash check failed: list {listed}");
+            var mine = items.Where(item => item.OriginalPath.StartsWith(root, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var item in mine) Console.WriteLine($"Listed: {item}");
+            var recycledFile = mine.SingleOrDefault(item => string.Equals(item.OriginalPath, file, StringComparison.OrdinalIgnoreCase));
+            var recycledFolder = mine.SingleOrDefault(item => string.Equals(item.OriginalPath, Path.Combine(root, "folder"), StringComparison.OrdinalIgnoreCase));
+            Check(recycledFile is { IsDirectory: false, Size: 7, DeletedAt: not null } && recycledFolder is { IsDirectory: true, Size: > 0 },
+                $"the list has both items: {string.Join("; ", mine)}");
+            Check(recycledFile!.DeletedAt!.Value > DateTimeOffset.UtcNow.AddHours(-1) && recycledFile.DeletedAt.Value <= DateTimeOffset.UtcNow.AddMinutes(1), "the deletion time");
+
+            // Something now at the original path is never replaced.
+            File.WriteAllText(file, "new");
+            Check(await trash.RestoreAsync(recycledFile.Id) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Conflict } && File.ReadAllText(file) == "new",
+                "a conflicting restore leaves both");
+            File.Delete(file);
+            var restored = await trash.RestoreAsync(recycledFile.Id);
+            Console.WriteLine($"Restore: {restored}");
+            Check(restored is PlatformResult<PlatformUnit>.Success && File.ReadAllText(file) == "content", $"the file is back: {restored}");
+            Check(await trash.RestoreAsync(recycledFile.Id) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "a restored item is no longer in the bin");
+            // A missing parent is created again.
+            Directory.Delete(root, recursive: true);
+            var restoredFolder = await trash.RestoreAsync(recycledFolder!.Id);
+            Console.WriteLine($"Restore into a removed parent: {restoredFolder}");
+            Check(restoredFolder is PlatformResult<PlatformUnit>.Success && File.ReadAllText(Path.Combine(root, "folder", "sub", "leaf.txt")) == "leaf",
+                $"the directory is back with its contents: {restoredFolder}");
+            Check(await trash.RestoreAsync(@"C:\$Recycle.Bin\none\$Rnone.txt") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, "an unknown item");
+
+            // Emptying deletes everything in the bin: only on an ephemeral CI runner.
+            if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+            {
+                Check(await trash.MoveToTrashAsync(file) is PlatformResult<PlatformUnit>.Success, "the file was recycled again");
+                var emptied = await trash.EmptyAsync();
+                Console.WriteLine($"Empty: {emptied}");
+                Check(emptied is PlatformResult<PlatformUnit>.Success, $"the bin is emptied: {emptied}");
+                Check(await trash.ListAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopTrashItem>>.Success { Value.IsEmpty: true }, "the bin is empty");
+                Check(await trash.EmptyAsync() is PlatformResult<PlatformUnit>.Success, "emptying an empty bin succeeds");
+            }
+            else Console.WriteLine("Skipped emptying the Recycle Bin: it runs only on CI runners.");
+            Directory.CreateDirectory(root);
 
             // An administrative share reaches the same disk over SMB, where nothing can be recycled: the shell would
             // delete permanently, and the request must leave the file instead.

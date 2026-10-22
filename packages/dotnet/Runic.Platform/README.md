@@ -462,6 +462,19 @@ result is `Success`. A missing item is `Failed(NotFound)`, a refused move
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md)
 has the per-platform behaviour and its verification.
 
+`MoveAllToTrashAsync` trashes several items one after another with progress,
+each with its own result. On Windows and on Linux outside Flatpak and Snap,
+`ListAsync` lists what is in the trash, `RestoreAsync` puts an item back where
+it came from without replacing anything there, and `EmptyAsync` deletes every
+item permanently; ask the user before emptying. macOS and sandboxed Linux report
+`Unavailable(BackendUnavailable)` for these three:
+
+```csharp
+var results = await trash.MoveAllToTrashAsync(selection, new Progress<DesktopTrashProgress>(p => ShowProgress(p.Completed, p.Total)));
+if (await trash.ListAsync() is PlatformResult<ImmutableArray<DesktopTrashItem>>.Success(var items))
+    foreach (var item in items.OrderByDescending(static i => i.DeletedAt)) { /* item.OriginalPath, item.Size, item.IsDirectory */ }
+```
+
 ## Desktop applications
 
 `IDesktopApplications` is the desktop's application database: what a file is,
@@ -705,11 +718,28 @@ locked encrypted volume `Failed(Locked)`, and a volume that is gone
 unmounts every volume of the drive first. An operation the volume or platform
 does not offer is `Unavailable(BackendUnavailable)`.
 
+A locked encrypted volume has `IsLocked`, `IsEncrypted` and `CanMount = false`.
+Its `UnlockMethod` says how to unlock it: `SystemPrompt` with `UnlockAsync(id)`,
+which shows the system's own prompt (BitLocker on Windows), or `Passphrase` with
+`UnlockAsync(id, passphrase, token)` (APFS on macOS). `MountAsync(id, options,
+token)` mounts read-only or with platform mount options where the platform
+takes them (macOS); Windows mounts volumes itself and takes none:
+
+```csharp
+if (vault is { IsLocked: true, UnlockMethod: DesktopVolumeUnlockMethod.Passphrase })
+{
+    char[] passphrase = AskPassphrase();
+    try { await volumes.UnlockAsync(vault.Id, passphrase, cancellationToken); }
+    finally { Array.Clear(passphrase); }
+}
+await volumes.MountAsync(stick.Id, new DesktopVolumeMountOptions { ReadOnly = true }, cancellationToken);
+```
+
 | Platform | Provider |
 | --- | --- |
 | Linux | UDisks2 on the system bus, which asks Polkit; inside Flatpak add `--system-talk-name=org.freedesktop.UDisks2` |
-| Windows | The volume management API: drive letters and mounted folders. Windows mounts volumes itself, so `MountAsync` and `UnmountAsync` only succeed for a volume already in that state and otherwise report `Unavailable(BackendUnavailable)`; `EjectAsync` is "Safely Remove Hardware" |
-| macOS | Disk Arbitration, as Finder does; an application with a file open on the volume makes an unmount or eject `Failed(ResourceBusy)`. The startup disk's volumes are never unmounted or ejected |
+| Windows | The volume management API: drive letters and mounted folders. Windows mounts volumes itself, so `MountAsync` and `UnmountAsync` only succeed for a volume already in that state and otherwise report `Unavailable(BackendUnavailable)`; `EjectAsync` is "Safely Remove Hardware", or opens an optical drive's tray. A locked BitLocker volume is listed and unlocks through Explorer's prompt |
+| macOS | Disk Arbitration, as Finder does; an application with a file open on the volume makes an unmount or eject `Failed(ResourceBusy)`. The startup disk's volumes are never unmounted or ejected. A locked APFS volume is listed and unlocks with its passphrase; mount options go to `DADiskMountWithArguments` |
 
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)

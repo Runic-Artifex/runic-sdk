@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Windows.Win32;
@@ -10,23 +11,64 @@ namespace Runic.Platform.Windows;
 // The Recycle Bin through IFileOperation, the shell's own delete with undo, without UI. The shell deletes an item
 // permanently when it cannot recycle it (a network share, a removable drive without a Recycle Bin, a file larger than
 // the bin, a policy); the progress sink refuses such a deletion before it happens, so the item stays where it was.
+// Listing, restoring and emptying go through the Recycle Bin's shell folder (WindowsRecycleBin).
+[System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
 internal sealed class WindowsTrash : IDesktopTrash
 {
     public ValueTask<PlatformResult<PlatformUnit>> MoveToTrashAsync(string path, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.ItemPath(path);
         cancellationToken.ThrowIfCancellationRequested();
+        return OnApartment("Runic Recycle Bin", () => Recycle(path));
+    }
+
+    public ValueTask<PlatformResult<ImmutableArray<DesktopTrashItem>>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return OnApartment("Runic Recycle Bin list", WindowsRecycleBin.List, static () => new PlatformResult<ImmutableArray<DesktopTrashItem>>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
+
+    public ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(string itemId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(itemId);
+        cancellationToken.ThrowIfCancellationRequested();
+        return OnApartment("Runic Recycle Bin restore", () => WindowsRecycleBin.Restore(itemId));
+    }
+
+    public ValueTask<PlatformResult<PlatformUnit>> EmptyAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return OnApartment("Runic Recycle Bin empty", WindowsRecycleBin.Empty);
+    }
+
+    private static ValueTask<PlatformResult<PlatformUnit>> OnApartment(string name, Func<PlatformResult<PlatformUnit>> work) =>
+        OnApartment(name, work, static () => new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+
+    // The shell's file operation and folders need a single-threaded apartment of their own.
+    private static ValueTask<T> OnApartment<T>(string name, Func<T> work, Func<T> unavailable)
+    {
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
-        var completion = new TaskCompletionSource<PlatformResult<PlatformUnit>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        // The shell's file operation needs a single-threaded apartment of its own.
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { completion.TrySetResult(WindowsSupport.IsAvailable ? Recycle(path) : throw new PlatformNotSupportedException()); }
+            try
+            {
+                if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+                completion.TrySetResult(Initialized(work, unavailable));
+            }
             catch (Exception error) { completion.TrySetException(error); }
-        }) { IsBackground = true, Name = "Runic Recycle Bin" };
+        }) { IsBackground = true, Name = name };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         return new(completion.Task);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+    private static unsafe T Initialized<T>(Func<T> work, Func<T> unavailable)
+    {
+        if (PInvoke.CoInitializeEx(null, COINIT.COINIT_APARTMENTTHREADED).Value < 0) return unavailable();
+        try { return work(); }
+        finally { PInvoke.CoUninitialize(); }
     }
 
     private const int E_ABORT = unchecked((int)0x80004004);
@@ -34,8 +76,6 @@ internal sealed class WindowsTrash : IDesktopTrash
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
     private static unsafe PlatformResult<PlatformUnit> Recycle(string path)
     {
-        if (PInvoke.CoInitializeEx(null, COINIT.COINIT_APARTMENTTHREADED).Value < 0)
-            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         IFileOperation* operation = null;
         IShellItem* item = null;
         var state = new RecycleState();
@@ -84,7 +124,6 @@ internal sealed class WindowsTrash : IDesktopTrash
             if (operation is not null) operation->Release();
             if (item is not null) item->Release();
             RecycleSink.Release(sink);
-            PInvoke.CoUninitialize();
         }
     }
 

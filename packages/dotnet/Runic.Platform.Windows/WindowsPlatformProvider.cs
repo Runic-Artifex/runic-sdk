@@ -59,7 +59,8 @@ public static class WindowsPlatformProvider
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsSecretStore(); }
     /// <summary>Creates the Recycle Bin, through the shell's own file operation without UI.</summary>
     /// <remarks>An item the shell cannot recycle, such as one on a network share or larger than the Recycle Bin, is not
-    /// deleted permanently: the request reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</remarks>
+    /// deleted permanently: the request reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>. Listing,
+    /// restoring and emptying go through the Recycle Bin's shell folder, without UI.</remarks>
     public static IDesktopTrash CreateTrash()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsTrash(); }
     /// <summary>Creates thumbnails from the shell's thumbnail providers and cache, as Explorer shows them.</summary>
@@ -74,7 +75,8 @@ public static class WindowsPlatformProvider
     /// <see cref="IDesktopVolumes.UnmountAsync"/> succeeds for a volume without a mount path; otherwise both report
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. <see cref="IDesktopVolumes.EjectAsync"/> safely
     /// removes the drive, as "Safely Remove Hardware" does; a program that keeps a file open on it is
-    /// <see cref="PlatformFailureCode.ResourceBusy"/>. The volumes need no window and hold no native resources
+    /// <see cref="PlatformFailureCode.ResourceBusy"/>; an optical drive opens its tray. A locked BitLocker volume is
+    /// listed locked and unlocks through Explorer's prompt. The volumes need no window and hold no native resources
     /// except during a watch.
     /// </remarks>
     public static IDesktopVolumes CreateVolumes()

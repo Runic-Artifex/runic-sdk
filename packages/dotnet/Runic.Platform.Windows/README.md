@@ -74,7 +74,12 @@ the shell's `IFileOperation`, without a confirmation, error or progress dialog,
 so Explorer can restore them. The shell would delete an item it cannot recycle,
 such as one on a network share or larger than the Recycle Bin, permanently;
 the provider refuses that deletion, and the request reports
-`Unavailable(BackendUnavailable)` with the item in place. See the
+`Unavailable(BackendUnavailable)` with the item in place. `ListAsync` reads the
+Recycle Bin's shell folder, every drive's bin, with each item's original path,
+size and deletion time from its `$I` record; `RestoreAsync` runs the item's own
+`undelete` verb without UI after checking that nothing is at the original path
+(`Failed(Conflict)` otherwise), recreating a missing parent; `EmptyAsync` is
+`SHEmptyRecycleBinW` without confirmation, progress or sound. See the
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
 
 ## Thumbnails
@@ -97,8 +102,17 @@ mounts every volume itself: `MountAsync` returns a mounted volume as it is,
 report `Unavailable(BackendUnavailable)`. `EjectAsync` stops the drive's
 removable device as "Safely Remove Hardware" does (`CM_Request_Device_EjectW`),
 which dismounts its volumes first; a program with a file open on it vetoes the
-removal, which is `Failed(ResourceBusy)`. A drive without a removable device,
-and the disk the system runs from, report `Unavailable(BackendUnavailable)`.
+removal, which is `Failed(ResourceBusy)`. An optical drive without a removable
+device opens its tray (`FSCTL_LOCK_VOLUME`, `FSCTL_DISMOUNT_VOLUME`,
+`IOCTL_STORAGE_EJECT_MEDIA`). Another drive without a removable device, and the
+disk the system runs from, report `Unavailable(BackendUnavailable)`. A locked
+BitLocker volume with a drive letter is listed `IsLocked` without a mount path,
+from the shell's `System.Volume.BitLockerProtection`, which also sets
+`IsEncrypted`; `MountAsync` reports it `Failed(Locked)`, and `UnlockAsync(id)`
+opens Explorer's BitLocker prompt (the drive's `unlock-bde` verb), waits for it
+and reports `Failed(UserDismissed)` when the volume stays locked. Unlocking with
+a passphrase needs an administrator and reports `Unavailable(BackendUnavailable)`,
+as mount options do.
 A watch hears volume arrivals and removals (`CM_Register_Notification`) and
 lists again every two seconds for drive letters, labels and media changes that
 have no notification. See the

@@ -7,14 +7,14 @@ contract; `AddRunicPlatformServices()` registers the provider for the
 operating system. .NET has no API for this: `File.Delete` and
 `Directory.Delete` delete permanently.
 
-## Delivery matrix — 2026-10-17
+## Delivery matrix — 2026-10-22
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
 | Linux | Implemented: the [freedesktop.org Trash specification 1.0](https://specifications.freedesktop.org/trash-spec/1.0/), home trash and topdir trashes, in Runic.Platform.Linux.Portal. | Tests in temporary directories, never the user's trash, for every outcome: home trash, name collisions and stale entries, directories, links, escaping, missing items, refused moves, a directory that contains the trash, and the topdir trashes on a second file system (`/dev/shm`) with sticky, non-sticky and linked trash directories. JIT and NativeAOT, x64 and arm64, in CI. |
 | Sandboxed Linux | Implemented: the Trash portal (`org.freedesktop.portal.Trash`) inside Flatpak and Snap. | A fake portal on a private bus: trashed, refused, a link, a read-only file, no Trash interface, no portal. The real xdg-desktop-portal 1.22 in a Fedora container with a temporary home moves a file and a directory, JIT and NativeAOT in CI. Inside a real Flatpak or Snap: unverified. |
-| Windows | Implemented: `IFileOperation` with `FOFX_RECYCLEONDELETE` and no UI in Runic.Platform.Windows. A progress sink refuses a permanent deletion. | Portable tests for error mapping and the sink's refusal. CI on the windows-latest and windows-11-arm runners' Recycle Bin, JIT and NativeAOT: a file and a directory are recycled and recorded with their original paths, a missing item is `NotFound`, and a file on the administrative SMB share, which cannot be recycled, stays. |
-| macOS | Implemented: `-[NSFileManager trashItemAtURL:resultingItemURL:error:]` in Runic.Platform.MacOS. | Portable tests for error mapping. CI on the macos-26 runner's Trash, JIT and NativeAOT: a file, a directory, a symbolic link and a missing item. A volume without a trash (`NSFeatureUnsupportedError`) is unverified. |
+| Windows | Implemented: `IFileOperation` with `FOFX_RECYCLEONDELETE` and no UI in Runic.Platform.Windows. A progress sink refuses a permanent deletion. Listing, restoring and emptying through the Recycle Bin's shell folder. | Portable tests for error mapping, the sink's refusal and the `$I` record. CI on the windows-latest and windows-11-arm runners' Recycle Bin, JIT and NativeAOT: a file and a directory are recycled and recorded with their original paths, a missing item is `NotFound`, a file on the administrative SMB share, which cannot be recycled, stays; both are listed with their size and deletion time, a restore over an existing file is `Conflict`, the file and the directory, into a removed parent, are restored, and the bin is emptied (on the ephemeral runner only). |
+| macOS | Implemented: `-[NSFileManager trashItemAtURL:resultingItemURL:error:]` in Runic.Platform.MacOS. Listing, restoring and emptying are `Unavailable(BackendUnavailable)`. | Portable tests for error mapping. CI on the macos-26 runner's Trash, JIT and NativeAOT: a file, a directory, a symbolic link, a missing item, and list, restore and empty unavailable. A volume without a trash (`NSFeatureUnsupportedError`) is unverified. |
 
 ## Contract
 
@@ -22,6 +22,20 @@ operating system. .NET has no API for this: `File.Delete` and
 public interface IDesktopTrash
 {
     ValueTask<PlatformResult<PlatformUnit>> MoveToTrashAsync(string path, CancellationToken cancellationToken = default);
+    // Default members: a 0.10 implementation keeps working.
+    ValueTask<ImmutableArray<PlatformResult<PlatformUnit>>> MoveAllToTrashAsync(IReadOnlyList<string> paths,
+        IProgress<DesktopTrashProgress>? progress = null, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<ImmutableArray<DesktopTrashItem>>> ListAsync(CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(string itemId, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<PlatformUnit>> EmptyAsync(CancellationToken cancellationToken = default);
+}
+
+public readonly record struct DesktopTrashProgress(int Completed, int Total);
+public sealed record DesktopTrashItem(string Id, string OriginalPath)
+{
+    public DateTimeOffset? DeletedAt { get; init; }
+    public long? Size { get; init; }
+    public bool IsDirectory { get; init; }
 }
 ```
 
@@ -38,6 +52,21 @@ public interface IDesktopTrash
   without a provider; CS-WebUI registers it with `ProviderNotConfigured`.
 - Cancellation stops a request that has not moved the item yet; a move in
   progress completes.
+- `MoveAllToTrashAsync` checks every path first, then calls
+  `MoveToTrashAsync` for each, in order, and reports `(Completed, Total)` after
+  each item. A failed item does not stop the others; each keeps its own
+  outcome. Cancellation throws after the item in progress, which the last
+  progress report counts.
+- `ListAsync`, `RestoreAsync` and `EmptyAsync` are available on Windows and,
+  outside a sandbox, on Linux. Elsewhere, and in the default implementation,
+  they report `Unavailable(BackendUnavailable)` (D036.6).
+- A listed item's `Id` is opaque and stable while the item stays in the trash.
+  `Size` is reported where the trash records it; a directory is never walked to
+  measure it. `RestoreAsync` never replaces what is now at the original path
+  (`Failed(Conflict)`), recreates a missing parent directory, and reports an
+  item no longer in the trash as `Failed(NotFound)`. `EmptyAsync` deletes
+  every listed item permanently without asking: the application asks the user
+  first.
 
 ### Outcomes
 
@@ -111,6 +140,21 @@ The provider's sink returns `E_ABORT` then, and the request reports
 `Unavailable(BackendUnavailable)` with the item in place. The sink is a static
 unmanaged vtable, so it is NativeAOT-safe.
 
+Listing enumerates the Recycle Bin's shell folder (`FOLDERID_RecycleBinFolder`,
+`BHID_EnumItems`), which spans the bins of every drive. An item's filesystem
+path (`SIGDN_FILESYSPATH`) is its `$R` file or directory and is the item's
+`Id`; the `$I` file beside it records the original path, the size (also of a
+directory) and the deletion time as a `FILETIME`. Both record versions are
+read: version 1 with a fixed 260-character path, version 2 (Windows 10 and
+later) with a length-prefixed path. An entry without a readable `$I` file is
+not listed. Restoring checks that nothing is at the original path, then runs
+the item's own `undelete` verb through its `IContextMenu` with
+`CMIC_MASK_FLAG_NO_UI | CMIC_MASK_NOASYNC`, which recreates a missing parent;
+the result is `Success` once the original path exists and the `$R` entry is
+gone. Emptying is `SHEmptyRecycleBinW` for every drive with
+`SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND`; an already empty
+bin, which answers `E_UNEXPECTED`, succeeds.
+
 ## macOS
 
 `-[NSFileManager trashItemAtURL:resultingItemURL:error:]` on the thread pool,
@@ -118,14 +162,15 @@ as Finder's Move to Trash: `~/.Trash` for the startup volume and
 `.Trashes/<uid>` on other local volumes. It needs no AppKit event loop. The
 resulting location is not returned.
 
+Listing, restoring and emptying report `Unavailable(BackendUnavailable)`:
+macOS has no public API for them (Finder's Put Back only), and `~/.Trash` is
+protected by privacy consent.
+
 ## Out of scope for 1.0
 
-- Listing the trash, restoring an item and emptying the trash. They are not
-  portable: macOS has no public API for them (Finder's Put Back only, and
-  `~/.Trash` is protected by privacy consent), so they would be Linux and
-  Windows only.
-- Trashing several items in one request with progress; call
-  `MoveToTrashAsync` for each.
-- Returning where the item went, for an application's own undo.
+- Returning where the item went, for an application's own undo (D036.6).
+- Deleting one trashed item permanently.
+- Listing, restoring and emptying the trash on Linux: not yet implemented, so
+  they report `Unavailable(BackendUnavailable)`.
 - Updating `directorysizes` on Linux, and trashing a symbolic link through the
   Trash portal.

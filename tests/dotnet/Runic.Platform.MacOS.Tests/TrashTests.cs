@@ -49,6 +49,10 @@ internal sealed class TrashTests
             Check(missing is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound }, $"missing: {missing}");
             File.WriteAllText(file, "again");
             Check(await trash.MoveToTrashAsync(file) is PlatformResult<PlatformUnit>.Success && !File.Exists(file), "through the provider");
+            // macOS has no public interface for the Trash's contents.
+            Check(await trash.ListAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopTrashItem>>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+                && await trash.RestoreAsync("item") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+                && await trash.EmptyAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "list, restore and empty are unavailable");
             Console.WriteLine("PASS macOS Trash: link, file, directory, missing item.");
         }
         finally

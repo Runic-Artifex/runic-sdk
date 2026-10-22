@@ -13,13 +13,18 @@ internal interface IWindowsVolumeSource
     // Calls changed when a volume arrives or leaves; null when Windows offers no notification.
     IDisposable? Subscribe(Action changed);
 
-    // Safely removes the drive (its DriveId), as the notification area's "Safely Remove Hardware" does.
-    PlatformResult<PlatformUnit> Eject(string driveId);
+    // Safely removes the drive (its DriveId), as the notification area's "Safely Remove Hardware" does, or opens the
+    // tray of an optical drive that is no removable device of its own.
+    PlatformResult<PlatformUnit> Eject(string volumeId, string? driveId);
+
+    // Shows Explorer's BitLocker unlock prompt for a locked volume and waits until it closes.
+    Task<PlatformResult<PlatformUnit>> PromptUnlockAsync(string volumeId, CancellationToken cancellationToken);
 }
 
 // Volumes from the volume management API. Windows mounts every volume it recognizes itself, at its drive letters and
 // mounted folders, so MountAsync and UnmountAsync only answer for volumes already in the state asked for; EjectAsync
-// safely removes the drive, which dismounts its volumes first.
+// safely removes the drive, which dismounts its volumes first, or opens an optical drive's tray. A locked BitLocker
+// volume unlocks through Explorer's prompt; a passphrase needs an administrator, so that overload keeps its default.
 internal sealed class WindowsVolumes(IWindowsVolumeSource source, TimeSpan poll, TimeSpan settle) : IDesktopVolumes
 {
     // Drive letters, mounted folders, labels and media in a drive that stays present have no volume notification:
@@ -54,6 +59,7 @@ internal sealed class WindowsVolumes(IWindowsVolumeSource source, TimeSpan poll,
         ArgumentException.ThrowIfNullOrEmpty(volumeId);
         return await FindAsync(volumeId, cancellationToken).ConfigureAwait(false) switch
         {
+            PlatformResult<DesktopVolume>.Success { Value.IsLocked: true } => new PlatformResult<DesktopVolume>.Failed(PlatformFailureCode.Locked),
             PlatformResult<DesktopVolume>.Success { Value.MountPaths.IsEmpty: false } mounted => mounted,
             PlatformResult<DesktopVolume>.Success => new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
             var other => other,
@@ -77,9 +83,26 @@ internal sealed class WindowsVolumes(IWindowsVolumeSource source, TimeSpan poll,
         ArgumentException.ThrowIfNullOrEmpty(volumeId);
         var found = await FindAsync(volumeId, cancellationToken).ConfigureAwait(false);
         if (found is not PlatformResult<DesktopVolume>.Success(var volume)) return Forward<PlatformUnit>(found);
-        if (!volume.CanEject || volume.DriveId is not { } drive) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        if (!volume.CanEject) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         cancellationToken.ThrowIfCancellationRequested();
-        return await Task.Run(() => source.Eject(drive), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => source.Eject(volume.Id, volume.DriveId), cancellationToken).ConfigureAwait(false);
+    }
+
+    // A locked BitLocker volume opens Explorer's prompt; the volume is unlocked if it no longer is locked afterwards.
+    public async ValueTask<PlatformResult<DesktopVolume>> UnlockAsync(string volumeId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(volumeId);
+        var found = await FindAsync(volumeId, cancellationToken).ConfigureAwait(false);
+        if (found is not PlatformResult<DesktopVolume>.Success(var volume) || !volume.IsLocked) return found;
+        if (volume.UnlockMethod != DesktopVolumeUnlockMethod.SystemPrompt) return new PlatformResult<DesktopVolume>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        cancellationToken.ThrowIfCancellationRequested();
+        var prompted = await source.PromptUnlockAsync(volumeId, cancellationToken).ConfigureAwait(false);
+        if (prompted is not PlatformResult<PlatformUnit>.Success) return Forward<PlatformUnit, DesktopVolume>(prompted);
+        return await FindAsync(volumeId, cancellationToken).ConfigureAwait(false) switch
+        {
+            PlatformResult<DesktopVolume>.Success { Value.IsLocked: true } => new PlatformResult<DesktopVolume>.Failed(PlatformFailureCode.UserDismissed),
+            var other => other,
+        };
     }
 
     public async IAsyncEnumerable<PlatformResult<DesktopVolumeChange>> WatchAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -107,10 +130,12 @@ internal sealed class WindowsVolumes(IWindowsVolumeSource source, TimeSpan poll,
             _ => throw new InvalidOperationException(),
         };
 
-    private static PlatformResult<T> Forward<T>(PlatformResult<DesktopVolume> result) => result switch
+    private static PlatformResult<T> Forward<T>(PlatformResult<DesktopVolume> result) => Forward<DesktopVolume, T>(result);
+
+    private static PlatformResult<TOut> Forward<TIn, TOut>(PlatformResult<TIn> result) => result switch
     {
-        PlatformResult<DesktopVolume>.Unavailable(var reason) => new PlatformResult<T>.Unavailable(reason),
-        PlatformResult<DesktopVolume>.Failed failed => new PlatformResult<T>.Failed(failed.Code, failed.Diagnostic),
+        PlatformResult<TIn>.Unavailable(var reason) => new PlatformResult<TOut>.Unavailable(reason),
+        PlatformResult<TIn>.Failed failed => new PlatformResult<TOut>.Failed(failed.Code, failed.Diagnostic),
         _ => throw new InvalidOperationException(),
     };
 
