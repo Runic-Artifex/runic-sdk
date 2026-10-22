@@ -41,11 +41,12 @@ internal sealed class Nvda(string executable, string logs) : ScreenReader
         foreach (var argument in new[] { "--log-level=12", $"--log-file={Log}", $"--config-path={config}" }) start.ArgumentList.Add(argument);
         _nvda = Process.Start(start) ?? throw new InvalidOperationException("NVDA did not start.");
 
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(90);
+        // The fixture waits a minute for the probe.
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(45);
         while (!Initialized())
         {
             if (_nvda.HasExited) throw new InvalidOperationException($"NVDA exited with {_nvda.ExitCode}; see {Log}.");
-            if (DateTime.UtcNow > until) throw new InvalidOperationException($"NVDA did not initialize within 90 seconds; see {Log}.");
+            if (DateTime.UtcNow > until) throw new InvalidOperationException($"NVDA did not initialize within 45 seconds; see {Log}.");
             await Task.Delay(250, cancellationToken);
         }
         Console.WriteLine("NVDA started.");

@@ -1355,7 +1355,8 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.screen-readers) }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # The checks take a few minutes; apt-install.sh may retry a stalled mirror for up to half an hour.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
