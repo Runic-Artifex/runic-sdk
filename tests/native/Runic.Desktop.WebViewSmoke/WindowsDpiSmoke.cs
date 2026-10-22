@@ -128,14 +128,14 @@ internal static partial class WindowsDpiSmoke
         finally { _ = SetThreadDpiAwarenessContext(previous); }
     }
 
-    private static (int Width, int Height) CurrentResolution()
+    internal static (int Width, int Height) CurrentResolution()
     {
         var mode = new DevMode { Size = (short)Marshal.SizeOf<DevMode>() };
         _ = EnumDisplaySettings(0, -1, ref mode);
         return (mode.PelsWidth, mode.PelsHeight);
     }
 
-    private static int SetResolution(int width, int height)
+    internal static int SetResolution(int width, int height)
     {
         var mode = new DevMode { Size = (short)Marshal.SizeOf<DevMode>() };
         _ = EnumDisplaySettings(0, -1, ref mode);

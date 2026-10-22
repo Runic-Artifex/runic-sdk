@@ -220,6 +220,25 @@ internal sealed partial class StatusIconTests
             Check((GetMenuState(more, off, 0) & (uint)MENU_ITEM_FLAGS.MF_GRAYED) != 0, "a disabled entry is grayed");
         }
         finally { PInvoke.DestroyMenu(menu); }
+        // DesktopLayoutDirection.RightToLeft: every item, also in submenus, reads right to left and aligns right.
+        var mirrored = WindowsStatusIcon.CreateMenu(model.Entries, rightToLeft: true);
+        try
+        {
+            Check(GetMenuItemCount(mirrored) == 5, "five top-level entries in the right-to-left menu");
+            foreach (var (owner, count) in new (nint Menu, int Count)[] { (mirrored, 5), (GetSubMenu(mirrored, 3), 2) })
+            {
+                for (uint position = 0; position < count; position++)
+                {
+                    var info = new WindowsShellInterop.MENUITEMINFOW
+                    { cbSize = (uint)sizeof(WindowsShellInterop.MENUITEMINFOW), fMask = WindowsShellInterop.MIIM_FTYPE };
+                    Check(WindowsShellInterop.GetMenuItemInfo(owner, position, 1, &info) != 0
+                        && (info.fType & (WindowsShellInterop.MFT_RIGHTORDER | WindowsShellInterop.MFT_RIGHTJUSTIFY))
+                            == (WindowsShellInterop.MFT_RIGHTORDER | WindowsShellInterop.MFT_RIGHTJUSTIFY),
+                        $"right-to-left item {position} has MFT_RIGHTORDER and MFT_RIGHTJUSTIFY");
+                }
+            }
+        }
+        finally { PInvoke.DestroyMenu(mirrored); }
         var icon = WindowsStatusIcon.FromImage(new DesktopIconImage(2, 1, [255, 0, 0, 255, 0, 0, 255, 128]));
         Check(icon != default, "CreateIconIndirect makes an icon from RGBA");
         PInvoke.DestroyIcon(icon);

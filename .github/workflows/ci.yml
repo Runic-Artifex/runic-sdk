@@ -835,6 +835,17 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+      # B12 (I-066, I-073): the host lists and watches its monitors, a window opens on and moves to a monitor, enters
+      # and leaves full screen, and a placement saved full-screen opens full-screen. Windows: a resolution change reaches
+      # the watch, and a right-to-left window has a mirrored frame while WebView2 renders and hit-tests the page
+      # unmirrored (#389) with the window's Language. macOS: the standard menus take StandardMenuTitles. One monitor per
+      # runner; two monitors are I-099's VM check.
+      - name: Exercise monitors, full screen and right-to-left windows on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 6
+        env:
+          RUNIC_TEST_DISPLAY_SCALING: "1"
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --monitors
       # W315-018: Runic.Desktop.AccessibilityProbe reads and changes a page through AT-SPI (GTK 3 and GTK 4), UI
       # Automation (WebView2) or the macOS accessibility API (WKWebView) from its own process, as a screen reader does:
       # roles, range values, selection, their change events, focus, live regions and AnnounceAsync. On macOS VoiceOver
@@ -1160,7 +1171,8 @@ jobs:
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe)
       # W315-017: the WebView2 window follows a live change of the monitor scale (100, 150, 175 %) through
       # WM_DPICHANGED, as when it moves to a monitor with another scale. The runner has one virtual monitor.
-      - name: Exercise per-monitor DPI changes in the WebView2 window with JIT and NativeAOT
+      # The monitors smoke (B12) runs again under NativeAOT here, for its display-configuration and window interop.
+      - name: Exercise per-monitor DPI changes in the WebView2 window with JIT and NativeAOT, and monitors under NativeAOT
         if: runner.os == 'Windows'
         timeout-minutes: 5
         shell: bash
@@ -1169,6 +1181,7 @@ jobs:
         run: |
           dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --dpi
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
+          (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
       # FirstWindow and the probes use the CS-WebUI host.
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui

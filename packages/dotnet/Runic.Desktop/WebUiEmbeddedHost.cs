@@ -114,6 +114,14 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Asks the screen reader to announce a message; requires <see cref="DesktopWindowCapabilities.Announcements"/>.</summary>
     ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot make announcements."));
+
+    /// <summary>Enters or leaves full screen; requires <see cref="DesktopWindowCapabilities.FullScreen"/>.</summary>
+    ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot enter full screen."));
+
+    /// <summary>Moves the window onto a monitor; requires <see cref="DesktopWindowCapabilities.MonitorPlacement"/>.</summary>
+    ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot place its window on a monitor."));
 }
 
 /// <summary>Describes the initial state of an embedded platform WebView window.</summary>
@@ -173,4 +181,13 @@ internal sealed record WebUiEmbeddedHostOptions
 
     /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
+
+    /// <summary>The monitor to open centered on (DesktopWindowOptions.Monitor), replacing X, Y and Centered; null otherwise.</summary>
+    public string? Monitor { get; init; }
+
+    /// <summary>The direction of the window's native parts (DesktopWindowOptions.LayoutDirection).</summary>
+    public DesktopLayoutDirection LayoutDirection { get; init; }
+
+    /// <summary>The web view's language (DesktopWindowOptions.Language), or null for the platform's.</summary>
+    public string? Language { get; init; }
 }

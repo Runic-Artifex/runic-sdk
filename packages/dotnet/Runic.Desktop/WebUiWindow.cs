@@ -104,6 +104,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private bool _isPublic;
     private bool _profileConfigured;
     private bool _kiosk;
+    private string? _monitor;
+    private Runic.Platform.DesktopLayoutDirection _layoutDirection;
+    private string? _language;
     private bool _hidden;
     private bool _resizable = true;
     private bool _frameless;
@@ -1047,6 +1050,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal Task AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
         => GetEmbeddedHost().AnnounceAsync(message, priority, cancellationToken).AsTask();
 
+    // Whether the current embedded window opened as a kiosk, which stays full-screen.
+    internal bool IsKiosk => _kiosk;
+
+    internal ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken)
+        => GetEmbeddedHost().SetFullScreenAsync(fullScreen, cancellationToken);
+
+    internal ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken)
+        => GetEmbeddedHost().MoveToMonitorAsync(monitorId, cancellationToken);
+
     internal ValueTask SetEmbeddedVisibleAsync(bool visible, CancellationToken cancellationToken)
         => GetEmbeddedHost().SetVisibleAsync(visible, cancellationToken);
 
@@ -1330,6 +1342,17 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _browserArgumentList = [];
         _browserArguments = null;
         _menuBarPresentation = DesktopMenuBarPresentation.Native;
+        _monitor = null;
+        _layoutDirection = Runic.Platform.DesktopLayoutDirection.Default;
+        _language = null;
+    }
+
+    // The monitor, native direction and web language of the next embedded window (DesktopWindowOptions).
+    internal void SetMonitorAndLanguage(string? monitor, Runic.Platform.DesktopLayoutDirection layoutDirection, string? language)
+    {
+        _monitor = monitor;
+        _layoutDirection = layoutDirection;
+        _language = language;
     }
 
     // Where the next embedded window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).
@@ -1788,6 +1811,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
             MenuBarPresentation = _menuBarPresentation,
+            Monitor = _monitor,
+            LayoutDirection = _layoutDirection,
+            Language = _language,
         };
     }
 

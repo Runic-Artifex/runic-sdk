@@ -43,6 +43,13 @@ public sealed record DesktopStatusIconState(DesktopIcon Icon, string Title)
     /// are ignored.
     /// </remarks>
     public ImmutableArray<DesktopMenuEntry> Menu { get; init; } = [];
+
+    /// <summary>The direction the menu lays out in: <see cref="DesktopLayoutDirection.Default"/>, the default, keeps the platform's.</summary>
+    /// <remarks>
+    /// Windows mirrors the menu for <see cref="DesktopLayoutDirection.RightToLeft"/> and orders its text right to left.
+    /// Linux and macOS ignore it: their desktops lay menus out for the user's language.
+    /// </remarks>
+    public DesktopLayoutDirection LayoutDirection { get; init; }
 }
 
 /// <summary>How the user activated a status icon.</summary>

@@ -22,6 +22,9 @@ internal static class WpfPresentationOptions
         Add(options.Hidden, nameof(DesktopWindowOptions.Hidden));
         Add(options.Kiosk, nameof(DesktopWindowOptions.Kiosk));
         Add(options.IconFile is not null, nameof(DesktopWindowOptions.IconFile));
+        Add(options.Monitor is not null, nameof(DesktopWindowOptions.Monitor));
+        // The WPF window sets FlowDirection itself; the child WebView keeps its page's direction.
+        Add(options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default, nameof(DesktopWindowOptions.LayoutDirection));
         return diagnostics;
 
         void Add(bool configured, string option)

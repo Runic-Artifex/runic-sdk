@@ -13,13 +13,15 @@ internal static class MacOsPageZoom
 
     // Command and + or =, Command and - (or _ with Shift) and Command and 0, as on Linux with Control. AppKit matches
     // the character the key types with the active layout and also the keypad's + and -.
-    internal static readonly MenuItem[] MenuItems =
+    internal static readonly MenuItem[] MenuItems = Items(MacOsMainMenu.English);
+
+    internal static MenuItem[] Items(DesktopStandardMenuTitles titles) =>
     [
-        new("Actual Size", "0", PageZoomCommand.Reset, Hidden: false),
-        new("Zoom In", "+", PageZoomCommand.In, Hidden: false),
-        new("Zoom In", "=", PageZoomCommand.In, Hidden: true),
-        new("Zoom Out", "-", PageZoomCommand.Out, Hidden: false),
-        new("Zoom Out", "_", PageZoomCommand.Out, Hidden: true),
+        new(titles.ActualSize, "0", PageZoomCommand.Reset, Hidden: false),
+        new(titles.ZoomIn, "+", PageZoomCommand.In, Hidden: false),
+        new(titles.ZoomIn, "=", PageZoomCommand.In, Hidden: true),
+        new(titles.ZoomOut, "-", PageZoomCommand.Out, Hidden: false),
+        new(titles.ZoomOut, "_", PageZoomCommand.Out, Hidden: true),
     ];
 
     internal static string Selector(PageZoomCommand command) => command switch

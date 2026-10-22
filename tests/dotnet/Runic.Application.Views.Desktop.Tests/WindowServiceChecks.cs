@@ -392,7 +392,8 @@ internal sealed class WindowServiceChecks
     [Test, NotInParallel(Order = 32)]
     public async Task PlatformServicesRegisterEveryPlatformService()
     {
-        Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
+        Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher),
+            typeof(IDesktopMonitors)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
             typeof(IDesktopVolumes), typeof(IDesktopApplications), typeof(IDesktopThumbnails)];
@@ -413,7 +414,8 @@ internal sealed class WindowServiceChecks
             Require(ReferenceEquals(provider.GetService(type), scope.ServiceProvider.GetService(type)) && provider.GetService(type) is not null,
                 $"{type.Name} is not one application service.");
         foreach (var type in window)
-            Require(scope.ServiceProvider.GetService(type) is IPlatformCapabilities or IFileDialogs or ITextClipboard or IDesktopFileLauncher,
+            Require(scope.ServiceProvider.GetService(type) is IPlatformCapabilities or IFileDialogs or ITextClipboard or IDesktopFileLauncher
+                or IDesktopMonitors,
                 $"{type.Name} is not registered per window.");
         var unbound = scope.ServiceProvider.GetRequiredService<IWindowPlatformServices>();
         Require(unbound.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)),

@@ -192,8 +192,9 @@ internal sealed class UriLaunchTests
             .SequenceEqual(constants.Order(StringComparer.Ordinal)), "the unavailable services report every constant");
         await using var lifetime = new PresentationLifetime(() => true, Guid.NewGuid());
         IPlatformCapabilities[] parts = [new PresentationFileLauncher(lifetime), new PresentationClipboard(lifetime), new PresentationFiles(lifetime)];
-        // The menu capabilities come from the window host, which shows menus without a platform provider.
-        string[] menus = [PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu];
+        // The menu and monitor capabilities come from the window host, which shows menus and lists monitors without a
+        // platform provider.
+        string[] menus = [PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu, PlatformCapabilityIds.Monitors];
         Check(parts.SelectMany(static part => part.GetSnapshot().Statuses.Keys).Order(StringComparer.Ordinal)
             .SequenceEqual(constants.Except(menus).Order(StringComparer.Ordinal)), "the presentation services report every constant but the menus");
     }

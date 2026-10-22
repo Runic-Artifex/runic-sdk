@@ -72,6 +72,11 @@ internal static class DesktopWindowOptionValidation
                     nameof(DesktopWindowOptions.ConfirmCloseAsync),
                     "Remove ConfirmCloseAsync, or use a window host whose Capabilities include CloseConfirmation."));
             }
+            if (options.Monitor is not null && !customFactory.Capabilities.HasFlag(DesktopWindowCapabilities.MonitorPlacement))
+            {
+                diagnostics.Add(Ignored("The configured embedded-window host", nameof(DesktopWindowOptions.Monitor),
+                    "Remove the option, or use a window host whose Capabilities include MonitorPlacement."));
+            }
             diagnostics.AddRange(customFactory.ValidateOptions(ToHostOptions(options)));
             return;
         }
@@ -83,6 +88,25 @@ internal static class DesktopWindowOptionValidation
             return;
         }
         var platform = OperatingSystem.IsMacOS() ? "The macOS WKWebView window" : "The GTK 3 WebKitGTK 4.1 window";
+        // AppKit lays the window out, and WKWebView picks its language, from the application's localizations.
+        if (OperatingSystem.IsMacOS() && options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
+        {
+            diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.LayoutDirection),
+                "macOS lays windows out for the application bundle's localization. Remove the option on macOS."));
+        }
+        if (OperatingSystem.IsMacOS() && options.Language is not null)
+        {
+            diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Language),
+                "WKWebView uses the application's preferred languages. Remove the option on macOS."));
+        }
+        if (OperatingSystem.IsLinux())
+        {
+            const string gtk3 = "Remove the option, or use the GTK 4 window.";
+            if (options.Monitor is not null) diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Monitor), gtk3));
+            if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
+                diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.LayoutDirection), gtk3));
+            if (options.Language is not null) diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Language), gtk3));
+        }
         if (!string.IsNullOrWhiteSpace(options.ProfilePath))
         {
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.ProfilePath), remediation));
@@ -120,6 +144,24 @@ internal static class DesktopWindowOptionValidation
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Placement),
                 "A browser opens with the saved size and position but not maximized. " + remediation)
                 with { Message = $"{presentation} ignores {Prefix}{nameof(DesktopWindowOptions.Placement)}.{nameof(DesktopWindowPlacement.Maximized)}." });
+        }
+        if (options.Placement is { FullScreen: true })
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Placement),
+                "A browser opens with the saved size and position but not full-screen. " + remediation)
+                with { Message = $"{presentation} ignores {Prefix}{nameof(DesktopWindowOptions.Placement)}.{nameof(DesktopWindowPlacement.FullScreen)}." });
+        }
+        if (options.Monitor is not null)
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Monitor), remediation));
+        }
+        if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.LayoutDirection), remediation));
+        }
+        if (options.Language is not null)
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Language), remediation));
         }
         if (!options.Resizable)
         {
@@ -247,6 +289,10 @@ internal static class DesktopWindowOptionValidation
         WebContent = options.WebContent is { } webContent
             ? WebContentRules.Resolve(webContent, Environment.GetEnvironmentVariable)
             : DesktopWindowHostOptions.SafeWebContent,
+        MenuBarPresentation = options.MenuBarPresentation,
+        Monitor = options.Monitor,
+        LayoutDirection = options.LayoutDirection,
+        Language = options.Language,
     };
 
     internal static DesktopDiagnostic Invalid(string message) => new(

@@ -24,6 +24,8 @@ public sealed class DesktopHost : IAsyncDisposable
         _core = CreateCore(options, options.Port);
         _logger = options.LoggerFactory?.CreateLogger(DesktopLog.Category);
         _menuBar = [.. options.MenuBar];
+        Monitors = CreateMonitors(options);
+        if (options.StandardMenuTitles is { } titles) Internal.MacOsWkWebViewHost.SetStandardMenuTitles(titles);
         if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
         if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
     }
@@ -70,6 +72,32 @@ public sealed class DesktopHost : IAsyncDisposable
             Volatile.Write(ref _menuCommands, value);
             Internal.MacOsWkWebViewHost.SetApplicationMenuCommands(value);
         }
+    }
+
+    /// <summary>Gets the desktop's monitors, in the units of this host's windows.</summary>
+    /// <remarks>
+    /// <para>
+    /// The built-in hosts list them on Windows and macOS; on macOS the main thread must run
+    /// <see cref="DesktopEventLoop"/> (or the call must come from it), as for windows. With
+    /// <see cref="DesktopHostOptions.WindowHostFactory"/> they come from <see cref="IDesktopWindowHostFactory.Monitors"/>,
+    /// which reports <see cref="PlatformUnavailableReason.BackendUnavailable"/> unless the factory provides them, as the GTK 4
+    /// factory does. A monitor's <see cref="DesktopMonitor.WorkArea"/> can be passed to <see cref="DesktopWindow.MoveAsync"/>
+    /// as it is, and its <see cref="DesktopMonitor.Id"/> to <see cref="DesktopWindow.MoveToMonitorAsync"/> and
+    /// <see cref="DesktopWindowOptions.Monitor"/>.
+    /// </para>
+    /// </remarks>
+    /// <example><code>
+    /// await foreach (var monitors in host.Monitors.WatchAsync(cancellationToken))
+    ///     if (monitors is PlatformResult&lt;ImmutableArray&lt;DesktopMonitor&gt;&gt;.Success { Value: var list }) Show(list);
+    /// </code></example>
+    public IDesktopMonitors Monitors { get; }
+
+    private static IDesktopMonitors CreateMonitors(DesktopHostOptions options)
+    {
+        if (options.WindowHostFactory is { } factory) return factory.Monitors;
+        if (OperatingSystem.IsWindows()) return WindowsMonitors.Shared;
+        if (OperatingSystem.IsMacOS()) return MacOsWkWebViewHost.Monitors;
+        return DesktopMonitors.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     }
 
     /// <summary>Creates a host. Its listener binds when the first surface starts.</summary>
@@ -185,6 +213,7 @@ public sealed class DesktopHost : IAsyncDisposable
         var nativeBar = platform == MenuPlatform.MacOS
             || preflight?.Preferred.Capabilities.HasFlag(DesktopWindowCapabilities.MenuBar) == true;
         diagnostics.AddRange(DesktopMenuBar.Check(MenuBar, platform, presentation, nativeBar));
+        if (_options.StandardMenuTitles is { } titles) diagnostics.AddRange(titles.Check());
 
         if (_logger is { } logger)
         {
@@ -455,6 +484,7 @@ public sealed class DesktopHost : IAsyncDisposable
         }
         ArgumentNullException.ThrowIfNull(options.MenuBar);
         _ = DesktopMenuBar.Check(options.MenuBar, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
+        options.StandardMenuTitles?.Validate();
         if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
         {
             throw new ArgumentOutOfRangeException(

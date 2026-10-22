@@ -115,3 +115,56 @@ static Runic.Platform.DesktopTrashProgress.operator !=(Runic.Platform.DesktopTra
 static Runic.Platform.DesktopTrashProgress.operator ==(Runic.Platform.DesktopTrashProgress left, Runic.Platform.DesktopTrashProgress right) -> bool
 static Runic.Platform.DesktopVolumeMountOptions.operator !=(Runic.Platform.DesktopVolumeMountOptions? left, Runic.Platform.DesktopVolumeMountOptions? right) -> bool
 static Runic.Platform.DesktopVolumeMountOptions.operator ==(Runic.Platform.DesktopVolumeMountOptions? left, Runic.Platform.DesktopVolumeMountOptions? right) -> bool
+Runic.Platform.DesktopLayoutDirection
+Runic.Platform.DesktopLayoutDirection.Default = 0 -> Runic.Platform.DesktopLayoutDirection
+Runic.Platform.DesktopLayoutDirection.LeftToRight = 1 -> Runic.Platform.DesktopLayoutDirection
+Runic.Platform.DesktopLayoutDirection.RightToLeft = 2 -> Runic.Platform.DesktopLayoutDirection
+Runic.Platform.DesktopMonitor
+Runic.Platform.DesktopMonitor.<Clone>$() -> Runic.Platform.DesktopMonitor!
+Runic.Platform.DesktopMonitor.Bounds.get -> Runic.Platform.DesktopRect
+Runic.Platform.DesktopMonitor.Bounds.init -> void
+Runic.Platform.DesktopMonitor.Deconstruct(out string! Id, out string! DisplayName) -> void
+Runic.Platform.DesktopMonitor.DesktopMonitor(string! Id, string! DisplayName) -> void
+Runic.Platform.DesktopMonitor.DisplayName.get -> string!
+Runic.Platform.DesktopMonitor.DisplayName.init -> void
+Runic.Platform.DesktopMonitor.Equals(Runic.Platform.DesktopMonitor? other) -> bool
+Runic.Platform.DesktopMonitor.Id.get -> string!
+Runic.Platform.DesktopMonitor.Id.init -> void
+Runic.Platform.DesktopMonitor.IsPrimary.get -> bool
+Runic.Platform.DesktopMonitor.IsPrimary.init -> void
+Runic.Platform.DesktopMonitor.Scale.get -> double
+Runic.Platform.DesktopMonitor.Scale.init -> void
+Runic.Platform.DesktopMonitor.WorkArea.get -> Runic.Platform.DesktopRect
+Runic.Platform.DesktopMonitor.WorkArea.init -> void
+Runic.Platform.DesktopMonitors
+Runic.Platform.DesktopRect
+Runic.Platform.DesktopRect.Deconstruct(out int X, out int Y, out int Width, out int Height) -> void
+Runic.Platform.DesktopRect.DesktopRect() -> void
+Runic.Platform.DesktopRect.DesktopRect(int X, int Y, int Width, int Height) -> void
+Runic.Platform.DesktopRect.Equals(Runic.Platform.DesktopRect other) -> bool
+Runic.Platform.DesktopRect.Height.get -> int
+Runic.Platform.DesktopRect.Height.init -> void
+Runic.Platform.DesktopRect.Width.get -> int
+Runic.Platform.DesktopRect.Width.init -> void
+Runic.Platform.DesktopRect.X.get -> int
+Runic.Platform.DesktopRect.X.init -> void
+Runic.Platform.DesktopRect.Y.get -> int
+Runic.Platform.DesktopRect.Y.init -> void
+Runic.Platform.DesktopStatusIconState.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
+Runic.Platform.DesktopStatusIconState.LayoutDirection.init -> void
+Runic.Platform.IDesktopMonitors
+Runic.Platform.IDesktopMonitors.GetMonitorsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMonitor!>>!>
+Runic.Platform.IDesktopMonitors.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMonitor!>>!>!
+Runic.Platform.IWindowPlatformServices.Monitors.get -> Runic.Platform.IDesktopMonitors!
+const Runic.Platform.PlatformCapabilityIds.Monitors = "platform.monitors" -> string!
+override Runic.Platform.DesktopMonitor.Equals(object? obj) -> bool
+override Runic.Platform.DesktopMonitor.GetHashCode() -> int
+override Runic.Platform.DesktopMonitor.ToString() -> string!
+override Runic.Platform.DesktopRect.GetHashCode() -> int
+static Runic.Platform.DesktopMonitor.operator !=(Runic.Platform.DesktopMonitor? left, Runic.Platform.DesktopMonitor? right) -> bool
+static Runic.Platform.DesktopMonitor.operator ==(Runic.Platform.DesktopMonitor? left, Runic.Platform.DesktopMonitor? right) -> bool
+static Runic.Platform.DesktopMonitors.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopMonitors!
+static Runic.Platform.DesktopRect.operator !=(Runic.Platform.DesktopRect left, Runic.Platform.DesktopRect right) -> bool
+static Runic.Platform.DesktopRect.operator ==(Runic.Platform.DesktopRect left, Runic.Platform.DesktopRect right) -> bool
+~override Runic.Platform.DesktopRect.Equals(object obj) -> bool
+~override Runic.Platform.DesktopRect.ToString() -> string

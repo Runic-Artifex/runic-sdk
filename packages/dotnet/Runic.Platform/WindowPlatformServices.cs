@@ -90,6 +90,13 @@ public interface IWindowPlatformServices : IPlatformCapabilities
         return ValueTask.FromResult<PlatformResult<DesktopMenuItem?>>(
             new PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
     }
+
+    /// <summary>The desktop's monitors, in the units of the window's position and size (<see cref="PlatformCapabilityIds.Monitors"/>).</summary>
+    /// <remarks>
+    /// The monitors of the window's host; the list does not depend on the window. An implementation that does not
+    /// override this member reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// </remarks>
+    IDesktopMonitors Monitors => DesktopMonitors.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
 }
 
 /// <summary>How a screen-reader announcement relates to what the screen reader is saying, as ARIA live regions do.</summary>
@@ -139,6 +146,8 @@ public static class PlatformCapabilityIds
     public const string ContextMenu = "platform.menus.context";
     /// <summary>Selecting several directories through <see cref="IFileDialogs.OpenDirectoriesAsync"/>.</summary>
     public const string DirectoriesOpenMultiple = "platform.directories.openMultiple";
+    /// <summary>Listing and watching the desktop's monitors through <see cref="IWindowPlatformServices.Monitors"/>.</summary>
+    public const string Monitors = "platform.monitors";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -152,13 +161,14 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.DialogsOwned, PlatformCapabilityIds.ClipboardReadText, PlatformCapabilityIds.ClipboardWriteText,
         PlatformCapabilityIds.FilesLaunch, PlatformCapabilityIds.FilesOpenMultiple, PlatformCapabilityIds.UrisLaunch,
         PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu,
-        PlatformCapabilityIds.DirectoriesOpenMultiple,
+        PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>
     /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher,
-    /// <see cref="IWindowPlatformServices.AnnounceAsync"/> and <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>
+    /// <see cref="IWindowPlatformServices.Monitors"/>, <see cref="IWindowPlatformServices.AnnounceAsync"/> and
+    /// <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>
     /// <see cref="PlatformResult{T}.Unavailable"/>; nothing throws
     /// except for invalid arguments and caller cancellation.
     /// </remarks>
@@ -200,6 +210,7 @@ public static class WindowPlatformServices
         public IFileDialogs FileDialogs => this;
         public ITextClipboard Clipboard => this;
         public IDesktopFileLauncher FileLauncher => this;
+        public IDesktopMonitors Monitors { get; } = DesktopMonitors.Unavailable(reason);
         public CapabilitySnapshot GetSnapshot() => _snapshot;
 
         public ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)

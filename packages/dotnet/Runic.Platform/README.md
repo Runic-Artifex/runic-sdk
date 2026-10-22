@@ -158,8 +158,8 @@ On macOS a save panel with filters may add the first allowed extension, or with
 launcher of one window, and reports their capabilities together under
 `WindowPlatformServices.CapabilityIds`. Host adapters register it, and its
 parts, per window scope through `services.AddRunicPlatformServices()`, so a
-ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` or
-`IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
+ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher`,
+`IDesktopMonitors` or `IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
 them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
 capabilities all report that reason. Tests can use the same instance.
@@ -173,6 +173,16 @@ interrupts it, as `aria-live` does; the enum is closed. It returns `Success`, or
 owner, `OwnerClosed` after it closed and `BackendUnavailable` when the window
 cannot announce. An `IWindowPlatformServices` implementation that does not
 override it reports `OwnerUnavailable`.
+
+`Monitors` lists the desktop's monitors (`IDesktopMonitors`): `GetMonitorsAsync`
+returns each `DesktopMonitor` with an opaque `Id`, a `DisplayName`, its
+`Bounds` and `WorkArea` as `DesktopRect` in the units of the window's position
+and size, its `Scale` and whether it `IsPrimary`, the primary one first.
+`WatchAsync` reports the list, then the whole list again after each change, and
+ends with the result when reading fails. The monitors come from the window's
+host, such as `DesktopHost.Monitors`, under `PlatformCapabilityIds.Monitors`;
+`DesktopMonitors.Unavailable(reason)` stands in where there are none, and an
+implementation that does not override the member reports `OwnerUnavailable`.
 
 The capability identifiers are constants of `PlatformCapabilityIds`, so a typo
 does not compile:
@@ -293,6 +303,7 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows and macOS; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
@@ -364,6 +375,11 @@ the id or title and the rule.
 
 The status icon reports `CommandParameter` on macOS in this release; Windows and
 Linux status icons report `null`.
+
+`DesktopStatusIconState.LayoutDirection` mirrors the Windows status icon's menu
+for `DesktopLayoutDirection.RightToLeft` (`TPM_LAYOUTRTL`, items read right to
+left); the default keeps the platform's layout. Linux and macOS desktops lay the
+menu out for the user's language and ignore it.
 
 `IWindowPlatformServices.ShowContextMenuAsync` checks its arguments, then shows the
 window's native menu, or reports `Unavailable`: `OwnerUnavailable` before the window

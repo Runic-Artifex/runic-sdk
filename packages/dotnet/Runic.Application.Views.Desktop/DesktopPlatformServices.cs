@@ -761,6 +761,10 @@ public static partial class DesktopPlatformServices
         }
     }
 
+    // The monitors capability: the monitors' own status while the window is open.
+    internal static KeyValuePair<string, CapabilityStatus> MonitorStatus(IDesktopMonitors monitors) =>
+        new(PlatformCapabilityIds.Monitors, DesktopServiceStatus.Get(monitors));
+
     private static readonly CapabilityStatus MenuAvailable = new CapabilityStatus.Available();
     private static readonly CapabilityStatus MenuBackendUnavailable = new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     private static readonly CapabilityStatus MenuOwnerClosed = new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -840,7 +844,7 @@ public static partial class DesktopPlatformServices
     internal static IWindowPlatformServices CreateForWindowsOwner(INativeWindowOwner owner, out DesktopPlatformProvider provider)
     {
         provider = DesktopPlatformProvider.Windows;
-        return new BoundWindowPlatformServices(owner, CreateWindows(owner));
+        return new BoundWindowPlatformServices(owner, CreateWindows(owner), Runic.Desktop.Internal.WindowsMonitors.Shared);
     }
 
     [SupportedOSPlatform("windows")]
@@ -891,8 +895,10 @@ public static partial class DesktopPlatformServices
         private readonly PresentationClipboard _clipboard;
         private readonly PresentationFileLauncher _launcher;
 
-        public BoundWindowPlatformServices(INativeWindowOwner owner, NativeServices native)
+        public BoundWindowPlatformServices(INativeWindowOwner owner, NativeServices native, IDesktopMonitors? monitors = null)
         {
+            // A Desktop window's services take the monitors of its host instead (DesktopWindowPlatformServices.Monitors).
+            Monitors = monitors ?? DesktopMonitors.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             _lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
             _files = new PresentationFiles(_lifetime, native.Dialogs);
             _clipboard = new PresentationClipboard(_lifetime, native.Clipboard);
@@ -903,9 +909,12 @@ public static partial class DesktopPlatformServices
         public ITextClipboard Clipboard => _clipboard;
         public IDesktopFileLauncher FileLauncher => _launcher;
 
+        // A WPF window lists the monitors of Windows, which need no Desktop window.
+        public IDesktopMonitors Monitors { get; }
+
         public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation,
             _files.GetSnapshot().Statuses.SetItems(_clipboard.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses)
-                .SetItems(MenuStatuses(window: null)));
+                .SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value));
 
         public async ValueTask DisposeAsync()
         {
@@ -944,7 +953,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
 
-    internal DesktopWindowPlatformServices() { }
+    internal DesktopWindowPlatformServices() => Monitors = new WindowMonitors(this);
 
     /// <summary>Gets the provider selected when the window opened, or <see cref="DesktopPlatformProvider.None"/> before that.</summary>
     public DesktopPlatformProvider Provider { get { lock (_gate) return _provider; } }
@@ -1001,7 +1010,45 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             window = _disposal is null && _bound is not null ? _window : null;
         }
         var snapshot = current.GetSnapshot();
-        return window is null ? snapshot : new(snapshot.Generation, snapshot.Statuses.SetItems(DesktopPlatformServices.MenuStatuses(window)));
+        if (window is null) return snapshot;
+        var monitors = window.IsOpen
+            ? DesktopPlatformServices.MonitorStatus(window.Monitors)
+            : new(PlatformCapabilityIds.Monitors, new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed));
+        return new(snapshot.Generation, snapshot.Statuses.SetItems(DesktopPlatformServices.MenuStatuses(window)).SetItem(monitors.Key, monitors.Value));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The monitors of the window's host once the window opens: <see cref="DesktopHost.Monitors"/> for a Desktop window,
+    /// and those of Windows for a WPF window. Before that they report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>,
+    /// and after these services stop <see cref="PlatformUnavailableReason.OwnerClosed"/>. The instance stays the same, so a
+    /// ViewModel can keep it from its constructor; a watch follows the monitors it had when it started, so start one after
+    /// the window opened.
+    /// </remarks>
+    public IDesktopMonitors Monitors { get; }
+
+    // The monitors behind Monitors now.
+    private IDesktopMonitors CurrentMonitors
+    {
+        get
+        {
+            lock (_gate)
+            {
+                if (_disposal is not null || _bound is null) return Current.Monitors;
+                return _window is { } window ? window.Monitors : _bound.Monitors;
+            }
+        }
+    }
+
+    private sealed class WindowMonitors(DesktopWindowPlatformServices services) : IDesktopMonitors, IDesktopServiceStatus
+    {
+        public CapabilityStatus Status => DesktopServiceStatus.Get(services.CurrentMonitors);
+
+        public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> GetMonitorsAsync(CancellationToken cancellationToken = default) =>
+            services.CurrentMonitors.GetMonitorsAsync(cancellationToken);
+
+        public IAsyncEnumerable<PlatformResult<ImmutableArray<DesktopMonitor>>> WatchAsync(CancellationToken cancellationToken = default) =>
+            services.CurrentMonitors.WatchAsync(cancellationToken);
     }
 
     /// <summary>Asks the screen reader to announce a message for the window, such as the result of an action.</summary>
@@ -1108,7 +1155,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
     /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
+    /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMonitors"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
     /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application, without an application ID.
@@ -1190,6 +1237,7 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileLauncher);
+        services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Monitors);
         return services;
     }
 }
