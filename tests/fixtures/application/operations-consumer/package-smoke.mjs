@@ -85,7 +85,9 @@ try {
     assert.equal(packed.version, version);
     assert.ok(!Object.values(packed.dependencies ?? {}).some(value => String(value).startsWith("workspace:")));
   }
-  await run("dotnet", ["build", "OperationsConsumer.csproj", "-c", "Release", ...properties]);
+  // The npm install above owns node_modules (from the packed archives, without a lock file), so the build does not
+  // install again (RUNICBRIDGE026 would refuse an unlocked install).
+  await run("dotnet", ["build", "OperationsConsumer.csproj", "-c", "Release", ...properties, "-p:RunicApplicationFrontendInstallEnabled=false"]);
   await run("bun", ["run", "--bun", "check"], frontend);
   const generated = await readFile(join(frontend, "src/generated/operations.ts"), "utf8");
   assert.doesNotMatch(generated, /\bisFiltered\b/);

@@ -21,7 +21,7 @@ after(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-function fixture(name, packageJson, projectItems = "") {
+function fixture(name, packageJson, projectItems = "", { defaultInstall = false } = {}) {
   const project = join(directory, name);
   const frontend = join(project, "frontend");
   mkdirSync(frontend, { recursive: true });
@@ -83,8 +83,7 @@ if (existsSync("svelte-check-warns")) {
     <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
     <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/frontend</RunicApplicationFrontendDirectory>
     <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
-    <RunicApplicationFrontendInstallCommand>node install.mjs</RunicApplicationFrontendInstallCommand>
-    <RunicApplicationFrontendBuildCommand>node build.mjs</RunicApplicationFrontendBuildCommand>
+${defaultInstall ? "" : "    <RunicApplicationFrontendInstallCommand>node install.mjs</RunicApplicationFrontendInstallCommand>\n"}    <RunicApplicationFrontendBuildCommand>node build.mjs</RunicApplicationFrontendBuildCommand>
     <Configuration>Debug</Configuration>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -166,6 +165,75 @@ test("an install that creates no node_modules for declared packages fails with R
   const reported = errors(result.output);
   assert.equal(reported.length, 1, result.output);
   assert.match(reported[0], /error RUNICBRIDGE016: 'node install\.mjs' did not create .*node_modules/);
+});
+
+// Package manager stand-ins on PATH that log the install command they were given.
+function packageManagers() {
+  const bin = join(directory, "package-managers");
+  mkdirSync(bin, { recursive: true });
+  for (const name of ["npm", "pnpm", "bun"]) {
+    writeFileSync(join(bin, `${name}.mjs`), `
+import { appendFileSync, mkdirSync } from "node:fs";
+appendFileSync("../commands.log", ["${name}", ...process.argv.slice(2)].join(" ") + "\\n");
+mkdirSync("node_modules", { recursive: true });
+`);
+    writeFileSync(join(bin, name), `#!/bin/sh\nexec node "$(dirname "$0")/${name}.mjs" "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(bin, `${name}.cmd`), `@node "%~dp0${name}.mjs" %*\r\n`);
+  }
+  return { PATH: `${bin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}` };
+}
+
+test("the default install without a lock file fails with RUNICBRIDGE026 and runs nothing", () => {
+  const env = packageManagers();
+  for (const [name, packageManager, lockFile] of [
+    ["unlocked-npm", undefined, "package-lock.json"],
+    ["unlocked-pnpm", "pnpm@10.0.0", "pnpm-lock.yaml"],
+    ["unlocked-bun", "bun@1.4.2", "bun.lock"],
+  ]) {
+    const app = fixture(name, { name: "app", private: true, packageManager, devDependencies: { vite: "8.3.2" } }, "", { defaultInstall: true });
+    const result = build(app, { env });
+    assert.notEqual(result.status, 0, result.output);
+    assert.deepEqual(result.commands, [], `${name}: nothing was installed or built.`);
+    const reported = errors(result.output);
+    assert.equal(reported.length, 1, result.output);
+    assert.match(reported[0], new RegExp(`error RUNICBRIDGE026: .*frontend declares dependencies but has no ${lockFile.replace(".", "\\.")}`));
+  }
+});
+
+test("the default install is locked, and RunicApplicationFrontendAllowUnlockedInstall opts out", () => {
+  const env = packageManagers();
+  const cases = [
+    ["npm-lock", undefined, "package-lock.json", "npm ci --ignore-scripts"],
+    ["npm-shrinkwrap", undefined, "npm-shrinkwrap.json", "npm ci --ignore-scripts"],
+    ["pnpm-lock", "pnpm@10.0.0", "pnpm-lock.yaml", "pnpm install --frozen-lockfile --ignore-scripts"],
+    ["bun-lock", "bun@1.4.2", "bun.lockb", "bun install --frozen-lockfile --ignore-scripts"],
+  ];
+  for (const [name, packageManager, lockFile, command] of cases) {
+    const app = fixture(name, { name: "app", private: true, packageManager, devDependencies: { vite: "8.3.2" } }, "", { defaultInstall: true });
+    writeFileSync(join(app.frontend, lockFile), "{}");
+    const result = build(app, { env });
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.commands, [command, "build"], name);
+  }
+  for (const [name, packageManager, command] of [
+    ["npm-unlocked-opt-in", undefined, "npm install --ignore-scripts"],
+    ["pnpm-unlocked-opt-in", "pnpm@10.0.0", "pnpm install --ignore-scripts"],
+    ["bun-unlocked-opt-in", "bun@1.4.2", "bun install --ignore-scripts"],
+  ]) {
+    const app = fixture(name, { name: "app", private: true, packageManager, devDependencies: { vite: "8.3.2" } }, "", { defaultInstall: true });
+    const result = build(app, { env, properties: ["RunicApplicationFrontendAllowUnlockedInstall=true"] });
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.commands, [command, "build"], name);
+  }
+  // A package.json without dependencies resolves nothing, and an explicit command is the project's choice.
+  const empty = fixture("unlocked-no-dependencies", { name: "app", private: true }, "", { defaultInstall: true });
+  let result = build(empty, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["npm ci --ignore-scripts", "build"]);
+  const explicit = fixture("unlocked-explicit-command", { name: "app", private: true, devDependencies: { vite: "8.3.2" } });
+  result = build(explicit, { env });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["install", "build"]);
 });
 
 test("RunicApplicationFrontendNodeModulesDirectory links prepared dependencies instead of installing", () => {
