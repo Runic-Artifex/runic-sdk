@@ -1,5 +1,5 @@
 import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
-import { BridgeError, decodeFailureDetail, uncertainOperation, type BridgeFailureDetail } from "./errors.js";
+import { BridgeError, decodeFailureDetail, uncertainOperation, type BridgeErrorReason, type BridgeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { abortable, throwIfAborted } from "./lifetime.js";
 import { releasedRouteError, type RunicBridgeClient } from "./transport.js";
@@ -361,6 +361,8 @@ export interface BridgeOperations {
     decode: Decode<TResult>, stream: boolean, decodeFailure?: Decode<TFailure>): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
 }
 
+const startRejectionReasons = new Set<BridgeErrorReason>(["unavailable", "invalid-input", "unresolved-key"]);
+
 export const bridgeOperations: BridgeOperations = {
   async start<TResult, TFailure>(scope: OperationScope, member: string, requestId: string, payload: () => string,
     decode: Decode<TResult>, stream: boolean, decodeFailure?: Decode<TFailure>) {
@@ -391,8 +393,12 @@ export const bridgeOperations: BridgeOperations = {
       return operations.handle(member, requestId, decode, decodeFailure, stream, terminal);
     }
     const detail = decodeFailureDetail(admission.detail);
+    // A start rejected because the command is unavailable or its key names no object refines the error as a reply
+    // does; other admission reasons (`capacity`, `identity-conflict`, a sentence) stay the message only.
+    const reason = admission.kind === "rejected" && startRejectionReasons.has(admission.reason as BridgeErrorReason)
+      ? admission.reason as BridgeErrorReason : undefined;
     throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.",
-      { route: startRoute, ...(detail === undefined ? {} : { detail }) });
+      { route: startRoute, ...(detail === undefined ? {} : { detail }), ...(reason === undefined ? {} : { reason }) });
   },
   recover: (scope, member, requestId, decode, stream, decodeFailure) =>
     new OperationChannel(scope.bridge, scope.contract).recover(member, requestId, decode, stream, decodeFailure),

@@ -93,6 +93,8 @@ try {
   assert.doesNotMatch(generated, /\bisFiltered\b/);
   assert.match(generated, /\bhint\b/);
   assert.match(generated, /\brootVisible\b/);
+  // #472: the keyed command takes the resolver's key.
+  assert.match(generated, /archiveEntry\(entryId: bigint\): Promise<OperationsState>;/);
   const assets = JSON.parse(await readFile(join(directory, "obj/project.assets.json"), "utf8"));
   assert.equal(Object.values(assets.libraries).some(library => library.type === "project"), false,
     "A ProjectReference crossed the package boundary.");
@@ -123,7 +125,7 @@ try {
       browser = await launchChromium(url, { profilePrefix: "runic-operations-consumer-" });
       await wait(() => browser.evaluate("window.operationsReady === true"), "generated client connection");
       const journeys = await browser.evaluate("window.runJourneys()", { timeout: 120_000 });
-      assert.equal(journeys.length, 8, "Not every browser journey completed.");
+      assert.equal(journeys.length, 9, "Not every browser journey completed.");
       console.log(`OPERATIONS_BROWSER_OK|${journeys.join("|")}`);
       host.stdin.write("close\n");
       await wait(() => stdout.includes("OPERATIONS_CONTENT_CLOSE_COMPLETED") && stdout.includes("OPERATIONS_DISPOSE_PENDING"), "scope disposal awaiting actual accepted recovery");

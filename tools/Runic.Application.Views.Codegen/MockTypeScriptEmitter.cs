@@ -10,8 +10,9 @@ using static TypeScriptModuleBindings;
 internal sealed record MockValueField(string WireName, BridgeTypeGraph Graph);
 internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable);
 internal sealed record MockSetter(string Method, string Route, string WireName, string ValueType, string ReadExpression, string? CheckedRoute);
+// KeyName: the key parameter of a [RunicCommandKey] command, whose InputType is the key's.
 internal sealed record MockCommand(string Method, string Route, string? InputType, string? ReadExpression, string? AvailabilityField,
-    string? FailureType = null, string? EncodeFailure = null);
+    string? FailureType = null, string? EncodeFailure = null, string? KeyName = null);
 internal sealed record MockOperation(string Method, string Member, string InputType, string ResultType, string? DecodeInput,
     string? EncodeResult, bool IsStream, string? FailureType = null, string? EncodeFailure = null)
 {
@@ -88,6 +89,15 @@ internal static class MockTypeScriptEmitter
             body.AppendLine("  readonly canExecute?: {");
             foreach (var command in queries)
                 body.AppendLine($"    readonly {command.Method}?: (state: {state}, input: {command.InputType}) => boolean;");
+            body.AppendLine("  };");
+        }
+        var keyed = plan.Commands.Where(command => command.KeyName is not null).ToArray();
+        if (keyed.Length > 0)
+        {
+            body.AppendLine("  /** Whether .NET finds an object for the key of a `[RunicCommandKey]` command; absent, every key resolves. */");
+            body.AppendLine("  readonly resolveKey?: {");
+            foreach (var command in keyed)
+                body.AppendLine($"    readonly {command.Method}?: (state: {state}, {command.KeyName}: {command.InputType}) => boolean;");
             body.AppendLine("  };");
         }
         if (plan.Operations.Count > 0)

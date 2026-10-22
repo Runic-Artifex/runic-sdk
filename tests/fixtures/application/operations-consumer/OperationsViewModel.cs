@@ -18,7 +18,7 @@ public sealed class OperationsViewModel : ReactiveObject, IAsyncDisposable
     private Task _readTask = Task.CompletedTask;
     private CancellationTokenSource? _longCancellation;
     private CancellationTokenSource? _readCancellation;
-    private string _draft = "", _selected = "";
+    private string _draft = "", _selected = "", _archived = "";
     private string[] _readAccepted = [];
     private int _session, _cancelReadCalls;
     private bool _longActive, _readActive, _mutationActive, _recoveryStarted, _recoveryPublished;
@@ -55,6 +55,7 @@ public sealed class OperationsViewModel : ReactiveObject, IAsyncDisposable
         }, scheduler);
         MutationCommand = ReactiveCommand.CreateFromTask<RxVoid, string>((_, token) =>
             _accepted.RunAsync(() => MutateAsync(token)), scheduler);
+        ArchiveEntryCommand = ReactiveCommand.Create<HistoryEntry>(entry => Archived = $"entry-{entry.Id}", scheduler);
     }
 
     // Settable, so the page sends it and the Bridge constructs it.
@@ -80,6 +81,12 @@ public sealed class OperationsViewModel : ReactiveObject, IAsyncDisposable
     public ReactiveCommand<RxVoid, RxVoid> WaitReadDrainedCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ReplaceSessionCommand { get; }
     public ReactiveCommand<RxVoid, string> MutationCommand { get; }
+
+    // #472: a command whose parameter has no wire form; the page sends the key and the Bridge resolves the entry.
+    [RunicCommandKey(nameof(FindEntry))]
+    public ReactiveCommand<HistoryEntry, RxVoid> ArchiveEntryCommand { get; }
+    public string Archived { get => _archived; private set => this.RaiseAndSetIfChanged(ref _archived, value); }
+    public HistoryEntry? FindEntry(ulong entryId) => entryId == 1 ? new HistoryEntry(1) : null;
 
     private async Task<string> LongAsync(CancellationToken token)
     {
@@ -156,4 +163,11 @@ public sealed class OperationsViewModel : ReactiveObject, IAsyncDisposable
     }
 
     private static TaskCompletionSource NewGate() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+}
+
+// No wire form: the Stream is not a Bridge value, so only its key crosses the Bridge.
+public sealed class HistoryEntry(ulong id)
+{
+    public ulong Id { get; } = id;
+    public Stream? Attachment { get; init; }
 }

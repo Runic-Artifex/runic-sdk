@@ -4,6 +4,10 @@ import type { CodegenShapeState } from "./obj/bridge-frontend/generated/codegenS
 import type { OptionalMemberClient, OptionalMemberState, OptionalRequest } from "./obj/bridge-frontend/generated/optionalMember.js";
 import type { DocumentedLayout, DocumentedState } from "./obj/bridge-frontend/generated/documented.js";
 import type { NamingClient, NamingState } from "./obj/bridge-frontend/generated/naming.js";
+import type { KeyedReactiveClient } from "./obj/bridge-frontend/generated/keyedReactive.js";
+import type { KeyedReactiveMockDefinition } from "./obj/bridge-frontend/generated/keyedReactive.mock.js";
+import type { KeyedToolkitClient } from "./obj/bridge-frontend/generated/keyedToolkit.js";
+import type { KeyedPlainClient } from "./obj/bridge-frontend/generated/keyedPlain.js";
 import type { NavDiscardPrompt, NavigationOutcome, ReactiveNavEditorClient } from "./obj/bridge-frontend/generated/reactiveNavEditor.js";
 
 export function describeLayout(state: DocumentedState): string {
@@ -81,3 +85,15 @@ export async function closeEditor(view: ReactiveNavEditorClient): Promise<string
   const arrival: "None" | "Completed" | "Failed" | "Cancelled" = outcome.arrival;
   return arrival === "Failed" ? "load failed" : outcome.kind;
 }
+
+// #472: a [RunicCommandKey] command takes the resolver's key, typed as its parameter (the goldens pin the names).
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+export const keyedSignatures: [
+  Same<Parameters<KeyedReactiveClient["delete"]>, [itemId: bigint]>,
+  Same<Parameters<KeyedReactiveClient["canArchive"]>, [itemId: bigint]>,
+  Same<Parameters<KeyedReactiveClient["startRename"]>[0], bigint>,
+  Same<Parameters<KeyedToolkitClient["select"]>, [name: string]>,
+  Same<Parameters<KeyedToolkitClient["open"]>, [id: bigint]>,
+  Same<Parameters<KeyedPlainClient["pick"]>, [slot: number]>,
+  Same<Parameters<NonNullable<NonNullable<KeyedReactiveMockDefinition["resolveKey"]>["delete"]>>[1], bigint>,
+] = [true, true, true, true, true, true, true];

@@ -106,7 +106,8 @@ test("failures reach the client as BridgeErrors and diagnostics", async () => {
   notes.failNext("save", { kind: "transport" });
   await assert.rejects(client.command("notesSave"), (error: unknown) => error instanceof BridgeError && error.kind === "failed");
   notes.update({ canSave: false } as never);
-  await assert.rejects(client.command("notesSave"), /Save is unavailable/);
+  await assert.rejects(client.command("notesSave"), (error: unknown) =>
+    error instanceof BridgeError && /Save is unavailable/.test(error.message) && error.reason === "unavailable");
 
   const diagnostics: BridgeDiagnostic[] = [];
   const stop = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
@@ -427,5 +428,59 @@ test("commands and interactions work again after a reconnect remounts the View",
   assert.ok(first && second && first[0] !== second[0] && first[1] === second[1], "the View mounted again in a new browser session");
   assert.equal(await bridge.call("notesMount", first!.join(":")), "released");
   stop();
+  client.dispose();
+});
+
+// #472: what a generated mock of a [RunicCommandKey] command passes to the shared runtime.
+test("a keyed command's mock resolves the key before availability and rejects with unresolved-key", async () => {
+  const bridge = fresh();
+  const items = new Set(["a", "b"]);
+  mockTypedView(bridge, {
+    kind: "items", route: "items", contract: "Tests.ItemsViewModel:ABC", fields: {}, defaults: {},
+    commands: { remove: { route: "Remove", read: argument => bridgeWire.string(JSON.parse(argument as string)) } },
+  }, {
+    state: {},
+    resolveKey: { remove: (_state: unknown, id: string) => items.has(id) },
+    canExecute: { remove: (_state: unknown, id: string) => id !== "b" },
+    commands: { remove: (_state: unknown, id: string) => { items.delete(id); } },
+  });
+  const client = await connectView({ contract: "Tests.ItemsViewModel:ABC", route: "items", mount: false, hydrate: wire => wire });
+  assert.equal(await client.query("itemsCanRemove", JSON.stringify("a")), true);
+  assert.equal(await client.query("itemsCanRemove", JSON.stringify("b")), false);
+  assert.equal(await client.query("itemsCanRemove", JSON.stringify("z")), false);
+  await client.command("itemsRemove", JSON.stringify("a"));
+  assert.equal(items.has("a"), false);
+  await assert.rejects(client.command("itemsRemove", JSON.stringify("a")), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "unresolved-key" && error.message === "Remove has no object for this key.");
+  // An unresolved key is reported before availability, as .NET resolves before CanExecute.
+  items.delete("b");
+  await assert.rejects(client.command("itemsRemove", JSON.stringify("b")), (error: unknown) =>
+    error instanceof BridgeError && error.reason === "unresolved-key");
+  items.add("b");
+  await assert.rejects(client.command("itemsRemove", JSON.stringify("b")), (error: unknown) =>
+    error instanceof BridgeError && error.reason === "unavailable");
+  // An injected failure carries a reason.
+  bridge.failNext("itemsRemove", { kind: "rejected", reason: "unresolved-key", message: "Gone." });
+  await assert.rejects(client.command("itemsRemove", JSON.stringify("b")), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "unresolved-key" && error.message === "Gone.");
+  client.dispose();
+});
+
+test("a rejected operation start sets BridgeError.reason for a reply reason and keeps its message", async () => {
+  const bridge = fresh();
+  mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const client = await connect();
+  const decode = (value: unknown) => bridgeWire.string(value);
+  for (const reason of ["unavailable", "unresolved-key"] as const) {
+    bridge.route("notesStartSave", () => JSON.stringify({ kind: "rejected", reason, terminal: null }));
+    await assert.rejects(client.startOperation<string>("Save", `request-${reason}`, () => `request-${reason}`, decode), (error: unknown) =>
+      error instanceof BridgeError && error.kind === "rejected" && error.reason === reason && error.message === reason);
+  }
+  // Admission reasons that are not reply reasons stay the message only.
+  for (const reason of ["capacity", "identity-conflict", "Save has an invalid argument."]) {
+    bridge.route("notesStartSave", () => JSON.stringify({ kind: "rejected", reason, terminal: null }));
+    await assert.rejects(client.startOperation<string>("Save", "request-other", () => "request-other", decode), (error: unknown) =>
+      error instanceof BridgeError && error.kind === "rejected" && error.reason === undefined && error.message === reason);
+  }
   client.dispose();
 });

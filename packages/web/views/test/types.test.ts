@@ -50,3 +50,15 @@ test("the latest-operation controller has its graduated shape", () => {
   latest.dispose();
   void [blocked, state, run, missing];
 });
+
+// #472: an injected mock failure can carry a reason, and a typed mock definition a key resolver hook.
+test("mock failures carry a reason and typed mocks a key resolver", async () => {
+  const { createMockBridge } = await import("../dist/mock.js");
+  type MockFailure = Parameters<ReturnType<typeof createMockBridge>["failNext"]>[1];
+  const failure: MockFailure = { kind: "rejected", reason: "unresolved-key", message: "Gone." };
+  // @ts-expect-error A reason is a BridgeErrorReason.
+  const wrong: MockFailure = { kind: "rejected", reason: 3 };
+  type Definition = Parameters<typeof import("../dist/generated-mock.js").mockTypedView>[2];
+  const definition: Definition = { state: {}, resolveKey: { remove: () => true } };
+  void [failure, wrong, definition];
+});
