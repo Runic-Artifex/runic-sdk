@@ -12,7 +12,7 @@ operating system. .NET has no API for this: `File.Delete` and
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
 | Linux | Implemented: the [freedesktop.org Trash specification 1.0](https://specifications.freedesktop.org/trash-spec/1.0/), home trash and topdir trashes, with `directorysizes`, listing, restoring and emptying, in Runic.Platform.Linux.Portal. | Tests in temporary directories, never the user's trash, for every outcome: home trash, name collisions and stale entries, directories, links, escaping, missing items, refused moves, a directory that contains the trash, and the topdir trashes on a second file system (`/dev/shm`) with sticky, non-sticky and linked trash directories; a batch, `directorysizes` lines and stale entries, listing with original paths, sizes and dates, restoring over a conflict, into a removed parent and from a topdir trash, IDs outside the trash, emptying with a link and an orphaned entry; info files and encoded paths. JIT and NativeAOT, x64 and arm64, in CI. |
-| Sandboxed Linux | Implemented: the Trash portal (`org.freedesktop.portal.Trash`) inside Flatpak and Snap. Listing, restoring and emptying are `Unavailable(BackendUnavailable)`. | A fake portal on a private bus: trashed, refused, a link (sent as itself, and refused), a read-only file, no Trash interface, no portal. The real xdg-desktop-portal 1.22 in a Fedora container with a temporary home moves a file, a directory and a symbolic link, JIT and NativeAOT in CI. Inside a real Flatpak or Snap: unverified. |
+| Sandboxed Linux | Implemented: the Trash portal (`org.freedesktop.portal.Trash`) inside Flatpak and Snap. Listing, restoring and emptying are `Unavailable(BackendUnavailable)`. | A fake portal on a private bus: trashed, refused, a link (sent as itself, and refused), a read-only file, no Trash interface, no portal. The real xdg-desktop-portal 1.22 in a Fedora container with a temporary home moves a file and a directory and refuses a symbolic link, which stays, JIT and NativeAOT in CI. Inside a real Flatpak or Snap: unverified. |
 | Windows | Implemented: `IFileOperation` with `FOFX_RECYCLEONDELETE` and no UI in Runic.Platform.Windows. A progress sink refuses a permanent deletion. Listing, restoring and emptying through the Recycle Bin's shell folder. | Portable tests for error mapping, the sink's refusal and the `$I` record. CI on the windows-latest and windows-11-arm runners' Recycle Bin, JIT and NativeAOT: a file and a directory are recycled and recorded with their original paths, a missing item is `NotFound`, a file on the administrative SMB share, which cannot be recycled, stays; both are listed with their size and deletion time, a restore over an existing file is `Conflict`, the file and the directory, into a removed parent, are restored, and the bin is emptied (on the ephemeral runner only). |
 | macOS | Implemented: `-[NSFileManager trashItemAtURL:resultingItemURL:error:]` in Runic.Platform.MacOS. Listing, restoring and emptying are `Unavailable(BackendUnavailable)`. | Portable tests for error mapping. CI on the macos-26 runner's Trash, JIT and NativeAOT: a file, a directory, a symbolic link, a missing item, and list, restore and empty unavailable. A volume without a trash (`NSFeatureUnsupportedError`) is unverified. |
 
@@ -146,10 +146,10 @@ and KIO do, and needs no service:
   descriptor of the item, opened as GIO opens it: a file read-write without
   following a link, a directory as `O_PATH`. The portal trashes what the
   application can write. A symbolic link goes as an `O_PATH | O_NOFOLLOW`
-  descriptor of the link itself: xdg-desktop-portal 1.22 resolves the
-  descriptor with `GLNX_CHASE_NOFOLLOW` and trashes the link; a portal that
-  refuses it (result 0) reports `Unavailable(BackendUnavailable)` for the link,
-  which stays. The portal chooses the entry's name itself, such as
+  descriptor of the link itself, never of its target. xdg-desktop-portal
+  1.22.1 refuses it (result 0; verified in the Fedora CI leg), so the link
+  reports `Unavailable(BackendUnavailable)` and stays; a portal that accepts it
+  trashes the link. The portal chooses the entry's name itself, such as
   `report.0.txt`. It offers no listing, restoring or emptying.
 
 ## Windows

@@ -488,8 +488,8 @@ internal sealed partial class LinuxTrash(PortalApplication? application = null, 
     {
         // The portal trashes what the application can open for writing, as GIO asks it: a file opened read-write,
         // never following a link, and a directory, which cannot be opened so, by an O_PATH descriptor. A symbolic link
-        // goes as an O_PATH | O_NOFOLLOW descriptor of the link itself: xdg-desktop-portal 1.22 trashes such a
-        // descriptor without following it; an older portal refuses it, which reports the link unavailable.
+        // goes as an O_PATH | O_NOFOLLOW descriptor of the link itself, never of its target. xdg-desktop-portal 1.22.1
+        // refuses it (result 0), which reports the link unavailable; a portal that accepts it trashes the link.
         bool link = false;
         int fd = Open(path, O_RDWR | O_NOFOLLOW | O_CLOEXEC | O_NOCTTY | O_NONBLOCK, 0);
         if (fd < 0 && Marshal.GetLastPInvokeError() == EISDIR) fd = Open(path, O_PATH | O_CLOEXEC, 0);

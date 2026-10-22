@@ -303,8 +303,9 @@ stays. A trashed directory's size goes to the trash's `directorysizes`.
 topdir trashes this user owns on every mounted file system; a restore never
 replaces what is at the original path and recreates missing parents. Inside
 Flatpak or Snap it asks the Trash portal, which trashes what the application can
-write, and a symbolic link itself where xdg-desktop-portal 1.22 accepts it;
-listing, restoring and emptying report `Unavailable(BackendUnavailable)` there.
+write; it is sent a symbolic link as the link itself, which xdg-desktop-portal
+1.22.1 refuses, so a link reports `Unavailable(BackendUnavailable)` there, as do
+listing, restoring and emptying.
 See the
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
 
