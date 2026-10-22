@@ -236,7 +236,8 @@ public sealed class DBusConnection : IAsyncDisposable
 
     /// <summary>Makes <paramref name="service"/> answer calls at <paramref name="path"/> on this connection.</summary>
     /// <returns>The export; disposing it stops answering and lets the object be exported again.</returns>
-    /// <exception cref="InvalidOperationException">Another object is exported at the path, or the object is exported elsewhere.</exception>
+    /// <exception cref="InvalidOperationException">Another object is exported at the path, the object is exported elsewhere, or
+    /// its <see cref="DBusObject.MaxConcurrentCalls"/> is less than 1.</exception>
     public IAsyncDisposable Export(DBusObjectPath path, DBusObject service)
     {
         ArgumentNullException.ThrowIfNull(service);

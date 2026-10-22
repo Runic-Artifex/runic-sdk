@@ -355,7 +355,7 @@ internal static class DBusEmitter
 
     // DBusObject's members, which the generated service overrides or calls.
     private static readonly string[] ServiceMembers = ["Path", "EmitSignal", "EmitPropertiesChanged", "HandleMethodAsync", "GetPropertyAsync",
-        "GetAllPropertiesAsync", "SetPropertyAsync", "IntrospectionXml"];
+        "GetAllPropertiesAsync", "SetPropertyAsync", "IntrospectionXml", "MaxConcurrentCalls"];
 
     private static void CheckProxyNames(string name, string iface, XElement element, List<Property> properties)
     {

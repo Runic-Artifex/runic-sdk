@@ -27,3 +27,5 @@ override Runic.Platform.Linux.DBus.DBusInterfaceChanges.ToString() -> string!
 static Runic.Platform.Linux.DBus.DBusInterfaceChanges.operator !=(Runic.Platform.Linux.DBus.DBusInterfaceChanges? left, Runic.Platform.Linux.DBus.DBusInterfaceChanges? right) -> bool
 static Runic.Platform.Linux.DBus.DBusInterfaceChanges.operator ==(Runic.Platform.Linux.DBus.DBusInterfaceChanges? left, Runic.Platform.Linux.DBus.DBusInterfaceChanges? right) -> bool
 static Runic.Platform.Linux.DBus.DBusObjectManagerProxy.ReadInterfaceChanges(Runic.Platform.Linux.DBus.DBusSignal! signal) -> Runic.Platform.Linux.DBus.DBusInterfaceChanges?
+const Runic.Platform.Linux.DBus.DBusException.LimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded" -> string!
+virtual Runic.Platform.Linux.DBus.DBusObject.MaxConcurrentCalls.get -> int

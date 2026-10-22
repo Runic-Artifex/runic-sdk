@@ -187,6 +187,14 @@ the connection answers `org.freedesktop.DBus.Peer`. `EmitSignal` and
 `org.freedesktop.DBus.Error.Failed` without its message, which can contain
 internal details. Disposing the export stops answering at the path.
 
+Any program on the bus can call an exported object, so each object bounds its
+calls: at most `MaxConcurrentCalls` (16 unless the object overrides it) run at
+once, up to 64 more wait for a turn, and the connection refuses any further call
+with `DBusException.LimitsExceeded` until one finishes. Calls start in the order
+they arrive; an object that sets `MaxConcurrentCalls` to 1 answers them one at a
+time, in that order. Raise the limit for an object whose calls wait a long time,
+such as for a user's answer.
+
 ## Generate proxies and services
 
 The package includes a source generator that turns D-Bus introspection XML into
@@ -273,7 +281,8 @@ package's `NOTICE` and `licenses/Tmds.DBus-LICENSE.txt` carry the notice.
 No method captures the caller's synchronization context. Call results, signal
 streams and service calls run on the thread pool; a ViewModel moves results to its
 model context, for example with `await context.InvokeAsync(...)`. Service calls can
-run concurrently, also with each other, so an object that keeps state guards it.
+run concurrently, also with each other, so an object that keeps state guards it
+(or sets `MaxConcurrentCalls` to 1).
 
 Method calls throw `DBusException` for an error reply: branch on `ErrorName`, such
 as `org.freedesktop.DBus.Error.ServiceUnknown` or a service's own error. The
