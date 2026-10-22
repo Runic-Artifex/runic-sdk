@@ -637,6 +637,8 @@ jobs:
     timeout-minutes: 50
     env:
       RUNIC_SMOKE_TIMEOUT_SCALE: ${{ matrix.smoke-timeout-scale || '1' }}
+      # The real GNOME portal check's container (eng/ci/real-portal.sh).
+      FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -734,38 +736,40 @@ jobs:
       - name: Exercise the D-Bus client and service API on a private bus
         if: runner.os == 'Linux'
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
+      # The private session bus starts inside xvfb-run: services it activates, such as xdg-desktop-portal-gtk, inherit
+      # the bus's environment rather than the client's, and exited with "cannot open display" without DISPLAY.
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
         timeout-minutes: 15
         run: |
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
           # The GTK runner has one lifetime per process; the entry-point check runs separately.
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
           # SIGTERM closes the GTK window and disposes the host before the GTK loop ends.
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --signal
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --signal
           # SEC-04: DesktopWebContentPolicy with real clicks through XTEST.
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --web-content
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --web-content
           # DesktopWindow.AnnounceAsync reaches AT-SPI as Object:Announcement with GTK 3 and GTK 4 (#318).
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
-          LC_ALL=ar_EG.UTF-8 LANG=ar_EG.UTF-8 LANGUAGE=ar GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --rtl
+          LC_ALL=ar_EG.UTF-8 LANG=ar_EG.UTF-8 LANGUAGE=ar GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --rtl
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.
           journey_runtime=$(mktemp -d) && mkdir "$journey_runtime/data"
-          XDG_RUNTIME_DIR="$journey_runtime" XDG_DATA_HOME="$journey_runtime/data" GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --directory
+          XDG_RUNTIME_DIR="$journey_runtime" XDG_DATA_HOME="$journey_runtime/data" GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --directory
           # Without a display the entry point must fall back instead of letting gtk_init exit the process.
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --no-display
       - name: Verify GTK4 and portal NativeAOT consumers
         if: runner.os == 'Linux'
         run: |
           dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
-          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           # The run without a filter keeps the portable cases covered under NativeAOT.
@@ -787,16 +791,32 @@ jobs:
       # W315-011: the real xdg-desktop-portal and its GNOME backend publish every appearance key only from portal 1.20
       # on (Ubuntu 24.04 has 1.18), so they run in Fedora. The container runs the published tests and needs no .NET.
       # The same container runs the Trash portal (W310-003), which xdg-desktop-portal implements itself.
+      # The Fedora packages are downloaded with a time limit per attempt and cached (eng/ci/README.md, "Fedora packages").
+      - name: Prepare the Fedora package cache
+        id: dnf
+        if: runner.os == 'Linux'
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /var/cache/runic-dnf
+          prefix="dnf-$(printf '%s' "$FEDORA_IMAGE" | sha256sum | cut -c1-16)-$RUNNER_ARCH-$(sha256sum eng/ci/real-portal.sh | cut -c1-16)-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          # A monthly key lets main replace the cache with current updates.
+          echo "key=$prefix$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/dependency-cache
+        if: runner.os == 'Linux'
+        with:
+          path: /var/cache/runic-dnf
+          key: ${{ steps.dnf.outputs.key }}
+          restore-keys: ${{ steps.dnf.outputs.prefix }}
       - name: Verify appearance settings and the Trash portal against the real GNOME portal with JIT and NativeAOT
         if: runner.os == 'Linux'
         timeout-minutes: 10
         env:
-          FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
           RID: ${{ matrix.rid }}
         run: |
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r "$RID" --self-contained true -o artifacts/portal-jit
-          docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" "$FEDORA_IMAGE" \
-            sh eng/ci/real-portal.sh artifacts/portal-jit/Runic.Platform.Linux.Portal.Tests artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
+          eng/ci/retry.sh 2 90 docker pull -q "$FEDORA_IMAGE"
+          docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v /var/cache/runic-dnf:/var/cache/libdnf5 -w "$GITHUB_WORKSPACE" "$FEDORA_IMAGE" \
+            bash eng/ci/real-portal.sh artifacts/portal-jit/Runic.Platform.Linux.Portal.Tests artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
       - name: Verify privileged actions under NativeAOT
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
@@ -836,7 +856,7 @@ jobs:
             exit
           fi
           for toolkit in gtk3 gtk4; do
-            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --receipt "artifacts/accessibility/$toolkit.json"
           done
       - name: Retain accessibility receipts
@@ -1312,13 +1332,17 @@ jobs:
           open -W -n "$app" --args "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
           bun eng/ci/packaging-probe-check.mjs "$receipt" macos
       # The GNOME runtime and SDK come from Flathub, cached by their branch.
+      # flatpak-builder composes the AppStream data with appstream-compose, which reads the SVG icon through
+      # librsvg's image loader.
       - name: Install flatpak-builder
         if: matrix.target == 'flatpak'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: flatpak flatpak-builder appstream appstream-compose librsvg2-common desktop-file-utils
+          install-recommends: "false"
+      - name: Prepare Flatpak
+        if: matrix.target == 'flatpak'
         run: |
-          sudo apt-get update
-          # flatpak-builder composes the AppStream data with appstream-compose, which reads the SVG icon through
-          # librsvg's image loader.
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream appstream-compose librsvg2-common desktop-file-utils
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - uses: ./.github/actions/dependency-cache

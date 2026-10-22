@@ -6,6 +6,9 @@ inputs:
   packages:
     description: Package names, separated by spaces
     required: true
+  install-recommends:
+    description: Whether apt also installs the packages' recommended packages ("true" or "false")
+    default: "true"
 runs:
   using: composite
   steps:
@@ -16,12 +19,14 @@ runs:
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
+        RECOMMENDS: ${{ inputs.install-recommends }}
       run: |
         archives=/var/cache/runic-apt
         sudo install -d -o "$(id -u)" -g "$(id -g)" "$archives"
         . /etc/os-release
         # shellcheck disable=SC2086 # one package per word
         list=$(printf '%s\n' $PACKAGES | sort -u | sha256sum | cut -c1-16)
+        if [ "$RECOMMENDS" = false ]; then list="$list-norecommends"; fi
         {
           echo "archives=$archives"
           echo "prefix=apt-$ID-$VERSION_ID-$RUNNER_ARCH-$list-"
@@ -38,6 +43,9 @@ runs:
       env:
         APT_ARCHIVES: ${{ steps.apt.outputs.archives }}
         PACKAGES: ${{ inputs.packages }}
+        RECOMMENDS: ${{ inputs.install-recommends }}
       run: |
+        options=()
+        if [ "$RECOMMENDS" = false ]; then options=(--no-install-recommends); fi
         # shellcheck disable=SC2086 # one package per word
-        eng/ci/apt-install.sh $PACKAGES
+        eng/ci/apt-install.sh ${options[@]+"${options[@]}"} $PACKAGES

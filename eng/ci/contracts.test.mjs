@@ -326,6 +326,29 @@ test('native and template jobs share the WebKit sandbox permission script', () =
   assert.ok(!readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8').includes('apparmor_parser'));
 });
 
+// I-186/I-187: package managers on hosted runners go through the time-limited paths with mirror fallback and caches
+// (eng/ci/README.md, "Ubuntu packages" and "Fedora packages"); an unbounded apt or dnf download has held jobs to their limit.
+test('Linux packages install through the bounded, cached paths', () => {
+  const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0').filter(path => /\.ya?ml$/.test(path));
+  for (const path of files) {
+    const commands = readFileSync(resolve(root, path), 'utf8').split('\n').filter(line => !/^\s*#/.test(line)).join('\n');
+    assert.doesNotMatch(commands, /\bapt-get\s+(update|install)|\bapt\s+install|--with-deps|\bdnf\s+(-\S+\s+)*install/, path);
+  }
+  const browser = yaml('.github/actions/install-browser/action.yml').runs.steps;
+  const apt = browser.find(step => step.uses === './.github/actions/apt-install');
+  assert.deepEqual(apt?.with, { packages: '${{ steps.deps.outputs.packages }}', 'install-recommends': 'false' });
+  const flatpak = workflow.jobs.packaging.steps.find(step => step.name === 'Install flatpak-builder');
+  assert.equal(flatpak?.uses, './.github/actions/apt-install');
+  // The real GNOME portal check reuses the dnf cache, and the step keeps its limit rather than growing it.
+  const native = workflow.jobs.native.steps;
+  const portal = native.findIndex(step => step.run?.includes('bash eng/ci/real-portal.sh'));
+  assert.ok(portal >= 0);
+  assert.match(native[portal].run, /-v \/var\/cache\/runic-dnf:\/var\/cache\/libdnf5 /);
+  assert.equal(native[portal]['timeout-minutes'], 10);
+  assert.equal(native[portal - 1].with?.path, '/var/cache/runic-dnf');
+  assert.match(readFileSync(resolve(root, 'eng/ci/real-portal.sh'), 'utf8'), /retry\.sh" 1 "\$limit" "\$\{dnf\[@\]\}" install --downloadonly/);
+});
+
 // The repository's cache quota is shared: pull request entries evicted main's caches. Only main saves.
 test('dependency caches restore everywhere and save only on main', () => {
   const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0').filter(path => /\.ya?ml$/.test(path));

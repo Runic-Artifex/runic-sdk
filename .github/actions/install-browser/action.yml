@@ -13,21 +13,38 @@ runs:
       with:
         path: ${{ runner.os == 'Windows' && '~/AppData/Local/ms-playwright' || runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
         key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
-    - shell: bash
+    # Linux needs system packages, which are not part of the cached directory. Playwright's own
+    # --with-deps runs apt-get without a time limit or mirror fallback, so its list for this Ubuntu
+    # release, minus what the image already has, goes through eng/ci/apt-install.sh instead.
+    - name: List the browser's missing Ubuntu packages
+      id: deps
+      if: runner.os == 'Linux'
+      shell: bash
       run: |
-        # Only Linux needs system packages; they are not part of the cached directory.
-        # A stalled apt or browser download has hung jobs for over 30 minutes, while
-        # a normal install takes under three (slow mirrors up to about six), so each
-        # attempt is time-limited.
-        deps=()
-        if [[ "$RUNNER_OS" == Linux ]]; then
-          deps=(--with-deps)
-          # A stalled mirror connection should fail fast rather than hold apt.
-          printf "Acquire::http::Timeout \"30\";\nAcquire::https::Timeout \"30\";\nAcquire::Retries \"3\";\n" | sudo tee /etc/apt/apt.conf.d/99runic-timeouts >/dev/null
-          # A killed attempt can leave root-owned apt running and holding its locks.
-          export RETRY_CLEANUP="sudo pkill -KILL -x apt-get; sudo pkill -KILL -x dpkg; sleep 2; sudo DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
+        status=0
+        out=$(bunx --bun playwright-core install-deps --dry-run chromium 2>&1) || status=$?
+        if grep -q '^All system dependencies are installed' <<<"$out"; then
+          packages=
+        elif grep -q '^Missing system dependencies' <<<"$out"; then
+          packages=$(sed -n '/^Missing system dependencies/,$ { s/^  \([^[:space:]]\+\)$/\1/p }' <<<"$out" | paste -sd' ' -)
+        else
+          printf '%s\n' "$out"
+          echo "::error title=Browser dependencies unknown::playwright-core install-deps --dry-run exited with $status without a package list; see its output above."
+          exit 1
         fi
-        eng/ci/retry.sh 3 600 bunx --bun playwright-core install ${deps[@]+"${deps[@]}"} chromium
+        echo "Missing: ${packages:-none}"
+        echo "packages=$packages" >> "$GITHUB_OUTPUT"
+    - if: runner.os == 'Linux' && steps.deps.outputs.packages != ''
+      uses: ./.github/actions/apt-install
+      with:
+        packages: ${{ steps.deps.outputs.packages }}
+        install-recommends: "false"
+    - name: Download Chromium
+      shell: bash
+      run: |
+        # A stalled browser download has hung jobs for over 30 minutes, while a normal
+        # download takes under a minute, so each attempt is time-limited.
+        eng/ci/retry.sh 3 300 bunx --bun playwright-core install chromium
         bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path)' >> "$GITHUB_ENV"
     - name: Check the installed browser can start
       shell: bash
