@@ -22,6 +22,10 @@ public sealed partial class RetireToolkitPageView : RunicView<RetireToolkitPageV
 
 public sealed partial class RetireLatePageView : RunicView<RetireLatePageViewModel>;
 
+public sealed partial class RetireLingerReactivePageView : RunicView<RetireLingerReactivePageViewModel>;
+
+public sealed partial class RetireLingerToolkitPageView : RunicView<RetireLingerToolkitPageViewModel>;
+
 /// <summary>Content of the retirement shell's region.</summary>
 public interface IRetirePage : INotifyPropertyChanged
 {
@@ -179,6 +183,69 @@ public sealed class RetireLatePageViewModel : ReactiveObject, IRetirePage, IDisp
     }
 }
 
+// I-192: a service of the page's entry scope, which the navigator disposes with the page.
+public sealed class RetireScopedClient : IDisposable
+{
+    private int _disposed;
+
+    internal bool IsDisposed => Volatile.Read(ref _disposed) == 1;
+
+    public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
+}
+
+// I-192: work that keeps running after its cancellation until the test releases it, then uses the scoped client.
+public sealed class RetireLingerWork(RetireScopedClient client)
+{
+    private int _clientDisposedAtEnd = -1;
+
+    internal RetireScopedClient Client { get; } = client;
+    internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Whether the client was disposed when the work used it at its end; null before.
+    internal bool? ClientDisposedAtEnd => Volatile.Read(ref _clientDisposedAtEnd) is var value and >= 0 ? value == 1 : null;
+
+    internal async Task RunAsync(CancellationToken cancellationToken)
+    {
+        Started.TrySetResult();
+        try { await Task.Delay(System.Threading.Timeout.Infinite, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            Cancelled.TrySetResult();
+            await Release.Task.ConfigureAwait(false);
+            Volatile.Write(ref _clientDisposedAtEnd, Client.IsDisposed ? 1 : 0);
+            throw;
+        }
+    }
+}
+
+public sealed class RetireLingerReactivePageViewModel : ReactiveObject, IRetirePage
+{
+    public RetireLingerReactivePageViewModel(RetireScopedClient client, IRunicModelContext context)
+    {
+        Work = new RetireLingerWork(client);
+        UploadCommand = ReactiveCommand.CreateFromTask(token => Work.RunAsync(token), outputScheduler: ReactiveSchedulers.For(context));
+    }
+
+    public string Title => "linger";
+
+    internal RetireLingerWork Work { get; }
+
+    [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+    public ReactiveCommand<RxVoid, RxVoid> UploadCommand { get; }
+}
+
+public sealed partial class RetireLingerToolkitPageViewModel(RetireScopedClient client) : ObservableObject, IRetirePage
+{
+    public string Title => "linger";
+
+    internal RetireLingerWork Work { get; } = new(client);
+
+    [RelayCommand]
+    [property: RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+    private Task UploadAsync(CancellationToken cancellationToken) => Work.RunAsync(cancellationToken);
+}
+
 // Presented by RetireReactivePageViewModel.Detail; its operation starts on its own route.
 public sealed class RetireDetailViewModel : ReactiveObject
 {
@@ -234,5 +301,7 @@ internal sealed class RetireViewLocator : IRunicViewLocator
         : typeof(TView) == typeof(RetireDetailView) ? (TView)(object)new RetireDetailView()
         : typeof(TView) == typeof(RetireToolkitPageView) ? (TView)(object)new RetireToolkitPageView()
         : typeof(TView) == typeof(RetireLatePageView) ? (TView)(object)new RetireLatePageView()
+        : typeof(TView) == typeof(RetireLingerReactivePageView) ? (TView)(object)new RetireLingerReactivePageView()
+        : typeof(TView) == typeof(RetireLingerToolkitPageView) ? (TView)(object)new RetireLingerToolkitPageView()
         : throw new InvalidOperationException($"Unexpected View {typeof(TView).Name}.");
 }

@@ -183,7 +183,11 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "stream-capacity");
 
             accepted = new Entry(requestId, request, stream,
-                stream?.MaximumBytes ?? 0, _ownerShutdown.Token) { Retirement = retirement };
+                stream?.MaximumBytes ?? 0, _ownerShutdown.Token)
+            {
+                Retirement = retirement,
+                Work = retirement is null ? null : new BridgeOperationWork(),
+            };
             _reservedRunningStreamBytes += accepted.ReservedRunningStreamBytes;
             _operations.Add(requestId, accepted);
         }
@@ -268,6 +272,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         var member = entry.Request?.Member ?? "(unnamed)";
         try
         {
+            // The flow of this async method only: the caller keeps its own.
+            BridgeOperationWork.Enter(entry.Work);
             result = await work(new BridgeOperationExecution(entry.Stream), entry.Cancellation.Token).ConfigureAwait(false);
             if (entry.Stream is not null)
             {
@@ -404,6 +410,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             entry.Result = result;
             // A terminal record keeps no model reference.
             entry.Retirement = null;
+            entry.Work?.Close();
             var snapshot = entry.Snapshot();
             entry.Terminal.TrySetResult(snapshot);
             _terminals.Enqueue(entry);
@@ -417,8 +424,9 @@ internal sealed class BridgeOperationRegistry : IDisposable
 
     // The navigation entry whose content is owner retires (RunicOperationRetirement): requests cancellation of the
     // running operations declared Cancel that owner or a model presented under it started, and returns a task that
-    // completes when those and the ones declared Drain have ended. Keep operations are not affected. The task never
-    // faults. Logs event 1017 per operation.
+    // completes when those and the ones declared Drain have ended: their terminal and the work their calls registered
+    // (BridgeOperationWork), which can end after the terminal (I-192). Keep operations are not affected. The task
+    // never faults. Logs event 1017 per operation.
     internal Task Retire(object owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -442,7 +450,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 ViewsLog.OperationCancellationCallbackFailed(_logger, error, BridgeTelemetry.ErrorType(error));
             }
         }
-        return Task.WhenAll(retiring.Select(item => (Task)item.Entry.Terminal.Task));
+        return Task.WhenAll(retiring.Select(item => WhenEnded(item.Entry)));
+    }
+
+    private static async Task WhenEnded(Entry entry)
+    {
+        await entry.Terminal.Task.ConfigureAwait(false);
+        if (entry.Work is { } work) await work.Close().ConfigureAwait(false);
     }
 
     // Terminal history is bounded. During admission, terminal entries may be
@@ -648,6 +662,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public int ReservedRunningStreamBytes { get; }
         // The retirement policy and owners of a running operation declared Cancel or Drain; null otherwise.
         public BridgeOperationRetirement? Retirement { get; set; }
+        // The work of an operation declared Cancel or Drain; null otherwise.
+        public BridgeOperationWork? Work { get; init; }
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
         public bool MatchesMember(string? member) => BridgeOperationRegistry.MatchesMember(Request, member);

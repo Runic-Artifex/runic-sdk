@@ -146,7 +146,7 @@ using (var validationHost = new RunicWindowTestHost<FlavorValidationModel>(valid
 }
 
 // #284: a Cancel operation of a navigation page is cancelled when the page's entry retires, and the page is
-// disposed after the operation ended.
+// disposed after the operation's work ended (I-192): the Bridge replies `cancelled` at once, while the work can still run.
 locator.CreateMappingBuilder().Map<FlavorRetirePageModel>(() => new FlavorRetirePageView());
 await using (var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context }))
 {
@@ -166,21 +166,29 @@ await using (var navigator = new RunicNavigator(new RunicNavigatorOptions { Mode
     var uploadStatus = await upload.WaitAsync().WaitAsync(TimeSpan.FromSeconds(10));
     if (uploadStatus.Kind is not RunicOperationStatusKind.Cancelled)
         throw new InvalidOperationException($"Retiring the page did not cancel its Cancel operation: {uploadStatus.Json}");
-    var disposeDeadline = DateTime.UtcNow.AddSeconds(10);
-    while (retirePage.Disposed == 0 && DateTime.UtcNow < disposeDeadline) await Task.Delay(10);
-    if (retirePage.Disposed != 1 || !retirePage.EndedBeforeDispose)
-        throw new InvalidOperationException("The navigator did not dispose the page after its Cancel operation ended.");
     if ((await late.WaitAsync().WaitAsync(TimeSpan.FromSeconds(10))).Kind is not RunicOperationStatusKind.Cancelled)
         throw new InvalidOperationException("Retiring the page did not cancel its late Cancel operation.");
+    // The late work still runs, so the page is not disposed yet.
+    for (var turn = 0; turn < 5; turn++)
+    {
+        await Task.Delay(20);
+        await context.InvokeAsync(() => { });
+    }
+    if (retirePage.Disposed != 0)
+        throw new InvalidOperationException("The navigator disposed the page while the work of its late Cancel operation ran.");
 
-    // I-188: the page is disposed and its Bridge detached; the late work now reports its cancellation on
-    // ThrownExceptions, which the application does not observe. The process must survive it.
+    // I-188: the page's Bridge detached; the late work now reports its cancellation on ThrownExceptions, which the
+    // application does not observe. The process must survive it.
     var lateIdle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     using (retirePage.LateCommand.IsExecuting.Subscribe(executing => { if (!executing) lateIdle.TrySetResult(); }))
     {
         retirePage.LateRelease.TrySetResult();
         await lateIdle.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
+    var disposeDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (retirePage.Disposed == 0 && DateTime.UtcNow < disposeDeadline) await Task.Delay(10);
+    if (retirePage.Disposed != 1 || !retirePage.EndedBeforeDispose)
+        throw new InvalidOperationException("The navigator did not dispose the page after the work of its Cancel operations ended.");
     for (var turn = 0; turn < 5; turn++)
     {
         await Task.Delay(50);
