@@ -65,6 +65,8 @@ public sealed class WindowContentSession : IDisposable
     // Held weakly: a link's owner keeps it alive, so a live session does not keep a
     // navigator it once presented reachable.
     private readonly List<WeakReference<IDisposable>> _disposalLinks = [];
+    // The navigator presentation of a root ViewModel that a navigator holds, such as a WPF child view's page.
+    private IDisposable? _rootNavigation;
 
     /// <summary>Creates the content session for one window with the default options.</summary>
     /// <param name="transport">The window's host transport.</param>
@@ -118,6 +120,7 @@ public sealed class WindowContentSession : IDisposable
             _operations = operations;
             _interactions = interactions;
             _fieldWrites = fieldWrites;
+            _rootNavigation = AttachRootToNavigator(rootModel);
         }
         catch
         {
@@ -696,6 +699,56 @@ public sealed class WindowContentSession : IDisposable
         }
     }
 
+    // A window whose root ViewModel is content a navigator holds, such as the page of a WPF child view
+    // (WpfBridgeView) that a NavigationHost presents, applies RunicOperationRetirement when that content retires.
+    // It does not release the window's routes: the window's own close does that.
+    private IDisposable? AttachRootToNavigator(object? rootModel)
+    {
+        if (rootModel is null || RunicNavigator.OwnerOf(rootModel) is not { } navigator || !navigator.Holds(rootModel)) return null;
+        return navigator.AttachPresentation(new RootContentPresentation(this, rootModel));
+    }
+
+    private sealed class RootContentPresentation(WindowContentSession session, object root) : INavigationPresentation
+    {
+        public void Forget(object content) { }
+
+        public ValueTask ForgetAsync(object content) =>
+            ReferenceEquals(content, root) ? new(session._operations.Retire(content)) : ValueTask.CompletedTask;
+    }
+
+    // Forget, then the work this window keeps for the retiring content: its running operations declared
+    // RunicOperationRetirement.Cancel (cancelled now) or Drain, started by the content or by a model presented under it
+    // when the operation started. The task completes when they have ended and never faults.
+    internal Task ForgetAsync(object viewModel)
+    {
+        Forget(viewModel);
+        return _operations.Retire(viewModel);
+    }
+
+    // The models that present viewModel in this window, through Present or PresentItem slots, and the models that
+    // present those, transitively: an operation's owners besides its own model. Empty for a root or unpresented model.
+    internal IReadOnlyCollection<object> PresentingOwners(object viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        lock (_gate)
+        {
+            if (_disposed || _slots.Count == 0) return [];
+            var owners = new HashSet<object>(ReferenceEqualityComparer.Instance);
+            var pending = new Stack<object>();
+            pending.Push(viewModel);
+            while (pending.Count > 0)
+            {
+                if (!_entries.TryGetValue(pending.Pop(), out var variants)) continue;
+                foreach (var (owner, properties) in _slots)
+                {
+                    if (owners.Contains(owner) || ReferenceEquals(owner, viewModel)) continue;
+                    if (properties.Values.Any(entry => variants.ContainsValue(entry)) && owners.Add(owner)) pending.Push(owner);
+                }
+            }
+            return owners.Count == 0 ? [] : [.. owners];
+        }
+    }
+
     /// <summary>Detaches all presented content, removes the window's routes and releases its model-context leases.</summary>
     public void Dispose()
     {
@@ -707,6 +760,8 @@ public sealed class WindowContentSession : IDisposable
             if (_disposed) return;
             _disposed = true;
             links = [.. _disposalLinks.Select(static reference => reference.TryGetTarget(out var link) ? link : null).OfType<IDisposable>()];
+            if (_rootNavigation is { } rootNavigation) links = [rootNavigation, .. links];
+            _rootNavigation = null;
             _disposalLinks.Clear();
             attachments = _activeEntries.Select(entry => entry.Attachment).OfType<IDisposable>()
                 .Concat(_dormantAttachments).ToArray();

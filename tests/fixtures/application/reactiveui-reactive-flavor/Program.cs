@@ -145,6 +145,31 @@ using (var validationHost = new RunicWindowTestHost<FlavorValidationModel>(valid
         throw new InvalidOperationException($"The Reactive flavor's validation summary was {errors}.");
 }
 
+// #284: a Cancel operation of a navigation page is cancelled when the page's entry retires, and the page is
+// disposed after the operation ended.
+locator.CreateMappingBuilder().Map<FlavorRetirePageModel>(() => new FlavorRetirePageView());
+await using (var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context }))
+{
+    var retireShell = new FlavorRetireShellModel(navigator);
+    var retirePage = new FlavorRetirePageModel(commandScheduler);
+    using var retireHost = new RunicWindowTestHost<FlavorRetireShellModel>(retireShell,
+        (transport, content, vm) => new FlavorRetireShellModelBridge(transport, vm, content: content),
+        new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = new ReactiveRunicViewLocator(locator) });
+    if (await retireShell.Main.PushAsync(NavigationTarget.Own(retirePage)) is not NavigationResult<FlavorRetirePageModel>.Committed)
+        throw new InvalidOperationException("The retirement page was not pushed.");
+    var upload = retireHost.Root.View<FlavorRetirePageModel>(vm => vm.Main).Start(vm => vm.UploadCommand);
+    await retirePage.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    if (await retireShell.Main.ClearAsync() is not NavigationResult<FlavorRetirePageModel>.Committed)
+        throw new InvalidOperationException("The retirement page was not cleared.");
+    var uploadStatus = await upload.WaitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    if (uploadStatus.Kind is not RunicOperationStatusKind.Cancelled)
+        throw new InvalidOperationException($"Retiring the page did not cancel its Cancel operation: {uploadStatus.Json}");
+    var disposeDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (retirePage.Disposed == 0 && DateTime.UtcNow < disposeDeadline) await Task.Delay(10);
+    if (retirePage.Disposed != 1 || !retirePage.EndedBeforeDispose)
+        throw new InvalidOperationException("The navigator did not dispose the page after its Cancel operation ended.");
+}
+
 Console.WriteLine("REACTIVEUI_REACTIVE_FLAVOR_OK");
 
 file static class Scheduled

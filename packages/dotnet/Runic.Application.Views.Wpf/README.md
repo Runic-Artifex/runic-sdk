@@ -185,6 +185,15 @@ before releasing its session. Keep application services alive until that
 completion. Reloading the page reconnects within the same presentation; a new
 view after unload uses a fresh surface/session.
 
+When the model is a page that a `RunicNavigator` owns, such as the content a
+`NavigationHost` presents, the child's session registers with that navigator
+(since 0.11): retiring the page cancels its operations declared
+`RunicOperationRetirement.Cancel`, and the navigator disposes the page after
+its `Cancel` and `Drain` operations ended; see
+[Operations and navigation entries](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#operations-and-navigation-entries).
+Unloading the child still asks its remaining operations to cancel, as before,
+so in a child view a `Drain` operation runs only until the view unloads.
+
 Each factory presents one surface at a time in its control. WPF owns layout,
 DPI, visibility, focus routing and the containing window. The child advertises
 focus only; it does not expose a top-level native handle or minimize, maximize,

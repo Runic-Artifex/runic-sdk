@@ -56,6 +56,22 @@ public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent
     /// must never be rejected as <see cref="NavigationRejection.Busy"/>, such as the clear of a window close.
     /// </summary>
     public NavigationAdmission? Admission { get; init; }
+
+    /// <summary>
+    /// Gets the entry on whose behalf the request is made, or <see langword="null"/>. When set, the request is rejected
+    /// with <see cref="NavigationRejection.NotCurrent"/>, and <see cref="NavigationResult{TContent}.Rejected.By"/> set to
+    /// this entry, unless the entry and every entry that owns its region, up to a region the navigator's content does not
+    /// own, are current when the request is admitted and when it commits.
+    /// </summary>
+    /// <remarks>
+    /// Use it for navigation that work of an entry starts late, such as an operation that completes and then opens a page
+    /// in a parent or sibling region: when the entry was retained or retired in the meantime, the request does nothing.
+    /// <see cref="ExpectedCurrent"/> checks only the current entry of the region the request is made to; an entry that
+    /// navigates its own region uses <see cref="NavigationEntryContext.BackAsync"/> or
+    /// <see cref="NavigationEntryContext.CompleteAsync{TResult}"/>, which already expect it to be current. An unknown
+    /// entry, or one that finished retiring, is not current.
+    /// </remarks>
+    public NavigationEntryId? Requester { get; init; }
 }
 
 /// <summary>Identifies one navigation entry. Ids increase monotonically per navigator.</summary>

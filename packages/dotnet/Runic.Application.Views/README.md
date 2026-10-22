@@ -1076,8 +1076,8 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020` and `029` are warnings; the generator's
-(`013` and `020`) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028` and `029` are warnings; the generator's
+(`013`, `020` and `028`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -1924,6 +1924,108 @@ kind, it carries no exception message, which can contain application data:
 the hook's exception is logged as event 1076, and code that needs it awaits the
 region's request in its own command and reads `Committed.ArrivalError`.
 
+### Operations and navigation entries
+
+Operations belong to the Window, not to the page that started them: their
+status, wait, Cancel and stream routes are Window routes, so a remounted or
+another presentation still observes them. By default an operation keeps running
+when the navigation entry whose page started it retires (Back, Replace, Reset
+or Clear removed the entry), and the navigator disposes the page, its entry
+scope and its model-context lease at once. When the operation uses the page or
+services of that entry scope, declare what retirement does with
+`[RunicOperationRetirement]` (since 0.11), on the command property or on the
+ViewModel class for all of its operations:
+
+| `RunicOperationRetirement` | At retirement | The page, its entry scope and its lease are disposed |
+| --- | --- | --- |
+| `Keep` (default) | The operation keeps running. | At once, as before. |
+| `Cancel` | Its cancellation token is cancelled, as by the client's `cancel()`; it usually ends `cancelled`. | After the operation ended. |
+| `Drain` | The operation keeps running to its end. | After the operation ended. |
+
+```csharp
+public sealed class UploadViewModel : ReactiveObject
+{
+    // Uses the entry's scoped IUploadClient: retiring the page cancels it, and the client is disposed afterwards.
+    [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+    public ReactiveCommand<RxVoid, RxVoid> UploadCommand { get; }
+}
+
+[RunicOperationRetirement(RunicOperationRetirement.Drain)] // every operation of the page
+public sealed partial class ExportViewModel : ObservableObject
+{
+    [RelayCommand]
+    private Task ExportAsync(CancellationToken cancellationToken) => ...;
+
+    // A property declaration wins over the class's; [property:] forwards it to the generated command.
+    [RelayCommand]
+    [property: RunicOperationRetirement(RunicOperationRetirement.Keep)]
+    private Task RefreshAsync(CancellationToken cancellationToken) => ...;
+}
+```
+
+- Retirement never waits for the work: Back commits and completes at once,
+  and `RunicNavigator.IsBusy` and `WhenIdleAsync` do not wait for it. Only the
+  disposal of that page moves to the end of its `Cancel` and `Drain` operations.
+  `RunicNavigator.DisposeAsync` waits for them up to its `CloseTimeout`, then
+  logs Navigation event 1077 and returns; the page is still disposed when they
+  end.
+- The policy covers the operations that the page started, and those of the
+  ViewModels presented under it (its content properties and collections,
+  transitively) when the operation started. A ViewModel presented elsewhere
+  later is not followed.
+- A retained entry (a push covered it) keeps every operation, whatever the
+  policy. Unmounting a presentation, a reload or a disconnect is not
+  retirement either.
+- It applies to content the navigator owns (`Own`, `Create`, `Share`).
+  Borrowed content is never retired by the navigator, and a page that a
+  non-navigator `Present`, `Clear` or content property replaces is
+  application-owned: own its work with an [`AcceptedWorkScope`](#accepted-application-work).
+- Only operations, the asynchronous commands that the client starts with
+  `start…`, carry a policy. An awaited call (`upload()`) is window work that
+  ends with its caller or the Window. On a synchronous command, a state
+  property or a class without operations, the attribute has no effect and the
+  generator warns (`RUNICBRIDGE028`).
+- Each operation that retirement cancels or waits for is logged at Debug
+  (event 1017). The policy is not part of the contract: the generated
+  TypeScript, the contract hash and the mocks do not change.
+- A Window whose root ViewModel is a page that a navigator holds, such as a
+  WPF `WpfBridgeView` or `RunicViewHost` that a `NavigationHost` presents,
+  follows the same policy for that page. Unloading such a child view still
+  asks its remaining operations to cancel, as before, so a `Drain` there runs
+  only until the view unloads.
+
+A late completion that navigates should not navigate from a page that is no
+longer shown. `NavigationEntryContext.BackAsync` and `CompleteAsync` already
+reject a retained or retired entry with `NotCurrent`; for a request to another
+region, pass the page's entry as `NavigationRequestOptions.Requester`, which
+rejects the request unless that entry and the entries owning its region are
+current when it is admitted and when it commits:
+
+```csharp
+await shell.Main.PushAsync(NavigationTarget.Create<ReportViewModel>(),
+    new NavigationRequestOptions { Requester = _entry.Id });
+```
+
+### Operations that outlive a window
+
+The registry of operations is per Window: a second Window, or a second launch,
+cannot observe an operation the first Window started, and closing the Window
+waits for its operations up to the close timeout, then cancels them. Work that
+must outlive a Window, or that several Windows observe, belongs to an
+application-owned service registered outside the Window's scope, as
+nix-manager's `IOperationService`:
+
+- The service runs at most one operation of a kind and keeps its state and an
+  ordered event stream (progress, log lines, the result).
+- A Window's ViewModel subscribes to that stream when it opens and publishes
+  what it shows as state; a new Window, or a reattached one, reads the current
+  state first and then follows the stream.
+- `WaitAsync` lets a command or a Window await the end of a run; stopping that
+  wait does not stop the run.
+- Cancellation is the application's decision: a Window asks the service to
+  cancel, and the service decides who may. Runic does not keep a cross-window
+  operation registry.
+
 ## Logging and telemetry
 
 Registering logging is all an application needs: with `services.AddLogging(...)`,
@@ -1962,7 +2064,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1002 | `BridgeFieldWriteFailed` | Error | A checked field write throws. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1003 | `BridgeOperationAdmissionFailed` | Error | Admitting an operation throws. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1004 | `BridgeOperationFailed` | Error | An admitted operation throws. | `Member`, `ErrorType` |
-| 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes. | `ErrorType` |
+| 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes, or while a retiring navigation entry cancels its operations. | `ErrorType` |
 | 1006 | `BridgeCommandDomainFailed` | Debug | A command throws its declared failure. | `Model`, `Member`, `Route`, `FailureType` |
 | 1007 | `BridgeOperationDomainFailed` | Debug | An admitted operation throws its declared failure. | `Member`, `FailureType` |
 | 1008 | `BridgeDomainFailureNotEncoded` | Error | A `RunicFailureException` from a command or operation is undeclared, cannot be encoded or is over 4 KiB, so it is reported as failed. When the encoder threw, the entry carries both exceptions. | `Model`, `Member`, `Route`, `FailureType`, `Reason` |
@@ -1973,6 +2075,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1014 | `AcceptedWorkDomainFailed` | Debug | A task owned by an `AcceptedWorkScope` throws a declared failure. | `FailureType` |
 | 1015 | `PathWatchProblem` | Warning | A `RunicPathWatcher` started without a `failed` callback meets a problem it works around: lost events, a watch limit or a watch that could not start. Always written to `Trace`. | `Problem` |
 | 1016 | `PathWatchPolling` | Debug | A `RunicPathWatcher` started without a `failed` callback polls for a directory that does not exist yet, such as a state directory created on the first start. Not written to `Trace`. | `Problem` |
+| 1017 | `BridgeOperationRetired` | Debug | The navigation entry whose page started an operation declared `RunicOperationRetirement.Cancel` or `Drain` retires: a `Cancel` operation is asked to cancel, and the page is disposed after the operation ends. | `Member`, `Policy`, `Route` |
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |

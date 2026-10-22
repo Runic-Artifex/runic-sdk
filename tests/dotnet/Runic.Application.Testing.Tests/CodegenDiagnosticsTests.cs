@@ -56,6 +56,82 @@ internal sealed partial class CodegenDiagnosticsTests
             + "tools/Runic.Application.Views.Codegen -- --list-diagnostics docs/runicbridge-diagnostics.json\n" + list);
     }
 
+    // RUNICBRIDGE028 (#284): a RunicOperationRetirement declaration that reaches no operation is a located warning, and
+    // the policy reaches the generated descriptor only for an operation and only when it is not Keep.
+    [Test]
+    public async Task OperationRetirementReachesOperationsOnlyAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-retirement-{Guid.NewGuid():N}");
+        try
+        {
+            const string Source = Preamble + """
+                public sealed class RetirementViewModel : FixtureModel
+                {
+                    [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+                    public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    [RunicOperationRetirement(RunicOperationRetirement.Keep)]
+                    public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    public IAsyncRelayCommand PlainCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    [RunicOperationRetirement(RunicOperationRetirement.Drain)]
+                    public IRelayCommand ToggleCommand { get; } = new RelayCommand(() => { });
+                    [RunicOperationRetirement(RunicOperationRetirement.Drain)]
+                    public string Title { get; set; } = "";
+                    [RunicOperationRetirement((RunicOperationRetirement)7)]
+                    public IAsyncRelayCommand OddCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                }
+                [RunicOperationRetirement(RunicOperationRetirement.Drain)]
+                public sealed class ClassPolicyViewModel : FixtureModel
+                {
+                    public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    [RunicOperationRetirement(RunicOperationRetirement.Keep)]
+                    public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                }
+                [RunicOperationRetirement(RunicOperationRetirement.Cancel)]
+                public sealed class NoOperationViewModel : FixtureModel
+                {
+                    public IRelayCommand ToggleCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class RetirementWindow : RunicWindow<RetirementViewModel>;
+                public sealed partial class ClassPolicyWindow : RunicWindow<ClassPolicyViewModel>;
+                public sealed partial class NoOperationWindow : RunicWindow<NoOperationViewModel>;
+                """;
+            var (exitCode, output, directory) = await RunGeneratorAsync(generator, temporaryRoot, "Retirement", Source).ConfigureAwait(false);
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE028:", StringComparison.Ordinal)).ToArray();
+            int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
+            bool At(string declaration, string message) => warnings.Any(text =>
+                text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
+                && text.Contains(message, StringComparison.Ordinal));
+            Require(exitCode == 0 && warnings.Length == 4
+                    && At("public IRelayCommand ToggleCommand", // the first: RetirementViewModel's
+                        "RetirementViewModel.ToggleCommand: RunicOperationRetirement applies only to a Bridge command that starts an operation")
+                    && At("public string Title", "RetirementViewModel.Title: RunicOperationRetirement applies only to a Bridge command that starts an operation")
+                    && At("public IAsyncRelayCommand OddCommand", "RetirementViewModel.OddCommand: 7 is not a RunicOperationRetirement value")
+                    && warnings.Any(text => text.Contains("NoOperationViewModel: RunicOperationRetirement on the class applies to its operations", StringComparison.Ordinal))
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE028")}", StringComparison.Ordinal))
+                    && !warnings.Any(text => text.Contains("ClassPolicyViewModel", StringComparison.Ordinal)),
+                $"RunicOperationRetirement without an operation was not reported as located RUNICBRIDGE028 warnings.\n{output}");
+
+            string Descriptor(string model, string command) => File.ReadAllLines(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs"))
+                .Single(line => line.Contains($"(\"{command}\", vm => (object)vm.{command}Command)", StringComparison.Ordinal));
+            const string Policy = "Retirement = global::Runic.Application.Views.RunicOperationRetirement.";
+            Require(Descriptor("RetirementViewModel", "Save").Contains(Policy + "Cancel", StringComparison.Ordinal)
+                    && Descriptor("ClassPolicyViewModel", "Save").Contains(Policy + "Drain", StringComparison.Ordinal)
+                    && new[] { ("RetirementViewModel", "Load"), ("RetirementViewModel", "Plain"), ("RetirementViewModel", "Odd"),
+                        ("RetirementViewModel", "Toggle"), ("ClassPolicyViewModel", "Load"), ("NoOperationViewModel", "Toggle") }
+                        .All(command => !Descriptor(command.Item1, command.Item2).Contains("Retirement = ", StringComparison.Ordinal)),
+                "The generated descriptors do not carry exactly the declared non-Keep policies of operations.");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     [Test]
     public async Task GeneratorRejectsUnsupportedModelsWithLocatedDiagnosticsAsync()
     {

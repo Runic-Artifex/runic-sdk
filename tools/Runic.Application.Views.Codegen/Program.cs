@@ -324,6 +324,51 @@ static string UnregisteredContentMessage(Type model, PropertyInfo property, bool
 // implements (an application-wide ViewModel base), or one that admits more than
 // MissingViewCandidateLimit ViewModels without a View. Window ViewModels are
 // never candidates: every Window is a RunicView, so they are in viewTypes.
+// RunicOperationRetirement (#284): the declaration on a command property, else on the ViewModel class or a base class,
+// read by name like RunicFailure. Only an operation (an asynchronous command) carries it; RUNICBRIDGE028 warns about a
+// declaration that reaches none. Keep, the default, emits nothing, so a Bridge without one is generated as before.
+static void ApplyOperationRetirement(Type model, IReadOnlyList<PropertyInfo> commands, Dictionary<PropertyInfo, GeneratedCommandPlan> commandPlans)
+{
+    const string Attribute = "Runic.Application.Views.RunicOperationRetirementAttribute";
+    const BindingFlags AllDeclared = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+        | BindingFlags.Public | BindingFlags.NonPublic;
+    RunicOperationRetirement? Declared(MemberInfo member)
+    {
+        if (BridgeAttributeNames.Find(member, Attribute)?.FixedArguments?.Invoke() is not [var argument]) return null;
+        var value = Convert.ToInt32(argument, System.Globalization.CultureInfo.InvariantCulture);
+        if (Enum.IsDefined(typeof(RunicOperationRetirement), value)) return (RunicOperationRetirement)value;
+        Diagnostics.Warn(BridgeDiagnosticCodes.OperationRetirement,
+            $"{model.Name}.{member.Name}: {value} is not a RunicOperationRetirement value; the declaration is ignored.", member);
+        return null;
+    }
+    // A property declaration, also one on the base property that a command overrides.
+    RunicOperationRetirement? OnProperty(PropertyInfo property)
+    {
+        for (var owner = property.DeclaringType; owner is not null && owner != typeof(object); owner = owner.BaseType)
+            if (owner.GetProperty(property.Name, AllDeclared) is { } declared && Declared(declared) is { } value) return value;
+        return null;
+    }
+    RunicOperationRetirement? onClass = null;
+    for (var owner = model; owner is not null && owner != typeof(object) && onClass is null; owner = owner.BaseType)
+        onClass = Declared(owner);
+    var operations = commands.Where(command => commandPlans[command].IsAsync).ToHashSet();
+    foreach (var command in operations)
+        if ((OnProperty(command) ?? onClass) is { } retirement and not RunicOperationRetirement.Keep)
+            commandPlans[command] = commandPlans[command] with { Retirement = retirement };
+    // A declaration that reaches no operation: on the ViewModel's own members, so a base class shared by several
+    // ViewModels is reported once per ViewModel that declares it.
+    foreach (var property in model.GetProperties(AllDeclared).OrderBy(property => property.MetadataToken))
+    {
+        if (!BridgeAttributeNames.Has(property, Attribute) || operations.Any(command => command.Name == property.Name)) continue;
+        Diagnostics.Warn(BridgeDiagnosticCodes.OperationRetirement,
+            $"{model.Name}.{property.Name}: RunicOperationRetirement applies only to a Bridge command that starts an operation "
+            + "(an asynchronous CommunityToolkit or ReactiveUI command); it has no effect here.", property);
+    }
+    if (operations.Count == 0 && BridgeAttributeNames.Has(model, Attribute))
+        Diagnostics.Warn(BridgeDiagnosticCodes.OperationRetirement,
+            $"{model.Name}: RunicOperationRetirement on the class applies to its operations (asynchronous Bridge commands), but it has none; it has no effect here.", model);
+}
+
 static void WarnContentWithoutView(Type model, IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentProperties,
     IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentCollections, IReadOnlySet<PropertyInfo> regionSlots,
     IReadOnlyDictionary<Type, List<Type>> viewTypes)
@@ -747,6 +792,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     bool OverriddenByCommand(MemberInfo member) => member is PropertyInfo baseProperty && commands.Any(command =>
         command.Name == baseProperty.Name && command.GetMethod is { } getter && baseProperty.GetMethod is { } baseGetter
         && getter.GetBaseDefinition() == baseGetter.GetBaseDefinition() && getter != baseGetter);
+    ApplyOperationRetirement(model, commands, commandPlans);
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
     {
         var plan = commandPlans[command];
@@ -1761,6 +1807,8 @@ static class BridgeDiagnosticCodes
     internal const string FrontendLock = "RUNICBRIDGE026";
     /// <summary>A RunicCommandKey declaration is misplaced, or its resolver is missing or has an unsupported shape.</summary>
     internal const string CommandKey = "RUNICBRIDGE027";
+    /// <summary>Warning: a RunicOperationRetirement declaration reaches no operation.</summary>
+    internal const string OperationRetirement = "RUNICBRIDGE028";
     /// <summary>Warning: RunicApplicationFrontendPackageManager is not npm, pnpm or bun.</summary>
     internal const string PackageManager = "RUNICBRIDGE029";
 
@@ -1796,6 +1844,7 @@ static class BridgeDiagnosticCodes
         (ReactiveUiAdapter, "error", "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor"),
         (FrontendLock, "error", "The frontend declares dependencies but has no lock file for the default install"),
         (CommandKey, "error", "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"),
+        (OperationRetirement, "warning", "A [RunicOperationRetirement] declaration reaches no operation"),
         (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
     ];
 
@@ -2052,6 +2101,9 @@ sealed record GeneratedCommandPlan(
     /// <summary>True when the snapshot carries is&lt;Name&gt;Executing.</summary>
     internal bool HasExecutionState => Command?.HasExecutionState == true;
 
+    /// <summary>The operation's RunicOperationRetirement; Keep, the default, is not emitted.</summary>
+    internal RunicOperationRetirement Retirement { get; init; }
+
     internal static GeneratedCommandPlan Plain(BridgeTypeGraph input) =>
         new(HasStringArgument: false, IsAsync: false, InputGraph: input, IsPlainICommand: true);
 
@@ -2068,6 +2120,9 @@ sealed record GeneratedCommandPlan(
         var initializer = Command?.DescriptorInitializer(property, this);
         if (Key is { } key)
             initializer = (initializer is null ? "" : initializer + ", ") + key.Initializer(modelType);
+        if (Retirement is not RunicOperationRetirement.Keep)
+            initializer = (initializer is null ? "" : initializer + ", ")
+                + $"Retirement = global::Runic.Application.Views.RunicOperationRetirement.{Retirement}";
         return CommandDescriptorSyntax.WithInitializer(descriptor, initializer);
     }
 

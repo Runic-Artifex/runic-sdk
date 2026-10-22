@@ -172,6 +172,12 @@ See [Container-resolved targets](#container-resolved-targets).
   commit. Use it, or `NavigationEntryContext.BackAsync`, for work that
   completes late, such as a double click or a dialog that answers after the
   user moved on.
+- `NavigationRequestOptions.Requester` (since 0.11) names the entry a request
+  is made for, such as a page whose operation completes and then opens a page
+  in a parent or sibling region. The request is rejected as `NotCurrent`, with
+  `Rejected.By` set to that entry, unless the entry, and every entry whose
+  content owns its region up to a root region, is current at admission and at
+  commit. A retained, retired or unknown entry is not current.
 - A region exposes `Current`, `CurrentEntry`, `History`, `CanGoBack`,
   `IsTransitioning` and `IsBusy`. It raises `PropertyChanged` for them inside a
   model turn, the commit turn for a navigation.
@@ -604,8 +610,16 @@ Other hosts bind `NavigationRegion`, the non-generic base class of every
 regions and entries; the base classes can't be derived from outside
 Runic.Navigation. `Runic.Navigation.Wpf` provides WPF hosts and a dispatcher
 model context. `RunicNavigator.AttachPresentation` is for presentation
-integrations only: retirement calls `INavigationPresentation.Forget` once for
-each attached presentation and owned entry.
+integrations only: retirement calls `INavigationPresentation.ForgetAsync` once
+for each attached presentation and owned entry. Its default implementation
+calls `Forget` and completes at once. A presentation that keeps work for the
+content, such as a Runic Views operation declared
+`RunicOperationRetirement.Cancel` or `Drain`, returns a task that completes
+when that work has ended (since 0.11). The navigator then disposes the
+content, its entry scope and its model-context lease when the task completes,
+without holding up the retirement: the transition completes, and `IsBusy` and
+`WhenIdleAsync` do not wait for it. A failure of the task is logged like a
+throwing `Forget` (event 1064, step `Forget`).
 
 ### Results from an entry
 
@@ -836,6 +850,10 @@ DI disposes the navigator before the model context it depends on. Its
    one `CloseTimeout`, so disposal takes about twice `CloseTimeout` at most,
    plus owned content disposal. If a turn does not run in time, the stack is
    cleared outside a turn (event 1068).
+4. Waits up to one more `CloseTimeout` for content whose release waits for
+   work its presentation keeps (`INavigationPresentation.ForgetAsync`), then
+   logs each one still waiting (event 1077) and completes. That content is
+   still disposed when its work ends.
 
 Disposal does not run guards. Disposing a navigator cancels window-owned
 operations that its owned content started, and then disposes that content.
@@ -1036,6 +1054,7 @@ public async Task ConfirmCompletesTheRequest()
 | 1074 | `NavigationBackJoined` | Debug | A Back joins the pending Back of its region instead of superseding it. | `Region`, `RegionId` |
 | 1075 | `NavigationEntryNotificationFailed` | Error | A `NavigationEntryContext.StateChanged` handler or an `INavigationAware` method throws; the other handlers still run, and the change stands. `Notification` is `StateChanged`, `OnNavigatedTo` or `OnNavigatedFrom`. | `Region`, `RegionId`, `Operation`, `EntryType`, `Notification`, `ErrorType` |
 | 1076 | `NavigationArrivalFailed` | Error | An `INavigationArrived` or `INavigationArrived<TInput>` hook throws; the commit stands and reports `Arrival = Failed`. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
+| 1077 | `NavigationContentReleaseOverdue` | Warning | `DisposeAsync` stopped waiting after `CloseTimeout` for work that a presentation keeps for retired content (`INavigationPresentation.ForgetAsync`), such as a Runic Views operation declared `RunicOperationRetirement.Drain`; the content, its entry scope and its lease are released when that work ends. | `Region`, `RegionId`, `EntryType` |
 
 Errors and warnings carry the exception. Rejections, supersessions, joined Backs and
 dismissed results log at Debug. The properties are `Region` (the `TContent`
@@ -1045,7 +1064,7 @@ the same `TContent`), `Operation`, `EntryType`, `Step`, `Reason`, `Property`
 and `ErrorType`, never
 values.
 
-- Events 1060-1076 use the category `Runic.Navigation`
+- Events 1060-1077 use the category `Runic.Navigation`
   (`RunicNavigator.LogCategory`), from `RunicNavigatorOptions.LoggerFactory`
   or the scope's `ILoggerFactory` with `AddRunicNavigation()`.
 - Events 1030-1033 use the logger of the `RunicModelContext`:
