@@ -70,12 +70,17 @@ The default entry point is `index.html`. Set `RunicAssetsEntryPoint` for a
 different entry file; set `RunicAssetsDistExclude` to omit files such as build
 statistics (by default `runic-assets.zip`; the value replaces that default, and
 an empty `<RunicAssetsDistExclude></RunicAssetsDistExclude>` in the project file
-packs every file). To use an existing canonical archive, set
+packs every file). `.git` directories and files whose names start with `.env`
+(such as `.env.local` or `.envrc`) are never packed unless you set
+`RunicAssetsDefaultExcludes` to `false`; a packed source map (`*.map`) is build
+warning `RAS1005`, which `<NoWarn>$(NoWarn);RAS1005</NoWarn>` silences. To use
+an existing canonical archive, set
 `RunicAssetsEmbeddedArchive` instead of `RunicAssetsDist`. Set
 `RunicAssetsEmbeddedResourceName` if you need a resource name other than
 `Runic.Assets.StaticFiles`, and supply that name to `ReadEmbedded`.
-To produce an archive in a separate step, run the packaged packer directly; see
-the [packer README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Assets.Packer/README.md).
+To produce an archive in a separate step, run `dotnet runic assets pack`, the
+packer's command in the `dotnet-runic` tool; see the
+[packer README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Assets.Packer/README.md).
 
 Directory archives mark a file `Immutable` (`public, max-age=31536000,
 immutable`) only when its name carries a content hash, such as Vite's
@@ -83,6 +88,35 @@ immutable`) only when its name carries a content hash, such as Vite's
 `main.<hex>.js`. Every other file, including `.html`/`.htm` documents and
 unhashed `public/` files such as `favicon.ico`, `robots.txt` or `sw.js`, uses
 `Revalidate` with its strong entity tag.
+
+## Archives from code
+
+`AssetArchive.WriteTrustedDirectoryAsync` packs a directory that your own build
+produced, on Linux, Windows and macOS, with the same snapshot rules as the
+build: it rejects the symbolic links, and on Windows the junctions and other
+reparse points, that it sees, and it assumes that nobody changes the directory
+while it reads it. `AssetArchiveDirectoryOptions` selects the entry point
+(`index.html` by default), exact `ExcludedPaths`, and `ExcludeDefaultPatterns`,
+which leaves `.git` directories and `.env*` files out (`true` by default). On
+Linux, `AssetArchive.WriteDirectoryAsync(directory, destination, options,
+cancellationToken)` reads through pinned no-follow handles instead, for a
+directory that a less trusted process can write. The older
+`WriteDirectoryAsync(directory, destination, entryPoint, excludedPaths)` overload
+packs every file it is not told to exclude.
+
+```csharp
+await using FileStream output = File.Create("artifacts/app.runic-assets");
+await AssetArchive.WriteTrustedDirectoryAsync(
+    "Client.Web/dist",
+    output,
+    new AssetArchiveDirectoryOptions { ExcludedPaths = ["stats.html"] },
+    cancellationToken);
+```
+
+`AssetArchive.ReadAsync(stream, options, cancellationToken)` loads an archive
+from a stream without blocking, for example from an HTTP response or a file
+opened for asynchronous reads; the stream need not be seekable. It applies the
+same `AssetArchiveReadOptions` limits and validation as `AssetArchive.Read`.
 
 ## Small explicit bundles
 

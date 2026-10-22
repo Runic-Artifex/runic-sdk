@@ -5,5 +5,7 @@
        <RunicAssetsDistExclude></RunicAssetsDistExclude> packs every file of RunicAssetsDist. -->
   <PropertyGroup>
     <RunicAssetsDistExclude Condition="'$(RunicAssetsDistExclude)' == ''">runic-assets.zip</RunicAssetsDistExclude>
+    <!-- true leaves .git directories and .env* files of RunicAssetsDist out of the archive; false packs them. -->
+    <RunicAssetsDefaultExcludes Condition="'$(RunicAssetsDefaultExcludes)' == ''">true</RunicAssetsDefaultExcludes>
   </PropertyGroup>
 </Project>

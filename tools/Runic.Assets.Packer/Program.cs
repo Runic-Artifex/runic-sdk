@@ -1,11 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
-using Runic.Assets;
 using Runic.Assets.Packer;
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
@@ -20,19 +13,12 @@ internal static class PackerApplication
     /// <summary>The selector's former spelling, a hidden alias until 2.0.</summary>
     private const string FormerFormatOptionName = "--output";
 
-    // Fault messages stay free of paths and exception text, so the JSON response
-    // keeps the RAS code; Runic.CommandLine replaces a fault whose message looks
-    // technical. Paths and exception messages go into details, which JSON output
-    // redacts individually, and the human output below puts them back.
-    private const string SourceDirectoryDetail = "sourceDirectory";
-    private const string EntryPointDetail = "entryPoint";
-    private const string ReasonDetail = "reason";
     public static Task<int> RunAsync(string[] args) => CreateApp(new Runic.CommandLine.Spectre.SpectreCommandConsole()).RunAsync(args);
 
     // No ParseSettings: CommandApp's defaults read RUNIC_COMMANDLINE_OUTPUT, RUNIC_COMMANDLINE_NO_INPUT and option
     // environment fallbacks from the process environment. Its default exit codes are those of every Runic tool.
     // The presenter writes the human output; JSON output keeps the standard envelope. Tests pass a presenter that
-    // observes the invocation's context and then delegates to PresentAsync.
+    // observes the invocation's context and then delegates to AssetPackCommand.PresentAsync.
     internal static CommandApp CreateApp(ICommandConsole console, CommandOutcomePresenter<PackerResult>? presenter = null) =>
         new(CreateCatalog(presenter))
         {
@@ -42,200 +28,9 @@ internal static class PackerApplication
             Console = console,
         };
 
+    // The pack command is AssetPackCommand.PackAsync, which dotnet runic assets pack shares.
     internal static CommandCatalog CreateCatalog(CommandOutcomePresenter<PackerResult>? presenter = null) =>
         GeneratedCommandCatalog.Create(builder => builder
             .OutputSelector(FormatOptionName, FormerFormatOptionName)
-            .PresentOutcome("pack", presenter ?? PresentAsync));
-
-    [Command("pack", Description = "Package a directory as a Runic asset archive.")]
-    [DefaultCommand]
-    [CommandResult("runic.assets.pack-result/1", typeof(PackerJsonContext))]
-    internal static async Task<CommandOutcome<PackerResult>> PackAsync(
-        [Argument("source-directory", Description = "Directory to package, usually a frontend build output such as dist.")] string sourceDirectory,
-        [Argument("destination-archive", Description = "Archive file to write; it is replaced atomically.")] string destination,
-        [Option("--exclude", ValueName = "paths", Description = "Asset paths to omit, separated by semicolons. Repeatable.")] IReadOnlyList<string> exclusions,
-        [Option("--trusted-generated-output", Description = "Snapshot trusted build output; works on any OS.")] bool trustedGeneratedOutput,
-        CancellationToken cancellationToken,
-        [Option("--entry-point", ValueName = "path", Description = "Entry document relative to the source directory.")] string entryPoint = "index.html")
-    {
-        string fullSourceDirectory = Path.GetFullPath(sourceDirectory);
-        string fullDestination = Path.GetFullPath(destination);
-        if (!Directory.Exists(fullSourceDirectory))
-        {
-            return Failure(
-                CommandExitCategory.Validation,
-                "RAS1001",
-                "The source directory does not exist.",
-                new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    [SourceDirectoryDetail] = fullSourceDirectory,
-                });
-        }
-
-        try
-        {
-            entryPoint = AssetPath.Normalize(entryPoint);
-            var excludedPaths = new HashSet<string>(StringComparer.Ordinal);
-            foreach (string exclusion in exclusions)
-            {
-                foreach (string path in exclusion.Split(
-                    ';',
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                {
-                    excludedPaths.Add(AssetPath.Normalize(path));
-                }
-            }
-
-            string? destinationDirectory = Path.GetDirectoryName(fullDestination);
-            if (!string.IsNullOrEmpty(destinationDirectory))
-            {
-                Directory.CreateDirectory(destinationDirectory);
-            }
-
-            string temporary = fullDestination + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            AddSourceRelativeExclusion(fullSourceDirectory, fullDestination, excludedPaths);
-            AddSourceRelativeExclusion(fullSourceDirectory, temporary, excludedPaths);
-            if (excludedPaths.Contains(entryPoint)
-                || !File.Exists(Path.Combine(fullSourceDirectory, entryPoint.Replace('/', Path.DirectorySeparatorChar))))
-            {
-                return Failure(
-                    CommandExitCategory.Unavailable,
-                    "RAS1002",
-                    "The entry point does not exist below the source directory or was excluded.",
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        [EntryPointDetail] = entryPoint,
-                        [SourceDirectoryDetail] = fullSourceDirectory,
-                    });
-            }
-
-            try
-            {
-                await using (var output = new FileStream(
-                    temporary,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None))
-                {
-                    if (trustedGeneratedOutput)
-                    {
-                        await AssetArchive.WriteTrustedGeneratedOutputDirectoryAsync(
-                            fullSourceDirectory,
-                            output,
-                            entryPoint,
-                            excludedPaths,
-                            cancellationToken).ConfigureAwait(false);
-                    }
-                    else if (OperatingSystem.IsLinux())
-                    {
-                        await AssetArchive.WriteDirectoryAsync(
-                            fullSourceDirectory,
-                            output,
-                            entryPoint,
-                            excludedPaths,
-                            cancellationToken).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        return Failure(
-                            CommandExitCategory.CommandFailure,
-                            "RAS1004",
-                            "Directory archive compilation requires Linux handle-pinned traversal. " +
-                            "Use --trusted-generated-output only for output generated by the current build.");
-                    }
-                }
-
-                File.Move(temporary, fullDestination, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(temporary))
-                {
-                    File.Delete(temporary);
-                }
-            }
-
-            return CommandOutcome.Success(new PackerResult(new FileInfo(fullDestination).Length));
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException or PlatformNotSupportedException)
-        {
-            return Failure(
-                CommandExitCategory.CommandFailure,
-                "RAS1003",
-                "The archive could not be packed.",
-                new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    [ReasonDetail] = exception.Message,
-                });
-        }
-    }
-
-    private static CommandOutcome<PackerResult> Failure(
-        CommandExitCategory category,
-        string code,
-        string message,
-        IReadOnlyDictionary<string, string>? details = null) =>
-        CommandOutcome.Failure<PackerResult>(category,
-            new CommandFault(code, message, details) { HelpUri = new Uri(RunicReleaseLinks.Diagnostic(code)) });
-
-    // Human output: the archive length on success; on failure the full message for a person at the terminal, with
-    // the paths and the underlying reason that the JSON fault leaves out, and the fault's help link.
-    internal static ValueTask PresentAsync(CommandOutcomePresentation<PackerResult> presentation, CancellationToken cancellationToken)
-    {
-        CommandOutcome<PackerResult> outcome = presentation.Outcome;
-        ICommandConsole console = presentation.Context.Console;
-        if (outcome.Succeeded && outcome.Value is { } result)
-        {
-            return console.WriteOutAsync(
-                $"Packed a canonical Runic Assets archive into {result.ArchiveLength} bytes.{Environment.NewLine}".AsMemory(),
-                cancellationToken);
-        }
-
-        string message = outcome.Fault is { } fault
-            ? HumanMessage(fault) + (fault.HelpUri is { } help ? Environment.NewLine + $"Help for {fault.Code}: {help.AbsoluteUri}" : "")
-            : "The archive could not be packed.";
-        return console.WriteErrorAsync((message + Environment.NewLine).AsMemory(), cancellationToken);
-    }
-
-    // The full message for a person at the terminal, with the paths and the
-    // underlying reason that the machine-readable message leaves out.
-    internal static string HumanMessage(CommandFault fault)
-    {
-        IReadOnlyDictionary<string, string> details = fault.Details;
-        return fault.Code switch
-        {
-            "RAS1001" when details.TryGetValue(SourceDirectoryDetail, out string? source) =>
-                $"Source directory '{source}' does not exist.",
-            "RAS1002" when details.TryGetValue(EntryPointDetail, out string? entry)
-                && details.TryGetValue(SourceDirectoryDetail, out string? source) =>
-                $"Entry point '{entry}' does not exist below '{source}' or was excluded.",
-            "RAS1003" when details.TryGetValue(ReasonDetail, out string? reason) => reason,
-            _ => fault.Message,
-        };
-    }
-
-    private static void AddSourceRelativeExclusion(
-        string sourceDirectory,
-        string candidate,
-        HashSet<string> excludedPaths)
-    {
-        string relative = Path.GetRelativePath(sourceDirectory, candidate);
-        if (relative == "."
-            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-            || Path.IsPathRooted(relative))
-        {
-            return;
-        }
-
-        excludedPaths.Add(AssetPath.Normalize(relative.Replace(Path.DirectorySeparatorChar, '/')));
-    }
-
+            .PresentOutcome(AssetPackCommand.CommandPath, presenter ?? AssetPackCommand.PresentAsync));
 }
-
-// The runic.assets.pack-result/1 payload is { "archiveLength": <bytes> }; the name is spelled
-// out so that the JSON context's options cannot rename it.
-internal sealed record PackerResult([property: JsonPropertyName("archiveLength")] long ArchiveLength);
-
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-[JsonSerializable(typeof(PackerResult))]
-internal sealed partial class PackerJsonContext : JsonSerializerContext;

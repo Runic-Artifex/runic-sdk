@@ -12,6 +12,7 @@ Namespace: `Runic.Assets`
 - `AssetReadSnapshot`
 - `AssetArchive`
 - `AssetArchiveReadOptions`
+- `AssetArchiveDirectoryOptions`
 - `AssetArchiveSource`
 - `AssetArchiveInspection`
 - `EmbeddedAssetRegistration`

@@ -65,6 +65,11 @@ public static class AssetArchive
     /// Writes a canonical archive from a local directory using the same manifest, validation,
     /// media-type, cache, and ZIP writer authority as every other archive producer.
     /// </summary>
+    /// <remarks>
+    /// This overload packs every regular file that <paramref name="excludedPaths"/> does not name, including
+    /// <c>.git</c> directories and <c>.env</c> files. The overload that takes
+    /// <see cref="AssetArchiveDirectoryOptions"/> leaves them out by default.
+    /// </remarks>
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     public static async ValueTask WriteDirectoryAsync(
         string sourceDirectory,
@@ -75,27 +80,61 @@ public static class AssetArchive
     {
         using var source = new DirectoryArchiveSource(
             sourceDirectory,
-            entryPointRelativePath,
-            excludedPaths,
+            new AssetDirectoryExclusions(entryPointRelativePath, excludedPaths, excludeDefaultPatterns: false),
             cancellationToken);
         await WriteAsync(source, destination, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Writes a canonical archive from a directory generated earlier in the same trusted build.
-    /// This snapshot rejects observed links but is not safe against concurrent hostile mutation.
+    /// Writes a canonical archive from a local directory through pinned no-follow Linux handles, with the entry
+    /// point and exclusions of <paramref name="options"/>. By default <c>.git</c> directories and files whose
+    /// names start with <c>.env</c> are left out at any depth.
     /// </summary>
-    internal static async ValueTask WriteTrustedGeneratedOutputDirectoryAsync(
+    /// <param name="sourceDirectory">The directory to pack.</param>
+    /// <param name="destination">A writable stream that receives the archive.</param>
+    /// <param name="options">The entry point and the paths to leave out.</param>
+    /// <param name="cancellationToken">Cancels the scan and the write.</param>
+    /// <exception cref="PlatformNotSupportedException">The operating system is not Linux.</exception>
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public static async ValueTask WriteDirectoryAsync(
         string sourceDirectory,
         Stream destination,
-        string entryPointRelativePath = "index.html",
-        IEnumerable<string>? excludedPaths = null,
+        AssetArchiveDirectoryOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        using var source = new DirectoryArchiveSource(
+            sourceDirectory,
+            new AssetDirectoryExclusions(options),
+            cancellationToken);
+        await WriteAsync(source, destination, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes a canonical archive from a directory that the same trusted build produced, on every operating
+    /// system. By default <c>.git</c> directories and files whose names start with <c>.env</c> are left out at
+    /// any depth.
+    /// </summary>
+    /// <remarks>
+    /// The directory is read with ordinary file APIs into memory before the archive is written. Symbolic links,
+    /// and on Windows every reparse point such as a junction, that the scan observes are rejected with
+    /// <see cref="InvalidDataException"/>. The snapshot is not safe against a process that changes the
+    /// directory while it is read; use <see cref="WriteDirectoryAsync(string, Stream, AssetArchiveDirectoryOptions, CancellationToken)"/>
+    /// on Linux for a directory that a less trusted process can write.
+    /// </remarks>
+    /// <param name="sourceDirectory">The directory to pack.</param>
+    /// <param name="destination">A writable stream that receives the archive.</param>
+    /// <param name="options">The entry point and the paths to leave out; <see langword="null"/> uses the defaults.</param>
+    /// <param name="cancellationToken">Cancels the scan and the write.</param>
+    public static async ValueTask WriteTrustedDirectoryAsync(
+        string sourceDirectory,
+        Stream destination,
+        AssetArchiveDirectoryOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         var source = new TrustedGeneratedOutputDirectorySource(
             sourceDirectory,
-            entryPointRelativePath,
-            excludedPaths,
+            new AssetDirectoryExclusions(options ?? AssetArchiveDirectoryOptions.Default),
             cancellationToken);
         await WriteAsync(source, destination, cancellationToken).ConfigureAwait(false);
     }
@@ -104,10 +143,43 @@ public static class AssetArchive
     public static AssetArchiveSource Read(Stream source, AssetArchiveReadOptions? options = null)
         => ReadCore(source, options, CancellationToken.None);
 
-    private static AssetArchiveSource ReadCore(
+    /// <summary>
+    /// Loads and validates a portable Runic Assets archive into memory, reading <paramref name="source"/>
+    /// asynchronously. The limits and validation are those of <see cref="Read(Stream, AssetArchiveReadOptions?)"/>.
+    /// </summary>
+    /// <param name="source">A readable stream positioned at the start of the archive; it need not be seekable.</param>
+    /// <param name="options">The limits for untrusted input; <see langword="null"/> uses the defaults.</param>
+    /// <param name="cancellationToken">Cancels the read and the validation.</param>
+    /// <returns>The validated in-memory source.</returns>
+    /// <exception cref="InvalidDataException">The archive is invalid or exceeds a limit of <paramref name="options"/>.</exception>
+    public static async ValueTask<AssetArchiveSource> ReadAsync(
         Stream source,
-        AssetArchiveReadOptions? options,
-        CancellationToken cancellationToken)
+        AssetArchiveReadOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        options = PrepareRead(source, options);
+        using var copy = new MemoryStream();
+        byte[] buffer = new byte[81_920];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
+        {
+            if (read > options.MaxArchiveBytes - total)
+            {
+                throw new InvalidDataException(
+                    $"The asset archive exceeds the {options.MaxArchiveBytes} byte archive-size limit.");
+            }
+
+            copy.Write(buffer, 0, read);
+            total += read;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        copy.Position = 0;
+        return ReadBuffered(copy, options, cancellationToken);
+    }
+
+    private static AssetArchiveReadOptions PrepareRead(Stream source, AssetArchiveReadOptions? options)
     {
         ArgumentNullException.ThrowIfNull(source);
         if (!source.CanRead)
@@ -117,11 +189,28 @@ public static class AssetArchive
 
         options ??= new AssetArchiveReadOptions();
         ValidateReadOptions(options);
+        return options;
+    }
 
+    private static AssetArchiveSource ReadCore(
+        Stream source,
+        AssetArchiveReadOptions? options,
+        CancellationToken cancellationToken)
+    {
+        options = PrepareRead(source, options);
         using var copy = new MemoryStream();
         CopyBounded(source, copy, options.MaxArchiveBytes, cancellationToken);
         copy.Position = 0;
-        using var archive = new ZipArchive(copy, ZipArchiveMode.Read, leaveOpen: false);
+        return ReadBuffered(copy, options, cancellationToken);
+    }
+
+    // Reads an archive that has been copied into memory within MaxArchiveBytes.
+    private static AssetArchiveSource ReadBuffered(
+        MemoryStream copy,
+        AssetArchiveReadOptions options,
+        CancellationToken cancellationToken)
+    {
+        using var archive = new ZipArchive(copy, ZipArchiveMode.Read, leaveOpen: true);
         var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.Ordinal);
         foreach (ZipArchiveEntry entry in archive.Entries)
         {
@@ -454,12 +543,11 @@ public static class AssetArchive
     private sealed class DirectoryArchiveSource : IAssetSource, IDisposable
     {
         private readonly PosixAssetRoot _root;
-        private readonly HashSet<string> _excludedPaths;
+        private readonly AssetDirectoryExclusions _exclusions;
 
         internal DirectoryArchiveSource(
             string sourceDirectory,
-            string entryPointRelativePath,
-            IEnumerable<string>? excludedPaths,
+            AssetDirectoryExclusions exclusions,
             CancellationToken cancellationToken)
         {
             if (!OperatingSystem.IsLinux())
@@ -469,20 +557,11 @@ public static class AssetArchive
             }
 
             ArgumentException.ThrowIfNullOrWhiteSpace(sourceDirectory);
+            _exclusions = exclusions;
             _root = new PosixAssetRoot(Path.GetFullPath(sourceDirectory));
-            string entryPoint = AssetPath.Normalize(entryPointRelativePath);
-            _excludedPaths = new HashSet<string>(StringComparer.Ordinal);
-            if (excludedPaths is not null)
-            {
-                foreach (string excludedPath in excludedPaths)
-                {
-                    _excludedPaths.Add(AssetPath.Normalize(excludedPath));
-                }
-            }
-
             try
             {
-                Manifest = Scan(entryPoint, cancellationToken);
+                Manifest = Scan(exclusions.EntryPoint, cancellationToken);
             }
             catch
             {
@@ -537,11 +616,15 @@ public static class AssetArchive
                     relativePath = AssetPath.Normalize(relativePath);
                     if (_root.IsDirectory(relativePath))
                     {
-                        pending.Push(relativePath);
+                        if (!_exclusions.ExcludesDirectory(name))
+                        {
+                            pending.Push(relativePath);
+                        }
+
                         continue;
                     }
 
-                    if (_excludedPaths.Contains(relativePath))
+                    if (_exclusions.ExcludesFile(relativePath, name))
                     {
                         continue;
                     }
@@ -571,8 +654,7 @@ public static class AssetArchive
 
         internal TrustedGeneratedOutputDirectorySource(
             string sourceDirectory,
-            string entryPointRelativePath,
-            IEnumerable<string>? excludedPaths,
+            AssetDirectoryExclusions exclusions,
             CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(sourceDirectory);
@@ -584,17 +666,7 @@ public static class AssetArchive
             }
 
             ThrowIfLink(rootInfo);
-            string entryPoint = AssetPath.Normalize(entryPointRelativePath);
-            var excluded = new HashSet<string>(StringComparer.Ordinal);
-            if (excludedPaths is not null)
-            {
-                foreach (string excludedPath in excludedPaths)
-                {
-                    excluded.Add(AssetPath.Normalize(excludedPath));
-                }
-            }
-
-            _contents = Scan(rootInfo, entryPoint, excluded, cancellationToken, out AssetManifest manifest);
+            _contents = Scan(rootInfo, exclusions, cancellationToken, out AssetManifest manifest);
             Manifest = manifest;
         }
 
@@ -622,8 +694,7 @@ public static class AssetArchive
 
         private static Dictionary<string, byte[]> Scan(
             DirectoryInfo root,
-            string entryPoint,
-            HashSet<string> excluded,
+            AssetDirectoryExclusions exclusions,
             CancellationToken cancellationToken,
             out AssetManifest manifest)
         {
@@ -638,6 +709,14 @@ public static class AssetArchive
                 foreach (FileSystemInfo entry in directory.GetFileSystemInfos())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    // A default pattern leaves the entry out before it is examined, so nothing below .git is read.
+                    if (entry is DirectoryInfo
+                        ? exclusions.ExcludesDirectory(entry.Name)
+                        : exclusions.ExcludesDefaultFileName(entry.Name))
+                    {
+                        continue;
+                    }
+
                     ThrowIfLink(entry);
                     if (entry is DirectoryInfo childDirectory)
                     {
@@ -652,7 +731,7 @@ public static class AssetArchive
                     }
 
                     string relativePath = ToAssetPath(root.FullName, file.FullName);
-                    if (excluded.Contains(relativePath))
+                    if (exclusions.ExcludesFile(relativePath, file.Name))
                     {
                         continue;
                     }
@@ -664,7 +743,7 @@ public static class AssetArchive
                         relativePath,
                         stream,
                         mediaType: null,
-                        StringComparer.Ordinal.Equals(relativePath, entryPoint),
+                        StringComparer.Ordinal.Equals(relativePath, exclusions.EntryPoint),
                         InferCacheMode(relativePath)));
                     contents.Add(relativePath, content);
                 }

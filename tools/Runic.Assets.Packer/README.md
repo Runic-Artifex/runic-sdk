@@ -22,8 +22,18 @@ Desktop.
 
 ## Run it
 
-The packer ships inside the `Runic.Assets` NuGet package and runs on the .NET 10
-runtime. After a restore it is in the NuGet package folder:
+Run it as `dotnet runic assets pack`, from the
+[`dotnet-runic`](../dotnet-runic/README.md#pack-an-asset-archive) tool, which
+compiles the same command: the same arguments, defaults, exit codes, `RAS1xxx`
+codes and JSON payload. The JSON `command` is `assets pack` there.
+
+```sh
+dotnet runic assets pack Client.Web/dist artifacts/app.runic-assets --trusted-generated-output
+```
+
+The packer itself ships inside the `Runic.Assets` NuGet package and runs on the
+.NET 10 runtime; the build runs this copy, so builds do not need `dotnet runic`.
+After a restore it is in the NuGet package folder:
 
 ```sh
 packer="$HOME/.nuget/packages/runic.assets/<VERSION>/tools/net10.0/Runic.Assets.Packer.dll"
@@ -38,8 +48,9 @@ MSBuild finds the packaged copy itself; set `RunicAssetsPackerPath` to use
 another build. The build passes `--entry-point $(RunicAssetsEntryPoint)`,
 `--exclude $(RunicAssetsDistExclude)` (by default `runic-assets.zip`; setting
 the property replaces that default, so list it again to keep it excluded, and
-setting it empty in the project file passes no `--exclude`) and
-`--trusted-generated-output`.
+setting it empty in the project file passes no `--exclude`),
+`--trusted-generated-output`, and `--no-default-excludes` when
+`RunicAssetsDefaultExcludes` is `false`.
 
 ```text
 Runic.Assets.Packer [pack] <source-directory> <destination-archive> [options]
@@ -49,11 +60,12 @@ Runic.Assets.Packer [pack] <source-directory> <destination-archive> [options]
 
 | Argument or option | Meaning |
 | --- | --- |
-| `<source-directory>` | Directory to package. Every regular file below it becomes an asset. |
+| `<source-directory>` | Directory to package. Every regular file below it becomes an asset, except the [default exclusions](#default-exclusions). |
 | `<destination-archive>` | Archive to write. The packer writes a temporary file next to it and then replaces it. If the destination is inside the source directory, it is excluded automatically. |
 | `--entry-point <path>` | Entry document relative to the source directory. Defaults to `index.html`. It must exist and must not be excluded. |
 | `--exclude <paths>` | Asset paths to omit, separated by semicolons. Repeat the option to add more. Paths use `/` and are relative to the source directory. |
 | `--trusted-generated-output` | Read the directory as output generated earlier in the same trusted build. See below. |
+| `--no-default-excludes` | Also pack `.git` directories and `.env*` files. See [default exclusions](#default-exclusions). |
 | `--format human\|json` | Output format. JSON writes one `runic.commandline/1` result with the `runic.assets.pack-result/1` payload `{ "archiveLength": <bytes> }`. `--output` is a hidden former name of this option and is accepted until 2.0. |
 | `--help`, `--version` | Show help or the version. |
 
@@ -76,6 +88,23 @@ size of the written archive in bytes.
 
 The archive is deterministic: the same files produce the same bytes, so it can
 be cached or compared with `cmp`.
+
+## Default exclusions
+
+Since 0.11 the packer leaves out, at any depth, `.git` directories and files
+and files whose names start with `.env` (such as `.env`, `.env.local` and
+`.envrc`), compared without case. Such files in a build output are usually
+repository data or secrets that a build tool copied by accident. Human output
+names how many entries were left out. Pass `--no-default-excludes`, or set
+`RunicAssetsDefaultExcludes` to `false` in the project, to pack them. An entry
+point that a default pattern matches is `RAS1002`.
+
+A source map (`*.map`) is packed, because some applications ship them on
+purpose, but the packer writes warning `RAS1005` with their count and the first
+path to standard error, in MSBuild's canonical `warning RAS1005: …` form: a
+build reports it as a build warning, and `<NoWarn>$(NoWarn);RAS1005</NoWarn>`
+silences it. Leave the maps out with `--exclude` or `RunicAssetsDistExclude`,
+or turn them off in the frontend build (Vite's `build.sourcemap`).
 
 ## `--trusted-generated-output`
 
@@ -106,4 +135,5 @@ a directory another user can write.
 | `130` | Cancelled. |
 
 Human output writes the result to standard output and the error message to
-standard error. A failed run leaves an existing destination archive unchanged.
+standard error. Warning `RAS1005` goes to standard error in both output
+formats and does not change the exit code. A failed run leaves an existing destination archive unchanged.

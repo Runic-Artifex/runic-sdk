@@ -287,6 +287,7 @@ payloads are, under these identifiers:
 | `dev` | `runic.application.tool.dev/1` |
 | `size` | `runic.application.tool.size/1`; the report file is `runic.size/2` |
 | `doctor` | `runic.application.tool.doctor/1` |
+| `assets pack` | `runic.assets.pack-result/1`, as the asset packer |
 
 `runic.application.tool/1`, the payload of 0.8 and earlier, is gone: its
 `Command`, `ExitCode` and `Output` properties carried the human text.
@@ -374,6 +375,23 @@ serves (see its
 
 The package manager comes from `packageManager` in the frontend `package.json`,
 then from its lock file.
+
+## Pack an asset archive
+
+`assets pack` writes a directory, usually a frontend build output such as Vite's
+`dist`, to a canonical Runic Assets archive. It is the command of the asset
+packer that the `Runic.Assets` build runs, with the same arguments, defaults,
+`RAS1xxx` codes and `runic.assets.pack-result/1` payload; it needs no project.
+
+```bash
+dotnet runic assets pack Client.Web/dist artifacts/app.runic-assets --trusted-generated-output
+```
+
+`.git` directories and files whose names start with `.env` are left out unless
+you pass `--no-default-excludes`, and a packed source map (`*.map`) is reported
+as warning `RAS1005` on standard error. See the
+[packer README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Assets.Packer/README.md)
+for every option.
 
 ## Measure size
 

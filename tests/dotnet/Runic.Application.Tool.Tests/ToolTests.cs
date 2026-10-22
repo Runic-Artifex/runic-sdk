@@ -1238,7 +1238,59 @@ internal sealed class ToolTests
             _output.Append(System.Text.Encoding.UTF8.GetString(value.Span));
             return ValueTask.CompletedTask;
         }
-        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        private readonly System.Text.StringBuilder _error = new();
+        internal string Error => _error.ToString();
+        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+        {
+            _error.Append(value.Span);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    // dotnet runic assets pack compiles the packer's command source: the same archive as the library's trusted writer,
+    // the same RAS codes and exit codes, the runic.assets.pack-result/1 payload, the default exclusions and RAS1005.
+    [Test, DisplayName("assets pack is the packer's command")]
+    public async Task AssetsPackIsThePackerCommand()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.Write("site/index.html", "<p>x</p>");
+        workspace.Write("site/app.js.map", "{}");
+        workspace.Write("site/.env", "SECRET=1");
+        workspace.Write("site/.git/HEAD", "ref: refs/heads/main");
+        string site = Path.Combine(workspace.Root, "site");
+        string archive = Path.Combine(workspace.Root, "out.runic-assets");
+
+        var console = new CapturingConsole();
+        Equal(0, await Runic.Application.Tool.Program.RunAsync(["assets", "pack", site, archive, "--format", "json"], console).ConfigureAwait(false));
+        using (JsonDocument document = JsonDocument.Parse(console.Output))
+        {
+            JsonElement root = document.RootElement;
+            Equal("assets pack", root.GetProperty("command").GetString());
+            Equal("runic.assets.pack-result/1", root.GetProperty("payloadType").GetString());
+            Equal($"{{\"archiveLength\":{new FileInfo(archive).Length}}}", root.GetProperty("payload").GetRawText());
+        }
+        Contains(console.Error, "warning RAS1005: The archive contains 1 source map (*.map), first 'app.js.map'.");
+
+        using var expected = new MemoryStream();
+        await Runic.Assets.AssetArchive.WriteTrustedDirectoryAsync(site, expected).ConfigureAwait(false);
+        True(expected.ToArray().AsSpan().SequenceEqual(File.ReadAllBytes(archive)), "assets pack writes the library's archive.");
+
+        console = new CapturingConsole();
+        Equal(0, await Runic.Application.Tool.Program.RunAsync(["assets", "pack", site, archive, "--trusted-generated-output"], console).ConfigureAwait(false));
+        Contains(console.Output, "Left out 2 .git and .env* entries; pass --no-default-excludes to pack them.");
+
+        foreach ((string[] arguments, int exitCode, string code) in new[]
+        {
+            (new[] { Path.Combine(workspace.Root, "missing"), archive }, 2, "RAS1001"),
+            ([site, archive, "--entry-point", ".env"], 1, "RAS1002"),
+            ([site, archive, "--entry-point", "missing.html", "--no-default-excludes"], 1, "RAS1002"),
+        })
+        {
+            console = new CapturingConsole();
+            Equal(exitCode, await Runic.Application.Tool.Program.RunAsync(["assets", "pack", .. arguments, "--format", "json"], console).ConfigureAwait(false));
+            using JsonDocument document = JsonDocument.Parse(console.Output);
+            Equal(code, document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        }
     }
 
     [Test, DisplayName("every command option is described")]
