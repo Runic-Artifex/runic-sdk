@@ -248,39 +248,88 @@ internal static partial class MonitorSmoke
             Require(language is not null && (language == "ar" || language.StartsWith("ar-", StringComparison.Ordinal)),
                 $"navigator.language in Arabic for Language ar-EG, got {language}");
 
+            var ltr = await ProbeAsync(host, rightToLeft: false);
+            var rtl = await ProbeAsync(surface, window);
+            Console.WriteLine($"Right to left: left-to-right window {ltr}; right-to-left window {rtl}.");
+            Require(ltr.ShownAtPage && ltr.ClickedAtPage, $"the left-to-right baseline shows and hit-tests the button where the page placed it: {ltr}");
+            // The red button where the page placed it: WebView2 does not render a mirrored page, and a click there reaches it.
+            Require(rtl.ShownAtPage, $"the page's red button rendered at its own position in the right-to-left window: {rtl}");
+            Require(rtl.ClickedAtPage, $"a click at the button's screen position in the right-to-left window reached it: {rtl}");
+            Console.WriteLine("PASS right to left: mirrored frame, WebView2 renders and hit-tests the page unmirrored, Language reaches navigator.language.");
+        }
+
+        // What a user sees and where a click lands: the pixel at the button's page position and at its mirror image in
+        // the WebView2 child, and whether a click at each reached the button.
+        internal readonly record struct Probe(uint PagePixel, uint MirroredPixel, bool ClickedAtPage, bool ClickedAtMirror)
+        {
+            internal bool ShownAtPage => IsRed(PagePixel);
+            public override string ToString() =>
+                $"page position 0x{PagePixel:X6}{(IsRed(PagePixel) ? " (red)" : "")}, mirrored 0x{MirroredPixel:X6}{(IsRed(MirroredPixel) ? " (red)" : "")}, " +
+                $"click at page position {(ClickedAtPage ? "reached" : "missed")}, at mirror {(ClickedAtMirror ? "reached" : "missed")}";
+        }
+
+        private static bool IsRed(uint pixel) => (pixel & 0xFF) > 200 && ((pixel >> 8) & 0xFF) < 80 && ((pixel >> 16) & 0xFF) < 80;
+
+        private static async Task<Probe> ProbeAsync(DesktopHost host, bool rightToLeft)
+        {
+            await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Browser = BrowserKind.Embedded, Width = 520, Height = 360, Centered = true,
+                LayoutDirection = rightToLeft ? DesktopLayoutDirection.RightToLeft : DesktopLayoutDirection.LeftToRight,
+            });
+            return await ProbeAsync(surface, window);
+        }
+
+        private static async Task<Probe> ProbeAsync(DesktopSurface surface, DesktopWindow window)
+        {
             await window.FocusAsync();
-            await Task.Delay(500);
             var geometry = JsonDocument.Parse(await ScriptAsync(surface,
                 "const r = document.getElementById('target').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, ratio: devicePixelRatio });")
                 ?? "{}").RootElement;
             double pageX = geometry.GetProperty("x").GetDouble(), pageY = geometry.GetProperty("y").GetDouble();
             double ratio = geometry.GetProperty("ratio").GetDouble();
-            int screenX, screenY;
-            uint pixel;
+            var child = GetWindow(window.NativeHandle, 5); // GW_CHILD
+            Rect view;
+            using (new PerMonitorAware()) Require(GetWindowRect(child, out view) != 0, "the WebView2 child's rectangle");
+            int pageScreenX = view.Left + (int)Math.Round(pageX * ratio);
+            int mirrorScreenX = view.Right - (int)Math.Round(pageX * ratio);
+            int screenY = view.Top + (int)Math.Round(pageY * ratio);
+            uint pagePixel = 0, mirroredPixel = 0;
+            // The first frame may still be on its way.
+            for (var waited = 0; waited < 3000; waited += 250)
+            {
+                await Task.Delay(250);
+                using (new PerMonitorAware())
+                {
+                    var screen = GetDC(0);
+                    pagePixel = GetPixel(screen, pageScreenX, screenY);
+                    mirroredPixel = GetPixel(screen, mirrorScreenX, screenY);
+                    _ = ReleaseDC(0, screen);
+                }
+                if (IsRed(pagePixel) || IsRed(mirroredPixel)) break;
+            }
+            Console.WriteLine($"Right to left: WebView2 child at {view.Left},{view.Top}-{view.Right},{view.Bottom}; button at page {pageX},{pageY} x{ratio}.");
+            var atPage = await ClickAsync(surface, pageScreenX, screenY);
+            var atMirror = !atPage && await ClickAsync(surface, mirrorScreenX, screenY);
+            return new Probe(pagePixel, mirroredPixel, atPage, atMirror);
+        }
+
+        private static async Task<bool> ClickAsync(DesktopSurface surface, int x, int y)
+        {
+            var before = await ScriptAsync(surface, "return String(window.clicks);");
             using (new PerMonitorAware())
             {
-                Require(GetWindowRect(child, out var view) != 0, "the WebView2 child's rectangle");
-                screenX = view.Left + (int)Math.Round(pageX * ratio);
-                screenY = view.Top + (int)Math.Round(pageY * ratio);
-                var screen = GetDC(0);
-                pixel = GetPixel(screen, screenX, screenY);
-                _ = ReleaseDC(0, screen);
-                Console.WriteLine($"Right to left: the button's center at {screenX},{screenY} in the WebView2 child at {view.Left},{view.Top} shows 0x{pixel:X6}.");
-                // The red button where the page placed it: WebView2 did not render a mirrored page.
-                Require((pixel & 0xFF) > 200 && ((pixel >> 8) & 0xFF) < 80 && ((pixel >> 16) & 0xFF) < 80,
-                    $"the page's red button rendered at its own position, got 0x{pixel:X6}");
-                Require(SetCursorPos(screenX, screenY) != 0, "the pointer on the button");
+                Require(SetCursorPos(x, y) != 0, "the pointer on the window");
                 mouse_event(0x0002, 0, 0, 0, 0); // MOUSEEVENTF_LEFTDOWN
                 mouse_event(0x0004, 0, 0, 0, 0); // MOUSEEVENTF_LEFTUP
             }
-            string? clicks = null;
-            for (var waited = 0; waited < 5000 && clicks != "1"; waited += 100)
+            for (var waited = 0; waited < 2000; waited += 100)
             {
                 await Task.Delay(100);
-                clicks = await ScriptAsync(surface, "return String(window.clicks);");
+                if (await ScriptAsync(surface, "return String(window.clicks);") != before) return true;
             }
-            Require(clicks == "1", $"the click at the button's screen position reached it, got {clicks} clicks");
-            Console.WriteLine("PASS right to left: mirrored frame, WebView2 renders and hit-tests the page unmirrored, Language reaches navigator.language.");
+            return false;
         }
 
         private readonly struct PerMonitorAware : IDisposable
@@ -331,8 +380,9 @@ internal static partial class MonitorSmoke
             foreach (var line in found) Console.WriteLine($"Menu titles: {line}");
             string[] expected = ["Bearbeiten: Widerrufen, Wiederholen, , Ausschneiden, Kopieren, Einsetzen, Alles auswählen",
                 "Ablage: Schließen", "Fenster: Im Dock ablegen, Zoomen, , Alle nach vorne bringen"];
+            // AppKit appends its own items, such as AutoFill and Dictation to Edit and the windows to Window.
             foreach (var menu in expected)
-                Require(found.Contains(menu), $"the menu \"{menu}\"");
+                Require(found.Any(line => line.StartsWith(menu, StringComparison.Ordinal)), $"the menu \"{menu}\"");
             Require(found.Any(static line => line.StartsWith("Darstellung: Originalgröße, Vergrößern", StringComparison.Ordinal)), "the Darstellung menu");
             Require(found.Any(static line => line.Contains("ausblenden, Andere ausblenden, Alle einblenden", StringComparison.Ordinal)
                 && line.Contains(" beenden", StringComparison.Ordinal) && line.Contains("Über ", StringComparison.Ordinal)),
