@@ -308,14 +308,16 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
     const client = bridge;
     stopReconnect = client.onReconnect?.(() => restart.abort());
     let first = true;
+    // The "app" lease belongs to a connection: it is taken once on each, and not again after a failed long poll.
+    let lease = app;
     let delay = 25;
     while (!disposed) {
       try {
-        if (!client.isConnected()) { await connected(client); first = true; }
-        if (restart.signal.aborted) { restart = new AbortController(); first = true; }
-        // A new connection starts again: its lease and its long poll belong to the connection.
-        const reply = await abortable(abortable(first
-          ? app ? call(controlRoute, { shortcuts: "app" }) : call(stateRoute)
+        if (!client.isConnected()) { await connected(client); first = true; lease = app; }
+        if (restart.signal.aborted) { restart = new AbortController(); first = true; lease = app; }
+        const leasing = first && lease;
+        const reply = await abortable(abortable(leasing ? call(controlRoute, { shortcuts: "app" })
+          : first ? call(stateRoute)
           : call(waitRoute, { after: state.revision }), restart.signal), lifetime.signal);
         const envelope = parse(reply);
         if (envelope?.kind === "busy") { await sleep(1000); continue; }
@@ -327,18 +329,17 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
             : "This host serves no in-page menu bar: it needs Runic Desktop with Runic.Application.Views.Desktop 0.11 or later."));
           return;
         }
-        if (first && app) leased = true;
+        if (leasing) { lease = false; leased = true; }
         first = false;
         delay = 25;
-      } catch (error) {
+      } catch {
         if (disposed) return;
         if (restart.signal.aborted) continue;
         if (client.isConnected()) {
           await sleep(delay).catch(() => undefined);
           delay = Math.min(delay * 2, 2000);
-        }
+        } else lease = app;
         first = true;
-        void error;
       }
     }
   };

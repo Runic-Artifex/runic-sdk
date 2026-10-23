@@ -226,6 +226,16 @@ test("shortcuts: \"app\" takes the lease, handleKeyDown invokes, and dispose or 
   assert.equal(bar.handleKeyDown({ ...event, defaultPrevented: true }), false);
   assert.equal(bar.handleKeyDown({ ...event, key: "q", code: "KeyQ" }), false);
 
+  // A failed long poll keeps the lease; a new connection takes it again.
+  host.bridge.failNext("__runicMenuBarWait", { kind: "transport", message: "dropped" });
+  host.update({ placement: "page" });
+  await until(() => host.bridge.calls.filter(call => call.name === "__runicMenuBarState").length === 1, "The controller did not read the state again.");
+  assert.equal(host.bridge.calls.filter(call => call.name === "__runicMenuBarControl").length, 1);
+  host.bridge.disconnect();
+  assert.equal(host.leased, false);
+  host.bridge.reconnect();
+  await until(() => host.leased, "The lease was not taken on the new connection.");
+
   lifetime.abort();
   await until(() => !host.leased, "Aborting did not release the lease.");
   assert.equal(bar.handleKeyDown(event), false, "A disposed controller matched a shortcut.");

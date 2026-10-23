@@ -95,6 +95,8 @@ export function installMockMenuBar(menus: readonly MenuBarMenu[], options: MockM
     for (const wake of waiting) wake();
   };
 
+  // As on Runic Desktop, a closed connection returns its leases.
+  bridge.onConnectionChange(connected => { if (!connected) leases = 0; });
   bridge.route("__runicMenuBarState", () => envelope());
   bridge.route("__runicMenuBarWait", (...args) => {
     const after = request(args)?.["after"];
