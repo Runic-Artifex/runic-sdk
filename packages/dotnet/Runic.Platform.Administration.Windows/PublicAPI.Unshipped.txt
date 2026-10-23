@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions.ReuseConnection.get -> bool
+Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions.ReuseConnection.init -> void
+Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient.Dispose() -> void

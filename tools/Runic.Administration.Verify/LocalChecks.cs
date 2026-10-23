@@ -223,6 +223,19 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
             var after = await client.FindAsync(spec.Name, token) ?? throw new InvalidOperationException("Updated rule missing.");
             Require(after.Configuration.Description == "updated" && after.Configuration.LocalPorts == "49200" &&
                 after.Configuration.ApplicationPath == before.Configuration.ApplicationPath && !after.Configuration.Enabled, "Firewall update lost settings.");
+            // An update must not turn the rule into an inbound allow rule without a program, service or local port.
+            await report.Check("firewall.update-scope", async () =>
+            {
+                try
+                {
+                    await client.UpdateAsync(identity, new() { Action = FirewallAction.Allow, ApplicationPath = "", LocalPorts = "" }, token);
+                    throw new InvalidOperationException("An update to an unscoped inbound allow rule was accepted.");
+                }
+                catch (ArgumentException) { }
+                var unchanged = await client.FindAsync(spec.Name, token) ?? throw new InvalidOperationException("Rule missing after the refused update.");
+                Require(unchanged.Configuration.Action == FirewallAction.Block && unchanged.Configuration.ApplicationPath == before.Configuration.ApplicationPath &&
+                    unchanged.Configuration.LocalPorts == "49200", "The refused update changed the rule.");
+            }, token);
         }
         finally
         {
@@ -237,6 +250,8 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
                 }
                 else Require(!created, "Created rule unexpectedly absent before cleanup.");
                 Require(!await client.DeleteAsync(identity), "Second rule deletion did not report absence.");
+                // Delete renames the checked rule before removing it; nothing of the fixture may remain under any name.
+                Require(!(await client.EnumerateAsync()).Any(rule => rule.Identity.Grouping == report.Prefix), "A fixture rule remained after deletion.");
             });
         }
     }

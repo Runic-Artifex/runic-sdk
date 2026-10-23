@@ -155,6 +155,43 @@ internal sealed class NativeTests
         Console.WriteLine("PASS LDAP native transport initialization and unavailable-endpoint failure; domain operations require a fixture.");
     }
     [Test]
+    public async Task CheckLdapConnectionReuseAsync()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        var options = new DirectoryConnectionOptions("127.0.0.1") { Port = port, Timeout = TimeSpan.FromSeconds(1), ReuseConnection = true };
+        using (var reusing = new WindowsDirectoryClient(options))
+        {
+            // A failed bind leaves no connection behind; the next operation binds again rather than reusing a broken one.
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                try { _ = await reusing.ReadRootDseAsync(["dnsHostName"]); throw new InvalidOperationException("Unexpected LDAP endpoint on temporary port."); }
+                catch (WindowsAdministrationException error)
+                {
+                    Check(error.NativeErrorDomain == NativeErrorDomain.Ldap && error.Category == AdministrationErrorCategory.Unavailable,
+                        $"Unexpected reused-connection failure: {error.NativeErrorDomain} {error.NativeErrorCode} {error.Category}.");
+                }
+            }
+            // Operations on one reusing client run one at a time and fail independently.
+            var concurrent = Enumerable.Range(0, 3).Select(async index =>
+            {
+                try { _ = await reusing.FindAsync("DC=runic,DC=test", ["distinguishedName"]); return false; }
+                catch (WindowsAdministrationException) { return true; }
+            }).ToArray();
+            Check((await Task.WhenAll(concurrent)).All(failed => failed), "Concurrent operations on a reusing client did not all fail.");
+            reusing.Dispose();
+            try { _ = reusing.ReadRootDseAsync(["dnsHostName"]); throw new InvalidOperationException("A disposed client started an operation."); }
+            catch (ObjectDisposedException) { }
+        }
+        var perOperation = new WindowsDirectoryClient(options with { ReuseConnection = false });
+        perOperation.Dispose();
+        try { _ = perOperation.ReadRootDseAsync(["dnsHostName"]); throw new InvalidOperationException("A disposed client started an operation."); }
+        catch (ObjectDisposedException) { }
+        Console.WriteLine("PASS LDAP connection reuse: failed binds are not kept, operations are serialized, disposal is final.");
+    }
+    [Test]
     public async Task CheckInventoryAsync()
     {
         var system = new WindowsSystemInformationClient();

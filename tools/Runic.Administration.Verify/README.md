@@ -183,18 +183,21 @@ or replaced by the denial checks under `--expect-denied`.
 Local: OS/BIOS/membership, process snapshots, network enumeration, shortcut
 metadata/Unicode/UNC/collision/malformed data, service configuration and
 start/pause/continue/stop/PID, task XML preservation and real execution/exit result,
-disabled firewall-rule updates and duplicate handling, cleanup/absence checks even
-when firewall creation throws, optional stored share security, explicit owner/group/ACL
+disabled firewall-rule updates and duplicate handling, refusal of an update that
+would make an unscoped inbound allow rule (`firewall.update-scope`), cleanup/absence
+checks even when firewall creation throws, no fixture rule left under any name after
+deletion, optional stored share security, explicit owner/group/ACL
 roundtrips, security-descriptor preservation and repeated deletion.
 
 Domain: RootDSE and explicit OU lookup; DC discovery from the joined client;
 LDAP over TLS and StartTLS with Negotiate and (with an explicit credential) Basic
 binds, and rejection of a TLS certificate that does not name the requested host;
-page-size-one search, user/group/computer creation, membership and SPNs, attribute
+a reused LDAP connection with concurrent reads, a missing-object result and disposal
+(`ldap.connection-reuse`); page-size-one search, user/group/computer creation, membership and SPNs, attribute
 edits/rename, binary SID, password reset, account enablement and password change;
 ranged retrieval of a 3100-member group; GPO backup/import/restore/XML report,
 permission grant/upgrade/removal, rename, no-filter association, link
-ordering/flags and inheritance; eight DNS record types with TTL and data updates
+ordering/flags and inheritance; the LDAP mutation suite on one reused connection; eight DNS record types with TTL and data updates
 and cleanup; and, with `--expect-denied`, denied LDAP, GPO and DNS writes for a
 restricted identity.
 

@@ -23,11 +23,21 @@ internal static class FirewallContract
     // Without a program, service, local port or ICMP protocol, a new inbound allow rule admits all traffic to the host.
     internal static void RequireInboundAllowScope(FirewallRuleSpecification value)
     {
-        if (value.Direction != FirewallDirection.Inbound || value.Action != FirewallAction.Allow) return;
-        if (value.ApplicationPath.Length != 0 || value.ServiceName is not ("" or "*") || value.LocalPorts is not ("" or "*") ||
-            value.Protocol is FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6) return;
-        throw new ArgumentException("A new inbound allow rule requires a program, service, local port or ICMP protocol.", nameof(value));
+        if (IsUnscopedInboundAllow(value))
+            throw new ArgumentException("A new inbound allow rule requires a program, service, local port or ICMP protocol.", nameof(value));
     }
+
+    // An update must not turn a scoped or non-allow rule into an unscoped inbound allow rule, which create refuses.
+    // A rule that already is one (for example a system rule) can still be updated, so it can be disabled or narrowed.
+    internal static void RequireInboundAllowScope(FirewallRuleSpecification existing, FirewallRuleSpecification next)
+    {
+        if (IsUnscopedInboundAllow(next) && !IsUnscopedInboundAllow(existing))
+            throw new ArgumentException("An update cannot make an inbound allow rule without a program, service, local port or ICMP protocol.", nameof(next));
+    }
+
+    private static bool IsUnscopedInboundAllow(FirewallRuleSpecification value) =>
+        value.Direction == FirewallDirection.Inbound && value.Action == FirewallAction.Allow && value.ApplicationPath.Length == 0 &&
+        value.ServiceName is "" or "*" && value.LocalPorts is "" or "*" && value.Protocol is not (FirewallProtocol.IcmpV4 or FirewallProtocol.IcmpV6);
 
     internal static void VerifyIdentity(FirewallRuleIdentity expected, FirewallRuleIdentity actual)
     {

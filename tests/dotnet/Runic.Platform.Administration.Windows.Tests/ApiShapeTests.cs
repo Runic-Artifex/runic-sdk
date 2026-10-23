@@ -218,6 +218,63 @@ internal sealed class ApiShapeTests
         }
     }
 
+    // SEC-14: an update must not produce an inbound allow rule that create would refuse.
+    [Test]
+    public void FirewallUpdateCannotCreateAnUnscopedInboundAllow()
+    {
+        var blocked = new FirewallRuleSpecification("RunicTest", FirewallDirection.Inbound, FirewallAction.Block)
+        { ApplicationPath = @"C:\App\app.exe", Protocol = FirewallProtocol.Tcp, LocalPorts = "49199" };
+        var scoped = blocked with { Action = FirewallAction.Allow };
+        var unscoped = new FirewallRuleSpecification("RunicTest", FirewallDirection.Inbound, FirewallAction.Allow);
+        foreach (var (existing, next) in new[]
+        {
+            (blocked, blocked with { Action = FirewallAction.Allow, ApplicationPath = "", LocalPorts = "" }),
+            (scoped, scoped with { ApplicationPath = "", LocalPorts = "*" }),
+            (scoped, scoped with { ApplicationPath = "", Protocol = FirewallProtocol.Any, LocalPorts = "" }),
+            (scoped, scoped with { ApplicationPath = "", LocalPorts = "", ServiceName = "*" }),
+            (blocked with { Direction = FirewallDirection.Outbound, Action = FirewallAction.Allow, ApplicationPath = "", LocalPorts = "" },
+                blocked with { Action = FirewallAction.Allow, ApplicationPath = "", LocalPorts = "" })
+        })
+        {
+            try { FirewallContract.RequireInboundAllowScope(existing, next); throw new InvalidOperationException("Unscoped inbound allow update accepted."); }
+            catch (ArgumentException) { }
+        }
+        FirewallContract.RequireInboundAllowScope(blocked, blocked with { LocalPorts = "49200" });
+        FirewallContract.RequireInboundAllowScope(scoped, scoped with { ApplicationPath = "" });
+        FirewallContract.RequireInboundAllowScope(scoped, scoped with { Protocol = FirewallProtocol.IcmpV4, LocalPorts = "", ApplicationPath = "" });
+        FirewallContract.RequireInboundAllowScope(blocked, blocked with { ApplicationPath = "", LocalPorts = "" });
+        FirewallContract.RequireInboundAllowScope(blocked, blocked with { Direction = FirewallDirection.Outbound, Action = FirewallAction.Allow, ApplicationPath = "", LocalPorts = "" });
+        // A rule that already admits all inbound traffic can still be disabled, narrowed or changed.
+        FirewallContract.RequireInboundAllowScope(unscoped, unscoped with { Enabled = false });
+        FirewallContract.RequireInboundAllowScope(unscoped, unscoped with { Description = "changed" });
+    }
+
+    // SEC-30: a remote WMI connection names the server's Kerberos principal; a local one cannot carry an authority.
+    [Test]
+    public void RemoteWindowsManagementUsesTheServersKerberosPrincipal()
+    {
+        foreach (var local in new[] { ".", "localhost", "LOCALHOST", Environment.MachineName, Environment.MachineName.ToLowerInvariant(), "127.0.0.1", "::1", "[::1]" })
+            Check(WmiConnection.IsLocalMachine(local), local + " must be local.");
+        foreach (var remote in new[] { "runic-dc1.runic.test", "192.0.2.10", "runic-remote-" + Guid.NewGuid().ToString("N")[..8] })
+            Check(!WmiConnection.IsLocalMachine(remote), remote + " must be remote.");
+        Check(WmiConnection.RemotePrincipal("runic-dc1.runic.test") == "host/runic-dc1.runic.test", "Unexpected remote principal.");
+        Check(WmiConnection.RemotePrincipal("runic-dc1.runic.test.") == "host/runic-dc1.runic.test", "A trailing root dot must be dropped.");
+        Check(WmiConnection.RemotePrincipal("RUNIC-DC1") == "host/RUNIC-DC1", "A NetBIOS name must be kept.");
+        foreach (var address in new[] { "192.0.2.10", "2001:db8::1", "[2001:db8::1]" })
+        {
+            try { _ = WmiConnection.RemotePrincipal(address); throw new InvalidOperationException("An IP address has no Kerberos principal: " + address); }
+            catch (ArgumentException) { }
+        }
+    }
+
+    // I-054: connection reuse is opt-in, and a directory client can be disposed.
+    [Test]
+    public void DirectoryConnectionReuseIsOptIn()
+    {
+        Check(!new DirectoryConnectionOptions("dc").ReuseConnection, "Directory clients must not reuse connections by default.");
+        Check(typeof(IDisposable).IsAssignableFrom(typeof(WindowsDirectoryClient)), "WindowsDirectoryClient must be disposable.");
+    }
+
     [Test]
     public void AcceptedControlsAreNativeFlags()
     {

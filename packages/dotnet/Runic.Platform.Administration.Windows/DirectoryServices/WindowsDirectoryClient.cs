@@ -8,17 +8,23 @@ using Runic.Platform.Administration.Windows.Internal;
 namespace Runic.Platform.Administration.Windows.DirectoryServices;
 
 /// <summary>Explicit LDAP operations with typed values and no ADSI runtime COM dependency.</summary>
-/// <remarks>Each operation owns its connection. Cross-operation transactions and automatic retries are not provided.
+/// <remarks>Each operation opens and binds its own connection unless <see cref="DirectoryConnectionOptions.ReuseConnection"/>
+/// is set; then the client keeps one connection and runs its operations one at a time. Dispose a reusing client to close
+/// its connection. Cross-operation transactions and automatic retries are not provided.
 /// Read values are typed by the attribute's schema syntax: string syntaxes are <see cref="DirectoryValue.Text"/>;
 /// octet-string, SID and security-descriptor syntaxes, and attributes the schema does not define, are
 /// <see cref="DirectoryValue.Binary"/>. RootDSE values are text. The client caches the syntaxes it has read.</remarks>
-public sealed class WindowsDirectoryClient
+public sealed class WindowsDirectoryClient : IDisposable
 {
     private readonly DirectoryConnectionOptions _options;
     private readonly NetworkCredential? _credential;
     // lDAPDisplayName -> true when values are binary. Filled from the schema on first use of each attribute.
     private readonly ConcurrentDictionary<string, bool> _binaryAttributes = new(StringComparer.OrdinalIgnoreCase);
     private string? _schemaNamingContext;
+    // Connection reuse: the gate admits one operation at a time to the shared connection.
+    private readonly SemaphoreSlim? _gate;
+    private LdapConnection? _shared;
+    private volatile bool _disposed;
 
     /// <summary>Creates a directory client. Explicit credentials are retained privately and never included in diagnostic models.</summary>
     public WindowsDirectoryClient(DirectoryConnectionOptions options, NetworkCredential? credential = null)
@@ -34,6 +40,32 @@ public sealed class WindowsDirectoryClient
             throw new ArgumentException("Basic LDAP authentication requires explicit credentials and TLS.", nameof(options));
         _options = options;
         _credential = credential is null ? null : new(credential.UserName, credential.Password, credential.Domain);
+        if (options.ReuseConnection) _gate = new(1, 1);
+    }
+
+    /// <summary>Closes the reused connection, if any. Later operations throw <see cref="ObjectDisposedException"/>.</summary>
+    /// <remarks>An operation that is running finishes first; the connection closes when it completes. A client
+    /// without <see cref="DirectoryConnectionOptions.ReuseConnection"/> holds no connection between operations.</remarks>
+    public void Dispose()
+    {
+        _disposed = true;
+        ReleaseIfDisposed();
+    }
+
+    // Closes the shared connection once the client is disposed and no operation holds the gate. Dispose and the
+    // operation that releases the gate both call this, so whichever runs last closes the connection.
+    private void ReleaseIfDisposed()
+    {
+        if (!_disposed || _gate is null || !_gate.Wait(0)) return;
+        try { CloseShared(); }
+        finally { _gate.Release(); }
+    }
+
+    private void CloseShared()
+    {
+        var connection = _shared;
+        _shared = null;
+        connection?.Dispose();
     }
 
     private LdapConnection Connect()
@@ -257,23 +289,52 @@ public sealed class WindowsDirectoryClient
     private Task<bool> Send(DirectoryRequest request, string operation, CancellationToken cancellationToken) =>
         Execute(connection => { _ = connection.SendRequest(request); return true; }, operation, cancellationToken);
 
-    private Task<T> Execute<T>(Func<LdapConnection, T> action, string operation, CancellationToken cancellationToken) =>
-        Task.Run(() =>
+    private Task<T> Execute<T>(Func<LdapConnection, T> action, string operation, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _gate is null ? Task.Run(() => Run(() =>
         {
+            using var connection = Connect();
             cancellationToken.ThrowIfCancellationRequested();
-            try
+            return action(connection);
+        }, operation, cancellationToken), cancellationToken) : ExecuteShared(action, operation, cancellationToken);
+    }
+
+    private async Task<T> ExecuteShared<T>(Func<LdapConnection, T> action, string operation, CancellationToken cancellationToken)
+    {
+        await _gate!.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return await Task.Run(() => Run(() =>
             {
-                using var connection = Connect();
+                var connection = _shared ??= Connect();
                 cancellationToken.ThrowIfCancellationRequested();
-                return action(connection);
-            }
-            catch (DirectoryOperationException error)
-            {
-                var code = (int)(error.Response?.ResultCode ?? ResultCode.Other);
-                throw Failure(operation, code, error);
-            }
-            catch (LdapException error) { throw Failure(operation, error.ErrorCode, error); }
-        }, cancellationToken);
+                try { return action(connection); }
+                // The server answered, so the connection is still usable.
+                catch (DirectoryOperationException) { throw; }
+                // A transport failure, timeout or abandoned request leaves the connection in an unknown state.
+                catch { CloseShared(); throw; }
+            }, operation, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+            ReleaseIfDisposed();
+        }
+    }
+
+    private static T Run<T>(Func<T> action, string operation, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try { return action(); }
+        catch (DirectoryOperationException error)
+        {
+            var code = (int)(error.Response?.ResultCode ?? ResultCode.Other);
+            throw Failure(operation, code, error);
+        }
+        catch (LdapException error) { throw Failure(operation, error.ErrorCode, error); }
+    }
 
     private static WindowsAdministrationException Failure(string operation, int code, Exception error) =>
         new(operation, Categorize(code), NativeErrorDomain.Ldap, code, $"{operation} failed (LDAP: {code}).", error);

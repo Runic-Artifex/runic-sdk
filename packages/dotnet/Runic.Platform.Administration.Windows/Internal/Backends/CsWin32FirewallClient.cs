@@ -298,6 +298,7 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
             Direction = update.Direction ?? existing.Configuration.Direction, Action = update.Action ?? existing.Configuration.Action
         };
         Validate(next);
+        RequireInboundAllowScope(existing.Configuration, next);
         using var rule = Item(rules, identity.Name);
         VerifyIdentity(identity, Snapshot(rule).Identity);
         // Windows validates each setter immediately. Clear protocol-specific fields
@@ -349,10 +350,22 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         var existing = Unique(rules, identity.Name);
         if (existing is null) return false;
         VerifyIdentity(identity, existing.Identity);
-        using var name = new BString(identity.Name);
+        // INetFwRules.Remove accepts only a name, and another rule could take that name after the check. Give the
+        // checked rule object a fresh name and remove that name, so only the rule that was checked is removed.
+        using var rule = Item(rules, identity.Name);
+        VerifyIdentity(identity, Snapshot(rule).Identity);
+        var removalName = "Runic-Delete-" + Guid.NewGuid().ToString("N");
+        SetText(rule, Field.Name, removalName);
+        using var name = new BString(removalName);
         var status = ((INetFwRules*)rules.Pointer)->Remove(new BSTR((char*)name.Pointer)).Value;
+        // Another process deleted the renamed rule first.
         if (status is unchecked((int)0x80070002) or unchecked((int)0x80070490)) return false;
-        NativeError.Check(status, "Delete firewall rule");
+        if (status < 0)
+        {
+            // Restore the checked rule's name; the removal failure is the error that is reported.
+            try { SetText(rule, Field.Name, identity.Name); } catch (WindowsAdministrationException) { }
+            NativeError.Check(status, "Delete firewall rule");
+        }
         return true;
     }
 

@@ -6,7 +6,9 @@ using Runic.Platform.Administration.Windows.Internal;
 namespace Runic.Platform.Administration.Windows.Dns;
 
 /// <summary>Windows DNS server administration through its MicrosoftDNS provider.</summary>
-/// <remarks>The server must have the DNS role/provider installed. Uses the caller's identity unless credentials are supplied.</remarks>
+/// <remarks>The server must have the DNS role/provider installed. Uses the caller's identity unless credentials are supplied.
+/// A remote server is reached over WMI/DCOM with Kerberos to its <c>host/</c> principal, so name it by its DNS or NetBIOS
+/// name; an IP address fails with <see cref="ArgumentException"/> when an operation connects.</remarks>
 public sealed class WindowsDnsClient
 {
     private readonly string _server;
