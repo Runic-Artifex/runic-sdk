@@ -66,7 +66,7 @@ internal static class DebPackager
         PackageTools.Delete(deb);
         await PackageTools.RunAsync(dpkg, ["--build", "--root-owner-group", root, deb], context.Output, cancellationToken).ConfigureAwait(false);
         PackageTools.Delete(root);
-        context.Warn("The package is unsigned: sign the repository that serves it (for example with reprepro or aptly).");
+        context.Warn(PackageCodes.Unsigned, "The package is unsigned: sign the repository that serves it (for example with reprepro or aptly).");
         context.Add(deb, "deb", "none");
     }
 }

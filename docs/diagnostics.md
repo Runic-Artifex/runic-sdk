@@ -782,6 +782,57 @@ does not list both `linux-x64` and `linux-arm64`. Exit code 2. Since 0.11.
 **Fix:** pass `--git-commit` or `--git-tag`, restore with lock files
 (`RestorePackagesWithLockFile`) and list both Linux runtime identifiers.
 
+### RAPPPKG2001
+
+Warning: the package is unsigned. `windows` without `--certificate` or
+`--thumbprint` writes an unsigned MSIX; `flatpak` without `--gpg-sign`, `deb`,
+`rpm` and `appimage` never sign. The command succeeds; the JSON payload lists
+the warning as `{ "code": "RAPPPKG2001", "message": … }` in `warnings`. Since
+0.11.
+
+**Fix:** sign the package or the repository that serves it as the message
+says, or accept an unsigned package for local testing.
+
+### RAPPPKG2002
+
+Warning: the macOS disk image is not notarized, because no `--notary-profile`
+was given; without `--sign` the bundle is also only ad-hoc signed. Gatekeeper
+blocks it on other Macs. Since 0.11.
+
+**Fix:** pass `--sign` with a Developer ID and `--notary-profile`.
+
+### RAPPPKG2003
+
+Warning: `desktop-file-validate` (desktop-file-utils) is not installed, so the
+desktop entry of a Linux package was not validated. Since 0.11.
+
+**Fix:** install desktop-file-utils; with it, a rejected entry is
+`RAPPPKG1006`.
+
+### RAPPPKG2004
+
+Warning: the AppImage loads GTK and WebKitGTK from the system it runs on, so
+that system must have them installed. Since 0.11.
+
+**Fix:** none in the AppImage; state the requirement for your users or ship a
+Flatpak, which brings its runtime.
+
+### RAPPPKG2005
+
+Warning: `package flathub` found no git checkout around the project, so the
+manifest assumes the repository's root is the project directory. Since 0.11.
+
+**Fix:** run it in the application's git repository, or check the manifest's
+paths.
+
+### RAPPPKG2006
+
+Warning: `package flathub` without `--build` wrote the manifest only; Flathub
+builds and signs the application from it after you submit it. Since 0.11.
+
+**Fix:** submit the manifest from your own account, see
+[Flathub](packaging.md#flathub); `--build` builds it locally first.
+
 ### RAPPSIZE1001
 
 `size` needs a runtime identifier and got none. Exit code 2. Before 0.9 this was

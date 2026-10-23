@@ -730,11 +730,25 @@ CI) or `identity` (your certificate or Developer ID):
         }
       }
     },
-    "warnings": { "type": "array", "items": { "type": "string" }, "description": "For example that the package is unsigned or not notarized." }
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "description": "A RAPPPKG2xxx code, such as RAPPPKG2001 (unsigned) or RAPPPKG2002 (not notarized); an open set." },
+          "message": { "type": "string", "description": "Human-readable; match the code instead." }
+        }
+      }
+    }
   }
 }
 ```
 
+Warnings, such as an unsigned package, do not fail the command: human output
+prints `warning RAPPPKG2001: …` lines and the payload lists them with their
+codes ([`RAPPPKG2001`–`2006`](../../docs/diagnostics.md#rapppkg2001)).
 An invalid identity (`RAPPPKG1001`) or a target or runtime of another
 operating system (`RAPPPKG1004`) is a usage error, exit code 2. A missing
 packaging tool (`RAPPPKG1002`), a failed publish (`RAPPPKG1003`), a failing

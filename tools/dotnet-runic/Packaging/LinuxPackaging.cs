@@ -32,7 +32,7 @@ internal static class LinuxPackaging
             : PackageTools.Find("desktop-file-validate");
         if (validator is null)
         {
-            context.Warn("desktop-file-validate (desktop-file-utils) is not installed, so the desktop entry was not validated.");
+            context.Warn(PackageCodes.NotValidated, "desktop-file-validate (desktop-file-utils) is not installed, so the desktop entry was not validated.");
             return;
         }
         await PackageTools.RunAsync(validator, [entry], context.Output, cancellationToken, PackageCodes.ValidationFailed).ConfigureAwait(false);

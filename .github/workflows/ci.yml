@@ -1498,7 +1498,8 @@ jobs:
           node -e '
             const { payload } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
             const kinds = payload.packages.map(item => item.format + ":" + item.signing).join(",");
-            if (payload.identity.id !== "org.runic.tests.PackagingProbe" || kinds !== "app:adhoc,dmg:none" || payload.warnings.length !== 1)
+            if (payload.identity.id !== "org.runic.tests.PackagingProbe" || kinds !== "app:adhoc,dmg:none"
+              || payload.warnings.map(item => item.code).join(",") !== "RAPPPKG2002")
               throw new Error("Unexpected package payload " + JSON.stringify(payload));' "$RUNNER_TEMP/package.json"
           app="artifacts/package/macos/Runic Packaging Probe.app"
           codesign --verify --strict --verbose=2 "$app"

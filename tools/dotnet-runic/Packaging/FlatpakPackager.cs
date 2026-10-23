@@ -45,7 +45,7 @@ internal static class FlatpakPackager
         string bundle = Path.Combine(output, identity.Id + ".flatpak");
         await PackageTools.RunAsync(flatpak, ["build-bundle", .. sign, repository, bundle, identity.Id], output, cancellationToken).ConfigureAwait(false);
         PackageTools.Delete(build);
-        if (sign.Count == 0) context.Warn("The repository and bundle are unsigned (--gpg-sign signs them with your key).");
+        if (sign.Count == 0) context.Warn(PackageCodes.Unsigned, "The repository and bundle are unsigned (--gpg-sign signs them with your key).");
         context.Add(bundle, "flatpak", sign.Count == 0 ? "none" : "identity");
     }
 }

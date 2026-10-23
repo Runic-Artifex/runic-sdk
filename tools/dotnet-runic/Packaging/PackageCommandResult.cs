@@ -12,7 +12,7 @@ internal sealed record PackageCommandResult(
     [property: JsonPropertyName("target")] string Target,
     [property: JsonPropertyName("identity")] PackageCommandIdentity Identity,
     [property: JsonPropertyName("packages")] IReadOnlyList<PackageCommandPackage> Packages,
-    [property: JsonPropertyName("warnings")] IReadOnlyList<string> Warnings) : IToolCommandResult<PackageCommandResult>
+    [property: JsonPropertyName("warnings")] IReadOnlyList<PackageCommandWarning> Warnings) : IToolCommandResult<PackageCommandResult>
 {
     internal const string PayloadType = "runic.application.tool.package/1";
 
@@ -41,6 +41,14 @@ internal sealed record PackageCommandPackage(
     [property: JsonPropertyName("path")] string Path,
     [property: JsonPropertyName("format")] string Format,
     [property: JsonPropertyName("signing")] string Signing);
+
+/// <summary>
+/// A warning of a successful run: a <c>RAPPPKG2xxx</c> code from docs/diagnostics.md, which CI can match, and the
+/// human message, which may change.
+/// </summary>
+internal sealed record PackageCommandWarning(
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("message")] string Message);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(PackageCommandResult))]

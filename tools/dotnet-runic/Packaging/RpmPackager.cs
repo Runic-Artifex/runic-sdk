@@ -63,7 +63,7 @@ internal static class RpmPackager
         string rpm = Path.Combine(context.Output, Path.GetFileName(built));
         File.Move(built, rpm, overwrite: true);
         PackageTools.Delete(topdir);
-        context.Warn("The package is unsigned: sign it with rpmsign and your GPG key before you publish it.");
+        context.Warn(PackageCodes.Unsigned, "The package is unsigned: sign it with rpmsign and your GPG key before you publish it.");
         context.Add(rpm, "rpm", "none");
     }
 }

@@ -97,7 +97,7 @@ internal static class MacOSPackager
         }
         else
         {
-            context.Warn(adhoc
+            context.Warn(PackageCodes.NotNotarized, adhoc
                 ? "The bundle is ad-hoc signed and the disk image is not notarized: Gatekeeper blocks it on other Macs until you sign it with a Developer ID (--sign) and notarize it (--notary-profile)."
                 : "The disk image is not notarized: Gatekeeper blocks it on other Macs until it is (--notary-profile).");
         }

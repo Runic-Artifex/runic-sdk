@@ -279,9 +279,9 @@ internal sealed partial class ToolTests
     public void PackagePayload()
     {
         var result = new PackageCommandResult("macos", new("org.example.Notes", "1.2.3"),
-            [new("/out/Notes.app", "app", "adhoc"), new("/out/Notes-1.2.3.dmg", "dmg", "none")], ["not notarized"]);
+            [new("/out/Notes.app", "app", "adhoc"), new("/out/Notes-1.2.3.dmg", "dmg", "none")], [new(PackageCodes.NotNotarized, "not notarized")]);
         Equal(
-            """{"target":"macos","identity":{"id":"org.example.Notes","version":"1.2.3"},"packages":[{"path":"/out/Notes.app","format":"app","signing":"adhoc"},{"path":"/out/Notes-1.2.3.dmg","format":"dmg","signing":"none"}],"warnings":["not notarized"]}""",
+            """{"target":"macos","identity":{"id":"org.example.Notes","version":"1.2.3"},"packages":[{"path":"/out/Notes.app","format":"app","signing":"adhoc"},{"path":"/out/Notes-1.2.3.dmg","format":"dmg","signing":"none"}],"warnings":[{"code":"RAPPPKG2002","message":"not notarized"}]}""",
             JsonSerializer.Serialize(result, PackageCommandJsonContext.Default.PackageCommandResult));
         Equal("runic.application.tool.package/1", PackageCommandResult.PayloadType);
     }

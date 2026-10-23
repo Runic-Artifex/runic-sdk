@@ -67,7 +67,7 @@ internal static class WindowsPackager
         }
         else
         {
-            context.Warn($"The package is unsigned: sign it with signtool (its Publisher is {identity.Publisher}) or pass --certificate or --thumbprint before installing it.");
+            context.Warn(PackageCodes.Unsigned, $"The package is unsigned: sign it with signtool (its Publisher is {identity.Publisher}) or pass --certificate or --thumbprint before installing it.");
         }
         context.Add(msix, "msix", signing);
     }
