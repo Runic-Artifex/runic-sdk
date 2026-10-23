@@ -862,3 +862,104 @@ test("the default composition type is the sanitized RootNamespace's RunicViewsCo
   assert.equal(defaultComposition("Spaces", "My App (Beta)"), "My_App__Beta_.RunicViewsComposition");
   assert.equal(defaultComposition("Library", "Contoso.Library", false), "", "A project without a host adapter gets no composition.");
 });
+
+// I-027: RunicApplicationFrontendDelivery=Embedded stages the www/ tree in obj/ and lets Runic.Assets pack it; the
+// build output gets no www/. RUNICBRIDGE030 reports what cannot embed, and the build continues as Files.
+const assetsBuild = resolve(root, "packages/dotnet/Runic.Assets/buildTransitive");
+function deliveryProject(name, hosts, properties = "") {
+  const project = hostProject(name, hosts);
+  mkdirSync(join(project, "frontend/dist/assets"), { recursive: true });
+  writeFileSync(join(project, "frontend/dist/assets/app.js"), "console.log(1)");
+  writeFileSync(join(project, "packer.mjs"), `import { writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+const args = process.argv.slice(2);
+mkdirSync(dirname(args[1]), { recursive: true });
+writeFileSync(args[1], "archive");
+writeFileSync(${JSON.stringify(join(project, "packer-arguments.json"))}, JSON.stringify(args));
+`);
+  const text = readFileSync(join(project, "App.proj"), "utf8")
+    .replace("<Project>", `<Project>\n  <Import Project="${join(assetsBuild, "Runic.Assets.props")}" />`)
+    .replace("</PropertyGroup>", `    <IntermediateOutputPath>obj/</IntermediateOutputPath>
+    <RunicAssetsPackerPath>$(MSBuildProjectDirectory)/packer.mjs</RunicAssetsPackerPath>
+    <DotNetHostPath>${process.execPath}</DotNetHostPath>
+${properties}
+  </PropertyGroup>`)
+    .replace("</Project>", `  <Import Project="${join(assetsBuild, "Runic.Assets.targets")}" />
+  <Target Name="ShowDelivery">
+    <Message Importance="high" Text="RUNTIME_OPTION=@(RuntimeHostConfigurationOption->'%(Identity)=%(Value)')" />
+    <Message Importance="high" Text="RESOURCE=@(_CoreCompileResourceInputs->'%(LogicalName)')" />
+  </Target>
+</Project>`);
+  writeFileSync(join(project, "App.proj"), text);
+  return project;
+}
+
+function buildDelivery(project, extra = []) {
+  rmSync(join(project, "bin"), { recursive: true, force: true });
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"),
+    "-t:RunicViewsResolveHost;RunicViewsResolveFrontendDelivery;RunicAssetsEmbedStagedFileSystem;RunicViewsCopyFrontend;RunicViewsMirrorFrontend;ShowDelivery",
+    "-p:_RunicViewsEmbeddedFrontendBuildTargets=", ...extra,
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  const output = `${result.stdout}${result.stderr}`;
+  const packer = join(project, "packer-arguments.json");
+  const packed = existsSync(packer) ? JSON.parse(readFileSync(packer, "utf8")) : undefined;
+  rmSync(packer, { force: true });
+  return { status: result.status, output, packed,
+    www: existsSync(join(project, "bin/www")) ? files(join(project, "bin/www")) : undefined,
+    staged: existsSync(join(project, "obj/runic-www")) ? files(join(project, "obj/runic-www")) : undefined,
+    warnings: [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE030:/.test(line)).map(line => line.trim()))] };
+}
+
+test("RunicApplicationFrontendDelivery=Embedded stages www/ for Runic.Assets and copies no www/", () => {
+  const project = deliveryProject("embedded", ["Desktop"], "<RunicApplicationFrontendDelivery>embedded</RunicApplicationFrontendDelivery>");
+  let result = buildDelivery(project);
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.www, undefined, result.output);
+  assert.deepEqual(result.staged, ["assets/app.js", "index.html", "runic-desktop-views.js", "runic-views.js"]);
+  assert.equal(readFileSync(join(project, "obj/runic-www/runic-views.js"), "utf8"), hostClient("Desktop"));
+  assert.ok(result.packed, result.output);
+  assert.equal(resolve(result.packed[0]), resolve(project, "obj/runic-www"), result.packed.join(" "));
+  assert.match(result.output, /RUNTIME_OPTION=Runic\.Application\.FrontendArchive=Runic\.Assets\.StaticFiles/);
+  assert.match(result.output, /RESOURCE=Runic\.Assets\.StaticFiles/);
+
+  // The staged tree mirrors the frontend: a file the frontend no longer has is gone.
+  rmSync(join(project, "frontend/dist/assets/app.js"));
+  result = buildDelivery(project);
+  assert.deepEqual(result.staged, ["index.html", "runic-desktop-views.js", "runic-views.js"]);
+
+  // Files, the default, copies www/ and packs nothing.
+  result = buildDelivery(deliveryProject("files", ["Desktop"]));
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.www, ["assets/app.js", "index.html", "runic-desktop-views.js", "runic-views.js"]);
+  assert.equal(result.packed, undefined);
+  assert.doesNotMatch(result.output, /FrontendArchive/);
+});
+
+test("RUNICBRIDGE030: an unknown value, CS-WebUI and an own RunicAssetsDist build as Files", () => {
+  const cases = [
+    ["unknown", ["Desktop"], "<RunicApplicationFrontendDelivery>Inline</RunicApplicationFrontendDelivery>", [], /RunicApplicationFrontendDelivery is 'Inline', which is not Files or Embedded/],
+    ["cswebui", ["CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", [], /the CS-WebUI host serves the frontend from a folder/],
+    ["both-cswebui", ["Desktop", "CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", ["-p:RunicApplicationHost=cswebui"], /the CS-WebUI host serves the frontend from a folder/],
+    ["both-unchosen", ["Desktop", "CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", [], /does not run on the Runic Desktop host/],
+    ["own-dist", ["Desktop"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery><RunicAssetsDist>$(MSBuildProjectDirectory)/frontend/dist</RunicAssetsDist>", [], /sets RunicAssetsDist or RunicAssetsEmbeddedArchive itself/],
+  ];
+  for (const [name, hosts, properties, extra, message] of cases) {
+    const result = buildDelivery(deliveryProject(`delivery-${name}`, hosts, properties), extra);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.warnings.length, 1, `${name}: ${result.output}`);
+    assert.match(result.warnings[0], message, name);
+    assert.match(result.warnings[0], /so the build copies the frontend to www\/ \(Files\)/, name);
+    assert.equal(result.staged, undefined, name);
+    assert.ok(result.www?.includes("index.html"), `${name} copies www/: ${result.output}`);
+    assert.doesNotMatch(result.output, /RUNTIME_OPTION=Runic\.Application\.FrontendArchive/, name);
+  }
+
+  // dotnet runic dev's development server builds without copying the frontend: Files, silently.
+  const dev = buildDelivery(deliveryProject("delivery-dev", ["Desktop"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>"),
+    ["-p:RunicApplicationFrontendCopyEnabled=false"]);
+  assert.equal(dev.status, 0, dev.output);
+  assert.deepEqual(dev.warnings, []);
+  assert.equal(dev.staged, undefined);
+  assert.equal(dev.packed, undefined);
+});

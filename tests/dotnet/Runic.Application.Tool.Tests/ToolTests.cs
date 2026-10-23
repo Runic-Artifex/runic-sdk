@@ -1154,6 +1154,8 @@ internal sealed class ToolTests
         string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, noRestore));
         Contains(build, "-property:RunicApplicationFrontendInstallEnabled=false");
         Contains(build, "--no-restore");
+        // I-027: dev serves the live frontend beside www/, never an embedded archive.
+        Contains(build, "-property:RunicApplicationFrontendDelivery=Files");
         Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, noRestore)),
             "--property:RunicApplicationFrontendInstallEnabled=false");
         Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, noRestore)),

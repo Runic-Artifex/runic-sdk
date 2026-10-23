@@ -44,6 +44,14 @@
          Runic.Application.FrontendWebRoot runtime option when it is not www. -->
     <RunicApplicationFrontendWebRoot Condition="'$(RunicApplicationFrontendWebRoot)' == ''">www</RunicApplicationFrontendWebRoot>
     <_RunicApplicationFrontendWebRoot>$(RunicApplicationFrontendWebRoot.Replace('\', '/').Trim('/'))</_RunicApplicationFrontendWebRoot>
+    <!-- Files copies the frontend to the web root (www/); Embedded packs it into the assembly with Runic.Assets
+         (RunicViewsResolveFrontendDelivery). Closed: Files or Embedded, compared without case; another value is
+         RUNICBRIDGE030 and builds as Files. -->
+    <RunicApplicationFrontendDelivery Condition="'$(RunicApplicationFrontendDelivery)' == ''">Files</RunicApplicationFrontendDelivery>
+    <!-- Runic.Assets packs the staged web root just before CoreCompile, after RunicViewsStageEmbeddedFrontend. -->
+    <_RunicAssetsStageDistTargets>$(_RunicAssetsStageDistTargets);RunicViewsStageEmbeddedFrontend</_RunicAssetsStageDistTargets>
+    <!-- The targets that write and collect the frontend output before it is staged. -->
+    <_RunicViewsEmbeddedFrontendBuildTargets Condition="'$(_RunicViewsEmbeddedFrontendBuildTargets)' == ''">RunicViewsGenerateBridge;RunicViewsCollectFrontendInputs;RunicViewsBuildFrontend;RunicViewsCollectReferencedFrontends</_RunicViewsEmbeddedFrontendBuildTargets>
     <!-- A frontend inside the project folder would otherwise add its installed
          packages and build output to the default None, Content and Page items,
          which IDEs list and evaluation walks. Items are evaluated after all
@@ -687,6 +695,61 @@
              Text="RunicApplicationHost is '$(_RunicApplicationHostRequested)', but $(AssemblyName) references no such Runic host, so the build copies no www/runic-views.js. Set it to one of the referenced hosts: @(_RunicApplicationHostName, ', ')." />
   </Target>
 
+  <!-- I-027: RunicApplicationFrontendDelivery=Embedded composes the tree that Files copies to www/ (the frontends of
+       referenced projects, this project's frontend output and the host's Views client) in
+       $(IntermediateOutputPath)runic-www/ and lets Runic.Assets pack it into the assembly as RunicAssetsDist, with
+       the Runic.Application.FrontendArchive runtime option naming the resource; the build and publish output get
+       no www/. It needs the Runic Desktop host. RUNICBRIDGE030 reports an unknown value, the CS-WebUI host (which
+       serves a folder) or no single Desktop host, and a project that sets RunicAssetsDist or
+       RunicAssetsEmbeddedArchive itself; the build then continues as Files. A build that does not copy the
+       frontend (RunicApplicationFrontendCopyEnabled=false, as dotnet runic dev's development server sets it) is
+       Files too. -->
+  <Target Name="RunicViewsResolveFrontendDelivery" BeforeTargets="PrepareForBuild;Publish" DependsOnTargets="RunicViewsResolveHost"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicApplicationFrontendDeliveryValue>$(RunicApplicationFrontendDelivery.Trim())</_RunicApplicationFrontendDeliveryValue>
+      <_RunicApplicationFrontendEmbeddedRequested Condition="'$(_RunicApplicationFrontendDeliveryValue)' == 'Embedded' and '$(OutputType)' != 'Library'">true</_RunicApplicationFrontendEmbeddedRequested>
+      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendDeliveryValue)' != 'Files' and '$(_RunicApplicationFrontendDeliveryValue)' != 'Embedded'">RunicApplicationFrontendDelivery is '$(RunicApplicationFrontendDelivery)', which is not Files or Embedded</_RunicApplicationFrontendDeliveryProblem>
+      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(RunicApplicationHost)' == 'cswebui'">RunicApplicationFrontendDelivery is Embedded, but the CS-WebUI host serves the frontend from a folder</_RunicApplicationFrontendDeliveryProblem>
+      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and '$(RunicApplicationHost)' != 'desktop'">RunicApplicationFrontendDelivery is Embedded, but $(AssemblyName) does not run on the Runic Desktop host (Runic.Application.Views.Desktop; set RunicApplicationHost to desktop when it references several hosts)</_RunicApplicationFrontendDeliveryProblem>
+      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and ('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '')">RunicApplicationFrontendDelivery is Embedded, but $(MSBuildProjectFile) sets RunicAssetsDist or RunicAssetsEmbeddedArchive itself</_RunicApplicationFrontendDeliveryProblem>
+      <_RunicApplicationFrontendEmbedded Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">true</_RunicApplicationFrontendEmbedded>
+    </PropertyGroup>
+    <Warning Code="RUNICBRIDGE030" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge030"
+             Condition="'$(_RunicApplicationFrontendDeliveryProblem)' != ''"
+             Text="$(_RunicApplicationFrontendDeliveryProblem), so the build copies the frontend to $(_RunicApplicationFrontendWebRoot)/ (Files). Use Embedded only with the Runic Desktop host and without RunicAssetsDist or RunicAssetsEmbeddedArchive in the project." />
+    <PropertyGroup Condition="'$(_RunicApplicationFrontendEmbedded)' == 'true'">
+      <_RunicApplicationFrontendEmbeddedRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'runic-www'))</_RunicApplicationFrontendEmbeddedRoot>
+      <RunicAssetsDist>$(_RunicApplicationFrontendEmbeddedRoot)</RunicAssetsDist>
+      <_RunicAssetsDistStaged>true</_RunicAssetsDistStaged>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicApplicationFrontendEmbedded)' == 'true'">
+      <RuntimeHostConfigurationOption Include="Runic.Application.FrontendArchive" Value="$(RunicAssetsEmbeddedResourceName)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Composes the embedded tree after the frontend build, as the www/ copies below would: the frontends of
+       referenced projects, then this project's output, then the host's Views client. The directory is owned by the
+       build, so files that no frontend has any more are deleted. -->
+  <Target Name="RunicViewsStageEmbeddedFrontend"
+          DependsOnTargets="RunicViewsResolveFrontendDelivery;$(_RunicViewsEmbeddedFrontendBuildTargets);$(_RunicApplicationHostStageTargets)"
+          Condition="'$(_RunicApplicationFrontendEmbedded)' == 'true'">
+    <ItemGroup>
+      <_RunicViewsEmbeddedFile Include="@(_RunicBridgeReferencedFrontendFile)" />
+      <_RunicViewsEmbeddedOwnFile Include="$(_RunicApplicationFrontendOutputPath)**/*"
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true'" />
+      <_RunicViewsEmbeddedFile Include="@(_RunicViewsEmbeddedOwnFile->'%(FullPath)')"
+          RunicFrontendPath="%(_RunicViewsEmbeddedOwnFile.RecursiveDir)%(_RunicViewsEmbeddedOwnFile.Filename)%(_RunicViewsEmbeddedOwnFile.Extension)" />
+      <_RunicViewsEmbeddedFile Include="@(_RunicViewsEmbeddedHostFile)" />
+      <_RunicViewsEmbeddedDestination Include="@(_RunicViewsEmbeddedFile->'$(_RunicApplicationFrontendEmbeddedRoot)%(RunicFrontendPath)')" />
+      <_RunicViewsEmbeddedExisting Include="$(_RunicApplicationFrontendEmbeddedRoot)**/*" />
+      <_RunicViewsEmbeddedStale Include="@(_RunicViewsEmbeddedExisting->'%(FullPath)')" Exclude="@(_RunicViewsEmbeddedDestination->'%(FullPath)')" />
+    </ItemGroup>
+    <Delete Files="@(_RunicViewsEmbeddedStale)" />
+    <MakeDir Directories="$(_RunicApplicationFrontendEmbeddedRoot)" />
+    <Copy SourceFiles="@(_RunicViewsEmbeddedFile)" DestinationFiles="@(_RunicViewsEmbeddedDestination)" SkipUnchangedFiles="true" />
+  </Target>
+
   <!-- The frontend build runs when one of its inputs is newer than the stamp,
        when a file it left in dist/ is missing, or when its build state differs
        from the one that last built dist/. Inputs are the files under the
@@ -952,7 +1015,7 @@
 
   <Target Name="RunicViewsCopyReferencedFrontends" AfterTargets="Build"
           DependsOnTargets="RunicViewsCollectReferencedFrontends"
-          Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">
+          Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(_RunicApplicationFrontendEmbedded)' != 'true'">
     <ItemGroup>
       <_RunicBridgeWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)$(_RunicApplicationFrontendWebRoot)/%(RunicFrontendPath)')" />
     </ItemGroup>
@@ -963,7 +1026,7 @@
 
   <Target Name="RunicViewsCopyReferencedFrontendsForPublish" AfterTargets="Publish"
           DependsOnTargets="RunicViewsCollectReferencedFrontends"
-          Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
+          Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicApplicationFrontendEmbedded)' != 'true'">
     <ItemGroup>
       <_RunicBridgePublishedWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)$(_RunicApplicationFrontendWebRoot)/%(RunicFrontendPath)')" />
     </ItemGroup>
@@ -976,7 +1039,7 @@
        dotnet runic dev wrote into www/ from being replaced by dist/. -->
   <Target Name="RunicViewsCopyFrontend" AfterTargets="Build"
           DependsOnTargets="RunicViewsDetectBridgeUse"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(_RunicApplicationFrontendEmbedded)' != 'true'">
     <ItemGroup>
       <_RunicBridgeFrontendFile Include="$(_RunicApplicationFrontendOutputPath)**/*" />
       <_RunicBridgeWwwFile Include="@(_RunicBridgeFrontendFile->'$(TargetDir)$(_RunicApplicationFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')" />
@@ -988,7 +1051,7 @@
 
   <Target Name="RunicViewsCopyFrontendForPublish" AfterTargets="Publish"
           DependsOnTargets="RunicViewsDetectBridgeUse"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicApplicationFrontendEmbedded)' != 'true'">
     <ItemGroup>
       <_RunicBridgePublishedFrontendFile Include="$(_RunicApplicationFrontendOutputPath)**/*" />
       <_RunicBridgePublishedWwwFile Include="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)$(_RunicApplicationFrontendWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')" />

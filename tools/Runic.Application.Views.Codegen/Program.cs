@@ -1811,6 +1811,8 @@ static class BridgeDiagnosticCodes
     internal const string OperationRetirement = "RUNICBRIDGE028";
     /// <summary>Warning: RunicApplicationFrontendPackageManager is not npm, pnpm or bun.</summary>
     internal const string PackageManager = "RUNICBRIDGE029";
+    /// <summary>Warning: RunicApplicationFrontendDelivery=Embedded cannot apply, so the build copies the frontend.</summary>
+    internal const string FrontendDelivery = "RUNICBRIDGE030";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1846,6 +1848,7 @@ static class BridgeDiagnosticCodes
         (CommandKey, "error", "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape"),
         (OperationRetirement, "warning", "A [RunicOperationRetirement] declaration reaches no operation"),
         (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
+        (FrontendDelivery, "warning", "RunicApplicationFrontendDelivery is unknown, or Embedded cannot apply"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

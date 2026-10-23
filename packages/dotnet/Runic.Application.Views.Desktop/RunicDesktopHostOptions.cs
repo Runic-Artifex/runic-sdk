@@ -1,3 +1,4 @@
+using Runic.Assets;
 using Runic.Desktop;
 
 namespace Runic.Application.Views.Desktop;
@@ -118,4 +119,22 @@ public sealed record RunicDesktopHostOptions
         get;
         init => field = new DesktopSurfaceOptions { ContentSecurityPolicy = value }.ContentSecurityPolicy;
     }
+
+    /// <summary>
+    /// The frontend every Window serves in place of its web root, or <see langword="null"/>, the default, for the
+    /// archive that the build embedded with <c>RunicApplicationFrontendDelivery=Embedded</c>, if any.
+    /// </summary>
+    /// <remarks>
+    /// A Window serves this source, or the build's archive, unless <see cref="SurfaceOptions"/> are set, its
+    /// <see cref="RunicWindowOptions.ContentRoot"/> is set, or <c>dotnet runic dev</c> serves the frontend output
+    /// live. The root serves <see cref="RunicWindowOptions.StartPage"/>, which the source must declare, and paths
+    /// resolve as <see cref="AssetRoutingOptions"/> defaults do. The source must hold everything the build puts in
+    /// <c>www/</c>, including the host's <c>runic-views.js</c>. The build's archive is the entry assembly's
+    /// manifest resource that the <c>Runic.Application.FrontendArchive</c> runtime option names, read once per
+    /// process.
+    /// <code>
+    /// Assets = await AssetArchive.ReadAsync(File.OpenRead("frontend.runic-assets"))
+    /// </code>
+    /// </remarks>
+    public IAssetSource? Assets { get; init; }
 }

@@ -14,6 +14,7 @@
   </ItemGroup>
 
   <Target Name="RunicAssetsPackFileSystem"
+          DependsOnTargets="_RunicAssetsCollectStagedDist"
           Condition="'$(RunicAssetsDist)' != '' and '$(DesignTimeBuild)' != 'true'"
           Inputs="$(MSBuildProjectFullPath);$(MSBuildThisFileFullPath);$(RunicAssetsPackerPath);@(_RunicAssetsDistInput)"
           Outputs="$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets">
@@ -58,7 +59,7 @@
   <Target Name="RunicAssetsEmbedFileSystem"
           BeforeTargets="SplitResourcesByCulture"
           DependsOnTargets="RunicAssetsPackFileSystem"
-          Condition="('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '') and '$(DesignTimeBuild)' != 'true'">
+          Condition="('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '') and '$(DesignTimeBuild)' != 'true' and '$(_RunicAssetsDistStaged)' != 'true'">
     <PropertyGroup>
       <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
     </PropertyGroup>
@@ -79,6 +80,32 @@
                         Condition="'$(RunicAssetsEmbeddedArchive)' != ''">
         <LogicalName>$(RunicAssetsEmbeddedResourceName)</LogicalName>
       </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
+  <!-- Runic.Application.Views (RunicApplicationFrontendDelivery=Embedded) composes RunicAssetsDist during the build,
+       after the frontend build that runs just before CoreCompile, and sets _RunicAssetsDistStaged=true and
+       _RunicAssetsStageDistTargets to the targets that compose it. The archive is then packed and embedded just
+       before CoreCompile instead of before SplitResourcesByCulture, from the directory as those targets left it. -->
+  <Target Name="_RunicAssetsCollectStagedDist" DependsOnTargets="$(_RunicAssetsStageDistTargets)"
+          Condition="'$(_RunicAssetsDistStaged)' == 'true'">
+    <ItemGroup>
+      <_RunicAssetsDistInput Remove="@(_RunicAssetsDistInput)" />
+      <_RunicAssetsDistInput Include="$(RunicAssetsDist)\**\*" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunicAssetsEmbedStagedFileSystem"
+          BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicAssetsPackFileSystem"
+          Condition="'$(_RunicAssetsDistStaged)' == 'true' and '$(RunicAssetsDist)' != '' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
+    </PropertyGroup>
+    <!-- _GenerateCompileInputs has run, so the resource is also added to the inputs that CoreCompile embeds. -->
+    <ItemGroup>
+      <EmbeddedResource Include="$(_RunicAssetsGeneratedArchive)" LogicalName="$(RunicAssetsEmbeddedResourceName)" WithCulture="false" Type="Non-Resx" />
+      <_CoreCompileResourceInputs Include="$(_RunicAssetsGeneratedArchive)" LogicalName="$(RunicAssetsEmbeddedResourceName)" WithCulture="false" Type="Non-Resx" />
     </ItemGroup>
   </Target>
 </Project>

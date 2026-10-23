@@ -145,6 +145,11 @@
       "id": "RUNICBRIDGE029",
       "severity": "warning",
       "title": "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"
+    },
+    {
+      "id": "RUNICBRIDGE030",
+      "severity": "warning",
+      "title": "RunicApplicationFrontendDelivery is unknown, or Embedded cannot apply"
     }
   ]
 }

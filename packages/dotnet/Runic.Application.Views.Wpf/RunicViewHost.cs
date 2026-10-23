@@ -155,7 +155,8 @@ public class RunicViewHost : Decorator
     /// <summary>
     /// Gets or sets the built frontend's directory, relative to the application's base directory.
     /// <see langword="null"/>, the default, is the build's web root: <c>www</c>, or the directory that the build
-    /// property <c>RunicApplicationFrontendWebRoot</c> names.
+    /// property <c>RunicApplicationFrontendWebRoot</c> names; with <c>RunicApplicationFrontendDelivery=Embedded</c>,
+    /// the frontend archive the build embedded in the application instead.
     /// </summary>
     public string? ContentRoot
     {
@@ -318,9 +319,14 @@ public class RunicViewHost : Decorator
         lifecycle.Logger = WpfViewsLog.For(loggerFactory);
         var services = Services ?? throw new InvalidOperationException(
             "RunicViewHost has no Services. Set RunicViewHost.Services, on the host or its window, to the provider with AddRunicViews().");
+        // The frontend the build embedded (RunicApplicationFrontendDelivery=Embedded) replaces the web root unless
+        // ContentRoot is set.
+        var archive = SurfaceOptions is null && ContentRoot is null ? FrontendArchive.FromBuild : null;
         var surfaceOptions = SurfaceOptions ?? new DesktopSurfaceOptions
         {
-            Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), StartPage),
+            Content = archive is not null
+                ? FrontendArchive.CreateContent(archive, StartPage ?? "index.html")
+                : new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), StartPage),
         };
         if (surfaceOptions.ContentSecurityPolicy is null && ContentSecurityPolicy is { } policy)
             surfaceOptions = surfaceOptions with { ContentSecurityPolicy = policy };
