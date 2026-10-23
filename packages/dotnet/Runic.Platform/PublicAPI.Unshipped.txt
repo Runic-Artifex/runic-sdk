@@ -375,3 +375,75 @@ static Runic.Platform.DesktopGlobalShortcuts.Unavailable(Runic.Platform.Platform
 Runic.Platform.DesktopGlobalShortcutBinding.Deconstruct(out string! Id) -> void
 Runic.Platform.DesktopGlobalShortcutActivation.Deconstruct(out string! Id) -> void
 Runic.Platform.DesktopGlobalShortcutsChange.Deconstruct(out System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!> Bindings) -> void
+const Runic.Platform.PlatformCapabilityIds.ClipboardReadData = "platform.clipboard.readData" -> string!
+const Runic.Platform.PlatformCapabilityIds.ClipboardWatch = "platform.clipboard.watch" -> string!
+const Runic.Platform.PlatformCapabilityIds.ClipboardWriteData = "platform.clipboard.writeData" -> string!
+const Runic.Platform.PlatformCapabilityIds.TaskbarBadge = "platform.taskbar.badge" -> string!
+const Runic.Platform.PlatformCapabilityIds.TaskbarProgress = "platform.taskbar.progress" -> string!
+override Runic.Platform.DesktopBadge.Equals(object? obj) -> bool
+override Runic.Platform.DesktopBadge.GetHashCode() -> int
+override Runic.Platform.DesktopBadge.ToString() -> string!
+override Runic.Platform.DesktopClipboardContent.Equals(object? obj) -> bool
+override Runic.Platform.DesktopClipboardContent.GetHashCode() -> int
+override Runic.Platform.DesktopClipboardContent.ToString() -> string!
+override Runic.Platform.DesktopProgress.Equals(object? obj) -> bool
+override Runic.Platform.DesktopProgress.GetHashCode() -> int
+override Runic.Platform.DesktopProgress.ToString() -> string!
+Runic.Platform.DesktopBadge
+Runic.Platform.DesktopBadge.<Clone>$() -> Runic.Platform.DesktopBadge!
+Runic.Platform.DesktopBadge.Count.get -> int?
+Runic.Platform.DesktopBadge.Count.init -> void
+Runic.Platform.DesktopBadge.Description.get -> string?
+Runic.Platform.DesktopBadge.Description.init -> void
+Runic.Platform.DesktopBadge.DesktopBadge() -> void
+Runic.Platform.DesktopBadge.Equals(Runic.Platform.DesktopBadge? other) -> bool
+Runic.Platform.DesktopClipboardContent
+Runic.Platform.DesktopClipboardContent.<Clone>$() -> Runic.Platform.DesktopClipboardContent!
+Runic.Platform.DesktopClipboardContent.DesktopClipboardContent() -> void
+Runic.Platform.DesktopClipboardContent.Equals(Runic.Platform.DesktopClipboardContent? other) -> bool
+Runic.Platform.DesktopClipboardContent.Files.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopClipboardContent.Files.init -> void
+Runic.Platform.DesktopClipboardContent.Html.get -> string?
+Runic.Platform.DesktopClipboardContent.Html.init -> void
+Runic.Platform.DesktopClipboardContent.Image.get -> System.ReadOnlyMemory<byte>
+Runic.Platform.DesktopClipboardContent.Image.init -> void
+Runic.Platform.DesktopClipboardContent.Rtf.get -> string?
+Runic.Platform.DesktopClipboardContent.Rtf.init -> void
+Runic.Platform.DesktopClipboardContent.Text.get -> string?
+Runic.Platform.DesktopClipboardContent.Text.init -> void
+Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopClipboardFormats.Files = 16 -> Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopClipboardFormats.Html = 2 -> Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopClipboardFormats.Image = 8 -> Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopClipboardFormats.None = 0 -> Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopClipboardFormats.Rtf = 4 -> Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopClipboardFormats.Text = 1 -> Runic.Platform.DesktopClipboardFormats
+Runic.Platform.DesktopProgress
+Runic.Platform.DesktopProgress.<Clone>$() -> Runic.Platform.DesktopProgress!
+Runic.Platform.DesktopProgress.Deconstruct(out double? Value) -> void
+Runic.Platform.DesktopProgress.DesktopProgress(double? Value) -> void
+Runic.Platform.DesktopProgress.Equals(Runic.Platform.DesktopProgress? other) -> bool
+Runic.Platform.DesktopProgressState
+Runic.Platform.DesktopProgressState.Error = 2 -> Runic.Platform.DesktopProgressState
+Runic.Platform.DesktopProgress.State.get -> Runic.Platform.DesktopProgressState
+Runic.Platform.DesktopProgress.State.init -> void
+Runic.Platform.DesktopProgressState.Normal = 0 -> Runic.Platform.DesktopProgressState
+Runic.Platform.DesktopProgressState.Paused = 1 -> Runic.Platform.DesktopProgressState
+Runic.Platform.DesktopProgress.Value.get -> double?
+Runic.Platform.DesktopProgress.Value.init -> void
+Runic.Platform.IDesktopClipboard
+Runic.Platform.IDesktopClipboard.GetFormatsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopClipboardFormats>!>
+Runic.Platform.IDesktopClipboard.ReadFilesAsync(int maximumCount, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<string!>>!>
+Runic.Platform.IDesktopClipboard.ReadHtmlAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Platform.IDesktopClipboard.ReadImageAsync(int maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<byte[]?>!>
+Runic.Platform.IDesktopClipboard.ReadRtfAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Platform.IDesktopClipboard.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopClipboardFormats>!>!
+Runic.Platform.IDesktopClipboard.WriteAsync(Runic.Platform.DesktopClipboardContent! content, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IWindowPlatformServices.SetBadgeAsync(Runic.Platform.DesktopBadge? badge, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IWindowPlatformServices.SetProgressAsync(Runic.Platform.DesktopProgress? progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+static Runic.Platform.DesktopBadge.operator !=(Runic.Platform.DesktopBadge? left, Runic.Platform.DesktopBadge? right) -> bool
+static Runic.Platform.DesktopBadge.operator ==(Runic.Platform.DesktopBadge? left, Runic.Platform.DesktopBadge? right) -> bool
+static Runic.Platform.DesktopClipboardContent.operator !=(Runic.Platform.DesktopClipboardContent? left, Runic.Platform.DesktopClipboardContent? right) -> bool
+static Runic.Platform.DesktopClipboardContent.operator ==(Runic.Platform.DesktopClipboardContent? left, Runic.Platform.DesktopClipboardContent? right) -> bool
+static Runic.Platform.DesktopProgress.operator !=(Runic.Platform.DesktopProgress? left, Runic.Platform.DesktopProgress? right) -> bool
+static Runic.Platform.DesktopProgress.operator ==(Runic.Platform.DesktopProgress? left, Runic.Platform.DesktopProgress? right) -> bool

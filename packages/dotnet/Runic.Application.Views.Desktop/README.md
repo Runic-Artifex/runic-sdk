@@ -214,9 +214,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   A window served under `RUNIC_APPLICATION_SERVE_ONLY` or shown in an installed
   browser after a fallback receives none.
 - `services.AddRunicPlatformServices()` registers native file dialogs, the
-  text clipboard, and the file launcher for each window scope:
-  `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and
-  `IDesktopFileLauncher`. A ViewModel takes them in its constructor before its
+  clipboard, and the file launcher for each window scope:
+  `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`,
+  `IDesktopClipboard` (HTML, RTF, images, files and a format watch on Windows
+  and macOS), and `IDesktopFileLauncher`; `IWindowPlatformServices` also sets the
+  window's taskbar badge and progress (Windows) or the Dock tile's (macOS). A ViewModel takes them in its constructor before its
   window opens. They bind to the window's native owner when it opens, and the
   provider is selected from the backend that is actually running:
   - Windows: `Runic.Platform.Windows`.

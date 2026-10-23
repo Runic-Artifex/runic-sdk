@@ -5,7 +5,7 @@ namespace Runic.Platform;
 /// <summary>Native services owned by one application window.</summary>
 /// <remarks>
 /// A host registers one instance per window scope, so a ViewModel can take this interface, or
-/// <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> or <see cref="IDesktopFileLauncher"/> directly, in its
+/// <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>, <see cref="IDesktopClipboard"/> or <see cref="IDesktopFileLauncher"/> directly, in its
 /// constructor. The services follow the window: before it opens they report
 /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and once it closes
 /// <see cref="PlatformUnavailableReason.OwnerClosed"/>. A host without a native owner reports every service
@@ -15,7 +15,11 @@ public interface IWindowPlatformServices : IPlatformCapabilities
 {
     /// <summary>File and directory dialogs owned by the window.</summary>
     IFileDialogs FileDialogs { get; }
-    /// <summary>The Unicode text clipboard, used through the window's native thread.</summary>
+    /// <summary>The window's clipboard, used through the window's native thread.</summary>
+    /// <remarks>
+    /// The clipboard of Runic's hosts is also an <see cref="IDesktopClipboard"/>, with HTML, RTF, images, files and a
+    /// watch: <c>services.Clipboard as IDesktopClipboard</c>.
+    /// </remarks>
     ITextClipboard Clipboard { get; }
     /// <summary>Hands local files and web, mail or Windows Settings URIs to native applications on behalf of the window.</summary>
     IDesktopFileLauncher FileLauncher { get; }
@@ -104,6 +108,49 @@ public interface IWindowPlatformServices : IPlatformCapabilities
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, as hosts without a native owner, such as CS-WebUI, do.
     /// </remarks>
     IDesktopMessageBoxes MessageBoxes => DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+
+    /// <summary>Shows a badge on the window's taskbar button or the application's Dock icon (<see cref="PlatformCapabilityIds.TaskbarBadge"/>).</summary>
+    /// <param name="badge">The count or dot to show; <see langword="null"/> removes the badge.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> once the desktop took the badge, also on a desktop that does not show one,
+    /// such as GNOME without a dock extension, or <see cref="PlatformResult{T}.Unavailable"/>:
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/> before the window opens or on a host without a native
+    /// owner, <see cref="PlatformUnavailableReason.OwnerClosed"/> once it closed, and
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> when the desktop has no badges.
+    /// </returns>
+    /// <remarks>
+    /// Windows shows the badge on this window's taskbar button, drawn by Runic as an overlay icon with
+    /// <see cref="DesktopBadge.Description"/> as its accessible text. macOS and Linux have one badge for the application:
+    /// the most recent call of any window wins, and a window's badge goes when the window closes. On Linux the badge
+    /// needs the application's ID, as for notifications. An implementation that does not override this member checks
+    /// the argument and reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="badge"/> has a count below 1 or a description with a NUL character.</exception>
+    ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default)
+    {
+        DesktopTaskbarRules.Check(badge, cancellationToken);
+        return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
+            new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+    }
+
+    /// <summary>Shows progress on the window's taskbar button or the application's Dock icon (<see cref="PlatformCapabilityIds.TaskbarProgress"/>).</summary>
+    /// <param name="progress">The progress to show; <see langword="null"/> removes it.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <returns>The results of <see cref="SetBadgeAsync"/>.</returns>
+    /// <remarks>
+    /// Windows fills this window's taskbar button, yellow for <see cref="DesktopProgressState.Paused"/> and red for
+    /// <see cref="DesktopProgressState.Error"/>. macOS draws a bar on the Dock icon and Linux docks on their launcher, for
+    /// the application as with badges. An implementation that does not override this member checks the argument and
+    /// reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="progress"/> has a value outside 0 to 1 or an undefined state.</exception>
+    ValueTask<PlatformResult<PlatformUnit>> SetProgressAsync(DesktopProgress? progress, CancellationToken cancellationToken = default)
+    {
+        DesktopTaskbarRules.Check(progress, cancellationToken);
+        return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
+            new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+    }
 }
 
 /// <summary>How a screen-reader announcement relates to what the screen reader is saying, as ARIA live regions do.</summary>
@@ -157,6 +204,16 @@ public static class PlatformCapabilityIds
     public const string Monitors = "platform.monitors";
     /// <summary>Showing native message boxes through <see cref="IWindowPlatformServices.MessageBoxes"/>.</summary>
     public const string MessageBoxes = "platform.messageBoxes";
+    /// <summary>Reading HTML, RTF, images and files through <see cref="IDesktopClipboard"/>.</summary>
+    public const string ClipboardReadData = "platform.clipboard.readData";
+    /// <summary>Writing through <see cref="IDesktopClipboard.WriteAsync"/>.</summary>
+    public const string ClipboardWriteData = "platform.clipboard.writeData";
+    /// <summary>Watching the clipboard's formats through <see cref="IDesktopClipboard.WatchAsync"/>.</summary>
+    public const string ClipboardWatch = "platform.clipboard.watch";
+    /// <summary>Showing a badge through <see cref="IWindowPlatformServices.SetBadgeAsync"/>.</summary>
+    public const string TaskbarBadge = "platform.taskbar.badge";
+    /// <summary>Showing progress through <see cref="IWindowPlatformServices.SetProgressAsync"/>.</summary>
+    public const string TaskbarProgress = "platform.taskbar.progress";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -171,15 +228,18 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.FilesLaunch, PlatformCapabilityIds.FilesOpenMultiple, PlatformCapabilityIds.UrisLaunch,
         PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu,
         PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors, PlatformCapabilityIds.MessageBoxes,
+        PlatformCapabilityIds.ClipboardReadData, PlatformCapabilityIds.ClipboardWriteData, PlatformCapabilityIds.ClipboardWatch,
+        PlatformCapabilityIds.TaskbarBadge, PlatformCapabilityIds.TaskbarProgress,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>
     /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher,
-    /// <see cref="IWindowPlatformServices.Monitors"/>, <see cref="IWindowPlatformServices.MessageBoxes"/>, <see cref="IWindowPlatformServices.AnnounceAsync"/> and
-    /// <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>
-    /// <see cref="PlatformResult{T}.Unavailable"/>; nothing throws
-    /// except for invalid arguments and caller cancellation.
+    /// <see cref="IWindowPlatformServices.Monitors"/>, <see cref="IWindowPlatformServices.MessageBoxes"/>, <see cref="IWindowPlatformServices.AnnounceAsync"/>,
+    /// <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>, <see cref="IWindowPlatformServices.SetBadgeAsync"/> and
+    /// <see cref="IWindowPlatformServices.SetProgressAsync"/>
+    /// <see cref="PlatformResult{T}.Unavailable"/>; the clipboard is an <see cref="IDesktopClipboard"/>, whose watch
+    /// reports the reason once and ends. Nothing throws except for invalid arguments and caller cancellation.
     /// </remarks>
     public static IWindowPlatformServices Unavailable(PlatformUnavailableReason reason)
     {
@@ -211,7 +271,7 @@ public static class WindowPlatformServices
     }
 
     private sealed class UnavailableWindowPlatformServices(PlatformUnavailableReason reason)
-        : IWindowPlatformServices, IFileDialogs, ITextClipboard, IDesktopFileLauncher
+        : IWindowPlatformServices, IFileDialogs, IDesktopClipboard, IDesktopFileLauncher
     {
         private readonly CapabilitySnapshot _snapshot = new(Guid.Empty,
             CapabilityIds.ToImmutableDictionary(static id => id, CapabilityStatus (_) => new CapabilityStatus.Unavailable(reason)));
@@ -262,6 +322,58 @@ public static class WindowPlatformServices
         public ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(text);
+            return Result<PlatformUnit>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<DesktopClipboardFormats>> GetFormatsAsync(CancellationToken cancellationToken = default) =>
+            Result<DesktopClipboardFormats>(cancellationToken);
+
+        public ValueTask<PlatformResult<string?>> ReadHtmlAsync(int maximumCharacters, CancellationToken cancellationToken = default)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(maximumCharacters);
+            return Result<string?>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<string?>> ReadRtfAsync(int maximumCharacters, CancellationToken cancellationToken = default)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(maximumCharacters);
+            return Result<string?>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<byte[]?>> ReadImageAsync(int maximumBytes, CancellationToken cancellationToken = default)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(maximumBytes);
+            return Result<byte[]?>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<ImmutableArray<string>>> ReadFilesAsync(int maximumCount, CancellationToken cancellationToken = default)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(maximumCount);
+            return Result<ImmutableArray<string>>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<PlatformUnit>> WriteAsync(DesktopClipboardContent content, CancellationToken cancellationToken = default)
+        {
+            DesktopClipboardRules.Check(content);
+            return Result<PlatformUnit>(cancellationToken);
+        }
+
+        public async IAsyncEnumerable<PlatformResult<DesktopClipboardFormats>> WatchAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return await Result<DesktopClipboardFormats>(cancellationToken).ConfigureAwait(false);
+        }
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default)
+        {
+            DesktopTaskbarRules.Check(badge, cancellationToken);
+            return Result<PlatformUnit>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetProgressAsync(DesktopProgress? progress, CancellationToken cancellationToken = default)
+        {
+            DesktopTaskbarRules.Check(progress, cancellationToken);
             return Result<PlatformUnit>(cancellationToken);
         }
 

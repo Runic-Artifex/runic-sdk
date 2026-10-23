@@ -1045,13 +1045,27 @@ public static partial class DesktopPlatformServices
         return new BoundWindowPlatformServices(owner, CreateWindows(owner), Runic.Desktop.Internal.WindowsMonitors.Shared);
     }
 
+    // Runic.Application.Views.Wpf forwards the registered TaskbarButtonCreated message of a WPF window, on its thread.
+    [SupportedOSPlatform("windows8.0")]
+    internal static uint WindowsTaskbarButtonCreatedMessage => WindowsPlatformProvider.TaskbarButtonCreatedMessage;
+
+    [SupportedOSPlatform("windows8.0")]
+    internal static void WindowsTaskbarButtonCreated(nint window) => WindowsPlatformProvider.TaskbarButtonCreated(window);
+
     [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static NativeServices CreateWindows(INativeWindowOwner owner) => new(
-        WindowsPlatformProvider.CreateFileDialogs(owner),
-        WindowsPlatformProvider.CreateTextClipboard(owner),
-        Optional(() => WindowsPlatformProvider.CreateFileLauncher(owner)),
-        Optional(() => WindowsPlatformProvider.CreateMessageBoxes(owner)));
+    private static NativeServices CreateWindows(INativeWindowOwner owner)
+    {
+        // A Desktop window's taskbar button applies its badge and progress again when Explorer creates it.
+        if (OperatingSystem.IsWindowsVersionAtLeast(8))
+            Runic.Desktop.Internal.WindowsWebView2Host.TaskbarButtonCreated ??= WindowsPlatformProvider.TaskbarButtonCreated;
+        return new(
+            WindowsPlatformProvider.CreateFileDialogs(owner),
+            WindowsPlatformProvider.CreateTextClipboard(owner),
+            Optional(() => WindowsPlatformProvider.CreateFileLauncher(owner)),
+            Optional(() => WindowsPlatformProvider.CreateMessageBoxes(owner)),
+            Optional(() => WindowsPlatformProvider.CreateTaskbar(owner)));
+    }
 
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1060,7 +1074,8 @@ public static partial class DesktopPlatformServices
         MacOSPlatformProvider.CreateFileDialogs(owner),
         MacOSPlatformProvider.CreateTextClipboard(owner),
         MacOSPlatformProvider.CreateFileLauncher(owner),
-        MacOSPlatformProvider.CreateMessageBoxes(owner));
+        MacOSPlatformProvider.CreateMessageBoxes(owner),
+        MacOSPlatformProvider.CreateTaskbar(owner));
 
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1087,9 +1102,9 @@ public static partial class DesktopPlatformServices
         catch (PlatformNotSupportedException) { return null; }
     }
 
-    // A provider without message boxes leaves them null, which reports ProviderNotConfigured.
+    // A provider without message boxes or a taskbar leaves them null, which reports ProviderNotConfigured.
     internal readonly record struct NativeServices(IPickerBackend Dialogs, ITextClipboard? Clipboard, IDesktopFileLauncher? Launcher,
-        IDesktopMessageBoxes? MessageBoxes = null);
+        IDesktopMessageBoxes? MessageBoxes = null, IWindowTaskbar? Taskbar = null);
 
     private sealed class BoundWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
     {
@@ -1098,6 +1113,7 @@ public static partial class DesktopPlatformServices
         private readonly PresentationClipboard _clipboard;
         private readonly PresentationFileLauncher _launcher;
         private readonly PresentationMessageBoxes _messageBoxes;
+        private readonly PresentationTaskbar _taskbar;
 
         public BoundWindowPlatformServices(INativeWindowOwner owner, NativeServices native, IDesktopMonitors? monitors = null)
         {
@@ -1108,6 +1124,7 @@ public static partial class DesktopPlatformServices
             _clipboard = new PresentationClipboard(_lifetime, native.Clipboard);
             _launcher = new PresentationFileLauncher(_lifetime, native.Launcher);
             _messageBoxes = new PresentationMessageBoxes(_lifetime, native.MessageBoxes);
+            _taskbar = new PresentationTaskbar(_lifetime, native.Taskbar);
         }
 
         public IFileDialogs FileDialogs => _files;
@@ -1115,12 +1132,18 @@ public static partial class DesktopPlatformServices
         public IDesktopFileLauncher FileLauncher => _launcher;
         public IDesktopMessageBoxes MessageBoxes => _messageBoxes;
 
+        public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default) =>
+            _taskbar.SetBadgeAsync(badge, cancellationToken);
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetProgressAsync(DesktopProgress? progress, CancellationToken cancellationToken = default) =>
+            _taskbar.SetProgressAsync(progress, cancellationToken);
+
         // A WPF window lists the monitors of Windows, which need no Desktop window.
         public IDesktopMonitors Monitors { get; }
 
         public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation,
             _files.GetSnapshot().Statuses.SetItems(_clipboard.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses)
-                .SetItems(_messageBoxes.GetSnapshot().Statuses).SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value));
+                .SetItems(_messageBoxes.GetSnapshot().Statuses).SetItems(_taskbar.GetSnapshot().Statuses).SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value));
 
         public async ValueTask DisposeAsync()
         {
@@ -1147,7 +1170,7 @@ public static partial class DesktopPlatformServices
 /// <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> binds it to the window as soon as the presentation opens, and closing the window
 /// stops it. After that every service reports <see cref="PlatformUnavailableReason.OwnerClosed"/>.
 /// </remarks>
-public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFileDialogs, ITextClipboard, IDesktopFileLauncher, IAsyncDisposable
+public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFileDialogs, IDesktopClipboard, IDesktopFileLauncher, IAsyncDisposable
 {
     private static readonly IWindowPlatformServices NotOpen = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
     private static readonly IWindowPlatformServices Closed = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -1175,6 +1198,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     /// <inheritdoc />
     public IFileDialogs FileDialogs => this;
     /// <inheritdoc />
+    /// <remarks>Also an <see cref="IDesktopClipboard"/>; the instance stays the same before, while and after the window is open.</remarks>
     public ITextClipboard Clipboard => this;
     /// <inheritdoc />
     public IDesktopFileLauncher FileLauncher => this;
@@ -1396,6 +1420,29 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         Current.Clipboard.ReadTextAsync(maximumCharacters, cancellationToken);
     ValueTask<PlatformResult<PlatformUnit>> ITextClipboard.WriteTextAsync(string text, CancellationToken cancellationToken) =>
         Current.Clipboard.WriteTextAsync(text, cancellationToken);
+    ValueTask<PlatformResult<DesktopClipboardFormats>> IDesktopClipboard.GetFormatsAsync(CancellationToken cancellationToken) =>
+        CurrentClipboard.GetFormatsAsync(cancellationToken);
+    ValueTask<PlatformResult<string?>> IDesktopClipboard.ReadHtmlAsync(int maximumCharacters, CancellationToken cancellationToken) =>
+        CurrentClipboard.ReadHtmlAsync(maximumCharacters, cancellationToken);
+    ValueTask<PlatformResult<string?>> IDesktopClipboard.ReadRtfAsync(int maximumCharacters, CancellationToken cancellationToken) =>
+        CurrentClipboard.ReadRtfAsync(maximumCharacters, cancellationToken);
+    ValueTask<PlatformResult<byte[]?>> IDesktopClipboard.ReadImageAsync(int maximumBytes, CancellationToken cancellationToken) =>
+        CurrentClipboard.ReadImageAsync(maximumBytes, cancellationToken);
+    ValueTask<PlatformResult<ImmutableArray<string>>> IDesktopClipboard.ReadFilesAsync(int maximumCount, CancellationToken cancellationToken) =>
+        CurrentClipboard.ReadFilesAsync(maximumCount, cancellationToken);
+    ValueTask<PlatformResult<PlatformUnit>> IDesktopClipboard.WriteAsync(DesktopClipboardContent content, CancellationToken cancellationToken) =>
+        CurrentClipboard.WriteAsync(content, cancellationToken);
+    // A watch follows the services it started with; one started before the window opened reports that once and ends.
+    IAsyncEnumerable<PlatformResult<DesktopClipboardFormats>> IDesktopClipboard.WatchAsync(CancellationToken cancellationToken) =>
+        CurrentClipboard.WatchAsync(cancellationToken);
+    // Badges and progress on the window's taskbar button (Windows, also for a WPF window) or the Dock tile (macOS) once
+    // the window opens; before that OwnerUnavailable, and after these services stop OwnerClosed.
+    ValueTask<PlatformResult<PlatformUnit>> IWindowPlatformServices.SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken) =>
+        Current.SetBadgeAsync(badge, cancellationToken);
+    ValueTask<PlatformResult<PlatformUnit>> IWindowPlatformServices.SetProgressAsync(DesktopProgress? progress, CancellationToken cancellationToken) =>
+        Current.SetProgressAsync(progress, cancellationToken);
+    // Runic's window services always have a desktop clipboard.
+    private IDesktopClipboard CurrentClipboard => (IDesktopClipboard)Current.Clipboard;
     ValueTask<PlatformResult<PlatformUnit>> IDesktopFileLauncher.LaunchAsync(string path, DesktopFileOperation operation, CancellationToken cancellationToken) =>
         Current.FileLauncher.LaunchAsync(path, operation, cancellationToken);
     ValueTask<PlatformResult<PlatformUnit>> IDesktopFileLauncher.LaunchUriAsync(Uri uri, CancellationToken cancellationToken) =>
@@ -1407,7 +1454,7 @@ public static class DesktopPlatformServiceCollectionExtensions
 {
     /// <summary>
     /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
-    /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
+    /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>, <see cref="IDesktopClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/>, <see cref="IDesktopMonitors"/> and <see cref="IDesktopMessageBoxes"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
@@ -1498,6 +1545,9 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard);
+        // A custom window service whose clipboard is text-only has no desktop clipboard to offer.
+        services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard as IDesktopClipboard
+            ?? (IDesktopClipboard)WindowPlatformServices.Unavailable(PlatformUnavailableReason.BackendUnavailable).Clipboard);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileLauncher);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Monitors);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().MessageBoxes);

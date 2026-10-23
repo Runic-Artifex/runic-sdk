@@ -768,6 +768,27 @@ document-portal paths under `/run/user/<uid>/doc`, which the application can
 open; a macOS App Sandbox grants access to dropped files while the application
 runs.
 
+### Copying and pasting from C#
+
+A ViewModel that copies or pastes more than text takes `IDesktopClipboard`, the
+window's clipboard with HTML, RTF, PNG images and file lists
+([Runic.Platform's clipboard](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#clipboard)):
+
+```csharp
+public sealed partial class ReportViewModel(IDesktopClipboard clipboard) : ObservableObject
+{
+    [RelayCommand]
+    private async Task CopyChartAsync() => await clipboard.WriteAsync(new() { Image = await RenderChartPngAsync(), Text = Summary });
+}
+```
+
+Use it for what the page cannot do: a command from a menu or a shortcut, work
+that finishes after the click, such as copying an export, and file lists. The
+page's own `navigator.clipboard` stays the simple choice for text and images it
+already has, under a user gesture and the web view's permission rules; it cannot
+copy files. Runic Desktop windows and WPF windows provide the formats on Windows
+and macOS; Linux and CS-WebUI report them unavailable in this release.
+
 ### Moved and renamed since 0.7.0-preview.6
 
 The Window types and entry points of the two hosts were merged into this API,

@@ -1,7 +1,7 @@
 # Runic.Platform.Windows
 
 Windows implementations of the Runic.Platform services for `win-x64` and
-`win-arm64`: file dialogs, the Unicode text clipboard, settings, notifications,
+`win-arm64`: file dialogs, the clipboard, taskbar badges and progress, settings, notifications,
 inhibition, login startup, secret storage, trash, thumbnails, volumes, desktop
 applications, file and URI opening, message boxes, network status, the status icon
 and window presentation.
@@ -12,7 +12,7 @@ is annotated `[SupportedOSPlatform("windows")]` and throws
 Notifications and login startup require the application ID: it is the
 AppUserModelID and the Run value name, and Windows has no other identity for a
 process outside an MSIX package (see [MSIX packages](#msix-packages)). The window
-services (file dialogs, the clipboard, file handoff and message boxes) belong to a window:
+services (file dialogs, the clipboard, file handoff, message boxes and the taskbar button's badge and progress) belong to a window:
 Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and
 `AddRunicPlatformServices()` create them for each window, whose owner dispatches
 file dialogs on the window's STA and drains native callbacks before disposal. This
@@ -30,6 +30,27 @@ permission and I/O failures. Text containing NUL is invalid. Cancellation before
 native execution prevents the operation; after execution starts, the actual write
 outcome is returned. Win32 can clear the previous clipboard before a subsequent
 write fails; failures must not be interpreted as preservation of previous text.
+
+The clipboard is also an `IDesktopClipboard`. HTML is the registered "HTML Format"
+(`CF_HTML`): a write wraps a fragment in a document, or marks a document's body,
+and a read returns the marked fragment. RTF is "Rich Text Format". An image is
+read from "PNG", else from `CF_DIBV5` or `CF_DIB` converted to PNG through WIC;
+a write offers the PNG and a `CF_DIBV5` with alpha for applications that read only
+bitmaps. Files are `CF_HDROP` with "Preferred DropEffect" set to copy. A write
+prepares every format, then opens the clipboard once, empties it and sets them
+all. Every read and write retries a clipboard that another process holds ten
+times over about 740 ms, as text does; the format query and the watch need no
+open clipboard. The watch is a message-only window on a thread of its own
+registered with `AddClipboardFormatListener`.
+
+Badges and progress use `ITaskbarList3` on the window's thread. Runic draws the
+badge as the overlay icon, white digits on red at the window's DPI (a dot without
+a count, `99+` above 99), with the badge's description as its accessible text.
+Each window's state is applied again when Explorer sends `TaskbarButtonCreated`,
+after it restarts: the Runic Desktop window and a WPF window from
+`WpfPlatformServices.ForWindow` forward that message. A call before the window has
+its taskbar button, such as before it is shown, succeeds and applies when the
+button appears.
 
 Win32 and COM declarations are private CsWin32-generated unmanaged bindings; the
 Windows Runtime projection uses raw ABI vtables. Both preserve NativeAOT. The

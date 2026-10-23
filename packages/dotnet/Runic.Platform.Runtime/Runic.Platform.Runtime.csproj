@@ -20,6 +20,8 @@
     <!-- The key tables and the global shortcut rules; Runic.Desktop uses Runic.Platform's copies. -->
     <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
     <Compile Include="../Runic.Platform/DesktopGlobalShortcutRules.cs" Link="Shared/DesktopGlobalShortcutRules.cs" />
+    <Compile Include="../Runic.Platform/DesktopClipboardRules.cs" Link="Shared/DesktopClipboardRules.cs" />
+    <Compile Include="../Runic.Platform/DesktopTaskbarRules.cs" Link="Shared/DesktopTaskbarRules.cs" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

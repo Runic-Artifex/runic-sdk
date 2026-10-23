@@ -752,6 +752,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 return;
             }
+            s_taskbarButtonCreated = Native.RegisterWindowMessage("TaskbarButtonCreated");
             var windowClass = new WindowClass
             {
                 Size = checked((uint)Marshal.SizeOf<WindowClass>()),
@@ -858,9 +859,16 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 Native.PostQuitMessage(0);
                 return 0;
             default:
+                if (message == s_taskbarButtonCreated && message != 0) TaskbarButtonCreated?.Invoke(window);
                 return Native.DefWindowProc(window, message, wParam, lParam);
         }
     }
+
+    // Explorer sends the registered TaskbarButtonCreated message when the window's taskbar button appears, and again
+    // after Explorer restarts. Runic.Application.Views.Desktop sets this callback to apply the window's badge and
+    // progress again; it runs on the window thread with the window.
+    internal static Action<nint>? TaskbarButtonCreated { get; set; }
+    private static uint s_taskbarButtonCreated;
 
     private static TaskCompletionSource NewCompletionSource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -996,6 +1004,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
         [LibraryImport("user32.dll")]
         internal static partial uint GetDpiForWindow(nint window);
+
+        [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial uint RegisterWindowMessage(string name);
 
         [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
         internal static partial nint CreateWindowEx(uint extendedStyle, string className, string windowName, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint parameter);

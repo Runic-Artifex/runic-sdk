@@ -217,10 +217,27 @@ public static class WindowsPlatformProvider
         ? new WindowsMessageBoxes(owner, controls)
         : DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.BackendUnavailable);
 
-    // Native Unicode text clipboard services for a window.
-    internal static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
+    // Badge and progress on a window's taskbar button.
+    internal static IWindowTaskbar CreateTaskbar(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        return new WindowsTextClipboard(owner, new Win32Clipboard());
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+        return new WindowsTaskbar(owner);
+    }
+
+    // The host's window procedure calls this, on the window's thread, for the registered TaskbarButtonCreated message.
+    [SupportedOSPlatform("windows8.0")]
+    internal static void TaskbarButtonCreated(nint window) => WindowsTaskbar.ButtonCreated(window);
+
+    // The registered TaskbarButtonCreated message.
+    [SupportedOSPlatform("windows8.0")]
+    internal static uint TaskbarButtonCreatedMessage => WindowsTaskbar.ButtonCreatedMessage;
+
+    // The clipboard of a window: text, HTML, RTF, images, files and the format watch.
+    internal static IDesktopClipboard CreateTextClipboard(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var native = new Win32Clipboard();
+        return new WindowsTextClipboard(owner, native, native);
     }
 }

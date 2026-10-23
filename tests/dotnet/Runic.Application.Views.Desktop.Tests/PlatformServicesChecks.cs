@@ -76,6 +76,13 @@ internal sealed class PlatformServicesChecks
         Require(await viewModel.Files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed)
             && await viewModel.Clipboard.WriteTextAsync("text") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
             "Services of a closed window did not report the owner closed.");
+        // The window's clipboard is also its desktop clipboard, and the badge follows the window too.
+        Require(viewModel.Clipboard is IDesktopClipboard desktopClipboard
+            && await desktopClipboard.ReadImageAsync(16) is PlatformResult<byte[]?>.Unavailable(PlatformUnavailableReason.OwnerClosed)
+            && await desktopClipboard.WriteAsync(new() { Html = "<b>x</b>" }) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)
+            && await viewModel.Platform.SetBadgeAsync(new() { Count = 1 }) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)
+            && await viewModel.Platform.SetProgressAsync(null) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "The desktop clipboard and taskbar of a closed window did not report the owner closed.");
         Require(viewModel.Platform.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed)),
             "Capabilities of a closed window were not all owner-closed.");
     }

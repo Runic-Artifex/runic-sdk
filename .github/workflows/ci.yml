@@ -1056,6 +1056,15 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+      # Badges and progress on the taskbar button of a shown window through ITaskbarList3; what the taskbar draws stays a
+      # manual check.
+      - name: Verify the Windows taskbar badge and progress with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeTaskbar]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeTaskbar]" --output detailed
       # The runner's connectivity hint and network path, read and watched without asserting the runner's network.
       - name: Verify network status with JIT and NativeAOT
         if: runner.os != 'Linux'

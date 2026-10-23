@@ -9,7 +9,7 @@ namespace Runic.Platform.Windows;
 
 // Generated unmanaged bindings. Only the raw HANDLE/HGLOBAL overloads are used: the
 // generated SafeHandle overloads would release clipboard-owned memory with CloseHandle.
-internal sealed class Win32Clipboard : IWindowsClipboard
+internal sealed partial class Win32Clipboard : IWindowsClipboard, IWindowsClipboardData
 {
     private const uint UnicodeText = (uint)CLIPBOARD_FORMAT.CF_UNICODETEXT;
     // Unsupported hosts report the same outcome as a missing user32 export did before.
