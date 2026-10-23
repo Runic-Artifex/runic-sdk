@@ -187,9 +187,9 @@ public class RunicViewHost : Decorator
     /// </summary>
     /// <remarks>
     /// It applies to the default surface options and to <see cref="SurfaceOptions"/> that set no policy of their own,
-    /// as a header of its own next to the surface's <c>frame-ancestors</c> policy. The Bridge delivers its messages as
-    /// host scripts that the page evaluates with the <c>Function</c> constructor, so the policy must allow
-    /// <c>'unsafe-eval'</c> for scripts. A value with a line break or another control character is rejected. A change
+    /// as a header of its own next to the surface's <c>frame-ancestors</c> policy. The Bridge needs <c>'self'</c>
+    /// scripts and connections and no <c>'unsafe-eval'</c>; only <see cref="DesktopSurface.ExecuteJavaScriptAsync"/>,
+    /// which evaluates a string, needs it. A value with a line break or another control character is rejected. A change
     /// reopens the presentation.
     /// </remarks>
     public string? ContentSecurityPolicy

@@ -680,7 +680,10 @@ from an in-process test or to ask the page before a window closes. While several
 pages are connected, which one answers is not specified. The result is never
 cut: one larger than 16 MiB of UTF-8 fails with `DesktopException`
 (`LimitExceeded`, code `script-result-too-large`). Bound the wait with the
-token, for example from a `CancellationTokenSource` created with a delay.
+token, for example from a `CancellationTokenSource` created with a delay. The
+page evaluates the script with the `Function` constructor, so a
+`Content-Security-Policy` without `'unsafe-eval'` refuses it and the call fails
+with `InvalidOperationException`.
 
 ## Calls to unregistered capabilities
 
@@ -1204,19 +1207,26 @@ rest is internal to Runic Desktop and Runic Windows and Views. See
   framing policy: the WebView or browser enforces each header, so a page can
   do only what all of them allow. Content is served over the loopback
   listener, so WebView2, WKWebView, WebKitGTK and installed browsers all apply
-  it. The document-start scripts are not subject to page policies, but the
-  scripts the host runs in the page (`ExecuteJavaScriptAsync`,
-  `RunJavaScriptAsync` and the Views Bridge's messages) are evaluated with the
-  `Function` constructor, so the policy's `script-src` must allow
-  `'unsafe-eval'`. It still blocks inline and foreign scripts. The Bridge
-  WebSocket is a same-origin connection, which `'self'` allows. A value with a
-  line break or another control character throws `ArgumentException`.
+  it. The document-start scripts are not subject to page policies. The Bridge
+  needs only `'self'`: `webui.js` and `runic-desktop.js` are served by the
+  surface, the Bridge WebSocket is a same-origin connection, and since 0.11.0
+  the Views Bridge's state arrives as data that the served `webui.js` parses
+  with `JSON.parse`, without evaluating script. A policy without
+  `'unsafe-eval'` therefore works and blocks inline, foreign and evaluated
+  scripts. `ExecuteJavaScriptAsync` evaluates its script in the page with the
+  `Function` constructor; under such a policy it fails with
+  `InvalidOperationException`, so allow `'unsafe-eval'` only if the
+  application uses it outside tests. `'self'` matches the same-origin `ws:`
+  connection in current WebView2, WKWebView, WebKitGTK, Chromium and Firefox;
+  an older WebKitGTK that does not needs `connect-src 'self' ws://127.0.0.1:*`.
+  A value with a line break or another control character throws
+  `ArgumentException`.
 
   ```csharp
   await host.CreateSurfaceAsync(new DesktopSurfaceOptions
   {
       Content = new DesktopContent.Directory(webRoot),
-      ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      ContentSecurityPolicy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
   });
   ```
 - **Surfaces in an installed browser.** Surfaces that share a listener share

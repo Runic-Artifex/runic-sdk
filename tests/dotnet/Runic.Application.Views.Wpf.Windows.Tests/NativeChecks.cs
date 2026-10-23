@@ -731,21 +731,53 @@ internal sealed class NativeChecks
         finally { window.Close(); }
     }
 
-    // SEC-06: RunicViewHost.ContentSecurityPolicy reaches WebView2: the page's inline script is blocked while the
-    // Bridge runs host scripts ('unsafe-eval'), and a value with a line break is rejected. The WebView holds the
-    // surface's only client, so the check reads the page rather than the response headers.
+    // SEC-06 and D040: RunicViewHost.ContentSecurityPolicy reaches WebView2, and the Bridge works under a policy without
+    // 'unsafe-eval': the page's inline script and string evaluation are blocked, while its same-origin script calls the
+    // View's routes and receives state the Desktop transport publishes. ExecuteJavaScriptAsync is an eval API and is
+    // refused. A value with a line break is rejected. The WebView holds the surface's only client, so the check reads
+    // the page rather than the response headers.
     [Test, NotInParallel("WpfSuite", Order = 31)]
     public async Task HostSendsItsContentSecurityPolicy()
     {
-        const string Policy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'";
+        const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
+        var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var collection = new ServiceCollection();
-        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((_, _) => new Attachment());
+        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((transport, _) =>
+            new Bindings(
+                transport.Bind("cspReady", _ =>
+                {
+                    transport.Publish("cspProbe", "{\"value\":42,\"text\":\"Grüße\"}");
+                    return "ok";
+                }),
+                transport.Bind("cspReceived", arguments =>
+                {
+                    received.TrySetResult(arguments.GetString());
+                    return "ok";
+                })));
         await using var services = collection.BuildServiceProvider();
         var host = new RunicViewHost
         {
             SurfaceOptions = new DesktopSurfaceOptions
             {
-                Content = new DesktopContent.Html("<!doctype html><title>csp</title><script src=\"webui.js\"></script><script>document.title = 'inline script ran';</script>"),
+                Content = new DesktopContent.Handler((request, _) => ValueTask.FromResult<ContentResponse?>(request.Path switch
+                {
+                    "/" or "/index.html" => new ContentResponse(System.Text.Encoding.UTF8.GetBytes("""
+                        <!doctype html><title>csp</title><script src="webui.js"></script><script src="csp.js"></script>
+                        <script>document.title = 'inline script ran';</script>
+                        """), "text/html; charset=utf-8"),
+                    "/csp.js" => new ContentResponse(System.Text.Encoding.UTF8.GetBytes("""
+                        globalThis.__cspProbeChanged = state => {
+                          let evaluation = 'allowed';
+                          try { new Function('return 1')(); } catch (error) { evaluation = error.name; }
+                          cspReceived(`${state.value}:${state.text}:${evaluation}:${document.title}`).catch(() => {});
+                        };
+                        (function ready() {
+                          if (typeof globalThis.cspReady === 'function') cspReady().catch(() => setTimeout(ready, 50));
+                          else setTimeout(ready, 50);
+                        })();
+                        """), "text/javascript; charset=utf-8"),
+                    _ => null,
+                })),
             },
             ViewModel = new HostedModel(),
             ContentSecurityPolicy = Policy,
@@ -760,9 +792,17 @@ internal sealed class NativeChecks
         try
         {
             Program.Check(await SettledAsync(host) == RunicViewHostState.Open, $"The host did not open: {host.State} {host.Error}");
+            var result = await received.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            Program.Check(result == "42:Grüße:EvalError:csp",
+                $"The page under the policy reported '{result}' instead of the published state, refused evaluation and its own title.");
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            var title = await host.Surface!.ExecuteJavaScriptAsync("return document.title;", cancellationToken: deadline.Token);
-            Program.Check(title == "csp", $"The host's policy did not block the inline script: the title is '{title}'.");
+            var refused = false;
+            try { await host.Surface!.ExecuteJavaScriptAsync("return document.title;", cancellationToken: deadline.Token); }
+            catch (InvalidOperationException error) when (error.Message.StartsWith("JavaScript execution failed", StringComparison.Ordinal))
+            {
+                refused = true;
+            }
+            Program.Check(refused, "ExecuteJavaScriptAsync ran under a policy without 'unsafe-eval'.");
             Console.WriteLine("RunicViewHost.ContentSecurityPolicy checks passed.");
         }
         finally { window.Close(); }
@@ -872,6 +912,13 @@ internal sealed class NativeChecks
     }
 
     private sealed class HostedModel;
+    private sealed class Bindings(params IDisposable[] bindings) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var binding in bindings) binding.Dispose();
+        }
+    }
     private sealed class Attachment : IDisposable
     {
         internal bool Disposed { get; private set; }

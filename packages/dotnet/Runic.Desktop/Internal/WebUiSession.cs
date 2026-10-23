@@ -256,11 +256,22 @@ internal sealed class WebUiSession : IAsyncDisposable
     public Task RunJavaScriptAsync(string script, CancellationToken cancellationToken)
         => SendTextCommandAsync(0, WebUiProtocol.JavaScriptQuick, script, cancellationToken);
 
-    // The same packet as RunJavaScriptAsync for the script's UTF-8 encoding. The packet is built before this returns.
-    public Task RunJavaScriptUtf8Async(ReadOnlySpan<byte> script, CancellationToken cancellationToken)
+    // A state push to WebUiBridge's reserved raw-data function: the route, NUL and the state's UTF-8 JSON. The page's
+    // bridge parses it and calls __{route}Changed, without evaluating script. The packet is built before this returns.
+    public Task PushStateAsync(string route, ReadOnlySpan<byte> stateUtf8, CancellationToken cancellationToken)
     {
         if (!IsAuthenticated) return Task.CompletedTask;
-        return SendPacketAsync(WebUiProtocol.CreatePacket(0, WebUiProtocol.JavaScriptQuick, script), cancellationToken);
+        const string function = WebUiBridge.StatePushFunction;
+        var routeOffset = WebUiProtocol.DataOffset + function.Length + 1;
+        var stateOffset = routeOffset + Encoding.UTF8.GetByteCount(route) + 1;
+        // The header, the function name, the route and the state, each but the state followed by NUL, and the
+        // terminating NUL of every WebUI packet.
+        var packet = new byte[stateOffset + stateUtf8.Length + 1];
+        WebUiProtocol.WriteHeader(packet, 0, WebUiProtocol.SendRaw);
+        Encoding.ASCII.GetBytes(function, packet.AsSpan(WebUiProtocol.DataOffset));
+        Encoding.UTF8.GetBytes(route, packet.AsSpan(routeOffset));
+        stateUtf8.CopyTo(packet.AsSpan(stateOffset));
+        return SendPacketAsync(packet, cancellationToken);
     }
 
     public async Task<byte[]> ExecuteJavaScriptAsync(

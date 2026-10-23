@@ -107,10 +107,11 @@ public sealed record RunicDesktopHostOptions
     /// <remarks>
     /// It applies to the default surface options and to <see cref="SurfaceOptions"/> that set no policy of their own.
     /// The policy is a header of its own next to the surface's <c>frame-ancestors</c> policy; both are enforced. The
-    /// Bridge delivers its messages as host scripts, which the page evaluates with the <c>Function</c> constructor, so
-    /// the policy must allow <c>'self'</c> scripts and connections and <c>'unsafe-eval'</c>.
+    /// Bridge needs <c>'self'</c> scripts and connections and no <c>'unsafe-eval'</c>: state arrives as data that the
+    /// served bridge script parses. <see cref="DesktopSurface.ExecuteJavaScriptAsync"/> evaluates a string, so it
+    /// still needs <c>'unsafe-eval'</c>.
     /// <code>
-    /// ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    /// ContentSecurityPolicy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     /// </code>
     /// </remarks>
     /// <exception cref="ArgumentException">The value is empty or contains a character that a header cannot carry.</exception>

@@ -38,6 +38,7 @@ public sealed class ManagedWindowTests
         Assert.Contains($"const PORT = {url.Port};", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("__TOKEN__", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("__PORT__", bridge, StringComparison.Ordinal);
+        Assert.Contains($"const STATE_PUSH = \"{Runic.Desktop.Internal.WebUiBridge.StatePushFunction}\";", bridge, StringComparison.Ordinal);
     }
 
     [Test]
@@ -251,6 +252,13 @@ public sealed class ManagedWindowTests
         AssertHeader(raw, 0, SendRaw);
         Assert.Equal("receiveBytes", ReadNullTerminatedString(raw, HeaderSize));
         Assert.Equal([0x41, 0x00, 0x42, 0x00], raw[(HeaderSize + "receiveBytes".Length + 1)..]);
+
+        // D040: a state push is raw data for the bridge's reserved dispatcher, not a script.
+        await window.PushStateAsync("näme", "{\"a\":1}"u8.ToArray(), timeout.Token);
+        var push = await ReceiveBinaryAsync(socket, timeout.Token);
+        AssertHeader(push, 0, SendRaw);
+        Assert.Equal(Runic.Desktop.Internal.WebUiBridge.StatePushFunction, ReadNullTerminatedString(push, HeaderSize));
+        Assert.Equal([.. "näme"u8, 0, .. "{\"a\":1}"u8, 0], push[(HeaderSize + Runic.Desktop.Internal.WebUiBridge.StatePushFunction.Length + 1)..]);
 
         await window.NavigateAsync("https://example.test/next", timeout.Token);
         var navigation = await ReceiveBinaryAsync(socket, timeout.Token);

@@ -218,13 +218,14 @@ public sealed record DesktopSurfaceOptions
     /// <c>frame-ancestors</c> policy, and next to a policy that a content handler sets: the browser or WebView enforces
     /// every one, so a page can do only what all of them allow. Every embedded WebView and installed browser applies
     /// it, since content is served over the surface's loopback listener. The surface's document-start scripts are
-    /// not subject to page policies, but the scripts the host runs in the page, such as the Views Bridge's messages,
-    /// are evaluated with the <c>Function</c> constructor: a policy whose <c>script-src</c> (or <c>default-src</c>)
-    /// lacks <c>'unsafe-eval'</c> stops them. The Bridge's WebSocket is a same-origin connection, which
-    /// <c>'self'</c> allows. The value must be printable ASCII: a carriage return, line feed, NUL or other control
+    /// not subject to page policies. The Bridge needs only <c>'self'</c>: its script is served by the surface, its
+    /// WebSocket is a same-origin connection, and the Views Bridge's state arrives as data that the script parses. Only
+    /// <see cref="DesktopSurface.ExecuteJavaScriptAsync"/> evaluates a string in the page, with the <c>Function</c>
+    /// constructor, so it fails under a policy whose <c>script-src</c> (or <c>default-src</c>) lacks
+    /// <c>'unsafe-eval'</c>. The value must be printable ASCII: a carriage return, line feed, NUL or other control
     /// character throws <see cref="ArgumentException"/>.
     /// <code>
-    /// ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    /// ContentSecurityPolicy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     /// </code>
     /// </remarks>
     /// <exception cref="ArgumentException">The value is empty or contains a character that a header cannot carry.</exception>

@@ -113,6 +113,72 @@ public sealed class BrowserBridgeTests
         }
     }
 
+    // D040: under script-src 'self' without 'unsafe-eval', the bridge calls the host and receives a state push, which
+    // it parses as data, while the page's inline script, its string evaluation and ExecuteJavaScriptAsync are refused.
+    [Test]
+    public async Task StatePushArrivesUnderAPolicyWithoutUnsafeEvalInChromium()
+    {
+        var chrome = FindChrome();
+        if (chrome is null)
+        {
+            return;
+        }
+
+        const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var window = new WebUiWindow();
+        window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(path switch
+        {
+            "/strict.html" => new WebUiContent("""
+                <!doctype html>
+                <html><head><title>WAIT</title><script src="webui.js"></script><script src="strict.js"></script>
+                <script>document.title = 'inline script ran';</script></head><body data-result="waiting"></body></html>
+                """u8.ToArray(), "text/html; charset=utf-8", headers: new Dictionary<string, string> { ["Content-Security-Policy"] = Policy }),
+            "/strict.js" => WebUiContent.FromText("""
+                globalThis.__strictChanged = state => {
+                  let evaluation = 'allowed';
+                  try { new Function('return 1')(); } catch (error) { evaluation = error.name; }
+                  document.body.dataset.result = `${state.value}:${state.text}:${evaluation}:${document.title}`;
+                  document.title = 'PASS';
+                };
+                webui.connected.then(() => webui.call('ready')).catch(error => {
+                  globalThis.testError = String(error?.stack ?? error);
+                  document.title = 'FAIL';
+                });
+                """, "text/javascript; charset=utf-8"),
+            _ => null,
+        }));
+        window.Bind("ready", e => { _ = window.PushStateAsync("strict", "{\"value\":42,\"text\":\"Grüße\"}"u8.ToArray()); });
+
+        var url = new Uri(await window.StartServerAsync("unused", timeout.Token), "strict.html");
+        var profile = Directory.CreateTempSubdirectory("runic-desktop-chrome-");
+        using var process = StartChrome(chrome, profile.FullName, url);
+        using var browserOutputLifetime = new CancellationTokenSource();
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError, browserOutputLifetime.Token);
+        try
+        {
+            var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
+            var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, url, timeout.Token);
+            using var devTools = new ClientWebSocket();
+            await devTools.ConnectAsync(debuggerUrl, timeout.Token);
+
+            await WaitForBridgeResultAsync(devTools, "42:Grüße:EvalError:WAIT", timeout.Token);
+            var refused = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                window.ExecuteJavaScriptAsync("return 1;", TimeSpan.FromSeconds(5), cancellationToken: timeout.Token));
+            Assert.StartsWith("JavaScript execution failed", refused.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            try { await StopChromeAsync(process, profile.FullName); }
+            finally
+            {
+                await browserOutputLifetime.CancelAsync();
+                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+            }
+            await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
+        }
+    }
+
     private static async Task WaitForBridgeResultAsync(
         ClientWebSocket socket,
         string expected,
