@@ -604,7 +604,8 @@ internal static class DBusEmitter
         'h' => $"{expression}.GetUnixFd()",
         'v' => $"{expression}.GetVariant()",
         'a' when signature[1] == '{' =>
-            $"{Immutable}ImmutableDictionary.ToImmutableDictionary({expression}.GetEntries(), static entry => {FromValue("entry.Key", signature.Substring(2, 1))}, static entry => {FromValue("entry.Value", signature.Substring(3, signature.Length - 4))})",
+            // A peer may repeat a key; the last entry wins, as DBusValue.GetVariantDictionary does.
+            $"{CsType(signature)}.Empty.SetItems(global::System.Linq.Enumerable.Select({expression}.GetEntries(), static entry => global::System.Collections.Generic.KeyValuePair.Create({FromValue("entry.Key", signature.Substring(2, 1))}, {FromValue("entry.Value", signature.Substring(3, signature.Length - 4))})))",
         'a' when signature == "ay" => $"{expression}.GetByteArray()",
         'a' => $"{Immutable}ImmutableArray.ToImmutableArray(global::System.Linq.Enumerable.Select({expression}.GetItems(), static item => {FromValue("item", signature.Substring(1))}))",
         '(' => StructFromValue(expression, signature),

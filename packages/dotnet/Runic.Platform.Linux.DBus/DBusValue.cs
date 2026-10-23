@@ -211,6 +211,7 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     };
 
     /// <summary>Gets the entries of a dictionary, in message order.</summary>
+    /// <remarks>A dictionary received in a message keeps every entry, including one whose key repeats an earlier key.</remarks>
     public ImmutableArray<KeyValuePair<DBusValue, DBusValue>> GetEntries() =>
         _value is DictionaryBox dictionary ? dictionary.Entries : throw Mismatch("a dictionary");
 
@@ -230,8 +231,10 @@ public readonly struct DBusValue : IEquatable<DBusValue>
     public ImmutableArray<byte> GetByteArray() => _value is BytesBox bytes ? bytes.Bytes : throw Mismatch("ay");
 
     /// <summary>Gets an <c>a{sv}</c> value as a dictionary of the values inside its variants.</summary>
+    /// <remarks>D-Bus does not forbid a peer from repeating a key. When a key repeats, the last entry's value wins, as
+    /// in GLib's <c>GVariantDict</c> and <c>GDBusProxy</c> and in dbus-python; <see cref="GetEntries"/> still lists every entry.</remarks>
     public ImmutableDictionary<string, DBusValue> GetVariantDictionary() => _signature == "a{sv}"
-        ? GetEntries().ToImmutableDictionary(static entry => entry.Key.GetString(), static entry => entry.Value.GetVariant())
+        ? ImmutableDictionary<string, DBusValue>.Empty.SetItems(GetEntries().Select(static entry => KeyValuePair.Create(entry.Key.GetString(), entry.Value.GetVariant())))
         : throw Mismatch("a{sv}");
 
     private T Get<T>(string signature) => _signature == signature ? (T)_value! : throw Mismatch(signature);

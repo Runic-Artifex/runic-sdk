@@ -162,18 +162,14 @@ internal static class PortalSessions
     }
 }
 
-// Reading values from portal replies and signals. A peer controls them, so a repeated dictionary key keeps its last
-// value instead of failing the read, as the portals' own GVariant readers do.
+// Reading values from portal replies and signals. A peer controls them, so a value of another type reads as empty or
+// is ignored instead of failing; a repeated dictionary key keeps its last value, as DBusValue.GetVariantDictionary does.
 internal static class PortalValues
 {
     // An a{sv} as its entries, each value unwrapped from its variant; an empty dictionary for anything else.
-    internal static Dictionary<string, DBusValue> Variants(DBusValue value)
-    {
-        var entries = new Dictionary<string, DBusValue>(StringComparer.Ordinal);
-        if (value.Signature.Value != "a{sv}") return entries;
-        foreach (var entry in value.GetEntries()) entries[entry.Key.GetString()] = entry.Value.GetVariant();
-        return entries;
-    }
+    internal static Dictionary<string, DBusValue> Variants(DBusValue value) => value.Signature.Value == "a{sv}"
+        ? new(value.GetVariantDictionary(), StringComparer.Ordinal)
+        : new(StringComparer.Ordinal);
 
     // Values of a Request.Response signal: the response code and its results.
     internal static bool TryReadResponse(DBusSignal signal, out uint code, out Dictionary<string, DBusValue> results)

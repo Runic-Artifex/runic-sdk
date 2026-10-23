@@ -17,13 +17,14 @@ builds do not fetch XML or introspect the user's session. Generated C# stays und
 `obj`.
 
 The provider uses the generated proxies' interface names, Registry.Register,
-Notification.RemoveNotification, Trash.TrashFile, Request.Close, Session.Close and
-version reads.
+Notification.RemoveNotification, Trash.TrashFile, Settings.ReadAll, Request.Close,
+Session.Close and version reads. Like `DBusValue.GetVariantDictionary()`, generated
+readers keep the last value of a repeated dictionary key instead of failing the read.
 Calls that send an `a{sv}` of options (FileChooser, OpenURI, Inhibit, Background,
-Notification.AddNotification, GlobalShortcuts) and replies with dictionaries a peer controls
-(Settings.ReadAll, Request.Response results, the GlobalShortcuts signals) are written and read by hand, so the
-options keep their order and a repeated key keeps its last value instead of failing
-the read. Desktop identity, bus-name ownership, early-action tracking, the signal
+Notification.AddNotification, GlobalShortcuts) are written by hand so the options keep
+their order. Request.Response results and the GlobalShortcuts signals are read by hand
+with `GetVariantDictionary()`, so a signal or value of another type is ignored or reads
+as empty instead of failing. Desktop identity, bus-name ownership, early-action tracking, the signal
 subscriptions made before a request (Request.Response across the sender's
 request-path namespace and the namespace-filtered Settings.SettingChanged),
 returned-handle validation, file descriptors, portal version guards, deadlines,
