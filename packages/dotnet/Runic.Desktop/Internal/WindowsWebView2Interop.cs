@@ -12,6 +12,11 @@ internal static partial class WindowsWebView2Interop
     internal const int SettingsSlot = 3;
     internal const int NavigateSlot = 5;
     internal const int NavigationStartingSlot = 7;
+    internal const int NavigationCompletedSlot = 15;
+    internal const int ProcessFailedSlot = 25;
+    internal const int NavigationCompletedIsSuccessSlot = 3;
+    internal const int NavigationCompletedWebErrorStatusSlot = 4;
+    internal const int ProcessFailedKindSlot = 3;
     internal const int NewWindowRequestedSlot = 44;
     internal const int DownloadStartingSlot = 75;
     internal const int SettingsDevToolsSlot = 12;
@@ -489,6 +494,61 @@ internal sealed class WindowsWebView2Controller : IDisposable
         }
     }
 
+    // What the WebView did before its page connected, for the connection timeout's description (I-176): the first
+    // navigation's start and end, and a process that failed. A page that never reaches the server is otherwise
+    // reported with "nothing recorded".
+    internal void RegisterStartupProgress(Action<string> record)
+    {
+        var started = false;
+        var completed = false;
+        AddEvent<IWebViewNavigationStarting>(WindowsWebView2Interop.NavigationStartingSlot, new WebViewEvent(_ =>
+        {
+            if (started) return;
+            started = true;
+            record("WebView2 navigation started");
+        }));
+        AddEvent<IWebViewNavigationCompleted>(WindowsWebView2Interop.NavigationCompletedSlot, new WebViewEvent(args =>
+        {
+            if (completed) return;
+            completed = true;
+            record(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedIsSuccessSlot) != 0
+                ? "WebView2 navigation completed"
+                : "WebView2 navigation failed: " + WebErrorStatus(
+                    WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedWebErrorStatusSlot)));
+        }));
+        AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
+            record("WebView2 " + ProcessFailure(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot)))));
+    }
+
+    // COREWEBVIEW2_WEB_ERROR_STATUS.
+    private static string WebErrorStatus(int status) => status switch
+    {
+        6 => "server unreachable",
+        7 => "timeout",
+        8 => "invalid HTTP response",
+        9 => "connection aborted",
+        10 => "connection reset",
+        11 => "disconnected",
+        12 => "cannot connect",
+        13 => "host name not resolved",
+        14 => "operation canceled",
+        16 => "unexpected error",
+        _ => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"web error status {status}"),
+    };
+
+    // COREWEBVIEW2_PROCESS_FAILED_KIND.
+    private static string ProcessFailure(int kind) => kind switch
+    {
+        0 => "browser process exited",
+        1 => "render process exited",
+        2 => "render process unresponsive",
+        3 => "frame render process exited",
+        4 => "utility process exited",
+        5 => "sandbox helper process exited",
+        6 => "GPU process exited",
+        _ => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"process failed (kind {kind})"),
+    };
+
     private static string? GetString(nint instance, int slot)
     {
         var value = WindowsWebView2Interop.GetPointer(instance, slot);
@@ -573,6 +633,10 @@ internal partial interface IWebViewFrameCreated { [PreserveSig] int Invoke(nint 
 internal partial interface IWebViewFrameWebMessageReceived { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("59dd7b4c-9baa-11eb-a8b3-0242ac130003")]
 internal partial interface IWebViewFrameDestroyed { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("d33a35bf-1c49-4f98-93ab-006e0533fe1c")]
+internal partial interface IWebViewNavigationCompleted { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("79e0aea4-990b-42d9-aa1d-0fcc2e5bc7f1")]
+internal partial interface IWebViewProcessFailed { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("5c4889f0-5ef6-4c5a-952c-d8f1b92d0574")]
 internal partial interface IWebViewDevToolsCompleted { [PreserveSig] int Invoke(int errorCode, nint result); }
 
@@ -633,7 +697,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
     IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting,
     IWebViewAcceleratorKeyPressed,
-    IWebViewFrameCreated, IWebViewFrameWebMessageReceived
+    IWebViewFrameCreated, IWebViewFrameWebMessageReceived, IWebViewNavigationCompleted, IWebViewProcessFailed
 {
     public int Invoke(nint sender, nint args)
     {

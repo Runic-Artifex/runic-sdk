@@ -47,6 +47,13 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2File", "get_Path", WindowsWebView2Interop.FilePathSlot),
             ("ICoreWebView2", "get_Settings", WindowsWebView2Interop.SettingsSlot),
             ("ICoreWebView2", "add_NavigationStarting", WindowsWebView2Interop.NavigationStartingSlot),
+            ("ICoreWebView2", "add_NavigationCompleted", WindowsWebView2Interop.NavigationCompletedSlot),
+            ("ICoreWebView2", "remove_NavigationCompleted", WindowsWebView2Interop.NavigationCompletedSlot + 1),
+            ("ICoreWebView2", "add_ProcessFailed", WindowsWebView2Interop.ProcessFailedSlot),
+            ("ICoreWebView2", "remove_ProcessFailed", WindowsWebView2Interop.ProcessFailedSlot + 1),
+            ("ICoreWebView2NavigationCompletedEventArgs", "get_IsSuccess", WindowsWebView2Interop.NavigationCompletedIsSuccessSlot),
+            ("ICoreWebView2NavigationCompletedEventArgs", "get_WebErrorStatus", WindowsWebView2Interop.NavigationCompletedWebErrorStatusSlot),
+            ("ICoreWebView2ProcessFailedEventArgs", "get_ProcessFailedKind", WindowsWebView2Interop.ProcessFailedKindSlot),
             ("ICoreWebView2", "remove_NavigationStarting", WindowsWebView2Interop.NavigationStartingSlot + 1),
             ("ICoreWebView2", "add_NewWindowRequested", WindowsWebView2Interop.NewWindowRequestedSlot),
             ("ICoreWebView2", "remove_NewWindowRequested", WindowsWebView2Interop.NewWindowRequestedSlot + 1),
@@ -147,6 +154,15 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventHandler"), typeof(IWebViewWebMessageReceived).GUID);
         Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventArgs2"), WindowsWebView2Interop.WebMessageReceivedEventArgs2);
         Assert.Equal(Interface("ICoreWebView2File"), WindowsWebView2Interop.FileInterface);
+    }
+
+    [Test]
+    public void StartupProgressInterfacesMatchThePinnedMicrosoftSdkHeader()
+    {
+        var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
+        Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
+        Assert.Equal(Interface("ICoreWebView2NavigationCompletedEventHandler"), typeof(IWebViewNavigationCompleted).GUID);
+        Assert.Equal(Interface("ICoreWebView2ProcessFailedEventHandler"), typeof(IWebViewProcessFailed).GUID);
     }
 
     [Test]

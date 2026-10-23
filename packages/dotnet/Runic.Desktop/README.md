@@ -211,7 +211,12 @@ needs the only connection, and the page's Bridge reconnects. Each close logs eve
 3005. A WebSocket whose token does not match gets `false` and is closed at once, so
 it does not hold the connection, and it is never authenticated. A WebSocket whose
 token matched is never closed by the handshake deadline. The timeout message lists
-what the server saw of the handshake, with times since launch.
+what the server saw of the handshake, with times since launch. On Windows, the
+WebView2 window (and a WPF `RunicWebView`) adds what WebView2 did before its page
+connected: `WebView2 controller created`, `WebView2 navigation started`, the first
+navigation's end (`completed`, or `failed:` with WebView2's error status) and any
+failed process. A timeout that lists `WebView2 navigation started` but no request
+was spent inside WebView2, after it had started loading the page.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the

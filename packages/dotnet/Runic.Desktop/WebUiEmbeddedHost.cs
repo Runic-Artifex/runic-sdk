@@ -183,6 +183,12 @@ internal sealed record WebUiEmbeddedHostOptions
     /// <summary>Reports an event of the open window, such as a terminated web process, to the host's sink and logger.</summary>
     public Action<DesktopDiagnostic>? ReportDiagnostic { get; init; }
 
+    /// <summary>
+    /// Records what the WebView did before its page connected (the controller's creation, the first navigation's start
+    /// and end, a failed process) in the Bridge handshake log, which a connection timeout reports (I-176).
+    /// </summary>
+    public Action<string>? StartupProgress { get; init; }
+
     /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 

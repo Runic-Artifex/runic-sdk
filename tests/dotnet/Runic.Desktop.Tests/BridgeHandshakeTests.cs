@@ -98,6 +98,22 @@ public sealed class BridgeHandshakeTests
     }
 
     [Test]
+    public async Task ATimeoutBeforeAnyRequestSaysWhatTheWebViewDid()
+    {
+        // I-176: on Windows runners a WebView2 page sometimes never reached the server, and the timeout said "nothing
+        // recorded". The WebView2 hosts now record the controller's creation and the first navigation in the log.
+        await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromSeconds(10));
+        var progress = ((EmbeddedHostTests.RecordingHost)fixture.Factory.Host!).Options!.StartupProgress!;
+        progress("WebView2 controller created");
+        progress("WebView2 navigation started");
+
+        var timeout = await Assert.ThrowsAsync<TimeoutException>(() => fixture.Showing);
+        output.WriteLine(timeout.Message);
+        Assert.Contains("did not connect within 2 seconds: no request reached the server", timeout.Message);
+        Assert.Matches(@"Bridge handshake: \+\d+\.\d{3}s WebView2 controller created; \+\d+\.\d{3}s WebView2 navigation started\.$", timeout.Message);
+    }
+
+    [Test]
     public async Task APageThatReachesTheServerLateGetsTheWholeTimeoutToAuthenticate()
     {
         // On Windows runners a browser sometimes starts slowly: Chromium requested its page 27.4 s into a 30 s
@@ -252,6 +268,7 @@ public sealed class BridgeHandshakeTests
         }
 
         public WebUiWindow Window { get; } = new();
+        public EmbeddedHostTests.RecordingHostFactory Factory { get; } = new();
         public Uri Url { get; private set; } = null!;
         public uint Token { get; private set; }
         public Task Showing { get; private set; } = Task.CompletedTask;
@@ -262,7 +279,7 @@ public sealed class BridgeHandshakeTests
             var fixture = new HandshakeFixture();
             try
             {
-                var factory = new EmbeddedHostTests.RecordingHostFactory();
+                var factory = fixture.Factory;
                 WebUiApplication.SetEmbeddedHostFactory(factory);
                 WebUiApplication.SetConnectionTimeout(connectionTimeoutSeconds);
                 WebUiApplication.BridgeHandshakeTimeout = handshakeTimeout;

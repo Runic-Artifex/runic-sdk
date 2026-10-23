@@ -161,6 +161,11 @@ public sealed partial class RunicWebView : HwndHost
                 });
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
+                if (options.StartupProgress is { } startupProgress)
+                {
+                    startupProgress("WebView2 controller created");
+                    initializing.RegisterStartupProgress(startupProgress);
+                }
                 initializing.RegisterEvents(static _ => { }, RequestClose, options.AllowedPermissions, url);
                 initializing.RegisterMoveFocusRequested(view.TabOut);
                 initializing.ApplyWebContent(
