@@ -84,6 +84,11 @@ public sealed record DesktopHostOptions
     public bool WaitForConnection { get; init; } = true;
 
     /// <summary>Gets the bridge authentication deadline.</summary>
+    /// <remarks>
+    /// The deadline counts from the launch while the page has requested nothing, and from its first request once it
+    /// has, so a slow browser start that reaches the server just before the deadline still gets the whole timeout to
+    /// finish authentication. A presentation therefore waits at most twice this timeout for each launch.
+    /// </remarks>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
     internal const int DefaultBrowserLaunchAttempts = 2;

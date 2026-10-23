@@ -192,6 +192,10 @@ configured provider. A process cannot change GTK versions after claiming a backe
 It falls back when the embedded presentation cannot start, not when it opens but its
 page never connects: that fails with `presentation-connection-timeout`, and the inner
 `TimeoutException` says how far the page got.
+`ConnectionTimeout` counts from the launch until the page's first request reaches
+the server, and from that request once it has: a browser or WebView that starts
+slowly and requests its page just before the deadline still gets the whole timeout
+to finish the Bridge handshake, so one launch waits at most twice the timeout.
 A browser that is still running but has requested nothing after `ConnectionTimeout`
 is stopped and launched again, with a fresh profile unless the window sets one.
 Each relaunch reports `browser-launch-stalled` as a warning and logs event 3004.
