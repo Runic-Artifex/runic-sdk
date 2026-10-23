@@ -403,3 +403,28 @@ test('the WPF lane runs the Bridge generator framework checks on Windows', () =>
   assert.ok(runs.some(run => run.includes('--treenode-filter "/*/*/BridgeAttributeNamesTests/*"')), runs.join('\n'));
   assert.ok(runs.includes('bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs'), runs.join('\n'));
 });
+
+// The merge queue (eng/ci/README.md, "Merge queue"): `verify` is the ruleset's required check, so it
+// must report on merge_group runs, and queue entries must not cancel each other or pull request runs.
+test('merge queue entries run CI in their own concurrency groups and report verify', () => {
+  assert.deepEqual(workflow.on.merge_group, { types: ['checks_requested'] });
+  // Evaluate the concurrency expressions; GitHub's ==, && and || behave like JavaScript's here.
+  const evaluate = (expression, github) => expression.replace(/\$\{\{(.*?)\}\}/g, (_, body) =>
+    String(Function('github', `return (${body.replaceAll('==', '===')});`)(github)));
+  const run = (event_name, ref, run_id) => ({ workflow: 'SDK CI', event_name, ref, run_id });
+  const runs = [run('merge_group', 'refs/heads/gh-readonly-queue/main/pr-7-aaaa', 1),
+    run('merge_group', 'refs/heads/gh-readonly-queue/main/pr-8-bbbb', 2), run('pull_request', 'refs/pull/7/merge', 3),
+    run('push', 'refs/heads/main', 4), run('schedule', 'refs/heads/main', 5)];
+  const groups = runs.map(github => evaluate(workflow.concurrency.group, github));
+  assert.equal(new Set(groups).size, runs.length, groups.join('\n'));
+  assert.equal(groups[0], 'sdk-ci-SDK CI-refs/heads/gh-readonly-queue/main/pr-7-aaaa');
+  assert.deepEqual(runs.map(github => evaluate(workflow.concurrency['cancel-in-progress'], github)),
+    ['false', 'false', 'true', 'false', 'false']);
+  // No job or step is limited to other events, so a queue entry runs the same jobs and verify reports.
+  for (const [name, job] of Object.entries(workflow.jobs)) {
+    assert.doesNotMatch(String(job.if ?? ''), /event_name|github\.ref/, name);
+    for (const step of job.steps ?? []) assert.doesNotMatch(String(step.if ?? ''), /event_name|github\.ref/, `${name}: ${step.name}`);
+  }
+  assert.equal(workflow.jobs.verify.name, 'verify');
+  assert.equal(workflow.jobs.verify.if, 'always()');
+});

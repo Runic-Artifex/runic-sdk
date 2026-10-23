@@ -3,16 +3,21 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue's entries (eng/ci/README.md, "Merge queue"); `verify` is the required check.
+  merge_group:
+    types: [checks_requested]
   # Nightly, every job on every platform; eng/release/ci-run.mjs accepts such a run for a release.
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
 permissions:
   contents: read
-# A newer push to a pull request cancels its running CI. Pushes to main queue; a scheduled or
-# manual run has its own group, so a later push cannot replace it while it waits.
+# A newer push to a pull request cancels its running CI. Pushes to main queue; each merge
+# queue entry has its own ref (gh-readonly-queue/main/pr-<n>-<sha>), so entries neither cancel
+# each other nor pull request runs. A scheduled or manual run has its own group, so a later
+# push cannot replace it while it waits.
 concurrency:
-  group: sdk-ci-${{ github.workflow }}-${{ (github.event_name == 'push' || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: sdk-ci-${{ github.workflow }}-${{ (github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -20,8 +25,8 @@ env:
   CONFIGURATION: Release
   NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
 jobs:
-  # Pull requests run the jobs whose inputs changed and the Windows and macOS legs those
-  # changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main run every Linux job
+  # Pull requests and merge queue entries run the jobs whose inputs changed and the Windows and
+  # macOS legs those changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main run every Linux job
   # and the legs their before..after diff needs; scheduled and manual runs, and pull requests
   # labelled ci:all-platforms, run everything. Planned skips still report, and `verify`
   # accepts a skipped job only when this plan skipped it.
@@ -48,7 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The pull request merge commit and its base parent, or the pushed commit and its parent.
+          # The pull request merge commit and its base parent, the pushed or queued commit and its parent.
           fetch-depth: 2
       - uses: ./.github/actions/setup-sdk
         with:
@@ -56,10 +61,12 @@ jobs:
           install: "false"
       # A pull_request checkout is GitHub's merge commit; its first parent is the base
       # branch, so the diff is exactly what the pull request changes. A push compares the
-      # commit main was at before it. The base checkout's planner, component map and
-      # platform rules decide what is affected, so a change cannot narrow its own plan;
-      # this checkout then enumerates the suites and legs. Without a usable diff, or when
-      # the labels cannot be read, everything runs.
+      # commit main was at before it. A merge queue entry compares its merge group's base
+      # (main, or the entry ahead of it in the queue) and, having no labels, plans like an
+      # unlabelled pull request. The base checkout's planner, component map and platform
+      # rules decide what is affected, so a change cannot narrow its own plan; this
+      # checkout then enumerates the suites and legs. Without a usable diff, or when the
+      # labels cannot be read, everything runs.
       - name: Plan jobs from the changed files
         id: plan
         # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
@@ -68,6 +75,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}
           LABEL: ci:all-platforms
         run: |
           base=
@@ -85,13 +94,18 @@ jobs:
               && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$BEFORE" ]] || git fetch --quiet --no-tags --depth=1 origin "$BEFORE"; }; then
               base=$BEFORE
             fi
+          elif [[ "$GITHUB_EVENT_NAME" == merge_group ]]; then
+            if [[ "$QUEUE_BASE" =~ ^[0-9a-f]{40}$ && "$(git rev-parse HEAD)" == "$QUEUE_HEAD" ]] \
+              && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$QUEUE_BASE" ]] || git fetch --quiet --no-tags --depth=1 origin "$QUEUE_BASE"; }; then
+              base=$QUEUE_BASE
+            fi
           fi
           if [[ -n "$base" ]] && git worktree add --detach "$RUNNER_TEMP/base" "$base" \
             && affected=$(git diff --name-only --no-renames -z "$base" HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
             bun eng/ci/plan.mjs --plan "$affected" "${options[@]}" >> "$GITHUB_OUTPUT"
           else
             reason="$GITHUB_EVENT_NAME run"
-            if [[ "$GITHUB_EVENT_NAME" == push || "$GITHUB_EVENT_NAME" == pull_request ]]; then reason+=" without a usable diff"; fi
+            if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request|merge_group)$ ]]; then reason+=" without a usable diff"; fi
             bun eng/ci/plan.mjs --all "$reason" >> "$GITHUB_OUTPUT"
           fi
   build:
