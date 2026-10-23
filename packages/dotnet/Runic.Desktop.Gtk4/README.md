@@ -73,6 +73,16 @@ Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` selects 
 GTK 4 window services when the process runs this backend: portal-first file dialogs,
 parented through `Runic.Platform.Linux.Gtk4`, so KDE uses its own picker.
 
+A window shows `DesktopHostOptions.MenuBar` above the page as a
+`GtkPopoverMenuBar` built from a `GMenu`, with one action per item in the
+window's `runic` action group, and reports `DesktopWindowCapabilities.MenuBar`
+and `ContextMenu`. Runic does not use `gtk_application_set_menubar` or
+application accelerators, which run before the page: an item's shortcut is
+shown through the menu's `accel` attribute and answered only after the page left
+the key alone. `DesktopWindow.ShowContextMenuAsync` shows a `GtkPopoverMenu` on
+the web view. See
+[Linux: GTK 3 and GTK 4](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#linux-gtk-3-and-gtk-4).
+
 GTK 4 itself has no window position API. On X11 Runic reads and sets the
 position of the window's X window through Xlib, as GTK 3 did: `X` and `Y` open
 the window there, the window reports `DesktopWindowCapabilities.Move` and

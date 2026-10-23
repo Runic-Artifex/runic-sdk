@@ -420,7 +420,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
-        DesktopWindowCapabilities.FullScreen;
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
     private DesktopWindowState? _state;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
     // when a hidden window is first shown, and the X event connection that reports moves.
@@ -828,12 +828,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             keys = Gtk.EventControllerKey.New();
             keys.OnKeyPressed += OnUnhandledKeyPressed;
             window.AddController(keys);
-            window.SetChild(webView);
+            // The Native menu bar goes above the view in a box (B10); other windows hold the view alone.
+            var content = CreateMenuContent(options, webView);
+            window.SetChild(content);
             // DesktopWindowOptions.LayoutDirection: the window, its header bar and the view; the page keeps its own dir.
             if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
             {
                 var direction = options.LayoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? Gtk.TextDirection.Rtl : Gtk.TextDirection.Ltr;
                 window.SetDirection(direction);
+                content.SetDirection(direction);
                 webView.SetDirection(direction);
             }
             // Hidden windows still need a native surface for portal ownership
@@ -919,6 +922,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             _webView = null;
             _keys = null;
             _contentManager = null;
+            // GirCore's wrapper of the box holds a reference that would keep the view alive.
+            _menuBox?.Dispose();
+            _menuBox = null;
+            _pointerMotion?.Dispose();
+            _pointerMotion = null;
             Volatile.Write(ref _isOpen, 0);
             var tracked = Interlocked.Exchange(ref _finalization, null) ?? finalization;
             if (tracked is null)
@@ -1007,9 +1015,14 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     private bool OnUnhandledKeyPressed(Gtk.EventControllerKey controller, Gtk.EventControllerKey.KeyPressedSignalArgs args)
     {
         var command = GetZoomCommand(controller, args);
-        if (command == PageZoomCommand.None || _webView is not { } webView)
+        if (_webView is not { } webView)
         {
             return false;
+        }
+        if (command == PageZoomCommand.None)
+        {
+            // The menu bar's shortcuts (B10), for every presentation.
+            return TryRunShortcut(controller, args);
         }
         webView.SetZoomLevel(WebKitGtkKeyboard.Apply(command, webView.GetZoomLevel()));
         return true;
@@ -1716,6 +1729,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         Gtk4X11Placement.Disconnect(_moveWatch);
         _moveWatch = default;
         _webContent?.Clear();
+        ReleaseMenus(webView);
 
         webView.OnPermissionRequest -= OnPermissionRequest;
         DetachZoomHandlers(_keys, _contentManager);
@@ -1942,6 +1956,9 @@ internal sealed class Gtk4Dispatcher
 // gdk_display_map_keycode, which GirCore does not bind.
 internal static unsafe partial class KeyLevels
 {
+    // Find's group for the symbols of every layout group.
+    internal const uint AnyGroup = uint.MaxValue;
+
     // Writes the unshifted and shifted symbols of a physical key in one layout group.
     internal static int Find(nint display, uint keycode, uint group, Span<uint> levels)
     {
@@ -1957,7 +1974,7 @@ internal static unsafe partial class KeyLevels
             var found = 0;
             for (var index = 0; index < count && found < levels.Length; index++)
             {
-                if (entries[index].Group == group && entries[index].Level is 0 or 1)
+                if ((group == AnyGroup || entries[index].Group == group) && entries[index].Level is 0 or 1)
                 {
                     levels[found++] = keyvals[index];
                 }

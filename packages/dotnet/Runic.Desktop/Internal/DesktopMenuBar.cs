@@ -10,20 +10,7 @@ internal static class DesktopMenuBar
     internal const string UnsupportedCode = "menu-bar-unsupported";
 
     // The key equivalents of the standard menus Runic Desktop provides on macOS, with their items.
-    internal static readonly (DesktopShortcut Shortcut, string Item)[] Reserved =
-    [
-        (new("Z"), "Edit ▸ Undo"),
-        (new("Z", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Shift), "Edit ▸ Redo"),
-        (new("X"), "Edit ▸ Cut"),
-        (new("C"), "Edit ▸ Copy"),
-        (new("V"), "Edit ▸ Paste"),
-        (new("A"), "Edit ▸ Select All"),
-        (new("Q"), "Quit"),
-        (new("H"), "Hide"),
-        (new("H", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Alt), "Hide Others"),
-        (new("W"), "File ▸ Close"),
-        (new("M"), "Window ▸ Minimize"),
-    ];
+    internal static (DesktopShortcut Shortcut, string Item)[] Reserved => DesktopMenuPlanner.ReservedMacOS;
 
     internal const string RadioCheckedCode = "menu-radio-checked";
     internal const string PageNativeCode = "menu-bar-page-native";

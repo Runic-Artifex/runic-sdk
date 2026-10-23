@@ -396,7 +396,18 @@ internal static partial class WebContentSmoke
         private static void OnFailed(nint download, nint error, nint data) => DownloadsFailed.Enqueue(
             error == 0 ? "failed" : Marshal.PtrToStringUTF8(*(nint*)((byte*)error + 8)) ?? "failed");
 
-        private static nint WebView(nint window) => s_gtk4 ? Gtk4WindowGetChild(window) : Gtk3BinGetChild(window);
+        // The window's child, or the last child of the box that also holds the menu bar (B10).
+        private static nint WebView(nint window)
+        {
+            var child = s_gtk4 ? Gtk4WindowGetChild(window) : Gtk3BinGetChild(window);
+            if (TypeCheckInstanceIsA(child, s_gtk4 ? Gtk4BoxType() : Gtk3BoxType()) == 0) return child;
+            if (s_gtk4) return Gtk4WidgetGetLastChild(child);
+            var children = Gtk3ContainerGetChildren(child);
+            nint last = 0;
+            for (var node = children; node != 0; node = ((nint*)node)[1]) last = ((nint*)node)[0];
+            GListFree(children);
+            return last;
+        }
 
         private static nint WebKit(string name) => NativeLibrary.GetExport(s_webKit, name);
 
@@ -405,6 +416,24 @@ internal static partial class WebContentSmoke
 
         [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_window_get_child")]
         private static partial nint Gtk4WindowGetChild(nint window);
+
+        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_box_get_type")]
+        private static partial nuint Gtk4BoxType();
+
+        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_last_child")]
+        private static partial nint Gtk4WidgetGetLastChild(nint widget);
+
+        [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_box_get_type")]
+        private static partial nuint Gtk3BoxType();
+
+        [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_container_get_children")]
+        private static partial nint Gtk3ContainerGetChildren(nint container);
+
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_list_free")]
+        private static partial void GListFree(nint list);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_type_check_instance_is_a")]
+        private static partial int TypeCheckInstanceIsA(nint instance, nuint type);
 
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
         private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);

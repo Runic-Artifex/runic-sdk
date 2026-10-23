@@ -605,7 +605,8 @@ new DesktopMenu("View",
 A failure is logged as event 2004, `DesktopMenuCommandFailed`. An id the
 ViewModel returns `null` for goes to the application's commands,
 `RunicDesktopHost.UseApplicationMenu`, such as New or Settings…, which also run
-while no Window is open. Runic Desktop shows the menu bar natively on macOS. A
+while no Window is open. Runic Desktop shows the menu bar natively on macOS and in GTK 3 and GTK 4
+windows. A
 Window whose `DesktopWindowOptions.MenuBarPresentation` is `Page` renders the
 bar in its page instead and runs its items through
 `DesktopWindow.TryExecuteMenuItemAsync`, which uses the same commands; see
