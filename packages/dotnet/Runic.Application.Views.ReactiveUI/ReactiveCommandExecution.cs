@@ -211,15 +211,24 @@ public static class ReactiveCommandExecution
 
     // Starts one execution in the call's flow. Its ThrownExceptions stay observed until it ended, also after the call
     // was cancelled and returned and after the Bridge detached (I-188): ReactiveUI reports a cancelled token-taking
-    // execution when its work stops, and without a subscriber its default handler would end the process.
+    // execution when its work stops, and without a subscriber its default handler would end the process. In an
+    // operation declared Cancel or Drain the execution is registered as the operation's work, so retiring its page
+    // releases the page only after the execution ended, not when the cancelled call returned (I-192).
     private static IDisposable Run<TInput, TResult>(BridgeCommandFailures failures, BridgeCommandFailures.Call call,
         IReactiveCommand<TInput, TResult> command, TInput input, IObserver<TResult> observer)
     {
         var execution = failures.BeginExecution(command);
-        try { return ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input), new ExecutionObserver<TResult>(observer, execution)); }
+        var work = BridgeOperationWork.Begin();
+        try
+        {
+            var subscription = ModelTurnFlow.SubscribeInCall(call.Scope, command.Execute(input),
+                new ExecutionObserver<TResult>(observer, execution, work));
+            return work is null ? subscription : new WorkSubscription(subscription, command, work);
+        }
         catch
         {
             execution.End(null);
+            work?.TrySetResult();
             throw;
         }
     }
@@ -295,21 +304,56 @@ public static class ReactiveCommandExecution
 
     // Ends the execution's tracking after the call's observer handled its end. ReactiveUI calls it also after the call
     // disposed its subscription, when a cancelled task ends.
-    private sealed class ExecutionObserver<T>(IObserver<T> inner, BridgeCommandFailures.Execution execution) : IObserver<T>
+    private sealed class ExecutionObserver<T>(IObserver<T> inner, BridgeCommandFailures.Execution execution,
+        TaskCompletionSource? work) : IObserver<T>
     {
         public void OnCompleted()
         {
             try { inner.OnCompleted(); }
-            finally { execution.End(null); }
+            finally
+            {
+                execution.End(null);
+                work?.TrySetResult();
+            }
         }
 
         public void OnError(Exception error)
         {
             try { inner.OnError(error); }
-            finally { execution.End(error); }
+            finally
+            {
+                execution.End(error);
+                work?.TrySetResult();
+            }
         }
 
         public void OnNext(T value) => inner.OnNext(value);
+    }
+
+    // The subscription of an execution registered as an operation's work. A cancelled call disposes it before the
+    // execution ended: a task execution (CreateFromTask) keeps running until its body ends and then calls the observer
+    // (ExecutionObserver). An observable one (CreateFromObservable) ends with the unsubscription without calling it;
+    // ReactiveUI's IsExecuting turns false once that end applied, so false after the unsubscription ends the work too
+    // (also when the last other execution of the command ends later).
+    private sealed class WorkSubscription(IDisposable subscription, IReactiveCommand command, TaskCompletionSource work) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            subscription.Dispose();
+            if (work.Task.IsCompleted) return;
+            IDisposable idle;
+            try { idle = command.IsExecuting.Subscribe(new Observer<bool>(executing => { if (!executing) work.TrySetResult(); })); }
+            catch (Exception)
+            {
+                work.TrySetResult();
+                return;
+            }
+            _ = work.Task.ContinueWith(static (_, state) => ((IDisposable)state!).Dispose(), idle,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",

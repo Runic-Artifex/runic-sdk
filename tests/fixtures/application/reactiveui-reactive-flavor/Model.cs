@@ -130,8 +130,8 @@ namespace ReactiveUiReactiveFlavorProof
     {
     }
 
-    // #284 in the System.Reactive flavor: retiring the page's navigation entry cancels its operation, and the
-    // navigator disposes the page only after the operation ended.
+    // #284 in the System.Reactive flavor: retiring the page's navigation entry cancels its operations, and the
+    // navigator disposes the page only after their work ended (I-192), not when their calls returned `cancelled`.
     public sealed class FlavorRetireShellModel : ReactiveObject
     {
         public FlavorRetireShellModel(Runic.Navigation.RunicNavigator navigator) =>
@@ -147,6 +147,7 @@ namespace ReactiveUiReactiveFlavorProof
     public sealed class FlavorRetirePageModel : ReactiveObject, IDisposable
     {
         private int _ended;
+        private int _lateEnded;
 
         public FlavorRetirePageModel(IScheduler commandScheduler)
         {
@@ -162,8 +163,12 @@ namespace ReactiveUiReactiveFlavorProof
             LateCommand = ReactiveCommand.CreateFromTask(async token =>
             {
                 LateStarted.TrySetResult();
-                await LateRelease.Task.ConfigureAwait(false);
-                token.ThrowIfCancellationRequested();
+                try
+                {
+                    await LateRelease.Task.ConfigureAwait(false);
+                    token.ThrowIfCancellationRequested();
+                }
+                finally { Volatile.Write(ref _lateEnded, 1); }
             }, outputScheduler: commandScheduler);
         }
 
@@ -181,7 +186,7 @@ namespace ReactiveUiReactiveFlavorProof
 
         public void Dispose()
         {
-            EndedBeforeDispose = Volatile.Read(ref _ended) == 1;
+            EndedBeforeDispose = Volatile.Read(ref _ended) == 1 && Volatile.Read(ref _lateEnded) == 1;
             Disposed++;
         }
     }

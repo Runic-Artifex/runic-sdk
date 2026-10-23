@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
@@ -170,7 +171,8 @@ internal sealed class OperationRetirementTests
     // I-188: retirement cancels a ReactiveUI operation whose work ends after the page's Bridge detached. ReactiveUI then
     // reports the end on ThrownExceptions, and the ViewModel has no subscriber: the Bridge keeps observing the command
     // until the execution ended, so nothing reaches ReactiveUI's default handler, which ends the process. A failure that
-    // no caller received is logged as event 1042 with the window's logger.
+    // no caller received is logged as event 1042 with the window's logger. The page is disposed after the work ended
+    // (I-192).
     [Test]
     public async Task AReactiveOperationEndingAfterRetirementStaysObservedAsync()
     {
@@ -187,9 +189,10 @@ internal sealed class OperationRetirementTests
         Require((await Wait(upload.WaitAsync())).Kind is RunicOperationStatusKind.Cancelled
                 && (await Wait(export.WaitAsync())).Kind is RunicOperationStatusKind.Cancelled,
             "Retirement did not cancel the operations.");
-        await Until(() => page.Disposed == 1, "The page was not disposed after its cancelled operations ended.");
+        await Task.Delay(50);
+        Require(page.Disposed == 0, "The page was disposed while the work of its cancelled operations ran.");
 
-        // The page and its Bridge are gone; now the work ends and ReactiveUI reports it.
+        // The page's Bridge detached; now the work ends and ReactiveUI reports it.
         var idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var executing = 2;
         using (page.UploadCommand.IsExecuting.Subscribe(new IdleObserver(() => { if (Interlocked.Decrement(ref executing) == 0) idle.TrySetResult(); })))
@@ -198,6 +201,7 @@ internal sealed class OperationRetirementTests
             page.Release.SetResult();
             await Wait(idle.Task);
         }
+        await Until(() => page.Disposed == 1, "The page was not disposed after the work of its cancelled operations ended.");
         await Until(() => window.Logs.All(ReactiveCommandFailed).Any(), "The failure after retirement was not logged.");
         for (var turn = 0; turn < 3; turn++)
         {
@@ -209,6 +213,52 @@ internal sealed class OperationRetirementTests
                 && Equals(failed[0].State["Source"], "RetireLatePageViewModel.ExportCommand"),
             $"After retirement Runic logged {string.Join(", ", failed.Select(entry => entry.Message))}; expected the export's failure once.");
     }
+
+    // I-192: a ReactiveUI Bridge call replies `cancelled` as soon as retirement cancels it, while the command's body can
+    // still run; the page's entry scope is disposed only after the body ended.
+    [Test]
+    public async Task AReactiveCancelOperationReleasesItsScopeAfterItsWorkEndedAsync()
+    {
+        await using var window = new Window(ScopedServices());
+        RetireLingerReactivePageViewModel? page = null;
+        await Wait(window.Shell.Main.PushAsync(NavigationTarget.Create<IRetirePage>(services =>
+            page = new RetireLingerReactivePageViewModel(services.GetRequiredService<RetireScopedClient>(), window.Context))));
+        var upload = window.Host.Root.View<RetireLingerReactivePageViewModel>(vm => vm.Main).Start(vm => vm.UploadCommand);
+        await ReleasesAfterWorkEndedAsync(window, upload, page!.Work, repliesBeforeWorkEnds: true);
+    }
+
+    // The Toolkit operation's call awaits the [RelayCommand] method's task, so its reply already waits for the work.
+    [Test]
+    public async Task AToolkitCancelOperationReleasesItsScopeAfterItsWorkEndedAsync()
+    {
+        await using var window = new Window(ScopedServices());
+        RetireLingerToolkitPageViewModel? page = null;
+        await Wait(window.Shell.Main.PushAsync(NavigationTarget.Create<IRetirePage>(services =>
+            page = new RetireLingerToolkitPageViewModel(services.GetRequiredService<RetireScopedClient>()))));
+        var upload = window.Host.Root.View<RetireLingerToolkitPageViewModel>(vm => vm.Main).Start(vm => vm.UploadCommand);
+        await ReleasesAfterWorkEndedAsync(window, upload, page!.Work, repliesBeforeWorkEnds: false);
+    }
+
+    private static async Task ReleasesAfterWorkEndedAsync(Window window, RunicTestOperation operation, RetireLingerWork work,
+        bool repliesBeforeWorkEnds)
+    {
+        Require(operation.Admission is RunicOperationAdmissionKind.Accepted, $"The operation was not admitted: {operation.AdmissionJson}");
+        await Wait(work.Started.Task);
+        await Wait(window.Shell.Main.BackAsync());
+        await Wait(window.Navigator.WhenIdleAsync());
+        await Wait(work.Cancelled.Task);
+        if (repliesBeforeWorkEnds)
+            Require((await Wait(operation.WaitAsync())).Kind is RunicOperationStatusKind.Cancelled, "Retirement did not cancel the operation.");
+        await Task.Delay(50);
+        Require(!work.Client.IsDisposed, "The page's entry scope was disposed while its Cancel operation's work ran.");
+        work.Release.SetResult();
+        Require((await Wait(operation.WaitAsync())).Kind is RunicOperationStatusKind.Cancelled, "The operation did not end cancelled.");
+        await Until(() => work.Client.IsDisposed, "The page's entry scope was not disposed after its operation's work ended.");
+        Require(work.ClientDisposedAtEnd == false, "The operation's work used the page's scoped service after it was disposed.");
+    }
+
+    private static ServiceProvider ScopedServices() =>
+        new ServiceCollection().AddScoped<RetireScopedClient>().BuildServiceProvider();
 
     // The default: an operation without a declaration keeps running and the page is disposed at once (unchanged).
     [Test]
@@ -255,9 +305,17 @@ internal sealed class OperationRetirementTests
     // One window: its model context and navigator, the shell and a test host.
     private sealed class Window : IAsyncDisposable
     {
-        public Window()
+        private readonly ServiceProvider? _services;
+
+        public Window(ServiceProvider? services = null)
         {
-            Navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = Context });
+            _services = services;
+            Navigator = new RunicNavigator(new RunicNavigatorOptions
+            {
+                ModelContext = Context,
+                Services = services,
+                CreateEntryScopes = services is not null,
+            });
             Shell = new RetireShellViewModel(Navigator);
             Host = new RunicWindowTestHost<RetireShellViewModel>(Shell,
                 (transport, content, vm) => new RetireShellBridge(transport, vm, content: content),
@@ -275,6 +333,7 @@ internal sealed class OperationRetirementTests
             Host.Dispose();
             await Navigator.DisposeAsync();
             await Context.DisposeAsync();
+            if (_services is not null) await _services.DisposeAsync();
         }
     }
 

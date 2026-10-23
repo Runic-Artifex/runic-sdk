@@ -1939,8 +1939,8 @@ ViewModel class for all of its operations:
 | `RunicOperationRetirement` | At retirement | The page, its entry scope and its lease are disposed |
 | --- | --- | --- |
 | `Keep` (default) | The operation keeps running. | At once, as before. |
-| `Cancel` | Its cancellation token is cancelled, as by the client's `cancel()`; it usually ends `cancelled`. | After the operation ended. |
-| `Drain` | The operation keeps running to its end. | After the operation ended. |
+| `Cancel` | Its cancellation token is cancelled, as by the client's `cancel()`; it usually ends `cancelled`. | After the operation's work ended. |
+| `Drain` | The operation keeps running to its end. | After the operation's work ended. |
 
 ```csharp
 public sealed class UploadViewModel : ReactiveObject
@@ -1969,6 +1969,13 @@ public sealed partial class ExportViewModel : ObservableObject
   `RunicNavigator.DisposeAsync` waits for them up to its `CloseTimeout`, then
   logs Navigation event 1077 and returns; the page is still disposed when they
   end.
+- The disposal waits for the work, not for the operation's reply. A ReactiveUI
+  command's operation reports `cancelled` as soon as its cancellation is
+  requested, while a `CreateFromTask` body can still be running; the page and
+  its entry scope are disposed after that body ended. A cancelled
+  `CreateFromObservable` execution ends with its unsubscription. A
+  CommunityToolkit operation ends with its method's task, so its reply already
+  waits for the body.
 - The policy covers the operations that the page started, and those of the
   ViewModels presented under it (its content properties and collections,
   transitively) when the operation started. A ViewModel presented elsewhere
