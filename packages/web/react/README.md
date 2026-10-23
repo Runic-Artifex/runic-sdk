@@ -270,6 +270,61 @@ creates a new controller, and unmounting disposes it, which also returns the
 The controller starts in an effect, so a server render reads `connecting`, and
 `invoke` rejects with a `BridgeError` (`disconnected`) until then.
 
+### With Base UI or Radix
+
+Base UI's `Menubar` (`@base-ui/react`, the base of shadcn/ui's Base UI
+Menubar) with a controlled open menu; the
+[Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first#in-page-menu-bar) adds submenus, check and radio
+items and is tested with real keys:
+
+```tsx
+import { Menu } from "@base-ui/react/menu";
+import { Menubar } from "@base-ui/react/menubar";
+import { splitAccessKey, type MenuBarItem, type MenuBarMenu } from "@runic-artifex/views";
+import { useMenuBar } from "@runic-artifex/react";
+
+function AppMenuBar() {
+  const bar = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const menuBar = useMenuBar({
+    onRequest: request => request.kind === "open"
+      ? setOpen(request.menu.key)
+      : bar.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus(),
+  });
+  const { placement, menus, accessKeyHints } = menuBar.state;
+  if (placement !== "page") return null;
+  const label = (entry: MenuBarMenu | MenuBarItem) => {
+    const [before, key, after] = splitAccessKey(entry);
+    return <>{before}{accessKeyHints ? <u>{key}</u> : key}{after}</>;
+  };
+  return (
+    <Menubar ref={bar} aria-label="Application">
+      {menus.map(menu => (
+        <Menu.Root key={menu.key} disabled={!menu.enabled} open={open === menu.key}
+          onOpenChange={next => setOpen(current => next ? menu.key : current === menu.key ? null : current)}>
+          <Menu.Trigger>{label(menu)}</Menu.Trigger>
+          <Menu.Portal><Menu.Positioner align="start"><Menu.Popup>
+            {menu.entries.map(entry => entry.kind === "separator" ? <Menu.Separator key={entry.key} />
+              : entry.kind === "item" ? (
+                <Menu.Item key={entry.key} disabled={!entry.enabled} aria-keyshortcuts={entry.ariaKeyShortcuts}
+                  onClick={() => void menuBar.invoke(entry)}>
+                  {label(entry)} <kbd aria-hidden>{entry.shortcutText}</kbd>
+                </Menu.Item>)
+              : null /* a submenu: Menu.SubmenuRoot */)}
+          </Menu.Popup></Menu.Positioner></Menu.Portal>
+        </Menu.Root>
+      ))}
+    </Menubar>
+  );
+}
+```
+
+With Radix (`@radix-ui/react-menubar`) the open menu is the root's controlled
+`value`: `<Menubar.Root value={open} onValueChange={setOpen}>`, each
+`<Menubar.Menu value={menu.key}>`, and `<Menubar.Item onSelect={() => menuBar.invoke(item)}>`.
+Check items are `Menubar.CheckboxItem checked`, radio groups
+`Menubar.RadioGroup value` with `Menubar.RadioItem`.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

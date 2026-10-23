@@ -60,13 +60,14 @@ dotnet run --project examples/notes-view-first/NotesViewFirst.csproj -- --web-ro
 
 The `React` and `Vue` folders swap in an Editor written with
 [`@runic-artifex/react`](../../packages/web/react/README.md) or
-[`@runic-artifex/vue`](../../packages/web/vue/README.md) the same way. They use
-the bindings' source and the React or Vue install of those packages, so they
-need no install of their own:
+[`@runic-artifex/vue`](../../packages/web/vue/README.md) the same way, and a
+menu bar (see [In-page menu bar](#in-page-menu-bar)). They use the bindings'
+source and the React or Vue install of those packages, so there is one copy of
+React or Vue; their own install holds only the menubar library:
 
 ```sh
-(cd examples/notes-view-first/React && bun run --bun build)
-(cd examples/notes-view-first/Vue && bun run --bun build)
+(cd examples/notes-view-first/React && bun install --frozen-lockfile && bun run --bun build)
+(cd examples/notes-view-first/Vue && bun install --frozen-lockfile && bun run --bun build)
 ```
 
 ## Navigation
@@ -113,6 +114,42 @@ ordered [`WindowOperations`](Angular/src/app/window-operations.ts) queue
 therefore starts navigation commands with `runDispatched`, which orders them
 by dispatch, not by completion. Use the same pattern for any command whose
 completion depends on a later command.
+
+## In-page menu bar
+
+The React, Vue, Svelte and Angular frontends render the window's menu bar in the
+page, as a Runic Desktop window with `DesktopMenuBarPresentation.Page` shows it,
+each with a popular headless menubar library. Runic ships no menubar component:
+the adapter's `useMenuBar` or `injectMenuBar` provides the menus, `invoke` and
+the Alt/F10 and access-key requests, and the library provides the WAI-ARIA
+menubar (roles, roving focus, arrow keys, typeahead and Escape).
+
+| Frontend | Library | Code |
+| --- | --- | --- |
+| React | [Base UI](https://base-ui.com/react/components/menubar) `Menubar` and `Menu` (`@base-ui/react`, the base of shadcn/ui's Base UI Menubar) | [React/src/menu-bar.ts](React/src/menu-bar.ts) |
+| Vue | [Reka UI](https://reka-ui.com/docs/components/menubar) `MenubarRoot` with `v-model` of the open menu | [Vue/src/menu-bar.ts](Vue/src/menu-bar.ts) |
+| Svelte | [Bits UI](https://bits-ui.com/docs/components/menubar) `Menubar.Root bind:value` | [Svelte/src/MenuBar.svelte](Svelte/src/MenuBar.svelte) |
+| Angular | [CDK Menu](https://material.angular.dev/cdk/menu/overview) `cdkMenuBar`, `cdkMenuItem`, `cdkMenuItemCheckbox`, `cdkMenuItemRadio`, `CdkMenuTrigger.open()` | [Angular/src/app/menu-bar.ts](Angular/src/app/menu-bar.ts) |
+
+Each one renders the bar only while `placement` is `"page"`, runs an item's
+select handler through `invoke`, groups consecutive items of a `radioGroup`,
+shows `checked` and `enabled` from the host, puts `ariaKeyShortcuts` on the
+items, and underlines the `splitAccessKey` parts while `accessKeyHints` is true.
+An `open` request sets the library's open menu; a `focus` request focuses the
+first menu. The plain and Effect frontends render none
+([Frontend/src/menu-bar.ts](Frontend/src/menu-bar.ts)).
+
+This example's CS-WebUI host serves no menu bar routes, so the bar stays
+`unavailable` and hidden there. [menu-bar-smoke.mjs](menu-bar-smoke.mjs) serves a
+built frontend in Chromium with `installMockMenuBar` from
+`@runic-artifex/views/mock` as the host and checks, with real keys and clicks:
+click and invoke, an Alt tap and F10 focusing File, arrows, Escape returning to
+the trigger, Alt+V opening View, radio and check items following the host, a
+disabled item that does not run, Ctrl+S running Save once, and an axe-core scan
+of the open menubar.
+
+The libraries are this example's dependencies only, pinned to exact versions in
+each frontend's lockfile.
 
 ## Declared failures
 
@@ -170,6 +207,10 @@ RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
+RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/menu-bar-smoke.mjs
 ```
+
+`menu-bar-smoke.mjs` needs no .NET build; it takes any of the React, Vue,
+Svelte or Angular outputs above, and axe-core from the plain frontend's install.
 
 On Linux with Nix, prefix the commands with `direnv exec .`.

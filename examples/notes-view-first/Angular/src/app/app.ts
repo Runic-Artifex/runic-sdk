@@ -1,12 +1,14 @@
 import { Component, computed } from "@angular/core";
 import { connectShell } from "../../../Frontend/src/generated/shell.js";
 import { injectView } from "../../../../../packages/web/angular/src/inject-view";
+import { MenuBarComponent } from "./menu-bar";
 import { ShellComponent } from "./shell";
 
 @Component({
   selector: "app-root",
-  imports: [ShellComponent],
+  imports: [MenuBarComponent, ShellComponent],
   template: `
+    <notes-menu-bar />
     @if (root.client(); as connected) {
       <notes-shell [shell]="connected" />
     } @else {

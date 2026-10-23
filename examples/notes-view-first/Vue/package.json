@@ -5,5 +5,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && bun build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "reka-ui": "2.11.0"
   }
 }

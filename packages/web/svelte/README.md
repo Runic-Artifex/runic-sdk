@@ -257,6 +257,59 @@ and `state` stays `connecting`; `invoke` rejects with a `BridgeError`
 (`disconnected`) until then. Owner destruction disposes it, which also returns
 the `shortcuts: "app"` lease.
 
+### With Bits UI
+
+Bits UI's `Menubar.Root bind:value`; the
+[Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first#in-page-menu-bar) adds submenus, check and radio
+items and is tested with real keys:
+
+```svelte
+<script lang="ts">
+  import { Menubar } from "bits-ui";
+  import { splitAccessKey, type MenuBarItem, type MenuBarMenu } from "@runic-artifex/views";
+  import { useMenuBar } from "@runic-artifex/svelte";
+
+  let bar = $state<HTMLElement | null>(null);
+  let open = $state("");
+  const menuBar = useMenuBar({
+    onRequest: request => {
+      if (request.kind === "open") open = request.menu.key;
+      else bar?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    },
+  });
+</script>
+
+{#snippet label(entry: MenuBarMenu | MenuBarItem)}
+  {@const [before, key, after] = splitAccessKey(entry)}
+  {before}{#if menuBar.state.accessKeyHints}<u>{key}</u>{:else}{key}{/if}{after}
+{/snippet}
+
+{#if menuBar.state.placement === "page"}
+  <Menubar.Root aria-label="Application" bind:ref={bar} bind:value={open}>
+    {#each menuBar.state.menus as menu (menu.key)}
+      <Menubar.Menu value={menu.key}>
+        <Menubar.Trigger disabled={!menu.enabled}>{@render label(menu)}</Menubar.Trigger>
+        <Menubar.Portal>
+          <Menubar.Content align="start">
+            {#each menu.entries as entry (entry.key)}
+              {#if entry.kind === "separator"}<Menubar.Separator />
+              {:else if entry.kind === "item"}
+                <Menubar.Item disabled={!entry.enabled} aria-keyshortcuts={entry.ariaKeyShortcuts} onSelect={() => menuBar.invoke(entry)}>
+                  {@render label(entry)} <kbd aria-hidden="true">{entry.shortcutText}</kbd>
+                </Menubar.Item>
+              {/if}<!-- a submenu: Menubar.Sub; check and radio items: Menubar.CheckboxItem, Menubar.RadioGroup -->
+            {/each}
+          </Menubar.Content>
+        </Menubar.Portal>
+      </Menubar.Menu>
+    {/each}
+  </Menubar.Root>
+{/if}
+```
+
+The host owns `checked`: bind it one way, as
+`bind:checked={() => item.checked ?? false, () => {}}`.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation helper is typed
