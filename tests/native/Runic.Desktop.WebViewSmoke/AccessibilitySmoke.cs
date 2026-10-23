@@ -4,7 +4,8 @@ using Runic.Desktop;
 // --accessibility: the page a screen reader meets, read and changed through the platform's accessibility API by a
 // separate process, tests/native/Runic.Desktop.AccessibilityProbe, as a screen reader reads it. The fixture opens the
 // window, starts the probe with its process ID and does what the page asks of the host: AnnounceAsync. It passes when
-// the probe passes and has pressed Finish. The GTK 4 smoke links this file for GTK 3 and GTK 4.
+// the probe passes and has pressed Finish. The GTK 4 smoke links this file for GTK 3 and GTK 4, and the WPF Windows
+// tests for a RunicWebView, whose WPF window announces through WpfPlatformServices (announce).
 internal static class AccessibilitySmoke
 {
     // The page's controls; the probe looks for them by these names (AccessibilityProbe/Fixture.cs).
@@ -73,7 +74,7 @@ internal static class AccessibilitySmoke
 
     // probe: the probe's command and its own arguments, everything after --probe, e.g.
     // "--probe dotnet path/Runic.Desktop.AccessibilityProbe.dll --receipt receipt.json"; the fixture adds --pid and
-    // --host: gtk3, gtk4, webview2 or wkwebview, which selects the probe's expectations.
+    // --host: gtk3, gtk4, webview2, wkwebview or wpf, which selects the probe's expectations.
     internal static IReadOnlyList<string> ProbeCommand(string[] args)
     {
         var index = Array.IndexOf(args, "--probe");
@@ -82,7 +83,9 @@ internal static class AccessibilitySmoke
             : throw new ArgumentException("--accessibility needs --probe <command> [arguments].");
     }
 
-    internal static async Task<int> RunAsync(DesktopHost host, string hostName, IReadOnlyList<string> probe)
+    // announce: how the host announces, when not through the window's DesktopWindow.AnnounceAsync.
+    internal static async Task<int> RunAsync(DesktopHost host, string hostName, IReadOnlyList<string> probe,
+        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null)
     {
         // The probe starts first and registers for events, as a screen reader runs before the application: WebKitGTK's
         // web process reads the registered events when it starts.
@@ -113,8 +116,9 @@ internal static class AccessibilitySmoke
             Height = 640,
         });
         await window.FocusAsync();
-        if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements))
+        if (announce is null && !window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements))
             throw new InvalidOperationException("The embedded window does not report announcements.");
+        announce ??= (message, priority, cancellationToken) => window.AnnounceAsync(message, priority, cancellationToken).AsTask();
         if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(20)) != "Runic accessibility fixture")
             throw new InvalidOperationException("The fixture page did not load.");
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
@@ -128,12 +132,12 @@ internal static class AccessibilitySmoke
                 TimeSpan.FromSeconds(20), cancellationToken: deadline.Token);
             if (request == "announce")
             {
-                await window.AnnounceAsync(PoliteAnnouncement, DesktopAnnouncementPriority.Polite, deadline.Token);
+                await announce(PoliteAnnouncement, DesktopAnnouncementPriority.Polite, deadline.Token);
                 Console.WriteLine("ACCESSIBILITY announced the polite message.");
             }
             else if (request == "alert")
             {
-                await window.AnnounceAsync(AssertiveAnnouncement, DesktopAnnouncementPriority.Assertive, deadline.Token);
+                await announce(AssertiveAnnouncement, DesktopAnnouncementPriority.Assertive, deadline.Token);
                 Console.WriteLine("ACCESSIBILITY announced the assertive message.");
             }
             else if (request == "finish")

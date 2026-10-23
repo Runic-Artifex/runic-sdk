@@ -1,12 +1,13 @@
 using System.Globalization;
 using System.IO;
 
-// Started by the accessibility fixture (Runic.Desktop.WebViewSmoke and Runic.Desktop.Gtk4.Smoke, --accessibility) with
+// Started by the accessibility fixture (Runic.Desktop.WebViewSmoke and Runic.Desktop.Gtk4.Smoke, --accessibility, and the
+// WPF Windows tests' ScreenReader case) with
 // its process ID. Reads and changes the fixture's page through the platform accessibility API, as a screen reader does,
 // checks what each host is expected to expose (Expectations.cs) and writes a receipt. --screen-reader also runs a screen
 // reader, VoiceOver on macOS, NVDA on Windows or Orca on Linux, and checks what it speaks (SpeechScenario.cs).
 //
-//   Runic.Desktop.AccessibilityProbe --pid <pid> --host gtk3|gtk4|webview2|wkwebview [--receipt <file>]
+//   Runic.Desktop.AccessibilityProbe --pid <pid> --host gtk3|gtk4|webview2|wkwebview|wpf [--receipt <file>]
 //       [--screen-reader voiceover|nvda|orca] [--nvda <nvda.exe>] [--survey]
 //
 // --survey reports every check without failing, to learn what a new host or engine version exposes. The screen

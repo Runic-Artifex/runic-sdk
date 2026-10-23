@@ -562,6 +562,94 @@ internal sealed class NativeChecks
         Console.WriteLine("WpfPlatformServices.ForWindow announcement checks passed.");
     }
 
+    // I-203: while the page of a RunicWebView in the window has the keyboard focus, the window's services announce in
+    // the page's live region, which its Bridge added when the page connected, as Runic Desktop's WebView2 window does
+    // (I-184); NVDA ignores the WPF window's notification then. Otherwise the WPF window announces, and the page's
+    // regions stay empty. The page holds no other script: the Bridge adds the regions without evaluating any.
+    [Test, NotInParallel("WpfSuite", Order = 27)]
+    public async Task ForWindowAnnouncesInTheFocusedPage()
+    {
+        using var child = new RunicWebView { Height = 200 };
+        var outside = new TextBox { Height = 30 };
+        var panel = new StackPanel();
+        panel.Children.Add(outside);
+        panel.Children.Add(child);
+        var window = new Window { Content = panel, Width = 600, Height = 400, Title = "Runic WPF page announcements" };
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        child.Loaded += (_, _) => loaded.TrySetResult();
+        var platform = WpfPlatformServices.ForWindow(window);
+        window.Show();
+        try
+        {
+            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var collection = new ServiceCollection();
+            collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => new Attachment());
+            await using var services = collection.BuildServiceProvider();
+            await using var host = await DesktopHost.StartAsync(new()
+            {
+                WindowHostFactory = child.CreateWindowHostFactory(),
+                ConnectionTimeout = TimeSpan.FromSeconds(20),
+            });
+            await using var view = await services.CreateWpfViewAsync(host, Program.HtmlOptions(), new object());
+            await view.OpenAsync();
+
+            // Each region's lines, once both regions exist: "polite=a|b;assertive=c".
+            async Task<string> RegionsAsync(string? until = null)
+            {
+                var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+                while (true)
+                {
+                    var regions = await view.Surface.ExecuteJavaScriptAsync("""
+                        const arrived = performance.now();
+                        while (document.querySelectorAll("[data-runic-announcer]").length < 2 && performance.now() - arrived < 10000)
+                          await new Promise(resolve => setTimeout(resolve, 20));
+                        return ["polite", "assertive"].map(politeness => {
+                          const region = document.querySelector(`[data-runic-announcer="${politeness}"]`);
+                          return politeness + "=" + (region ? [...region.children].map(line => line.textContent).join("|") : "missing");
+                        }).join(";");
+                        """, TimeSpan.FromSeconds(15));
+                    if (until is null || regions == until || DateTime.UtcNow > deadline) return regions;
+                    await Task.Delay(100);
+                }
+            }
+
+            Program.Check(await RegionsAsync() == "polite=;assertive=", $"The connected page did not get empty live regions: {await RegionsAsync()}.");
+
+            // The keyboard focus in the WPF window: the WPF window announces.
+            Program.Check(outside.Focus() && Keyboard.FocusedElement == outside, "The WPF text box did not take the keyboard focus.");
+            Program.Check(child.FocusedPageAnnouncer is null, "The page was reported to have the focus while a WPF control had it.");
+            Program.Check(await platform.AnnounceAsync("Outside") is PlatformResult<PlatformUnit>.Success,
+                "The WPF window did not announce while a WPF control had the focus.");
+
+            // The keyboard focus in the page: the page's regions announce, a repeated message as a new line.
+            Program.Check(((System.Windows.Interop.IKeyboardInputSink)child).TabInto(new TraversalRequest(FocusNavigationDirection.Next)),
+                "WPF could not tab into the child presentation.");
+            var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("editor"), TimeSpan.FromSeconds(15));
+            Program.Check(focus.StartsWith("editor ", StringComparison.Ordinal), $"The page could not focus its editor: {focus}.");
+            await UntilAsync(() => child.FocusedPageAnnouncer is not null);
+            var polite = await platform.AnnounceAsync("Saved");
+            var again = await platform.AnnounceAsync("Saved");
+            // From a thread-pool thread: the services find the focused page on the window's dispatcher.
+            var assertive = await Task.Run(async () => await platform.AnnounceAsync("The disk is full", PlatformAnnouncementPriority.Assertive));
+            Program.Check(polite is PlatformResult<PlatformUnit>.Success && again is PlatformResult<PlatformUnit>.Success
+                && assertive is PlatformResult<PlatformUnit>.Success, $"The page did not announce: {polite}, {again}, {assertive}.");
+            const string Said = "polite=Saved|Saved;assertive=The disk is full";
+            var regions = await RegionsAsync(Said);
+            Program.Check(regions == Said, $"The page's live regions did not receive the announcements once each: {regions}.");
+
+            // Back in the WPF window: the WPF window announces again.
+            Program.Check(outside.Focus(), "The WPF text box did not take the keyboard focus back.");
+            await UntilAsync(() => child.FocusedPageAnnouncer is null);
+            Program.Check(await platform.AnnounceAsync("Outside again") is PlatformResult<PlatformUnit>.Success,
+                "The WPF window did not announce after the focus left the page.");
+            await Task.Delay(500);
+            regions = await RegionsAsync();
+            Program.Check(regions == Said, $"The page announced while the WPF window had the focus: {regions}.");
+            Console.WriteLine("WpfPlatformServices.ForWindow page announcement checks passed.");
+        }
+        finally { window.Close(); }
+    }
+
     // B10: a WPF window's services show WPF context menus: Windows access keys, shortcut hints, check marks and disabled
     // entries; the chosen item, null when dismissed or replaced by a later menu, cancellation, and the owner's state.
     [Test, NotInParallel("WpfSuite", Order = 25)]

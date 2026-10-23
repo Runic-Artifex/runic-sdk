@@ -252,10 +252,17 @@ creates services with their own lifetime.
 `AnnounceAsync(message, priority)` raises a UI Automation notification from the
 window's automation peer, as Runic Desktop's WebView2 window does, which
 Narrator and NVDA speak: `Polite` messages are queued and `Assertive` ones
-replace those not yet spoken. It returns `Success` once the window raised it,
-`OwnerUnavailable` before the window has a handle and `OwnerClosed` after it
-closed. Send each message one way: a live region in a `RunicViewHost`'s page
-reaches the screen reader too.
+replace those not yet spoken. While the page of a `RunicWebView` in the window
+(a `RunicViewHost`'s, for example) has the keyboard focus, the page's Bridge
+says the message instead, in a visually hidden live region it adds to the page
+(`div[data-runic-announcer]` at the end of `<body>`): the focus is then in
+WebView2's browser process, and NVDA speaks a notification only from the
+application that has the focus. The page and its Content-Security-Policy need
+no change ([Runic.Desktop](../Runic.Desktop/README.md), "Why WebView2 announces
+through the page"). It returns `Success` once the window raised it or the page
+received it, `OwnerUnavailable` before the window has a handle and
+`OwnerClosed` after it closed. Send each message one way: a live region of the
+page's own reaches the screen reader too.
 
 `Clipboard` is also an `IDesktopClipboard`, with HTML, RTF, PNG images and files,
 and `SetBadgeAsync` and `SetProgressAsync` show a badge and progress on the

@@ -1712,10 +1712,10 @@ jobs:
             console.log("PACKAGING_OK|flathub|package|" + receipt.applicationId);' "$receipts/flathub.json"
           flatpak uninstall --user -y --noninteractive org.runic.tests.FlathubProbe
 
-  # I-074: what NVDA (WebView2) and Orca (WebKitGTK, GTK 3 and GTK 4) say while the accessibility probe reads and changes
-  # the accessibility fixture, as the native job's macOS leg checks VoiceOver. The probe starts the screen reader before
-  # the page opens and quits it (Runic.Desktop.AccessibilityProbe/SpeechScenario.cs); Expectations.cs lists what each
-  # one is known not to say. NVDA logs its speech with the silence synthesizer; Orca speaks through a Speech Dispatcher
+  # I-074: what NVDA (WebView2, and a WPF RunicWebView since I-203) and Orca (WebKitGTK, GTK 3 and GTK 4) say while the
+  # accessibility probe reads and changes the accessibility fixture, as the native job's macOS leg checks VoiceOver. The
+  # probe starts the screen reader before the page opens and quits it (Runic.Desktop.AccessibilityProbe/SpeechScenario.cs);
+  # Expectations.cs lists what each one is known not to say. NVDA logs its speech with the silence synthesizer; Orca speaks through a Speech Dispatcher
   # whose output module writes each utterance to a file. Narrator stays a manual check.
   screen-readers:
     name: Screen reader / ${{ matrix.reader }}
@@ -1753,6 +1753,7 @@ jobs:
           if [[ "$RUNNER_OS" == Windows ]]; then
             dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
             dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0-windows
+            dotnet build tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release
           else
             dotnet build tests/native/Runic.Desktop.Gtk4.Smoke -c Release
             dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0
@@ -1766,6 +1767,11 @@ jobs:
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility \
               --probe "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
               --screen-reader nvda --nvda "$RUNNER_TEMP/nvda/nvda.exe" --receipt artifacts/screen-reader/webview2.json
+            # The same page in a WPF window's RunicWebView, which announces through WpfPlatformServices (I-203).
+            dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release --no-build -- \
+              --treenode-filter "/*/*/*/*[Category=ScreenReader]" --output detailed \
+              --test-parameter probe="$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
+              --test-parameter nvda="$RUNNER_TEMP/nvda/nvda.exe" --test-parameter receipt="$PWD/artifacts/screen-reader/wpf/wpf.json"
             exit
           fi
           probe=(dotnet "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll")

@@ -1066,8 +1066,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await host.AnnounceAsync(message, priority, cancellationToken).ConfigureAwait(false);
     }
 
-    // Whether the page may announce DesktopWindow.AnnounceAsync (WebUiSession prepares its live regions).
-    internal bool AnnouncesInPage => _embeddedHost is WindowsWebView2Host;
+    // Whether the page may announce DesktopWindow.AnnounceAsync, or the announcements of the WPF window around a
+    // RunicWebView (I-203); WebUiSession prepares its live regions.
+    internal bool AnnouncesInPage => _embeddedHost is WindowsWebView2Host or DesktopWindowHostAdapter { AnnouncesInPage: true };
 
     // Announces the message in the live region of every authenticated page (WebUiBridge's announce); false when no
     // page is connected.
@@ -3114,7 +3115,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (_runtimeOptions is null)
         {
-            return WebUiApplication.CreateEmbeddedHost();
+            var applicationHost = WebUiApplication.CreateEmbeddedHost();
+            (applicationHost as DesktopWindowHostAdapter)?.AttachPageAnnouncer(AnnounceInPageAsync);
+            return applicationHost;
         }
 
         var factory = _runtimeOptions.EmbeddedHostFactory;
@@ -3123,7 +3126,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             throw new PlatformNotSupportedException(
                 "No embedded WebView host is available. Install the platform runtime or configure a custom host factory.");
         }
-        return factory.Create();
+        var host = factory.Create();
+        (host as DesktopWindowHostAdapter)?.AttachPageAnnouncer(AnnounceInPageAsync);
+        return host;
     }
 
     private bool TryDeleteGeneratedProfile(string path)
