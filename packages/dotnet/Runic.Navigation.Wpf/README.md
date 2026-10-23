@@ -282,6 +282,31 @@ View of each retained entry and show it again on Back or BackTo:
 - Kept Views get their `DataTemplate` set on their presenter, so re-entering
   the tree never builds a new View from the template.
 
+`RetainViews` is the setting of the host. To decide it for one entry instead,
+push the entry with `NavigationRequestOptions.RetainView` (since 0.11), the
+same idea as WPF's `JournalEntry.KeepAlive`, Prism's `KeepAlive` or WinUI's
+`NavigationCacheMode` per page:
+
+```csharp
+// Keep the long list's View, with its scroll position, in a host that rebuilds Views.
+await regions.Main.PushAsync<OrdersViewModel>(new NavigationRequestOptions { RetainView = true });
+// Rebuild this page's View in a host with RetainViews="True".
+await regions.Main.PushAsync<ReportViewModel>(new NavigationRequestOptions { RetainView = false });
+```
+
+- `true` keeps the entry's View while the entry is retained, `false` never
+  keeps it, and `null`, the default, follows `RetainViews`. Push, Replace,
+  Reset and `PushForResult` record it on the entry they create
+  (`NavigationEntry.RetainView`); initial entries follow `RetainViews`.
+- The rules above apply to each entry with the value that decides for it. A
+  host that loads again shows the same View of a current entry that keeps its
+  View, and turning `RetainViews` off keeps the Views of entries pushed with
+  `RetainView = true`.
+- The option doesn't change the entry's lifetime. A kept View is dropped as
+  soon as its entry leaves the stack, also while the navigator still waits for
+  the page's operations declared `RunicOperationRetirement.Cancel` or `Drain`
+  before it disposes the page.
+
 ### Closing the window
 
 Disposing the services on exit retires entries **without** asking their
@@ -449,10 +474,40 @@ A guard for a whole region, rather than one page, is an
 on the navigator for every region (see
 [Guards for a whole region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#guards-for-a-whole-region)).
 `GuardWindowClose` clears the region, so it asks these guards too. A navigator
-guard is asked once per guarded region that has entries; register a
-window-wide question on the main region instead. A precondition registered
+guard is asked once per guarded region that has entries; for a window-wide
+question, use `WindowCloseConfirmation` (below). A precondition registered
 with `Order = NavigationRegionGuardOrder.BeforeEntries`, such as "no
 navigation while an operation runs", refuses the close before any page asks.
+
+#### Asking once per window close
+
+`WindowCloseConfirmation` (since 0.11) creates a region guard that a window
+close asks once, however many guarded regions the window clears:
+
+```csharp
+// Asked when the window closes, once; every other navigation passes.
+navigator.AddDepartureGuard(WindowCloseConfirmation.Create(async (departure, token) =>
+{
+    var dirty = await departure.ModelContext.InvokeAsync(() => documents.HasUnsavedChanges, token);
+    return !dirty || MessageBox.Show(window, "Discard the unsaved changes in this window?", "Close",
+        MessageBoxButton.OKCancel) == MessageBoxResult.OK;
+}));
+
+// Or wrap a guard that also asks on ordinary navigation, such as a ReactiveUI interaction.
+navigator.AddDepartureGuard(WindowCloseConfirmation.OncePerClose(
+    ReactiveNavigationRegionGuard.WithInteraction(shell.ConfirmDiscard, _ => "Discard?", _ => shell.IsDirty)));
+```
+
+- The guard is asked for the first region the close clears. After a yes, the
+  close's other clears depart without asking it; a no keeps the window open,
+  as any veto does. The next close asks again.
+- `Create` lets every departure that isn't a window close pass without
+  asking. `OncePerClose` asks the wrapped guard as before outside a close.
+- Register it on the navigator, or on the regions the window guards. A close
+  is recognized by the region the window clears, so a region guard on a child
+  region that the clear closes is asked as usual.
+- An `OnCommitted` action of the guard runs when the clear that asked
+  commits, also when a later region's clear then keeps the window open.
 
 ## Selecting tabs and other existing models
 

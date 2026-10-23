@@ -819,14 +819,15 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     {
         var request = new NavigationResultRequestCore<TResult>(region, cancellationToken);
         var outcome = Start(region, NavigationOperation.Push, target, null, options?.ExpectedCurrent, cancellationToken,
-            @return: null, request, requester: options?.Requester);
+            @return: null, request, requester: options?.Requester, retainView: options?.RetainView);
         return new(NavigationResults.MapTask<TContent>(outcome), request.Completion);
     }
 
     internal Task<TransitionOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
         CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
-        bool runDetached = false, NavigationAdmission? admission = null, NavigationEntryId? requester = null)
+        bool runDetached = false, NavigationAdmission? admission = null, NavigationEntryId? requester = null,
+        bool? retainView = null)
     {
         TransitionOutcome? rejected = null;
         NavigationTransition? transition = null;
@@ -876,6 +877,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     {
                         Phase = NavigationEntryPhase.Pending,
                         ResultRequest = request,
+                        RetainView = retainView,
                     };
                     _tracked.Add(pending);
                     // A pending entry holds its content from admission, so a pending Share keeps the content alive while the

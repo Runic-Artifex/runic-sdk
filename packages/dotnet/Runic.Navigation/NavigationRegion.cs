@@ -530,7 +530,7 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken,
         NavigationReturn? @return = null) =>
         Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken, @return,
-            admission: options?.Admission, requester: options?.Requester);
+            admission: options?.Admission, requester: options?.Requester, retainView: options?.RetainView);
 
     // Runs inside a model turn. IsTransitioning and IsBusy are raised only when their
     // value differs from the last value raised, so admission and release on

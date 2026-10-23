@@ -72,6 +72,29 @@ public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent
     /// entry, or one that finished retiring, is not current.
     /// </remarks>
     public NavigationEntryId? Requester { get; init; }
+
+    /// <summary>
+    /// Gets whether a presentation that can keep views keeps the view of the entry this request creates while that entry
+    /// is retained, and shows it again when the entry becomes current again, or <see langword="null"/>, the default, to
+    /// follow the presentation's own setting. It applies to the entry of a Push, Replace or Reset, including
+    /// <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/>; requests that create no entry ignore it. The
+    /// entry reports it as <see cref="NavigationEntry.RetainView"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It overrides the presentation's setting for one entry in either direction: <see langword="true"/> keeps the view
+    /// of an entry whose presentation doesn't keep views, such as a long form or a list with a scroll position in a
+    /// region whose other pages are cheap to rebuild; <see langword="false"/> rebuilds the view of an entry whose
+    /// presentation keeps views. <c>NavigationHost</c> in Runic.Navigation.Wpf reads it in place of
+    /// <c>RetainViews</c>; presentations that don't keep views, such as Runic Views pages, ignore it.
+    /// </para>
+    /// <para>
+    /// It never changes the entry's lifetime: the entry is retained or retires as without the option, and a kept view
+    /// is dropped when its entry leaves the region's stack, also while the content's disposal waits for operations
+    /// declared <c>RunicOperationRetirement.Cancel</c> or <c>Drain</c> (<see cref="INavigationPresentation.ForgetAsync"/>).
+    /// </para>
+    /// </remarks>
+    public bool? RetainView { get; init; }
 }
 
 /// <summary>Identifies one navigation entry. Ids increase monotonically per navigator.</summary>

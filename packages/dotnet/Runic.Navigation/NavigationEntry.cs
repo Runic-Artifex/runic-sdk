@@ -38,6 +38,14 @@ public abstract class NavigationEntry
     /// </summary>
     public IServiceProvider Services => Core.Services;
 
+    /// <summary>
+    /// Gets whether a presentation that can keep views keeps this entry's view while the entry is retained:
+    /// <see cref="NavigationRequestOptions.RetainView"/> of the Push, Replace or Reset that created the entry, or
+    /// <see langword="null"/> to follow the presentation's own setting, such as <c>NavigationHost.RetainViews</c> in
+    /// Runic.Navigation.Wpf. Initial entries have no request and return <see langword="null"/>.
+    /// </summary>
+    public bool? RetainView => Core.RetainView;
+
     /// <inheritdoc />
     public override string ToString() => $"{Id.Value}:{Core.ContentTypeName} ({State})";
 }
@@ -231,6 +239,9 @@ internal sealed class NavigationEntryCore
     // Set under the navigator gate while the initialize hook runs. Retirement of
     // owned content waits for it (bounded by CloseTimeout) before disposing.
     public Task? Initializing { get; set; }
+
+    // NavigationRequestOptions.RetainView of the request that created the entry; null for initial entries.
+    public bool? RetainView { get; init; }
 
     // The PushForResult request that pushed this entry; set at admission, before any hook runs.
     public NavigationResultRequestCore? ResultRequest { get; set; }
