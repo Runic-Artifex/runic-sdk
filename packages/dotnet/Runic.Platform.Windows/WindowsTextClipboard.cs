@@ -95,7 +95,8 @@ internal sealed class WindowsTextClipboard(INativeWindowOwner owner, IWindowsCli
         return InvokeAsync(handle => action(formats, handle), cancellationToken);
     }
 
-    private async ValueTask<PlatformResult<T>> InvokeAsync<T>(Func<nint, PlatformResult<T>> action, CancellationToken cancellationToken)
+    // Internal for the native tests, which open the clipboard themselves through the same retry.
+    internal async ValueTask<PlatformResult<T>> InvokeAsync<T>(Func<nint, PlatformResult<T>> action, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!owner.IsAvailable) return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
