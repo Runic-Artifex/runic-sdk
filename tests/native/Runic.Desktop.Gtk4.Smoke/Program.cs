@@ -366,6 +366,7 @@ static async Task RunAsync()
         {
             throw new InvalidOperationException("GTK 4 clipboard character bound was not enforced.");
         }
+        await ClipboardFormatsSmoke.RunAsync(clipboard);
         var successor = Gtk4PlatformProvider.CreateTextClipboard(owner);
         try
         {

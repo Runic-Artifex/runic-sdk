@@ -214,6 +214,10 @@ public sealed class PortalApplication
     /// by the window from the host instead.</remarks>
     public IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new PortalPlatformProvider.UnparentedOwner());
 
+    // The window's badge and progress on the application's launcher entry; without an ApplicationId it reports
+    // BackendUnavailable.
+    internal IWindowTaskbar CreateWindowTaskbar(string? address = null) => new PortalWindowTaskbar(this, address);
+
     internal void Diagnose(string code, string message, string remedy)
     {
         try { _diagnosticSink?.Invoke(PortalDiagnostic.Create(code, message, remedy)); }

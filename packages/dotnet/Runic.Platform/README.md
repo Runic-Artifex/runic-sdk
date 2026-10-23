@@ -265,21 +265,23 @@ characters, `ReadImageAsync` in PNG bytes and `ReadFilesAsync` in paths; more
 reports `TooLarge`, and a successful `null` or empty list means the format is
 not there. `GetFormatsAsync` reads which formats are there without reading any.
 
-| | Windows | macOS |
-| --- | --- | --- |
-| HTML | `CF_HTML` ("HTML Format"); a write wraps a fragment in a document, a read returns the copied fragment | `public.html`, as written |
-| RTF | "Rich Text Format" | `public.rtf` |
-| Image | "PNG", else a bitmap converted to PNG; a write also offers `CF_DIBV5` for applications that read only bitmaps | `public.png`, else `public.tiff` converted to PNG |
-| Files | `CF_HDROP` with a copy drop effect | One `public.file-url` item per file |
-| Watch | `WM_CLIPBOARDUPDATE` | The change count, compared four times a second |
+| | Windows | macOS | Linux (GTK 3 and GTK 4) |
+| --- | --- | --- | --- |
+| HTML | `CF_HTML` ("HTML Format"); a write wraps a fragment in a document, a read returns the copied fragment | `public.html`, as written | `text/html`, as written |
+| RTF | "Rich Text Format" | `public.rtf` | `text/rtf` (`application/rtf` and `text/richtext` read too) |
+| Image | "PNG", else a bitmap converted to PNG; a write also offers `CF_DIBV5` for applications that read only bitmaps | `public.png`, else `public.tiff` converted to PNG | `image/png`, else another image format converted to PNG by gdk-pixbuf (GTK 3) or GDK (GTK 4) |
+| Files | `CF_HDROP` with a copy drop effect | One `public.file-url` item per file | `text/uri-list` and `x-special/gnome-copied-files`; GTK 4 also the FileTransfer portal in Flatpak |
+| Watch | `WM_CLIPBOARDUPDATE` | The change count, compared four times a second | `owner-change` (GTK 3), `changed` (GTK 4) |
 
 RTF is bytes: each character is one byte (Latin-1), and RTF's escapes such as
 `\u8364?` carry other characters. `WatchAsync` reports the formats now and again
 after each change, never the content: read it when the user pastes, as other
 applications' content is theirs. The capabilities are
 `ClipboardReadData`, `ClipboardWriteData` and `ClipboardWatch`; a custom
-`ITextClipboard` stays text-only, and a provider without the formats, Linux in
-this release, reports them `BackendUnavailable`.
+`ITextClipboard` stays text-only, and a provider without the formats reports
+them `BackendUnavailable`. On Wayland the compositor tells only a focused
+application about the clipboard, so the watch reports changes when a window of
+the application gains focus.
 
 ### Badges and progress
 
@@ -299,10 +301,15 @@ text, and colours the bar for `DesktopProgressState.Paused` and `Error`; the sta
 comes back after Explorer restarts. On macOS both belong to the application's
 Dock icon, which all windows share: the most recent call wins, and a window's
 badge and progress go when it closes; the Dock draws `Paused` and `Error` as a
-normal bar. The capabilities are `TaskbarBadge` and `TaskbarProgress`:
+normal bar. On Linux they belong to the application's launcher entry, as on
+macOS, through the Unity launcher API that KDE Plasma, Ubuntu Dock and Dash to Dock
+read (stock GNOME shows nothing; the call still succeeds); a dot is shown as a
+request for attention, and paused, failed or indeterminate progress as normal or
+no bar. The entry needs the application ID of `AddRunicPlatformServices(applicationId)`
+or the Flatpak ID, else the calls report `BackendUnavailable`
+(Runic.Platform.Linux.Portal). The capabilities are `TaskbarBadge` and `TaskbarProgress`:
 `OwnerUnavailable` before the window opens and on hosts without a native owner,
-`OwnerClosed` after it closed, and `ProviderNotConfigured` on Linux in this
-release. An implementation that does not override the members reports
+`OwnerClosed` after it closed. An implementation that does not override the members reports
 `OwnerUnavailable`.
 
 The capability identifiers are constants of `PlatformCapabilityIds`, so a typo
@@ -424,7 +431,7 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| Badges and progress, `IWindowPlatformServices.SetBadgeAsync` and `SetProgressAsync` | The taskbar button (Windows, also a WPF window's) or the Dock tile (macOS); `ProviderNotConfigured` on Linux | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Badges and progress, `IWindowPlatformServices.SetBadgeAsync` and `SetProgressAsync` | The taskbar button (Windows, also a WPF window's), the Dock tile (macOS) or the Unity launcher entry (GTK 3 and GTK 4, with an application ID) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's), sheets (macOS), GTK 3 message dialogs and GTK 4 alert dialogs | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |

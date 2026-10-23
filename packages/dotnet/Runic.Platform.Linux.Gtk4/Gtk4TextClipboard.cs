@@ -7,7 +7,8 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Linux.Gtk4;
 
 /// <summary>GTK 4 clipboard operations confined to a verified presentation dispatcher.</summary>
-internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : ITextClipboard, IAsyncDisposable
+/// <remarks>Gtk4ClipboardData.cs adds the formats beyond text and the watch.</remarks>
+internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : IDesktopClipboard, IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Ownership? _ownership;
@@ -65,9 +66,16 @@ internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : ITex
         }
     }
 
-    public async ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
+        var bytes = Encoding.UTF8.GetBytes(text);
+        return OfferAsync(() => BytesProvider("text/plain;charset=utf-8", bytes), cancellationToken);
+    }
+
+    // Sets the clipboard's content to a provider that create makes on the GTK thread.
+    private async ValueTask<PlatformResult<PlatformUnit>> OfferAsync(Func<nint> create, CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
@@ -88,7 +96,7 @@ internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : ITex
                 dispatched = true;
                 cancellationToken.ThrowIfCancellationRequested();
                 var clipboard = GetClipboard();
-                var ownership = CreateOwnership(clipboard, text);
+                var ownership = new Ownership(clipboard, create());
                 if (SetContent(clipboard, ownership.Provider) == 0)
                 {
                     Unref(ownership.Provider);
@@ -195,9 +203,9 @@ internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : ITex
         internal nint Provider { get; } = provider;
     }
 
-    private static unsafe Ownership CreateOwnership(nint clipboard, string text)
+    // A provider of bytes in one MIME type; the caller owns the reference.
+    private static unsafe nint BytesProvider(string mimeType, byte[] bytes)
     {
-        var bytes = Encoding.UTF8.GetBytes(text);
         byte empty = 0;
         fixed (byte* content = bytes)
         {
@@ -208,12 +216,12 @@ internal sealed partial class Gtk4TextClipboard(INativeWindowOwner owner) : ITex
             }
             try
             {
-                var provider = ContentProviderForBytes("text/plain;charset=utf-8", nativeBytes);
+                var provider = ContentProviderForBytes(mimeType, nativeBytes);
                 if (provider == 0)
                 {
                     throw new NativeBackendUnavailableException();
                 }
-                return new Ownership(clipboard, provider);
+                return provider;
             }
             finally
             {

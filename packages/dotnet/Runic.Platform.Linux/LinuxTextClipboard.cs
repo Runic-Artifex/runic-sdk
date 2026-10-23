@@ -6,7 +6,8 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Linux;
 
 /// <summary>GTK clipboard with presentation-thread ownership and asynchronous transfer draining.</summary>
-internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITextClipboard, IAsyncDisposable
+/// <remarks>LinuxClipboardData.cs adds the formats beyond text and the watch.</remarks>
+internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : IDesktopClipboard, IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Ownership? _ownership;
@@ -49,9 +50,15 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
     }
 
     /// <inheritdoc />
-    public async ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
+        return OfferAsync([("UTF8_STRING", 0)], [Encoding.UTF8.GetBytes(text)], cancellationToken);
+    }
+
+    // Takes the clipboard's ownership with every target, each served from one of the payloads.
+    private async ValueTask<PlatformResult<PlatformUnit>> OfferAsync((string Target, uint Payload)[] targets, byte[][] payloads, CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
             return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy);
@@ -65,16 +72,17 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
                 dispatched = true;
                 cancellationToken.ThrowIfCancellationRequested();
                 nint clipboard = GetClipboard();
-                var ownership = new Ownership(Encoding.UTF8.GetBytes(text));
+                var ownership = new Ownership(payloads);
                 var handle = GCHandle.Alloc(ownership);
                 ownership.Handle = handle;
-                nint target = Marshal.StringToCoTaskMemUTF8("UTF8_STRING");
+                var entries = new TargetEntry[targets.Length];
                 try
                 {
-                    var entry = new TargetEntry { Target = target, Flags = 0, Info = 0 };
+                    for (int i = 0; i < targets.Length; i++)
+                        entries[i] = new TargetEntry { Target = Marshal.StringToCoTaskMemUTF8(targets[i].Target), Flags = 0, Info = targets[i].Payload };
                     // The bool reports actual ownership acquisition. Once called,
                     // cancellation must not substitute a canceled result for it.
-                    bool acquired = SetWithData(clipboard, in entry, 1, WritePointer, ClearPointer, GCHandle.ToIntPtr(handle)) != 0;
+                    bool acquired = SetWithData(clipboard, in entries[0], (uint)entries.Length, WritePointer, ClearPointer, GCHandle.ToIntPtr(handle)) != 0;
                     if (acquired)
                     {
                         ownership.Clipboard = clipboard;
@@ -88,7 +96,10 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
                     }
                 }
                 catch { if (ownership.Handle.IsAllocated) ownership.Handle.Free(); throw; }
-                finally { Marshal.FreeCoTaskMem(target); }
+                finally
+                {
+                    foreach (var entry in entries) if (entry.Target != 0) Marshal.FreeCoTaskMem(entry.Target);
+                }
             }, cancellationToken).ConfigureAwait(false);
             return result;
         }
@@ -130,9 +141,9 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
         internal int MaximumCharacters { get; } = maximumCharacters;
         internal TaskCompletionSource<PlatformResult<string?>> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
-    private sealed class Ownership(byte[] bytes)
+    private sealed class Ownership(byte[][] payloads)
     {
-        internal byte[] Bytes { get; set; } = bytes;
+        internal byte[][] Payloads { get; set; } = payloads;
         internal GCHandle Handle;
         internal nint Clipboard;
     }
@@ -190,10 +201,12 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
         try
         {
             var ownership = (Ownership)GCHandle.FromIntPtr(context).Target!;
-            // GTK accepts a zero length with a valid pointer for empty text.
+            if (info >= ownership.Payloads.Length) return;
+            var payload = ownership.Payloads[info];
+            // GTK accepts a zero length with a valid pointer for empty text. The data's type is the requested target.
             byte dummy = 0;
-            fixed (byte* bytes = ownership.Bytes)
-                SetData(selection, Atom("UTF8_STRING", 0), 8, bytes == null ? &dummy : bytes, ownership.Bytes.Length);
+            fixed (byte* bytes = payload)
+                SetData(selection, SelectionTarget(selection), 8, bytes == null ? &dummy : bytes, payload.Length);
         }
         catch { /* Never unwind across a native callback. GTK reports transfer failure. */ }
     }
@@ -204,7 +217,7 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
         {
             var ownership = (Ownership)GCHandle.FromIntPtr(context).Target!;
             ownership.Handle.Free();
-            ownership.Bytes = [];
+            ownership.Payloads = [];
         }
         catch { /* Never unwind across a native callback. */ }
     }
@@ -217,5 +230,6 @@ internal sealed partial class LinuxTextClipboard(INativeWindowOwner owner) : ITe
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_clear")] private static partial void Clear(nint clipboard);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_get_length")] private static partial int DataLength(nint selection);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_get_data")] private static partial nint Data(nint selection);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_get_target")] private static partial nint SelectionTarget(nint selection);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_set")] private static unsafe partial void SetData(nint selection, nint type, int format, byte* data, int length);
 }
