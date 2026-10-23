@@ -195,6 +195,13 @@ or a later one. WebUI reports no version or commit that Runic could check, so
 the host logs event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before
 the first window opens, when such a library is configured.
 Applications that keep their own copy of `runic-cswebui.js` should update it.
+Since 0.11.0 the host sends Views state to the script's `__runicViewsPush`
+function and carries out navigations through `__runicContinueNavigation`, both
+as WebUI raw data. A copy from before 0.11.0 has no `__runicViewsPush`: WebUI
+then tries to call it as a script, which fails, and the page's Views receive no
+state pushes (a Content-Security-Policy reports the refusal). The build
+replaces the copy in `www/` on every build, so only a copy the application
+keeps elsewhere, such as in a frontend's `public/` folder, can be stale.
 
 The window binds all WebUI events because only that binding delivers
 disconnects. The script stops WebUI from also sending a click event for every
@@ -237,6 +244,19 @@ decisions:
 - **Your own WebUI build.** A library from `CSWEBUI_NATIVE_LIBRARY` or
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24` (see
   above); the host logs event 2101 when one is configured.
+
+- **Content-Security-Policy.** WebUI serves `SetRootFolder` files without
+  headers of its own, so give the page a policy with
+  `<meta http-equiv="Content-Security-Policy" content="…">`. A `<meta>` policy
+  cannot carry `frame-ancestors`, `report-uri` or `sandbox`. The Bridge needs
+  `'self'` scripts and connections and no `'unsafe-eval'`, as in
+  `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`.
+  The host sends Views state and navigations as data, which `runic-cswebui.js`
+  parses instead of evaluating. WebUI still evaluates script for
+  `WebUiWindow.RunJavaScript`/`ExecuteJavaScript` and
+  `WebUiEvent.RunJavaScript`, and for `SetSize` or `SetPosition` while a browser
+  window is connected (the host sizes a window before it shows it). An
+  application that uses them needs `'unsafe-eval'`.
 
 Runic does not review native WebUI's admission. For a page that shows
 untrusted content, or a machine shared with other users, prefer Runic Desktop

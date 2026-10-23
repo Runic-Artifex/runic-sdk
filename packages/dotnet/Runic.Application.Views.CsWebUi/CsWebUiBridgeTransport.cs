@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Globalization;
+using System.Text;
 using CsWebUi;
 
 namespace Runic.Application.Views.CsWebUi;
@@ -25,11 +27,30 @@ internal sealed class CsWebUiBridgeTransport(WebUiWindow window) : IBridgeTransp
         window.BindAsync(name, async (e, token) =>
             WebUiResult.FromString(await handler(new WebUiBridgeArguments(e), token).ConfigureAwait(false)));
 
+    // The raw-data function of runic-cswebui.js that receives state.
+    internal const string StatePushFunction = "__runicViewsPush";
+
     // One uncoalesced WebSocket write per call to every connected client, so delta frames
     // keep their order. WebUI blocks under its process-wide send lock until each socket
     // write completes: TCP-level back-pressure, not acknowledgement. See IAsyncBridgeTransport.
-    public void Publish(string name, string stateJson) =>
-        window.RunJavaScript($"window.__{name}Changed?.({stateJson});");
+    // The state is raw data (webui_send_raw), the route, NUL and the state's UTF-8 JSON, which
+    // runic-cswebui.js parses before it calls window.__{name}Changed. Unlike a script
+    // (webui_run), it needs no 'unsafe-eval' in the page's Content-Security-Policy.
+    public void Publish(string name, string stateJson)
+    {
+        var routeLength = Encoding.UTF8.GetByteCount(name);
+        var length = routeLength + 1 + Encoding.UTF8.GetByteCount(stateJson);
+        var buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            Encoding.UTF8.GetBytes(name, buffer);
+            buffer[routeLength] = 0;
+            Encoding.UTF8.GetBytes(stateJson, buffer.AsSpan(routeLength + 1));
+            // WebUI copies the bytes before SendRaw returns.
+            window.SendRaw(StatePushFunction, buffer.AsSpan(0, length));
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+    }
 }
 
 internal sealed class WebUiBridgeArguments(WebUiEvent value) : IBridgeArguments

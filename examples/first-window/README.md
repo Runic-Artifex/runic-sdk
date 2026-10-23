@@ -28,7 +28,9 @@ the Runic Desktop host for applications that need native windows.
 `runic-views.js`, the Views client that `Runic.Application.Views.CsWebUi`
 copies into `www/`. The page names no host:
 [First Window on Runic Desktop](../first-window-desktop/README.md) serves the
-same page with that host's client.
+same page with that host's client. Its `<meta>` Content-Security-Policy allows
+only same-origin scripts and no `'unsafe-eval'`: the Bridge's calls and state
+need neither.
 
 ## Run it from this repository
 

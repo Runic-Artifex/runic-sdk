@@ -92,6 +92,8 @@
       lastNavigation = link ? { event, url: link.href, type: "push" } : undefined;
     });
   }
+  // .NET calls this through WebUI's raw data (webui_send_raw_client) with one
+  // ignored byte, so no script is evaluated.
   window.__runicContinueNavigation = () => {
     const next = lastNavigation;
     lastNavigation = undefined;
@@ -114,6 +116,20 @@
     } finally {
       allow(false);
     }
+  };
+
+  // .NET publishes Views state as raw data (webui_send_raw): the route, NUL and
+  // the state's UTF-8 JSON, which has no raw NUL. Parsing data instead of
+  // running a script lets a Content-Security-Policy without 'unsafe-eval'
+  // receive state. WebUI evaluates the name when no such function exists, so
+  // an older copy of this script misses every state.
+  let decoder;
+  window.__runicViewsPush = data => {
+    const separator = data.lastIndexOf(0);
+    if (separator < 0) return;
+    decoder ??= new TextDecoder();
+    const callback = window[`__${decoder.decode(data.subarray(0, separator))}Changed`];
+    if (typeof callback === "function") callback(JSON.parse(decoder.decode(data.subarray(separator + 1))));
   };
 
   // The window's all-events binding delivers disconnects to .NET, and WebUI has

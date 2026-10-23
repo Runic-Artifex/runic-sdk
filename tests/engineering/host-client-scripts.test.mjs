@@ -263,6 +263,29 @@ for (const script of scripts) {
   });
 }
 
+// D040: .NET sends Views state as WebUI raw data (route, NUL, UTF-8 JSON), which
+// the script parses instead of evaluating, so a policy without 'unsafe-eval' works.
+test("runic-cswebui.js dispatches raw state pushes to the route's callback", () => {
+  const context = loadCsWebUiBridge({ isConnected: () => true, call: async () => undefined });
+  context.TextDecoder = TextDecoder;
+  const received = [];
+  context.__counterChanged = state => received.push(state);
+  const push = (route, json) => context.__runicViewsPush(new Uint8Array([
+    ...new TextEncoder().encode(route), 0, ...new TextEncoder().encode(json)]));
+
+  push("counter", '{"value":1,"text":"Grüße \\u2028","__proto__":{"polluted":true}}');
+  // An unmounted route is a no-op, as `?.(` was.
+  push("missing", '{"value":2}');
+  context.__runicViewsPush(new Uint8Array([1, 2, 3]));
+
+  expect(received.length).toBe(1);
+  expect(received[0].value).toBe(1);
+  expect(received[0].text).toBe("Grüße \u2028");
+  expect(Object.hasOwn(received[0], "__proto__")).toBe(true);
+  expect({}.polluted).toBeUndefined();
+  expect(typeof context.__runicContinueNavigation).toBe("function");
+});
+
 // Examples serve their own copy; each must match the package's script.
 test("example copies of runic-cswebui.js match the package script", () => {
   const expected = readFileSync(resolve(root, scripts[0]), "utf8");

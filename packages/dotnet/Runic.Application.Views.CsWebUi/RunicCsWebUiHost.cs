@@ -218,7 +218,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 // reload or a link before the first call (#196). CS-WebUI does not expose the destination of a
                 // navigation event, so the page repeats the navigation it recorded, if it stays on its origin.
                 else if (e.EventType == WebUiEventType.Navigation)
-                    e.RunJavaScript(ContinueNavigationScript);
+                    e.SendRaw(ContinueNavigationFunction, ContinueNavigationData);
             });
             host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, connectionBinding, viewModel);
             var attachment = opening.AttachBridge(transport, content);
@@ -261,8 +261,11 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         }
     }
 
-    // runic-cswebui.js records each navigation WebUI cancels; this repeats the last one with navigation allowed.
-    internal const string ContinueNavigationScript = "window.__runicContinueNavigation?.();";
+    // runic-cswebui.js records each navigation WebUI cancels; this function repeats the last one with navigation
+    // allowed. It is called with raw data, not a script, so the page's policy needs no 'unsafe-eval'. WebUI sends
+    // nothing for empty data, so the call carries one ignored byte.
+    internal const string ContinueNavigationFunction = "__runicContinueNavigation";
+    private static ReadOnlySpan<byte> ContinueNavigationData => [0];
 
     // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown.
     private sealed class MainThreadLoop
