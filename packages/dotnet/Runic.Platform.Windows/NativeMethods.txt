@@ -222,3 +222,6 @@ GetDpiForWindow
 ICONINFO
 BITMAPINFO
 BITMAPV5HEADER
+CryptProtectData
+CryptUnprotectData
+LocalFree

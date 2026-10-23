@@ -192,6 +192,7 @@ thread the service is on; an exception it throws is ignored.
 | `dbus-activation-name-taken` | Warning | Another process owns the application's ID on the session bus, so D-Bus activation is not served. |
 | `secret-service-unavailable` | Warning | No Secret Service answers on the session bus. |
 | `secret-service-plain-session` | Information | The Secret Service offered only an unencrypted session. |
+| `secret-service-encryption-required` | Warning | The Secret Service offered only an unencrypted session, which the store's `RequireEncryption` refuses. |
 | `trash-portal-unavailable` | Warning | The Trash portal could not move the item. |
 | `desktop-applications-sandboxed` | Information | Inside Flatpak or Snap the host's applications are out of reach. |
 | `desktop-application-unknown` | Warning | No usable desktop entry has the requested ID. |
@@ -368,7 +369,12 @@ if (claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: Applicati
 secrets in the desktop's Secret Service (`org.freedesktop.secrets`): GNOME
 Keyring, KeePassXC or KWallet. Secrets travel over an encrypted
 `dh-ietf1024-sha256-aes128-cbc-pkcs7` session; a service without it gets a
-`plain` session and the `secret-service-plain-session` diagnostic. Items use
+`plain` session and the `secret-service-plain-session` diagnostic.
+`CreateSecretStore(new DesktopSecretStoreOptions { RequireEncryption = true })`
+refuses that session instead: requests fail with `Failed(Other)` and the
+`secret-service-encryption-required` diagnostic. Set it when the application
+knows its users' providers, as GNOME Keyring and KeePassXC support the
+algorithm. Items use
 libsecret's generic schema (`service` and `account` attributes), so
 `secret-tool lookup service <service> account <account>` reads them, and are
 labelled `<service> (<account>)`. A locked keyring is unlocked through the

@@ -76,6 +76,18 @@ public sealed class PortalApplication
     /// <remarks>It needs no window and connects to nothing until the first request. Inside Flatpak or Snap the sandbox
     /// must allow talking to <c>org.freedesktop.secrets</c>; otherwise requests report unavailable.</remarks>
     public IDesktopSecretStore CreateSecretStore() => new SecretServiceStore(application: this);
+    /// <summary>Creates secret storage in the desktop's Secret Service with <paramref name="options"/>.</summary>
+    /// <remarks>With <see cref="DesktopSecretStoreOptions.RequireEncryption"/> a service without the
+    /// <c>dh-ietf1024-sha256-aes128-cbc-pkcs7</c> algorithm fails each request with <see cref="PlatformFailureCode.Other"/>
+    /// and the <c>secret-service-encryption-required</c> diagnostic instead of using a <c>plain</c> session. Otherwise the
+    /// same as <see cref="CreateSecretStore()"/>; the macOS-only <see cref="DesktopSecretStoreOptions.UseDataProtectionKeychain"/>
+    /// has no effect.</remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    public IDesktopSecretStore CreateSecretStore(DesktopSecretStoreOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new SecretServiceStore(application: this, requireEncryption: options.RequireEncryption);
+    }
     /// <summary>Creates the user's trash, following the freedesktop.org Trash specification.</summary>
     /// <remarks>It needs no window. Outside a sandbox it moves items into <c>$XDG_DATA_HOME/Trash</c>, or into the trash
     /// at the top of the item's mount; inside Flatpak or Snap it asks the Trash portal.</remarks>

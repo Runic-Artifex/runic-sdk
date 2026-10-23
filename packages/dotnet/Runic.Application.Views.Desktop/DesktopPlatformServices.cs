@@ -485,18 +485,40 @@ public static partial class DesktopPlatformServices
     public static IDesktopSecretStore CreateSecretStore(string applicationId)
     {
         ValidateApplicationId(applicationId);
-        return CreateSecretStore(applicationId, null);
+        return CreateSecretStore(applicationId, null, (ILogger?)null);
     }
 
-    internal static IDesktopSecretStore CreateSecretStore(ILogger? logger) => CreateSecretStore(null, logger);
+    /// <summary>Creates secret storage with <paramref name="options"/>, for the application identified by
+    /// <paramref name="applicationId"/> when it is not <see langword="null"/>.</summary>
+    /// <param name="applicationId">The application's identity, as for <see cref="CreateSecretStore(string)"/>, or
+    /// <see langword="null"/> as for <see cref="CreateSecretStore()"/>.</param>
+    /// <param name="options">Store-wide choices: non-interactive requests, a required encrypted Secret Service session on
+    /// Linux and the macOS data-protection keychain. Each provider's <c>CreateSecretStore(DesktopSecretStoreOptions)</c>
+    /// documents their effect.</param>
+    /// <returns>A secret store; it holds no native resources between requests and needs no disposal.</returns>
+    /// <remarks>
+    /// Otherwise the same as <see cref="CreateSecretStore()"/>. <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/>
+    /// registers the store with default options; to register this one, add it to the services before calling that
+    /// method.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
+    public static IDesktopSecretStore CreateSecretStore(string? applicationId, DesktopSecretStoreOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (applicationId is not null) ValidateApplicationId(applicationId);
+        return CreateSecretStore(applicationId, options, null);
+    }
 
-    internal static IDesktopSecretStore CreateSecretStore(string? applicationId, ILogger? logger)
+    internal static IDesktopSecretStore CreateSecretStore(ILogger? logger) => CreateSecretStore(null, null, logger);
+
+    internal static IDesktopSecretStore CreateSecretStore(string? applicationId, DesktopSecretStoreOptions? options, ILogger? logger)
     {
         IDesktopSecretStore? store = null;
-        if (OperatingSystem.IsWindows()) store = Optional(CreateWindowsSecretStore);
+        if (OperatingSystem.IsWindows()) store = Optional(() => OperatingSystem.IsWindows() ? CreateWindowsSecretStore(options) : null);
 #if RUNIC_PORTABLE_PLATFORMS
-        else if (OperatingSystem.IsLinux()) store = CreatePortalSecretStore(applicationId, logger);
-        else if (OperatingSystem.IsMacOS()) store = CreateMacOSSecretStore();
+        else if (OperatingSystem.IsLinux()) store = CreatePortalSecretStore(applicationId, options, logger);
+        else if (OperatingSystem.IsMacOS()) store = CreateMacOSSecretStore(options);
 #endif
         return store ?? DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -566,17 +588,22 @@ public static partial class DesktopPlatformServices
 
     [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopSecretStore CreateWindowsSecretStore() => WindowsPlatformProvider.CreateSecretStore();
+    private static IDesktopSecretStore CreateWindowsSecretStore(DesktopSecretStoreOptions? options) =>
+        options is null ? WindowsPlatformProvider.CreateSecretStore() : WindowsPlatformProvider.CreateSecretStore(options);
 
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopSecretStore CreatePortalSecretStore(string? applicationId, ILogger? logger) =>
-        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic)).CreateSecretStore();
+    private static IDesktopSecretStore CreatePortalSecretStore(string? applicationId, DesktopSecretStoreOptions? options, ILogger? logger)
+    {
+        var application = new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic));
+        return options is null ? application.CreateSecretStore() : application.CreateSecretStore(options);
+    }
 
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static IDesktopSecretStore CreateMacOSSecretStore() => MacOSPlatformProvider.CreateSecretStore();
+    private static IDesktopSecretStore CreateMacOSSecretStore(DesktopSecretStoreOptions? options) =>
+        options is null ? MacOSPlatformProvider.CreateSecretStore() : MacOSPlatformProvider.CreateSecretStore(options);
 #endif
 
     // The checks of AddRunicPlatformServices(services, applicationId) for the running operating system.

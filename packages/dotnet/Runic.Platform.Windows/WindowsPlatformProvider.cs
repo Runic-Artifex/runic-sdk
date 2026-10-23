@@ -105,9 +105,23 @@ public static class WindowsPlatformProvider
     }
     /// <summary>Creates secret storage in the user's Credential Manager, as generic credentials.</summary>
     /// <remarks>Each secret is a credential whose target is <c>service/account</c>, with <c>/</c> and <c>%</c> in the
-    /// service percent-encoded, and whose user name is the account. It persists for this user on this computer.</remarks>
+    /// service percent-encoded, and whose user name is the account. It persists for this user on this computer. A binary
+    /// secret above 2560 bytes, the blob limit, is kept in a file under <c>%LOCALAPPDATA%\Runic\Secrets</c> protected
+    /// with DPAPI for this user (<c>CryptProtectData</c>), which the credential refers to; deleting the secret removes
+    /// both.</remarks>
     public static IDesktopSecretStore CreateSecretStore()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsSecretStore(); }
+    /// <summary>Creates secret storage in the user's Credential Manager with <paramref name="options"/>.</summary>
+    /// <remarks>The same store as <see cref="CreateSecretStore()"/>: Credential Manager never prompts and transfers nothing
+    /// in the clear, so <see cref="DesktopSecretStoreOptions.AllowUserInteraction"/> and
+    /// <see cref="DesktopSecretStoreOptions.RequireEncryption"/> have no effect, nor has the macOS-only
+    /// <see cref="DesktopSecretStoreOptions.UseDataProtectionKeychain"/>.</remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    public static IDesktopSecretStore CreateSecretStore(DesktopSecretStoreOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return CreateSecretStore();
+    }
     /// <summary>Creates the Recycle Bin, through the shell's own file operation without UI.</summary>
     /// <remarks>An item the shell cannot recycle, such as one on a network share or larger than the Recycle Bin, is not
     /// deleted permanently: the request reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>. Listing,

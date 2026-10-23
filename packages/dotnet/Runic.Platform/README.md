@@ -683,9 +683,29 @@ if (await secrets.GetAsync("com.example.Mail", account) is PlatformResult<string
 await secrets.DeleteAsync("com.example.Mail", account); // Success(false): none stored
 ```
 
-Services and accounts are 1 to 256 characters without NUL. Secrets are UTF-8
-text of at most 2560 bytes on every platform; a longer one is
-`Failed(TooLarge)`. No reachable store is `Unavailable(BackendUnavailable)`; a
+Services and accounts are 1 to 256 characters without NUL. Text secrets are
+UTF-8 of at most 2560 bytes on every platform; a longer one is
+`Failed(TooLarge)`. `GetBytesAsync` and `SetBytesAsync` store binary secrets of
+up to 64 KiB (`DesktopSecretStore.MaximumBinarySecretBytes`) on every platform.
+A service and account hold one item in either form: `GetAsync` reads a binary
+item that is UTF-8 text, and `GetBytesAsync` reads a text item as its bytes.
+Clear the arrays the store returns once used. A store implemented before 0.11
+reports the binary members `Unavailable(BackendUnavailable)`.
+
+```csharp
+var background = DesktopPlatformServices.CreateSecretStore("com.example.Mail",
+    new DesktopSecretStoreOptions { AllowUserInteraction = false, RequireEncryption = true });
+if (await background.GetBytesAsync("com.example.Mail", account) is PlatformResult<byte[]?>.Failed { Code: PlatformFailureCode.Locked })
+    { /* refresh later, when the user is present */ }
+```
+
+`DesktopSecretStoreOptions` are store-wide: `AllowUserInteraction = false` fails
+with `Failed(Locked)` instead of an unlock or access prompt (best effort for the
+Linux Secret portal); `RequireEncryption` refuses a Linux Secret Service without
+an encrypted session; `UseDataProtectionKeychain` uses the macOS data-protection
+keychain, which needs a team-signed bundle with the `keychain-access-groups`
+entitlement. To register such a store, add it to the services before
+`AddRunicPlatformServices()`. No reachable store is `Unavailable(BackendUnavailable)`; a
 locked store that cannot ask the user to unlock it is `Failed(Locked)`; a
 dismissed unlock or access prompt is `Failed(UserDismissed)`. A request may wait
 while the store asks the user. Hosts without a provider register

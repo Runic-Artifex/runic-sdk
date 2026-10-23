@@ -580,6 +580,23 @@ internal sealed class WindowServiceChecks
             "An empty application ID was accepted.");
     }
 
+    // B15: the options overload creates the same provider, with or without an application ID, and checks its arguments.
+    [Test]
+    public void SecretStoreTakesOptions()
+    {
+        var options = new DesktopSecretStoreOptions { AllowUserInteraction = false, RequireEncryption = true };
+        var store = DesktopPlatformServices.CreateSecretStore("org.example.Notes", options);
+        Require(store.GetType() == DesktopPlatformServices.CreateSecretStore().GetType()
+            && DesktopPlatformServices.CreateSecretStore(null, options).GetType() == store.GetType(),
+            $"The options overload created another provider: {store.GetType().FullName}.");
+        if (OperatingSystem.IsLinux())
+            Require(PortalIdentity(store) == "org.example.Notes" && PortalIdentity(DesktopPlatformServices.CreateSecretStore(null, options)) is null,
+                "The Linux options overload did not pass the application ID.");
+        Require(Catch(() => DesktopPlatformServices.CreateSecretStore("org.example.Notes", null!)) is ArgumentNullException
+            && Catch(() => DesktopPlatformServices.CreateSecretStore("", options)) is ArgumentException,
+            "The options overload accepted invalid arguments.");
+    }
+
     // The ApplicationId of the PortalApplication a Linux provider keeps.
     private static string? PortalIdentity(object provider)
     {

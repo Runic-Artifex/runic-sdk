@@ -216,9 +216,23 @@ in the user's default keychain, labelled with the service, as Keychain Access
 shows them. The Keychain may ask the user to unlock it or to allow the
 application; a request waits for the answer, which cancellation does not
 interrupt. A locked keychain that cannot show its dialog, as in an SSH session,
-reports `Failed(Locked)`, and a dismissed dialog `Failed(UserDismissed)`. The
-data-protection keychain, which needs a `keychain-access-groups` entitlement, is
-not used. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+reports `Failed(Locked)`, and a dismissed dialog `Failed(UserDismissed)`.
+Binary secrets of up to 64 KiB are the item's data as is.
+
+`CreateSecretStore(DesktopSecretStoreOptions)`:
+
+- `AllowUserInteraction = false`: a locked login keychain is `Failed(Locked)`
+  before any query, and queries forbid authentication UI
+  (`kSecUseAuthenticationUIFail`; an `LAContext` with `interactionNotAllowed`
+  for the data-protection keychain), so an access prompt is `Failed(Locked)` too.
+- `UseDataProtectionKeychain = true`: the data-protection keychain
+  (`kSecUseDataProtectionKeychain`). It needs a bundle signed with a team ID and
+  the `keychain-access-groups` entitlement; without them a request is
+  `Failed(PermissionDenied)` with `OSStatus -34018`. Items of the login keychain
+  are not moved: read them with a store without the option and write them with
+  one that has it.
+
+See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
 
 ## Message boxes
 

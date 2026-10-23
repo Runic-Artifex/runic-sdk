@@ -471,3 +471,21 @@ override Runic.Platform.DesktopDragData.GetHashCode() -> int
 override Runic.Platform.DesktopDragData.ToString() -> string!
 static Runic.Platform.DesktopDragData.operator !=(Runic.Platform.DesktopDragData? left, Runic.Platform.DesktopDragData? right) -> bool
 static Runic.Platform.DesktopDragData.operator ==(Runic.Platform.DesktopDragData? left, Runic.Platform.DesktopDragData? right) -> bool
+const Runic.Platform.DesktopSecretStore.MaximumBinarySecretBytes = 65536 -> int
+Runic.Platform.DesktopSecretStoreOptions
+Runic.Platform.DesktopSecretStoreOptions.<Clone>$() -> Runic.Platform.DesktopSecretStoreOptions!
+Runic.Platform.DesktopSecretStoreOptions.AllowUserInteraction.get -> bool
+Runic.Platform.DesktopSecretStoreOptions.AllowUserInteraction.init -> void
+Runic.Platform.DesktopSecretStoreOptions.DesktopSecretStoreOptions() -> void
+Runic.Platform.DesktopSecretStoreOptions.Equals(Runic.Platform.DesktopSecretStoreOptions? other) -> bool
+Runic.Platform.DesktopSecretStoreOptions.RequireEncryption.get -> bool
+Runic.Platform.DesktopSecretStoreOptions.RequireEncryption.init -> void
+Runic.Platform.DesktopSecretStoreOptions.UseDataProtectionKeychain.get -> bool
+Runic.Platform.DesktopSecretStoreOptions.UseDataProtectionKeychain.init -> void
+Runic.Platform.IDesktopSecretStore.GetBytesAsync(string! service, string! account, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<byte[]?>!>
+Runic.Platform.IDesktopSecretStore.SetBytesAsync(string! service, string! account, System.ReadOnlyMemory<byte> secret, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+override Runic.Platform.DesktopSecretStoreOptions.Equals(object? obj) -> bool
+override Runic.Platform.DesktopSecretStoreOptions.GetHashCode() -> int
+override Runic.Platform.DesktopSecretStoreOptions.ToString() -> string!
+static Runic.Platform.DesktopSecretStoreOptions.operator !=(Runic.Platform.DesktopSecretStoreOptions? left, Runic.Platform.DesktopSecretStoreOptions? right) -> bool
+static Runic.Platform.DesktopSecretStoreOptions.operator ==(Runic.Platform.DesktopSecretStoreOptions? left, Runic.Platform.DesktopSecretStoreOptions? right) -> bool

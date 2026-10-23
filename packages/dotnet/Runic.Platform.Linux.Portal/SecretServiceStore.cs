@@ -19,6 +19,9 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
     // The algorithm the last request negotiated, for tests that check a real service encrypts.
     internal string? LastAlgorithm { get; private set; }
 
+    // Whether a plain session is refused (DesktopSecretStoreOptions.RequireEncryption).
+    internal bool RequireEncryption => requireEncryption;
+
     public ValueTask<PlatformResult<string?>> GetAsync(string service, string account, CancellationToken cancellationToken = default)
     {
         SecretStoreValidation.Validate(service, account);
@@ -203,6 +206,15 @@ internal sealed class SecretServiceClient
             application?.Diagnose("secret-service-plain-session",
                 "The Secret Service does not support encrypted sessions, so secrets cross the session bus unencrypted.",
                 "Use a Secret Service provider that supports the dh-ietf1024-sha256-aes128-cbc-pkcs7 algorithm, as GNOME Keyring and KeePassXC do.");
+        }
+        catch (DBusException error) when (error.ErrorName == "org.freedesktop.DBus.Error.NotSupported")
+        {
+            // RequireEncryption: no plain session; the request fails with the service's error.
+            application?.Diagnose("secret-service-encryption-required",
+                "The Secret Service does not support encrypted sessions, and the secret store requires one.",
+                "Use a Secret Service provider that supports the dh-ietf1024-sha256-aes128-cbc-pkcs7 algorithm, as GNOME Keyring and KeePassXC do, " +
+                "or create the store without DesktopSecretStoreOptions.RequireEncryption.");
+            throw;
         }
         finally { CryptographicOperations.ZeroMemory(privateBytes); }
     }
