@@ -231,7 +231,11 @@ internal static partial class Program
     /// <summary>The fault code of a cancelled command, the one Runic.CommandLine reports.</summary>
     internal const string CancelledCode = "RCLI4000";
 
-    private static async Task<CommandOutcome<T>> ExecuteAsync<T>(
+    /// <summary>
+    /// Runs a command whose output streams (<paramref name="stream"/>) or is collected for its payload, and maps the
+    /// tool's usage and development exceptions to faults with their codes.
+    /// </summary>
+    internal static async Task<CommandOutcome<T>> ExecuteAsync<T>(
         CommandExecutionContext context,
         bool stream,
         Func<StringWriter, Task<CommandOutcome<T>>> operation)

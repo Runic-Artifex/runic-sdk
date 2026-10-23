@@ -57,13 +57,13 @@ export const platformRules = [
   // GTK 4 and the Linux providers run on the Linux legs only.
   { platforms: [], paths: ["packages/dotnet/Runic.Desktop.Gtk4", "tests/native/Runic.Desktop.Gtk4.Smoke",
     "packages/dotnet/Runic.Platform.Linux*", "tests/dotnet/Runic.Platform.Linux*", "eng/portals"] },
-  // The native window layer, platform contracts and runtime, and the packaging recipes and probe.
+  // The native window layer, platform contracts and runtime, and the packaging recipes, dotnet runic package and the probe.
   { platforms: all, paths: ["packages/dotnet/Runic.Desktop", "tests/dotnet/Runic.Desktop.Tests", "tests/fixtures/desktop",
     "tests/native/Runic.Desktop.ComparativeStressAdapter", "packages/dotnet/Runic.Platform", "packages/dotnet/Runic.Platform.Runtime",
     "tests/dotnet/Runic.Platform.Runtime.Tests", "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.AccessibilityProbe",
     "eng/build/desktop.props", "eng/branding/desktop", "tools/Runic.Application.Templates/content/runic-app/packaging",
     "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs", "tools/Runic.Application.Templates/content/runic-app/icons",
-    "tests/native/Runic.Packaging.Probe"] },
+    "tests/native/Runic.Packaging.Probe", "tools/dotnet-runic/Packaging"] },
   // The managed Windows and View runtime, its NativeAOT apps, probes and file watching, the development asset source,
   // and the test host whose tests
   // run there (Runic.Application.Views.Wpf.Windows.Tests references it too): x64 Windows and macOS.

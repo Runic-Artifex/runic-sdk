@@ -713,6 +713,75 @@ Exit code 2. Since 0.11.
 **Fix:** remove the variable; `dev` describes the development server and the
 frontend output to the Window with them.
 
+### RAPPPKG1001
+
+`package` found an invalid application identity: `ApplicationId` is not a
+reverse-DNS name of ASCII letters and digits with each part starting with a
+letter and at most 50 characters, `RunicApplicationUrlSchemes`,
+`RunicApplicationFileTypes` or `RunicApplicationWebLinkHosts` has an entry no
+platform registers, `RunicPackageName` is not a deb or rpm package name, or the
+`RunicPackageIcon` file does not exist. The message names the value. Exit code
+2. Since 0.11.
+
+**Fix:** correct the property in the project file. See
+[Package the application](../tools/dotnet-runic/README.md#package-the-application).
+
+### RAPPPKG1002
+
+An external tool the target needs is not installed or not on `PATH`, for
+example `makeappx` (Windows SDK), `codesign` (Xcode command line tools),
+`flatpak-builder`, `appimagetool`, `dpkg-deb` or `rpmbuild`. The message names
+the tool and what provides it. Exit code 1. Since 0.11.
+
+**Fix:** install the named package and run the command again.
+
+### RAPPPKG1003
+
+`dotnet publish` with Native AOT failed for the target's runtime identifier, or
+`dotnet msbuild` could not evaluate the project. The publish output is above
+the fault. Exit code 1. Since 0.11.
+
+**Fix:** correct the build error; `dotnet runic doctor --runtime <rid> --aot`
+checks the Native AOT prerequisites.
+
+### RAPPPKG1004
+
+The target runs on another operating system (`windows` on Windows, `macos` on
+macOS, the Linux formats on Linux), `--runtime` names a runtime identifier of
+another operating system, or a target other than `macos` got several runtime
+identifiers. Exit code 2. Since 0.11.
+
+**Fix:** run the target on its operating system, for example in a CI job of that
+OS, with a runtime identifier of that OS.
+
+### RAPPPKG1005
+
+A packaging tool exited with an error. The message names the tool and its exit
+code; its output is above the fault. Exit code 1. Since 0.11.
+
+**Fix:** correct what the tool reports, such as a signing certificate that does
+not match `RunicApplicationPublisher`, and run the command again.
+
+### RAPPPKG1006
+
+A manifest or package failed validation: a manifest in the packaging directory
+uses a `{{Field}}` the target does not fill, or `desktop-file-validate`,
+`appstreamcli validate` or `codesign --verify` rejected the result. Exit code 1.
+Since 0.11.
+
+**Fix:** correct the manifest override the message names, or remove it to use
+the tool's default.
+
+### RAPPPKG1007
+
+The Flathub manifest or its offline sources cannot be generated: no git commit
+or tag was given, a lock file (`packages.lock.json`, the AOT lock files or
+`package-lock.json`) is missing, an entry has no hash, or `RuntimeIdentifiers`
+does not list both `linux-x64` and `linux-arm64`. Exit code 2. Since 0.11.
+
+**Fix:** pass `--git-commit` or `--git-tag`, restore with lock files
+(`RestorePackagesWithLockFile`) and list both Linux runtime identifiers.
+
 ### RAPPSIZE1001
 
 `size` needs a runtime identifier and got none. Exit code 2. Before 0.9 this was

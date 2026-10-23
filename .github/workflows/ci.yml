@@ -1386,9 +1386,10 @@ jobs:
         env:
           RID: ${{ matrix.rid }}
 
-  # W315-014: the runic-app template's packaging/package.mjs packages tests/native/Runic.Packaging.Probe on each OS
-  # without the maintainers' signing credentials: an MSIX signed with a test certificate, an ad-hoc signed .app with
-  # the hardened runtime in a disk image, and an unsigned Flatpak. Each package is installed and opened through its
+  # W315-014, I-059: dotnet runic package (tools/dotnet-runic/Packaging) packages tests/native/Runic.Packaging.Probe on
+  # each OS without the maintainers' signing credentials (the Flatpak leg still runs the template's package.mjs): an
+  # MSIX signed with a test certificate, an ad-hoc signed .app with the hardened runtime in a disk image, and an
+  # unsigned Flatpak. Each package is installed and opened through its
   # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs):
   # in the MSIX also its protocol activation, its startup task turned on and off, and two files opened at once.
   packaging:
@@ -1404,6 +1405,7 @@ jobs:
     env:
       PROBE: tests/native/Runic.Packaging.Probe/Runic.Packaging.Probe.csproj
       PACKAGE: tools/Runic.Application.Templates/content/runic-app/packaging/package.mjs
+      TOOL: tools/dotnet-runic/Runic.Application.Tool.csproj
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1415,6 +1417,11 @@ jobs:
           node: "true"
           package-managers: "false"
           install: "false"
+      # dotnet runic package from this checkout; with --format json its payload is the only standard output.
+      - name: Build dotnet runic
+        if: matrix.target == 'windows' || matrix.target == 'macos'
+        run: dotnet build "$TOOL" -c Release -p:CI=true
+        shell: bash
       # Windows installs only signed packages: a self-signed certificate whose subject is the probe's
       # RunicApplicationPublisher, trusted on this runner only, stands in for a code-signing certificate.
       - name: Package, install and open the MSIX
@@ -1430,8 +1437,14 @@ jobs:
           Export-Certificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\packaging-test.cer" | Out-Null
           Import-Certificate -FilePath "$env:RUNNER_TEMP\packaging-test.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
           $env:RUNIC_SIGNING_PASSWORD = $password
-          node $env:PACKAGE windows --project $env:PROBE --output artifacts/package/windows --certificate "$env:RUNNER_TEMP\packaging-test.pfx"
-          if ($LASTEXITCODE -ne 0) { throw 'package.mjs failed' }
+          dotnet run --no-build -c Release --project $env:TOOL -- package windows --project $env:PROBE --output-directory artifacts/package/windows `
+            --certificate "$env:RUNNER_TEMP\packaging-test.pfx" --format json > "$env:RUNNER_TEMP\package.json"
+          if ($LASTEXITCODE -ne 0) { Get-Content "$env:RUNNER_TEMP\package.json"; throw 'dotnet runic package windows failed' }
+          $result = Get-Content "$env:RUNNER_TEMP\package.json" -Raw | ConvertFrom-Json
+          if ($result.payloadType -ne 'runic.application.tool.package/1' -or $result.payload.packages.Count -ne 1 -or
+              $result.payload.packages[0].format -ne 'msix' -or $result.payload.packages[0].signing -ne 'test' -or
+              $result.payload.identity.id -ne 'org.runic.tests.PackagingProbe') { Get-Content "$env:RUNNER_TEMP\package.json"; throw 'Unexpected package payload' }
+          if ((Get-Content "$env:RUNNER_TEMP\package.json" -Raw).Contains($password)) { throw 'The payload holds the signing password' }
 
           # The published WinExe outside the package: diagnostics reach a redirected standard error and the log.
           $receipt = "$env:RUNNER_TEMP\unpackaged.json"
@@ -1475,7 +1488,13 @@ jobs:
         if: matrix.target == 'macos'
         shell: bash
         run: |
-          node "$PACKAGE" macos --project "$PROBE" --output artifacts/package/macos
+          dotnet run --no-build -c Release --project "$TOOL" -- package macos --project "$PROBE" --output-directory artifacts/package/macos \
+            --format json > "$RUNNER_TEMP/package.json"
+          node -e '
+            const { payload } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const kinds = payload.packages.map(item => item.format + ":" + item.signing).join(",");
+            if (payload.identity.id !== "org.runic.tests.PackagingProbe" || kinds !== "app:adhoc,dmg:none" || payload.warnings.length !== 1)
+              throw new Error("Unexpected package payload " + JSON.stringify(payload));' "$RUNNER_TEMP/package.json"
           app="artifacts/package/macos/Runic Packaging Probe.app"
           codesign --verify --strict --verbose=2 "$app"
           # Ad hoc, with the hardened runtime that notarization requires.

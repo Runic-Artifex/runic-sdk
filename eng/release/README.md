@@ -329,7 +329,7 @@ of the same major without changes by its author. That includes:
   | `RUNICNAV` | The Runic.Navigation.ReactiveUI build targets (since 0.11); `RUNICNAV001`, the graduated experimental Navigation ID, is retired |
   | `RUNICWPF` | Retired: graduated experimental family of Runic.Application.Views.Wpf |
   | `RUNICP` | `@runic-artifex/vite-plugin-runic` |
-  | `RAPPCLI`, `RAPPDEV`, `RAPPSIZE` | `dotnet runic` |
+  | `RAPPCLI`, `RAPPDEV`, `RAPPPKG`, `RAPPSIZE` | `dotnet runic` (`RAPPPKG` since 0.11) |
   | `RCLI` | The Runic.CommandLine codes the tools report, and `dotnet runic doctor` checks (`RCLI81xx`) |
   | `RCREATE` | `runic-create` |
   | `RAS` | The asset packer and the Runic.Assets build targets |
@@ -342,6 +342,7 @@ of the same major without changes by its author. That includes:
   contract. Human-readable output is not a contract.
 - **Versioned JSON contracts** (`runic.create/2`, `runic.application.tool.dev/1`,
   `runic.application.tool.size/1`, `runic.application.tool.doctor/1`,
+  `runic.application.tool.package/1`,
   `runic.size/2`, `runic.assets/1`, `runic.assets.archive/1`,
   `runic.assets.pack-result/1`; support envelopes belong to
   [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/eng/release/README.md#versioning-and-support-from-10)):

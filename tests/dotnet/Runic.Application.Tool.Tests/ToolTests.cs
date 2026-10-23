@@ -15,7 +15,7 @@ using TUnit.Core;
 
 namespace Runic.Application.Tool.Tests;
 
-internal sealed class ToolTests
+internal sealed partial class ToolTests
 {
     [Test, DisplayName("project discovery accepts a directory")]
     public void ProjectDiscoveryAcceptsDirectory()

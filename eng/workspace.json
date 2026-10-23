@@ -258,6 +258,7 @@
         "tools/Runic.Application.Views.Codegen.ReactiveUI",
         "tools/Runic.Application.Views.Dev",
         "tools/dotnet-runic",
+        "tools/Runic.Application.Templates/content/runic-app/packaging",
         "tests/dotnet/Runic.Application.Tool.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Logging.Tests",
@@ -325,7 +326,6 @@
         "application"
       ],
       "paths": [
-        "tools/Runic.Application.Templates/content/runic-app/packaging",
         "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs",
         "tools/Runic.Application.Templates/content/runic-app/icons",
         "tests/native/Runic.Packaging.Probe"
