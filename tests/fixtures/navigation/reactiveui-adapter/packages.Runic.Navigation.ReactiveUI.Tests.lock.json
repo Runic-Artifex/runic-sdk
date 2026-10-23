@@ -141,7 +141,7 @@
           "ReactiveUI.Binding": "[9.1.0, 10.0.0)",
           "ReactiveUI.Disposables": "[9.0.0, 10.0.0)",
           "ReactiveUI.Primitives": "[9.0.0, 10.0.0)",
-          "Runic.Navigation": "[0.10.0, )"
+          "Runic.Navigation": "[0.11.0, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {

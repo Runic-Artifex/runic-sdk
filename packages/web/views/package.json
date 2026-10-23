@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/views",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Shared browser runtime for generated Runic Views clients",
   "license": "MIT",
   "type": "module",

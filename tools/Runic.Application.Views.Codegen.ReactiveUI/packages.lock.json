@@ -56,7 +56,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.10.0, )"
+          "Runic.Navigation": "[0.11.0, )"
         }
       },
       "runic.navigation": {

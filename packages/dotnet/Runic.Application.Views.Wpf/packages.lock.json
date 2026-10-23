@@ -13,18 +13,18 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.10.0, )"
+          "Runic.Navigation": "[0.11.0, )"
         }
       },
       "runic.application.views.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Application.Views": "[0.10.0, )",
-          "Runic.Assets.Desktop": "[0.10.0, )",
-          "Runic.Desktop": "[0.10.0, )",
-          "Runic.Platform.Runtime": "[0.10.0, )",
-          "Runic.Platform.Windows": "[0.10.0, )"
+          "Runic.Application.Views": "[0.11.0, )",
+          "Runic.Assets.Desktop": "[0.11.0, )",
+          "Runic.Desktop": "[0.11.0, )",
+          "Runic.Platform.Runtime": "[0.11.0, )",
+          "Runic.Platform.Windows": "[0.11.0, )"
         }
       },
       "runic.assets": {
@@ -33,16 +33,16 @@
       "runic.assets.desktop": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.10.0, )",
-          "Runic.Desktop": "[0.10.0, )"
+          "Runic.Assets": "[0.11.0, )",
+          "Runic.Desktop": "[0.11.0, )"
         }
       },
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.10.0, )",
-          "Runic.Platform.Linux.DBus": "[0.10.0, )"
+          "Runic.Platform": "[0.11.0, )",
+          "Runic.Platform.Linux.DBus": "[0.11.0, )"
         }
       },
       "runic.navigation": {
@@ -57,7 +57,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.10.0, )"
+          "Runic.Navigation": "[0.11.0, )"
         }
       },
       "runic.platform": {
@@ -67,20 +67,20 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Platform": "[0.10.0, )",
+          "Runic.Platform": "[0.11.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.10.0, )"
+          "Runic.Platform": "[0.11.0, )"
         }
       },
       "runic.platform.windows": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.10.0, )"
+          "Runic.Platform.Runtime": "[0.11.0, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
