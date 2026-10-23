@@ -80,8 +80,10 @@ and `ContextMenu`. Runic does not use `gtk_application_set_menubar` or
 application accelerators, which run before the page: an item's shortcut is
 shown through the menu's `accel` attribute and answered only after the page left
 the key alone. `DesktopWindow.ShowContextMenuAsync` shows a `GtkPopoverMenu` on
-the web view. On X11 the bar goes into the desktop's global menu, such as KDE
-Plasma's, while one is shown, and the in-window bar is hidden meanwhile. A
+the web view. On X11 and on Wayland the bar goes into the desktop's global menu,
+such as KDE Plasma's, while one is shown, and the in-window bar is hidden
+meanwhile; on Wayland that needs KWin's `org_kde_kwin_appmenu`, which GTK 4
+cannot set itself, so Runic sets it on the window's surface. A
 Flatpak needs `--talk-name=com.canonical.AppMenu.Registrar` in its finish
 arguments for that; without it the bar stays in the window. See
 [Linux: GTK 3 and GTK 4](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#linux-gtk-3-and-gtk-4)

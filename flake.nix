@@ -112,6 +112,10 @@
           volumes-udisks2 = (import ./nixos/volumes { inherit pkgs; }).udisks2;
           # Network status against a real NetworkManager without a portal; see nixos/network-status.
           network-status-networkmanager = (import ./nixos/network-status { inherit pkgs; }).networkmanager;
+          # The global menu on Plasma X11, Plasma Wayland and GNOME; see nixos/global-menu.
+          global-menu-plasma-x11 = (import ./nixos/global-menu { inherit pkgs; }).plasma-x11;
+          global-menu-plasma-wayland = (import ./nixos/global-menu { inherit pkgs; }).plasma-wayland;
+          global-menu-gnome = (import ./nixos/global-menu { inherit pkgs; }).gnome;
           # A packaged application installed through the NixOS module; see nixos/packaging.
           packaging-nixos = import ./nixos/packaging { inherit pkgs self; };
           desktop-flatpak-tools = pkgs.buildEnv {

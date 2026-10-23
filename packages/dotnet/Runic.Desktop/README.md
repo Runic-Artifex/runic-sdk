@@ -587,26 +587,32 @@ mirrors both.
 ### Linux: the desktop's global menu
 
 Where the desktop shows a global menu, such as KDE Plasma's Global Menu applet
-or the title bar's application menu button, a GTK 3 or GTK 4 window on X11 puts
-its `Native` bar there, as Qt and Chromium applications do, and
-`MenuBarPlacement` is `Global`. The window exports the bar on the session bus as
-`com.canonical.dbusmenu` (at `/org/runicartifex/MenuBar/<n>`), registers its X11
-window with `com.canonical.AppMenu.Registrar` and sets the
+or the title bar's application menu button, a GTK 3 or GTK 4 window puts its
+`Native` bar there, on X11 and on Wayland, as Qt and Chromium applications do,
+and `MenuBarPlacement` is `Global`. The window exports the bar on the session bus
+as `com.canonical.dbusmenu` (at `/org/runicartifex/MenuBar/<n>`). On X11 it
+registers its X11 window with `com.canonical.AppMenu.Registrar` and sets the
 `_KDE_NET_WM_APPMENU_SERVICE_NAME` and `_KDE_NET_WM_APPMENU_OBJECT_PATH`
-properties on it. The global menu shows the same menus in the same order, with
+properties on it. On Wayland it gives the menu's bus name and path to the
+compositor through KDE's `org_kde_kwin_appmenu` protocol on the window's
+surface, again when GTK 3 creates a new surface for a window shown again; GTK
+has no API for this, so Runic binds the protocol on GDK's Wayland connection
+itself. The global menu shows the same menus in the same order, with
 access keys, shortcut text, check and radio marks, and items that follow
 `CanExecute` whenever a menu opens; choosing an item runs it through the
 window's command path on its GTK thread. Shortcuts stay with the window, after
 the page, as with the in-window bar.
 
 The window watches the registrar: KDE Plasma owns it only while a global menu is
-shown, so the bar moves into the global menu when one appears and back into the
+shown, on X11 and on Wayland, so the bar moves into the global menu when one appears and back into the
 window when it goes away, and `MenuBarPlacementChanged` reports each move (event
 3015, `MenuBarPlacementChanged`, at Information). While the global menu shows the
 bar, the in-window bar is hidden. A frameless window has no in-window bar but
 still uses the global menu; a kiosk window uses neither. Without a registrar,
 for example on GNOME, the bar stays in the window, and without a session bus it
-does so silently. When the menu cannot be exported or the registrar refuses the
+does so silently. A Wayland window also keeps its bar when the compositor does
+not offer `org_kde_kwin_appmenu` (only KWin does; GNOME, wlroots compositors
+and COSMIC do not), whoever owns the registrar. When the menu cannot be exported or the registrar refuses the
 window, the window reports `global-menu-failed` (a warning, logged as event
 3016, `GlobalMenuFailed`) once and keeps its bar. `LinuxDesktopOptions.GlobalMenu
 = false` always keeps the bar in the window; a custom window host receives it as
@@ -616,8 +622,10 @@ A Flatpak needs `--talk-name=com.canonical.AppMenu.Registrar` in its finish
 arguments; without it the registrar looks absent and the bar stays in the
 window. On KDE Plasma, a Flatpak without a visible registrar reports
 `global-menu-permission` once (a warning, logged as event 3015). No `--own-name`
-is needed: the global menu calls the application's unique bus name. Wayland
-windows keep the bar in the window in this release. Any program on the session
+is needed: the global menu calls the application's unique bus name. On Wayland
+the compositor's protocol comes through the Wayland socket (`--socket=wayland`),
+which needs no further permission; the registrar permission still decides
+whether the bar moves. Any program on the session
 bus can choose an enabled item of the exported menu, as with status icons: menu
 commands are user-level actions, and the calls are answered one at a time with
 bounded id lists.

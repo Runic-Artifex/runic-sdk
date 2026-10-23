@@ -35,6 +35,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
     private ImmutableArray<PlannedMenuEntry> _plan = [];
     private LinuxGlobalMenu? _globalMenu;
     private volatile bool _globalPlacement;
+    // A Wayland window's org_kde_kwin_appmenu, once the menu is exported and the compositor offers it.
+    private WaylandAppMenu? _appMenu;
     private Gtk4ContextMenu? _contextMenu;
     private Gtk.EventControllerMotion? _pointerMotion;
     private (double X, double Y)? _pointer;
@@ -374,15 +376,30 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         _plan = [];
     }
 
-    // B10, D036.9: the bar in the desktop's global menu (LinuxGlobalMenu). On X11, a window with the Native presentation
-    // that is not a kiosk exports its bar once it is realized, and LinuxDesktopOptions.GlobalMenu allows it. While the
-    // global menu shows it, the in-window bar is hidden, not removed; a frameless window has none.
+    // B10, D036.9: the bar in the desktop's global menu (LinuxGlobalMenu). A window with the Native presentation that is
+    // not a kiosk exports its bar once it is realized, and LinuxDesktopOptions.GlobalMenu allows it. On X11 it is
+    // registered by its XID; on Wayland its wl_surface gets org_kde_kwin_appmenu (WaylandAppMenu). GDK 4 keeps one
+    // wl_surface for the window's lifetime, also while it is hidden, and KWin gives the address to the toplevel it creates
+    // when the window is shown again, so the address is set once. While the global menu shows the bar, the in-window bar
+    // is hidden, not removed; a frameless window has none.
     private void StartGlobalMenu(DesktopWindowHostOptions options, Gtk.Window window)
     {
-        if (!GtkMenus.UsesGlobalMenu(options.MenuBarPresentation, options.Kiosk, options.GlobalMenu)
-            || Gtk4X11Placement.X11Window(SurfaceOf(window)) is not { Xid: not 0 and <= uint.MaxValue } x11)
-            return;
-        _globalMenu = LinuxGlobalMenu.Start(new GlobalMenuWindow(this), (uint)x11.Xid, _plan);
+        if (!GtkMenus.UsesGlobalMenu(options.MenuBarPresentation, options.Kiosk, options.GlobalMenu)) return;
+        if (Gtk4X11Placement.X11Window(SurfaceOf(window)) is { Xid: not 0 and <= uint.MaxValue } x11)
+            _globalMenu = LinuxGlobalMenu.Start(new GlobalMenuWindow(this), (uint)x11.Xid, _plan);
+        else if (Gtk4Wayland.Window(SurfaceOf(window)) is { Display: not 0, Surface: not 0 })
+            _globalMenu = LinuxGlobalMenu.Start(new GlobalMenuWindow(this), xid: null, _plan);
+    }
+
+    // GTK thread: the menu is exported; sets its address on the window's wl_surface. False when the compositor does not
+    // offer org_kde_kwin_appmenu.
+    private bool AnnotateWayland(string serviceName, string objectPath)
+    {
+        if (_window is not { } window || _globalMenu is null || Gtk4Wayland.Window(SurfaceOf(window)) is not { Display: not 0 } wayland) return false;
+        _appMenu ??= WaylandAppMenu.Create(Gtk4Wayland.Library, wayland.Display);
+        if (_appMenu is not { } appMenu) return false;
+        appMenu.SetAddress(serviceName, objectPath, wayland.Surface);
+        return true;
     }
 
     // GTK thread: the bar went into the global menu or came back.
@@ -400,6 +417,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         var menu = _globalMenu;
         _globalMenu = null;
         _globalPlacement = false;
+        _appMenu?.Dispose();
+        _appMenu = null;
         if (menu is not null) _ = menu.DisposeAsync().AsTask();
     }
 
@@ -417,10 +436,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
 
         public void PlacementChanged(bool global) => host.OnGlobalPlacement(global);
 
-        public void Annotate(string serviceName, string objectPath)
+        public bool Annotate(string serviceName, string objectPath)
         {
-            if (host._window is { } window && Gtk4X11Placement.X11Window(SurfaceOf(window)) is { Xid: not 0 } x11)
+            if (host._window is not { } window) return false;
+            if (Gtk4X11Placement.X11Window(SurfaceOf(window)) is { Xid: not 0 } x11)
+            {
                 LinuxGlobalMenu.X11.Annotate(x11.Display, x11.Xid, serviceName, objectPath);
+                return true;
+            }
+            return host.AnnotateWayland(serviceName, objectPath);
         }
 
         public void Report(DesktopDiagnostic diagnostic) => host._options?.DiagnosticSink?.Invoke(diagnostic);
