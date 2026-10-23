@@ -5,6 +5,7 @@ using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
+using Runic.Application.Views.Menus;
 using Runic.Desktop;
 using Runic.Desktop.Internal;
 using Runic.Platform;
@@ -163,6 +164,12 @@ internal sealed class MenuBarPageChecks
                 var leased = JsonNode.Parse(await page.CallAsync("__runicMenuBarControl", timeout.Token, "{\"shortcuts\":\"app\"}"))!;
                 Require(leased["shortcuts"]!.GetValue<string>() == (placement == "page" ? "app" : "page"),
                     $"The lease applies only while the bar is in the page: {leased.ToJsonString()}");
+                // A revision that is not a number is an invalid request, not a failed call.
+                foreach (var (route, request) in new[] { ("__runicMenuBarInvoke", "{\"revision\":\"1\",\"key\":\"0m/0i\"}"), ("__runicMenuBarWait", "{\"after\":\"1\"}") })
+                {
+                    var reply = await page.CallAsync(route, timeout.Token, request);
+                    Require(JsonNode.Parse(reply)?["kind"]?.GetValue<string>() == "invalid-request", $"{route} answered {request} with {reply}.");
+                }
             }
             finally
             {

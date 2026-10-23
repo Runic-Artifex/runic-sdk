@@ -3,23 +3,53 @@ using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Runic.Desktop;
 using Runic.Desktop.Internal;
 using Runic.Platform;
 
-namespace Runic.Application.Views.Desktop;
+namespace Runic.Application.Views.Menus;
 
-// B10 in-page menu bar (D036.8, D036.10): the reserved Bridge routes through which a page renders DesktopHost.MenuBar
-// with its own components (@runic-artifex/views createMenuBarController). The wire is specs/desktop/menu-bar-page.md.
+// B10 in-page menu bar (D036.8, D036.10, D036.14): the reserved Bridge routes through which a page renders the host's
+// menu bar with its own components (@runic-artifex/views createMenuBarController). The wire is
+// specs/desktop/menu-bar-page.md. One source for both hosts: Runic.Application.Views.CsWebUi compiles this file, with
+// MenuCommandBinding.cs and the planner, through its own IMenuBarSource and IMenuBarPageWindow; it references neither
+// Runic.Desktop nor Views.Desktop.
 // - __runicMenuBarState: the current state. __runicMenuBarWait({ after }): the next state after a revision, a long poll
 //   bounded per connection. __runicMenuBarInvoke({ revision, key }): runs an item through
-//   DesktopWindow.TryExecuteMenuItemAsync, the native bar's command path. __runicMenuBarControl({ shortcuts }): the
-//   connection's "app" lease, under which the page matches the items' shortcuts itself and the host's own path runs
+//   IMenuBarPageWindow.TryExecuteAsync, the native bar's command path on Runic Desktop. __runicMenuBarControl({ shortcuts }):
+//   the connection's "app" lease, under which the page matches the items' shortcuts itself and the host's own path runs
 //   nothing; it ends when the connection closes.
 // - These are reserved routes, not Views protocol messages: Views protocol 3 is unchanged, and a host without them
 //   leaves the page's controller "unavailable".
 // - The state follows the bar, the window's placement and the availability of the commands: MenuCommandBinding raises
 //   Changed from CanExecuteChanged. A custom IDesktopMenuCommandTarget without it is asked when the state is built.
+
+// The bar a host declares and its application-wide commands: DesktopHost on Runic Desktop, RunicCsWebUiHost's bar on
+// CS-WebUI. MenuBarChanged may be raised on any thread.
+internal interface IMenuBarSource
+{
+    IReadOnlyList<DesktopMenu> MenuBar { get; }
+    event EventHandler? MenuBarChanged;
+    // The application's commands, which raise Changed as a window's do; null for none or for another target.
+    MenuCommandBinding? ApplicationCommands { get; }
+}
+
+// The window whose page renders the bar.
+internal interface IMenuBarPageWindow
+{
+    bool IsOpen { get; }
+    // Where the page is told the bar is while the window is open: "page", "window", "global" or "none".
+    string Placement { get; }
+    // Whether the host matches the items' shortcuts on its own key path.
+    bool HostShortcuts { get; }
+    event EventHandler? PlacementChanged;
+    // Whether each item can run now, asked as TryExecuteAsync asks. ObjectDisposedException once the window closed.
+    Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken);
+    // Runs the item as the native bar does; false when it is disabled or no command can run it now.
+    ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken);
+    // While the page holds the "app" lease, the host's own matching is suspended.
+    void SuspendHostShortcuts(bool suspended);
+}
+
 internal sealed class MenuBarPageRoutes : IDisposable
 {
     internal const string StateRoute = "__runicMenuBarState";
@@ -34,8 +64,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
     private const int MaximumKeyLength = 256;
 
     private readonly object _gate = new();
-    private readonly DesktopHost _host;
-    private readonly DesktopMenuBarPresentation _presentation;
+    private readonly IMenuBarSource _source;
     private readonly MenuPlatform _platform;
     private readonly ILogger _logger;
     private readonly IDisposable[] _bindings;
@@ -44,7 +73,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
     private readonly Dictionary<string, int> _leases = new(StringComparer.Ordinal);
     private Snapshot _snapshot = Snapshot.Initial;
     private IReadOnlyList<DesktopMenu>? _menus;
-    private DesktopWindow? _window;
+    private IMenuBarPageWindow? _window;
     private MenuCommandBinding? _binding;
     private MenuCommandBinding? _application;
     private bool _suspended;
@@ -52,11 +81,9 @@ internal sealed class MenuBarPageRoutes : IDisposable
     private bool _dirty;
     private bool _disposed;
 
-    internal MenuBarPageRoutes(DesktopHost host, IBridgeTransport transport, DesktopMenuBarPresentation presentation, ILogger logger,
-        MenuPlatform? platform = null)
+    internal MenuBarPageRoutes(IMenuBarSource source, IBridgeTransport transport, ILogger logger, MenuPlatform? platform = null)
     {
-        _host = host;
-        _presentation = presentation;
+        _source = source;
         _platform = platform ?? DesktopMenuPlanner.CurrentPlatform;
         _logger = logger;
         var bindings = new List<IDisposable>();
@@ -73,7 +100,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
             foreach (var binding in bindings) binding.Dispose();
             throw;
         }
-        host.MenuBarChanged += OnChanged;
+        source.MenuBarChanged += OnChanged;
         Invalidate();
     }
 
@@ -84,7 +111,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
     }
 
     // The window whose commands the page runs, and its root ViewModel's commands, once the presentation opened.
-    internal void Attach(DesktopWindow window, MenuCommandBinding? binding)
+    internal void Attach(IMenuBarPageWindow window, MenuCommandBinding? binding)
     {
         ArgumentNullException.ThrowIfNull(window);
         lock (_gate)
@@ -93,17 +120,25 @@ internal sealed class MenuBarPageRoutes : IDisposable
             _window = window;
             _binding = binding;
         }
-        window.MenuBarPlacementChanged += OnChanged;
+        window.PlacementChanged += OnChanged;
         if (binding is not null) binding.Changed += OnChanged;
         Invalidate();
     }
 
-    // A closed connection, such as a reloaded page, gives up its shortcut lease.
+    // A closed connection, such as a reloaded page, gives up its shortcut lease, and its pending waits end: a host
+    // whose transport does not cancel them with the connection would otherwise keep them until the next change.
     internal void ReleaseConnection(string connectionKey)
     {
         lock (_gate)
         {
-            if (_disposed || !_leases.Remove(connectionKey)) return;
+            if (_disposed) return;
+            _waiters.RemoveAll(waiter =>
+            {
+                if (waiter.Connection != connectionKey) return false;
+                waiter.Completion.TrySetResult();
+                return true;
+            });
+            if (!_leases.Remove(connectionKey)) return;
             Publish(_snapshot with { Revision = _snapshot.Revision + 1 });
         }
         UpdateSuspension();
@@ -111,7 +146,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
 
     public void Dispose()
     {
-        DesktopWindow? window;
+        IMenuBarPageWindow? window;
         MenuCommandBinding? binding, application;
         Waiter[] waiters;
         bool suspended;
@@ -128,14 +163,14 @@ internal sealed class MenuBarPageRoutes : IDisposable
             suspended = _suspended;
             _suspended = false;
         }
-        _host.MenuBarChanged -= OnChanged;
-        if (window is not null) window.MenuBarPlacementChanged -= OnChanged;
+        _source.MenuBarChanged -= OnChanged;
+        if (window is not null) window.PlacementChanged -= OnChanged;
         if (binding is not null) binding.Changed -= OnChanged;
         if (application is not null) application.Changed -= OnChanged;
         _stop.Cancel();
         foreach (var waiter in waiters) waiter.Completion.TrySetResult();
         foreach (var route in _bindings) route.Dispose();
-        if (suspended) window?.SuspendHostMenuShortcuts(false);
+        if (suspended) window?.SuspendHostShortcuts(false);
     }
 
     private void OnChanged(object? sender, EventArgs eventArgs) => Invalidate();
@@ -168,7 +203,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
             catch (Exception error) when (error is not OutOfMemoryException)
             {
                 if (!_stop.IsCancellationRequested)
-                    DesktopLog.MenuCommandFailed(_logger, error, "*", error.GetType().FullName ?? error.GetType().Name);
+                    MenuBarLog.CommandFailed(_logger, error, "*");
             }
             lock (_gate)
             {
@@ -183,14 +218,14 @@ internal sealed class MenuBarPageRoutes : IDisposable
 
     private async Task RebuildAsync()
     {
-        DesktopWindow? window;
+        IMenuBarPageWindow? window;
         lock (_gate)
         {
             if (_disposed) return;
             window = _window;
         }
         FollowApplicationCommands();
-        var menus = _host.MenuBar;
+        var menus = _source.MenuBar;
         var plan = DesktopMenuPlanner.PlanBar(menus, _platform);
         var items = new List<PlannedMenuEntry>();
         CollectItems(plan, items);
@@ -199,7 +234,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
         try
         {
             runnable = open && items.Count > 0
-                ? await window!.CanExecuteMenuItemsAsync([.. items.Select(static entry => entry.Item!)], _stop.Token).ConfigureAwait(false)
+                ? await window!.CanExecuteAsync([.. items.Select(static entry => entry.Item!)], _stop.Token).ConfigureAwait(false)
                 : new bool[items.Count];
         }
         catch (ObjectDisposedException)
@@ -215,8 +250,8 @@ internal sealed class MenuBarPageRoutes : IDisposable
             if (runnable[index]) enabled.Add(items[index].Key);
         }
         var menusJson = MenuBarPageState.WriteMenus(plan, entry => entry.Enabled && enabled.Contains(entry.Key));
-        var placement = open ? PlacementOf(window!) : "none";
-        var hostShortcuts = open && window!.Browser == BrowserKind.Embedded && window.Capabilities.HasFlag(DesktopWindowCapabilities.MenuBar);
+        var placement = open ? window!.Placement : "none";
+        var hostShortcuts = open && window!.HostShortcuts;
         lock (_gate)
         {
             if (_disposed) return;
@@ -235,7 +270,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
     // UseApplicationMenu's commands raise Changed as a window's do; another target is asked when the state is built.
     private void FollowApplicationCommands()
     {
-        var application = _host.MenuCommands as MenuCommandBinding;
+        var application = _source.ApplicationCommands;
         MenuCommandBinding? previous;
         lock (_gate)
         {
@@ -256,16 +291,6 @@ internal sealed class MenuBarPageRoutes : IDisposable
         }
     }
 
-    // Where the page is told the bar is. A Page window whose host reports no placement, such as an installed browser or
-    // a window host without a native bar, renders it in the page; macOS keeps the application bar (D036.13).
-    private string PlacementOf(DesktopWindow window) => window.MenuBarPlacement switch
-    {
-        DesktopMenuBarPlacement.Window => "window",
-        DesktopMenuBarPlacement.Global => "global",
-        DesktopMenuBarPlacement.Page => "page",
-        _ => _presentation == DesktopMenuBarPresentation.Page ? "page" : "none",
-    };
-
     // Called under the gate: the new state, and every waiting poll answered.
     private void Publish(Snapshot snapshot)
     {
@@ -277,7 +302,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
     // The host's own matching is suspended while a page that shows the bar holds the "app" lease.
     private void UpdateSuspension()
     {
-        DesktopWindow? window;
+        IMenuBarPageWindow? window;
         bool suspend;
         lock (_gate)
         {
@@ -287,7 +312,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
             if (window is null || suspend == _suspended) return;
             _suspended = suspend;
         }
-        window.SuspendHostMenuShortcuts(suspend);
+        window.SuspendHostShortcuts(suspend);
     }
 
     private string State(IBridgeArguments arguments)
@@ -298,7 +323,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
     private async ValueTask<string> WaitAsync(IBridgeArguments arguments, CancellationToken cancellationToken)
     {
         if (ReadRequest(arguments) is not { } request || !request.TryGetProperty("after", out var afterValue)
-            || !afterValue.TryGetInt64(out var after))
+            || !TryGetInt64(afterValue, out var after))
             return InvalidRequest;
         var connection = arguments.ConnectionKey ?? "";
         Waiter waiter;
@@ -326,12 +351,12 @@ internal sealed class MenuBarPageRoutes : IDisposable
     private async ValueTask<string> InvokeAsync(IBridgeArguments arguments, CancellationToken cancellationToken)
     {
         if (ReadRequest(arguments) is not { } request
-            || !request.TryGetProperty("revision", out var revisionValue) || !revisionValue.TryGetInt64(out var revision)
+            || !request.TryGetProperty("revision", out var revisionValue) || !TryGetInt64(revisionValue, out var revision)
             || !request.TryGetProperty("key", out var keyValue) || keyValue.ValueKind != JsonValueKind.String
             || keyValue.GetString() is not { Length: > 0 and <= MaximumKeyLength } key)
             return InvalidRequest;
         Snapshot snapshot;
-        DesktopWindow? window;
+        IMenuBarPageWindow? window;
         lock (_gate)
         {
             if (_disposed) return Released;
@@ -344,7 +369,7 @@ internal sealed class MenuBarPageRoutes : IDisposable
         if (window is null) return Result("disabled");
         try
         {
-            return Result(await window.TryExecuteMenuItemAsync(item, cancellationToken).ConfigureAwait(false) ? "executed" : "disabled");
+            return Result(await window.TryExecuteAsync(item, cancellationToken).ConfigureAwait(false) ? "executed" : "disabled");
         }
         catch (ObjectDisposedException)
         {
@@ -371,6 +396,13 @@ internal sealed class MenuBarPageRoutes : IDisposable
         }
         UpdateSuspension();
         return reply;
+    }
+
+    // JsonElement.TryGetInt64 throws for a value that is not a number.
+    private static bool TryGetInt64(JsonElement value, out long result)
+    {
+        result = 0;
+        return value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out result);
     }
 
     private static JsonElement? ReadRequest(IBridgeArguments arguments)

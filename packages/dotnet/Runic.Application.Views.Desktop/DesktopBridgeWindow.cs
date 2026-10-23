@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
+using Runic.Application.Views.Menus;
 using Runic.Desktop;
 
 namespace Runic.Application.Views.Desktop;
