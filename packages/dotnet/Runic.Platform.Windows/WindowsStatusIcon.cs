@@ -343,7 +343,8 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
                 // Lets the menu's foreground switch finish before the next one (KB135788).
                 PInvoke.PostMessage(window, PInvoke.WM_NULL, default, default);
                 // Resolved against the menu that was shown, even if ShowAsync replaced it meanwhile.
-                if (chosen > 0 && menu.Choose((uint)chosen) is { } id) owner.Raise(DesktopStatusIconActivationKind.MenuItem, id);
+                if (chosen > 0 && menu.ChooseCommand((uint)chosen) is { } command)
+                    owner.Raise(DesktopStatusIconActivationKind.MenuItem, command.CommandId, command.CommandParameter);
             }
             finally
             {
@@ -440,8 +441,8 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
         if (icon.Owned && icon.Handle != default) PInvoke.DestroyIcon(icon.Handle);
     }
 
-    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null) =>
-        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId));
+    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null, string? commandParameter = null) =>
+        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId) { CommandParameter = commandParameter });
 
     private async Task PumpAsync()
     {

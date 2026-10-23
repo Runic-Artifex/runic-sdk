@@ -1076,6 +1076,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private IWindowPlatformServices? _bound;
     private DesktopWindow? _window;
     private Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? _announcer;
+    private Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? _contextMenu;
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
 
@@ -1108,11 +1109,12 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         }
     }
 
-    // A window of another Windows host, such as WPF, without a Desktop window: announcements go to the host's own
-    // announcer, which checks its window, or report the owner unavailable without one.
+    // A window of another Windows host, such as WPF, without a Desktop window: announcements and context menus go to the
+    // host's own, which check their window, or report the owner unavailable without one.
     [SupportedOSPlatform("windows")]
     internal void BindWindows(INativeWindowOwner owner,
-        Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? announcer = null)
+        Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? announcer = null,
+        Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? contextMenu = null)
     {
         lock (_gate)
         {
@@ -1120,6 +1122,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             if (_disposal is not null) return;
             _bound = DesktopPlatformServices.CreateForWindowsOwner(owner, out _provider);
             _announcer = announcer;
+            _contextMenu = contextMenu;
             Volatile.Write(ref _current, _bound);
         }
     }
@@ -1136,7 +1139,17 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             window = _disposal is null && _bound is not null ? _window : null;
         }
         var snapshot = current.GetSnapshot();
-        if (window is null) return snapshot;
+        if (window is null)
+        {
+            // A window of another host shows its own context menus, and no menu bar of Runic's.
+            bool hostMenus;
+            lock (_gate) hostMenus = _disposal is null && _bound is not null && _contextMenu is not null;
+            return hostMenus
+                ? new(snapshot.Generation, snapshot.Statuses
+                    .SetItem(PlatformCapabilityIds.ContextMenu, new CapabilityStatus.Available())
+                    .SetItem(PlatformCapabilityIds.MenuBar, new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable)))
+                : snapshot;
+        }
         var monitors = window.IsOpen
             ? DesktopPlatformServices.MonitorStatus(window.Monitors)
             : new(PlatformCapabilityIds.Monitors, new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed));
@@ -1229,15 +1242,28 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         DesktopContextMenuOptions? options, CancellationToken cancellationToken)
     {
         DesktopWindow? window;
+        Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? contextMenu;
         lock (_gate)
         {
             if (_disposal is not null || _bound is null) return Current.ShowContextMenuAsync(items, options, cancellationToken);
             window = _window;
+            contextMenu = _contextMenu;
         }
-        // A window of another host, such as WPF, shows no Desktop context menu.
-        return window is null
+        if (window is not null) return DesktopPlatformServices.ShowContextMenuAsync(window, items, options, cancellationToken);
+        // A window of another host, such as WPF, shows its own context menu, if it has one.
+        return contextMenu is null
             ? WindowPlatformServices.Unavailable(PlatformUnavailableReason.BackendUnavailable).ShowContextMenuAsync(items, options, cancellationToken)
-            : DesktopPlatformServices.ShowContextMenuAsync(window, items, options, cancellationToken);
+            : ShowHostContextMenuAsync(contextMenu, items, options, cancellationToken);
+    }
+
+    private static async ValueTask<PlatformResult<DesktopMenuItem?>> ShowHostContextMenuAsync(
+        Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>> contextMenu,
+        ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions? options, CancellationToken cancellationToken)
+    {
+        // The shared argument checks, as every implementation makes them.
+        _ = await WindowPlatformServices.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+            .ShowContextMenuAsync(items, options, cancellationToken).ConfigureAwait(false);
+        return await contextMenu(items, options, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Stops the services: waits for platform operations, then releases file access the window still owns.</summary>

@@ -528,14 +528,30 @@ returns `false` when nothing ran, and works for installed browsers too, so an
 application without Runic Windows can render `DesktopHost.MenuBar` in its page,
 follow `DesktopHost.MenuBarChanged`, and run the chosen items.
 
-This release shows the native bar on macOS and in the GTK 3 and GTK 4 windows
-(below). The Windows embedded window does not show it yet: for a declared bar
-with `Native` it, an installed browser
-and a window host without `DesktopWindowCapabilities.MenuBar` make
-`DesktopHost.Validate` report `menu-bar-unsupported`, and `Page` or `None`
-avoid it. Windows and Linux bars will have no standard Edit, View or Window
-menus and no translated standard titles: the application declares the menus it
-wants. A window host shows the bar by implementing `IDesktopMenuWindowHost`:
+This release shows the native bar on macOS, in the Windows window and in the
+GTK 3 and GTK 4 windows (below). The macOS window shows the declared menus in
+the application menu bar. The Windows (WebView2) window shows them in the
+window: the menus in Windows order (File first, Help last, an `Application`
+menu as a plain menu with its title), each `AccessKey` underlined, shortcuts
+after the title (`Ctrl+Shift+S`), check and radio items with their marks, and
+disabled items grayed. A menu asks its items' commands whenever it opens. With
+`Native` its placement is `Window`; a frameless or kiosk window has no frame for
+a bar, does not report `DesktopWindowCapabilities.MenuBar` and reports `None`,
+and a `Page` window reports `None` until a release brings the in-page bar. The
+keyboard follows the Windows conventions after the page has seen each key: a
+shortcut the page leaves alone runs its item, also one the browser would take,
+such as F5; Alt or F10 alone moves to the bar; Alt and a menu's access key open
+that menu. A page that calls `preventDefault()` on a key keeps it. With `Page`
+or `None` the shortcuts still run, and Alt alone does not put the window into
+system-menu mode. Windows menus stay light when Windows uses dark mode (D036.5).
+
+An installed browser and a window host without
+`DesktopWindowCapabilities.MenuBar` make `DesktopHost.Validate` report
+`menu-bar-unsupported` for a declared bar with `Native`, and `Page` or `None`
+avoid it. Windows and Linux bars have no standard Edit, View or Window menus and
+no translated standard titles: the application declares the menus it wants, and
+its own Ctrl+Z, Ctrl+C or Alt+F4 items stay the focused control's and the
+window's. A window host shows the bar by implementing `IDesktopMenuWindowHost`:
 Runic Desktop calls `SetMenuBarAsync` after the window opens and after every
 `SetMenuBar`, passes `DesktopWindowHostOptions.MenuBarPresentation`, and sets
 `MenuCommands` to the command path above. A failed `SetMenuBarAsync` is
@@ -578,9 +594,10 @@ place it in CSS pixels of the page's viewport, the event's `clientX` and
 ordinary command, such as `showRowMenu(key, x, y)` from its `contextmenu`
 handler, after calling `preventDefault()`; ViewModels use
 `IWindowPlatformServices.ShowContextMenuAsync`. The macOS window shows an
-AppKit menu over the web view, GTK 3 and GTK 4 the menus above; the web view keeps its own context menu where
-the page does not handle `contextmenu`. Global shortcuts are planned for later
-releases.
+AppKit menu over the web view, GTK 3 and GTK 4 the menus above, and the
+Windows window a Win32 menu (`TrackPopupMenuEx`), mirrored for a right-to-left
+window; the web view keeps its own context menu where the page does not handle
+`contextmenu`. Global shortcuts are planned for later releases.
 
 ## File drops
 
@@ -707,7 +724,7 @@ VoiceOver on macOS, NVDA 2026.2 on Windows and Orca 46 on Linux (Ubuntu
 | Focus moved by the screen reader | Focus event; Orca follows it and says the control | Focus event; NVDA follows it and says the control | VoiceOver follows it and says the control |
 | Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)); Orca says nothing | `LiveRegionChanged`; NVDA says it | VoiceOver says it |
 | `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | Notification event; NVDA says nothing (below) | `AXAnnouncementRequested`; VoiceOver says it |
-| Native menu bar | None | None | Application, Edit, View and Window menus |
+| Native menu bar | None | The declared menus, a Win32 menu bar that Windows exposes to screen readers | Application, Edit, View and Window menus |
 
 Each cell is what a client of the API receives, then what the screen reader
 says. Narrator is not run in CI. WebKit on macOS posts the page's notifications

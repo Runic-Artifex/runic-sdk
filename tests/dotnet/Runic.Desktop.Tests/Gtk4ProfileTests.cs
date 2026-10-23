@@ -296,7 +296,8 @@ public sealed class Gtk4ProfileTests
             DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
         const DesktopWindowCapabilities placement = DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
         if (OperatingSystem.IsWindows())
-            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | placement, advertised);
+            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
+                DesktopWindowCapabilities.ContextMenu | placement, advertised);
         else if (OperatingSystem.IsMacOS())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement,
                 advertised);

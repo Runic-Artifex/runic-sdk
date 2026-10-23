@@ -562,6 +562,139 @@ internal sealed class NativeChecks
         Console.WriteLine("WpfPlatformServices.ForWindow announcement checks passed.");
     }
 
+    // B10: a WPF window's services show WPF context menus: Windows access keys, shortcut hints, check marks and disabled
+    // entries; the chosen item, null when dismissed or replaced by a later menu, cancellation, and the owner's state.
+    [Test, NotInParallel("WpfSuite", Order = 25)]
+    public async Task ForWindowShowsWpfContextMenus()
+    {
+        var window = new Window { Width = 400, Height = 300, Title = "Runic WPF context menus", ShowActivated = false };
+        var services = WpfPlatformServices.ForWindow(window);
+        System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items =
+        [
+            new DesktopMenuItem("Rename", "row.rename") { CommandParameter = "row-7", Shortcut = DesktopShortcut.Parse("F2"), AccessKey = 'R' },
+            new DesktopMenuItem("Pinned", "row.pin") { IsChecked = true },
+            new DesktopMenuSeparator(),
+            new DesktopMenu("More", [new DesktopMenuItem("Delete_all", "row.delete") { IsEnabled = false }]),
+        ];
+        Program.Check(await services.ShowContextMenuAsync(items) is PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "A window without a handle did not report the owner unavailable for a context menu.");
+        var opened = new System.Collections.Concurrent.ConcurrentQueue<ContextMenu>();
+        Runic.Application.Views.Wpf.WpfContextMenu.Opened = opened.Enqueue;
+        try
+        {
+            window.Show();
+            var snapshot = services.GetSnapshot();
+            Program.Check(snapshot.Statuses.TryGetValue(PlatformCapabilityIds.ContextMenu, out var context) && context is CapabilityStatus.Available
+                && snapshot.Statuses.TryGetValue(PlatformCapabilityIds.MenuBar, out var bar) && bar is CapabilityStatus.Unavailable,
+                $"The WPF window's services did not report context menus without a menu bar: {snapshot}.");
+            try
+            {
+                await services.ShowContextMenuAsync([]);
+                Program.Check(false, "An empty context menu was accepted.");
+            }
+            catch (ArgumentException) { }
+
+            // Chosen: the first item.
+            var chosen = services.ShowContextMenuAsync(items).AsTask();
+            var menu = await NextMenuAsync(opened);
+            var rename = (MenuItem)menu.Items[0];
+            var pinned = (MenuItem)menu.Items[1];
+            var more = (MenuItem)menu.Items[3];
+            Program.Check(Equals(rename.Header, "_Rename") && rename.InputGestureText == "F2" && rename.IsEnabled && !rename.IsChecked,
+                $"Rename shows '{rename.Header}' '{rename.InputGestureText}'.");
+            Program.Check(pinned.IsChecked && menu.Items[2] is Separator, "Pinned is checked and the separator follows it.");
+            var delete = (MenuItem)more.Items[0];
+            Program.Check(!delete.IsEnabled && Equals(delete.Header, "Delete__all"), $"Delete shows '{delete.Header}' and is enabled: {delete.IsEnabled}.");
+            rename.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            menu.IsOpen = false;
+            Program.Check(await chosen.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: var item }
+                && ReferenceEquals(item, items[0]), "Choosing Rename did not return it.");
+
+            // Dismissed: null.
+            var dismissed = services.ShowContextMenuAsync(items).AsTask();
+            (await NextMenuAsync(opened)).IsOpen = false;
+            Program.Check(await dismissed.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: null },
+                "A dismissed menu did not return null.");
+
+            // A later menu replaces the open one, which returns null; cancelling closes the later one.
+            var first = services.ShowContextMenuAsync(items).AsTask();
+            await NextMenuAsync(opened);
+            using var cancel = new CancellationTokenSource();
+            var second = services.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 10, Y = 20 }, cancel.Token).AsTask();
+            var later = await NextMenuAsync(opened);
+            Program.Check(await first.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: null },
+                "A menu replaced by a later one did not return null.");
+            Program.Check(later.IsOpen, "The later menu is not open.");
+            cancel.Cancel();
+            try
+            {
+                await second.WaitAsync(TimeSpan.FromSeconds(10));
+                Program.Check(false, "A cancelled context menu did not throw OperationCanceledException.");
+            }
+            catch (OperationCanceledException) { }
+            Program.Check(!later.IsOpen, "The cancelled menu stayed open.");
+        }
+        finally
+        {
+            Runic.Application.Views.Wpf.WpfContextMenu.Opened = null;
+            window.Close();
+        }
+        Program.Check(await services.ShowContextMenuAsync(items) is PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "A closed window did not report the owner closed for a context menu.");
+        Console.WriteLine("WpfPlatformServices.ForWindow context menu checks passed.");
+    }
+
+    // B10: a RunicWebView's Desktop window shows WPF context menus at a page point of the control.
+    [Test, NotInParallel("WpfSuite", Order = 26)]
+    public async Task ChildWebViewShowsContextMenusAtAPagePoint()
+    {
+        using var child = new RunicWebView();
+        var window = new Window { Content = child, Width = 600, Height = 400, Title = "Runic WPF child context menu" };
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        child.Loaded += (_, _) => loaded.TrySetResult();
+        var opened = new System.Collections.Concurrent.ConcurrentQueue<ContextMenu>();
+        Runic.Application.Views.Wpf.WpfContextMenu.Opened = opened.Enqueue;
+        window.Show();
+        try
+        {
+            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await using var host = await DesktopHost.StartAsync(new()
+            {
+                WindowHostFactory = child.CreateWindowHostFactory(),
+                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                WaitForConnection = false,
+            });
+            await using var surface = await host.CreateSurfaceAsync(Program.HtmlOptions());
+            await using var desktop = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+            Program.Check(desktop.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu) && !desktop.Capabilities.HasFlag(DesktopWindowCapabilities.MenuBar)
+                && desktop.MenuBarPlacement == DesktopMenuBarPlacement.None,
+                $"The child window reports {desktop.Capabilities} and placement {desktop.MenuBarPlacement}.");
+            System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items = [new DesktopMenuItem("Open", "row.open")];
+            var chosen = desktop.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 40, Y = 30 }).AsTask();
+            var menu = await NextMenuAsync(opened);
+            var zoom = child.Controller?.ZoomFactor ?? 1;
+            Program.Check(menu.Placement == System.Windows.Controls.Primitives.PlacementMode.Relative && ReferenceEquals(menu.PlacementTarget, child)
+                && Math.Abs(menu.HorizontalOffset - 40 * zoom) < 0.01 && Math.Abs(menu.VerticalOffset - 30 * zoom) < 0.01,
+                $"The menu opens at {menu.Placement} {menu.HorizontalOffset},{menu.VerticalOffset}, not at the page point.");
+            ((MenuItem)menu.Items[0]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            menu.IsOpen = false;
+            Program.Check(ReferenceEquals(await chosen.WaitAsync(TimeSpan.FromSeconds(10)), items[0]), "Choosing Open did not return it.");
+        }
+        finally
+        {
+            Runic.Application.Views.Wpf.WpfContextMenu.Opened = null;
+            window.Close();
+        }
+        Console.WriteLine("RunicWebView context menu checks passed.");
+    }
+
+    private static async Task<ContextMenu> NextMenuAsync(System.Collections.Concurrent.ConcurrentQueue<ContextMenu> opened)
+    {
+        ContextMenu? menu = null;
+        await UntilAsync(() => opened.TryDequeue(out menu));
+        return menu!;
+    }
+
     // RunicViewHost.WebContent reaches the child WebView2: developer tools follow it, and a change reopens.
     [Test, NotInParallel("WpfSuite", Order = 23)]
     public async Task HostAppliesItsWebContent()

@@ -34,6 +34,10 @@ try
         await WebContentSmoke.RunAsync(host, new WebContentSmoke.Toolkit("gtk3",
             static opener => Runic.Desktop.Internal.LinuxWebKitGtkHost.ExternalOpenerOverride = opener));
     }
+    else if (args.Contains("--menus", StringComparer.Ordinal) && OperatingSystem.IsWindows())
+    {
+        await WindowsMenuSmoke.RunAsync(CreateHostOptions());
+    }
     else if (args.Contains("--dpi", StringComparer.Ordinal))
     {
         await WindowsDpiSmoke.RunAsync(CreateHostOptions());
