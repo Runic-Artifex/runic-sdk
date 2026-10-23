@@ -24,7 +24,7 @@ dotnet runic dev
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
-| `--packaging` | Adds `packaging/package.mjs`, which packages the application as MSIX, a signed `.app` in a disk image, or a Flatpak | No packaging recipes |
+| `--packaging` | Adds the `packaging/` manifests that `dotnet runic package` fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), as editable overrides of the command's defaults | The command's built-in manifests |
 | `--restore` | Restores the created projects' NuGet packages, for an IDE that opens the project next | No restore; `dotnet runic dev` and `dotnet build` restore |
 | `--application-id` | The reverse-DNS application ID, such as `org.example.Notes` | `com.example.` and the project name's ASCII letters and digits |
 

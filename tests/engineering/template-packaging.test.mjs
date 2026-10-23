@@ -5,122 +5,21 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { root } from "../../eng/run.mjs";
-import { checkApplicationId, fileTypes, fill, manifestFields, numericVersion, parseArguments, typeIdentifier, urlSchemes, webLinkHosts }
-  from "../../tools/Runic.Application.Templates/content/runic-app/packaging/package.mjs";
 
-// The runic-app template's packaging/package.mjs: its inputs, and the manifests it fills. The packaging CI job builds,
-// installs and opens the packages themselves on each platform.
+// The runic-app template's packaging inputs. dotnet runic package (tools/dotnet-runic/Packaging) embeds the template's
+// packaging/ manifests and fills them; Runic.Application.Tool.Tests (PackageTests.cs) checks the identity rules and the
+// filled manifests, and the packaging CI job builds, installs and opens the packages on each platform.
 const packaging = resolve(root, "tools/Runic.Application.Templates/content/runic-app/packaging");
-const manifests = {
-  windows: ["windows/AppxManifest.xml"],
-  macos: ["macos/Info.plist"],
-  flatpak: ["linux/app.desktop", "linux/app.metainfo.xml", "linux/flatpak.yml", "linux/app.service"],
-};
-const identity = (schemes, types = [], hosts = [], dbusActivatable = false) => ({
-  id: "org.example.Notes", name: "Notes & Co", version: "2.1.0-preview.3", urlSchemes: schemes, fileTypes: types, webLinkHosts: hosts, dbusActivatable,
-  publisher: "CN=Example Ltd, O=Example Ltd", description: "Notes <for> everyone", homepage: "https://example.org/notes?a=1&b=2",
-  executable: "Notes",
-});
 
-function parsesAsXml(text, name) {
-  const result = spawnSync("python3", ["-c", "import sys, xml.etree.ElementTree as e; e.fromstring(sys.stdin.read())"], { input: text, encoding: "utf8" });
-  assert.equal(result.status, 0, `${name} is not well-formed XML: ${result.stderr}\n${text}`);
-}
-
-test("package.mjs reads its target and options", () => {
-  assert.deepEqual(parseArguments(["windows", "--certificate", "app.pfx", "--timestamp-url", "http://ts"]),
-    { target: "windows", project: undefined, output: undefined, rid: undefined, certificate: "app.pfx", timestampUrl: "http://ts" });
-  assert.equal(parseArguments(["macos", "--notary-profile", "notary"]).notaryProfile, "notary");
-  assert.throws(() => parseArguments(["android"]), /Usage/);
-  assert.throws(() => parseArguments(["flatpak", "--gpg-sign"]), /needs a value/);
-  assert.throws(() => parseArguments(["flatpak", "extra"]), /Unexpected argument/);
-});
-
-test("package.mjs accepts only IDs and schemes every platform registers", () => {
-  for (const id of ["org.example.Notes", "com.example.App2048Game", "a.b"]) assert.equal(checkApplicationId(id), id);
-  for (const id of ["Notes", "org.example.my-notes", "org.example.2048", "org..example", "org.example.Notes_App", `org.example.${"a".repeat(40)}`])
-    assert.throws(() => checkApplicationId(id), /^Error: ApplicationId '/, id);
-  assert.deepEqual(urlSchemes(" Org.Example.Notes; notes+x ,"), ["org.example.notes", "notes+x"]);
-  assert.deepEqual(urlSchemes(""), []);
-  for (const scheme of ["https", "file", "1notes", "no_tes"]) assert.throws(() => urlSchemes(scheme), /RunicApplicationUrlSchemes/, scheme);
-});
-
-test("package.mjs accepts file types and web link hosts every platform declares", () => {
-  assert.deepEqual(fileTypes(" .Notes=Application/X-Example-Notes; .tar.gz ,.c+x"),
-    [{ extension: ".notes", mimeType: "application/x-example-notes" }, { extension: ".tar.gz", mimeType: undefined }, { extension: ".c+x", mimeType: undefined }]);
-  assert.deepEqual(fileTypes(""), []);
-  for (const entry of ["notes", ".", "..notes", ".notes.", ".no*tes", ".notes=text", ".notes=a/b=c", ".notes;.NOTES"])
-    assert.throws(() => fileTypes(entry), /RunicApplicationFileTypes/, entry);
-  assert.equal(typeIdentifier("org.example.Notes", ".c+x"), "org.example.Notes.c-x");
-  assert.deepEqual(webLinkHosts("Notes.Example.org; links.example.com"), ["notes.example.org", "links.example.com"]);
-  for (const host of ["example", "*.example.org", "example.org:443", "https://example.org", "-a.example.org", "a_b.example.org"])
-    assert.throws(() => webLinkHosts(host), /RunicApplicationWebLinkHosts/, host);
-});
-
-test("package.mjs makes numeric package versions", () => {
-  assert.equal(numericVersion("2.1.0-preview.3", 4), "2.1.0.0");
-  assert.equal(numericVersion("1.2", 3), "1.2.0");
-  assert.equal(numericVersion("1.2.3.4+build", 3), "1.2.3");
-  assert.equal(numericVersion(undefined, 4), "1.0.0.0");
-});
-
-test("package.mjs fills every field of its manifests, escaped, with and without URL schemes", () => {
-  assert.throws(() => fill("{{Unknown}}", {}), /does not fill/);
-  for (const [target, files] of Object.entries(manifests))
-    for (const schemes of [[], ["org.example.notes", "notes-x"]]) {
-      const types = schemes.length ? [{ extension: ".notes", mimeType: "application/x-example-notes" }, { extension: ".tar.gz" }] : [];
-      const fields = manifestFields(identity(schemes, types, schemes.length ? ["notes.example.org"] : [], schemes.length > 0), target);
-      for (const file of files) {
-        const text = fill(readFileSync(resolve(packaging, file), "utf8"), fields);
-        assert.doesNotMatch(text, /\{\{|\}\}/, file);
-        if (file.endsWith(".xml") || file.endsWith(".plist")) {
-          parsesAsXml(text, file);
-          assert.match(text, /Notes &amp; Co/, file);
-        }
-        if (file === "windows/AppxManifest.xml") {
-          assert.match(text, /Version="2\.1\.0\.0"/);
-          assert.match(text, /Publisher="CN=Example Ltd, O=Example Ltd"/);
-          assert.equal((text.match(/<uap:Protocol Name="/g) ?? []).length, schemes.length);
-          // The startup task is always declared, so Extensions is never empty.
-          assert.match(text, /<desktop:StartupTask TaskId="LoginStartup" Enabled="false" DisplayName="Notes &amp; Co" \/>/);
-          assert.match(text, /<desktop:Extension Category="windows.startupTask" Executable="Notes\.exe" EntryPoint="Windows\.FullTrustApplication">/);
-          assert.equal((text.match(/<uap3:FileTypeAssociation Name="(notes|tar\.gz)" MultiSelectModel="Player">/g) ?? []).length, types.length);
-          assert.equal(/<uap:FileType ContentType="application\/x-example-notes">\.notes<\/uap:FileType>/.test(text), types.length > 0);
-          assert.equal(/<uap3:Host Name="notes\.example\.org" \/>/.test(text), schemes.length > 0);
-          assert.equal(/windows\.appUriHandler/.test(text), schemes.length > 0, "no handler without hosts");
-        }
-        if (file === "macos/Info.plist") {
-          assert.match(text, /<key>CFBundleShortVersionString<\/key><string>2\.1\.0<\/string>/);
-          assert.equal(/CFBundleURLSchemes<\/key><array><string>org\.example\.notes<\/string><string>notes-x<\/string>/.test(text), schemes.length > 0);
-          assert.equal((text.match(/<key>LSItemContentTypes<\/key><array><string>org\.example\.Notes\.(notes|tar\.gz)<\/string>/g) ?? []).length, types.length);
-          assert.equal((text.match(/<key>UTTypeIdentifier<\/key><string>org\.example\.Notes\.(notes|tar\.gz)<\/string>/g) ?? []).length, types.length);
-          assert.equal(/<key>public\.mime-type<\/key><array><string>application\/x-example-notes<\/string>/.test(text), types.length > 0);
-          assert.equal(/<array><string>tar\.gz<\/string><\/array>/.test(text), types.length > 0);
-        }
-        if (file === "linux/app.desktop") {
-          assert.match(text, /^Exec=Notes %U$/m);
-          assert.equal(text.match(/^MimeType=(.*)$/m)?.[1], schemes.length
-            ? "x-scheme-handler/org.example.notes;x-scheme-handler/notes-x;application/x-example-notes;application/x-notes-tar.gz;" : undefined);
-          assert.equal(/^DBusActivatable=true$/m.test(text), schemes.length > 0);
-          assert.ok(text.endsWith("\n"));
-        }
-        if (file === "linux/app.metainfo.xml") {
-          assert.match(text, /<developer id="org\.example">/);
-          assert.match(text, /<url type="homepage">https:\/\/example\.org\/notes\?a=1&amp;b=2<\/url>/);
-        }
-        if (file === "linux/flatpak.yml") {
-          assert.match(text, /^app-id: org\.example\.Notes$/m);
-          assert.equal(/install -Dm644 org\.example\.Notes\.mime\.xml \/app\/share\/mime\/packages\/org\.example\.Notes\.xml$/m.test(text), types.length > 0);
-          assert.equal(/install -Dm644 org\.example\.Notes\.service \/app\/share\/dbus-1\/services\/org\.example\.Notes\.service$/m.test(text), schemes.length > 0);
-        }
-        if (file === "linux/app.service") assert.equal(text, "[D-BUS Service]\nName=org.example.Notes\nExec=/app/bin/Notes\n");
-      }
-      if (target === "flatpak" && types.length > 0) {
-        parsesAsXml(fields.MimeInfo, "mime.xml");
-        assert.match(fields.MimeInfo, /<mime-type type="application\/x-example-notes">\s*<comment>Notes &amp; Co document \(\.notes\)<\/comment>\s*<glob pattern="\*\.notes"\/>/);
-        assert.match(fields.MimeInfo, /<mime-type type="application\/x-notes-tar\.gz">/);
-      }
-    }
+test("the template's packaging folder holds the manifests the command embeds, without package.mjs", () => {
+  const files = readdirSync(packaging, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile())
+    .map(entry => join(entry.parentPath, entry.name).slice(packaging.length + 1).replaceAll("\\", "/")).sort();
+  assert.deepEqual(files, ["linux/app.desktop", "linux/app.metainfo.xml", "linux/app.service", "linux/flatpak.yml",
+    "macos/Info.plist", "macos/entitlements.plist", "windows/AppxManifest.xml"]);
+  const tool = readFileSync(resolve(root, "tools/dotnet-runic/Runic.Application.Tool.csproj"), "utf8");
+  for (const file of files)
+    assert.match(tool, new RegExp(`<EmbeddedResource Include="\\.\\./Runic\\.Application\\.Templates/content/runic-app/packaging/${file.replaceAll(".", "\\.")}"`), file);
+  for (const file of files) assert.doesNotMatch(readFileSync(resolve(packaging, file), "utf8"), /package\.mjs/, file);
 });
 
 test("the packaging probe declares what the template's packaging reads", () => {
@@ -140,9 +39,9 @@ test("the packaging probe declares what the template's packaging reads", () => {
   const identitySource = readFileSync(resolve(packaging, "../ApplicationIdentity.cs"), "utf8");
   assert.match(identitySource, /Read\("ApplicationId"\)/);
   assert.match(identitySource, /Read\("ApplicationTitle"\)/);
-  const packageScript = readFileSync(resolve(packaging, "package.mjs"), "utf8");
-  assert.match(packageScript, /"ApplicationId", "ApplicationTitle"/);
-  assert.doesNotMatch(packageScript, /RunicApplication(Id|Name)\b/);
+  const identityReader = readFileSync(resolve(root, "tools/dotnet-runic/Packaging/PackageIdentity.cs"), "utf8");
+  assert.match(identityReader, /"ApplicationId", "ApplicationTitle"/);
+  assert.doesNotMatch(identityReader, /RunicApplication(Id|Name)\b/);
   assert.match(probe, /<Compile Include="\.\.\/\.\.\/\.\.\/tools\/Runic\.Application\.Templates\/content\/runic-app\/ApplicationIdentity\.cs"/);
 });
 

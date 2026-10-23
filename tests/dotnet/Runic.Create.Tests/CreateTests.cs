@@ -46,7 +46,7 @@ internal sealed class CreateTests
         Equal("tests,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
         Equal("Nix flake", model.Toggles[1].DisplayName);
-        Equal("Packaging recipes", model.Toggles[2].DisplayName);
+        Equal("Packaging manifests", model.Toggles[2].DisplayName);
         Equal("Restore packages", model.Toggles[3].DisplayName);
         // Text parameters are options generated from the model; --application-id is the template's only one.
         Equal("application-id", string.Join(',', model.Texts.Select(text => text.LongName)));

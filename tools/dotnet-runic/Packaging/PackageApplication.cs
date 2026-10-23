@@ -77,6 +77,10 @@ internal static class PackageApplication
         {
             PackageTarget.Windows => WindowsPackager.RunAsync,
             PackageTarget.MacOS => MacOSPackager.RunAsync,
+            PackageTarget.Flatpak => FlatpakPackager.RunAsync,
+            PackageTarget.AppImage => AppImagePackager.RunAsync,
+            PackageTarget.Deb => DebPackager.RunAsync,
+            PackageTarget.Rpm => RpmPackager.RunAsync,
             _ => throw new DevUsageException(PackageCodes.WrongOperatingSystem, $"The {target} target is not available in this version."),
         };
         await run(context, cancellationToken).ConfigureAwait(false);

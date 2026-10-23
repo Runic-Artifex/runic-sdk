@@ -15,7 +15,7 @@ files across launches (W319 0.11 B16, I-069).
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
-| Linux | Implemented: the desktop starts the application with the files or URLs as arguments (`Exec=… %U`); `ApplicationInstance` forwards a later launch to the running instance; `DesktopOpenRequests.FromLaunch` takes the registered URLs and existing files. Registration: a marked desktop entry and MIME definitions in `XDG_DATA_HOME`. D-Bus activation: `PortalApplication.ExportApplicationAsync` serves `org.freedesktop.Application`. | Portable tests for the parser, delivery through the instance, the entry and MIME XML writer, foreign entries refused without writes, and `ActivateAction`'s `Exec` mapping. D-Bus (dbus-run-session, JIT and NativeAOT): `Activate` with a token, `Open` into the open requests, `ActivateAction`, a taken name refused, the name released. CI isolated session: a desktop entry written through `IDesktopOpenRegistration` opened with `gio open` reaches the running instance, a packaged entry is refused; a D-Bus service file in `XDG_DATA_HOME` starts the activatable probe for `Open` (cold), then `Open`, `Activate` and `ActivateAction` reach it (warm). Packaging job: the Flatpak exports `DBusActivatable=true`, the file type's MIME definition and the service file. Manual: GNOME Shell and KDE launching a `DBusActivatable` application. |
+| Linux | Implemented: the desktop starts the application with the files or URLs as arguments (`Exec=… %U`); `ApplicationInstance` forwards a later launch to the running instance; `DesktopOpenRequests.FromLaunch` takes the registered URLs and existing files. Registration: a marked desktop entry and MIME definitions in `XDG_DATA_HOME`. D-Bus activation: `PortalApplication.ExportApplicationAsync` serves `org.freedesktop.Application`. | Portable tests for the parser, delivery through the instance, the entry and MIME XML writer, foreign entries refused without writes, and `ActivateAction`'s `Exec` mapping. D-Bus (dbus-run-session, JIT and NativeAOT): `Activate` with a token, `Open` into the open requests, `ActivateAction`, a taken name refused, the name released. CI isolated session: a desktop entry written through `IDesktopOpenRegistration` opened with `gio open` reaches the running instance, a packaged entry is refused; a D-Bus service file in `XDG_DATA_HOME` starts the activatable probe for `Open` (cold), then `Open`, `Activate` and `ActivateAction` reach it (warm). Packaging job: the Flatpak exports `DBusActivatable=true`, the file type's MIME definition and the service file; the deb (opened with `xdg-open`), the rpm (installed in Fedora) and the AppImage open the probe through the URL scheme. Manual: GNOME Shell and KDE launching a `DBusActivatable` application. |
 | Windows | Implemented: the shell starts the application with `"%1"`, then as on Linux. Registration: per-user `HKCU\Software\Classes` keys, `Capabilities` and `RegisteredApplications`. MSIX: `GetLaunch` reads the activation (protocol URI, every file), login startup uses the package's `StartupTask`. | The same portable tests. Registration round trip, update from a new path, foreign user and machine keys refused with nothing written, in a scratch key (JIT and NativeAOT). CI: a URL protocol registered through `IDesktopOpenRegistration` opened by the shell reaches the running instance, a foreign protocol is refused, JIT and NativeAOT. Packaging job: the MSIX probe is activated by its protocol (`GetLaunch` sees `Protocol`), its `StartupTask` is turned on and off, and two `.runicprobe` files opened together through the shell (`FolderItems.InvokeVerbEx`, as Explorer opens a selection) reach one process. Manual: Default apps listing, Explorer multi-select, `AppUriHandler` on a verified domain. |
 | macOS | Implemented: LaunchServices sends the open-documents (`odoc`) and get-URL (`GURL`) Apple events to the running application, at launch and later. Runic.Platform.MacOS installs `NSAppleEventManager` handlers before the application finishes launching. Launches from a terminal also forward their arguments. With `WebLinkHosts`, a Runic application delegate receives universal links. Registration: `LSRegisterURL` of the running bundle after checking its `Info.plist`. Bookmarks: security-scoped inside the App Sandbox. | CI, JIT and NativeAOT: `odoc` and `GURL` events dispatched through `NSAppleEventManager`'s handler table; synthetic web-browsing `NSUserActivity` objects passed to the delegate at launch and later, also through an application's own delegate class; a bundle around the NativeAOT test executable registers itself with `LSRegisterURL` and is listed for its scheme and plain text, then, registered with `lsregister`, launched by `open -a … file` and by `open <scheme>://…`, receives each at launch; bookmarks round trip, follow a moved file and report a deleted one, unsandboxed and in the ad-hoc signed App Sandbox fixture, where a file outside the container gets none. Manual: universal links on a Mac with the Associated Domains entitlement and an `apple-app-site-association` file. |
 
@@ -216,8 +216,10 @@ Flatpak's document-portal paths.
 
 ## Registration
 
-What the application's package installs, per platform. W315-014's packaging
-recipes include these.
+What the application's package installs, per platform. `dotnet runic package`
+(I-059, since 0.11) writes these into the MSIX, the macOS bundle and the Linux
+packages from `RunicApplicationUrlSchemes`, `RunicApplicationFileTypes`,
+`RunicApplicationWebLinkHosts` and `RunicApplicationDBusActivatable`.
 
 ### Linux
 
@@ -311,7 +313,3 @@ The bundle's `Info.plist`:
 - A sandboxed application may read an opened file for the session; keeping
   access across launches needs a security-scoped bookmark
   (`IDesktopFileBookmarks`).
-
-## Out of scope for 1.0
-
-- A `dotnet runic package` integration of the registration (W315-014, B26).

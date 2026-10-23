@@ -246,7 +246,7 @@ internal sealed partial class ToolTests
     {
         (int exitCode, string help) = RunCli("package", "--help");
         Equal(0, exitCode);
-        foreach (string target in new[] { "windows", "macos" }) Contains(help, target);
+        foreach (string target in new[] { "windows", "macos", "flatpak", "appimage", "deb", "rpm" }) Contains(help, target);
         (_, string windows) = RunCli("package", "windows", "--help");
         foreach (string option in new[] { "--project", "--configuration", "--runtime", "--output-directory", "-o", "--publisher", "--certificate", "--thumbprint", "--timestamp-url" })
             Contains(windows, option);
@@ -255,7 +255,7 @@ internal sealed partial class ToolTests
             Contains(macos, option);
         (int completionExit, string completion) = RunCli("completion", "bash");
         Equal(0, completionExit);
-        foreach (string word in new[] { "package", "--output-directory", "--notary-profile", "--thumbprint" })
+        foreach (string word in new[] { "package", "--output-directory", "--notary-profile", "--thumbprint", "--gpg-sign", "appimage" })
             Contains(completion, word);
 
         // Conflicting and incomplete signing options are usage errors before any work.
@@ -296,6 +296,83 @@ internal sealed partial class ToolTests
         False(WindowsPackager.IsSelfSigned(leaf.Create(issuer, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1), [1, 2, 3])), "issued");
         False(WindowsPackager.IsSelfSigned(null), "unknown");
         Equal("signtool sign /p *** \"C:\\a b.msix\"", PackageTools.Describe("signtool", ["sign", "/p", "secret", "C:\\a b.msix"], new HashSet<int> { 2 }));
+    }
+
+    [Test, DisplayName("package writes the deb control file and the rpm spec with the GTK backend's dependencies")]
+    public void PackageLinuxMetadata()
+    {
+        PackageIdentity identity = PackageIdentityFor(["notes"]) with { Description = "Notes for everyone.\n\nWith 100% sync." };
+        string control = DebPackager.Control(identity, "amd64", 2637);
+        Equal("""
+            Package: notes
+            Version: 2.1.0~preview.3
+            Architecture: amd64
+            Maintainer: Example Ltd
+            Installed-Size: 2637
+            Depends: libc6, libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0
+            Section: utils
+            Priority: optional
+            Homepage: https://example.org/notes?a=1&b=2
+            Description: Notes for everyone
+             Notes for everyone.
+             .
+             With 100% sync.
+
+            """.Replace("\r", "", StringComparison.Ordinal), control);
+        Contains(DebPackager.Control(identity with { Gtk4 = true, Publisher = "CN=Example" }, "arm64", 1),
+            "Depends: libc6, libgtk-4-1, libwebkitgtk-6.0-4\n");
+        Contains(DebPackager.Control(identity with { Publisher = "CN=Example" }, "arm64", 1), "Maintainer: Notes & Co\n");
+        Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => DebPackager.Control(identity with { PackageName = "Notes_App" }, "amd64", 1)).Code);
+
+        string spec = RpmPackager.Spec(identity with { License = "MIT" }, "x86_64", "/tmp/stage dir/STAGED",
+            ["/usr/lib/org.example.Notes", "/usr/bin/Notes", "/usr/share/applications/org.example.Notes.desktop"]);
+        foreach (string line in new[]
+        {
+            "Name: notes\n", "Version: 2.1.0~preview.3\n", "Release: 1\n", "Summary: Notes for everyone\n", "License: MIT\n",
+            "BuildArch: x86_64\n", "AutoReqProv: no\n", "Requires: webkit2gtk4.1\n", "%global debug_package %{nil}\n",
+            "With 100%% sync.", "cp -a '/tmp/stage dir/STAGED/.' %{buildroot}/\n",
+            "%files\n\"/usr/lib/org.example.Notes\"\n\"/usr/bin/Notes\"\n\"/usr/share/applications/org.example.Notes.desktop\"\n",
+        })
+        {
+            Contains(spec, line);
+        }
+        Contains(RpmPackager.Spec(identity with { Gtk4 = true }, "aarch64", "/s", []), "Requires: webkitgtk6.0\n");
+
+        Equal(("amd64", "x86_64"), LinuxPackaging.Architecture("linux-x64"));
+        Equal(("arm64", "aarch64"), LinuxPackaging.Architecture("linux-arm64"));
+        Equal(PackageCodes.WrongOperatingSystem, Throws<DevUsageException>(() => LinuxPackaging.Architecture("linux-musl-x86")).Code);
+    }
+
+    [Test, DisplayName("package lays out the AppImage and the Linux fields of each format")]
+    public void PackageLinuxFormats()
+    {
+        PackageIdentity identity = PackageIdentityFor(["notes"], dbus: true);
+        Equal("Notes_&_Co-2.1.0-preview.3-x86_64.AppImage".Replace("&", "_", StringComparison.Ordinal), AppImagePackager.FileName(identity, "x86_64"));
+        string appRun = AppImagePackager.AppRun(identity);
+        True(appRun.StartsWith("#!/bin/sh\n", StringComparison.Ordinal) && appRun.EndsWith('\n'), appRun);
+        Contains(appRun, "exec \"$here/usr/lib/org.example.Notes/Notes\" \"$@\"");
+
+        // The service file starts the launcher where each format installs it; an AppImage has no fixed path, so it is
+        // not D-Bus activatable.
+        foreach ((PackageTarget target, string bin, bool activatable) in new[]
+        {
+            (PackageTarget.Flatpak, "/app/bin", true), (PackageTarget.Deb, "/usr/bin", true), (PackageTarget.Rpm, "/usr/bin", true),
+            (PackageTarget.AppImage, "/usr/bin", false),
+        })
+        {
+            Dictionary<string, string> fields = PackageManifests.Fields(identity, target);
+            Equal($"[D-BUS Service]\nName=org.example.Notes\nExec={bin}/Notes\n", PackageManifests.Render(identity, "linux/app.service", fields));
+            Equal(activatable, PackageManifests.Render(identity, "linux/app.desktop", fields).Contains("DBusActivatable=true\n", StringComparison.Ordinal));
+        }
+
+        // The Flatpak installs the scalable icon only when an icon.svg is beside the PNG.
+        using var workspace = new TestWorkspace();
+        string png = workspace.Write("icons/icon.png", "png");
+        PackageIdentity withIcon = identity with { Icon = png };
+        DoesNotContain(PackageManifests.Fields(withIcon, PackageTarget.Flatpak)["ExtraInstalls"], "icon.svg");
+        workspace.Write("icons/icon.svg", "<svg/>");
+        Contains(PackageManifests.Fields(withIcon, PackageTarget.Flatpak)["ExtraInstalls"],
+            "install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/org.example.Notes.svg");
     }
 
     private static string RepositoryRoot()

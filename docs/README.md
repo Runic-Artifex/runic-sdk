@@ -22,3 +22,6 @@ and how to suppress them. The diagnostics link to it at the release's tag.
 
 The [security guide](security.md) is for authors of Runic applications: what Runic
 protects by default, which options relax it, and what an application checks itself.
+
+The [packaging guide](packaging.md) covers `dotnet runic package`: what each
+format needs, and how you sign the packages with your own credentials.

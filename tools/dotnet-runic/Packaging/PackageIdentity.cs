@@ -50,6 +50,9 @@ internal sealed partial record PackageIdentity
     /// <summary>The project's NuGet lock file, <c>NuGetLockFilePath</c>, or <c>packages.lock.json</c>.</summary>
     internal string? NuGetLockFile { get; init; }
 
+    /// <summary>The rpm License tag, <c>PackageLicenseExpression</c>; <c>LicenseRef-proprietary</c> by default.</summary>
+    internal string License { get; init; } = "LicenseRef-proprietary";
+
     internal string ProjectDirectory => Path.GetDirectoryName(ProjectPath)!;
 
     /// <summary>The SVG beside the PNG icon, when there is one.</summary>
@@ -68,7 +71,7 @@ internal sealed partial record PackageIdentity
         "ApplicationId", "ApplicationTitle", "Version", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes",
         "RunicApplicationWebLinkHosts", "RunicApplicationDBusActivatable", "RunicApplicationPublisher", "Description",
         "PackageProjectUrl", "AssemblyName", "RunicPackageIcon", "RunicPackageName", "RunicPackagingDirectory",
-        "RuntimeIdentifiers", "NuGetLockFilePath",
+        "RuntimeIdentifiers", "NuGetLockFilePath", "PackageLicenseExpression",
     ];
 
     /// <summary>Evaluates the project with <c>dotnet msbuild -getProperty</c> and validates what it reads.</summary>
@@ -138,6 +141,7 @@ internal sealed partial record PackageIdentity
                 || string.Equals(reference, "Runic.Desktop.Gtk4", StringComparison.OrdinalIgnoreCase)),
             RuntimeIdentifiers = Get("RuntimeIdentifiers").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             NuGetLockFile = lockFile,
+            License = Get("PackageLicenseExpression").Length != 0 ? Get("PackageLicenseExpression") : "LicenseRef-proprietary",
         };
     }
 

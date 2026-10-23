@@ -797,7 +797,8 @@ verify_package_names() {
   grep -Fq 'iconName = "org.example.Notes";' "$names_directory/id-explicit/flake.nix"
   echo 'PACKAGE_NAMES_OK'
   echo 'APPLICATION_IDS_OK'
-  # --packaging adds packaging/ unchanged (the packaging CI job runs these files) and the properties it reads.
+  # --packaging adds packaging/ unchanged (dotnet runic package embeds the same manifests, which the packaging CI job
+  # runs) and the properties it reads; the command replaced package.mjs (D039.14).
   local packaging_source="$repository_root/tools/Runic.Application.Templates/content/runic-app/packaging"
   if [[ -e "$names_directory/id-explicit/packaging" ]]; then
     echo "A project without --packaging has packaging/." >&2
@@ -812,8 +813,8 @@ verify_package_names() {
     grep -Fq "<$property>" "$names_directory/packaged/Packaged.csproj"
   done
   grep -Fxq '/artifacts/' "$names_directory/packaged/.gitignore"
-  if node "$names_directory/packaged/packaging/package.mjs" android > /dev/null 2>&1; then
-    echo "package.mjs accepted an unknown target." >&2
+  if [[ -e "$names_directory/packaged/packaging/package.mjs" ]]; then
+    echo "--packaging still adds package.mjs, which dotnet runic package replaced." >&2
     exit 1
   fi
   echo 'PACKAGING_RECIPES_OK'

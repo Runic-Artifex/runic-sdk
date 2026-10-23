@@ -180,7 +180,7 @@ rule applies to each file:
 | Changed files | Legs |
 | --- | --- |
 | `Runic.Desktop.Gtk4`, its smoke, `Runic.Platform.Linux*` and their tests, `eng/portals` | Linux only |
-| `Runic.Desktop`, its tests and fixtures, `Runic.Platform`, `Runic.Platform.Runtime` and its tests, the WebView smoke, the accessibility probe, `eng/build/desktop.props`, `eng/branding/desktop`, the template's packaging recipes, `ApplicationIdentity.cs` and icons, the packaging probe | all three |
+| `Runic.Desktop`, its tests and fixtures, `Runic.Platform`, `Runic.Platform.Runtime` and its tests, the WebView smoke, the accessibility probe, `eng/build/desktop.props`, `eng/branding/desktop`, the template's packaging manifests, `ApplicationIdentity.cs` and icons, `dotnet runic package` (`tools/dotnet-runic/Packaging`), the packaging probe | all three |
 | `Runic.Application.Views`, `.Desktop` and `.CsWebUi`, `examples/first-window`, the CS-WebUI window probes, `Runic.Application.Testing` and its tests | win-x64, osx-arm64 |
 | `Runic.Platform.Windows*` and their tests, the elevation smoke, `windows-notifications` | win-x64, win-arm64 |
 | WPF hosts and their tests, `Runic.Navigation` and its WPF consumer, the Views ReactiveUI adapters (`Runic.Application.Views.ReactiveUI*`, whose failure bookkeeping the WPF suite checks under WPF's dispatcher), `examples/wpf-*`, the WPF Bridge consumer, `Runic.Application.Views.Codegen*`, `Runic.Application.Views.Dev`, `examples/notes-reactive-views`, Windows administration | win-x64 |
@@ -375,6 +375,19 @@ attempts.
 
 Locally, add `-v <directory>:/var/cache/libdnf5` to the `podman run` command in the
 script's header to reuse downloaded packages.
+
+The packaging job's `rpm` leg installs the probe's rpm the same way with
+`eng/ci/packaging-rpm.sh` (WebKitGTK and its dependencies), in its own cache entry
+`dnf-packaging-<hash of the image reference>-<arch>-<year-month>`.
+
+## Packaging tools
+
+The packaging job's Linux legs install `flatpak-builder`, `rpm`, `appstream` and
+`desktop-file-utils` through the bounded apt path. The `appimage` leg downloads
+`appimagetool` and the AppImage type2 runtime from their GitHub releases, pinned by
+version and SHA-256 in `.github/workflows/ci.yml`, so `dotnet runic package appimage`
+downloads nothing. To update them, change the URLs and hashes there; GitHub shows each
+release asset's SHA-256.
 
 ## Source snapshots and artifacts
 

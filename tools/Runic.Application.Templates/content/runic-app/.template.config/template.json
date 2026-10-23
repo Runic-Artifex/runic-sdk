@@ -190,8 +190,8 @@
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "false",
-      "displayName": "Packaging recipes",
-      "description": "Adds packaging/package.mjs and its manifests, which package the application as MSIX on Windows, a signed .app in a disk image on macOS and a Flatpak on Linux."
+      "displayName": "Packaging manifests",
+      "description": "Adds the packaging/ manifests that dotnet runic package fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), so you can edit them; the command has the same defaults built in."
     },
     "restore": {
       "type": "parameter",

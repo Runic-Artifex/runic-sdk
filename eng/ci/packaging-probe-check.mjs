@@ -1,7 +1,7 @@
 // Checks the receipt that tests/native/Runic.Packaging.Probe writes when its installed package opens its URL scheme
 // (see the packaging job in .github/workflows/ci.yml). Usage: bun eng/ci/packaging-probe-check.mjs <receipt> <platform>
-// [unpackaged|files], where platform is windows, macos or flatpak; "unpackaged" checks a copy run outside its package,
-// "files" the receipt of a package opened with two files at once (Windows).
+// [unpackaged|files], where platform is windows, macos, flatpak, appimage, deb or rpm; "unpackaged" checks a copy run
+// outside its package, "files" the receipt of a package opened with two files at once (Windows).
 import { existsSync, readFileSync } from "node:fs";
 
 const [path, platform, mode] = process.argv.slice(2);
@@ -44,6 +44,14 @@ if (mode === "unpackaged") {
 } else if (platform === "flatpak") {
   expect(receipt.packageIdentity === id, `FLATPAK_ID is ${receipt.packageIdentity}`);
   expect(receipt.contentRoot === "/app/lib/Runic.Packaging.Probe/www", `the Flatpak's content root is ${receipt.contentRoot}`);
+} else if (platform === "deb" || platform === "rpm") {
+  // Installed in /usr/lib/<id>, started through the /usr/bin link.
+  expect(receipt.packageIdentity === null, `the ${platform} package reports the package identity ${receipt.packageIdentity}`);
+  expect(receipt.contentRoot === "/usr/lib/org.runic.tests.PackagingProbe/www", `the ${platform}'s content root is ${receipt.contentRoot}`);
+} else if (platform === "appimage") {
+  // Extracted or mounted somewhere temporary, with the AppDir's layout.
+  expect(receipt.packageIdentity === null, `the AppImage reports the package identity ${receipt.packageIdentity}`);
+  expect(/\/usr\/lib\/org\.runic\.tests\.PackagingProbe\/www\/?$/.test(receipt.contentRoot ?? ""), `the AppImage's content root is ${receipt.contentRoot}`);
 } else {
   failures.push(`unknown platform ${platform}`);
 }

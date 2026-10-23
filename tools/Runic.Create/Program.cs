@@ -89,7 +89,7 @@ internal static class Program
         [Option("--view-models", Description = "MVVM library for the C# ViewModels.")] string? viewModels = null,
         [Option("--tests", Description = "Add a TUnit test project for the Window.")] bool tests = false,
         [Option("--nix", Description = "Add a Nix flake that builds the application with the Runic SDK's builder.")] bool nix = false,
-        [Option("--packaging", Description = "Add packaging recipes: MSIX on Windows, a signed .app and disk image on macOS, a Flatpak on Linux.")] bool packaging = false,
+        [Option("--packaging", Description = "Add the packaging/ manifests that dotnet runic package fills, to edit them: MSIX, macOS bundle, desktop entry, AppStream metadata and Flatpak manifest.")] bool packaging = false,
         [Option("--restore", Description = "Restore the project's NuGet packages after creating it, for an IDE that opens it next.")] bool restore = false,
         [Option("--force", Description = "Create the project in a directory that is not empty, as dotnet new --force does. Files the template writes are replaced.")] bool force = false,
         [Option("--no-install", Description = "Use the installed Runic.Application.Templates instead of installing this version, for example offline.")] bool noInstall = false,

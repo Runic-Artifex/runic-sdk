@@ -11,7 +11,7 @@ creator asks for the project name, frontend (React, Vue, Svelte, SvelteKit or An
 JavaScript package manager (npm, pnpm or Bun), Window host (Runic Desktop, which
 opens a native window, or CS-WebUI, which opens a browser window), ViewModel
 library (ReactiveUI or CommunityToolkit.Mvvm), whether to add a test
-project, a Nix flake or packaging recipes, and whether to restore the NuGet
+project, a Nix flake or the packaging manifests, and whether to restore the NuGet
 packages. Each choice is described in one line. It then installs the matching
 `Runic.Application.Templates` version and runs `dotnet new runic-app`. The
 install goes to your `dotnet new` template store, as `dotnet new install` does,
@@ -46,7 +46,7 @@ commands in the browser.
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
-| `--packaging` | Adds `packaging/package.mjs`, which packages the application as MSIX, a signed `.app` in a disk image, or a Flatpak | No packaging recipes |
+| `--packaging` | Adds the `packaging/` manifests that `dotnet runic package` fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), as editable overrides of the command's defaults | The command's built-in manifests |
 | `--restore` | Restores the project's NuGet packages after creating it, for an IDE that opens it next | No restore |
 | `--application-id` | The reverse-DNS application ID, such as `org.example.Notes` | `com.example.` and the project name's ASCII letters and digits |
 | `--output`, `-o` | A directory | The project name |
