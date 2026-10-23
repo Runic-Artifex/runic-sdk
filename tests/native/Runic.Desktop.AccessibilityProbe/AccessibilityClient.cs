@@ -42,6 +42,19 @@ internal abstract class AccessibilityClient : IAsyncDisposable
 
     internal abstract Task FocusAsync(Control control, CancellationToken cancellationToken);
 
+    /// <summary>Whether <see cref="StepWithKeysAsync"/> and <see cref="SelectWithKeysAsync"/> press keys, which reach the
+    /// control only once the screen reader has settled on it.</summary>
+    internal virtual bool ActsWithKeys => false;
+
+    /// <summary>One increment or decrement of the focused control as a screen reader user makes it, for the speech
+    /// checks. The API's own action (<see cref="StepAsync"/>) unless the screen reader's users press keys instead.</summary>
+    internal virtual Task StepWithKeysAsync(Control control, int direction, CancellationToken cancellationToken)
+        => StepAsync(control, direction, cancellationToken);
+
+    /// <summary>Selects an item of the focused list box as a screen reader user does, for the speech checks.</summary>
+    internal virtual Task SelectWithKeysAsync(Control control, string item, CancellationToken cancellationToken)
+        => SelectAsync(control, item, cancellationToken);
+
     /// <summary>A short description of the native menu bar, or null when the host has none.</summary>
     internal virtual Task<string?> MenuBarAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 
