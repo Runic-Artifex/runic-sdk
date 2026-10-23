@@ -1,0 +1,68 @@
+{
+  "description": "The in-page menu bar state (specs/desktop/menu-bar-page.md) shared by Runic.Application.Views.Desktop (MenuBarPageChecks) and @runic-artifex/views (createMenuBarController). 'bar' declares DesktopHostOptions.MenuBar; 'cannotExecute' lists the command ids whose CanExecute is false; 'menus' is the state's menus on Linux, in the platform's order.",
+  "platform": "linux",
+  "bar": [
+    { "menu": "Edit", "accessKey": "E", "items": [
+      { "item": "Find…", "commandId": "edit.find", "accessKey": "F", "shortcut": "Primary+F" },
+      { "separator": true },
+      { "item": "Delete", "commandId": "edit.delete", "shortcut": "Delete" }
+    ] },
+    { "menu": "File", "role": "file", "accessKey": "F", "items": [
+      { "item": "New", "commandId": "file.new", "accessKey": "N", "shortcut": "Primary+N" },
+      { "item": "Save As…", "commandId": "file.save", "accessKey": "A", "shortcut": "Primary+Shift+S" },
+      { "separator": true },
+      { "menu": "Export", "accessKey": "X", "items": [
+        { "item": "PDF", "commandId": "file.export", "commandParameter": "pdf" }
+      ] }
+    ] },
+    { "menu": "View", "items": [
+      { "item": "Small", "commandId": "view.zoom", "commandParameter": "0.8", "radioGroup": "view.zoom", "checked": false },
+      { "item": "Large", "commandId": "view.zoom", "commandParameter": "1.5", "radioGroup": "view.zoom", "checked": true },
+      { "separator": true },
+      { "item": "Sidebar", "commandId": "view.sidebar", "checked": true, "shortcut": "Primary+Alt+B" },
+      { "item": "Full Screen", "commandId": "view.fullscreen", "enabled": false }
+    ] },
+    { "menu": "Tools", "enabled": false, "items": [
+      { "item": "Run", "commandId": "tools.run", "shortcut": "Primary+Z" }
+    ] },
+    { "menu": "Help", "role": "help", "accessKey": "H", "items": [
+      { "item": "About", "commandId": "help.about", "accessKey": "Q" }
+    ] }
+  ],
+  "cannotExecute": ["edit.delete"],
+  "menus": [
+    { "kind": "menu", "key": "1m", "label": "File", "accessKey": "F", "accessKeyIndex": 0, "role": "file", "enabled": true, "entries": [
+      { "kind": "item", "key": "1m/0i", "label": "New", "accessKey": "N", "accessKeyIndex": 0, "commandId": "file.new", "enabled": true,
+        "shortcut": "Primary+N", "shortcutText": "Ctrl+N", "ariaKeyShortcuts": "Control+N" },
+      { "kind": "item", "key": "1m/1i", "label": "Save As…", "accessKey": "A", "accessKeyIndex": 1, "commandId": "file.save", "enabled": true,
+        "shortcut": "Primary+Shift+S", "shortcutText": "Shift+Ctrl+S", "ariaKeyShortcuts": "Control+Shift+S" },
+      { "kind": "separator", "key": "1m/2s" },
+      { "kind": "menu", "key": "1m/3m", "label": "Export", "accessKey": "X", "accessKeyIndex": 1, "role": "none", "enabled": true, "entries": [
+        { "kind": "item", "key": "1m/3m/0i", "label": "PDF", "accessKeyIndex": -1, "commandId": "file.export", "commandParameter": "pdf", "enabled": true }
+      ] }
+    ] },
+    { "kind": "menu", "key": "0m", "label": "Edit", "accessKey": "E", "accessKeyIndex": 0, "role": "none", "enabled": true, "entries": [
+      { "kind": "item", "key": "0m/0i", "label": "Find…", "accessKey": "F", "accessKeyIndex": 0, "commandId": "edit.find", "enabled": true,
+        "shortcut": "Primary+F", "shortcutText": "Ctrl+F", "ariaKeyShortcuts": "Control+F" },
+      { "kind": "separator", "key": "0m/1s" },
+      { "kind": "item", "key": "0m/2i", "label": "Delete", "accessKeyIndex": -1, "commandId": "edit.delete", "enabled": false,
+        "shortcut": "Delete", "shortcutText": "Del", "ariaKeyShortcuts": "Delete" }
+    ] },
+    { "kind": "menu", "key": "2m", "label": "View", "accessKeyIndex": -1, "role": "none", "enabled": true, "entries": [
+      { "kind": "item", "key": "2m/0r", "label": "Small", "accessKeyIndex": -1, "commandId": "view.zoom", "commandParameter": "0.8", "enabled": true,
+        "checked": false, "radioGroup": "view.zoom" },
+      { "kind": "item", "key": "2m/1r", "label": "Large", "accessKeyIndex": -1, "commandId": "view.zoom", "commandParameter": "1.5", "enabled": true,
+        "checked": true, "radioGroup": "view.zoom" },
+      { "kind": "separator", "key": "2m/2s" },
+      { "kind": "item", "key": "2m/3c", "label": "Sidebar", "accessKeyIndex": -1, "commandId": "view.sidebar", "enabled": true, "checked": true,
+        "shortcut": "Primary+Alt+B", "shortcutText": "Ctrl+Alt+B", "ariaKeyShortcuts": "Control+Alt+B" },
+      { "kind": "item", "key": "2m/4i", "label": "Full Screen", "accessKeyIndex": -1, "commandId": "view.fullscreen", "enabled": false }
+    ] },
+    { "kind": "menu", "key": "3m", "label": "Tools", "accessKeyIndex": -1, "role": "none", "enabled": false, "entries": [
+      { "kind": "item", "key": "3m/0i", "label": "Run", "accessKeyIndex": -1, "commandId": "tools.run", "enabled": false }
+    ] },
+    { "kind": "menu", "key": "4m", "label": "Help", "accessKey": "H", "accessKeyIndex": 0, "role": "help", "enabled": true, "entries": [
+      { "kind": "item", "key": "4m/0i", "label": "About (Q)", "accessKey": "Q", "accessKeyIndex": 7, "commandId": "help.about", "enabled": true }
+    ] }
+  ]
+}

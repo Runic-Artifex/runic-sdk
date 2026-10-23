@@ -409,11 +409,27 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
             });
             var session = content;
-            var connections = surface.SubscribeConnectionEvents(connection =>
+            // The reserved routes of an in-page menu bar, bound before the page loads.
+            var menuRoutes = new MenuBarPageRoutes(Desktop, transport, WindowOptions.MenuBarPresentation,
+                (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            IDisposable connections;
+            try
             {
-                if (connection.Kind == DesktopConnectionEventKind.Disconnected)
-                    session.ReleaseConnection(connection.SessionId.ToString(CultureInfo.InvariantCulture));
-            });
+                connections = surface.SubscribeConnectionEvents(connection =>
+                {
+                    if (connection.Kind != DesktopConnectionEventKind.Disconnected) return;
+                    var key = connection.SessionId.ToString(CultureInfo.InvariantCulture);
+                    session.ReleaseConnection(key);
+                    menuRoutes.ReleaseConnection(key);
+                });
+            }
+            catch
+            {
+                menuRoutes.Dispose();
+                throw;
+            }
+            connections = new Bindings(connections, menuRoutes);
             // The window releases its live development content when it closes, with its connection events.
             connectionBinding = development is null ? connections : new Bindings(connections, development);
             development = null;
@@ -443,14 +459,16 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            MenuCommandBinding? menu = null;
             if (viewModel is IRunicMenuCommandSource menuSource)
             {
                 var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                var menu = await MenuCommandBinding.BindAsync(Desktop, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
+                menu = await MenuCommandBinding.BindAsync(Desktop, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
                     .ConfigureAwait(false);
-                owner.SetMenuCommands(menu);
+                if (!owner.SetMenuCommands(menu)) menu = null;
             }
+            menuRoutes.Attach(presentation, menu);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
         }

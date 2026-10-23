@@ -31,6 +31,9 @@ intentionally divergent, or not applicable.
   `matchesShortcut` both check.
 - [Menu entry cases](fixtures/menu-entries.json) are the title and command id
   rules that the Runic Desktop menu bar and status icon menus both check.
+- [In-page menu bar routes](menu-bar-page.md) are the reserved Bridge routes a
+  page uses to render the menu bar and run its items, with the shared
+  [state cases](fixtures/menu-bar-page.json).
 
 The schemas and committed examples under `conformance/` are normative test
 inputs. Test reports, platform receipts, performance measurements, WebUI

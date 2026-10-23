@@ -113,7 +113,7 @@ controllers in [Framework bindings](#framework-bindings).
 | Entry | For |
 | --- | --- |
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
-| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `mockFailure` and the `Mock*` types of generated mocks |
+| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
@@ -370,6 +370,59 @@ Pass `{ apple: true }` or `{ apple: false }` to choose the platform rule
 instead of detecting it from `navigator`. See the
 [shortcut guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#keyboard-shortcuts-in-the-page)
 for which keys to leave to text fields and the web view.
+
+## In-page menu bar
+
+A Runic Desktop window with `MenuBarPresentation = DesktopMenuBarPresentation.Page`
+leaves its menu bar to the page, so the bar can match the application's look.
+`createMenuBarController()` follows the window's declared `DesktopHost.MenuBar`
+as headless state; the page renders it with the menubar component of its own UI
+library (Base UI, Radix, Reka UI, Bits UI, Angular CDK Menu or its own markup).
+Runic ships no menubar component.
+
+| Runic provides | The application provides |
+| --- | --- |
+| `current`: the menus in the platform's order, with keys, labels and access keys, separators, submenus, checked and radio state, `enabled` (the declaration and the command's `CanExecute`), roles and shortcuts (`shortcut`, `shortcutText`, `ariaKeyShortcuts`); `subscribe` for changes | The menubar component, markup, styling, icons and animation |
+| `invoke(item)`: the native bar's command path, with the window's and then the application's commands | Calling `invoke` from the component's select or click handler |
+| The items' shortcuts, matched by the host or by the controller; `shortcuts: "app"` and `handleKeyDown` for a page that matches them itself | Nothing by default |
+| `onRequest`: `focus` for an Alt tap and F10, `open` for Alt plus a menu's access key (Windows and Linux); `accessKeyHints` while Alt is held; `placement` | Focusing the first menu or opening one; underlining the `splitAccessKey(entry)` parts while `accessKeyHints` is true |
+| `ariaKeyShortcuts` and platform labels | The WAI-ARIA menubar roles, roving focus, arrow keys, typeahead and Escape |
+
+```ts
+import { createMenuBarController, splitAccessKey } from "@runic-artifex/views";
+
+const bar = createMenuBarController();
+bar.onRequest(request => request.kind === "open" ? openMenu(request.menu.key) : focusFirstMenu());
+bar.subscribe(() => {
+  const { placement, menus, accessKeyHints } = bar.current;
+  // Render a bar only while placement is "page": on macOS the application menu bar keeps the menus ("global").
+  render(placement === "page" ? menus : [], accessKeyHints);
+});
+// In the component's select handler:
+await bar.invoke(item); // "executed", "disabled" or "stale"
+```
+
+- `status` is `connecting`, then `ready`; `unavailable` on a host without the
+  in-page menu bar routes (an earlier Runic Desktop or CS-WebUI), and `failed`
+  with `error` otherwise. `placement` is `page`, `window`, `global` or `none`.
+- By default Runic keeps the items' shortcuts, so they work whichever component
+  renders the bar: the host matches them after the page saw the key
+  (`shortcuts` `host`), or, where the host has no key path such as an installed
+  browser, the controller matches them in a bubbling `keydown` listener
+  (`shortcuts` `page`). Either way a page that keeps a key calls
+  `preventDefault()`. With `createMenuBarController({ shortcuts: "app" })` the
+  page matches them itself, for example with `bar.handleKeyDown(event)`, and the
+  host stops matching them for this page while the bar is in the page.
+- `keyboard: false` turns off the Alt and F10 requests and `accessKeyHints`.
+  macOS has neither.
+- `dispose()`, or the `signal` option, stops the controller and returns the
+  `"app"` lease. The controller follows the window across reconnects.
+
+`installMockMenuBar(menus, options)` from `@runic-artifex/views/mock` serves
+the routes on the mock Bridge for tests and development without .NET; its
+`update` changes the bar and `invocations` lists the invoked items. The wire is
+specified in
+[specs/desktop/menu-bar-page.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/menu-bar-page.md).
 
 ## Developing without .NET
 

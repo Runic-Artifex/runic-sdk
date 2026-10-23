@@ -83,3 +83,16 @@ export {
   type ShortcutModifier,
   type ShortcutOptions,
 } from "./shortcuts.js";
+export {
+  createMenuBarController,
+  splitAccessKey,
+  type MenuBarController,
+  type MenuBarControllerOptions,
+  type MenuBarEntry,
+  type MenuBarInvokeResult,
+  type MenuBarItem,
+  type MenuBarMenu,
+  type MenuBarRequest,
+  type MenuBarSeparator,
+  type MenuBarState,
+} from "./menu-bar.js";

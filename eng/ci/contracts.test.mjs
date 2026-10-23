@@ -172,12 +172,13 @@ test('every web package with a test script has a planned step in the web job', (
     assert.equal(step.if, `\${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), '${name}') }}`);
   }
   assert.deepEqual(plan(null).web, expected);
-  // vite-plugin-runic runs under real Node with Chromium; the browser installs only when it is planned.
+  // vite-plugin-runic runs under real Node with Chromium; the browser installs only when it or views (menu bar) is planned.
   assert.equal(webTests().filter(item => item.node).length, 1);
   const setup = steps.find(step => step.uses === './.github/actions/setup-sdk');
   assert.equal(setup.with.node, 'true');
   const browser = steps.find(step => step.uses === './.github/actions/install-browser');
-  assert.equal(browser?.if, "${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}");
+  assert.equal(browser?.if,
+    "${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') || contains(fromJSON(needs.plan.outputs.web), 'views') }}");
   // The Svelte checks and npm framework consumers follow the plan's frameworks output.
   const frameworks = steps.filter(step => step.if?.includes('needs.plan.outputs.frameworks'));
   assert.deepEqual(frameworks.map(step => step.run), ['bun run --bun check', 'bun run --bun check', 'bun tests/web/svelte-package-consumers/package-consumers.mjs']);

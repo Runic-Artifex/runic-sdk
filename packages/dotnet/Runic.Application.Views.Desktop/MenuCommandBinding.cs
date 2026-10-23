@@ -50,6 +50,19 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         return binding;
     }
 
+    // Raised, on any thread, after the availability of a bound command changed or the bar's commands were bound again,
+    // so an in-page menu bar can follow it (MenuBarPageRoutes).
+    internal event EventHandler? Changed;
+
+    private void RaiseChanged()
+    {
+        try { Changed?.Invoke(this, EventArgs.Empty); }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            DesktopLog.MenuCommandFailed(_logger, error, "*", error.GetType().FullName ?? error.GetType().Name);
+        }
+    }
+
     public bool CanExecute(DesktopMenuItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
@@ -111,6 +124,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
                 }
             }
             foreach (var entry in previous.Values) entry.Dispose();
+            RaiseChanged();
         }
         catch (Exception error)
         {
@@ -125,7 +139,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         foreach (var key in keys)
         {
             if (!commands.TryGetValue(key.CommandId, out var command)) commands[key.CommandId] = command = _resolve(key.CommandId);
-            if (command is not null) entries[key] = new Entry(key.CommandId, key.Parameter, command);
+            if (command is not null) entries[key] = new Entry(key.CommandId, key.Parameter, command, RaiseChanged);
         }
         return entries;
     }
@@ -169,13 +183,15 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
     // One command and its cached availability for one parameter, read with the parameter the items pass.
     private sealed class Entry : IDisposable
     {
+        private readonly Action _changed;
         private volatile bool _canExecute;
 
-        internal Entry(string commandId, string? parameter, ICommand command)
+        internal Entry(string commandId, string? parameter, ICommand command, Action changed)
         {
             CommandId = commandId;
             Parameter = parameter;
             Command = command;
+            _changed = changed;
             command.CanExecuteChanged += OnCanExecuteChanged;
             Refresh();
         }
@@ -185,7 +201,12 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         internal ICommand Command { get; }
         internal bool CanExecute => _canExecute;
 
-        private void OnCanExecuteChanged(object? sender, EventArgs eventArgs) => Refresh();
+        private void OnCanExecuteChanged(object? sender, EventArgs eventArgs)
+        {
+            var before = _canExecute;
+            Refresh();
+            if (before != _canExecute) _changed();
+        }
 
         private void Refresh()
         {

@@ -1378,6 +1378,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             chain.Commands.Window = target;
     }
 
+    private volatile bool _menuShortcutsSuspended;
+
+    // Whether the embedded host's own menu path runs nothing, while an in-page bar matches the shortcuts itself; a
+    // replacement window keeps the setting until the page changes it.
+    internal void SetEmbeddedMenuShortcutsSuspended(bool suspended)
+    {
+        _menuShortcutsSuspended = suspended;
+        if (Volatile.Read(ref _menuChain) is { } chain) chain.Commands.ShortcutsSuspended = suspended;
+    }
+
     // The command path of the current embedded host's items, with the host it belongs to.
     private sealed record EmbeddedMenuChain(IWebUiEmbeddedHost Host, MenuCommandChain Commands);
     private EmbeddedMenuChain? _menuChain;
@@ -1392,7 +1402,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private void AttachMenuCommands(IWebUiEmbeddedHost host)
     {
         var menuHost = MenuHost;
-        var commands = new MenuCommandChain(() => menuHost?.MenuCommands, Logger);
+        var commands = new MenuCommandChain(() => menuHost?.MenuCommands, Logger) { ShortcutsSuspended = _menuShortcutsSuspended };
         Volatile.Write(ref _menuChain, new EmbeddedMenuChain(host, commands));
         host.MenuCommands = commands;
         if (menuHost is not null && Interlocked.Exchange(ref _menuBarSubscribed, 1) == 0) menuHost.MenuBarChanged += OnMenuBarChanged;
@@ -1464,6 +1474,27 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         cancellationToken.ThrowIfCancellationRequested();
         return MenuCommandChain.TryExecute(item, window, application, Logger);
+    }
+
+    // Whether each item can run now, as the command path asks: on the window's UI thread when it has one.
+    internal async Task<bool[]> CanExecuteMenuItemsAsync(IReadOnlyList<Runic.Platform.DesktopMenuItem> items, IDesktopMenuCommandTarget? window,
+        CancellationToken cancellationToken)
+    {
+        var application = MenuHost?.MenuCommands;
+        var results = new bool[items.Count];
+        void Ask()
+        {
+            for (var index = 0; index < items.Count; index++)
+                results[index] = MenuCommandChain.CanExecute(items[index], window, application, Logger);
+        }
+        if (Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsNativeDispatch: true } host && !host.CheckNativeAccess())
+        {
+            await host.InvokeNativeAsync(Ask, cancellationToken).ConfigureAwait(false);
+            return results;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        Ask();
+        return results;
     }
 
     // Each drop of files onto the current embedded window, with the window that reported it.

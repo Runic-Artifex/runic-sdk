@@ -242,8 +242,9 @@ jobs:
         id: restore
         with:
           nuget: "false"
+      # vite-plugin-runic's dock and the Views menu bar have Chromium tests.
       - uses: ./.github/actions/install-browser
-        if: ${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') }}
+        if: ${{ contains(fromJSON(needs.plan.outputs.web), 'vite-plugin-runic') || contains(fromJSON(needs.plan.outputs.web), 'views') }}
       - name: Test angular
         if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'angular') }}
         working-directory: packages/web/angular
