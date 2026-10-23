@@ -3,7 +3,8 @@
 Windows implementations of the Runic.Platform services for `win-x64` and
 `win-arm64`: file dialogs, the Unicode text clipboard, settings, notifications,
 inhibition, login startup, secret storage, trash, thumbnails, volumes, desktop
-applications, file and URI opening, the status icon and window presentation.
+applications, file and URI opening, message boxes, network status, the status icon
+and window presentation.
 `WindowsPlatformProvider` creates the application-scoped services, the status icon
 included, which a tray-only application can create without a window. Every factory
 is annotated `[SupportedOSPlatform("windows")]` and throws
@@ -11,7 +12,7 @@ is annotated `[SupportedOSPlatform("windows")]` and throws
 Notifications and login startup require the application ID: it is the
 AppUserModelID and the Run value name, and Windows has no other identity for a
 process outside an MSIX package (see [MSIX packages](#msix-packages)). The window
-services (file dialogs, the clipboard and file handoff) belong to a window:
+services (file dialogs, the clipboard, file handoff and message boxes) belong to a window:
 Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and
 `AddRunicPlatformServices()` create them for each window, whose owner dispatches
 file dialogs on the window's STA and drains native callbacks before disposal. This
@@ -178,6 +179,45 @@ Credential Manager lists them under Windows Credentials. A process without a
 logon session's vault, such as a service, reports
 `Unavailable(BackendUnavailable)`. See the
 [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+
+## Message boxes
+
+A window's `MessageBoxes` are task dialogs (`TaskDialogIndirect`) owned by the
+window and shown on its thread, as the file dialogs are. The message is the main
+instruction, the detail the content, and the kind the warning, error or
+information icon; the caption is `Title`, or the owner window's title. The
+buttons are custom task dialog buttons in Windows' order (default first, cancel
+last), with `&` marking the access key; the cancel button is `IDCANCEL`, so Esc,
+Alt+F4 and the close button choose it, and only a box with a cancel button, or
+without buttons of the application, can be closed that way. A box without buttons
+shows the localized OK button. Windows has no destructive button style. A window
+with a right-to-left layout (`WS_EX_LAYOUTRTL`, as Runic Desktop's right-to-left
+windows have) gets a mirrored dialog (`TDF_RTL_LAYOUT`). Cancellation clicks a
+button of the dialog through its window and throws.
+
+Task dialogs exist only in Common Controls version 6, which Runic's hosts do not
+declare in a manifest. The provider activates an activation context that does
+around each dialog: the manifest resource shell32.dll embeds for its own dialogs
+(resource 124), or else `WindowsShell.Manifest` in the Windows directory, and
+loads `comctl32.dll` version 6 inside it once for the process. Where neither
+works, every box reports `Unavailable(BackendUnavailable)`. An application whose
+own manifest already declares Common Controls 6 gets the same version.
+
+## Network status
+
+`WindowsPlatformProvider.CreateNetworkStatus()` reads the Network List
+Manager's connectivity hint (`GetNetworkConnectivityHint`) and watches it with
+`NotifyNetworkConnectivityHintChange`, whose callback reports the current hint
+first. The API needs Windows 10 version 2004 (build 19041); an older Windows
+reports `Unavailable(BackendUnavailable)`. The levels map to `None`, `Local`,
+`Internet` and, for constrained internet access, `CaptivePortal`: Windows reports a
+captive portal, and a network whose internet check failed otherwise, as
+constrained. A hidden or unknown level is `Unknown`, available when .NET reports a
+network. A fixed or variable cost, a connection over its data limit and roaming
+are metered, an unrestricted one is not, and an unknown cost is `null`.
+
+CI's `Native` jobs run the `NativeMessageBoxes` and `NativeNetwork` categories of
+`Runic.Platform.Windows.Tests` with JIT and NativeAOT.
 
 ## Status icon and window presentation
 

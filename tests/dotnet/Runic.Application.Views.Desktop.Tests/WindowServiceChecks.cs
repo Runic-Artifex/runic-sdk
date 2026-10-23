@@ -393,10 +393,10 @@ internal sealed class WindowServiceChecks
     public async Task PlatformServicesRegisterEveryPlatformService()
     {
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher),
-            typeof(IDesktopMonitors)];
+            typeof(IDesktopMonitors), typeof(IDesktopMessageBoxes)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
-            typeof(IDesktopVolumes), typeof(IDesktopApplications), typeof(IDesktopThumbnails), typeof(IDesktopFileBookmarks)];
+            typeof(IDesktopVolumes), typeof(IDesktopNetworkStatus), typeof(IDesktopApplications), typeof(IDesktopThumbnails), typeof(IDesktopFileBookmarks)];
         // Registration names the application's entries, so only the overload with an application ID registers it.
         Type[] withApplicationId = [typeof(IDesktopOpenRegistration)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
@@ -417,7 +417,7 @@ internal sealed class WindowServiceChecks
                 $"{type.Name} is not one application service.");
         foreach (var type in window)
             Require(scope.ServiceProvider.GetService(type) is IPlatformCapabilities or IFileDialogs or ITextClipboard or IDesktopFileLauncher
-                or IDesktopMonitors,
+                or IDesktopMonitors or IDesktopMessageBoxes,
                 $"{type.Name} is not registered per window.");
         var unbound = scope.ServiceProvider.GetRequiredService<IWindowPlatformServices>();
         Require(unbound.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)),

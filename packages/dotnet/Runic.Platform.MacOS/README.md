@@ -1,6 +1,6 @@
 # Runic.Platform.MacOS
 
-The macOS provider of the Runic.Platform services for macOS arm64. `MacOSPlatformProvider` creates the application-scoped services, including the status icon and login startup, without a window; the services take no application ID because macOS identifies the application by its bundle. Every factory is annotated `[SupportedOSPlatform("macos")]` and throws `PlatformNotSupportedException` on another operating system; the privileged actions report unavailable instead, because generated code registers them everywhere. The window services (AppKit file dialogs, the clipboard and file handoff) belong to a window: Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and `AddRunicPlatformServices()` create them for each window. Native handles and selected paths remain in C#.
+The macOS provider of the Runic.Platform services for macOS arm64. `MacOSPlatformProvider` creates the application-scoped services, including the status icon and login startup, without a window; the services take no application ID because macOS identifies the application by its bundle. Every factory is annotated `[SupportedOSPlatform("macos")]` and throws `PlatformNotSupportedException` on another operating system; the privileged actions report unavailable instead, because generated code registers them everywhere. The window services (AppKit file dialogs, the clipboard, file handoff and message boxes) belong to a window: Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and `AddRunicPlatformServices()` create them for each window. Native handles and selected paths remain in C#.
 
 File panels are owned sheets. Filters restrict the panel to the union of their extensions and MIME types through `UTType` content types (macOS 11 and later; `image/*` and the other top-level wildcards map to their abstract types), and a save panel may add the first allowed extension to a name typed without one. AppKit shows no filter pop-up of its own: with `ShowsFilterChoice`, Runic adds an `NSPopUpButton` accessory listing the filters, which switches the panel to the chosen filter's types and is reported as the result's `SelectedFilter`; without it the user cannot switch between filters and `SelectedFilter` is `null`. `OpenFilesAsync` and `OpenDirectoriesAsync` use `allowsMultipleSelection`, with security-scoped access for each selected URL, and the initial folder sets `directoryURL`. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: atomic replacement reports unavailable before changing the target. Keeping access across launches is `CreateFileBookmarks()` (below).
 
@@ -200,6 +200,32 @@ reports `Failed(Locked)`, and a dismissed dialog `Failed(UserDismissed)`. The
 data-protection keychain, which needs a `keychain-access-groups` entitlement, is
 not used. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
 
+## Message boxes
+
+A window's `MessageBoxes` are `NSAlert` sheets on the window
+(`beginSheetModalForWindow:completionHandler:`), as the file panels are: the rest
+of the application stays usable. The message is the alert's message text, the
+detail its informative text, and an error is a critical alert; macOS shows the
+application icon for every kind and ignores `Title`. The default button is added
+first, so it is rightmost, with Return as its key equivalent; the cancel button
+follows with Esc, and the other buttons go to the left in their order. No other
+button answers Return. A destructive button is marked with
+`hasDestructiveAction` (macOS 11 and later). Access keys are ignored. A box
+without buttons shows NSAlert's localized OK button and answers `null`. The
+sheet follows the application's layout direction. Cancellation ends the sheet
+(`endSheet:returnCode:`) on the main queue and throws.
+
+## Network status
+
+`MacOSPlatformProvider.CreateNetworkStatus()` follows Network.framework's
+`nw_path_monitor` on a private dispatch queue; each read and each watch starts a
+monitor, which reports the current path at once, and cancels it afterwards. A
+satisfied or satisfiable path is available; an expensive path (cellular, a
+personal hotspot) or a constrained one (Low Data Mode) is metered. macOS has no
+public captive-portal or internet check, so `Connectivity` is `Unknown` while a
+network is available and `None` otherwise. It needs no window and no AppKit event
+loop.
+
 ## Window presentation
 
 `DesktopPlatformServices.PresentAsync(owner)` orders a Desktop window front as the key
@@ -216,7 +242,8 @@ in front of the application's other windows. macOS needs no activation token, so
 The `NativeAppKit` category of `tests/dotnet/Runic.Platform.Runtime.Tests` runs
 these on the macOS CI runner, under JIT and NativeAOT, without a user: a real
 status item without a window, its images, menu and actions, the unbundled
-login item, and presenting a hidden window. They also open the menu through
+login item, presenting a hidden window, and message box sheets answered with
+`performClick:`. They also open the menu through
 VoiceOver's show-menu action, hide the item while the menu is open, and check that
 a cancelled or timed-out show never appears later. Opening the menu by hand, light
 and dark menu bars, and a signed bundle's login item are manual checks.

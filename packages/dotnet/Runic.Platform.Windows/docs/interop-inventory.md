@@ -53,6 +53,8 @@ types are internal and never appear in the public API (`PublicAPI.*.txt` unchang
 | Volumes | (new) eject and notification | `CM_Request_Device_Eject`, `CM_Register_Notification`, `CM_Unregister_Notification` with `CM_NOTIFY_FILTER` (`GUID_DEVINTERFACE_VOLUME`) | The eject passes a veto buffer, so Windows reports a veto instead of showing its notification. The notification callback is an `[UnmanagedCallersOnly]` static method whose context is a `GCHandle` to the watch's wake-up; `CM_Unregister_Notification` waits for a running callback before the handle is freed. |
 | Open registration | (new) | `SHChangeNotify` (shell32) with `SHCNE_ID.SHCNE_ASSOCCHANGED`, `SHCNF_FLAGS.SHCNF_IDLIST` | Called after the managed `Microsoft.Win32.Registry` writes and removals, without items. |
 | Presentation | (new) | `GetAncestor`, `IsIconic`, `IsWindowVisible`, `ShowWindow`, `SetForegroundWindow`, `GetForegroundWindow`, `FlashWindowEx`, `IsWindow` | Raw overloads, called on the window's thread through `INativeWindowOwner.InvokeAsync`. |
+| Message boxes | (new) | `TASKDIALOGCONFIG`, `TASKDIALOG_BUTTON`, `TASKDIALOG_FLAGS`, `TASKDIALOG_COMMON_BUTTON_FLAGS`, `TASKDIALOG_NOTIFICATIONS`, `TASKDIALOG_MESSAGES`, `CreateActCtx` with `ACTCTXW`, `ActivateActCtx`, `DeactivateActCtx`, `ReleaseActCtx`, `LoadLibrary`, `GetWindowLong` (`GWL_EXSTYLE`, `WS_EX_LAYOUTRTL`), `GetWindowText`, `GetWindowTextLength`, `PostMessage` (`TDM_CLICK_BUTTON`) | `TaskDialogIndirect` itself is not imported: it exists only in Common Controls 6, so `comctl32.dll` is loaded with `LoadLibrary` inside an activation context (shell32.dll's manifest resource 124, else `WindowsShell.Manifest`) and the export is called through a `delegate* unmanaged[Stdcall]` from `NativeLibrary.TryGetExport`, with the context active around each call. The context and the module stay for the process. The callback is an `[UnmanagedCallersOnly]` static method whose data is a `GCHandle`, freed after the dialog returns; strings are `Marshal.StringToHGlobalUni` copies freed in `finally`. The raw `CreateActCtx(ACTCTXW*)` overload is used; the generated `ReleaseActCtxSafeHandle` overload is not, because the context is released only when it does not provide version 6. |
+| Network status | (new) | `GetNetworkConnectivityHint`, `NotifyNetworkConnectivityHintChange`, `CancelMibChangeNotify2` (iphlpapi) with `NL_NETWORK_CONNECTIVITY_HINT` | Windows 10 version 2004 (`[SupportedOSPlatform("windows10.0.19041")]` in the metadata); the factory also checks the exports with `NativeLibrary.TryGetExport`. The raw `HANDLE*` overload is used: the generated `SafeFileHandle` overload would close the notification handle with `CloseHandle`, but only `CancelMibChangeNotify2` releases it. The callback takes the hint by value in an `[UnmanagedCallersOnly]` static method whose context is a `GCHandle`, freed after `CancelMibChangeNotify2` returns, which waits for a running callback. |
 
 ## Retained handwritten interop
 
@@ -71,7 +73,11 @@ types are internal and never appear in the public API (`PublicAPI.*.txt` unchang
 `tests/dotnet/Runic.Platform.Windows.Tests` keeps two handwritten test-only imports,
 `CreateWindowExW` and `DestroyWindow`. They create the HWND that owns the native
 clipboard. `StatusIconTests` adds `FindWindowW`, `GetMenuItemCount`, `GetMenuState` and
-`GetSubMenu` to find the open context menu and inspect the native menu. The test project does
+`GetSubMenu` to find the open context menu and inspect the native menu. `MessageBoxTests`
+adds `CreateWindowExW`, `DestroyWindow`, `IsWindow`, `IsWindowVisible`, `PostMessageW`,
+`GetWindowLongW`, `GetWindowTextW`, `GetClassNameW`, `GetWindowThreadProcessId`,
+`GetGUIThreadInfo` and `EnumChildWindows` to own a task dialog and answer it as the
+keyboard does. The test project does
 not reference CsWin32, and these imports do not ship.
 
 `Runic.Platform.Runtime` declares one Windows import of its own, `AllowSetForegroundWindow`
@@ -90,7 +96,8 @@ reads from the Unix domain socket with `SIO_AF_UNIX_GETPEERPID` through `Socket.
   inhibition (`--treenode-filter "/*/*/*/*[Category=NativeInhibition]"
   --test-parameter system-only=true`) and settings reads
   (`--treenode-filter "/*/*/*/*[Category=NativeSettings]"`), the status icon
-  (`NativeStatusIcon`) and window presentation (`NativePresentation`) with JIT and the
+  (`NativeStatusIcon`), window presentation (`NativePresentation`), message boxes
+  (`NativeMessageBoxes`) and network status (`NativeNetwork`) with JIT and the
   NativeAOT publish (`-p:IlcTreatWarningsAsErrors=true`).
 - Interactive: owned file launch (`Open`, `ChooseApplication`, `Reveal`), clipboard
   transfer, settings reads and notification activation on an interactive Windows

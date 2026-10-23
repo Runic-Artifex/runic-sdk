@@ -1,0 +1,88 @@
+using System.Collections.Immutable;
+using Runic.Platform.Runtime;
+using static Runic.Platform.MacOS.MacDesktopNative;
+
+namespace Runic.Platform.MacOS;
+
+// Message boxes as NSAlert sheets on the owner window, as the file panels are. The sheet is window-modal: the rest of
+// the application stays usable.
+internal sealed class MacMessageBoxes(INativeWindowOwner owner) : IDesktopMessageBoxes
+{
+    private const nint FirstButtonReturn = 1000; // NSAlertFirstButtonReturn
+    private const nint WarningStyle = 0, InformationalStyle = 1, CriticalStyle = 2; // NSAlertStyle
+
+    // Tests answer the sheet in process: it receives the NSAlert on the main thread once the sheet began.
+    internal Action<nint>? Shown { get; set; }
+
+    public async ValueTask<PlatformResult<DesktopMessageBoxButton?>> ShowAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken = default)
+    {
+        DesktopMessageBoxRules.Check(messageBox);
+        cancellationToken.ThrowIfCancellationRequested();
+        var ordered = DesktopMessageBoxRules.Ordered(messageBox.Buttons, MessageBoxPlatform.MacOS);
+        var generation = owner.Generation;
+        var result = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
+        nint alert = 0, window = 0;
+        Task ending = Task.CompletedTask;
+        CancellationTokenRegistration registration = default;
+        try
+        {
+            await owner.InvokeAsync(handle =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                using var pool = new Pool();
+                alert = Send(Send(Class("NSAlert"), Sel("alloc")), Sel("init"));
+                Arg(alert, Sel("setMessageText:"), String(messageBox.Message));
+                Arg(alert, Sel("setInformativeText:"), String(messageBox.Detail ?? ""));
+                Arg(alert, Sel("setAlertStyle:"), messageBox.Kind switch
+                {
+                    DesktopMessageBoxKind.Error => CriticalStyle,
+                    DesktopMessageBoxKind.Warning => WarningStyle,
+                    _ => InformationalStyle,
+                });
+                // Without buttons NSAlert adds its own localized OK.
+                foreach (var entry in ordered)
+                {
+                    var button = Arg(alert, Sel("addButtonWithTitle:"), String(entry.Label));
+                    // Return chooses only the default button and Esc the cancel button; NSAlert would give the first button Return.
+                    Arg(button, Sel("setKeyEquivalent:"), String(entry.Role switch
+                    {
+                        DesktopMessageBoxButtonRole.Default => "\r",
+                        DesktopMessageBoxButtonRole.Cancel => "\u001b",
+                        _ => "",
+                    }));
+                    if (entry.Role == DesktopMessageBoxButtonRole.Destructive && BoolArg(button, Sel("respondsToSelector:"), Sel("setHasDestructiveAction:")) != 0)
+                        Arg(button, Sel("setHasDestructiveAction:"), 1);
+                }
+                window = handle;
+                Send(window, Sel("retain"));
+                var completion = MacDesktopBlock.Response(response => result.TrySetResult(response));
+                try { Args(alert, Sel("beginSheetModalForWindow:completionHandler:"), window, completion); }
+                finally { MacDesktopBlock.Release(completion); }
+                Shown?.Invoke(alert);
+            }, cancellationToken).ConfigureAwait(false);
+            registration = cancellationToken.Register(() =>
+            {
+                ending = MacOsMainQueue.InvokeAsync(() =>
+                {
+                    using var pool = new Pool();
+                    if (!result.Task.IsCompleted) Args(window, Sel("endSheet:returnCode:"), Send(alert, Sel("window")), 0);
+                }).AsTask();
+                result.TrySetCanceled(cancellationToken);
+            });
+            nint response = await result.Task.ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!owner.IsAvailable || owner.Generation != generation)
+                return new PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+            nint index = response - FirstButtonReturn;
+            return new PlatformResult<DesktopMessageBoxButton?>.Success(index >= 0 && index < ordered.Length ? ordered[(int)index] : null);
+        }
+        catch (OwnerClosedException) { return new PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        finally
+        {
+            await registration.DisposeAsync().ConfigureAwait(false);
+            await ending.ConfigureAwait(false);
+            if (alert != 0 || window != 0) await MacOsMainQueue.InvokeAsync(() => { Release(alert); Release(window); }).ConfigureAwait(false);
+        }
+    }
+}

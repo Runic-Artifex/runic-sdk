@@ -370,6 +370,14 @@ The same Window and `async host => ...` body run on CS-WebUI with
   bus with either toolkit; Windows uses the volume management API and ejects as
   "Safely Remove Hardware" does; macOS uses Disk Arbitration. See
   [Volumes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#volumes).
+- `AddRunicPlatformServices()` also registers `IDesktopNetworkStatus`, one
+  singleton created by `DesktopPlatformServices.CreateNetworkStatus()`: online,
+  metered and captive portal, read or watched, from the Network List Manager's
+  connectivity hint on Windows and Network.framework's path monitor on macOS; see
+  [Network status](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#network-status).
+  Per window it registers `IDesktopMessageBoxes`, the window's native message
+  boxes: task dialogs on Windows, also for a WPF window, and sheets on macOS; see
+  [Message boxes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#message-boxes).
 - The secret store and the application database are registered without an
   application ID, also by `AddRunicPlatformServices(applicationId)`.
   `DesktopPlatformServices.CreateSecretStore(applicationId)` and
@@ -380,7 +388,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   use it. Secrets are stored the same way with or without an ID.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativeWindowOwner`, which the services above bind to. The
-  window services (file dialogs, the clipboard and file handoff) are created only
+  window services (file dialogs, the clipboard, file handoff and message boxes) are created only
   here, through `DesktopPlatformServices.ForWindow`; the providers keep them internal.
   Pass the owner where an API asks for a window, such as
   `WindowsElevationOptions.Owner` for the UAC prompt.

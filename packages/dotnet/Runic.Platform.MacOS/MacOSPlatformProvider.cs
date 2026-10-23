@@ -140,6 +140,24 @@ public static class MacOSPlatformProvider
         return new NativePickerBackend(owner, new MacOsFilePicker(owner));
     }
 
+    /// <summary>Creates the computer's network status from Network.framework's path monitor.</summary>
+    /// <remarks>
+    /// A satisfied path is available. macOS has no public captive-portal or internet check, so
+    /// <see cref="DesktopNetworkState.Connectivity"/> is <see cref="DesktopNetworkConnectivity.Unknown"/> while a network
+    /// is available and <see cref="DesktopNetworkConnectivity.None"/> otherwise. An expensive path, such as cellular or a
+    /// personal hotspot, and a constrained one (Low Data Mode) are metered. It needs no window and no AppKit event loop.
+    /// </remarks>
+    public static IDesktopNetworkStatus CreateNetworkStatus()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new NetworkStatusService(new MacNetworkStatus()); }
+
+    // NSAlert sheets on a window.
+    internal static IDesktopMessageBoxes CreateMessageBoxes(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
+        return new MacMessageBoxes(owner);
+    }
+
     // AppKit text clipboard services for a window.
     internal static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {

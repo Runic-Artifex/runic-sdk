@@ -455,6 +455,41 @@ closes during the question, the guard's answer is "keep", so the Window stays
 open (see
 [Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)).
 
+A guard can also ask with a native message box, which needs no page: it works
+while the page is loading or busy, follows the platform's button order and
+keys, and screen readers announce it as an alert. The ViewModel takes
+`IDesktopMessageBoxes` (or `IWindowPlatformServices.MessageBoxes`) from the
+window's scope, and the Window's override asks it:
+
+```csharp
+// EditorWindow
+protected override async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken) =>
+    await base.CanCloseAsync(cancellationToken) && (DataContext is not { } editor || await editor.ConfirmCloseAsync(cancellationToken));
+
+// EditorViewModel(IDesktopMessageBoxes messageBoxes)
+public async ValueTask<bool> ConfirmCloseAsync(CancellationToken cancellationToken)
+{
+    if (!IsDirty) return true;
+    var result = await messageBoxes.ShowAsync(new DesktopMessageBox($"Save changes to “{Title}”?")
+    {
+        Kind = DesktopMessageBoxKind.Warning,
+        Buttons = [Save, DontSave, Cancel], // Default, Destructive and Cancel roles
+    }, cancellationToken);
+    return result switch
+    {
+        PlatformResult<DesktopMessageBoxButton?>.Success { Value.Id: "save" } => await SaveAsync(cancellationToken),
+        PlatformResult<DesktopMessageBoxButton?>.Success { Value.Id: "discard" } => true,
+        PlatformResult<DesktopMessageBoxButton?>.Success => false,
+        // No native box on this host, such as CS-WebUI: ask in the page instead.
+        _ => await AskInPageAsync(cancellationToken),
+    };
+}
+```
+
+The box is modal to the window and closes with it. See
+[Message boxes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#message-boxes)
+for the rules and each platform's behaviour.
+
 To close a Window from code the way the close button does, call
 `RequestCloseAsync(cancellationToken)`. It returns `true` when the window
 closed and `false` when `CanCloseAsync` kept it open, like `Window.Close()`

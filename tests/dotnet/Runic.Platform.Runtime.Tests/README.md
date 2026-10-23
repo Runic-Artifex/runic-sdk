@@ -31,8 +31,9 @@ direnv exec . dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests/Run
 
 The `NativeAppKit` category runs without a user on macOS, and CI runs it on the macOS runner
 under JIT and NativeAOT. It shows a real menu-bar status item before any window opens, checks its
-images, menu and actions, checks that an unbundled process reports login startup unavailable, and
-presents a hidden Desktop window:
+images, menu and actions, checks that an unbundled process reports login startup unavailable,
+presents a hidden Desktop window, and shows message boxes as NSAlert sheets on a Desktop window, which
+it answers with `performClick:` and cancels:
 
 ```sh
 direnv exec . dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"

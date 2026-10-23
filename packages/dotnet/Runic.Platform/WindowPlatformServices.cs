@@ -97,6 +97,13 @@ public interface IWindowPlatformServices : IPlatformCapabilities
     /// override this member reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
     /// </remarks>
     IDesktopMonitors Monitors => DesktopMonitors.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+
+    /// <summary>Native message boxes owned by the window (<see cref="PlatformCapabilityIds.MessageBoxes"/>).</summary>
+    /// <remarks>
+    /// A box is modal to the window and closes with it. An implementation that does not override this member reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, as hosts without a native owner, such as CS-WebUI, do.
+    /// </remarks>
+    IDesktopMessageBoxes MessageBoxes => DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
 }
 
 /// <summary>How a screen-reader announcement relates to what the screen reader is saying, as ARIA live regions do.</summary>
@@ -148,6 +155,8 @@ public static class PlatformCapabilityIds
     public const string DirectoriesOpenMultiple = "platform.directories.openMultiple";
     /// <summary>Listing and watching the desktop's monitors through <see cref="IWindowPlatformServices.Monitors"/>.</summary>
     public const string Monitors = "platform.monitors";
+    /// <summary>Showing native message boxes through <see cref="IWindowPlatformServices.MessageBoxes"/>.</summary>
+    public const string MessageBoxes = "platform.messageBoxes";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -161,13 +170,13 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.DialogsOwned, PlatformCapabilityIds.ClipboardReadText, PlatformCapabilityIds.ClipboardWriteText,
         PlatformCapabilityIds.FilesLaunch, PlatformCapabilityIds.FilesOpenMultiple, PlatformCapabilityIds.UrisLaunch,
         PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu,
-        PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors,
+        PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors, PlatformCapabilityIds.MessageBoxes,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>
     /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher,
-    /// <see cref="IWindowPlatformServices.Monitors"/>, <see cref="IWindowPlatformServices.AnnounceAsync"/> and
+    /// <see cref="IWindowPlatformServices.Monitors"/>, <see cref="IWindowPlatformServices.MessageBoxes"/>, <see cref="IWindowPlatformServices.AnnounceAsync"/> and
     /// <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>
     /// <see cref="PlatformResult{T}.Unavailable"/>; nothing throws
     /// except for invalid arguments and caller cancellation.
@@ -211,6 +220,7 @@ public static class WindowPlatformServices
         public ITextClipboard Clipboard => this;
         public IDesktopFileLauncher FileLauncher => this;
         public IDesktopMonitors Monitors { get; } = DesktopMonitors.Unavailable(reason);
+        public IDesktopMessageBoxes MessageBoxes { get; } = DesktopMessageBoxes.Unavailable(reason);
         public CapabilitySnapshot GetSnapshot() => _snapshot;
 
         public ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)

@@ -66,3 +66,15 @@ only on CI runners. CI runs it with JIT and NativeAOT.
 presents it: the window must be restored, and either take the foreground or flash
 its taskbar button with a `PermissionDenied` result. A hidden window must be shown.
 The output says which outcome happened. CI runs it with JIT and NativeAOT.
+
+`--treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]"` shows task dialogs owned by a
+window on a thread of the test and answers them with the messages the keyboard and the
+window send: Return chooses the default button, Esc and `WM_CLOSE` the cancel button, a box
+without a cancel button stays open until a button is clicked, a box without buttons answers
+null, cancellation closes the dialog and a right-to-left owner gets a mirrored dialog. It
+prints which Common Controls 6 activation sources work (shell32.dll's manifest resource,
+`WindowsShell.Manifest`) and the dialog's buttons where they are Win32 windows. CI runs it
+with JIT and NativeAOT.
+
+`--treenode-filter "/*/*/*/*[Category=NativeNetwork]"` reads and watches the runner's
+connectivity hint without asserting its state. CI runs it with JIT and NativeAOT.
