@@ -378,7 +378,9 @@ leaves its menu bar to the page, so the bar can match the application's look.
 `createMenuBarController()` follows the window's declared `DesktopHost.MenuBar`
 as headless state; the page renders it with the menubar component of its own UI
 library (Base UI, Radix, Reka UI, Bits UI, Angular CDK Menu or its own markup).
-Runic ships no menubar component.
+Runic ships no menubar component. The framework adapters wrap the controller as
+reactive state: `useMenuBar` in `@runic-artifex/react`, `@runic-artifex/vue` and
+`@runic-artifex/svelte`, and `injectMenuBar` in `@runic-artifex/angular`.
 
 | Runic provides | The application provides |
 | --- | --- |

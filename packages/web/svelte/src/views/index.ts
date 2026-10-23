@@ -6,3 +6,13 @@ export { useOperation, type OperationHandle } from "./use-operation.svelte.js";
 export { useLatestOperation, type LatestOperationHandle } from "./use-latest-operation.svelte.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./use-collection-viewport.svelte.js";
 export { useBridgeConnection, type BridgeConnectionHandle } from "./use-bridge-connection.svelte.js";
+export { useMenuBar, type MenuBarHandle, type UseMenuBarOptions } from "./use-menu-bar.svelte.js";
+export type {
+  MenuBarEntry,
+  MenuBarInvokeResult,
+  MenuBarItem,
+  MenuBarMenu,
+  MenuBarRequest,
+  MenuBarSeparator,
+  MenuBarState,
+} from "@runic-artifex/views";

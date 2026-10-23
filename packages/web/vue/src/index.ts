@@ -274,3 +274,15 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 }
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export {
+  useMenuBar,
+  type MenuBarEntry,
+  type MenuBarHandle,
+  type MenuBarInvokeResult,
+  type MenuBarItem,
+  type MenuBarMenu,
+  type MenuBarRequest,
+  type MenuBarSeparator,
+  type MenuBarState,
+  type UseMenuBarOptions,
+} from "./menu-bar.js";

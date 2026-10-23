@@ -4,14 +4,15 @@ import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
 import {
-  injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectOperation, injectView, RunicViewOutlet, ViewOutlet,
-  type BridgeConnectionHandle, type LatestOperationHandle, type ViewRegistry,
+  injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
+  ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
-  type RunicBridgeClient,
+  type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
+import { installMockMenuBar } from "@runic-artifex/views/mock";
 
 type Page =
   | { readonly kind: "counter"; connect(): Promise<unknown> }
@@ -480,7 +481,97 @@ describe("injectBridgeConnection", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
       "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectLatestOperation",
-      "injectOperation", "injectView",
+      "injectMenuBar", "injectOperation", "injectView",
     ]);
+  });
+});
+
+// A menu bar as Runic Desktop reports it on Linux (specs/desktop/menu-bar-page.md), served by the mock host routes.
+// The lowest-peer run copies only this package, so the spec's fixture is not used here.
+const menuBarFixture: readonly MenuBarMenu[] = [
+  { kind: "menu", key: "1m", label: "File", accessKey: "F", accessKeyIndex: 0, role: "file", enabled: true, entries: [
+    { kind: "item", key: "1m/0i", label: "New", accessKey: "N", accessKeyIndex: 0, commandId: "file.new", enabled: true,
+      shortcut: "Primary+N", shortcutText: "Ctrl+N", ariaKeyShortcuts: "Control+N" },
+    { kind: "item", key: "1m/1i", label: "Save", accessKey: "S", accessKeyIndex: 0, commandId: "file.save", enabled: true },
+    { kind: "separator", key: "1m/2s" },
+  ] },
+  { kind: "menu", key: "0m", label: "Edit", accessKey: "E", accessKeyIndex: 0, role: "none", enabled: true, entries: [
+    { kind: "item", key: "0m/0i", label: "Find", accessKey: "F", accessKeyIndex: 0, commandId: "edit.find", enabled: false },
+  ] },
+];
+
+async function until(condition: () => boolean) {
+  for (let round = 0; !condition(); round++) {
+    if (round > 200) throw new Error("The condition was not met.");
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+}
+
+const keyDown = (init: KeyboardEventInit) => window.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, ...init }));
+
+describe("injectMenuBar", () => {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  afterEach(() => { delete host.__runicBridge; });
+
+  test("follows the host as a signal, invokes, delivers requests and disposes with the injector", async () => {
+    const mock = installMockMenuBar(menuBarFixture, { platform: "linux" });
+    const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+    const requests: MenuBarRequest[] = [];
+    const bar = injectMenuBar({ injector, onRequest: request => requests.push(request) });
+    expectTypeOf(bar).toEqualTypeOf<MenuBarHandle>();
+    expectTypeOf(bar.state()).toEqualTypeOf<MenuBarState>();
+    expect(bar.state().status).toBe("connecting");
+    await until(() => bar.state().status === "ready");
+    expect(bar.state().menus).toEqual(menuBarFixture);
+    const save = menuBarFixture[0]!.entries[1]!;
+    if (save.kind !== "item") throw new Error("Save is an item.");
+    expect(await bar.invoke(save)).toBe("executed");
+    keyDown({ key: "n", code: "KeyN", ctrlKey: true });
+    keyDown({ key: "F10", code: "F10" });
+    keyDown({ key: "e", code: "KeyE", altKey: true });
+    await until(() => mock.invocations.length === 2);
+    expect(requests).toEqual([{ kind: "focus" }, { kind: "open", menu: bar.state().menus[1] }]);
+    expect(bar.state().accessKeyHints).toBe(true);
+    mock.update({ menus: menuBarFixture.slice(0, 1) });
+    await until(() => bar.state().menus.length === 1);
+    injector.destroy();
+    keyDown({ key: "n", code: "KeyN", ctrlKey: true });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(mock.invocations).toHaveLength(2);
+  });
+
+  test("a component's \"app\" lease ends with the component", async () => {
+    const mock = installMockMenuBar(menuBarFixture, { platform: "linux" });
+    class Bar { readonly menuBar = injectMenuBar({ shortcuts: "app" }); }
+    Component({ selector: "test-menu-bar", standalone: true, template: "<output>{{ menuBar.state().status }} {{ menuBar.state().shortcuts }}</output>" })(Bar);
+    const fixture = TestBed.createComponent(Bar);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toBe("connecting app");
+    await until(() => mock.leased);
+    fixture.detectChanges();
+    expect(element.textContent).toBe("ready app");
+    const event = new KeyboardEvent("keydown", { key: "n", code: "KeyN", ctrlKey: true, cancelable: true });
+    expect(fixture.componentInstance.menuBar.handleKeyDown(event)).toBe(true);
+    await until(() => mock.invocations.length === 1);
+    fixture.destroy();
+    await until(() => !mock.leased);
+  });
+
+  test("creates no controller under server rendering", async () => {
+    const mock = installMockMenuBar(menuBarFixture, { platform: "linux" });
+    const injector = createEnvironmentInjector([{ provide: PLATFORM_ID, useValue: "server" }], TestBed.inject(EnvironmentInjector));
+    const bar = injectMenuBar({ injector, shortcuts: "app" });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(mock.leased).toBe(false);
+    expect(bar.state()).toMatchObject({ status: "connecting", placement: "none", shortcuts: "app", menus: [] });
+    expect(bar.handleKeyDown(new KeyboardEvent("keydown", { key: "n", code: "KeyN", ctrlKey: true }))).toBe(false);
+    await expect(bar.invoke({ kind: "item", key: "1m/0i", label: "New", accessKeyIndex: 0, commandId: "file.new", enabled: true }))
+      .rejects.toMatchObject({ name: "BridgeError", kind: "unavailable" });
+    injector.destroy();
+  });
+
+  test("requires an injection context or an injector", () => {
+    expect(() => injectMenuBar()).toThrow();
   });
 });

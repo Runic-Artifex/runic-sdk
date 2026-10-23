@@ -2,14 +2,16 @@ import type { ViewSource } from "@runic-artifex/views";
 import * as React from "react";
 import { Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
-  type RunicBridgeClient,
+  type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
+import { installMockMenuBar } from "@runic-artifex/views/mock";
 import {
-  retrySuspenseView, useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useOperation, useSuspenseView, useView,
-  ViewOutlet, type BridgeConnectionHandle, type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
+  retrySuspenseView, useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useSuspenseView,
+  useView, ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type UseMenuBarOptions, type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
   type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root_ from "../dist/index.js";
@@ -222,10 +224,10 @@ describe("useView options", () => {
       expect(typeof (root_ as Record<string, unknown>)[name]).toBe("function");
   });
 
-  test("the root entry keeps every earlier export and adds useBridgeConnection (0.11)", () => {
+  test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11)", () => {
     expect(Object.keys(root_).sort()).toEqual([
       "ViewOutlet", "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation",
-      "useOperation", "useSuspenseView", "useView",
+      "useMenuBar", "useOperation", "useSuspenseView", "useView",
     ]);
   });
 });
@@ -924,5 +926,133 @@ describe("useBridgeConnection", () => {
     expect(text()).toBe("connected");
     await act(async () => fake.set(false));
     expect(text()).toBe("reconnecting");
+  });
+});
+
+// A menu bar as Runic Desktop reports it on Linux (specs/desktop/menu-bar-page.md), served by the mock host routes.
+// The lowest-peer run copies only this package, so the spec's fixture is not used here.
+const menuBarFixture: { readonly menus: readonly MenuBarMenu[] } = {
+  menus: [
+    { kind: "menu", key: "1m", label: "File", accessKey: "F", accessKeyIndex: 0, role: "file", enabled: true, entries: [
+      { kind: "item", key: "1m/0i", label: "New", accessKey: "N", accessKeyIndex: 0, commandId: "file.new", enabled: true,
+        shortcut: "Primary+N", shortcutText: "Ctrl+N", ariaKeyShortcuts: "Control+N" },
+      { kind: "item", key: "1m/1i", label: "Save", accessKey: "S", accessKeyIndex: 0, commandId: "file.save", enabled: true },
+      { kind: "separator", key: "1m/2s" },
+    ] },
+    { kind: "menu", key: "0m", label: "Edit", accessKey: "E", accessKeyIndex: 0, role: "none", enabled: true, entries: [
+      { kind: "item", key: "0m/0i", label: "Find", accessKey: "F", accessKeyIndex: 0, commandId: "edit.find", enabled: false },
+    ] },
+  ],
+};
+
+function keyDown(init: KeyboardEventInit) {
+  window.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, ...init }));
+}
+
+describe("useMenuBar", () => {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  afterEach(() => { delete host.__runicBridge; });
+  let bar: MenuBarHandle | undefined;
+  const rendered: MenuBarState[] = [];
+  function MenuBar(options: UseMenuBarOptions): ReactNode {
+    bar = useMenuBar(options);
+    expectTypeOf(bar).toEqualTypeOf<MenuBarHandle>();
+    rendered.push(bar.state);
+    return createElement("output", null, `${bar.state.status} ${bar.state.menus.map(menu => menu.label).join(",")}`);
+  }
+  async function mount(options: UseMenuBarOptions, strict = true) {
+    const element = createElement(MenuBar, options);
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(strict ? createElement(StrictMode, null, element) : element);
+    });
+  }
+  async function until(condition: () => boolean) {
+    for (let round = 0; !condition(); round++) {
+      if (round > 200) throw new Error("The condition was not met.");
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 2)); });
+    }
+  }
+
+  test("renders the host's menus in StrictMode with one controller, and disposes it on unmount", async () => {
+    const mock = installMockMenuBar(menuBarFixture.menus, { platform: "linux" });
+    rendered.length = 0;
+    await mount({});
+    expect(rendered[0]?.status).toBe("connecting");
+    await until(() => text() === "ready File,Edit");
+    expect(bar!.state.menus).toEqual(menuBarFixture.menus);
+    expect(bar!.state.shortcuts).toBe("page");
+    // StrictMode's extra mount disposed its controller: a shortcut runs once.
+    await act(async () => keyDown({ key: "n", code: "KeyN", ctrlKey: true }));
+    await until(() => mock.invocations.length > 0);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    expect(mock.invocations.map(item => item.commandId)).toEqual(["file.new"]);
+    // A pushed change renders.
+    await act(async () => mock.update({ menus: menuBarFixture.menus.slice(0, 1) }));
+    await until(() => text() === "ready File");
+    await act(async () => root?.unmount());
+    root = undefined;
+    keyDown({ key: "n", code: "KeyN", ctrlKey: true });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(mock.invocations).toHaveLength(1);
+  });
+
+  test("invoke reaches the host and onRequest calls the latest function", async () => {
+    const mock = installMockMenuBar(menuBarFixture.menus, { platform: "linux" });
+    const first: MenuBarRequest[] = [];
+    const second: MenuBarRequest[] = [];
+    await mount({ onRequest: request => first.push(request) });
+    await until(() => bar?.state.status === "ready");
+    const file = bar!.state.menus[0]!;
+    const save = file.entries[1]!;
+    if (save.kind !== "item") throw new Error("Save is an item.");
+    expect(await act(async () => bar!.invoke(save))).toBe("executed");
+    expect(mock.invocations.map(item => item.key)).toEqual([save.key]);
+    await mount({ onRequest: request => second.push(request) });
+    await act(async () => keyDown({ key: "F10", code: "F10" }));
+    await act(async () => keyDown({ key: "f", code: "KeyF", altKey: true }));
+    expect(first).toEqual([]);
+    expect(second).toEqual([{ kind: "focus" }, { kind: "open", menu: file }]);
+    expect(bar!.state.accessKeyHints).toBe(true);
+  });
+
+  test("shortcuts: \"app\" holds the lease while mounted; a changed option creates a new controller", async () => {
+    const mock = installMockMenuBar(menuBarFixture.menus, { platform: "linux" });
+    await mount({ shortcuts: "app" }, false);
+    expect(bar!.state.shortcuts).toBe("app");
+    await until(() => bar?.state.status === "ready" && mock.leased);
+    // The page's own key handling: the hook passes the event to the mounted controller.
+    const event = new KeyboardEvent("keydown", { key: "n", code: "KeyN", ctrlKey: true, cancelable: true });
+    expect(bar!.handleKeyDown(event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    await until(() => mock.invocations.length === 1);
+    await mount({ shortcuts: "runic" }, false);
+    await until(() => bar?.state.status === "ready" && !mock.leased);
+    expect(bar!.state.shortcuts).toBe("page");
+    await mount({ shortcuts: "app" }, false);
+    await until(() => mock.leased);
+    await act(async () => root?.unmount());
+    root = undefined;
+    await until(() => !mock.leased);
+  });
+
+  test("renders connecting on the server, where no controller is created", () => {
+    const states: MenuBarState[] = [];
+    function Server(): ReactNode {
+      const handle = useMenuBar({ shortcuts: "app" });
+      states.push(handle.state);
+      expect(handle.handleKeyDown(new KeyboardEvent("keydown", { key: "n", ctrlKey: true }))).toBe(false);
+      return createElement("output", null, handle.state.status);
+    }
+    expect(renderToString(createElement(Server))).toBe("<output>connecting</output>");
+    expect(states[0]).toMatchObject({ status: "connecting", placement: "none", shortcuts: "app", accessKeyHints: false, revision: 0, menus: [] });
+  });
+
+  test("invoke before the effect ran rejects as disconnected", async () => {
+    let handle: MenuBarHandle | undefined;
+    function Server(): ReactNode { handle = useMenuBar(); return null; }
+    renderToString(createElement(Server));
+    await expect(handle!.invoke({ kind: "item", key: "1m/0i", label: "New", accessKeyIndex: 0, commandId: "file.new", enabled: true }))
+      .rejects.toMatchObject({ name: "BridgeError", kind: "disconnected" });
   });
 });
