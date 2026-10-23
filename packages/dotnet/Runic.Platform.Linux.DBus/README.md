@@ -51,6 +51,12 @@ build containers. Read a value with the getter for its type, such as `GetInt32()
 `IsDefault` is true only for `default(DBusValue)`, which holds nothing; an empty
 container such as an `as` without items is not the default.
 
+D-Bus does not stop a peer from sending a dictionary whose key repeats.
+`GetEntries()` lists every entry in message order, and `GetVariantDictionary()`
+and generated readers keep the last entry's value for a repeated key instead of
+throwing, as GLib's `GVariantDict` and `GDBusProxy` and dbus-python do. `Dictionary`
+and `VariantDictionary` still reject a repeated key, so this library does not send one.
+
 An `ay` keeps its bytes as one block, however it was created or received, so a
 large file or image costs about its length in memory. `GetByteArray()` returns
 those bytes without copying them; `GetItems()` still lists them as `y` values.
@@ -261,7 +267,8 @@ D-Bus types map to C# as follows: `y b n q i u x t d s` to `byte`, `bool`,
 `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `double` and `string`; `o`
 and `g` to `DBusObjectPath` and `DBusSignature`; `h` to `SafeHandle`; `v` to
 `DBusValue`; arrays to `ImmutableArray<T>` (an `ay` as one block of bytes),
-dictionaries to `ImmutableDictionary<TKey, TValue>` and structures to tuples. A reply or
+dictionaries to `ImmutableDictionary<TKey, TValue>` (a repeated key keeps its last
+value) and structures to tuples. A reply or
 property of another type than the XML declares throws `DBusException` with
 `org.freedesktop.DBus.Error.InvalidArgs`. The generator reports problems in the
 XML as [`RUNICDBUS` diagnostics](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#d-bus-source-generator),

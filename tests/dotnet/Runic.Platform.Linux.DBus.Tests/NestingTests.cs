@@ -8,8 +8,8 @@ using TUnit.Core;
 using TUnit.Core.Enums;
 using static ValueTests;
 
-// A peer that nests values deeper than D-Bus allows. A bus daemon rejects such messages, so a fake peer-to-peer bus on a
-// Unix socket sends them straight to the connection.
+// A peer that nests values deeper than D-Bus allows, or repeats a dictionary key. A bus daemon rejects too deep messages,
+// so a fake peer-to-peer bus on a Unix socket sends them straight to the connection.
 [RunOn(OS.Linux)]
 internal sealed class NestingTests
 {
@@ -44,6 +44,46 @@ internal sealed class NestingTests
         }
     }
 
+    [Test, DisplayName("a call whose a{sv} repeats a key reads with the last value, through DBusValue and a generated service")]
+    public async Task RepeatedKeyAsync()
+    {
+        byte[] tags = StringVariants(("genre", "jazz"), ("year", "1959"), ("genre", "bebop"));
+        await using (var bus = await FakeBus.ConnectAsync(new GenreObject()))
+        {
+            var reply = await bus.CallAsync(Path, Interface, "Genre", "a{sv}", tags);
+            Check(reply.Type == FakeBus.Return && ReadString(reply.Body) == "bebop", $"GetVariantDictionary: {reply.Describe()}");
+        }
+        await using (var bus = await FakeBus.ConnectAsync(new GeneratedTests.TestPlayer(), "/org/runic/Test/Media"))
+        {
+            // Describe(a{sv} tags, a(oss) tracks) answers with tags["genre"]; the tracks are an empty array padded to 8 bytes.
+            byte[] body = [.. tags, .. new byte[(4 - tags.Length % 4) % 4], 0, 0, 0, 0];
+            body = [.. body, .. new byte[(8 - body.Length % 8) % 8]];
+            var reply = await bus.CallAsync("/org/runic/Test/Media", "org.runic.Test.Media.Player", "Describe", "a{sv}a(oss)", body);
+            Check(reply.Type == FakeBus.Return && ReadString(reply.Body) == "bebop", $"generated reader: {reply.Describe()}");
+        }
+    }
+
+    // An a{sv} whose values are strings, with the entries in the given order, repeated keys included.
+    private static byte[] StringVariants(params (string Key, string Value)[] entries)
+    {
+        var body = new List<byte> { 0, 0, 0, 0, 0, 0, 0, 0 };
+        void Pad(int alignment) { while (body.Count % alignment != 0) body.Add(0); }
+        void String(string text) { Pad(4); body.AddRange(BitConverter.GetBytes(Encoding.UTF8.GetByteCount(text))); body.AddRange(Encoding.UTF8.GetBytes(text)); body.Add(0); }
+        foreach (var (key, value) in entries)
+        {
+            Pad(8);
+            String(key);
+            body.AddRange("\u0001s\0"u8.ToArray());
+            String(value);
+        }
+        // The length counts from the first entry, after the padding to its 8-byte alignment.
+        var result = body.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(result, (uint)(result.Length - 8));
+        return result;
+    }
+
+    private static string ReadString(byte[] body) => body.Length >= 4 ? Encoding.UTF8.GetString(body, 4, (int)BinaryPrimitives.ReadUInt32LittleEndian(body)) : "";
+
     // `levels` variants, each holding the next, the last a byte.
     private static byte[] Variants(int levels)
     {
@@ -71,6 +111,13 @@ internal sealed class NestingTests
         protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context) => ValueTask.FromResult(context.Arguments);
     }
 
+    // Answers with the "genre" of an a{sv}.
+    private sealed class GenreObject : DBusObject
+    {
+        protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context) =>
+            ValueTask.FromResult<ImmutableArray<DBusValue>>([context.Arguments[0].GetVariantDictionary()["genre"]]);
+    }
+
     // A minimal little-endian D-Bus peer: SASL EXTERNAL, Hello and method calls to an exported object.
     private sealed class FakeBus : IAsyncDisposable
     {
@@ -85,7 +132,7 @@ internal sealed class NestingTests
 
         private FakeBus(DirectoryInfo directory, Socket listener) { _directory = directory; _listener = listener; }
 
-        internal static async Task<FakeBus> ConnectAsync()
+        internal static async Task<FakeBus> ConnectAsync(DBusObject? exported = null, string path = Path)
         {
             var directory = Directory.CreateTempSubdirectory("runic-dbus-");
             string socketPath = System.IO.Path.Combine(directory.FullName, "bus");
@@ -102,7 +149,7 @@ internal sealed class NestingTests
                 bus._connection = connect.Result is PlatformResult<DBusConnection>.Success(var connection) ? connection
                     : throw new InvalidOperationException($"The connection failed: {connect.Result}");
                 Check(connection.UniqueName == ":1.1", $"the connection took the name from Hello: \"{connection.UniqueName}\"");
-                bus._export = connection.Export(Path, new EchoObject());
+                bus._export = connection.Export(path, exported ?? new EchoObject());
                 return bus;
             }
             catch

@@ -80,17 +80,15 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
         return session;
     }
 
-    // Values stay variants until Read checks their types; a repeated key keeps its last value.
+    // Values stay variants until Read checks their types; a repeated key keeps its last value, as the generated reader does.
     internal static async Task<Dictionary<string, Dictionary<string, DBusValue>>> ReadAllAsync(PortalConnection session, string[] namespaces,
         CancellationToken cancellationToken)
     {
-        var reply = await new Protocol.Settings(session.Connection, session.Destination, Root)
-            .CallAsync(Protocol.Settings.InterfaceName, "ReadAll", [DBusValue.StringArray(namespaces)], cancellationToken: cancellationToken)
+        var values = await new Protocol.Settings(session.Connection, session.Destination, Root)
+            .ReadAllAsync([.. namespaces], cancellationToken: cancellationToken)
             .AsTask().WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-        var result = new Dictionary<string, Dictionary<string, DBusValue>>(StringComparer.Ordinal);
-        if (reply is not [{ Signature.Value: "a{sa{sv}}" } values]) throw new DBusException(DBusException.InvalidArgs, "ReadAll replied with another type.");
-        foreach (var entry in values.GetEntries()) result[entry.Key.GetString()] = PortalValues.Variants(entry.Value);
-        return result;
+        return values.ToDictionary(static entry => entry.Key, static entry => new Dictionary<string, DBusValue>(entry.Value, StringComparer.Ordinal),
+            StringComparer.Ordinal);
     }
 
     // Wakes watchers of the current connection; a lost connection is replaced by the next read.

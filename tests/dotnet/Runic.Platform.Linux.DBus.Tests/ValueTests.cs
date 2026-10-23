@@ -175,6 +175,20 @@ internal sealed class ValueTests
         Throws<ArgumentException>(() => { for (int depth = 0; depth < 40; depth++) deep = DBusValue.Array(deep.Signature, [deep]); }, "arrays nested beyond 32");
     }
 
+    [Test, DisplayName("a received a{sv} whose key repeats keeps every entry and reads with the last value")]
+    public void RepeatedKey()
+    {
+        // As the wire reader builds it: Dictionary and VariantDictionary refuse a repeated key.
+        var received = DBusValue.DictionaryFromWire("a{sv}", [
+            KeyValuePair.Create(DBusValue.From("genre"), DBusValue.Variant(DBusValue.From("jazz"))),
+            KeyValuePair.Create(DBusValue.From("year"), DBusValue.Variant(DBusValue.From(1959))),
+            KeyValuePair.Create(DBusValue.From("genre"), DBusValue.Variant(DBusValue.From("bebop"))),
+        ]);
+        var values = received.GetVariantDictionary();
+        Check(values.Count == 2 && values["genre"].GetString() == "bebop" && values["year"].GetInt32() == 1959, "the last value wins");
+        Check(received.GetEntries().Length == 3 && received.GetEntries()[0].Value.GetVariant().GetString() == "jazz", "every entry, in message order");
+    }
+
     [Test, DisplayName("paths, signatures and names follow the D-Bus syntax")]
     public void Names()
     {

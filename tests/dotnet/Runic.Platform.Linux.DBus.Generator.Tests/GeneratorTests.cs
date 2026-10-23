@@ -38,6 +38,10 @@ internal sealed class GeneratorTests
         Check(output.GetTypeByMetadataName("Example.Bus.BareProperties") is not null, "an interface without properties still compiles cleanly");
         var proxy = sources.Single(static s => s.HintName.EndsWith(".Proxy.g.cs", StringComparison.Ordinal)).SourceText.ToString();
         Check(proxy.Contains("DoAsync(string @in,", StringComparison.Ordinal) && proxy.Contains("WatchChangedAsync", StringComparison.Ordinal), "keyword argument names are escaped");
+        // A peer may repeat a dictionary key: readers of every dictionary type set entries in order, so the last one wins.
+        Check(!proxy.Contains("ToImmutableDictionary", StringComparison.Ordinal)
+            && proxy.Contains("ImmutableDictionary<global::Runic.Platform.Linux.DBus.DBusObjectPath, global::System.Collections.Immutable.ImmutableArray<string>>.Empty.SetItems(", StringComparison.Ordinal),
+            "dictionary readers keep the last value of a repeated key");
     }
 
     [Test, DisplayName("internal is the default, RunicDBusClassName names the class, and other XML is ignored")]

@@ -144,7 +144,7 @@ internal sealed class GeneratedTests
         await DBusConnection.ConnectAsync(DBusBus.Session) is PlatformResult<DBusConnection>.Success(var connection) ? connection
             : throw new InvalidOperationException("Run the bus cases under dbus-run-session.");
 
-    private sealed class TestPlayer : MediaService
+    internal sealed class TestPlayer : MediaService
     {
         private long _position = 100;
         public int Raised;
