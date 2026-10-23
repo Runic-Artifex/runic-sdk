@@ -546,14 +546,26 @@ static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
     for (var waited = 0; !await MappedAsync() && waited < 5000; waited += 20) await Task.Delay(20);
     if (!await MappedAsync())
         throw new InvalidOperationException("SetVisibleAsync(true) did not map the GTK 4 window again.");
-    // Closes as the title bar's close button does, through the window's close request.
-    if (!await window.RequestCloseAsync())
-        throw new InvalidOperationException("The GTK 4 window refused to close.");
+    // A permission request reaches the window's permission-request handler, which denies it without a grant; the
+    // handler must not keep the view from being released when the window closes.
+    await surface.ExecuteJavaScriptAsync("Notification.requestPermission().then(result => window.__permission = result); return 'asked';");
+    var permission = "undefined";
+    for (var waited = 0; permission == "undefined" && waited < 5000; waited += 50)
+    {
+        await Task.Delay(50);
+        permission = await surface.ExecuteJavaScriptAsync("return String(window.__permission);");
+    }
+    if (permission != "denied")
+        throw new InvalidOperationException($"The GTK 4 window answered a notification permission request with '{permission}'.");
+    // Closes as the title bar's close button does, through gtk_window_close and the window's close request (#509).
+    await window.InvokeNativeAsync(Gtk4Native.WindowClose);
     await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+    // Completes once the window and its web view were released, then the surface is disposed.
+    await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
     await Task.Delay(200);
     if (window.IsOpen || Volatile.Read(ref raised) != 1)
         throw new InvalidOperationException($"DesktopWindow.Closed was raised {raised} times for one user close.");
-    Console.WriteLine("GTK4 smoke: hide, show and the Closed event passed.");
+    Console.WriteLine("GTK4 smoke: hide, show, a denied permission request, the native close and the Closed event passed.");
 }
 
 // I-146: on X11 a window opens at its requested position, reports it in its state and moves.
@@ -668,6 +680,9 @@ internal static partial class Gtk4Native
     [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_mapped")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.I4)]
     internal static partial bool WidgetGetMapped(nint widget);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_window_close")]
+    internal static partial void WindowClose(nint window);
 }
 
 internal static class SmokeMode

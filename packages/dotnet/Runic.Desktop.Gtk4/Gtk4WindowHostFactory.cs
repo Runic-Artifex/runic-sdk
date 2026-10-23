@@ -294,7 +294,7 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
     /// <see cref="DesktopWindowCapabilities.Move"/> and <see cref="DesktopWindowCapabilities.MonitorPlacement"/> only on X11.
     /// </remarks>
     public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities | DesktopWindowCapabilities.Announcements |
-        Gtk4WindowHost.PositionCapabilities | Gtk4WindowHost.DragCapabilities;
+        Gtk4WindowHost.PositionCapabilities;
 
     /// <inheritdoc />
     /// <remarks>
@@ -420,7 +420,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
-        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
+        DesktopWindowCapabilities.FileDrag;
     private DesktopWindowState? _state;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
     // when a hidden window is first shown, and the X event connection that reports moves.
@@ -445,6 +446,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     private int _cleanupQueued;
     private int _createStarted;
     private NativeObjectFinalizationProbe? _finalization;
+    // GTK thread only: the window's close-request and destroy handlers (WindowLifetimeSignals).
+    private (nuint CloseRequest, nuint Destroy) _windowSignals;
     private Gtk.EventControllerKey? _keys;
     private UserContentManager? _contentManager;
     // GTK thread only: the window's DesktopWebContentPolicy (SEC-04) and the network session's download-started
@@ -470,8 +473,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     // FileDrop only once WebKit's drop target was found; see Gtk4FileDrops.
     public DesktopWindowCapabilities Capabilities => (_window is null || _receivesFileDrops ? SupportedCapabilities : SupportedCapabilities & ~DesktopWindowCapabilities.FileDrop) |
-        (Gtk4Announcement.IsAvailable ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) | PositionCapabilities |
-        DragCapabilities;
+        (Gtk4Announcement.IsAvailable ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) | PositionCapabilities;
 
     // GTK 4 positions windows only on X11 (Gtk4X11Placement).
     internal static DesktopWindowCapabilities PositionCapabilities =>
@@ -857,9 +859,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             finalization = new NativeObjectFinalizationProbe();
             finalization.Track(window.Handle.DangerousGetHandle());
             finalization.Track(webView.Handle.DangerousGetHandle());
-            window.OnCloseRequest += OnCloseRequest;
-            window.OnDestroy += OnDestroyed;
-            webView.OnPermissionRequest += OnPermissionRequest;
+            _windowSignals = WindowLifetimeSignals.Connect(this, window);
+            PermissionRequestSignal.Connect(this, webView);
             WebProcessTerminatedSignal.Connect(this, webView);
             TitleSignal.Connect(this, webView);
             _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
@@ -905,10 +906,6 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             {
                 Gtk4Application.Unregister(this);
             }
-            if (webView is not null)
-            {
-                webView.OnPermissionRequest -= OnPermissionRequest;
-            }
             DetachZoomHandlers(keys, contentManager);
             Gtk4FileDrops.Disconnect(this);
             DisconnectDownloads();
@@ -916,8 +913,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             _moveWatch = default;
             if (window is not null)
             {
-                window.OnCloseRequest -= OnCloseRequest;
-                window.OnDestroy -= OnDestroyed;
+                WindowLifetimeSignals.Disconnect(window, _windowSignals);
+                _windowSignals = default;
                 window.Destroy();
             }
             webView?.Dispose();
@@ -999,7 +996,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         Option = "DesktopWindowOptions." + option,
     };
 
-    private bool OnCloseRequest(Gtk.Window _, EventArgs __)
+    private bool OnCloseRequest()
     {
         if (Volatile.Read(ref _forceClose) != 0)
         {
@@ -1101,17 +1098,83 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     }
 
     // An unhandled request is denied by WebKit, so a grant must allow explicitly.
-    private bool OnPermissionRequest(WebView webView, WebView.PermissionRequestSignalArgs request)
+    private void OnPermissionRequest(nint webView, nint request)
     {
-        if (AllowsMediaCapture(webView, request.Request))
+        if (IsOwnOpenView(webView) && _webView is { } view && AllowsMediaCapture(view, request))
         {
-            request.Request.Allow();
+            PermissionRequestSignal.Allow(request);
         }
         else
         {
-            request.Request.Deny();
+            PermissionRequestSignal.Deny(request);
         }
-        return true;
+    }
+
+    // permission-request on the view, connected through GObject for the reason WebProcessTerminatedSignal gives. The
+    // connection ends when the view is finalized.
+    private static unsafe partial class PermissionRequestSignal
+    {
+        private static readonly nint WebKit = WebContentSignals.WebKitLibrary;
+        private static readonly nint PermissionRequestAllow = NativeLibrary.GetExport(WebKit, "webkit_permission_request_allow");
+        private static readonly nint PermissionRequestDeny = NativeLibrary.GetExport(WebKit, "webkit_permission_request_deny");
+        private static readonly nint UserMediaPermissionRequestGetType = NativeLibrary.GetExport(WebKit, "webkit_user_media_permission_request_get_type");
+        private static readonly nint DeviceInfoPermissionRequestGetType = NativeLibrary.GetExport(WebKit, "webkit_device_info_permission_request_get_type");
+        private static readonly nint UserMediaPermissionIsForDisplayDevice = NativeLibrary.GetExport(WebKit, "webkit_user_media_permission_is_for_display_device");
+
+        internal static void Connect(Gtk4WindowHost host, WebView webView)
+        {
+            var context = GCHandle.Alloc(host);
+            var handler = ConnectData(webView.Handle.DangerousGetHandle(), "permission-request",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnRequest, GCHandle.ToIntPtr(context),
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Release, 0);
+            if (handler == 0)
+            {
+                context.Free();
+                throw new InvalidOperationException("GTK rejected the 'permission-request' signal handler.");
+            }
+        }
+
+        internal static void Allow(nint request) => ((delegate* unmanaged[Cdecl]<nint, void>)PermissionRequestAllow)(request);
+
+        internal static void Deny(nint request) => ((delegate* unmanaged[Cdecl]<nint, void>)PermissionRequestDeny)(request);
+
+        internal static bool IsUserMedia(nint request) => IsA(request, UserMediaPermissionRequestGetType);
+
+        internal static bool IsDeviceInfo(nint request) => IsA(request, DeviceInfoPermissionRequestGetType);
+
+        internal static bool IsForDisplayDevice(nint request) =>
+            ((delegate* unmanaged[Cdecl]<nint, int>)UserMediaPermissionIsForDisplayDevice)(request) != 0;
+
+        private static bool IsA(nint instance, nint getType) =>
+            TypeCheckInstanceIsA(instance, ((delegate* unmanaged[Cdecl]<nuint>)getType)()) != 0;
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static int OnRequest(nint webView, nint request, nint context)
+        {
+            try
+            {
+                if (GCHandle.FromIntPtr(context).Target is Gtk4WindowHost host)
+                {
+                    host.OnPermissionRequest(webView, request);
+                    return 1;
+                }
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+            // WebKit's default handler denies it.
+            return 0;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void Release(nint context, nint closure) => GCHandle.FromIntPtr(context).Free();
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_type_check_instance_is_a")]
+        private static partial int TypeCheckInstanceIsA(nint instance, nuint type);
     }
 
     // A crashed web process leaves the view blank (#313): report it and reload, a few times at most.
@@ -1366,7 +1429,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // finalized, the session's when the window closes.
     private static unsafe partial class WebContentSignals
     {
-        private static readonly nint WebKit = LoadWebKit();
+        internal static readonly nint WebKitLibrary = LoadWebKit();
+        private static readonly nint WebKit = WebKitLibrary;
         private static readonly nint NavigationPolicyDecisionGetNavigationAction = Export("webkit_navigation_policy_decision_get_navigation_action");
         private static readonly nint NavigationActionGetRequest = Export("webkit_navigation_action_get_request");
         private static readonly nint NavigationActionIsUserGesture = Export("webkit_navigation_action_is_user_gesture");
@@ -1542,16 +1606,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     // WebKitGTK does not identify the requesting frame: the top-level document must have the presented origin, and so
     // must every subframe (WebKitGtkMediaFrames). Screen capture is not part of the grant.
-    private bool AllowsMediaCapture(WebView webView, PermissionRequest request) =>
+    private bool AllowsMediaCapture(WebView webView, nint request) =>
         (_options?.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0 &&
         _presentedUrl is { } presented &&
         _mediaFrames is { HasForeignFrames: false } &&
-        request switch
-        {
-            UserMediaPermissionRequest media => !WebKit.Functions.UserMediaPermissionIsForDisplayDevice(media),
-            DeviceInfoPermissionRequest => true,
-            _ => false,
-        } &&
+        (PermissionRequestSignal.IsUserMedia(request)
+            ? !PermissionRequestSignal.IsForDisplayDevice(request)
+            : PermissionRequestSignal.IsDeviceInfo(request)) &&
         Uri.TryCreate(webView.GetUri(), UriKind.Absolute, out var current) &&
         Uri.Compare(presented, current, UriComponents.SchemeAndServer, UriFormat.UriEscaped, StringComparison.OrdinalIgnoreCase) == 0;
 
@@ -1699,9 +1760,87 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
     }
 
-    private void OnDestroyed(Gtk.Widget _, EventArgs __)
+    private void OnDestroyed()
     {
         QueueCleanupAfterDestroy();
+    }
+
+    // close-request and destroy on the window, connected through GObject rather than as GirCore events: a GirCore
+    // handler that has run keeps a reference to the window, so a window closed through its close request (the title
+    // bar's button, gtk_window_close) was never finalized and closing never completed (#509). Disconnected when the
+    // window's native objects are released.
+    private static unsafe partial class WindowLifetimeSignals
+    {
+        internal static (nuint CloseRequest, nuint Destroy) Connect(Gtk4WindowHost host, Gtk.Window window)
+        {
+            var native = window.Handle.DangerousGetHandle();
+            var closeRequest = ConnectSignal(host, native, "close-request", (nint)(delegate* unmanaged[Cdecl]<nint, nint, int>)&OnCloseRequest);
+            try
+            {
+                return (closeRequest, ConnectSignal(host, native, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroy));
+            }
+            catch
+            {
+                HandlerDisconnect(native, closeRequest);
+                throw;
+            }
+        }
+
+        internal static void Disconnect(Gtk.Window window, (nuint CloseRequest, nuint Destroy) handlers)
+        {
+            var native = window.Handle.DangerousGetHandle();
+            if (handlers.CloseRequest != 0) HandlerDisconnect(native, handlers.CloseRequest);
+            if (handlers.Destroy != 0) HandlerDisconnect(native, handlers.Destroy);
+        }
+
+        private static nuint ConnectSignal(Gtk4WindowHost host, nint instance, string signal, nint callback)
+        {
+            var context = GCHandle.Alloc(host);
+            var handler = ConnectData(instance, signal, callback, GCHandle.ToIntPtr(context),
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Release, 0);
+            if (handler == 0)
+            {
+                context.Free();
+                throw new InvalidOperationException($"GTK rejected the '{signal}' signal handler.");
+            }
+            return handler;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static int OnCloseRequest(nint window, nint context)
+        {
+            try
+            {
+                return (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnCloseRequest() == true ? 1 : 0;
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+                return 0;
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnDestroy(nint window, nint context)
+        {
+            try
+            {
+                (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnDestroyed();
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void Release(nint context, nint closure) => GCHandle.FromIntPtr(context).Free();
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_handler_disconnect")]
+        private static partial void HandlerDisconnect(nint instance, nuint handler);
     }
 
     private void DestroyWindow()
@@ -1741,12 +1880,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         _webContent?.Clear();
         ReleaseMenus(webView);
 
-        webView.OnPermissionRequest -= OnPermissionRequest;
         DetachZoomHandlers(_keys, _contentManager);
         _keys = null;
         _contentManager = null;
-        window.OnCloseRequest -= OnCloseRequest;
-        window.OnDestroy -= OnDestroyed;
+        WindowLifetimeSignals.Disconnect(window, _windowSignals);
+        _windowSignals = default;
         webView.TryClose();
         webView.Dispose();
         window.Dispose();

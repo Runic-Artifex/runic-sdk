@@ -64,8 +64,9 @@ internal static class LinuxDragOutSmoke
         internal required Func<string[], nint> CreateDragSource { get; init; }
         internal required (int X, int Y) SourcePoint { get; init; }
         internal required Action<nint> DestroyWindow { get; init; }
-        // GTK 4 before 4.22 reports no FileDrag.
-        internal bool MayLackDragOut { get; init; }
+        // Closes the page window as its title bar's close button does; without it the window is disposed. GTK 4 closes
+        // it so, after the drags (I-197).
+        internal Func<DesktopWindow, Task>? CloseNatively { get; init; }
     }
 
     internal static async Task RunAsync(DesktopHost host, Pointer pointer, string[] paths, Toolkit toolkit)
@@ -80,14 +81,7 @@ internal static class LinuxDragOutSmoke
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(DragOutPage) });
         await using var window = await surface.OpenWindowAsync(toolkit.PageWindow);
         if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.FileDrag))
-        {
-            if (toolkit.MayLackDragOut)
-            {
-                Console.WriteLine($"{toolkit.Name} drag out: skipped, the toolkit is older than the one drag-out needs.");
-                return;
-            }
             throw new InvalidOperationException($"The {toolkit.Name} window did not advertise drags out.");
-        }
         await surface.ExecuteJavaScriptAsync("return document.readyState;", TimeSpan.FromSeconds(10));
         // Without a held button the drag does not start.
         if (await window.StartDragAsync(new DesktopDragData { Text = "late" }) != DesktopDragEffects.None)
@@ -114,6 +108,16 @@ internal static class LinuxDragOutSmoke
         {
             Console.WriteLine($"{toolkit.Name} drag out: destroying the drop target.");
             await window.InvokeNativeAsync(_ => toolkit.DestroyWindow(target));
+        }
+        if (toolkit.CloseNatively is { } close)
+        {
+            Console.WriteLine($"{toolkit.Name} drag out: closing the window natively.");
+            await close(window);
+            // Completes once the window and its web view were released.
+            await window.WaitForCloseAsync();
+        }
+        else
+        {
             Console.WriteLine($"{toolkit.Name} drag out: closing the window.");
         }
     }
