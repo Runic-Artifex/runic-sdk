@@ -528,7 +528,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
         8 => "invalid HTTP response",
         9 => "connection aborted",
         10 => "connection reset",
-        11 => "disconnected",
+        11 => "network disconnected",
         12 => "cannot connect",
         13 => "host name not resolved",
         14 => "operation canceled",
