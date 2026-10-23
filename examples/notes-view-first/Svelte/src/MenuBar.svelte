@@ -2,6 +2,7 @@
   // The window's in-page menu bar with Bits UI's Menubar. Runic provides the state, invoke and the keyboard requests
   // (useMenuBar); Bits UI provides the WAI-ARIA menubar: roles, roving focus, arrow keys, typeahead and Escape.
   import { Menubar } from "bits-ui";
+  import { SvelteMap } from "svelte/reactivity";
   import { splitAccessKey, type MenuBarEntry, type MenuBarItem, type MenuBarMenu } from "@runic-artifex/views";
   import { useMenuBar } from "../../../../packages/web/svelte/src/views/use-menu-bar.svelte.js";
 
@@ -17,6 +18,15 @@
   });
   const run = (item: MenuBarItem) => { menuBar.invoke(item).catch(error => console.error(error)); };
   const keyShortcuts = (item: MenuBarItem) => item.ariaKeyShortcuts ? { "aria-keyshortcuts": item.ariaKeyShortcuts } : {};
+
+  // Bits UI 2.20 runs a menu's open auto-focus again when the menu's props change after it opened (its open transition
+  // ends a frame later), and that moves focus from an item already reached with the arrow keys back to the first item.
+  // An open menu that has focus keeps it.
+  const contents = new SvelteMap<string, HTMLElement>();
+  const content = (key: string, element: HTMLElement | null) => { if (element) contents.set(key, element); else contents.delete(key); };
+  const keepFocus = (key: string) => (event: Event) => {
+    if (contents.get(key)?.contains(document.activeElement)) event.preventDefault();
+  };
 
   // Consecutive items of one radio group render as a radio group.
   function groups(entries: readonly MenuBarEntry[]): (MenuBarEntry | MenuBarItem[])[] {
@@ -59,7 +69,8 @@
         <Menubar.SubTrigger class="menu-item" disabled={!group.enabled}>
           <span class="menu-mark"></span>{@render label(group)}<span aria-hidden="true">›</span>
         </Menubar.SubTrigger>
-        <Menubar.SubContent class="menu-popup" alignOffset={-4}>{@render entries(group.entries)}</Menubar.SubContent>
+        <Menubar.SubContent class="menu-popup" alignOffset={-4} bind:ref={() => contents.get(group.key) ?? null, element => content(group.key, element)}
+          onOpenAutoFocus={keepFocus(group.key)}>{@render entries(group.entries)}</Menubar.SubContent>
       </Menubar.Sub>
     {:else if group.checked !== undefined}
       {@const item = group}
@@ -82,7 +93,8 @@
       <Menubar.Menu value={menu.key}>
         <Menubar.Trigger class="menubar-trigger" disabled={!menu.enabled}>{@render label(menu)}</Menubar.Trigger>
         <Menubar.Portal>
-          <Menubar.Content class="menu-popup" align="start" sideOffset={4}>{@render entries(menu.entries)}</Menubar.Content>
+          <Menubar.Content class="menu-popup" align="start" sideOffset={4} bind:ref={() => contents.get(menu.key) ?? null, element => content(menu.key, element)}
+            onOpenAutoFocus={keepFocus(menu.key)}>{@render entries(menu.entries)}</Menubar.Content>
         </Menubar.Portal>
       </Menubar.Menu>
     {/each}
