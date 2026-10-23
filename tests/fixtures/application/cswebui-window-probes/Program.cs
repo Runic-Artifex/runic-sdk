@@ -215,7 +215,8 @@ static int ProbeCloseGuard()
             entry is { Category: "Runic.Application.Views.CsWebUi", Level: LogLevel.Warning } &&
             entry.EventId is { Id: 2101, Name: "CsWebUiNativeLibraryUnchecked" } &&
             entry.Message.Contains(nativeLibrary, StringComparison.Ordinal) &&
-            entry.Message.Contains("efac0e24", StringComparison.Ordinal)))
+            entry.Message.Contains("efac0e24", StringComparison.Ordinal) &&
+            entry.Message.Contains("2b35db13f", StringComparison.Ordinal)))
         throw new InvalidOperationException("The WebUI library from CSWEBUI_NATIVE_LIBRARY was not logged once as event 2101:\n" +
             string.Join('\n', entries.Select(static entry => entry.ToString())));
     Console.WriteLine("FIRST_WINDOW_CLOSE_GUARD_OK");

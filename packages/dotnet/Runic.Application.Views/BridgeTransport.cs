@@ -42,11 +42,11 @@ public interface IBridgeTransport
 /// snapshots per route, and awaiting script completion lets a slow WebView fall behind into
 /// a bounded recovery snapshot. CS-WebUI does not implement it: WebUI's only acknowledged
 /// script call answers from one client and blocks a native thread. Its
-/// <see cref="IBridgeTransport.Publish"/> instead writes to every client synchronously,
-/// under WebUI's process-wide send lock, and blocks until each socket write completes or
-/// times out. A slow client therefore applies TCP-level back-pressure: the blocked write
-/// holds the bridge's delivery queue, which falls back to a recovery snapshot once it is
-/// full, and it also delays sends to every other CS-WebUI window. This is not application-level
+/// <see cref="IBridgeTransport.Publish"/> instead writes to every client of its window
+/// synchronously and blocks until each socket write completes or times out. A slow client
+/// therefore applies TCP-level back-pressure: the blocked write holds the bridge's delivery
+/// queue, which falls back to a recovery snapshot once it is full, and delays the window's
+/// other clients, but not other CS-WebUI windows. This is not application-level
 /// acknowledgement; frames are written in order, not confirmed as applied.
 /// </remarks>
 public interface IAsyncBridgeTransport : IBridgeTransport

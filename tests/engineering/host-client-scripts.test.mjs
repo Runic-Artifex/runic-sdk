@@ -50,7 +50,7 @@ function loadCsWebUiBridge(webui) {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 // WebUI assigns each concurrent call its own event slot since webui#721, which
-// CsWebUi 2.5.0-beta.4.7 bundles, so the client sends every call at once.
+// CsWebUi 2.5.0-beta.4.7 and later bundle, so the client sends every call at once.
 test("runic-cswebui.js sends concurrent calls without waiting for replies", async () => {
   const sent = [];
   const replies = new Map();

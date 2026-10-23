@@ -80,10 +80,14 @@ closes, so dispose the Window with `await using` before the application returns.
 State snapshots and collection delta frames are written, in order, as WebSocket
 messages to every connected client. Runic Desktop waits until the WebView has run
 each frame. CS-WebUI cannot do that for several clients, so its writes block
-instead, under WebUI's process-wide send lock, until each socket accepts the frame or
-the write times out. A slow browser therefore holds back delivery at the TCP level.
-Frames queue in the bridge, which sends a recovery snapshot once the queue is full,
-and sends to every other CS-WebUI window in the process wait for the same lock.
+instead until each socket accepts the frame or the write times out. A slow
+browser therefore holds back delivery at the TCP level. Frames queue in the
+bridge, which sends a recovery snapshot once the queue is full, and the window's
+other clients wait for the same write. Other CS-WebUI windows are not held back:
+WebUI before nightly `9264f7ae9` (webui-dev/webui#723) wrote every WebSocket
+frame under one process-wide lock, so one stalled client delayed every window in
+the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.8, the lowest
+version this package accepts, includes the fix.
 
 ## What a window opens
 
@@ -230,13 +234,17 @@ calls can reach WebUI at once. Runic relies on WebUI's fix for concurrent calls
 (webui-dev/webui#721): before it, native WebUI could assign one event slot to
 two calls that arrive together. One call could then run with the other's
 arguments or receive the other's reply, and one of them could receive no reply
-at all. CsWebUi 2.5.0-beta.4.7, the lowest version this package accepts,
-bundles WebUI nightly `efac0e24dd4e6199dd7308c485906c90fb8816a2`, which includes
-the fix. An application that loads its own WebUI through
-`CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath` needs that commit
-or a later one. WebUI reports no version or commit that Runic could check, so
-the host logs event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before
-the first window opens, when such a library is configured.
+at all. The fix is in WebUI nightly `efac0e24d` and in every CsWebUi since
+2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.8, the lowest version this package
+accepts, bundles WebUI nightly `2b35db13f864031543f61816c496b1035c026340`,
+which also removes the process-wide send lock (webui-dev/webui#723) and gives
+navigation events their URL argument (webui-dev/webui#724). An application that
+loads its own WebUI through `CSWEBUI_NATIVE_LIBRARY` or
+`WebUiNativeLibrary.SetLibraryPath` needs `efac0e24d` or later for concurrent
+calls, and `2b35db13f` or later for the behaviour this package is tested with.
+WebUI reports no version or commit that Runic could check, so the host logs
+event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before the first
+window opens, when such a library is configured.
 Applications that keep their own copy of `runic-cswebui.js` should update it.
 Since 0.11.0 the host sends Views state to the script's `__runicViewsPush`
 function and carries out navigations through `__runicContinueNavigation`, both
@@ -285,8 +293,11 @@ decisions:
   `WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, true)` lets
   every client that reaches the server share the window.
 - **Your own WebUI build.** A library from `CSWEBUI_NATIVE_LIBRARY` or
-  `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24` (see
-  above); the host logs event 2101 when one is configured.
+  `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
+  with an older WebUI, Bridge calls that arrive together can run with each
+  other's arguments or receive each other's replies. Runic is tested with
+  `2b35db13f`, which CsWebUi 2.5.0-beta.4.8 bundles (see above). Runic cannot
+  check a custom build, so the host logs event 2101 when one is configured.
 
 - **Content-Security-Policy.** WebUI serves `SetRootFolder` files without
   headers of its own, so give the page a policy with

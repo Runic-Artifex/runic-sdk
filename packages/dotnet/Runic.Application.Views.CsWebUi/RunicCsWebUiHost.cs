@@ -248,8 +248,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 }
                 // With this binding, WebUI cancels the page's navigations from each (re)connect until
                 // runic-cswebui.js allows them before a Bridge call, and reports each one here; ignoring it dropped a
-                // reload or a link before the first call (#196). CS-WebUI does not expose the destination of a
-                // navigation event, so the page repeats the navigation it recorded, if it stays on its origin.
+                // reload or a link before the first call (#196). Since WebUI 597243906 (webui#724) the event carries
+                // the destination URL, but not the navigation's type (reload, traversal, replace) or form data, and
+                // only the page can repeat it, so the page repeats the navigation it recorded, if it stays on its
+                // origin.
                 else if (e.EventType == WebUiEventType.Navigation)
                     e.SendRaw(ContinueNavigationFunction, ContinueNavigationData);
             });

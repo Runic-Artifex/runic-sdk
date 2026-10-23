@@ -14,8 +14,8 @@
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <!-- Exposed third-party packages are bounded to the tested major (eng/release/README.md,
          "Third-party dependencies"). -->
-    <PackageVersion Include="CsWebUi" Version="[2.5.0-beta.4.7, 3)" />
-    <PackageVersion Include="CsWebUi.Native" Version="[2.5.0-beta.4.7, 3)" />
+    <PackageVersion Include="CsWebUi" Version="[2.5.0-beta.4.8, 3)" />
+    <PackageVersion Include="CsWebUi.Native" Version="[2.5.0-beta.4.8, 3)" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
