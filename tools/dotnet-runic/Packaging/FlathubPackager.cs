@@ -41,7 +41,7 @@ internal static class FlathubPackager
         string icon = context.RequireIcon();
         string root = FindGitRoot(identity.ProjectDirectory) ?? identity.ProjectDirectory;
         if (root == identity.ProjectDirectory && !Directory.Exists(Path.Combine(root, ".git")) && !File.Exists(Path.Combine(root, ".git")))
-            context.Warn("The project is not in a git checkout; the manifest assumes that the repository's root is the project directory.");
+            context.Warn(PackageCodes.NoGitCheckout, "The project is not in a git checkout; the manifest assumes that the repository's root is the project directory.");
         string Relative(string path) => Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
         if (Relative(icon).StartsWith("../", StringComparison.Ordinal))
             throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable, "RunicPackageIcon is outside the git repository, which the Flathub build checks out.");
@@ -79,7 +79,7 @@ internal static class FlathubPackager
         context.Add(manifest, "flathub-manifest", "none");
 
         if (options.Build) await BuildAsync(context, manifest, cancellationToken).ConfigureAwait(false);
-        else context.Warn("Flathub builds and signs the application from this manifest; submit it from your own account (docs/packaging.md#flathub).");
+        else context.Warn(PackageCodes.FlathubSubmission, "Flathub builds and signs the application from this manifest; submit it from your own account (docs/packaging.md#flathub).");
     }
 
     /// <summary>The options checked before the project is evaluated: one of the commit and the tag, and --build on Linux.</summary>

@@ -175,7 +175,11 @@ already have. A `RunicViewDriver<T>` has:
   `SetJson` with the wire JSON of a DTO, list or union.
 - `ExecuteAsync(vm => vm.SaveCommand, argumentJson)`, which waits for an
   asynchronous command, and `CanExecute(command, argumentJson)` for commands with
-  an argument. A reply has `Succeeded`, `ErrorKind`, `ErrorReason` (since 0.11:
+  an argument. A command whose `[RunicCommandKey]` resolver is asynchronous
+  answers only after the resolver, so use `CanExecuteAsync` and `StartAsync` for
+  it (since 0.11); `CanExecute` and `Start` throw `InvalidOperationException` for
+  such a command instead of blocking the test thread, which may own the fake clock
+  or the model turn the resolver waits for. A reply has `Succeeded`, `ErrorKind`, `ErrorReason` (since 0.11:
   `unavailable`, `invalid-input` or `unresolved-key` for a `rejected` call),
   `ErrorMessage` and `State`;
   `ThrowIfFailed()` throws for a failed call, as `NavigationResult` does. A

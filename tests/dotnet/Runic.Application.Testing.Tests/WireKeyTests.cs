@@ -70,8 +70,16 @@ internal sealed class WireKeyTests
         Require(model.Store.ResolvedInTurn.All(inTurn => inTurn), "The asynchronous resolver did not start in a model turn.");
         var unresolved = await host.Root.ExecuteAsync(vm => vm.ArchiveCommand, "\"77\"");
         Require(unresolved.ErrorReason == "unresolved-key", $"An unresolved asynchronous key was not rejected: {unresolved}");
-        Require(host.Root.CanExecute(vm => vm.ArchiveCommand, "\"3\"") && !host.Root.CanExecute(vm => vm.ArchiveCommand, "\"77\""),
+        Require(await host.Root.CanExecuteAsync(vm => vm.ArchiveCommand, "\"3\"") && !await host.Root.CanExecuteAsync(vm => vm.ArchiveCommand, "\"77\""),
             "can… of an asynchronous resolver did not follow the resolution.");
+        // The synchronous calls refuse an asynchronous resolver instead of blocking the test thread on it.
+        var refusedCan = Throws<InvalidOperationException>(() => host.Root.CanExecute(vm => vm.ArchiveCommand, "\"3\""));
+        Require(refusedCan.Message.Contains("CanExecuteAsync", StringComparison.Ordinal), $"The refusal does not name CanExecuteAsync: {refusedCan.Message}");
+        var refusedStart = Throws<InvalidOperationException>(() => host.Root.Start(vm => vm.ArchiveCommand, "\"3\""));
+        Require(refusedStart.Message.Contains("StartAsync", StringComparison.Ordinal), $"The refusal does not name StartAsync: {refusedStart.Message}");
+        // The asynchronous calls answer a synchronous resolver too.
+        Require(await host.Root.CanExecuteAsync(vm => vm.DeleteCommand, "\"3\"") && !await host.Root.CanExecuteAsync(vm => vm.DeleteCommand, "\"77\""),
+            "CanExecuteAsync did not answer a synchronous resolver.");
         model.Enabled = false;
         var unavailable = await host.Root.ExecuteAsync(vm => vm.ArchiveCommand, "\"3\"");
         Require(unavailable.ErrorReason == "unavailable", $"A disabled command ran after an asynchronous resolution: {unavailable}");
@@ -89,6 +97,21 @@ internal sealed class WireKeyTests
             Require(cancelled.ErrorKind == "cancelled" && model.Store.ResolutionCancelled && model.Last == "archived first",
                 $"A cancelled resolution did not cancel the call: {cancelled}");
         }
+
+        // Cancelling CanExecuteAsync cancels the resolution.
+        model.Store.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        model.Store.ResetResolutionStarted();
+        using (var cancellation = new CancellationTokenSource())
+        {
+            var can = host.Root.CanExecuteAsync(vm => vm.ArchiveCommand, "\"3\"", cancellation.Token);
+            await model.Store.ResolutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await cancellation.CancelAsync();
+            var cancelled = false;
+            try { await can.WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch (OperationCanceledException) { cancelled = true; }
+            Require(cancelled && model.Store.ResolutionCancelled, "A cancelled CanExecuteAsync did not cancel the resolution.");
+        }
+        model.Store.Gate = null;
         Require(logs.Count(ReactiveCommandFailed) == 0, $"A keyed command logged event 1042: {logs.Describe()}");
     }
 
@@ -140,14 +163,14 @@ internal sealed class WireKeyTests
         model.Enabled = true;
 
         // An asynchronous resolver's start route.
-        var asyncUnresolved = host.Root.Start(vm => vm.ArchiveCommand, "\"77\"");
+        var asyncUnresolved = await host.Root.StartAsync(vm => vm.ArchiveCommand, "\"77\"");
         Require(asyncUnresolved.Reason == "unresolved-key", $"An unresolved asynchronous start was admitted: {asyncUnresolved.AdmissionJson}");
-        var asyncStarted = host.Root.Start(vm => vm.ArchiveCommand, "\"2\"", requestId: "archive-2");
+        var asyncStarted = await host.Root.StartAsync(vm => vm.ArchiveCommand, "\"2\"", requestId: "archive-2");
         Require(asyncStarted.Admission is RunicOperationAdmissionKind.Accepted, $"The asynchronous keyed start failed: {asyncStarted.AdmissionJson}");
         Require((await asyncStarted.WaitAsync()).Kind is RunicOperationStatusKind.Succeeded && model.Last == "archived second",
             "The asynchronous keyed operation did not run.");
         model.Store.Remove(2);
-        var asyncDuplicate = host.Root.Start(vm => vm.ArchiveCommand, "\"2\"", requestId: "archive-2");
+        var asyncDuplicate = await host.Root.StartAsync(vm => vm.ArchiveCommand, "\"2\"", requestId: "archive-2");
         Require(asyncDuplicate.Admission is RunicOperationAdmissionKind.Duplicate, $"A repeated asynchronous start was rejected: {asyncDuplicate.AdmissionJson}");
 
         // A streamed result.
@@ -179,7 +202,7 @@ internal sealed class WireKeyTests
             Require(opened.Succeeded && toolkit.Last == "opened third", $"The async Toolkit command did not run: {opened}");
             var openLocked = await host.Root.ExecuteAsync(vm => vm.OpenCommand, "\"2\"");
             Require(openLocked.ErrorReason == "unavailable", $"The async Toolkit command ignored CanExecute(item): {openLocked}");
-            var start = host.Root.Start(vm => vm.OpenCommand, "\"77\"");
+            var start = await host.Root.StartAsync(vm => vm.OpenCommand, "\"77\"");
             Require(start.Reason == "unresolved-key", $"An unresolved Toolkit start was admitted: {start.AdmissionJson}");
 
             // The attribute on a [RelayCommand] method, with a static resolver and a string key.
@@ -210,6 +233,13 @@ internal sealed class WireKeyTests
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static TException Throws<TException>(Action action) where TException : Exception
+    {
+        try { action(); }
+        catch (TException exception) { return exception; }
+        throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }
 
     private sealed class EventLog : ILoggerFactory

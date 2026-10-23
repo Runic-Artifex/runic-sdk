@@ -17,13 +17,13 @@ internal sealed class PackageContext(PackageOptions options, PackageIdentity ide
     internal string Output { get; } = output;
     internal string DotNet { get; } = dotnet;
     internal List<PackageCommandPackage> Packages { get; } = [];
-    internal List<string> Warnings { get; } = [];
+    internal List<PackageCommandWarning> Warnings { get; } = [];
 
-    /// <summary>Reports a warning in the output and the payload.</summary>
-    internal void Warn(string message)
+    /// <summary>Reports a warning, one of the <c>RAPPPKG2xxx</c> codes of <see cref="PackageCodes"/>, in the output and the payload.</summary>
+    internal void Warn(string code, string message)
     {
-        Warnings.Add(message);
-        Console.Out.WriteLine("warning: " + message);
+        Warnings.Add(new(code, message));
+        Console.Out.WriteLine($"warning {code}: {message}");
     }
 
     internal void Add(string path, string format, string signing) => Packages.Add(new(path, format, signing));

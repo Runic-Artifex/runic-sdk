@@ -69,7 +69,8 @@ exec "$here/usr/lib/{identity.Id}/{identity.Executable}" "$@"
         await PackageTools.RunAsync(appimagetool, ["--runtime-file", runtime, appDir, output], context.Output, cancellationToken,
             environment: new Dictionary<string, string>(StringComparer.Ordinal) { ["ARCH"] = architecture }).ConfigureAwait(false);
         PackageTools.Delete(appDir);
-        context.Warn("The AppImage is unsigned (appimagetool --sign signs it) and uses the host's GTK and WebKitGTK, which the target system must provide.");
+        context.Warn(PackageCodes.Unsigned, "The AppImage is unsigned (appimagetool --sign signs it).");
+        context.Warn(PackageCodes.SystemLibraries, "The AppImage uses the host's GTK and WebKitGTK, which the target system must provide.");
         context.Add(output, "appimage", "none");
     }
 

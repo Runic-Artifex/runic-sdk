@@ -69,7 +69,11 @@ public sealed class KeyedItemStore
         return item;
     }
 
-    public void ResetResolutionStarted() => ResolutionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public void ResetResolutionStarted()
+    {
+        ResolutionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ResolutionCancelled = false;
+    }
 
     public bool Remove(ulong id) => _items.Remove(id);
 }

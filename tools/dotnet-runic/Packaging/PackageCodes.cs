@@ -26,4 +26,24 @@ internal static class PackageCodes
 
     /// <summary>The Flathub manifest or its sources cannot be generated. Exit 2.</summary>
     internal const string FlathubSourcesUnavailable = "RAPPPKG1007";
+
+    // Warnings: the payload's warnings[].code. The command still succeeds.
+
+    /// <summary>Warning: the package, repository or bundle is unsigned.</summary>
+    internal const string Unsigned = "RAPPPKG2001";
+
+    /// <summary>Warning: the macOS disk image is not notarized (and the bundle may be only ad-hoc signed).</summary>
+    internal const string NotNotarized = "RAPPPKG2002";
+
+    /// <summary>Warning: a validation tool is not installed, so the result was not validated.</summary>
+    internal const string NotValidated = "RAPPPKG2003";
+
+    /// <summary>Warning: the AppImage loads GTK and WebKitGTK from the target system.</summary>
+    internal const string SystemLibraries = "RAPPPKG2004";
+
+    /// <summary>Warning: the Flathub manifest assumes the project directory is the repository root (no git checkout).</summary>
+    internal const string NoGitCheckout = "RAPPPKG2005";
+
+    /// <summary>Warning: the Flathub manifest is written, not built; Flathub builds and signs it after submission.</summary>
+    internal const string FlathubSubmission = "RAPPPKG2006";
 }
