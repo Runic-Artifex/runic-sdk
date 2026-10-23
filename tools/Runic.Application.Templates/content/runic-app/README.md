@@ -68,9 +68,11 @@ Outside the `Development` environment, `Program.cs` sends a
 Content-Security-Policy with the Window's pages
 (`RunicDesktopHostOptions.ContentSecurityPolicy`): scripts, styles and
 connections come only from the application itself, and the page can load no
-plugins and cannot be framed. `'unsafe-eval'` lets the Views Bridge deliver its
-messages. Add the origins of anything else the page loads, such as an API or a
-font service, to the policy.
+plugins and cannot be framed. Without `'unsafe-eval'`, the page cannot turn
+strings into code; the Views Bridge does not need it, because its state
+arrives as data. `DesktopSurface.ExecuteJavaScriptAsync` evaluates its script,
+so it fails under this policy. Add the origins of anything else the page
+loads, such as an API or a font service, to the policy.
 <!--#if (frontend == "sveltekit") -->
 SvelteKit starts the page with an inline script. `kit.csp` in
 `Frontend/vite.config.ts` adds a page policy that allows that script by its

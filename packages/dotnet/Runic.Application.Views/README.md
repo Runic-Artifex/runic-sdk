@@ -1295,6 +1295,17 @@ of a WPF application, sees that project's host, which is empty when it
 references no host package; such a frontend cannot depend on the application's
 host.
 
+On every host the Bridge works under a Content-Security-Policy that allows
+only same-origin scripts and connections and no `'unsafe-eval'`, such as
+`default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`.
+The host's scripts are served from the page's origin, and Bridge calls and
+state are data: the host's bridge script parses each state with `JSON.parse` before it calls
+`__{route}Changed`. Runic Desktop sends the policy as a header
+(`RunicDesktopHostOptions.ContentSecurityPolicy`); a CS-WebUI page carries it
+in a `<meta>` element. APIs that run your own script in the page, such as
+`DesktopSurface.ExecuteJavaScriptAsync`, still need `'unsafe-eval'`. See the
+[security guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/security.md#framing-and-content-security-policy).
+
 ## Adding a Window to an existing web app
 
 A Window's frontend can reuse the components, styles and translations of a web
