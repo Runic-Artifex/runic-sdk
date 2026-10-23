@@ -12,6 +12,7 @@ internal static partial class WindowsDragSource
 {
     private const int DragDropCancel = 0x00040101; // DRAGDROP_S_CANCEL
     private const ushort UnicodeText = 13; // CF_UNICODETEXT
+    private const ushort FileDrop = 15; // CF_HDROP
     private const uint ContentAspect = 1; // DVASPECT_CONTENT
     private const uint HGlobal = 1; // TYMED_HGLOBAL
     private const uint MoveableMemory = 0x0002; // GMEM_MOVEABLE
@@ -78,6 +79,9 @@ internal static partial class WindowsDragSource
                 Marshal.ThrowExceptionForHR(SHCreateDataObject(0, (uint)pidls.Length, pidls.Length == 0 ? null : items, 0, &iid, &dataObject));
             try
             {
+                // The shell data object made without a parent folder offers only the ID list; drop targets such as
+                // WPF and Chromium read CF_HDROP, so it is set explicitly.
+                if (!paths.IsEmpty) SetBytes(dataObject, FileDrop, DropFiles(paths));
                 if (PlainText(data) is { } text) SetString(dataObject, UnicodeText, text);
                 if (!data.Uris.IsDefaultOrEmpty) SetString(dataObject, Register("UniformResourceLocatorW"), data.Uris[0].AbsoluteUri);
                 var preferred = data.AllowedEffects.HasFlag(DesktopDragEffects.Copy) ? DesktopDragEffects.Copy
@@ -96,6 +100,18 @@ internal static partial class WindowsDragSource
         {
             foreach (var pidl in pidls) if (pidl != 0) Marshal.FreeCoTaskMem(pidl);
         }
+    }
+
+    // CF_HDROP: a DROPFILES header (pFiles = 20, fWide = 1) and the paths as NUL-terminated UTF-16, ending with an
+    // empty one.
+    internal static byte[] DropFiles(IReadOnlyList<string> paths)
+    {
+        var text = string.Concat(paths.Select(static path => path + '\0')) + '\0';
+        var bytes = new byte[20 + text.Length * 2];
+        BitConverter.TryWriteBytes(bytes.AsSpan(0, 4), 20);
+        BitConverter.TryWriteBytes(bytes.AsSpan(16, 4), 1);
+        System.Text.Encoding.Unicode.GetBytes(text, bytes.AsSpan(20));
+        return bytes;
     }
 
     private static ushort Register(string format)

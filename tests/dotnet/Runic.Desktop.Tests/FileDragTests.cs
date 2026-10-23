@@ -67,6 +67,10 @@ public sealed class FileDragTests
         Assert.Equal("https://example.com/a\r\nmailto:ann@example.com",
             WindowsDragSource.PlainText(new DesktopDragData { Uris = [new Uri("https://example.com/a"), new Uri("mailto:ann@example.com")] }));
         Assert.Null(WindowsDragSource.PlainText(new DesktopDragData { Paths = [Path.GetTempPath()] }));
+        var drop = WindowsDragSource.DropFiles([@"C:\a.txt", @"D:\b"]);
+        Assert.Equal(20, BitConverter.ToInt32(drop, 0));
+        Assert.Equal(1, BitConverter.ToInt32(drop, 16));
+        Assert.Equal("C:\\a.txt\0D:\\b\0\0", System.Text.Encoding.Unicode.GetString(drop, 20, drop.Length - 20));
     }
 
     private sealed class DragFactory(DesktopWindowCapabilities extra) : IDesktopWindowHostFactory
