@@ -156,7 +156,7 @@ internal sealed class ApiShapeTests
     {
         var methods = provider.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly);
         foreach (var name in new[] { "CreateSettings", "CreateNotifications", "CreateLoginStartup", "CreateStatusIcon", "CreateInhibition",
-            "CreateSecretStore", "CreateTrash", "CreateApplications", "CreateThumbnails", "CreateVolumes" })
+            "CreateSecretStore", "CreateTrash", "CreateApplications", "CreateThumbnails", "CreateVolumes", "CreateGlobalShortcuts" })
             Check(methods.Any(m => m.Name == name), $"{provider.Name}.{name}");
         Check(!methods.Any(m => m.GetParameters().Any(p => typeof(INativeWindowOwner).IsAssignableFrom(p.ParameterType))),
             $"{provider.Name} has no public window service.");

@@ -57,6 +57,17 @@ public sealed class PortalApplication
     /// <remarks>Its <c>Id</c> is this application ID. Status icons have no portal: a sandbox must allow owning
     /// <c>org.kde.StatusNotifierItem-*</c> names and talking to <c>org.kde.StatusNotifierWatcher</c>.</remarks>
     public IDesktopStatusIcon CreateStatusIcon() => new StatusNotifierIcon(application: this);
+    /// <summary>Creates the application's global shortcuts through the desktop's GlobalShortcuts portal.</summary>
+    /// <remarks>
+    /// The desktop owns the keys: <see cref="DesktopGlobalShortcut.PreferredShortcut"/> is a suggestion, the desktop may
+    /// ask the user when the set is bound, and the user changes the keys in the desktop's settings
+    /// (<see cref="IDesktopGlobalShortcuts.ConfigureAsync"/> opens them where the portal has version 2), which raises
+    /// <see cref="IDesktopGlobalShortcuts.BindingsChanged"/>. The portal requires an application ID: outside Flatpak and
+    /// Snap, pass this object the installed desktop ID. KDE Plasma 5.27 and later, GNOME 48 and later and Hyprland have
+    /// a backend; elsewhere requests report <see cref="PlatformUnavailableReason.BackendUnavailable"/> and
+    /// <c>global-shortcuts-unavailable</c>. Creating it connects to nothing; the first <c>BindAsync</c> does.
+    /// </remarks>
+    public IDesktopGlobalShortcuts CreateGlobalShortcuts() => new PortalGlobalShortcuts(this);
     /// <summary>Creates login startup for this application. Nothing is registered until it is enabled.</summary>
     /// <remarks>Outside a sandbox it writes <c>~/.config/autostart/&lt;application ID&gt;.desktop</c>, so it needs the
     /// application ID; inside Flatpak or Snap it asks the Background portal, which may ask the user.</remarks>

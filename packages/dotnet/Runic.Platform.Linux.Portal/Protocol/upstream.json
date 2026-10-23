@@ -54,6 +54,16 @@
       "path": "data/org.freedesktop.portal.NetworkMonitor.xml",
       "file": "org.freedesktop.portal.NetworkMonitor.xml",
       "sha256": "b5437b97248d0162902e7aac696d4d92953cd99b107f8cbbf5271b631559df08"
+    },
+    {
+      "path": "data/org.freedesktop.portal.GlobalShortcuts.xml",
+      "file": "org.freedesktop.portal.GlobalShortcuts.xml",
+      "sha256": "04e9f66ad048ff852f3f17533c4a4413f94e9a447d6bea56772112f8c196d96b"
+    },
+    {
+      "path": "data/org.freedesktop.portal.Session.xml",
+      "file": "org.freedesktop.portal.Session.xml",
+      "sha256": "ed636145563540c4c8df429e4d9d81a944d01de5ff6f9d41860bc66c7935fc02"
     }
   ]
 }

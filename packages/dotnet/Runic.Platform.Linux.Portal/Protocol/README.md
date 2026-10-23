@@ -1,8 +1,8 @@
 # Portal protocol generation
 
-The Registry, Notification, Inhibit, Request, Settings, OpenURI, FileChooser,
-Background, Trash and NetworkMonitor XML files are upstream inputs, pinned to the commit and SHA-256
-hashes in `upstream.json`. Every file is unmodified except
+The Registry, Notification, Inhibit, Request, Session, Settings, OpenURI,
+FileChooser, Background, Trash, NetworkMonitor and GlobalShortcuts XML files are
+upstream inputs, pinned to the commit and SHA-256 hashes in `upstream.json`. Every file is unmodified except
 `org.freedesktop.portal.Settings.xml`, whose deprecated `Read` method is removed
 (the provider uses `ReadAll`, and the generator warns about the `Deprecated`
 annotation as RUNICDBUS013); its manifest entry keeps upstream's hash as
@@ -17,10 +17,11 @@ builds do not fetch XML or introspect the user's session. Generated C# stays und
 `obj`.
 
 The provider uses the generated proxies' interface names, Registry.Register,
-Notification.RemoveNotification, Trash.TrashFile, Request.Close and version reads.
+Notification.RemoveNotification, Trash.TrashFile, Request.Close, Session.Close and
+version reads.
 Calls that send an `a{sv}` of options (FileChooser, OpenURI, Inhibit, Background,
-Notification.AddNotification) and replies with dictionaries a peer controls
-(Settings.ReadAll, Request.Response results) are written and read by hand, so the
+Notification.AddNotification, GlobalShortcuts) and replies with dictionaries a peer controls
+(Settings.ReadAll, Request.Response results, the GlobalShortcuts signals) are written and read by hand, so the
 options keep their order and a repeated key keeps its last value instead of failing
 the read. Desktop identity, bus-name ownership, early-action tracking, the signal
 subscriptions made before a request (Request.Response across the sender's

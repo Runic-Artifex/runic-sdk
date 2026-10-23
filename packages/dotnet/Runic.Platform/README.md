@@ -489,13 +489,19 @@ The set is open: handle unknown statuses. A key that cannot be bound fails alone
 and the result is still `Success`. `ListAsync` returns the current bindings, and
 `BindingsChanged` reports bindings the user or the desktop changed.
 
-| | Windows | macOS |
-| --- | --- | --- |
-| Mechanism | `RegisterHotKey` on a message-only window on its own thread | Carbon `RegisterEventHotKey`; needs no Accessibility permission, and the Desktop event loop must run |
-| Who chooses the key | The application, from its own settings | The application, from its own settings |
-| `ConfigureAsync` | `Unavailable(BackendUnavailable)` | `Unavailable(BackendUnavailable)` |
-| Punctuation and letters | The key that types the character on the current layout, with Shift when the layout needs it; a character that needs AltGr is refused | The key that types the character on the current ASCII-capable layout, registered again after the input source changes (`BindingsChanged`) |
-| Refused | F12, kept for debuggers, and the editing and window shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A, Alt+F4 and F10 alone) | The standard menus' shortcuts (⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H, ⌥⌘H, ⌘W, ⌘M), F21 to F24, and any combination `RegisterEventHotKey` rejects |
+| | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Mechanism | `RegisterHotKey` on a message-only window on its own thread | Carbon `RegisterEventHotKey`; needs no Accessibility permission, and the Desktop event loop must run | The desktop's `org.freedesktop.portal.GlobalShortcuts` (KDE Plasma 5.27+, GNOME 48+, Hyprland); elsewhere `Unavailable(BackendUnavailable)` |
+| Who chooses the key | The application, from its own settings | The application, from its own settings | The user, in the desktop's settings; `PreferredShortcut` is a suggestion and the desktop keeps the user's choice per application and action id |
+| `ConfigureAsync` | `Unavailable(BackendUnavailable)` | `Unavailable(BackendUnavailable)` | Opens the desktop's dialog where the portal has version 2 |
+| Punctuation and letters | The key that types the character on the current layout, with Shift when the layout needs it; a character that needs AltGr is refused | The key that types the character on the current ASCII-capable layout, registered again after the input source changes (`BindingsChanged`) | The desktop's; `TriggerDescription` is its text and `Shortcut` is `null` where that text has no `DesktopShortcut` form |
+| Refused | F12, kept for debuggers, and the editing and window shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A, Alt+F4 and F10 alone) | The standard menus' shortcuts (⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H, ⌥⌘H, ⌘W, ⌘M), F21 to F24, and any combination `RegisterEventHotKey` rejects | Decided by the desktop; an action the user left unassigned is `Unbound` |
+| Activation context | None | None | The portal's activation token |
+
+The Linux portal needs the application's ID: outside Flatpak and Snap, pass the
+installed desktop ID (`AddRunicPlatformServices("org.example.App")` or
+`new PortalApplication("org.example.App")`); without one it reports
+`Failed(PermissionDenied)`. Runic does not grab keys on X11 itself.
 
 On Windows and macOS the application owns the binding: record the user's choice
 in a settings page with `shortcutFromEvent` from `@runic-artifex/views`, keep its

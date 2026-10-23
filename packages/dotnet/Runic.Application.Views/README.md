@@ -724,7 +724,10 @@ public async Task ChooseQuickNoteKeyAsync(string shortcut, CancellationToken can
 
 Windows and macOS bind the key the application passes and report a key another
 application holds as `Conflict` and a key the system keeps, such as F12 or ⌘Q,
-as `Refused`. See
+as `Refused`. On Linux the desktop owns the keys: the key is a suggestion, the
+user assigns or changes it in the desktop's settings (`ConfigureAsync` opens
+them), and `BindingsChanged` reports the change, so show the desktop's
+`TriggerDescription` instead of a recorder there. See
 [Global shortcuts](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#global-shortcuts).
 
 ### Receiving dropped files

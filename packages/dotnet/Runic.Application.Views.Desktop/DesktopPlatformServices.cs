@@ -164,9 +164,11 @@ public static partial class DesktopPlatformServices
     /// the user's bindings; <see langword="null"/> uses the identity the desktop portal infers.</param>
     /// <returns>Global shortcuts that the caller disposes at shutdown.</returns>
     /// <remarks>
-    /// Windows registers each key with <c>RegisterHotKey</c> on a thread of its own, and macOS with Carbon's
-    /// <c>RegisterEventHotKey</c> once the Desktop event loop runs, reporting
-    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> without that loop; both ignore
+    /// Linux binds through the desktop's GlobalShortcuts portal, where the user assigns the keys in the desktop's
+    /// settings and <see cref="DesktopGlobalShortcut.PreferredShortcut"/> is a suggestion; a desktop without that portal
+    /// reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>. Windows registers each key with
+    /// <c>RegisterHotKey</c> on a thread of its own, and macOS with Carbon's <c>RegisterEventHotKey</c> once the Desktop
+    /// event loop runs, reporting <see cref="PlatformUnavailableReason.BackendUnavailable"/> without that loop; both ignore
     /// <paramref name="applicationId"/>. Creating them registers nothing; the first
     /// <see cref="IDesktopGlobalShortcuts.BindAsync"/> does. Other platforms report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
@@ -180,10 +182,9 @@ public static partial class DesktopPlatformServices
         IDesktopGlobalShortcuts? shortcuts = null;
         if (OperatingSystem.IsWindows()) shortcuts = Optional(CreateWindowsGlobalShortcuts);
 #if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsLinux()) shortcuts = CreatePortalGlobalShortcuts(applicationId, logger);
         else if (OperatingSystem.IsMacOS()) shortcuts = CreateMacOSGlobalShortcuts();
 #endif
-        _ = applicationId;
-        _ = logger;
         return shortcuts ?? DesktopGlobalShortcuts.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
@@ -197,6 +198,12 @@ public static partial class DesktopPlatformServices
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreateMacOSStatusIcon() => MacOSPlatformProvider.CreateStatusIcon();
+
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopGlobalShortcuts CreatePortalGlobalShortcuts(string? applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+            .CreateGlobalShortcuts();
 
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
