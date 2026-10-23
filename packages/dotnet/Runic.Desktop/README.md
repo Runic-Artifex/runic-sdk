@@ -952,6 +952,8 @@ the page or its Content-Security-Policy: the host sends the message as data, and
 the region is styled through the CSSOM. It is a `div` with
 `data-runic-announcer`, appended to `<body>`; a page that replaces its
 `<body>` gets a new one with the next message.
+The WPF window around a `RunicWebView` announces the same way through
+`WpfPlatformServices.ForWindow` ([Runic.Application.Views.Wpf](../Runic.Application.Views.Wpf/README.md)).
 
 `DesktopAnnouncementPriority.Polite`, the default, waits for what the screen
 reader is saying, and `Assertive` interrupts it, as `aria-live` does. A browser

@@ -27,6 +27,12 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
         // NVDA speaks a UI Automation notification only from the focused object's application (event_UIA_notification
         // in NVDAObjects/UIA). While the page has the focus, in WebView2's browser process, the page announces (I-184).
         "webview2" => new Dictionary<string, string>(),
+        // A RunicWebView in a WPF window (Runic.Application.Views.Wpf.Windows.Tests, Category=ScreenReader), which
+        // announces through WpfPlatformServices.ForWindow and the page's live region in the same way (I-203).
+        "wpf" => new Dictionary<string, string>
+        {
+            ["window-title"] = "The WPF application names its window; the page's <title> does not rename it",
+        },
         "wkwebview" => new Dictionary<string, string>
         {
             ["number-range"] = "WebKit exposes <input type=\"number\"> as a text field whose AXMinValue and AXMaxValue are 0",
@@ -39,6 +45,6 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
             ["spinbutton-page-change-event"] = WebKitNotifications,
             ["aria-listbox-page-change-event"] = WebKitNotifications,
         },
-        _ => throw new ArgumentException($"Unknown host '{host}'; use gtk3, gtk4, webview2 or wkwebview."),
+        _ => throw new ArgumentException($"Unknown host '{host}'; use gtk3, gtk4, webview2, wkwebview or wpf."),
     });
 }

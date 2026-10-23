@@ -204,21 +204,21 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     // Whether the keyboard focus is in the page, that is in a window of WebView2's browser process inside this window,
     // rather than in this window itself or in another application. Read on any thread: the focus of the foreground
     // thread, which is the browser's while the page has the focus, else that of the window's own thread.
-    internal bool IsWebContentFocused
-    {
-        get
-        {
-            var window = _window;
-            if (window == 0) return false;
-            var thread = Native.GetWindowThreadProcessId(window, out var process);
-            return thread != 0 && (IsPageFocus(0) || IsPageFocus(thread));
+    internal bool IsWebContentFocused => IsWebContentFocusedIn(_window);
 
-            bool IsPageFocus(uint focusThread)
-            {
-                var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf<GuiThreadInfo>() };
-                if (!Native.GetGUIThreadInfo(focusThread, ref info) || info.Focus == 0 || !Native.IsChild(window, info.Focus)) return false;
-                return Native.GetWindowThreadProcessId(info.Focus, out var focusProcess) != 0 && focusProcess != process;
-            }
+    // The same for any window that hosts a WebView2 controller, such as the child window of a WPF RunicWebView (I-203):
+    // the focus is in a window of another process inside it.
+    internal static bool IsWebContentFocusedIn(nint window)
+    {
+        if (window == 0) return false;
+        var thread = Native.GetWindowThreadProcessId(window, out var process);
+        return thread != 0 && (IsPageFocus(0) || IsPageFocus(thread));
+
+        bool IsPageFocus(uint focusThread)
+        {
+            var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf<GuiThreadInfo>() };
+            if (!Native.GetGUIThreadInfo(focusThread, ref info) || info.Focus == 0 || !Native.IsChild(window, info.Focus)) return false;
+            return Native.GetWindowThreadProcessId(info.Focus, out var focusProcess) != 0 && focusProcess != process;
         }
     }
 

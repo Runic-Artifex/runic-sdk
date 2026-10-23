@@ -32,6 +32,7 @@
     <!-- The portable cases, run here on the WPF dispatcher (AssemblyInfo.cs selects WpfDispatcherExecutor). -->
     <Compile Include="../Runic.Application.Views.Wpf.Tests/AssemblyInfo.cs" Link="AssemblyInfo.cs" />
     <Compile Include="../../native/Runic.Desktop.WebViewSmoke/SurfaceScripts.cs" Link="SurfaceScripts.cs" />
+    <Compile Include="../../native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
     <Compile Include="../Runic.Application.Views.Wpf.Tests/Program.cs" Link="Program.cs" />
     <Compile Include="../Runic.Application.Views.Wpf.Tests/HostLifecycleTests.cs" Link="HostLifecycleTests.cs" />
   </ItemGroup>

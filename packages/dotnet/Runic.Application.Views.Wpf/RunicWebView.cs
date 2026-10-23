@@ -80,6 +80,13 @@ public sealed partial class RunicWebView : HwndHost
     // The open presentation's controller, for native checks.
     internal WindowsWebView2Controller? Controller => _presentation?.Controller;
 
+    // The announcer of the Desktop window presented here while its page has the keyboard focus, else null. Then the
+    // focus is in WebView2's browser process, and NVDA ignores the WPF window's UI Automation notification, as for
+    // Runic Desktop's own WebView2 window (I-184); WpfPlatformServices announces through the page's live region instead
+    // (I-203). On the dispatcher.
+    internal Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? FocusedPageAnnouncer =>
+        _presentation is { IsOpen: true, AnnounceInPage: { } announce } && WindowsWebView2Host.IsWebContentFocusedIn(_child) ? announce : null;
+
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
@@ -99,7 +106,7 @@ public sealed partial class RunicWebView : HwndHost
             WpfPresentationOptions.Validate(options);
     }
 
-    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost, IDesktopMenuWindowHost
+    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost, IDesktopMenuWindowHost, IDesktopPageAnnouncementHost
     {
         // WPF owns the window and its chrome, so the declared menu bar is the application's to show (a WPF Menu);
         // context menus are WPF ContextMenus over the control.
@@ -114,6 +121,8 @@ public sealed partial class RunicWebView : HwndHost
         // Files dropped on the child WebView reach the host, not the WPF shell's Drop event, which the HWND covers.
         public DesktopWindowCapabilities Capabilities => HostCapabilities;
         public IDesktopMenuCommandTarget? MenuCommands { get; set; }
+        // Set by Runic Desktop's window before it opens this presentation.
+        public Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? AnnounceInPage { get; set; }
         public DesktopMenuBarPlacement MenuBarPlacement => DesktopMenuBarPlacement.None;
         public event EventHandler? MenuBarPlacementChanged { add { } remove { } }
         public ValueTask SetMenuBarAsync(IReadOnlyList<Runic.Platform.DesktopMenu> menus, CancellationToken cancellationToken = default) =>

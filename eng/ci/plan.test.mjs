@@ -124,7 +124,8 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
 test('the screen reader legs run for the embedded windows, the accessibility fixture and the probe only', () => {
   for (const path of screenReaderPaths) assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
   for (const file of ['packages/dotnet/Runic.Desktop/DesktopSurface.cs', 'tests/native/Runic.Desktop.AccessibilityProbe/Program.cs',
-    'tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs']) {
+    'tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs', 'packages/dotnet/Runic.Application.Views.Wpf/WpfPlatformServices.cs',
+    'tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/ScreenReaderChecks.cs']) {
     const result = plan([file]);
     assert.ok(runs(result, 'screen-readers'), file);
     assert.deepEqual(result['screen-readers'].include, screenReaderLegs, file);
