@@ -6,6 +6,11 @@ internal static class WebUiBridge
     // itself; a page cannot replace it. Keep it in sync with STATE_PUSH below.
     internal const string StatePushFunction = "__runicViewsPush";
 
+    // The reserved raw-data function of DesktopWindow.AnnounceAsync while the page has the keyboard focus
+    // (WebUiSession.AnnounceAsync): the politeness, NUL and the message; an empty message adds the page's live regions.
+    // Keep it in sync with ANNOUNCE below.
+    internal const string AnnounceFunction = "__runicAnnounce";
+
     // Implements the wire and public browser contract of webui-dev/webui's
     // MIT-licensed TypeScript bridge at the pinned upstream revision. One difference: raw data for a name that is not
     // a page function is dropped instead of being evaluated as a call expression, so no host-to-page traffic but
@@ -35,6 +40,7 @@ internal static class WebUiBridge
           const SESSION_CREDENTIAL = __SESSION_CREDENTIAL__;
           const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
           const STATE_PUSH = "__runicViewsPush";
+          const ANNOUNCE = "__runicAnnounce";
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();
           const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
@@ -42,6 +48,7 @@ internal static class WebUiBridge
           const bindings = new Set();
           const pendingCalls = new Map();
           const connectionWaiters = new Set();
+          const liveRegions = new Map();
           let nextCallId = 0;
           let socket;
           let tokenAccepted = false;
@@ -229,6 +236,50 @@ internal static class WebUiBridge
             if (typeof callback === "function") callback(JSON.parse(decoder.decode(data.subarray(separator + 1))));
           }
 
+          // An announcement is the politeness ("polite" or "assertive"), NUL and the UTF-8 message. The host sends it
+          // while the keyboard focus is in the page, where a screen reader speaks the page's live regions but may
+          // ignore the window's own notification (NVDA on WebView2). Each politeness has a visually hidden live region.
+          // The host asks for both with an empty message once the page connects, as a screen reader ignores a change to
+          // a live region it does not know yet; one the page has removed is added again, and a message for it waits a
+          // moment. Each message is a new line, so a repeated message is said again; the line is removed once it has
+          // been said. The regions are styled through the CSSOM, which a Content-Security-Policy without
+          // 'unsafe-inline' allows.
+          function liveRegion(politeness) {
+            let region = liveRegions.get(politeness);
+            if (region?.element.isConnected) return region;
+            const element = document.createElement("div");
+            element.setAttribute("aria-live", politeness);
+            element.setAttribute("data-runic-announcer", politeness);
+            Object.assign(element.style, {
+              position: "absolute", width: "1px", height: "1px", margin: "-1px", padding: "0", border: "0",
+              overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap"
+            });
+            (document.body ?? document.documentElement).append(element);
+            region = { element, ready: new Promise(resolve => setTimeout(resolve, 500)) };
+            liveRegions.set(politeness, region);
+            return region;
+          }
+
+          function announce(data) {
+            const separator = data.indexOf(0);
+            if (separator < 0) return;
+            const politeness = decoder.decode(data.subarray(0, separator)) === "assertive" ? "assertive" : "polite";
+            const message = decoder.decode(data.subarray(separator + 1));
+            if (message === "") {
+              const prepare = () => { liveRegion("polite"); liveRegion("assertive"); };
+              if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", prepare, { once: true });
+              else prepare();
+              return;
+            }
+            const { element, ready } = liveRegion(politeness);
+            ready.then(() => {
+              const line = document.createElement("div");
+              line.textContent = message;
+              element.append(line);
+              setTimeout(() => line.remove(), 10000);
+            });
+          }
+
           async function receivePacket(event) {
             const packet = new Uint8Array(event.data);
             if (packet.length < HEADER_SIZE || packet[0] !== SIGNATURE) return;
@@ -280,6 +331,10 @@ internal static class WebUiBridge
                 const data = packet.slice(start, end);
                 if (functionName === STATE_PUSH) {
                   dispatchStatePush(data);
+                  return;
+                }
+                if (functionName === ANNOUNCE) {
+                  announce(data);
                   return;
                 }
                 const handler = globalThis[functionName];

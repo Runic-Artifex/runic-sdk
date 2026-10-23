@@ -124,7 +124,8 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
 test('the screen reader legs run for the embedded windows, the accessibility fixture and the probe only', () => {
   for (const path of screenReaderPaths) assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
   for (const file of ['packages/dotnet/Runic.Desktop/DesktopSurface.cs', 'tests/native/Runic.Desktop.AccessibilityProbe/Program.cs',
-    'tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs']) {
+    'tests/native/Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs', 'packages/dotnet/Runic.Application.Views.Wpf/WpfPlatformServices.cs',
+    'tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/ScreenReaderChecks.cs']) {
     const result = plan([file]);
     assert.ok(runs(result, 'screen-readers'), file);
     assert.deepEqual(result['screen-readers'].include, screenReaderLegs, file);
@@ -304,7 +305,8 @@ test('every core solution project commits a NuGet lock file and no other lock fi
   for (const path of expected) assert.ok(existsSync(resolve(root, path)), `${path} is missing; run bun run lock:nuget`);
   // The Nix builder's fixtures are independent consumers outside the solution, restored for linux-x64 with their own
   // lock files, which buildRunicApplication reads (nix/tests).
-  const independent = path => path.startsWith('tests/fixtures/nix/');
+  // The Flathub fixture is one too: dotnet runic package flathub generates its sources from its NativeAOT lock file.
+  const independent = path => path.startsWith('tests/fixtures/nix/') || path.startsWith('tests/fixtures/flathub/');
   assert.deepEqual(tracked('*packages.lock.json', '*packages.*.lock.json').filter(path => !independent(path)).sort(), expected);
 });
 
@@ -430,7 +432,7 @@ test('owned files without a rule, engineering-only and neutral files plan no Win
     assert.equal(result.full, true, file);
     assert.deepEqual(result.platforms, [], file);
     assert.deepEqual(result.native.include.map(leg => leg.rid), ['linux-x64', 'linux-arm64'], file);
-    assert.deepEqual(result.packaging.include.map(leg => leg.target), ['flatpak', 'appimage', 'deb', 'rpm'], file);
+    assert.deepEqual(result.packaging.include.map(leg => leg.target), ['flatpak', 'appimage', 'deb', 'rpm', 'flathub'], file);
     assert.deepEqual(result.skip, ['wpf'], file);
   }
   // Any other unowned file plans every leg.

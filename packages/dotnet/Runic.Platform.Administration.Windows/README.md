@@ -180,9 +180,12 @@ Selected updates must not be used to recreate an object from a partial snapshot.
 ## Console examples
 
 [Examples](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/examples.md) cover each capability. The repository's
-examples/dotnet/Runic.Administration.Console is a package-only consumer with
-read-only commands. It can be copied outside this repository and restored from a
-local package; it has no source-tree or desktop-host references.
+examples/dotnet/Runic.Administration.Console is a console consumer with
+read-only commands and no desktop-host references. In this repository it
+references the package's project, and CI runs its `system` and `services`
+commands on Windows x64. To use it outside the repository, replace the
+`ProjectReference` with
+`<PackageReference Include="Runic.Platform.Administration.Windows" Version="..." />`.
 
 ## Local package and verification
 
@@ -193,9 +196,8 @@ dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c
 dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 -p:PublishAot=true -p:RunicApplicationBuildMode=Verification -o artifacts/administration/native-tests
 & ./artifacts/administration/native-tests/Runic.Platform.Administration.Windows.Tests.exe
 
-dotnet pack packages/dotnet/Runic.Platform.Administration.Windows -c Release -p:RunicApplicationBuildMode=Verification -p:PackageVersion=0.2.0-administration.local.2 -o artifacts/administration/packages
-dotnet restore examples/dotnet/Runic.Administration.Console --source ./artifacts/administration/packages --source https://api.nuget.org/v3/index.json
-dotnet run --project examples/dotnet/Runic.Administration.Console --no-restore -- system
+dotnet pack packages/dotnet/Runic.Platform.Administration.Windows -c Release -p:RunicApplicationBuildMode=Verification -o artifacts/administration/packages
+dotnet run --project examples/dotnet/Runic.Administration.Console -c Release -- system
 ~~~
 
 `PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt` record the public API. Native

@@ -12,11 +12,6 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
         "WebKit posts the page's notifications to VoiceOver, not to an AXObserver of the public API";
     private const string HeardByVoiceOver = WebKitNotifications + "; checked by what VoiceOver says (voiceover-*)";
 
-    // NVDA queues the window's UI Automation notification but speaks one only from the application of the focused
-    // object (event_UIA_notification in NVDAObjects/UIA); the page's focus is in WebView2's browser process.
-    private const string NvdaNotifications = "NVDA speaks a UI Automation notification only from the focused object's "
-        + "application, and the page's focus is in WebView2's browser process";
-
     private const string WebKitGtkLiveRegion = "WebKitGTK sends no AT-SPI event for a changed live region (#318); announce with AnnounceAsync";
 
     // screenReader: the --screen-reader that runs, or null. Its speech checks are named after it (orca-*, nvda-*,
@@ -29,10 +24,14 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
             ["live-region"] = WebKitGtkLiveRegion,
             ["orca-live-region"] = WebKitGtkLiveRegion,
         },
-        "webview2" => new Dictionary<string, string>
+        // NVDA speaks a UI Automation notification only from the focused object's application (event_UIA_notification
+        // in NVDAObjects/UIA). While the page has the focus, in WebView2's browser process, the page announces (I-184).
+        "webview2" => new Dictionary<string, string>(),
+        // A RunicWebView in a WPF window (Runic.Application.Views.Wpf.Windows.Tests, Category=ScreenReader), which
+        // announces through WpfPlatformServices.ForWindow and the page's live region in the same way (I-203).
+        "wpf" => new Dictionary<string, string>
         {
-            ["nvda-announcement-polite"] = NvdaNotifications,
-            ["nvda-announcement-assertive"] = NvdaNotifications,
+            ["window-title"] = "The WPF application names its window; the page's <title> does not rename it",
         },
         "wkwebview" => new Dictionary<string, string>
         {
@@ -46,6 +45,6 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
             ["spinbutton-page-change-event"] = WebKitNotifications,
             ["aria-listbox-page-change-event"] = WebKitNotifications,
         },
-        _ => throw new ArgumentException($"Unknown host '{host}'; use gtk3, gtk4, webview2 or wkwebview."),
+        _ => throw new ArgumentException($"Unknown host '{host}'; use gtk3, gtk4, webview2, wkwebview or wpf."),
     });
 }

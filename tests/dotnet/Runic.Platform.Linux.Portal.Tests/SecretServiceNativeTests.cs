@@ -44,6 +44,15 @@ internal sealed class SecretServiceNativeTests
         }
         else Console.WriteLine("secret-tool is not installed; skipped the libsecret check.");
 
+        // A binary item: application/octet-stream, read back as bytes and by secret-tool.
+        byte[] bytes = "binary\u0001\u0002-tøken"u8.ToArray();
+        Check(await store.SetBytesAsync(service, "binary", bytes).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "bytes stored");
+        Check(await store.GetBytesAsync(service, "binary").AsTask().WaitAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var readBytes } && readBytes!.SequenceEqual(bytes),
+            "bytes read back");
+        if (FindOnPath("secret-tool") is { } tool)
+            Check(Run(tool, "lookup", "service", service, "account", "binary") == System.Text.Encoding.UTF8.GetString(bytes), "secret-tool reads the binary item");
+        Check(await store.DeleteAsync(service, "binary").AsTask().WaitAsync(Wait) is PlatformResult<bool>.Success { Value: true }, "binary item deleted");
+
         Check(await store.DeleteAsync(service, account).AsTask().WaitAsync(Wait) is PlatformResult<bool>.Success { Value: true }, "deleted");
         Check(await store.DeleteAsync(service, account).AsTask().WaitAsync(Wait) is PlatformResult<bool>.Success { Value: false }, "deleted once");
         Check(await store.GetAsync(service, account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "gone");
@@ -54,6 +63,11 @@ internal sealed class SecretServiceNativeTests
         var locked = await store.GetAsync(service, "large", deadline.Token);
         Console.WriteLine($"Read from a locked keyring: {locked}");
         Check(locked is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked or PlatformFailureCode.UserDismissed }, $"a locked keyring is typed: {locked}");
+        // Without user interaction the unlock prompt is dismissed unshown: Locked, never UserDismissed.
+        var quiet = new SecretServiceStore(requireEncryption: true, interactive: false);
+        var quietRead = await quiet.GetAsync(service, "large").AsTask().WaitAsync(Wait);
+        Console.WriteLine($"Read from a locked keyring without user interaction: {quietRead}");
+        Check(quietRead is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked }, $"non-interactive is Locked: {quietRead}");
         Console.WriteLine("PASS secret store: GNOME Keyring round trip over dh-ietf1024-sha256-aes128-cbc-pkcs7, typed locked keyring.");
     }
 

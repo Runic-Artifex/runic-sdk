@@ -31,8 +31,11 @@ public static class WpfPlatformServices
     /// <para>
     /// <see cref="IWindowPlatformServices.AnnounceAsync"/> raises a UI Automation notification from the window's
     /// automation peer, which Narrator and NVDA speak: polite messages are queued, assertive ones replace those not yet
-    /// spoken. It reports <see cref="PlatformResult{T}.Success"/> once the window raised it, also when no screen reader
-    /// listens.
+    /// spoken. While the page of a <c>RunicWebView</c> in the window has the keyboard focus, the page's Bridge says the
+    /// message in a live region that it adds to the page instead, as Runic Desktop's WebView2 window does: the focus is
+    /// then in WebView2's browser process, and NVDA speaks a notification only from the focused process. It reports
+    /// <see cref="PlatformResult{T}.Success"/> once the window raised it or the page received it, also when no screen
+    /// reader listens.
     /// </para>
     /// <para>
     /// <see cref="IWindowPlatformServices.StartDragAsync"/> starts an OLE drag from the window, as Runic Desktop's window
@@ -139,6 +142,18 @@ public static class WpfPlatformServices
         if (!owner.IsAvailable || dispatcher.HasShutdownStarted) return Closed;
         try
         {
+            // While the page of a RunicWebView in the window has the keyboard focus, its live region (I-203).
+            var page = await dispatcher.InvokeAsync(() => owner.IsAvailable ? FindFocusedPage(window) : null,
+                DispatcherPriority.Normal, cancellationToken);
+            if (page is not null)
+            {
+                try
+                {
+                    if (await page(message, priority, cancellationToken).ConfigureAwait(false)) return Announced;
+                }
+                // The page's window or connection closed meanwhile; the WPF window announces.
+                catch (Exception error) when (error is ObjectDisposedException or System.Net.WebSockets.WebSocketException) { }
+            }
             return await dispatcher.InvokeAsync(() =>
             {
                 // Check again on the window's thread: the window may have closed while the work was queued.
@@ -186,6 +201,25 @@ public static class WpfPlatformServices
 
     private static readonly PlatformResult<DesktopMenuItem?> MenuClosed =
         new PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+
+    // The announcer of the RunicWebView in the window whose page has the keyboard focus, if any.
+    private static Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? FindFocusedPage(DependencyObject root)
+    {
+        var pending = new Stack<DependencyObject>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (current is RunicWebView view)
+            {
+                if (view.FocusedPageAnnouncer is { } announce) return announce;
+                continue;
+            }
+            for (var index = System.Windows.Media.VisualTreeHelper.GetChildrenCount(current) - 1; index >= 0; index--)
+                pending.Push(System.Windows.Media.VisualTreeHelper.GetChild(current, index));
+        }
+        return null;
+    }
 
     private static RunicWebView? FindWebView(DependencyObject root)
     {

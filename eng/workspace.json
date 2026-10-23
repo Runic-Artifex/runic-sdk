@@ -328,7 +328,8 @@
       "paths": [
         "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs",
         "tools/Runic.Application.Templates/content/runic-app/icons",
-        "tests/native/Runic.Packaging.Probe"
+        "tests/native/Runic.Packaging.Probe",
+        "tests/fixtures/flathub"
       ]
     },
     "templates": {

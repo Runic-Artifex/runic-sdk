@@ -11,10 +11,10 @@ system.
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
-| Linux | Implemented: the Secret Service API (`org.freedesktop.secrets`) over D-Bus in Runic.Platform.Linux.Portal, with the `dh-ietf1024-sha256-aes128-cbc-pkcs7` session and a `plain` fallback. | Tests against a fake service on a private bus for every outcome (encrypted and plain sessions, locked items and collections, prompt completed, dismissed, unshowable and cancelled, no default collection, no service). CI-verified against GNOME Keyring 46.1 and libsecret 0.21.4 on Ubuntu 24.04, JIT and NativeAOT: the encrypted session is required, `secret-tool` reads the stored item, and a locked keyring without a prompter reports `UserDismissed` (GNOME Keyring completes the prompt as dismissed). KeePassXC and KWallet are unverified. |
+| Linux | Implemented: the Secret Service API (`org.freedesktop.secrets`) over D-Bus in Runic.Platform.Linux.Portal, with the `dh-ietf1024-sha256-aes128-cbc-pkcs7` session and a `plain` fallback that `RequireEncryption` refuses. | Tests against a fake service on a private bus for every outcome (encrypted and plain sessions, the refused plain session, binary content type, locked items and collections, prompt completed, dismissed, unshowable, cancelled and dismissed unshown without user interaction, no default collection, no service). CI-verified against GNOME Keyring 46.1 and libsecret 0.21.4 on Ubuntu 24.04, JIT and NativeAOT: the encrypted session is required, `secret-tool` reads the stored text and binary items, a locked keyring without a prompter reports `UserDismissed` (GNOME Keyring completes the prompt as dismissed), and `Locked` without user interaction. KeePassXC and KWallet, including `RequireEncryption` against each, are unverified (manual checks). |
 | Windows | Implemented: Credential Manager generic credentials (`CredWriteW`, `CredReadW`, `CredDeleteW`) in Runic.Platform.Windows; binary secrets above 2560 bytes in a DPAPI-protected file referenced from the credential. | Portable tests for target names, error mapping and the file reference against a fake vault (round trip, replace, damaged and missing file, delete). CI-verified on the windows-latest runner's vault and DPAPI, JIT and NativeAOT: 2560-byte blobs, 64 KiB files, a damaged file, delete removing both. |
 | macOS | Implemented: generic passwords in the default keychain (`SecItemAdd`, `SecItemCopyMatching`, `SecItemUpdate`, `SecItemDelete`) in Runic.Platform.MacOS; the data-protection keychain with an option. | Portable tests for status mapping. CI-verified on the macos-26 runner, JIT and NativeAOT: the login keychain; 64 KiB binary secrets and `Locked` without user interaction on a locked temporary keychain; the data-protection keychain from the unsigned test hosts, where a search finds nothing and a write is `PermissionDenied` (`errSecMissingEntitlement`, -34018). Unlock and access prompts and the data-protection keychain from a team-signed bundle are unverified (manual checks). |
-| Sandboxed Linux | Implemented where the sandbox allows the Secret Service: Flatpak `--talk-name=org.freedesktop.secrets`, the Snap `password-manager-service` interface. Otherwise unavailable with the `secret-service-unavailable` diagnostic. | Deferred to 1.x: the Secret portal (`org.freedesktop.portal.Secret`) with a local encrypted file, for sandboxes without Secret Service access. |
+| Sandboxed Linux | Implemented: the Secret Service where the sandbox allows it (Flatpak `--talk-name=org.freedesktop.secrets` or `--socket=session-bus`, the Snap `password-manager-service` interface); otherwise the Secret portal (`org.freedesktop.portal.Secret`) with libsecret's file format in the application's data directory. Without either, unavailable with the `secret-portal-unavailable` diagnostic. | Portable tests of the file format against a keyring libsecret 0.21.7 wrote (parsed, re-serialised byte for byte, decrypted), of the store (round trip, concurrent writers, damaged file and item, another key) and of the backend choice from `/.flatpak-info`; a fake Secret portal on a private bus (secret through the pipe, dismissed, failed, wrong size, missing). CI-verified with `secret-tool`'s file backend (libsecret 0.21.4) reading what Runic wrote and the reverse, JIT and NativeAOT. A real Flatpak on GNOME and KDE (whose portal Secret backend is unverified) and Snap are manual checks. |
 
 ## Contract
 
@@ -108,6 +108,69 @@ The Secret Service API, as libsecret uses it:
 - A locked item or collection is unlocked with `Unlock` and its prompt, shown
   without a parent window (`window-id` empty). Cancellation calls
   `Prompt.Dismiss`. `DeleteAsync` removes every matching item.
+- Without user interaction (`AllowUserInteraction = false`) a prompt that
+  `Unlock`, `CreateCollection`, `CreateItem` or `Delete` returns is dismissed
+  with `Prompt.Dismiss` without calling `Prompt`, and the request is
+  `Failed(Locked)`.
+- Binary secrets are sent with the content type `application/octet-stream`,
+  text secrets with `text/plain`. Reads return the value whatever its type.
+- Isolation: the Secret Service has no per-application access control. Any
+  process of the same user that can reach the session bus can search and read
+  every item, so service and account names are no access boundary, and
+  `RequireEncryption` protects only the transfer.
+
+### Sandboxes
+
+The store chooses its backend when it is created (D037.6):
+
+- Outside a sandbox: the Secret Service.
+- Flatpak (`/.flatpak-info` exists): the Secret Service when the file's
+  `[Context] sockets` contains `session-bus` or a `[Session Bus Policy]` entry
+  for `org.freedesktop.secrets`, or a `prefix.*` pattern covering it, is `talk`
+  or `own`; existing applications with that permission keep finding their
+  keyring items. Otherwise the Secret portal.
+- Snap (`SNAP_NAME` or `SNAP` set): the Secret Service until a request reports
+  no service (`Unavailable(BackendUnavailable)`), then the Secret portal for
+  the store's lifetime.
+
+The Secret portal path is libsecret's own for sandboxes (D037.7), so
+`secret-tool` and libsecret-based libraries in the same sandbox share the
+items:
+
+- `RetrieveSecret(h fd, a{sv} {handle_token})` on
+  `org.freedesktop.portal.Desktop`; the portal writes the application's secret
+  into a pipe and answers through `Request.Response` (1 is `UserDismissed`, 2
+  `Other`). The secret must be 64 bytes, as libsecret requires. It and the key
+  are kept for the store's lifetime in pinned memory. A missing portal or
+  backend is `Unavailable(BackendUnavailable)` with `secret-portal-unavailable`.
+- The file is `$XDG_DATA_HOME/keyrings/default.keyring` (inside Flatpak the
+  application's own `~/.var/app/<id>/data`), in libsecret 0.21's format
+  (`secret-file-collection.c`): the header `GnomeKeyring\n\r\0\n`, version 1.0,
+  then the GVariant `(uayutua(a{say}ay))` of a 32-byte salt, 100 000 PBKDF2
+  iterations, the modification time, a usage count and the items. The key is
+  PBKDF2-HMAC-SHA256 of the secret to 16 bytes. Each item's attribute values are
+  stored as HMAC-SHA256 under the key, sorted by name; its blob is AES-128-CBC
+  with PKCS #7 padding of the GVariant `(a{ss}sttay)` (attributes, label,
+  created, modified, secret), followed by the IV and an HMAC-SHA256 of
+  ciphertext and IV.
+- Items carry the same attributes and label as on the Secret Service. Reads
+  match `service` and `account` and return the most recently modified match:
+  `secret-tool store` writes without the schema attribute, and libsecret's
+  replace matches the whole attribute set, so it adds an item next to Runic's.
+  A write removes every match before adding its item, keeping the creation
+  time.
+- Writers take an advisory lock on `default.keyring.lock`, read the file again,
+  and replace it through a temporary file (mode 0600, in a 0700 directory) and
+  `rename`, so readers never see a partial file. libsecret writes the same way
+  without the lock. A file that is not in the format is `Failed(InvalidData)`
+  with `secret-file-invalid` and is never overwritten; an item whose MAC fails
+  reads as `Failed(InvalidData)`. Items another secret encrypted are not found
+  and are kept.
+- `RequireEncryption` has no effect: the file is always encrypted and nothing
+  crosses the bus but the secret, through a pipe. The portal has no
+  non-interactive flag, so `AllowUserInteraction = false` is best effort: the
+  backend may ask once to unlock the login keyring. The file is per Flatpak
+  application; inside Snap the data directory is per snap.
 
 ## Windows
 
@@ -161,8 +224,6 @@ is.
 
 ## Out of scope for 1.0
 
-- The Secret portal and a local encrypted file for sandboxes without Secret
-  Service access.
 - Listing accounts, attributes beyond service and account, and secrets above
   64 KiB.
 - Parenting prompts to a window.

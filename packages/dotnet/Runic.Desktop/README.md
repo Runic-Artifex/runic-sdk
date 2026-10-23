@@ -211,7 +211,12 @@ needs the only connection, and the page's Bridge reconnects. Each close logs eve
 3005. A WebSocket whose token does not match gets `false` and is closed at once, so
 it does not hold the connection, and it is never authenticated. A WebSocket whose
 token matched is never closed by the handshake deadline. The timeout message lists
-what the server saw of the handshake, with times since launch.
+what the server saw of the handshake, with times since launch. On Windows, the
+WebView2 window (and a WPF `RunicWebView`) adds what WebView2 did before its page
+connected: `WebView2 controller created`, `WebView2 navigation started`, the first
+navigation's end (`completed`, or `failed:` with WebView2's error status) and any
+failed process. A timeout that lists `WebView2 navigation started` but no request
+was spent inside WebView2, after it had started loading the page.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the
@@ -849,11 +854,11 @@ VoiceOver on macOS, NVDA 2026.2 on Windows and Orca 46 on Linux (Ubuntu
 | `<input type="range">` | Slider with value, minimum and maximum; set through the Value interface; value-change event; Orca says "Volume horizontal slider 7", then the new value | Slider; `RangeValue`; value-change event; NVDA says "Volume slider 7", then "Volume slider 6" | Slider; `AXIncrement`; VoiceOver says "7 Volume slider", then the new value |
 | `<input type="number">` | An entry: its text, no range | Spinner with value, minimum and maximum | Number field: its value; minimum and maximum read 0 |
 | ARIA spin button whose value the page changes | Spin button; value-change event; Orca says "Restore points to keep 6 spin button" | Spinner; value-change event; NVDA says "Restore points to keep spin button 6 restore points" (`aria-valuetext`) | Stepper; VoiceOver says `aria-valuetext`, or a percentage of the range without it |
-| Increment of an ARIA spin button by the screen reader | AT-SPI has none: Orca sends arrow keys. Setting the value through AT-SPI aborts the web process ([#396](https://github.com/Runic-Artifex/runic-sdk/issues/396)) | `RangeValue.SetValue` is ignored: screen readers send arrow keys | `AXIncrement` reaches the page as Arrow Up |
+| Increment of an ARIA spin button by the screen reader | AT-SPI has none: Orca sends arrow keys. Setting the value through AT-SPI aborts the web process ([#396](https://github.com/Runic-Artifex/runic-sdk/issues/396)) | `RangeValue.SetValue` is ignored: screen readers send arrow keys; after Arrow Up NVDA says "7 restore points" | `AXIncrement` reaches the page as Arrow Up |
 | `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event; Orca says "Fruit List with 3 items", then "Apple" | List; `Selection` patterns; selection event; NVDA says "Fruit list", then "Apple 1 of 3" | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
 | Focus moved by the screen reader | Focus event; Orca follows it and says the control | Focus event; NVDA follows it and says the control | VoiceOver follows it and says the control |
 | Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)); Orca says nothing | `LiveRegionChanged`; NVDA says it | VoiceOver says it |
-| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | Notification event; NVDA says nothing (below) | `AXAnnouncementRequested`; VoiceOver says it |
+| `AnnounceAsync`, polite and assertive | `Object:Announcement`; Orca says it | `LiveRegionChanged` from the Bridge's live region while the page has the focus, else a notification event (below); NVDA says it | `AXAnnouncementRequested`; VoiceOver says it |
 | Native menu bar | None | The declared menus, a Win32 menu bar that Windows exposes to screen readers | Application, Edit, View and Window menus |
 
 Each cell is what a client of the API receives, then what the screen reader
@@ -864,8 +869,19 @@ VoiceOver says (`eng/ci/macos-voiceover.sh` lets the job control VoiceOver).
 NVDA runs as a portable copy with the silence synthesizer and logs what it
 speaks (`eng/ci/windows-nvda.ps1`); Orca speaks through a Speech Dispatcher
 whose output module writes each utterance to a file. An increment of the ARIA
-spin button by the screen reader is checked with VoiceOver only: NVDA and Orca
-send arrow keys, which the probe does not.
+spin button by the screen reader is checked with VoiceOver and NVDA; Orca sends
+arrow keys, which the probe does not.
+
+With NVDA the probe changes the slider and the spin button and selects in the
+list box with the keys an NVDA user presses (arrows and Home), not with UI
+Automation. When WebView2 carries out a UI Automation action from another
+process, such as `Invoke`, `SetFocus`, `RangeValue.SetValue` or
+`SelectionItem.Select`, it activates its own window inside the application's
+window. Windows deactivates and reactivates the application's window, the
+focus is briefly on that window, and NVDA says the page again ("Runic
+accessibility fixture document", "main landmark") and can miss the value or
+selection change that the action made. Runic's window does not cause this, and
+keyboard input does not do it.
 
 On Linux, the embedded window is WebKitGTK, and a screen reader such as Orca
 reads the page through WebKit's accessibility tree. It differs from Chromium,
@@ -940,21 +956,27 @@ every platform:
 | --- | --- | --- |
 | GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`); Orca says both (`Runic.Desktop.AccessibilityProbe --screen-reader orca`) |
 | GTK 4 | Calls `gtk_accessible_announce` (GTK 4.14 or later; an older GTK reports no `Announcements`). | As GTK 3 (`--announcement gtk4`) |
-| WebView2 | Raises a UI Automation notification event from the window's own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both with their processing (`Runic.Desktop.AccessibilityProbe`); NVDA says neither (`--screen-reader nvda`); not checked with Narrator |
+| WebView2 | While the page has the keyboard focus, the page's Bridge (`webui.js`) adds the message to a visually hidden live region (`aria-live` with the priority) that it adds to the page on first use. Otherwise, or when no Bridge is connected, the window raises a UI Automation notification event from its own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both (`Runic.Desktop.AccessibilityProbe`); NVDA says both (`--screen-reader nvda`); not checked with Narrator |
 | WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | VoiceOver says both (`Runic.Desktop.AccessibilityProbe --screen-reader voiceover`) |
 
-**NVDA does not say `AnnounceAsync` messages on WebView2.** NVDA 2026.2
-receives the window's notification event but speaks a notification only from
-the application that has the focus, and while the page has the focus, that is
-WebView2's browser process (`msedgewebview2.exe`), not the application. A live
-region in the page reaches NVDA.
+**Why WebView2 announces through the page.** NVDA 2026.2 receives the
+window's notification event but speaks a notification only from the
+application that has the focus, and while the page has the focus, that is
+WebView2's browser process (`msedgewebview2.exe`), not the application. NVDA
+does say a live region in the page. The Bridge's live region needs no change to
+the page or its Content-Security-Policy: the host sends the message as data, and
+the region is styled through the CSSOM. It is a `div` with
+`data-runic-announcer`, appended to `<body>`; a page that replaces its
+`<body>` gets a new one with the next message.
+The WPF window around a `RunicWebView` announces the same way through
+`WpfPlatformServices.ForWindow` ([Runic.Application.Views.Wpf](../Runic.Application.Views.Wpf/README.md)).
 
 `DesktopAnnouncementPriority.Polite`, the default, waits for what the screen
 reader is saying, and `Assertive` interrupts it, as `aria-live` does. A browser
 cannot be asked, so an installed browser, including one opened after a
 fallback, reports no `Announcements` and `AnnounceAsync` throws
 `window-capability-unavailable`; keep a live region in the page for it. On
-WebView2 and WKWebView a live region in the page reaches the screen reader too,
+WebView2 and WKWebView a live region of the page's own reaches the screen reader too,
 so send each message one way, or it is spoken twice. A custom `IDesktopWindowHost` that reports
 `Announcements` implements `AnnounceAsync`. Runic Windows announce with
 `DesktopPlatformServices.AnnounceAsync(window, message)` or, from a ViewModel,

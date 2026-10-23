@@ -19,6 +19,7 @@
     <PackageReference Include="ReactiveUI.Binding" />
     <PackageReference Include="ReactiveUI.Primitives" />
     <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.Views.ReactiveUI.Conformance.Tests" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>

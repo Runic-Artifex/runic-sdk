@@ -64,6 +64,7 @@ internal static class PackageApplication
     {
         string target = PackageOptions.Name(options.Target);
         IReadOnlyList<string> runtimes = ResolveRuntimes(options);
+        if (options.Target == PackageTarget.Flathub) FlathubPackager.Validate(options, PackageOptions.CurrentFamily);
         string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
         string dotnet = DevApplication.ResolveDotNetHost();
         PackageIdentity identity = await PackageIdentity.ReadAsync(dotnet, project, options.Configuration, options.Publisher, cancellationToken)
@@ -81,6 +82,7 @@ internal static class PackageApplication
             PackageTarget.AppImage => AppImagePackager.RunAsync,
             PackageTarget.Deb => DebPackager.RunAsync,
             PackageTarget.Rpm => RpmPackager.RunAsync,
+            PackageTarget.Flathub => FlathubPackager.RunAsync,
             _ => throw new DevUsageException(PackageCodes.WrongOperatingSystem, $"The {target} target is not available in this version."),
         };
         await run(context, cancellationToken).ConfigureAwait(false);

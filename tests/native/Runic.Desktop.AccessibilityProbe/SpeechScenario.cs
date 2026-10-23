@@ -19,38 +19,33 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
             var keep = await FindAsync(ControlKind.SpinButton, Fixture.Keep, cancellationToken);
             var fruit = await FindAsync(ControlKind.ListBox, Fixture.Fruit, cancellationToken);
 
-            await ExpectAsync("announcement-polite", Contains(Fixture.PoliteAnnouncement),
-                async () => await client.PressAsync(await FindAsync(ControlKind.Button, Fixture.Announce, cancellationToken), cancellationToken),
-                cancellationToken);
-            await ExpectAsync("announcement-assertive", Contains(Fixture.AssertiveAnnouncement),
-                async () => await client.PressAsync(await FindAsync(ControlKind.Button, Fixture.Alert, cancellationToken), cancellationToken),
-                cancellationToken);
+            await ExpectAnnouncementAsync("announcement-polite", Fixture.PoliteAnnouncement, Fixture.Announce, cancellationToken);
+            await ExpectAnnouncementAsync("announcement-assertive", Fixture.AssertiveAnnouncement, Fixture.Alert, cancellationToken);
             await ExpectAsync("live-region", Contains(Fixture.Saved(2)),
                 async () => await client.PressAsync(await FindAsync(ControlKind.Button, Fixture.Save, cancellationToken), cancellationToken),
                 cancellationToken);
 
-            // The screen reader follows the keyboard focus and reads the control; then the value the user changes.
+            // The screen reader follows the keyboard focus and reads the control; then the value the user changes, as the
+            // screen reader's users change it (StepWithKeysAsync). The value must be 6: a slider left at 7 or never read
+            // fails.
             await FocusAsync(slider, keep, "slider-focus", Fixture.Volume, cancellationToken);
-            // NVDA can follow WebView2's focus to the document after the step (I-185) and say the new value only once
-            // focus returns to the slider. The value must still be 6: a slider left at 7 or never read fails.
-            await ExpectAsync("slider-value", Value("6"), () => client.StepAsync(slider, -1, cancellationToken), cancellationToken,
-                retry: () => client.FocusAsync(slider, cancellationToken));
+            await SettleAsync(slider, cancellationToken);
+            await ExpectAsync("slider-value", Value("6"), () => client.StepWithKeysAsync(slider, -1, cancellationToken), cancellationToken);
             await FocusAsync(keep, slider, "spinbutton-focus", Fixture.Keep, cancellationToken);
             try
             {
                 // aria-valuetext: without it VoiceOver reads an ARIA spin button's value as a percentage of its range.
+                await SettleAsync(keep, cancellationToken);
                 await ExpectAsync("spinbutton-value", Contains((kept + 1).ToString(CultureInfo.InvariantCulture) + " restore points"),
-                    () => client.StepAsync(keep, 1, cancellationToken), cancellationToken);
+                    () => client.StepWithKeysAsync(keep, 1, cancellationToken), cancellationToken);
             }
             catch (NotSupportedException reason)
             {
                 report.NotApplicable(Id("spinbutton-value"), reason.Message);
             }
             await FocusAsync(fruit, slider, "listbox-focus", Fixture.Fruit, cancellationToken);
-            // NVDA can follow WebView2's focus to the document after the selection and say the item only once focus
-            // returns to the list.
-            await ExpectAsync("listbox-selection", Contains("Apple"), () => client.SelectAsync(fruit, "Apple", cancellationToken), cancellationToken,
-                retry: () => client.FocusAsync(fruit, cancellationToken));
+            await SettleAsync(fruit, cancellationToken);
+            await ExpectAsync("listbox-selection", Contains("Apple"), () => client.SelectWithKeysAsync(fruit, "Apple", cancellationToken), cancellationToken);
         }
         finally
         {
@@ -64,8 +59,48 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
 
     private void Heard(string phrase)
     {
-        lock (_lock) _phrases.Add(phrase);
+        lock (_lock)
+        {
+            _phrases.Add(phrase);
+            _lastPhrase = DateTime.UtcNow;
+        }
         Console.WriteLine($"  {reader.Name}: {phrase}");
+    }
+
+    private DateTime _lastPhrase = DateTime.UtcNow;
+    private int _focusMark;
+
+    // Before a check presses keys on the focused control (ActsWithKeys): since focus moved there, the screen reader has
+    // named the control after it last named the page (WebView2 can take the screen reader to the document when it
+    // carries out a UI Automation action, I-185), and it has said nothing for a moment. The keys then reach the control
+    // rather than the screen reader's review of the document. When the screen reader ends elsewhere, focus moves to
+    // the control once more; the check itself has no retry, so it hears the change or fails.
+    private async Task SettleAsync(Control control, CancellationToken cancellationToken)
+    {
+        if (!client.ActsWithKeys) return;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < until)
+            {
+                bool settled;
+                lock (_lock)
+                {
+                    var since = _phrases.Skip(_focusMark).ToList();
+                    settled = since.FindLastIndex(phrase => phrase.Contains(control.Name, StringComparison.Ordinal))
+                            > since.FindLastIndex(phrase => phrase.Contains(Fixture.Title, StringComparison.Ordinal))
+                        && DateTime.UtcNow - _lastPhrase > TimeSpan.FromMilliseconds(800);
+                }
+                if (settled) return;
+                await Task.Delay(100, cancellationToken);
+            }
+            if (attempt == 0)
+            {
+                Console.WriteLine($"  {reader.Name} did not settle on '{control.Name}'; focusing it again before the check.");
+                _focusMark = Mark();
+                await client.FocusAsync(control, cancellationToken);
+            }
+        }
     }
 
     // What a check listens for: a phrase that contains the text, or a value said on its own or last (VoiceOver and Orca
@@ -90,7 +125,7 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
     // away and back once before the check fails.
     private async Task FocusAsync(Control control, Control other, string check, string name, CancellationToken cancellationToken)
     {
-        var mark = Mark();
+        var mark = _focusMark = Mark();
         var expected = Contains(name);
         await client.FocusAsync(control, cancellationToken);
         if (await HeardAsync(mark, expected, TimeSpan.FromSeconds(4), cancellationToken) is null)
@@ -118,31 +153,57 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
         return spoken;
     }
 
-    // Acts, then checks what the screen reader said from just before the action on. retry, when the screen reader has
-    // not said it within a few seconds, makes it read the control again; the receipt says so.
-    private async Task ExpectAsync(string check, Expected expected, Func<Task> action, CancellationToken cancellationToken,
-        Func<Task>? retry = null)
+    // Acts, then checks what the screen reader said from just before the action on.
+    private async Task ExpectAsync(string check, Expected expected, Func<Task> action, CancellationToken cancellationToken)
     {
         var mark = Mark();
         await action();
-        var retried = false;
-        if (retry is not null && await HeardAsync(mark, expected, TimeSpan.FromSeconds(4), cancellationToken) is null)
-        {
-            await retry();
-            retried = true;
-        }
-        await RecordAsync(check, expected, mark, cancellationToken, retried ? " after focus returned to the control" : "");
+        await RecordAsync(check, expected, mark, cancellationToken);
     }
 
-    private async Task RecordAsync(string check, Expected expected, int mark, CancellationToken cancellationToken, string when = "")
+    // An announcement made while the screen reader is still speaking can be lost: VoiceOver's sampled phrase showed only
+    // the hints around it, and NVDA once said nothing (I-166). The press waits until the screen reader has been quiet for
+    // a moment; an announcement it still does not say is announced once more, and the check reports the second press.
+    private async Task ExpectAnnouncementAsync(string check, string text, string button, CancellationToken cancellationToken)
+    {
+        var expected = Contains(text);
+        for (var press = 1; press <= 2; press++)
+        {
+            await QuietAsync(cancellationToken);
+            var mark = Mark();
+            await client.PressAsync(await FindAsync(ControlKind.Button, button, cancellationToken), cancellationToken);
+            if (press == 1 && await HeardAsync(mark, expected, SpeechTimeout, cancellationToken) is null)
+            {
+                string heard;
+                lock (_lock) heard = string.Join(" | ", _phrases.Skip(mark));
+                Console.WriteLine($"  {reader.Name} did not say '{text}' after the first press (it said: {heard}); pressing '{button}' again.");
+                continue;
+            }
+            await RecordAsync(check, expected, mark, cancellationToken, press == 2 ? " on the second press" : "");
+            return;
+        }
+    }
+
+    // Until the screen reader has said nothing for 1.5 s, at most 8 s.
+    private async Task QuietAsync(CancellationToken cancellationToken)
+    {
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+        while (DateTime.UtcNow < until)
+        {
+            lock (_lock) if (DateTime.UtcNow - _lastPhrase > TimeSpan.FromMilliseconds(1500)) return;
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+
+    private async Task RecordAsync(string check, Expected expected, int mark, CancellationToken cancellationToken, string note = "")
     {
         var id = Id(check);
         var spoken = await HeardAsync(mark, expected, SpeechTimeout, cancellationToken);
         var gap = expectations.Gap(id);
         string heard;
         lock (_lock) heard = string.Join(" | ", _phrases.Skip(mark));
-        if (spoken is not null && gap is null) report.Pass(id, $"{reader.Name} said '{spoken}'{when}");
-        else if (spoken is not null) report.Pass(id, $"{reader.Name} said '{spoken}'{when} (listed as a known gap: {gap}; update Expectations.cs and the documentation)");
+        if (spoken is not null && gap is null) report.Pass(id, $"{reader.Name} said '{spoken}'{note}");
+        else if (spoken is not null) report.Pass(id, $"{reader.Name} said '{spoken}'{note} (listed as a known gap: {gap}; update Expectations.cs and the documentation)");
         else if (gap is not null) report.Gap(id, $"{reader.Name} did not say '{expected.Text}'; it said: {heard}", gap);
         else report.Fail(id, $"{reader.Name} did not say '{expected.Text}'; it said: {heard}");
     }

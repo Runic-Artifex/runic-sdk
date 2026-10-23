@@ -593,6 +593,7 @@ dotnet runic package flatpak    # Flatpak bundle, on Linux with flatpak-builder
 dotnet runic package appimage   # AppImage, on Linux with appimagetool
 dotnet runic package deb        # Debian package, on Linux with dpkg-deb
 dotnet runic package rpm        # rpm, on Linux with rpmbuild (also on Debian and Ubuntu)
+dotnet runic package flathub --git-url https://github.com/example/notes.git --git-tag v1.2.0   # Flathub manifest, on any OS
 ```
 
 The [packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/packaging.md)
@@ -680,6 +681,23 @@ them with your own credentials to ship them. Runic signs nothing for you.
   `dlopen`, so rpm would not find them), takes its `License` from
   `PackageLicenseExpression` and is built with `rpmbuild -bb`. Both validate the
   desktop entry with `desktop-file-validate` when it is installed.
+- **`flathub`** writes a Flathub source-build manifest for your own submission:
+  `<ApplicationId>.yml` on the GNOME runtime with the `dotnet10` and, for a
+  frontend, `node24` SDK extensions, a `git` source at `--git-url` and
+  `--git-commit` or `--git-tag`, the desktop entry and metainfo, and the offline
+  sources `nuget-sources.json` and `npm-sources.json`. The command generates the
+  sources from the committed lock files: the NativeAOT NuGet lock file
+  (`NuGetLockFilePath` with `PublishAot=true`, whose `RuntimeIdentifiers` must list
+  `linux-x64` and `linux-arm64`), the runtime packs the SDK downloads besides it,
+  and the frontend's `package-lock.json` (npm only). It restores the NativeAOT
+  graph for both runtime identifiers in locked mode to take each package's
+  SHA-512 from the NuGet cache, checked against the lock file's content hash
+  first, and pins the build's `RuntimeFrameworkVersion` to the lock file's
+  NativeAOT compiler, so a newer SDK extension restores the same packages.
+  It runs on any operating system; `--build` then builds the manifest on Linux as
+  Flathub does (runtime and extensions, then every source, then the build without
+  network access) and writes `<ApplicationId>.flatpak`. A missing commit or
+  tag, lock file, hash or runtime identifier is `RAPPPKG1007`.
 
 Each target lists what it wrote in the `runic.application.tool.package/1`
 payload. `signing` is `none`, `adhoc`, `test` (a self-signed certificate, as in

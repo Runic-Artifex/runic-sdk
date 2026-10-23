@@ -418,6 +418,9 @@ public sealed record DesktopWindowHostOptions
     /// thread, including the window's own; a sink that throws is logged, not rethrown.
     /// </summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
+
+    // The Bridge handshake log of the presentation (WebUiEmbeddedHostOptions.StartupProgress), for Runic's own hosts.
+    internal Action<string>? StartupProgress { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -427,9 +430,25 @@ internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory 
     public IWebUiEmbeddedHost Create() => new DesktopWindowHostAdapter(factory.Create());
 }
 
+// A window host inside a window of its own toolkit, whose announcements its page makes while the page has the
+// keyboard focus (I-203): RunicWebView in WPF, where WpfPlatformServices announces for the WPF window. Runic Desktop
+// gives it the window's in-page announcer (WebUiWindow.AnnounceInPageAsync), which reports false when no page is
+// connected, and prepares the page's live regions when a page connects.
+internal interface IDesktopPageAnnouncementHost : IDesktopWindowHost
+{
+    Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? AnnounceInPage { set; }
+}
+
 internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
 {
     private readonly IDesktopWindowHost _host;
+
+    internal bool AnnouncesInPage => _host is IDesktopPageAnnouncementHost;
+
+    internal void AttachPageAnnouncer(Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>> announce)
+    {
+        if (_host is IDesktopPageAnnouncementHost pageHost) pageHost.AnnounceInPage = announce;
+    }
 
     internal DesktopWindowHostAdapter(IDesktopWindowHost host)
     {
@@ -538,6 +557,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             AdditionalOrigins = options.AdditionalOrigins,
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
+            StartupProgress = options.StartupProgress,
             MenuBarPresentation = options.MenuBarPresentation,
             GlobalMenu = options.GlobalMenu,
             Monitor = options.Monitor,

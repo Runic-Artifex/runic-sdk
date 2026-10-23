@@ -31,9 +31,11 @@ export const screenReaderLegs = [
   { reader: "orca", os: "ubuntu-24.04" },
   { reader: "nvda", os: "windows-2025", platform: "win-x64" },
 ];
-// The paths that plan the screen reader legs: the embedded windows, the accessibility fixture and the probe.
+// The paths that plan the screen reader legs: the embedded windows, the WPF host, the accessibility fixtures and the
+// probe.
 export const screenReaderPaths = ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Gtk4",
-  "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.Gtk4.Smoke", "tests/native/Runic.Desktop.AccessibilityProbe"];
+  "packages/dotnet/Runic.Application.Views.Wpf", "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.Gtk4.Smoke",
+  "tests/native/Runic.Desktop.AccessibilityProbe", "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/ScreenReaderChecks.cs"];
 export const packagingLegs = [
   { os: "windows-latest", target: "windows", platform: "win-x64" },
   { os: "macos-26", target: "macos", platform: "osx-arm64" },
@@ -42,6 +44,8 @@ export const packagingLegs = [
   { os: "ubuntu-24.04", target: "deb" },
   // Built on Ubuntu, installed in the Fedora container.
   { os: "ubuntu-24.04", target: "rpm" },
+  // dotnet runic package flathub --build: the manifest built offline as Flathub does.
+  { os: "ubuntu-24.04", target: "flathub" },
 ];
 
 // The job names, as GitHub reports them, of every Windows and macOS leg. Pull requests run only

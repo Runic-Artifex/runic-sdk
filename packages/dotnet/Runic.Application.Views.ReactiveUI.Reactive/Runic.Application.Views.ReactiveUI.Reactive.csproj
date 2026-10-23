@@ -21,6 +21,7 @@
     <PackageReference Include="ReactiveUI.Core" />
     <PackageReference Include="ReactiveUI.Binding.Reactive" />
     <PackageReference Include="System.Reactive" />
+    <InternalsVisibleTo Include="Runic.Application.Views.ReactiveUI.Reactive.Conformance.Tests" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveCommandExecution.cs" Link="Shared/ReactiveCommandExecution.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveCommandExecutionExtensions.cs" Link="Shared/ReactiveCommandExecutionExtensions.cs" />

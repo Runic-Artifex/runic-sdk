@@ -72,21 +72,34 @@ public sealed class PortalApplication
     /// <remarks>Outside a sandbox it writes <c>~/.config/autostart/&lt;application ID&gt;.desktop</c>, so it needs the
     /// application ID; inside Flatpak or Snap it asks the Background portal, which may ask the user.</remarks>
     public IDesktopLoginStartup CreateLoginStartup() => new LinuxLoginStartup(this);
-    /// <summary>Creates secret storage in the desktop's Secret Service, such as GNOME Keyring or KeePassXC.</summary>
-    /// <remarks>It needs no window and connects to nothing until the first request. Inside Flatpak or Snap the sandbox
-    /// must allow talking to <c>org.freedesktop.secrets</c>; otherwise requests report unavailable.</remarks>
-    public IDesktopSecretStore CreateSecretStore() => new SecretServiceStore(application: this);
+    /// <summary>Creates secret storage in the desktop's Secret Service, such as GNOME Keyring or KeePassXC, or inside a
+    /// sandbox without access to it in a file the Secret portal's secret encrypts.</summary>
+    /// <remarks>
+    /// It needs no window and connects to nothing until the first request. Inside Flatpak the store uses the Secret
+    /// Service when the sandbox allows talking to <c>org.freedesktop.secrets</c>, and inside Snap while the
+    /// <c>password-manager-service</c> interface answers. Otherwise it keeps the secrets as libsecret does in a sandbox:
+    /// in <c>$XDG_DATA_HOME/keyrings/default.keyring</c>, libsecret's file format, encrypted with a key derived from the
+    /// application's secret from the Secret portal (<c>org.freedesktop.portal.Secret</c>), so libsecret-based code in the
+    /// same sandbox shares the items. Without that portal requests report unavailable.
+    /// </remarks>
+    public IDesktopSecretStore CreateSecretStore() => SandboxSecrets.Create(this, null, SandboxSecrets.Detect());
     /// <summary>Creates secret storage in the desktop's Secret Service with <paramref name="options"/>.</summary>
-    /// <remarks>With <see cref="DesktopSecretStoreOptions.RequireEncryption"/> a service without the
+    /// <remarks>
+    /// The same choice of store as <see cref="CreateSecretStore()"/>. With
+    /// <see cref="DesktopSecretStoreOptions.RequireEncryption"/> a Secret Service without the
     /// <c>dh-ietf1024-sha256-aes128-cbc-pkcs7</c> algorithm fails each request with <see cref="PlatformFailureCode.Other"/>
-    /// and the <c>secret-service-encryption-required</c> diagnostic instead of using a <c>plain</c> session. Otherwise the
-    /// same as <see cref="CreateSecretStore()"/>; the macOS-only <see cref="DesktopSecretStoreOptions.UseDataProtectionKeychain"/>
-    /// has no effect.</remarks>
+    /// and the <c>secret-service-encryption-required</c> diagnostic instead of using a <c>plain</c> session; the Secret
+    /// portal's file is always encrypted. With <see cref="DesktopSecretStoreOptions.AllowUserInteraction"/>
+    /// <see langword="false"/> a Secret Service unlock or create prompt is dismissed unshown and the request is
+    /// <see cref="PlatformFailureCode.Locked"/>; the Secret portal has no such flag, and its backend may ask once to
+    /// unlock the login keyring. The macOS-only <see cref="DesktopSecretStoreOptions.UseDataProtectionKeychain"/> has no
+    /// effect.
+    /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
     public IDesktopSecretStore CreateSecretStore(DesktopSecretStoreOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return new SecretServiceStore(application: this, requireEncryption: options.RequireEncryption);
+        return SandboxSecrets.Create(this, options, SandboxSecrets.Detect());
     }
     /// <summary>Creates the user's trash, following the freedesktop.org Trash specification.</summary>
     /// <remarks>It needs no window. Outside a sandbox it moves items into <c>$XDG_DATA_HOME/Trash</c>, or into the trash

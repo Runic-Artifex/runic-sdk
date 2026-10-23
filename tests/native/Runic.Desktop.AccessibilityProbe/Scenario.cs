@@ -96,13 +96,16 @@ internal sealed class Scenario(AccessibilityClient client, Report report, Expect
         await ExpectSelectionAsync("aria-listbox-page-change", colour, "Green", cancellationToken);
         await ExpectEventAsync("aria-listbox-page-change-event", mark, EventKind.SelectionChanged, Fixture.Colour, "Green", cancellationToken);
 
-        // DesktopWindow.AnnounceAsync: the page asks the host, which announces with each priority.
+        // DesktopWindow.AnnounceAsync: the page asks the host, which announces with each priority. On WebView2, while the
+        // page has the keyboard focus, the page's Bridge says it in a live region instead of the window (I-184).
         mark = _log.Mark();
         await client.PressAsync(_controls[Fixture.Announce], cancellationToken);
-        await ExpectEventAsync("announcement-polite", mark, EventKind.Announcement, null, Fixture.PoliteAnnouncement, cancellationToken);
+        await ExpectEventAsync("announcement-polite", mark, EventKind.Announcement, null, Fixture.PoliteAnnouncement, cancellationToken,
+            alternative: EventKind.LiveRegion);
         mark = _log.Mark();
         await client.PressAsync(_controls[Fixture.Alert], cancellationToken);
-        await ExpectEventAsync("announcement-assertive", mark, EventKind.Announcement, null, Fixture.AssertiveAnnouncement, cancellationToken);
+        await ExpectEventAsync("announcement-assertive", mark, EventKind.Announcement, null, Fixture.AssertiveAnnouncement, cancellationToken,
+            alternative: EventKind.LiveRegion);
 
         // A live region (aria-live="polite" on an output).
         mark = _log.Mark();
@@ -180,9 +183,9 @@ internal sealed class Scenario(AccessibilityClient client, Report report, Expect
 
     // An event of the kind after the mark, from the named element, whose source or data contains the text.
     private async Task ExpectEventAsync(string id, int mark, EventKind kind, string? source, string? text,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, EventKind? alternative = null)
     {
-        var found = await _log.WaitAsync(mark, value => value.Kind == kind
+        var found = await _log.WaitAsync(mark, value => (value.Kind == kind || value.Kind == alternative)
             && (source is null || value.Source.Contains(source, StringComparison.Ordinal))
             && (text is null || value.Detail.Contains(text, StringComparison.Ordinal) || value.Source.Contains(text, StringComparison.Ordinal)),
             EventTimeout, cancellationToken);
