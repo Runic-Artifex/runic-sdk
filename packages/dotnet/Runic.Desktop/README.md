@@ -394,7 +394,8 @@ and `DesktopWindowCapabilities.FullScreen`:
 | --- | --- | --- | --- |
 | Windows WebView2 | Yes, without a window too (WPF) | Yes | Yes: the frame goes and the window covers its monitor |
 | macOS WKWebView | Yes, while `DesktopEventLoop` runs | Yes; a full-screen window moves when it leaves full screen | Yes: its own full-screen space |
-| Linux GTK 3 and GTK 4 | No | No | No; the user can make the window full-screen |
+| Linux GTK 3 and GTK 4 (X11) | Yes; the identifier is the connector, such as `HDMI-1` | Yes | Yes, with a window manager |
+| Linux GTK 3 and GTK 4 (Wayland) | Yes, without work areas or a primary monitor | No; a full-screen placement still opens on `Monitor` | Yes |
 | Installed browser | Yes (the host's) | No | No |
 | Custom `IDesktopWindowHostFactory` | `IDesktopWindowHostFactory.Monitors` | When its host implements `IDesktopPlacementWindowHost` | Same |
 
@@ -835,14 +836,16 @@ GTK thread, for example through `GLib.Functions.IdleAdd`.
 Two window options opt in to more, and change nothing unless set:
 
 - `DesktopWindowOptions.LayoutDirection = DesktopLayoutDirection.RightToLeft`
-  mirrors the Windows frame, its caption buttons and system menu
+  sets the GTK window's direction, and its header bar's with GTK 4, without
+  `SetDefaultDirection`; it mirrors the Windows frame, its caption buttons and system menu
   (`WS_EX_LAYOUTRTL`, [#389](https://github.com/Runic-Artifex/runic-sdk/issues/389)).
   The WebView2 page is not mirrored: it renders and takes input as in a
   left-to-right window and sets its own `dir`. A status icon's menu mirrors with
   `DesktopStatusIconState.LayoutDirection`. macOS ignores the option: AppKit lays
   windows out for the bundle's localization.
 - `DesktopWindowOptions.Language`, a BCP 47 tag such as `ar-EG`, sets WebView2's
-  language: its built-in text, `navigator.language` and `Accept-Language`;
+  language and WebKitGTK's preferred languages: their built-in text,
+  `navigator.language` and `Accept-Language`, also under the C locale;
   WebView2 takes the closest language it ships, such as `ar` for `ar-EG`.
   Windows sharing a `ProfilePath` must use the same language, as for
   `BrowserArguments`. WKWebView ignores it and uses the application's preferred

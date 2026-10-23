@@ -85,6 +85,10 @@ internal static unsafe class Gtk4X11Placement
         return true;
     }
 
+    // GTK thread. A monitor's work area on X11; null on Wayland, which reports none.
+    internal static ScreenRect? MonitorWorkArea(nint monitor) =>
+        s_displayIsX11 == true && Functions.Value is { } api ? api.MonitorWorkArea(monitor) : null;
+
     // GTK thread. The work areas of the monitors in logical pixels, or their geometry where X11 reports no work area.
     internal static IReadOnlyList<ScreenRect> GetWorkAreas()
     {

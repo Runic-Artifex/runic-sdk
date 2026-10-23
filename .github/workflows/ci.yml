@@ -761,6 +761,16 @@ jobs:
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
           LC_ALL=ar_EG.UTF-8 LANG=ar_EG.UTF-8 LANGUAGE=ar GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --rtl
+          # B12 (I-066, I-073): GDK's monitors, list and watch, open on and move to a monitor, LayoutDirection and Language
+          # under the C locale, for GTK 3 and GTK 4. Xvfb has one monitor; the step tries xrandr --setmonitor for a
+          # second and logs what GDK lists (two monitors otherwise need I-099's VM). Full screen needs a window
+          # manager, which Xvfb lacks, so those checks are skipped here.
+          # shellcheck disable=SC2016 # $0 expands in the inner shell.
+          for toolkit in gtk3 gtk4; do
+            LC_ALL=C LANG=C GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x600x24' dbus-run-session -- bash -c \
+              'if command -v xrandr >/dev/null; then xrandr --setmonitor RunicA 800/211x600/158+0+0 screen && xrandr --setmonitor RunicB 800/211x600/158+800+0 none; xrandr --listmonitors; fi;
+               exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --monitors "$0"' "$toolkit"
+          done
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.
@@ -774,6 +784,7 @@ jobs:
           dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
+          LC_ALL=C GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --monitors gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot

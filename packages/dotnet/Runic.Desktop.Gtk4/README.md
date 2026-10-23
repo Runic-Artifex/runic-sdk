@@ -98,6 +98,26 @@ Wayland GTK 4 cannot tell which monitor the compositor will choose, so the
 position is ignored and the restored size is fitted to the largest monitor. See
 [Window state and restore](../Runic.Desktop/README.md#window-state-and-restore).
 
+`DesktopHost.Monitors` lists GDK's monitors in logical pixels while
+`DesktopEventLoop.Run(options.WithGtk4(), …)` runs, and watches them through the
+monitor list's `items-changed` and each monitor's notifications. A monitor's `Id`
+is its connector, such as `HDMI-1`, and its name GDK's description. Its `Scale`
+is fractional from GTK 4.14 (`gdk_monitor_get_scale`) and the integer scale
+factor before. X11 reports the work area without panels and the primary monitor;
+Wayland reports neither, so there `WorkArea` equals `Bounds` and no monitor is
+primary. `DesktopWindowState.MonitorId` is the monitor GDK places the window on.
+
+`DesktopWindow.SetFullScreenAsync` and a placement saved full-screen work on X11
+and Wayland, on the monitor of `DesktopWindowOptions.Monitor` or the last
+`MoveToMonitorAsync` (`gtk_window_fullscreen_on_monitor`), else where the window
+is; X11 needs a window manager for full screen. Opening on a monitor and
+`MoveToMonitorAsync` (`DesktopWindowCapabilities.MonitorPlacement`) need X11; on
+Wayland `Validate` reports `Monitor` ignored except for a full-screen placement,
+and whether the compositor honours the monitor for full screen is its choice.
+`DesktopWindowOptions.LayoutDirection` sets the direction of the window, its
+header bar and the view, and `Language` WebKitGTK's preferred languages
+(`navigator.language`, `Accept-Language`) for the window's own web context.
+
 The window reports `DesktopWindowCapabilities.FileDrop` once it finds WebKit's
 own drop target on the view. WebKit's target claims a drop, so a second target
 would leave the page without its drop event; Runic instead adds GLib emission
