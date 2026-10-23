@@ -1066,6 +1066,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await host.AnnounceAsync(message, priority, cancellationToken).ConfigureAwait(false);
     }
 
+    // Whether the page may announce DesktopWindow.AnnounceAsync (WebUiSession prepares its live regions).
+    internal bool AnnouncesInPage => _embeddedHost is WindowsWebView2Host;
+
     // Announces the message in the live region of every authenticated page (WebUiBridge's announce); false when no
     // page is connected.
     internal async Task<bool> AnnounceInPageAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)

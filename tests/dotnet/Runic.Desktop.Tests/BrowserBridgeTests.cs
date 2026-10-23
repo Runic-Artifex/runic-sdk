@@ -180,8 +180,9 @@ public sealed class BrowserBridgeTests
     }
 
     // I-184: an announcement the host sends while the page has the focus reaches a live region of the Bridge's own, under
-    // the template's policy (no string evaluation, no inline style). A repeated message is added again, and the region
-    // is visually hidden through the CSSOM without a policy violation.
+    // the template's policy (no string evaluation, no inline style). The host's empty message adds both regions before
+    // the first message, a repeated message is added again, and the regions are visually hidden through the CSSOM
+    // without a policy violation.
     [Test]
     public async Task AnnouncementReachesTheBridgeLiveRegionUnderTheTemplatePolicyInChromium()
     {
@@ -209,13 +210,17 @@ public sealed class BrowserBridgeTests
                   for (const record of records) {
                     const region = record.target;
                     if (!(region instanceof HTMLElement) || !region.dataset.runicAnnouncer) continue;
-                    for (const line of record.addedNodes) heard.push(`${region.getAttribute('aria-live')}:${line.textContent}`);
+                    for (const line of record.addedNodes) {
+                      globalThis.regionsAtFirstLine ??= document.querySelectorAll('[data-runic-announcer]').length;
+                      heard.push(`${region.getAttribute('aria-live')}:${line.textContent}`);
+                    }
                   }
                   if (heard.length < 3) return;
                   observer.disconnect();
                   const style = getComputedStyle(document.querySelector('[data-runic-announcer=polite]'));
                   const regions = document.querySelectorAll('[data-runic-announcer]').length;
-                  document.body.dataset.result = `${heard.join('|')}:${regions}:${style.position}:${style.width}:${violations.join(',')}`;
+                  document.body.dataset.result =
+                    `${heard.join('|')}:${globalThis.regionsAtFirstLine}:${regions}:${style.position}:${style.width}:${violations.join(',')}`;
                   document.title = 'PASS';
                 });
                 observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -228,6 +233,8 @@ public sealed class BrowserBridgeTests
         }));
         window.Bind("ready", e => _ = Task.Run(async () =>
         {
+            // What the session sends on WebView2 once the page connects: an empty message adds both live regions.
+            await window.SendRawAsync(Internal.WebUiBridge.AnnounceFunction, "polite\0"u8.ToArray(), timeout.Token);
             await window.AnnounceInPageAsync("Saved", DesktopAnnouncementPriority.Polite, timeout.Token);
             await window.AnnounceInPageAsync("Saved", DesktopAnnouncementPriority.Polite, timeout.Token);
             await window.AnnounceInPageAsync("Disk full", DesktopAnnouncementPriority.Assertive, timeout.Token);
@@ -246,7 +253,7 @@ public sealed class BrowserBridgeTests
             using var devTools = new ClientWebSocket();
             await devTools.ConnectAsync(debuggerUrl, timeout.Token);
 
-            await WaitForBridgeResultAsync(devTools, "polite:Saved|polite:Saved|assertive:Disk full:2:absolute:1px:", timeout.Token);
+            await WaitForBridgeResultAsync(devTools, "polite:Saved|polite:Saved|assertive:Disk full:2:2:absolute:1px:", timeout.Token);
         }
         finally
         {

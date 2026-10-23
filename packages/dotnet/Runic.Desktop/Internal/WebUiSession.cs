@@ -277,13 +277,22 @@ internal sealed class WebUiSession : IAsyncDisposable
     // An announcement to WebUiBridge's reserved raw-data function: "polite" or "assertive", NUL and the message as
     // UTF-8. The page's bridge adds the message to its live region of that politeness, without evaluating script.
     public Task AnnounceAsync(string message, bool assertive, CancellationToken cancellationToken)
+        => IsAuthenticated ? SendPacketAsync(AnnouncementPacket(message, assertive), cancellationToken) : Task.CompletedTask;
+
+    // An empty message adds the page's live regions without saying anything.
+    private static byte[] AnnouncementPacket(string message, bool assertive)
     {
-        if (!IsAuthenticated) return Task.CompletedTask;
+        const string function = WebUiBridge.AnnounceFunction;
         var politeness = assertive ? "assertive"u8 : "polite"u8;
-        var data = new byte[politeness.Length + 1 + Encoding.UTF8.GetByteCount(message)];
-        politeness.CopyTo(data);
-        Encoding.UTF8.GetBytes(message, data.AsSpan(politeness.Length + 1));
-        return SendRawAsync(WebUiBridge.AnnounceFunction, data, cancellationToken);
+        var messageOffset = WebUiProtocol.DataOffset + function.Length + 1 + politeness.Length + 1;
+        // The header, the function name, the politeness, each followed by NUL, the message and the terminating NUL of
+        // every WebUI packet.
+        var packet = new byte[messageOffset + Encoding.UTF8.GetByteCount(message) + 1];
+        WebUiProtocol.WriteHeader(packet, 0, WebUiProtocol.SendRaw);
+        Encoding.ASCII.GetBytes(function, packet.AsSpan(WebUiProtocol.DataOffset));
+        politeness.CopyTo(packet.AsSpan(WebUiProtocol.DataOffset + function.Length + 1));
+        Encoding.UTF8.GetBytes(message, packet.AsSpan(messageOffset));
+        return packet;
     }
 
     public async Task<byte[]> ExecuteJavaScriptAsync(
@@ -641,6 +650,12 @@ internal sealed class WebUiSession : IAsyncDisposable
             if (accepted)
             {
                 _window.NotifyAuthenticated();
+                // The page announces DesktopWindow.AnnounceAsync while it has the focus on WebView2 (I-184). Its live
+                // regions are added now, so that the screen reader knows them before the first message.
+                if (_window.AnnouncesInPage)
+                {
+                    await SendPacketUnderGateAsync(AnnouncementPacket(string.Empty, assertive: false), cancellationToken).ConfigureAwait(false);
+                }
             }
         }
         finally
