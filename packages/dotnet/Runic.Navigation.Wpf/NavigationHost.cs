@@ -375,7 +375,7 @@ public class NavigationHost : ContentControl
     }
 
     // On Loaded with the same region: the presented view stays when its entry keeps its view (Refresh shows it again or
-    // keeps it for its retained entry); the kept views follow KeepOnly.
+    // keeps it for its retained entry). Refresh then takes the current entry's kept view and prunes the others.
     private void KeepOnPresent(NavigationRegion region, bool retain)
     {
         if (_presented is { } presented && (FindEntry(region, presented) is not { } entry || !Keeps(entry, retain)))
@@ -383,7 +383,6 @@ public class NavigationHost : ContentControl
             _presented = null;
             _presenter = null;
         }
-        KeepOnly(region, retain);
     }
 
     private static NavigationEntry? FindEntry(NavigationRegion region, NavigationEntryId id) =>

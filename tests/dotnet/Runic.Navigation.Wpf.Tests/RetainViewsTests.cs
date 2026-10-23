@@ -310,15 +310,7 @@ internal sealed class RetainViewsTests
             return new ShellView();
         }
     }
-}
 
-internal sealed class ShellViewModel;
-
-internal sealed class ShellView : Border
-{
-    public ShellView() => Child = Inner;
-
-    public NavigationHost Inner { get; } = new();
     // I-031: NavigationRequestOptions.RetainView decides for one entry, in either direction, instead of RetainViews.
     [Test, DisplayName("RetainView per entry"), NotInParallel("WpfSuite", Order = 63)]
     public void RetainViewPerEntry()
@@ -437,4 +429,13 @@ internal sealed class ShellView : Border
             lock (_work) return _work.TryGetValue(content, out var work) ? new(work.Task) : ValueTask.CompletedTask;
         }
     }
+}
+
+internal sealed class ShellViewModel;
+
+internal sealed class ShellView : Border
+{
+    public ShellView() => Child = Inner;
+
+    public NavigationHost Inner { get; } = new();
 }
