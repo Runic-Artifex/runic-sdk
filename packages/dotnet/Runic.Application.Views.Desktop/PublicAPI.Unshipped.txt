@@ -17,3 +17,4 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.Assets.init -> void
 Runic.Application.Views.Desktop.DesktopWindowPlatformServices.MessageBoxes.get -> Runic.Platform.IDesktopMessageBoxes!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateGlobalShortcuts(string? applicationId = null) -> Runic.Platform.IDesktopGlobalShortcuts!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string? applicationId, Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!

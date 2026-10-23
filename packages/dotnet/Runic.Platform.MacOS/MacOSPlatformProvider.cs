@@ -109,6 +109,31 @@ public static class MacOSPlatformProvider
     /// does not interrupt.</remarks>
     public static IDesktopSecretStore CreateSecretStore()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacSecretStore(); }
+    /// <summary>Creates secret storage in the keychain that <paramref name="options"/> choose, as generic passwords.</summary>
+    /// <remarks>
+    /// <para>
+    /// With <see cref="DesktopSecretStoreOptions.UseDataProtectionKeychain"/> the items are in the data-protection
+    /// keychain (<c>kSecUseDataProtectionKeychain</c>). A shipped application signs its bundle with a team ID and the
+    /// <c>keychain-access-groups</c> entitlement. Without it macOS may answer a read with nothing stored and refuses a
+    /// write with <see cref="PlatformFailureCode.PermissionDenied"/> and <c>OSStatus -34018</c>. Items of the login keychain are not
+    /// moved there: read them with a store without the option and store them again with this one.
+    /// </para>
+    /// <para>
+    /// With <see cref="DesktopSecretStoreOptions.AllowUserInteraction"/> <see langword="false"/>, a locked login keychain
+    /// fails with <see cref="PlatformFailureCode.Locked"/> before any query, and queries forbid authentication UI
+    /// (<c>kSecUseAuthenticationUIFail</c>; an <c>LAContext</c> with <c>interactionNotAllowed</c> for the
+    /// data-protection keychain), so an access prompt is <see cref="PlatformFailureCode.Locked"/> too.
+    /// <see cref="DesktopSecretStoreOptions.RequireEncryption"/> has no effect: the Keychain transfers nothing in the
+    /// clear.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    public static IDesktopSecretStore CreateSecretStore(DesktopSecretStoreOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
+        return new MacSecretStore(options);
+    }
     /// <summary>Creates the Trash, through <c>NSFileManager</c> as Finder moves items.</summary>
     /// <remarks>It needs no window and no AppKit event loop. A volume without a trash, such as a network share, reports
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> and the item stays where it was.</remarks>

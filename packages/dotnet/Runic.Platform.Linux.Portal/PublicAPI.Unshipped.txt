@@ -8,3 +8,4 @@ Runic.Platform.Linux.Portal.PortalApplication.CreateOpenRegistration() -> Runic.
 Runic.Platform.Linux.Portal.PortalApplication.ExportApplicationAsync(Runic.Platform.IApplicationInstance! instance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.IAsyncDisposable!>!>
 Runic.Platform.Linux.Portal.PortalApplication.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
 Runic.Platform.Linux.Portal.PortalApplication.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
+Runic.Platform.Linux.Portal.PortalApplication.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!

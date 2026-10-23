@@ -59,6 +59,18 @@ internal sealed class SecretStoreTests
         catch (OperationCanceledException) { }
     }
 
+    [Test, DisplayName("secret store: the public options factory passes RequireEncryption (SEC-29)")]
+    public void OptionsFactory()
+    {
+        var application = new PortalApplication();
+        Check(application.CreateSecretStore() is SecretServiceStore { RequireEncryption: false }, "a plain fallback by default");
+        Check(application.CreateSecretStore(new DesktopSecretStoreOptions()) is SecretServiceStore { RequireEncryption: false }, "default options");
+        Check(application.CreateSecretStore(new DesktopSecretStoreOptions { RequireEncryption = true }) is SecretServiceStore { RequireEncryption: true },
+            "RequireEncryption reaches the store");
+        try { application.CreateSecretStore(null!); throw new InvalidOperationException("Null options were accepted."); }
+        catch (ArgumentNullException) { }
+    }
+
     [Test, Explicit, Category("DBus"), DisplayName("secret store: set, get, replace and delete over an encrypted session, with libsecret's attributes and a readable label")]
     public async Task RoundTripAsync()
     {
@@ -107,9 +119,12 @@ internal sealed class SecretStoreTests
         Check(store.LastAlgorithm == SecretServiceClient.PlainAlgorithm && diagnostics.Any(d => d.Code == "secret-service-plain-session"), "plain, diagnosed");
         Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "plain" }, "read back");
         Check(diagnostics.All(d => !(d.Message + d.Remediation).Contains(Account) && !(d.Message + d.Remediation).Contains(Service)), "diagnostics carry no names");
-        var strict = new SecretServiceStore(destination: fake.Name, requireEncryption: true);
+        diagnostics.Clear();
+        var strict = new SecretServiceStore(destination: fake.Name, application: new PortalApplication(null, diagnostics.Add), requireEncryption: true);
         Check(await strict.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Other },
             "a store that requires encryption does not fall back");
+        Check(diagnostics.Any(d => d.Code == "secret-service-encryption-required") && diagnostics.All(d => d.Code != "secret-service-plain-session"),
+            "the refusal is diagnosed");
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("secret store: a locked item is unlocked through a prompt; dismissal, an unshowable prompt and a refused unlock are typed")]

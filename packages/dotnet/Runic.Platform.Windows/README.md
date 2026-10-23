@@ -198,7 +198,15 @@ this computer. The target is `<service>/<account>`, with `/` and `%` in the
 service percent-encoded, and the user name is the account, so Control Panel's
 Credential Manager lists them under Windows Credentials. A process without a
 logon session's vault, such as a service, reports
-`Unavailable(BackendUnavailable)`. See the
+`Unavailable(BackendUnavailable)`.
+
+A binary secret of up to 2560 bytes is the credential blob. A larger one, up to
+64 KiB, is a file under `%LOCALAPPDATA%\Runic\Secrets` protected with DPAPI for
+this user (`CryptProtectData` without UI, the target as entropy); the credential
+then holds a reference to the file and its SHA-256, so a replaced or damaged
+file reads as `Failed(InvalidData)`. Deleting the secret removes both. Like the
+credential, the file does not roam. `CreateSecretStore(DesktopSecretStoreOptions)`
+returns the same store: Credential Manager never prompts. See the
 [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
 
 ## Message boxes
