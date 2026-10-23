@@ -14,13 +14,18 @@ namespace Runic.Application.Views.Desktop;
 /// <remarks>
 /// A window reloads the last HTML document it loaded from the surface, or else its start page. Only the path is kept:
 /// its query, its hash and routes set with <c>history.pushState</c> are not, because the surface never sees them.
-/// A reload reaches only a connected page. A page that loaded its document before a change and connects after it,
-/// for example one that was still loading or reconnecting when the change was published, is reloaded when it
-/// connects.
+/// A connected page is reloaded through its Bridge. A page that loaded its document before a change and connects
+/// after it, for example one that was still loading or reconnecting when the change was published, is reloaded when it
+/// connects. A window whose page has no Bridge, such as a half-written <c>index.html</c> or a build error page, is
+/// reloaded by navigating its WebView (#520); a window shown in an installed browser has no such fallback.
 /// </remarks>
 internal sealed class DevelopmentAssets
 {
     internal const string EnvironmentVariable = "RUNIC_APPLICATION_DEVELOPMENT_ASSETS";
+
+    // How long a reload sent through the Bridge waits for the window to load a document of the current version
+    // before it navigates the WebView instead.
+    private static readonly TimeSpan BridgeReloadGrace = TimeSpan.FromSeconds(1);
 
     private readonly object _gate = new();
     private readonly Dictionary<(string Directory, string StartPage), Shared> _shared = [];
@@ -228,7 +233,7 @@ internal sealed class DevelopmentAssets
         }
 
         // Navigates the window's pages; their Bridge reconnects as after any reload. Navigation through the surface
-        // runs no page script, so an application's Content-Security-Policy does not block it.
+        // or the WebView runs no page script, so an application's Content-Security-Policy does not block it.
         internal void Reload()
         {
             if (Volatile.Read(ref _disposed) != 0 || Volatile.Read(ref _surface) is not { } surface) return;
@@ -237,7 +242,26 @@ internal sealed class DevelopmentAssets
 
         private async Task ReloadAsync(DesktopSurface surface, string url)
         {
-            try { await surface.NavigateAsync(url).ConfigureAwait(false); }
+            try
+            {
+                // A page without the Bridge (a half-written document, a build error page) never connects, so only the
+                // window's WebView can reload it (#520).
+                if (surface.ConnectionCount == 0)
+                {
+                    await surface.NavigateWindowAsync(new Uri(url)).ConfigureAwait(false);
+                    return;
+                }
+                await surface.NavigateAsync(url).ConfigureAwait(false);
+                // The connected page can miss the navigation, for example while it is leaving for a document that was
+                // served just before the change. When no document of this version was loaded and no page connected
+                // meanwhile, the WebView navigates. A page that connects later is reloaded when it connects.
+                var version = _shared.Version;
+                await Task.Delay(BridgeReloadGrace).ConfigureAwait(false);
+                if (Volatile.Read(ref _disposed) == 0 && version == _shared.Version &&
+                    Interlocked.Read(ref _documentVersion) != version && surface.ConnectionCount == 0)
+                    await surface.NavigateWindowAsync(new Uri(ReloadUrl(surface.Url, Document, _startPage)))
+                        .ConfigureAwait(false);
+            }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
                 // A window that closed meanwhile; the next change or the next window reloads.
