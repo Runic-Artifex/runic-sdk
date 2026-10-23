@@ -745,7 +745,7 @@ ViewModels use `IWindowPlatformServices.StartDragAsync`, which reports
 
 | Presentation | Drag source | Verified |
 | --- | --- | --- |
-| Windows WebView2 | OLE `SHDoDragDrop` on the window thread with the shell's data object (`CF_HDROP`, the shell ID list), `CF_UNICODETEXT`, `UniformResourceLocatorW` and `Preferred DropEffect`; the browser process gives up its mouse capture to the drag loop | CI: `SendInput` press, page `dragstart`, drop on a window (files and text) and Escape, JIT and NativeAOT; win-arm64 does not run the OLE drag loop (I-077) |
+| Windows WebView2 | OLE `SHDoDragDrop` on the window thread with the shell's data object (the shell ID list) plus `CF_HDROP`, `CF_UNICODETEXT`, `UniformResourceLocatorW` and `Preferred DropEffect`; the browser process gives up its mouse capture to the drag loop, and Runic's drop source reads Escape itself because the keyboard focus stays in the web view | CI: `SendInput` press, page `dragstart`, drop on a window (files and text) and Escape, JIT and NativeAOT; win-arm64 does not run the OLE drag loop (I-077) |
 | WPF child web View (`WpfPlatformServices.ForWindow`) | As WebView2, on the window's dispatcher | CI: a drag from the child web view onto a WPF window |
 | macOS WKWebView | `beginDraggingSessionWithItems:event:source:` with `public.file-url`, `public.utf8-plain-text` and `public.url` items | CI: the dragging source callbacks; the OS drag loop is a manual check |
 | Linux GTK 3, GTK 4 | Not yet: the window does not report `FileDrag` | |
