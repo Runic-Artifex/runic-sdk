@@ -361,6 +361,7 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
 
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   useMenuBar,
   type MenuBarEntry,

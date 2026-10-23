@@ -7,6 +7,7 @@ import {
   type MenuBarHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root from "../dist/index.js";
+import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
@@ -495,8 +496,13 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "ViewOutlet", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useMenuBar", "useOperation", "useView",
+      "ViewOutlet", "onBridgeConnection", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useMenuBar",
+      "useOperation", "useView",
     ]);
+    // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
+    expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);
+    expectTypeOf<root.BridgeConnectionState>().toEqualTypeOf<ViewsBridgeConnectionState>();
+    expectTypeOf<root.BridgeConnectionOptions>().toEqualTypeOf<ViewsBridgeConnectionOptions>();
   });
 });
 

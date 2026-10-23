@@ -6,6 +6,7 @@ import type { MenuBarMenu, MenuBarRequest, MenuBarState, RunicBridgeClient } fro
 import { installMockMenuBar } from "@runic-artifex/views/mock";
 import { useMenuBar, type MenuBarHandle } from "../src/views/index.js";
 import * as root from "../src/index.js";
+import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import MenuBarOwner from "./fixtures/MenuBarOwner.svelte";
 
 const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
@@ -93,7 +94,12 @@ describe("useMenuBar", () => {
 
   test("is a root export (0.11)", () => {
     expect(Object.keys(root).sort()).toEqual([
-      "ViewOutlet", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useMenuBar", "useOperation", "useView",
+      "ViewOutlet", "onBridgeConnection", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useMenuBar",
+      "useOperation", "useView",
     ]);
+    // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
+    expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);
+    expectTypeOf<root.BridgeConnectionState>().toEqualTypeOf<ViewsBridgeConnectionState>();
+    expectTypeOf<root.BridgeConnectionOptions>().toEqualTypeOf<ViewsBridgeConnectionOptions>();
   });
 });

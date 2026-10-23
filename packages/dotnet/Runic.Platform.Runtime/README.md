@@ -61,6 +61,17 @@ launch hands over its arguments and exits, and the running instance raises
 var claim = await ApplicationInstance.ClaimAsync("org.example.Manager", args);
 ```
 
+An MSIX-packaged application receives a protocol URI or the files of a file-type
+activation through its activation, not `args`, so `ClaimAsync(id, args)` would
+forward none of them. Pass the launch that
+`DesktopPlatformServices.GetLaunch(args)` (Runic.Application.Views.Desktop) or
+`WindowsPlatformProvider.GetLaunch(args)` (Runic.Platform.Windows) returns; both
+are `ApplicationLaunch.FromProcess(args)` outside a package:
+
+```csharp
+var claim = await ApplicationInstance.ClaimAsync("org.example.Manager", DesktopPlatformServices.GetLaunch(args));
+```
+
 With `ApplicationInstanceOptions.ReplyToLaunches`, a later launch, such as a
 command line, also waits for the running instance's reply: messages (output lines
 or JSON events, as UTF-8 strings of at most 1 MiB) and an exit status. Set it in

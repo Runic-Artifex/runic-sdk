@@ -13,7 +13,7 @@ An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
 that names no other diagnostics numbers its experimental families from `001`,
 such as `RUNICASSETS001`. A prefix that already names compiler or build
 diagnostics numbers them from `100`, so the two never share a number: the D-Bus
-source generator reports `RUNICDBUS001` to `RUNICDBUS012`, and an experimental
+source generator reports `RUNICDBUS001` to `RUNICDBUS013`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
 Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
 experimental Desktop families number from `RUNICDESK100`. The Navigation

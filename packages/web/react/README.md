@@ -220,7 +220,8 @@ unmount starts a fresh controller.
 ## `useBridgeConnection(options?)`
 
 Renders the page's connection to its .NET host while the component is mounted.
-It wraps `onBridgeConnection` from `@runic-artifex/views` and returns
+It wraps `onBridgeConnection` from `@runic-artifex/views` (re-exported here since 0.11, with the
+`BridgeConnectionState` and `BridgeConnectionOptions` types) and returns
 `{ state }`, where `state` is a `BridgeConnectionState`: `connecting`,
 `connected`, `reconnecting` or `lost` (a closed set, see
 [Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):

@@ -9,6 +9,7 @@ export {
 } from "./inject-latest-operation.js";
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
+export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   injectMenuBar,
   type InjectMenuBarOptions,
