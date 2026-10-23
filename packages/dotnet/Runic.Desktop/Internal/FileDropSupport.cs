@@ -1,3 +1,5 @@
+using Runic.Platform;
+
 namespace Runic.Desktop.Internal;
 
 // File drops onto an embedded window. The paths always come from the native drop; the page only adds the routing
@@ -10,64 +12,120 @@ internal static class FileDropSupport
     // How long a native drop waits for the page's label before it is delivered without one.
     internal static readonly TimeSpan LabelWait = TimeSpan.FromMilliseconds(500);
 
+    // The part of both scripts that reads data-runic-drop-effect: the nearest marked element under the pointer sets the
+    // dropEffect Runic reports during a file drag; "none" refuses the drop there without navigating. Unmarked pages
+    // set no dropEffect, so the source's own actions apply.
+    private const string EffectFunctions = """
+          const effects = ["copy", "move", "link", "none"];
+          const marked = event => {
+            const element = event.target instanceof Element ? event.target.closest("[data-runic-drop-effect]") : null;
+            const value = element?.getAttribute("data-runic-drop-effect");
+            return typeof value === "string" && effects.includes(value) ? value : null;
+          };
+          const allow = event => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            const effect = marked(event);
+            if (effect !== null) try { event.dataTransfer.dropEffect = effect; } catch { }
+          };
+          const performed = (event, effect) => {
+            const value = effect ?? event.dataTransfer.dropEffect;
+            return value === "move" || value === "link" ? value : "copy";
+          };
+          const label = event => {
+            const element = event.target instanceof Element ? event.target.closest("[data-runic-drop-target]") : null;
+            const value = element?.getAttribute("data-runic-drop-target");
+            return typeof value === "string" ? value : null;
+          };
+    """;
+
     // For WebKitGTK and WKWebView, in an isolated script world, where the page cannot reach the handler. It lets every
-    // file drag drop, so WebKit never navigates to a dropped file, and reports the label of the drop's target: "1" and
-    // the label, or "0". A label is only ever attached to a drop the native window reported, with the native paths.
-    // Capture-phase listeners on window run before the page's own handlers, which still receive every event. It sets
-    // no dropEffect, so the source's own actions apply. WebKitGTK lists a file drag as text/uri-list until the drop,
-    // so a dragged link is held on the page too; the native side ignores drops without file paths.
+    // file drag drop, so WebKit never navigates to a dropped file, and reports the drop's target as JSON:
+    // {"label", "effect", "origin"}, where origin is null in the top-level document and the frame's origin in a
+    // subframe, so the native side can refuse frames of another origin. A label is only ever attached to a drop the
+    // native window reported, with the native paths. Capture-phase listeners on window run before the page's own
+    // handlers, which still receive every event. WebKitGTK lists a file drag as text/uri-list until the drop, so a
+    // dragged link is held on the page too; the native side ignores drops without file paths.
     internal const string WebKitScript = """
         (() => {
           "use strict";
           const handler = globalThis.webkit?.messageHandlers?.runicFileDrop;
-          if (!handler || globalThis.top !== globalThis) return;
+          if (!handler) return;
           const post = handler.postMessage.bind(handler);
+          const stringify = JSON.stringify;
+          const origin = globalThis.top === globalThis ? null : String(globalThis.location?.origin ?? "null");
           const hasFiles = event => !!event.dataTransfer &&
             Array.from(event.dataTransfer.types).some(type => type === "Files" || type === "text/uri-list");
-          const allow = event => {
-            if (!hasFiles(event)) return;
-            event.preventDefault();
-          };
+        """ + EffectFunctions + """
           globalThis.addEventListener("dragenter", allow, true);
           globalThis.addEventListener("dragover", allow, true);
           globalThis.addEventListener("drop", event => {
             if (!hasFiles(event)) return;
             event.preventDefault();
-            const element = event.target instanceof Element ? event.target.closest("[data-runic-drop-target]") : null;
-            const label = element?.getAttribute("data-runic-drop-target");
-            post(typeof label === "string" ? "1" + label : "0");
+            const effect = marked(event);
+            if (effect === "none") return;
+            post(stringify({ label: label(event), effect: performed(event, effect), origin }));
           }, true);
         })();
         """;
 
-    // For WebView2, whose File objects carry their paths only to the host: the top-level document hands the dropped
-    // files to chrome.webview.postMessageWithAdditionalObjects. The function and the token are captured before any
-    // page script runs. Page script in the same world can still dispatch a drop of File objects it holds, which the
-    // user handed it, so the token only keeps other messages from passing as drops.
+    // For WebView2, whose File objects carry their paths only to the host: every document, subframes included, hands
+    // the dropped files to chrome.webview.postMessageWithAdditionalObjects; the host hears the top-level document and
+    // frames of the presented origin only. The function and the token are captured before any page script runs. Page
+    // script in the same world can still dispatch a drop of File objects it holds, which the user handed it, so the
+    // token only keeps other messages from passing as drops, and the reported effect is as untrusted as the label.
     internal static string WebView2Script(string token) => $$"""
         (() => {
           "use strict";
           const view = globalThis.chrome?.webview;
-          if (globalThis.top !== globalThis || typeof view?.postMessageWithAdditionalObjects !== "function") return;
+          if (typeof view?.postMessageWithAdditionalObjects !== "function") return;
           const post = view.postMessageWithAdditionalObjects.bind(view);
           const stringify = JSON.stringify;
           const includes = Array.prototype.includes;
           const hasFiles = event => !!event.dataTransfer && includes.call(event.dataTransfer.types, "Files");
-          globalThis.addEventListener("dragover", event => { if (hasFiles(event)) event.preventDefault(); }, true);
+        """ + EffectFunctions + $$"""
+          globalThis.addEventListener("dragenter", allow, true);
+          globalThis.addEventListener("dragover", allow, true);
           globalThis.addEventListener("drop", event => {
             if (!hasFiles(event)) return;
             event.preventDefault();
-            const element = event.target instanceof Element ? event.target.closest("[data-runic-drop-target]") : null;
-            const label = element?.getAttribute("data-runic-drop-target");
-            if (event.dataTransfer.files.length === 0) return;
-            post(stringify({ runicFileDrop: "{{token}}", target: typeof label === "string" ? label : null }), event.dataTransfer.files);
+            const effect = marked(event);
+            if (effect === "none" || event.dataTransfer.files.length === 0) return;
+            post(stringify({ runicFileDrop: "{{token}}", target: label(event), effect: performed(event, effect) }), event.dataTransfer.files);
           }, true);
         })();
         """;
 
-    // Decodes the WebKit script's message.
-    internal static string? DecodeLabel(string? message) =>
-        message is { Length: > 0 } && message[0] == '1' ? message[1..] : null;
+    // Decodes the WebKit script's message; an unreadable one is a top-level report without a label.
+    internal static FileDropReport DecodeReport(string? message)
+    {
+        if (string.IsNullOrEmpty(message) || message.Length > 64 * 1024) return new(null, DesktopDragEffects.Copy, null);
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(message);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return new(null, DesktopDragEffects.Copy, null);
+            return new(ReadString(root, "label"), ParseEffect(ReadString(root, "effect")), ReadString(root, "origin"));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new(null, DesktopDragEffects.Copy, null);
+        }
+    }
+
+    // The label of a top-level report.
+    internal static string? DecodeLabel(string? message) => DecodeReport(message).Label;
+
+    // A reported dropEffect: copy unless the page reported move or link.
+    internal static DesktopDragEffects ParseEffect(string? effect) => effect switch
+    {
+        "move" => DesktopDragEffects.Move,
+        "link" => DesktopDragEffects.Link,
+        _ => DesktopDragEffects.Copy,
+    };
+
+    internal static string? ReadString(System.Text.Json.JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString() : null;
 
     // The local paths of a text/uri-list: file URIs only, comments and other schemes skipped.
     internal static List<string> ParseUriList(string? uriList)
@@ -106,13 +164,20 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     private readonly Queue<Pending> _pending = new();
     private bool _disposed;
 
-    internal void NativeDrop(IReadOnlyList<string> paths)
+    internal void NativeDrop(IReadOnlyList<string> paths) => NativeDrop(paths, [], DesktopDragEffects.Copy);
+
+    // The native side's paths, promised files and the effect it negotiated with the drag source.
+    internal void NativeDrop(IReadOnlyList<string> paths, IReadOnlyList<IReadFileLease> promisedFiles, DesktopDragEffects effect)
     {
-        if (paths.Count == 0) return;
-        var pending = new Pending(paths);
+        if (paths.Count == 0 && promisedFiles.Count == 0) return;
+        var pending = new Pending(paths, promisedFiles, effect);
         lock (_gate)
         {
-            if (_disposed) return;
+            if (_disposed)
+            {
+                pending.Discard();
+                return;
+            }
             _pending.Enqueue(pending);
             pending.Timer = new Timer(static state =>
             {
@@ -122,15 +187,17 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
         }
     }
 
-    // A label without a pending native drop is ignored: the page cannot make a drop of its own.
-    internal void PageReport(string? label)
+    // A label without a pending native drop is ignored: the page cannot make a drop of its own. A refused report, from
+    // a frame of another origin, discards the drop it belongs to.
+    internal void PageReport(string? label, bool refused = false)
     {
         Pending pending;
         lock (_gate)
         {
             if (_disposed || !_pending.TryDequeue(out pending!)) return;
             pending.Timer?.Dispose();
-            Deliver(pending, label);
+            if (refused) pending.Discard();
+            else Deliver(pending, label);
         }
     }
 
@@ -152,8 +219,8 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     // Under the gate, so drops are delivered in order; the receiver only queues them.
     private void Deliver(Pending pending, string? label)
     {
-        try { deliver(new DesktopFileDropEventArgs(pending.Paths, label)); }
-        catch (Exception error) when (error is not OutOfMemoryException) { }
+        try { deliver(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label) { Effect = pending.Effect }); }
+        catch (Exception error) when (error is not OutOfMemoryException) { pending.Discard(); }
     }
 
     public void Dispose()
@@ -161,19 +228,37 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
         lock (_gate)
         {
             _disposed = true;
-            while (_pending.TryDequeue(out var pending)) pending.Timer?.Dispose();
+            while (_pending.TryDequeue(out var pending))
+            {
+                pending.Timer?.Dispose();
+                pending.Discard();
+            }
         }
     }
 
-    private sealed class Pending(IReadOnlyList<string> paths)
+    private sealed class Pending(IReadOnlyList<string> paths, IReadOnlyList<IReadFileLease> promisedFiles, DesktopDragEffects effect)
     {
         internal IReadOnlyList<string> Paths { get; } = paths;
+        internal IReadOnlyList<IReadFileLease> PromisedFiles { get; } = promisedFiles;
+        internal DesktopDragEffects Effect { get; } = effect is DesktopDragEffects.Move or DesktopDragEffects.Link ? effect : DesktopDragEffects.Copy;
         internal Timer? Timer { get; set; }
+
+        // A drop nobody receives deletes the staged copies of its promised files.
+        internal void Discard()
+        {
+            foreach (var file in PromisedFiles)
+                _ = file.DisposeAsync().AsTask().ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
     }
 }
 
-// The WebView2 script's message: {"runicFileDrop": token, "target": label or null}. Anything else is not a drop.
-internal sealed record FileDropMessage(string? Target)
+// The WebKit script's report: the page's label and effect, and the frame's origin (null in the top-level document).
+internal sealed record FileDropReport(string? Label, DesktopDragEffects Effect, string? Origin);
+
+// The WebView2 script's message: {"runicFileDrop": token, "target": label or null, "effect": dropEffect}. Anything else
+// is not a drop.
+internal sealed record FileDropMessage(string? Target, DesktopDragEffects Effect = DesktopDragEffects.Copy)
 {
     internal static FileDropMessage? Parse(string? message, string token)
     {
@@ -187,10 +272,8 @@ internal sealed record FileDropMessage(string? Target)
                 || marker.ValueKind != System.Text.Json.JsonValueKind.String
                 || !string.Equals(marker.GetString(), token, StringComparison.Ordinal))
                 return null;
-            var target = root.TryGetProperty("target", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
-                ? value.GetString()
-                : null;
-            return new FileDropMessage(target);
+            return new FileDropMessage(FileDropSupport.ReadString(root, "target"),
+                FileDropSupport.ParseEffect(FileDropSupport.ReadString(root, "effect")));
         }
         catch (System.Text.Json.JsonException)
         {

@@ -95,6 +95,41 @@ public interface IWindowPlatformServices : IPlatformCapabilities
             new PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
     }
 
+    /// <summary>Starts a native drag of files, text or URIs out of the window, and returns the effect of the drop.</summary>
+    /// <param name="data">What to drag; the rules of <see cref="DesktopDragData"/>.</param>
+    /// <param name="cancellationToken">Cancels before the drag starts; a running drag ends with the pointer.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> with the effect the drop target chose, one of
+    /// <see cref="DesktopDragData.AllowedEffects"/>, or <see cref="DesktopDragEffects.None"/> when the user cancelled the
+    /// drag, dropped it where nothing accepted it, or no mouse button was held when the call arrived.
+    /// <see cref="PlatformResult{T}.Unavailable"/>: <see cref="PlatformUnavailableReason.OwnerUnavailable"/> before the
+    /// window opens or on a host without a native owner, <see cref="PlatformUnavailableReason.OwnerClosed"/> once it
+    /// closed, and <see cref="PlatformUnavailableReason.BackendUnavailable"/> when the window cannot start drags
+    /// (<see cref="PlatformCapabilityIds.DragOut"/>).
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Call it while the user holds the primary mouse button on the window: a page asks for the drag through an
+    /// ordinary command from its <c>dragstart</c> event, after calling <c>preventDefault()</c> so the web view starts no
+    /// drag of its own, and the ViewModel builds <paramref name="data"/> from its own state, for example the files of the
+    /// row the command names. The paths never come from the page.
+    /// </para>
+    /// <para>
+    /// <see cref="DesktopDragEffects.Move"/> means the target asked for a move: the files may already be gone, for
+    /// example after an optimized move on Windows, so delete what remains. An implementation that does not override this
+    /// member checks the arguments and reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="data"/> breaks a rule of <see cref="DesktopDragData"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="data"/> is <see langword="null"/>.</exception>
+    ValueTask<PlatformResult<DesktopDragEffects>> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default)
+    {
+        DesktopDragRules.Check(data);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<DesktopDragEffects>>(
+            new PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+    }
+
     /// <summary>The desktop's monitors, in the units of the window's position and size (<see cref="PlatformCapabilityIds.Monitors"/>).</summary>
     /// <remarks>
     /// The monitors of the window's host; the list does not depend on the window. An implementation that does not
@@ -214,6 +249,8 @@ public static class PlatformCapabilityIds
     public const string TaskbarBadge = "platform.taskbar.badge";
     /// <summary>Showing progress through <see cref="IWindowPlatformServices.SetProgressAsync"/>.</summary>
     public const string TaskbarProgress = "platform.taskbar.progress";
+    /// <summary>Starting drags out of the window through <see cref="IWindowPlatformServices.StartDragAsync"/>.</summary>
+    public const string DragOut = "platform.drag.out";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -229,15 +266,15 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu,
         PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors, PlatformCapabilityIds.MessageBoxes,
         PlatformCapabilityIds.ClipboardReadData, PlatformCapabilityIds.ClipboardWriteData, PlatformCapabilityIds.ClipboardWatch,
-        PlatformCapabilityIds.TaskbarBadge, PlatformCapabilityIds.TaskbarProgress,
+        PlatformCapabilityIds.TaskbarBadge, PlatformCapabilityIds.TaskbarProgress, PlatformCapabilityIds.DragOut,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
     /// <remarks>
     /// Dialogs return <see cref="PickerResult{T}.Unavailable"/> and the clipboard, launcher,
     /// <see cref="IWindowPlatformServices.Monitors"/>, <see cref="IWindowPlatformServices.MessageBoxes"/>, <see cref="IWindowPlatformServices.AnnounceAsync"/>,
-    /// <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>, <see cref="IWindowPlatformServices.SetBadgeAsync"/> and
-    /// <see cref="IWindowPlatformServices.SetProgressAsync"/>
+    /// <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>, <see cref="IWindowPlatformServices.SetBadgeAsync"/>,
+    /// <see cref="IWindowPlatformServices.SetProgressAsync"/> and <see cref="IWindowPlatformServices.StartDragAsync"/>
     /// <see cref="PlatformResult{T}.Unavailable"/>; the clipboard is an <see cref="IDesktopClipboard"/>, whose watch
     /// reports the reason once and ends. Nothing throws except for invalid arguments and caller cancellation.
     /// </remarks>
@@ -403,6 +440,12 @@ public static class WindowPlatformServices
         {
             CheckContextMenu(items, options, cancellationToken);
             return Result<DesktopMenuItem?>(cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<DesktopDragEffects>> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default)
+        {
+            DesktopDragRules.Check(data);
+            return Result<DesktopDragEffects>(cancellationToken);
         }
 
         private ValueTask<PickerResult<T>> Pick<T>(CancellationToken cancellationToken) where T : IAsyncDisposable

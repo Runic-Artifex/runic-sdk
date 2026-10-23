@@ -111,7 +111,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
-        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -1145,7 +1145,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Hosts.TryRemove(_window, out _);
         WebViews.TryRemove(_webView, out _);
-        _drops?.Dispose();
+        EndDrags();
+        lock (_promiseGate) _drops?.Dispose();
         _nativeShutdown.Cancel();
         _closed.TrySetResult();
         ThreadPool.QueueUserWorkItem(static state =>
@@ -1238,8 +1239,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         return type;
     }
 
-    // A WKWebView that reads the paths of dropped files from the dragging pasteboard, then lets WebKit perform the
-    // drop, so the page still receives its drop event.
+    // A WKWebView that reads the paths and promised files of a drop from the dragging pasteboard, then lets WebKit
+    // perform the drop, so the page still receives its drop event. It remembers the operation WebKit answers while a
+    // drag moves over the page (MacOsDragSource.cs), which is the drop's effect.
     private static unsafe nint CreateWebViewClass()
     {
         if (!OperatingSystem.IsMacOS() || !Api.IsAvailable)
@@ -1258,6 +1260,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Api.AddMethod(type, "performDragOperation:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&PerformDragOperation,
             RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
+        foreach (var selector in (string[])["draggingEntered:", "draggingUpdated:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, ulong>)&DraggingUpdated, "Q@:@");
+        }
         Api.RegisterClassPair(type);
         return type;
     }
@@ -1530,9 +1536,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
-            if (WebViews.TryGetValue(self, out var host) && host.IsOpen && Api.ReadDroppedFilePaths(sender) is { Count: > 0 } paths)
+            if (WebViews.TryGetValue(self, out var host) && host.IsOpen)
             {
-                host._drops?.NativeDrop(paths);
+                host.ReadDrop(sender);
             }
         }
         catch
@@ -1549,6 +1555,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
+    // The script runs in every frame (D037.2). WebKit's frameInfo, not the page, says which frame reported: a subframe
+    // of another origin than the presented one refuses the drop.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void DidReceiveFileDropMessage(nint self, nint selector, nint controller, nint message)
     {
@@ -1556,7 +1564,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             if (WebViews.TryGetValue(Api.SendNint(message, "webView"), out var host) && host.IsOpen)
             {
-                host._drops?.PageReport(FileDropSupport.DecodeLabel(Api.Text(Api.SendNint(message, "body"))));
+                var body = Api.SendNint(message, "body");
+                var report = FileDropSupport.DecodeReport(Api.IsString(body) ? Api.Text(body) : null);
+                var frame = Api.SendNint(message, "frameInfo");
+                var mainFrame = frame != 0 && Api.SendBool(frame, "isMainFrame");
+                var origin = mainFrame || frame == 0 ? null : SecurityOriginUrl(Api.SendNint(frame, "securityOrigin"));
+                host.PageReport(report.Label, refused: !MacOsDragOperations.AcceptsFrame(mainFrame, host._presentedUrl, origin));
             }
         }
         catch
@@ -1667,7 +1680,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private readonly record struct CGRect(double X, double Y, double Width, double Height);
 
 #pragma warning disable CA1822
-    private sealed unsafe class ObjC
+    private sealed unsafe partial class ObjC
     {
         private readonly nint _appKit;
         private readonly nint _messageSend;
@@ -2187,6 +2200,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         // In its own content world (macOS 11 and later), where the page cannot reach the handler; otherwise in the page's.
+        // In every frame, so drops into same-origin iframes carry their label; the handler checks the frame's origin.
         private void AddFileDropScript(nint controller, nint handler)
         {
             var source = CreateString(FileDropSupport.WebKitScript);
@@ -2205,7 +2219,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                             controller, Selector("addScriptMessageHandler:contentWorld:name:"), handler, world, name);
                         script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint, nint>)_messageSend)(
                             SendNint(GetClass("WKUserScript"), "alloc"),
-                            Selector("initWithSource:injectionTime:forMainFrameOnly:inContentWorld:"), source, 0, 1, world);
+                            Selector("initWithSource:injectionTime:forMainFrameOnly:inContentWorld:"), source, 0, 0, world);
                     }
                     finally
                     {
@@ -2218,7 +2232,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                         controller, Selector("addScriptMessageHandler:name:"), handler, name);
                     script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint>)_messageSend)(
                         SendNint(GetClass("WKUserScript"), "alloc"),
-                        Selector("initWithSource:injectionTime:forMainFrameOnly:"), source, 0, 1);
+                        Selector("initWithSource:injectionTime:forMainFrameOnly:"), source, 0, 0);
                 }
                 if (script != 0)
                 {

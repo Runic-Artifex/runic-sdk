@@ -774,6 +774,47 @@ document-portal paths under `/run/user/<uid>/doc`, which the application can
 open; a macOS App Sandbox grants access to dropped files while the application
 runs.
 
+`RunicFileDrop.Effect` is `Copy`, `Move` or `Link`, as the drag source, the
+user's modifier keys and the page agreed; mark where a drop copies, moves, links
+or is refused with `data-runic-drop-effect="copy|move|link|none"`, and treat the
+effect like the label. Files without a local path, such as a macOS Mail
+attachment, arrive in `RunicFileDrop.PromisedFiles` (`Files` may then be empty):
+read each once with `OpenReadAsync` and dispose it; the host disposes the ones
+the handler did not open when it returns. Drops into a frame of the page's own
+origin arrive as drops onto the page; frames of other origins deliver none.
+Dragged text and links stay with the page's own `drop` event.
+
+### Dragging files out
+
+A ViewModel drags files, text or links out of its Window with
+`IWindowPlatformServices.StartDragAsync`, while the user holds the mouse button.
+The page cancels its own drag in `dragstart` and runs an ordinary command with a
+key; the ViewModel builds the data from its own state:
+
+```js
+row.addEventListener("dragstart", (event) => {
+  event.preventDefault();
+  void files.dragItem(row.dataset.key);
+});
+```
+
+```csharp
+[RelayCommand]
+private async Task DragItemAsync(string key)
+{
+    var result = await _platform.StartDragAsync(new DesktopDragData
+    {
+        Paths = [_items[key].Path], AllowedEffects = DesktopDragEffects.Copy | DesktopDragEffects.Move,
+    });
+    if (result is PlatformResult<DesktopDragEffects>.Success(DesktopDragEffects.Move)) await RemoveAsync(key);
+}
+```
+
+The result is the drop's effect, or `None` when the drag was cancelled or no
+button was held. Runic Desktop's WebView2 and WKWebView windows and WPF windows
+(`WpfPlatformServices.ForWindow`) start drags; see
+[the Desktop guide](../Runic.Desktop/README.md#dragging-files-out).
+
 ### Copying and pasting from C#
 
 A ViewModel that copies or pastes more than text takes `IDesktopClipboard`, the

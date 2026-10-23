@@ -186,16 +186,16 @@ internal sealed class UriLaunchTests
     {
         string[] constants = [.. typeof(PlatformCapabilityIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Select(static field => (string)field.GetRawConstantValue()!)];
-        Check(constants.Length == 19 && constants.Distinct().Count() == constants.Length, "nineteen distinct constants");
+        Check(constants.Length == 20 && constants.Distinct().Count() == constants.Length, "twenty distinct constants");
         Check(WindowPlatformServices.CapabilityIds.Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)), "CapabilityIds holds every constant");
         Check(WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable).GetSnapshot().Statuses.Keys.Order(StringComparer.Ordinal)
             .SequenceEqual(constants.Order(StringComparer.Ordinal)), "the unavailable services report every constant");
         await using var lifetime = new PresentationLifetime(() => true, Guid.NewGuid());
         IPlatformCapabilities[] parts = [new PresentationFileLauncher(lifetime), new PresentationClipboard(lifetime), new PresentationFiles(lifetime),
             new PresentationMessageBoxes(lifetime), new PresentationTaskbar(lifetime)];
-        // The menu and monitor capabilities come from the window host, which shows menus and lists monitors without a
-        // platform provider.
-        string[] menus = [PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu, PlatformCapabilityIds.Monitors];
+        // The menu, monitor and drag capabilities come from the window host, which shows menus, lists monitors and
+        // starts drags without a platform provider.
+        string[] menus = [PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu, PlatformCapabilityIds.Monitors, PlatformCapabilityIds.DragOut];
         Check(parts.SelectMany(static part => part.GetSnapshot().Statuses.Keys).Order(StringComparer.Ordinal)
             .SequenceEqual(constants.Except(menus).Order(StringComparer.Ordinal)), "the presentation services report every constant but the menus");
     }

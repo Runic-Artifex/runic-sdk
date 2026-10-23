@@ -56,6 +56,15 @@ internal static partial class WindowsWebView2Interop
     internal const int AcceleratorVirtualKeySlot = 4;
     internal const int AcceleratorBrowserKeyEnabledSlot = 10;
     internal static readonly Guid AcceleratorKeyPressedEventArgs2 = new("03b2c8c8-7799-4e34-bd66-ed26aa85f2bf");
+    // ICoreWebView2_4::add_FrameCreated, ICoreWebView2FrameCreatedEventArgs::get_Frame, ICoreWebView2Frame::add_Destroyed,
+    // ICoreWebView2Frame2::add_WebMessageReceived and ICoreWebView2Frame7::add_FrameCreated (nested frames).
+    internal const int FrameCreatedSlot = 73;
+    internal const int FrameCreatedFrameSlot = 3;
+    internal const int FrameDestroyedSlot = 8;
+    internal const int FrameWebMessageReceivedSlot = 22;
+    internal const int FrameNestedFrameCreatedSlot = 30;
+    internal static readonly Guid Frame2Interface = new("7a6a5834-d185-4dbf-b63f-4a9bc43107d4");
+    internal static readonly Guid Frame7Interface = new("3598cfa2-d85d-5a9f-9228-4dde1f59ec64");
     internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
     internal static readonly Guid WebView4Interface = new("20d02d59-6df2-42dc-bd06-f98a694b1302");
     internal static readonly Guid FileInterface = new("f2c19559-6bc1-4583-a757-90021be9afec");
@@ -217,6 +226,8 @@ internal sealed class WindowsWebView2Controller : IDisposable
     private nint _environment;
     private nint _webView;
     private nint _webView4;
+    private nint _framesSource;
+    private WebViewFrames? _frames;
     private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
 
     private WindowsWebView2Controller(nint environment, nint controller)
@@ -332,15 +343,27 @@ internal sealed class WindowsWebView2Controller : IDisposable
     }
 
     // Dropped files reach the host as the File objects of the page's drop event, which carry their paths only on this
-    // side: Runic's document-start script hands them over (FileDropSupport.WebView2Script). Only the top-level
-    // document of the presented origin is heard, with the script's token.
+    // side: Runic's document-start script, which WebView2 runs in every frame, hands them over
+    // (FileDropSupport.WebView2Script). The top-level document and the frames of the presented origin are heard, with the
+    // script's token; a frame's messages arrive on the frame (ICoreWebView2Frame2), which FrameCreated hands over.
     internal async Task EnableFileDropsAsync(Uri presentedUrl, Action<DesktopFileDropEventArgs> dropped)
     {
         var token = Guid.NewGuid().ToString("N");
-        AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+        void Receive(nint args)
         {
             if (ReadFileDrop(args, presentedUrl, token) is { } drop) dropped(drop);
-        }));
+        }
+        AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(Receive));
+        // ICoreWebView2_4; an older runtime without it delivers drops of the top-level document only.
+        nint webView4;
+        try { webView4 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView4Interface); }
+        catch (InvalidCastException) { webView4 = 0; }
+        if (webView4 != 0)
+        {
+            _frames = new WebViewFrames(Receive);
+            try { AddEvent<IWebViewFrameCreated>(webView4, WindowsWebView2Interop.FrameCreatedSlot, new WebViewEvent(_frames.Created)); }
+            finally { _framesSource = webView4; }
+        }
         await AddDocumentStartScriptAsync(FileDropSupport.WebView2Script(token));
     }
 
@@ -378,7 +401,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
                     }
                     finally { WindowsWebView2Interop.Release(value); }
                 }
-                return paths.Count == 0 ? null : new DesktopFileDropEventArgs(paths, envelope.Target);
+                return paths.Count == 0 ? null : new DesktopFileDropEventArgs(paths, envelope.Target) { Effect = envelope.Effect };
             }
             finally { WindowsWebView2Interop.Release(objects); }
         }
@@ -497,6 +520,10 @@ internal sealed class WindowsWebView2Controller : IDisposable
             {
                 foreach (var entry in _events) entry.Handler.Dispose();
                 _events.Clear();
+                _frames?.Dispose();
+                _frames = null;
+                WindowsWebView2Interop.Release(_framesSource);
+                _framesSource = 0;
                 WindowsWebView2Interop.Release(_webView4);
                 WindowsWebView2Interop.Release(_webView);
                 WindowsWebView2Interop.Release(_controller);
@@ -540,6 +567,12 @@ internal partial interface IWebViewNewWindowRequested { [PreserveSig] int Invoke
 internal partial interface IWebViewDownloadStarting { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("b29c7e28-fa79-41a8-8e44-65811c76dcb2")]
 internal partial interface IWebViewAcceleratorKeyPressed { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("38059770-9baa-11eb-a8b3-0242ac130003")]
+internal partial interface IWebViewFrameCreated { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("e371e005-6d1d-4517-934b-a8f1629c62a5")]
+internal partial interface IWebViewFrameWebMessageReceived { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("59dd7b4c-9baa-11eb-a8b3-0242ac130003")]
+internal partial interface IWebViewFrameDestroyed { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("5c4889f0-5ef6-4c5a-952c-d8f1b92d0574")]
 internal partial interface IWebViewDevToolsCompleted { [PreserveSig] int Invoke(int errorCode, nint result); }
 
@@ -599,7 +632,8 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 [GeneratedComClass]
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
     IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting,
-    IWebViewAcceleratorKeyPressed
+    IWebViewAcceleratorKeyPressed,
+    IWebViewFrameCreated, IWebViewFrameWebMessageReceived
 {
     public int Invoke(nint sender, nint args)
     {
@@ -637,4 +671,89 @@ internal sealed partial class WebViewEnvironmentOptions(string? arguments, strin
     public int SetTargetCompatibleBrowserVersion(nint value) { _version = Marshal.PtrToStringUni(value); return 0; }
     public int GetAllowSingleSignOnUsingOSPrimaryAccount(out int value) { value = _allowSingleSignOn; return 0; }
     public int SetAllowSingleSignOnUsingOSPrimaryAccount(int value) { _allowSingleSignOn = value; return 0; }
+}
+
+// The frames of a WebView2 document, each listened to for Runic's drop messages until it is destroyed or the window
+// closes. Nested frames arrive through ICoreWebView2Frame7 where the runtime has it. Window thread only.
+internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
+{
+    private readonly List<Frame> _frames = [];
+    private bool _disposed;
+
+    // FrameCreated of the WebView or of a frame: the event arguments hold the new frame.
+    internal void Created(nint args)
+    {
+        if (_disposed) return;
+        var frame = WindowsWebView2Interop.GetPointer(args, WindowsWebView2Interop.FrameCreatedFrameSlot);
+        if (frame == 0) return;
+        try
+        {
+            nint frame2;
+            try { frame2 = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame2Interface); }
+            catch (InvalidCastException) { return; } // A runtime without frame messages.
+            var entry = new Frame(frame2);
+            _frames.Add(entry);
+            entry.Add(frame2, WindowsWebView2Interop.FrameWebMessageReceivedSlot, new WebViewComReference<IWebViewFrameWebMessageReceived>(new WebViewEvent(receive)));
+            entry.Add(frame2, WindowsWebView2Interop.FrameDestroyedSlot, new WebViewComReference<IWebViewFrameDestroyed>(new WebViewFrameDestroyed(() => Destroyed(entry))));
+            try
+            {
+                entry.Nested = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame7Interface);
+                entry.Add(entry.Nested, WindowsWebView2Interop.FrameNestedFrameCreatedSlot, new WebViewComReference<IWebViewFrameCreated>(new WebViewEvent(Created)));
+            }
+            catch (InvalidCastException) { }
+        }
+        finally
+        {
+            WindowsWebView2Interop.Release(frame);
+        }
+    }
+
+    private void Destroyed(Frame entry)
+    {
+        if (_frames.Remove(entry)) entry.Dispose();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        foreach (var entry in _frames) entry.Dispose();
+        _frames.Clear();
+    }
+
+    private sealed class Frame(nint frame2) : IDisposable
+    {
+        private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
+        internal nint Nested { get; set; }
+
+        internal void Add<T>(nint source, int slot, WebViewComReference<T> handler) where T : class
+        {
+            try { _events.Add((source, slot, WindowsWebView2Interop.AddEvent(source, slot, handler.Pointer), handler)); }
+            catch { handler.Dispose(); throw; }
+        }
+
+        // A destroyed frame may refuse the removal; its handlers are released either way.
+        public void Dispose()
+        {
+            foreach (var entry in _events)
+            {
+                try { WindowsWebView2Interop.RemoveEvent(entry.Source, entry.Slot + 1, entry.Token); }
+                catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException) { }
+                entry.Handler.Dispose();
+            }
+            _events.Clear();
+            WindowsWebView2Interop.Release(Nested);
+            Nested = 0;
+            WindowsWebView2Interop.Release(frame2);
+        }
+    }
+}
+
+[GeneratedComClass]
+internal sealed partial class WebViewFrameDestroyed(Action destroyed) : IWebViewFrameDestroyed
+{
+    public int Invoke(nint sender, nint args)
+    {
+        try { destroyed(); return 0; }
+        catch (Exception exception) { return Marshal.GetHRForException(exception); }
+    }
 }

@@ -16,6 +16,8 @@
     <DefineConstants>$(DefineConstants);RUNIC_PORTABLE_PLATFORMS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The WPF windows' services check drag data with the rules every drag source shares. -->
+    <Compile Include="../Runic.Platform/DesktopDragRules.cs" Link="Shared/DesktopDragRules.cs" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <!-- The Bridge transport uses Runic.Desktop's internal presentation transport (InternalsVisibleTo); packing pins
          the exact version (eng/build/README.md). -->

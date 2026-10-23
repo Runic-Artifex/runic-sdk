@@ -1472,6 +1472,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private void RecordMenuBarPlacement(IWebUiEmbeddedHost host) => Volatile.Write(ref _loggedPlacement, (int)host.MenuBarPlacement);
 
+    internal Task<Runic.Platform.DesktopDragEffects> StartDragAsync(Runic.Platform.DesktopDragData data, CancellationToken cancellationToken)
+        => GetEmbeddedHost().StartDragAsync(data, cancellationToken).AsTask();
+
     internal Task<Runic.Platform.DesktopMenuItem?> ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry> items,
         Runic.Platform.DesktopContextMenuOptions options, CancellationToken cancellationToken)
         => GetEmbeddedHost().ShowContextMenuAsync(items, options, cancellationToken).AsTask();

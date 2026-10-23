@@ -44,3 +44,16 @@ Runic.Application.Views.RunicOperationRetirement.Keep = 0 -> Runic.Application.V
 Runic.Application.Views.RunicOperationRetirementAttribute
 Runic.Application.Views.RunicOperationRetirementAttribute.RunicOperationRetirementAttribute(Runic.Application.Views.RunicOperationRetirement retirement) -> void
 Runic.Application.Views.RunicOperationRetirementAttribute.Retirement.get -> Runic.Application.Views.RunicOperationRetirement
+Runic.Application.Views.RunicDropEffect
+Runic.Application.Views.RunicDropEffect.Copy = 0 -> Runic.Application.Views.RunicDropEffect
+Runic.Application.Views.RunicDropEffect.Link = 2 -> Runic.Application.Views.RunicDropEffect
+Runic.Application.Views.RunicDropEffect.Move = 1 -> Runic.Application.Views.RunicDropEffect
+Runic.Application.Views.RunicFileDrop.Effect.get -> Runic.Application.Views.RunicDropEffect
+Runic.Application.Views.RunicFileDrop.Effect.init -> void
+Runic.Application.Views.RunicFileDrop.PromisedFiles.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicPromisedFile!>!
+Runic.Application.Views.RunicFileDrop.PromisedFiles.init -> void
+Runic.Application.Views.RunicPromisedFile
+Runic.Application.Views.RunicPromisedFile.RunicPromisedFile() -> void
+abstract Runic.Application.Views.RunicPromisedFile.DisposeAsync() -> System.Threading.Tasks.ValueTask
+abstract Runic.Application.Views.RunicPromisedFile.Name.get -> string!
+abstract Runic.Application.Views.RunicPromisedFile.OpenReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>

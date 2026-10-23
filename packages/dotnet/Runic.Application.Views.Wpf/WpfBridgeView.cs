@@ -107,11 +107,15 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     // Files dropped on the child WebView go to the borrowed ViewModel when it is an IRunicFileDropTarget.
     private void OnFilesDropped(object? sender, DesktopFileDropEventArgs drop)
     {
-        var delivery = new RunicFileDrop(drop.Paths.Select(RunicDroppedFile.FromPath).ToArray(), drop.Target);
+        var delivery = DroppedFiles.ToRunicDrop(drop);
         lock (_gate)
         {
-            if (_close is not null) return;
-            _drops = _drops.ContinueWith(_ => _content.DeliverFileDropAsync(delivery, _dropStop.Token).AsTask(),
+            if (_close is not null)
+            {
+                _ = DroppedFiles.ReleaseUnopenedAsync(delivery);
+                return;
+            }
+            _drops = _drops.ContinueWith(_ => DroppedFiles.DeliverAsync(_content, delivery, _dropStop.Token),
                 CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
         }
     }

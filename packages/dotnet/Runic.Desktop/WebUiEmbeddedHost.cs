@@ -53,6 +53,10 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Replaces the window's menus; called after the window opens and after every DesktopHost.SetMenuBar.</summary>
     ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
+    /// <summary>Starts a native drag of checked data while the button is held; requires <see cref="DesktopWindowCapabilities.FileDrag"/>.</summary>
+    ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<DesktopDragEffects>(new NotSupportedException("This host starts no drags."));
+
     /// <summary>Shows a checked context menu; requires <see cref="DesktopWindowCapabilities.ContextMenu"/>.</summary>
     ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
         CancellationToken cancellationToken = default) =>

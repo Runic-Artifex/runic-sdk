@@ -45,7 +45,62 @@ public interface IRunicFileDropTarget
 /// <see langword="null"/>. The page reports it: use it as an untrusted routing label, such as which folder of a list
 /// the files were dropped on, never as a path and never for an access decision.
 /// </param>
-public sealed record RunicFileDrop(IReadOnlyList<RunicDroppedFile> Files, string? Target = null);
+/// <remarks>
+/// <see cref="Files"/> may be empty when <see cref="PromisedFiles"/> is not: a drop of files that had no local path, such
+/// as a mail attachment dragged from macOS Mail.
+/// </remarks>
+public sealed record RunicFileDrop(IReadOnlyList<RunicDroppedFile> Files, string? Target = null)
+{
+    /// <summary>Gets what the drop performed: copy, move or link; <see cref="RunicDropEffect.Copy"/> by default.</summary>
+    /// <remarks>
+    /// The effect the drag source and the page agreed on, from the source's allowed effects, the user's modifier keys and
+    /// the page's <c>data-runic-drop-effect</c> attribute. On Windows the page reports it, so treat it like
+    /// <see cref="Target"/>: to choose between copying and moving the files into the application, never for an access
+    /// decision.
+    /// </remarks>
+    public RunicDropEffect Effect { get; init; }
+
+    /// <summary>Gets the dropped files that had no local path, each readable once; empty for most drops.</summary>
+    /// <remarks>
+    /// The host received them into private staging files. Read each with <see cref="RunicPromisedFile.OpenReadAsync"/>
+    /// during the handler and dispose it when done; the host disposes the files that were not opened, deleting their
+    /// staged copies, when the handler's task completes.
+    /// </remarks>
+    public IReadOnlyList<RunicPromisedFile> PromisedFiles { get; init; } = [];
+}
+
+/// <summary>What a drop onto a Window performed, for <see cref="RunicFileDrop.Effect"/>.</summary>
+/// <remarks>A closed set: the effects every desktop's drag and drop shares.</remarks>
+public enum RunicDropEffect
+{
+    /// <summary>The files are copied into the application.</summary>
+    Copy = 0,
+
+    /// <summary>The files are moved: the drag source deletes them once the application has taken them.</summary>
+    Move = 1,
+
+    /// <summary>The application links to the files where they are.</summary>
+    Link = 2,
+}
+
+/// <summary>A dropped file that had no local path, such as a mail attachment, for <see cref="RunicFileDrop.PromisedFiles"/>.</summary>
+/// <remarks>The host stages the file privately; read it once and dispose it, which deletes the staged copy.</remarks>
+public abstract class RunicPromisedFile : IAsyncDisposable
+{
+    /// <summary>Gets the file name, without a directory, as the drag source named it and sanitized for display.</summary>
+    public abstract string Name { get; }
+
+    /// <summary>Opens the file's content; a promised file can be opened once.</summary>
+    /// <param name="cancellationToken">Cancels opening.</param>
+    /// <returns>The content, owned by this file: disposing the file closes it.</returns>
+    /// <exception cref="InvalidOperationException">The file was already opened.</exception>
+    /// <exception cref="ObjectDisposedException">The file was disposed.</exception>
+    public abstract ValueTask<Stream> OpenReadAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Closes the content and deletes the staged copy.</summary>
+    /// <returns>A task that completes when the copy is deleted.</returns>
+    public abstract ValueTask DisposeAsync();
+}
 
 /// <summary>A file or directory dropped onto a Window.</summary>
 /// <param name="Path">
