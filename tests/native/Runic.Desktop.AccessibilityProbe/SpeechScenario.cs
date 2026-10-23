@@ -31,7 +31,10 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
 
             // The screen reader follows the keyboard focus and reads the control; then the value the user changes.
             await FocusAsync(slider, keep, "slider-focus", Fixture.Volume, cancellationToken);
-            await ExpectAsync("slider-value", Value("6"), () => client.StepAsync(slider, -1, cancellationToken), cancellationToken);
+            // NVDA can follow WebView2's focus to the document after the step (I-185) and say the new value only once
+            // focus returns to the slider. The value must still be 6: a slider left at 7 or never read fails.
+            await ExpectAsync("slider-value", Value("6"), () => client.StepAsync(slider, -1, cancellationToken), cancellationToken,
+                retry: () => client.FocusAsync(slider, cancellationToken));
             await FocusAsync(keep, slider, "spinbutton-focus", Fixture.Keep, cancellationToken);
             try
             {

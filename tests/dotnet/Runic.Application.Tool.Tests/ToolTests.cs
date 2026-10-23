@@ -421,14 +421,17 @@ internal sealed class ToolTests
         }
         True(own.Paths.Contains("/__runic/state"), string.Join(", ", own.Paths));
 
-        // Another process on the port serves pages but cannot know the value, so it is never ready.
+        // Another process on the port serves pages but cannot know the value, so it is never ready. With stall the
+        // deadline always cuts off an attempt before its first answer (the race behind I-193); the error still names
+        // the session the earlier attempt could not confirm.
         foreach (string? answer in new[] { null, ViteDevelopmentServer.CreateSession(), session[..32] })
+        foreach (bool stall in new[] { false, true })
         {
-            using var client = new HttpClient(new SessionHandler(answer));
+            using var client = new HttpClient(new SessionHandler(answer, stall));
             try
             {
                 await ViteDevelopmentServer.WaitUntilReadyAsync(origin, "src/main.ts", running.Task, client,
-                    TimeSpan.FromMilliseconds(200), CancellationToken.None, session);
+                    TimeSpan.FromMilliseconds(500), CancellationToken.None, session);
                 throw new InvalidOperationException("A server without this session's value was accepted as ready.");
             }
             catch (DevDevelopmentException error)
@@ -503,12 +506,13 @@ internal sealed class ToolTests
 
         // The Angular CLI answers unknown paths with index.html; without the header the server is never ready.
         foreach (string? answer in new[] { null, ViteDevelopmentServer.CreateSession() })
+        foreach (bool stall in new[] { false, true })
         {
-            using var client = new HttpClient(new SessionHandler(answer));
+            using var client = new HttpClient(new SessionHandler(answer, stall));
             try
             {
                 await AngularDevelopmentServer.WaitUntilReadyAsync(origin, running.Task, client,
-                    TimeSpan.FromMilliseconds(200), CancellationToken.None, session);
+                    TimeSpan.FromMilliseconds(500), CancellationToken.None, session);
                 throw new InvalidOperationException("An Angular server without this session's value was accepted as ready.");
             }
             catch (DevDevelopmentException error)
@@ -528,17 +532,29 @@ internal sealed class ToolTests
         }
     }
 
-    private sealed class SessionHandler(string? answer) : HttpMessageHandler
+    // stall: after the first /__runic/state answer, requests wait until cancelled, so the readiness deadline cuts
+    // off the next attempt before it gets any answer.
+    private sealed class SessionHandler(string? answer, bool stall = false) : HttpMessageHandler
     {
+        private bool _answeredState;
+
         internal List<string> Paths { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            lock (Paths) Paths.Add(request.RequestUri!.AbsolutePath);
+            bool wait;
+            lock (Paths)
+            {
+                Paths.Add(request.RequestUri!.AbsolutePath);
+                wait = stall && _answeredState;
+                _answeredState |= request.RequestUri!.AbsolutePath == "/__runic/state";
+            }
+            if (wait)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             var response = new HttpResponseMessage(HttpStatusCode.OK);
             if (request.RequestUri!.AbsolutePath == "/__runic/state" && answer is not null)
                 response.Headers.Add(ViteDevelopmentServer.SessionHeader, answer);
-            return Task.FromResult(response);
+            return response;
         }
     }
 

@@ -180,6 +180,9 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
         timeout.CancelAfter(deadline);
         bool served = false;
         string lastResponse = "no response";
+        // The last attempt that finished, so that a deadline that cuts off the next attempt before its first answer
+        // does not hide that the server answered everything but the session.
+        (bool Served, string Response)? finished = null;
         try
         {
             while (true)
@@ -228,12 +231,17 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                 {
                 }
 
+                finished = (served, lastResponse);
                 await Task.Delay(TimeSpan.FromMilliseconds(75), timeout.Token)
                     .ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            if (finished is { } last && lastResponse == "no response" && (last.Served || !served))
+            {
+                (served, lastResponse) = last;
+            }
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
                 served
