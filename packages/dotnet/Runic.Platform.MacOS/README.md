@@ -226,9 +226,10 @@ Binary secrets of up to 64 KiB are the item's data as is.
   (`kSecUseAuthenticationUIFail`; an `LAContext` with `interactionNotAllowed`
   for the data-protection keychain), so an access prompt is `Failed(Locked)` too.
 - `UseDataProtectionKeychain = true`: the data-protection keychain
-  (`kSecUseDataProtectionKeychain`). It needs a bundle signed with a team ID and
-  the `keychain-access-groups` entitlement; without them a request is
-  `Failed(PermissionDenied)` with `OSStatus -34018`. Items of the login keychain
+  (`kSecUseDataProtectionKeychain`). Sign the bundle with a team ID and the
+  `keychain-access-groups` entitlement. Without it macOS may answer a read with
+  nothing stored and refuses a write with `Failed(PermissionDenied)` and
+  `OSStatus -34018`. Items of the login keychain
   are not moved: read them with a store without the option and write them with
   one that has it.
 

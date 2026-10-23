@@ -110,20 +110,39 @@ internal sealed class SecretStoreTests
         }
     }
 
-    // An unsigned test host has no keychain-access-groups entitlement: the data-protection keychain refuses it.
+    // The data-protection keychain from the test host, which has no keychain-access-groups entitlement. macOS answers
+    // a search with nothing found or errSecMissingEntitlement and refuses a write with errSecMissingEntitlement, which
+    // must be PermissionDenied with the diagnostic naming the entitlement. A host macOS lets in (a signature with an
+    // access group) gets a round trip under a service unique to the run instead, removed afterwards.
     [Test, Explicit, Category("NativeSecrets"), DisplayName("secret store: the data-protection keychain without the entitlement is PermissionDenied")]
     public async Task DataProtectionKeychainAsync()
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The Keychain requires macOS.");
         string service = "org.runic.tests." + Guid.NewGuid().ToString("N");
+        const string account = "user@example.com";
         var store = MacOSPlatformProvider.CreateSecretStore(new DesktopSecretStoreOptions { UseDataProtectionKeychain = true, AllowUserInteraction = false });
-        var read = await store.GetAsync(service, "user@example.com");
-        Console.WriteLine($"Data-protection keychain from the test host: {read}");
-        Check(read is PlatformResult<string?>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Code: MacSecretStore.MissingEntitlement },
-            $"errSecMissingEntitlement: {read}");
-        Check(await store.SetAsync(service, "user@example.com", "x") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
-            "nothing is stored");
-        Console.WriteLine("PASS macOS data-protection keychain: PermissionDenied (-34018) without the entitlement.");
+        try
+        {
+            var read = await store.GetAsync(service, account);
+            byte[] secret = [0, 1, 2, 0xFF];
+            var stored = await store.SetBytesAsync(service, account, secret);
+            Console.WriteLine($"Data-protection keychain from {Environment.ProcessPath}: read {read}, write {stored}");
+            Check(read is PlatformResult<string?>.Success { Value: null } or PlatformResult<string?>.Failed { Code: PlatformFailureCode.PermissionDenied },
+                $"nothing to read: {read}");
+            if (stored is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic: { Code: MacSecretStore.MissingEntitlement, Message: { } message } })
+            {
+                Check(message.Contains("keychain-access-groups", StringComparison.Ordinal), "the diagnostic names the entitlement");
+                Console.WriteLine("PASS macOS data-protection keychain: PermissionDenied (-34018) without the entitlement.");
+                return;
+            }
+            Check(stored is PlatformResult<PlatformUnit>.Success, $"refused with errSecMissingEntitlement, or stored: {stored}");
+            Check(await store.GetBytesAsync(service, account) is PlatformResult<byte[]?>.Success { Value: var bytes } && bytes!.SequenceEqual(secret), "read back");
+            Check(await MacOSPlatformProvider.CreateSecretStore().GetAsync(service, account) is PlatformResult<string?>.Success { Value: null },
+                "the login keychain does not see the data-protection item");
+            Check(await store.DeleteAsync(service, account) is PlatformResult<bool>.Success { Value: true }, "deleted");
+            Console.WriteLine("PASS macOS data-protection keychain: this host may use it; bytes round-trip apart from the login keychain.");
+        }
+        finally { await store.DeleteAsync(service, account); }
     }
 
     private static string Security(params string[] arguments)

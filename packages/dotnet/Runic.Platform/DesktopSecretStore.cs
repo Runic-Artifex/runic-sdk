@@ -102,9 +102,10 @@ public sealed record DesktopSecretStoreOptions
     /// <summary>Whether macOS stores the secrets in the data-protection keychain instead of the file-based login
     /// keychain.</summary>
     /// <remarks>
-    /// The data-protection keychain needs a bundle signed with a team ID and the <c>keychain-access-groups</c>
-    /// entitlement; without them a request fails with <see cref="PlatformFailureCode.PermissionDenied"/> and an
-    /// <c>OSStatus -34018</c> diagnostic that names the entitlement. Items of the file-based keychain are not
+    /// A shipped application signs its bundle with a team ID and the <c>keychain-access-groups</c> entitlement for the
+    /// data-protection keychain. Without it macOS may answer a read with nothing stored, and refuses a write with
+    /// <see cref="PlatformFailureCode.PermissionDenied"/> and an <c>OSStatus -34018</c> diagnostic that names the
+    /// entitlement. Items of the file-based keychain are not
     /// migrated: read them with a store without this option and write them with one that has it. No effect on Linux
     /// and Windows.
     /// </remarks>

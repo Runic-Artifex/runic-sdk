@@ -113,9 +113,9 @@ public static class MacOSPlatformProvider
     /// <remarks>
     /// <para>
     /// With <see cref="DesktopSecretStoreOptions.UseDataProtectionKeychain"/> the items are in the data-protection
-    /// keychain (<c>kSecUseDataProtectionKeychain</c>), which needs a bundle signed with a team ID and the
-    /// <c>keychain-access-groups</c> entitlement; without them every request fails with
-    /// <see cref="PlatformFailureCode.PermissionDenied"/> and <c>OSStatus -34018</c>. Items of the login keychain are not
+    /// keychain (<c>kSecUseDataProtectionKeychain</c>). A shipped application signs its bundle with a team ID and the
+    /// <c>keychain-access-groups</c> entitlement. Without it macOS may answer a read with nothing stored and refuses a
+    /// write with <see cref="PlatformFailureCode.PermissionDenied"/> and <c>OSStatus -34018</c>. Items of the login keychain are not
     /// moved there: read them with a store without the option and store them again with this one.
     /// </para>
     /// <para>

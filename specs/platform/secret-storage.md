@@ -13,7 +13,7 @@ system.
 | --- | --- | --- |
 | Linux | Implemented: the Secret Service API (`org.freedesktop.secrets`) over D-Bus in Runic.Platform.Linux.Portal, with the `dh-ietf1024-sha256-aes128-cbc-pkcs7` session and a `plain` fallback. | Tests against a fake service on a private bus for every outcome (encrypted and plain sessions, locked items and collections, prompt completed, dismissed, unshowable and cancelled, no default collection, no service). CI-verified against GNOME Keyring 46.1 and libsecret 0.21.4 on Ubuntu 24.04, JIT and NativeAOT: the encrypted session is required, `secret-tool` reads the stored item, and a locked keyring without a prompter reports `UserDismissed` (GNOME Keyring completes the prompt as dismissed). KeePassXC and KWallet are unverified. |
 | Windows | Implemented: Credential Manager generic credentials (`CredWriteW`, `CredReadW`, `CredDeleteW`) in Runic.Platform.Windows; binary secrets above 2560 bytes in a DPAPI-protected file referenced from the credential. | Portable tests for target names, error mapping and the file reference against a fake vault (round trip, replace, damaged and missing file, delete). CI-verified on the windows-latest runner's vault and DPAPI, JIT and NativeAOT: 2560-byte blobs, 64 KiB files, a damaged file, delete removing both. |
-| macOS | Implemented: generic passwords in the default keychain (`SecItemAdd`, `SecItemCopyMatching`, `SecItemUpdate`, `SecItemDelete`) in Runic.Platform.MacOS; the data-protection keychain with an option. | Portable tests for status mapping. CI-verified on the macos-26 runner, JIT and NativeAOT: the login keychain; 64 KiB binary secrets and `Locked` without user interaction on a locked temporary keychain; `PermissionDenied` (-34018) from the data-protection keychain for the unsigned test host. Unlock and access prompts and the data-protection keychain from a team-signed bundle are unverified (manual checks). |
+| macOS | Implemented: generic passwords in the default keychain (`SecItemAdd`, `SecItemCopyMatching`, `SecItemUpdate`, `SecItemDelete`) in Runic.Platform.MacOS; the data-protection keychain with an option. | Portable tests for status mapping. CI-verified on the macos-26 runner, JIT and NativeAOT: the login keychain; 64 KiB binary secrets and `Locked` without user interaction on a locked temporary keychain; the data-protection keychain from the unsigned test hosts, where a search finds nothing and a write is `PermissionDenied` (`errSecMissingEntitlement`, -34018). Unlock and access prompts and the data-protection keychain from a team-signed bundle are unverified (manual checks). |
 | Sandboxed Linux | Implemented where the sandbox allows the Secret Service: Flatpak `--talk-name=org.freedesktop.secrets`, the Snap `password-manager-service` interface. Otherwise unavailable with the `secret-service-unavailable` diagnostic. | Deferred to 1.x: the Secret portal (`org.freedesktop.portal.Secret`) with a local encrypted file, for sandboxes without Secret Service access. |
 
 ## Contract
@@ -154,8 +154,10 @@ is.
   request is `Failed(PermissionDenied)` with `errSecMissingEntitlement` (-34018)
   and a diagnostic message naming the entitlement. Items of the file-based
   keychain are not migrated: read them with a store without the option and
-  write them with one that has it. CI covers the missing-entitlement path; the
-  success path needs a team-signed bundle (manual check).
+  write them with one that has it. Without the entitlement macOS answers a
+  search with nothing found (as for CI's `dotnet` host) and refuses writes;
+  CI checks that path, and a team-signed bundle with the entitlement is a
+  manual check.
 
 ## Out of scope for 1.0
 
