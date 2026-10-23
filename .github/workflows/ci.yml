@@ -1603,7 +1603,7 @@ jobs:
         if: matrix.target == 'deb'
         uses: ./.github/actions/apt-install
         with:
-          packages: desktop-file-utils xdg-utils libgtk-3-0t64 libwebkit2gtk-4.1-0
+          packages: desktop-file-utils xdg-utils libglib2.0-bin libgtk-3-0t64 libwebkit2gtk-4.1-0
           install-recommends: "false"
       - name: Package, install and open the deb
         if: matrix.target == 'deb'
@@ -1622,7 +1622,8 @@ jobs:
           test "$(xdg-mime query default x-scheme-handler/runic-packaging-probe)" = org.runic.tests.PackagingProbe.desktop
           receipts="$RUNNER_TEMP/receipts"
           mkdir -p "$receipts"
-          xdg-open "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/deb.json")"
+          # GIO opens the URL through the registered desktop entry, as a desktop does; xdg-open needs a display for that.
+          gio open "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/deb.json")"
           for _ in $(seq 60); do test -f "$receipts/deb.json" && break; sleep 1; done
           bun eng/ci/packaging-probe-check.mjs "$receipts/deb.json" deb
           sudo dpkg -r runic.packaging.probe

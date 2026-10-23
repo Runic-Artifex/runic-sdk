@@ -181,6 +181,9 @@ internal sealed partial class ToolTests
                         break;
                     case "linux/flatpak.yml":
                         True(Regex.IsMatch(text, "^app-id: org\\.example\\.Notes$", RegexOptions.Multiline), text);
+                        // Filled fields never land in the header comment, where a multi-line field breaks the YAML.
+                        True(text.Split('\n').TakeWhile(line => !line.StartsWith("app-id:", StringComparison.Ordinal)).All(line => line.StartsWith('#')), text);
+                        True(text.IndexOf("      - install", StringComparison.Ordinal) > text.IndexOf("build-commands:", StringComparison.Ordinal), text);
                         Equal(activation, Regex.IsMatch(text, "install -Dm644 org\\.example\\.Notes\\.mime\\.xml /app/share/mime/packages/org\\.example\\.Notes\\.xml$", RegexOptions.Multiline));
                         Equal(activation, Regex.IsMatch(text, "install -Dm644 org\\.example\\.Notes\\.service /app/share/dbus-1/services/org\\.example\\.Notes\\.service$", RegexOptions.Multiline));
                         break;

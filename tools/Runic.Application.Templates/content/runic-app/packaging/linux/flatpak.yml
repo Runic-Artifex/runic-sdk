@@ -2,7 +2,7 @@
 # braces). It installs the NativeAOT publish folder that the command prepares in flatpak-source; the GNOME runtime
 # provides GTK 4 and WebKitGTK 6, so the project uses Runic Desktop on GTK 4 (--linux-gtk 4). The file types' MIME
 # definitions, the D-Bus service file for RunicApplicationDBusActivatable and the scalable icon (icon.svg beside
-# RunicPackageIcon) are installed when the project has them ({{ExtraInstalls}}); Flatpak exports them, and the
+# RunicPackageIcon) are installed when the project has them (the ExtraInstalls field); Flatpak exports them, and the
 # application may own its ID on the session bus.
 app-id: {{ApplicationId}}
 runtime: org.gnome.Platform
