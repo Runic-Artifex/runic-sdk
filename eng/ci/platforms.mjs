@@ -42,6 +42,8 @@ export const packagingLegs = [
   { os: "ubuntu-24.04", target: "deb" },
   // Built on Ubuntu, installed in the Fedora container.
   { os: "ubuntu-24.04", target: "rpm" },
+  // dotnet runic package flathub --build: the manifest built offline as Flathub does.
+  { os: "ubuntu-24.04", target: "flathub" },
 ];
 
 // The job names, as GitHub reports them, of every Windows and macOS leg. Pull requests run only

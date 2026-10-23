@@ -20,6 +20,7 @@ below.
 | `appimage` | Linux | `<Name>-<version>-<arch>.AppImage` | `chmod +x` and run it |
 | `deb` | Linux | `<package>_<version>_<arch>.deb` | `sudo apt install ./<file>.deb` |
 | `rpm` | Linux, also Debian and Ubuntu | `<package>-<version>-1.<arch>.rpm` | `sudo dnf install ./<file>.rpm` |
+| `flathub` | Any OS; `--build` on Linux | A manifest directory for a Flathub submission | From Flathub, once accepted |
 
 Each target refuses to run on another operating system (`RAPPPKG1004`), and a
 missing tool stops it before it builds anything (`RAPPPKG1002`, which names the
@@ -170,3 +171,120 @@ binary loads GTK and WebKitGTK with `dlopen`, so rpm would not find them. Its
 Sign the package with `rpmsign --addsign <file>.rpm` and your GPG key (set
 `%_gpg_name` in `~/.rpmmacros`), and publish the key so users can import it
 with `rpm --import`.
+
+## Flathub
+
+Flathub builds every application from source in its own sandbox, without
+network access, and signs its repository itself. `dotnet runic package flathub`
+writes the manifest for that build; you submit it from your own account (Runic
+submits nothing). The manifest directory holds:
+
+- `<ApplicationId>.yml`: the GNOME runtime, the `org.freedesktop.Sdk.Extension.dotnet10`
+  and, with a frontend, `org.freedesktop.Sdk.Extension.node24` SDK extensions, a
+  `git` source at your commit or tag, and the build: `npm ci --offline` in the
+  frontend, then `dotnet publish` with NativeAOT for the builder's architecture
+  from the offline NuGet sources.
+- `nuget-sources.json` and `npm-sources.json`: every package of your lock files
+  as a file source with its URL and SHA-512.
+- The desktop entry and metainfo, filled from the project as for the Flatpak
+  target.
+
+The project needs lock files that list everything the build restores:
+
+1. Restore with lock files (`<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>`)
+   and give the NativeAOT restore its own lock file, for both Flathub
+   architectures:
+
+   ```xml
+   <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+   <NuGetLockFilePath Condition="'$(PublishAot)' == 'true'">packages.aot.lock.json</NuGetLockFilePath>
+   ```
+
+2. Run `dotnet restore -p:PublishAot=true` and commit `packages.aot.lock.json`.
+3. Use npm for the frontend and commit its `package-lock.json`.
+
+Then generate the manifest for the commit or tag you submit:
+
+```sh
+dotnet runic package flathub --git-url https://github.com/example/notes.git --git-tag v1.2.0
+dotnet runic package flathub --git-url https://github.com/example/notes.git --git-tag v1.2.0 --build   # on Linux
+```
+
+The command restores the NativeAOT graph for both architectures in locked mode
+and takes each package's SHA-512 from the NuGet cache, after checking it
+against the lock file's content hash (nuget.org serves the package with its
+repository signature, so the file's hash differs from the lock file's). It pins
+the build's .NET runtime to the lock file's NativeAOT compiler, so the SDK
+extension, which Flathub updates, restores the same packages. Generate the
+manifest again whenever a lock file changes. `--build` installs the runtime and
+extensions from Flathub, downloads every source, builds without network access
+as Flathub's builders do, and writes `<ApplicationId>.flatpak` to install and
+try.
+
+To submit, follow Flathub's
+[submission guide](https://docs.flathub.org/docs/for-app-authors/submission):
+fork `flathub/flathub`, add the manifest directory on a branch from
+`new-pr`, and open a pull request. Flathub's review asks for a complete
+metainfo file (license, description, screenshots, release notes) and the
+narrowest `finish-args`; the manifest's `--share=network` is needed because
+Runic serves the page to the WebView over loopback, so explain it in the
+submission.
+
+For a project without lock files, or with another package manager, generate
+the sources with [flatpak-builder-tools](https://github.com/flatpak/flatpak-builder-tools)
+instead: `dotnet/flatpak-dotnet-generator.py` and `node/flatpak-node-generator`
+restore the project to find its packages.
+
+## Snap
+
+Snap is not a `dotnet runic package` target. This recipe packs the deb's staged
+tree into a strict snap on `core24` with the `gnome` extension, which provides
+GTK 3, GTK 4 and WebKitGTK. Run `dotnet runic package deb` first, then extract
+the package next to `snap/snapcraft.yaml`:
+
+```sh
+dpkg-deb -x artifacts/package/deb/<package>_<version>_amd64.deb snap/local/root
+```
+
+```yaml
+# snap/snapcraft.yaml
+name: example-notes            # the snap name, lower case
+base: core24
+version: '1.2.3'
+summary: Notes for everyone
+description: |
+  Notes for everyone.
+grade: stable
+confinement: strict
+platforms:
+  amd64:
+
+apps:
+  example-notes:
+    command: usr/lib/org.example.Notes/Notes
+    extensions: [gnome]
+    desktop: usr/share/applications/org.example.Notes.desktop
+    common-id: org.example.Notes
+    plugs:
+      - desktop
+      - wayland
+      - x11
+      # Runic serves the page to the WebView over loopback.
+      - network
+      - network-bind
+
+parts:
+  application:
+    plugin: dump
+    source: snap/local/root
+```
+
+Build it on Ubuntu with `snapcraft pack`, and install the result with
+`sudo snap install --dangerous ./<name>_<version>_amd64.snap` to try it. The
+desktop entry's `MimeType=` registers the URL schemes and file types once the
+snap is installed; snapd rewrites its `Exec=` to start the snap. To publish, register the name and upload with
+`snapcraft upload`; the Snap Store signs the snap.
+
+CI does not build this recipe; the maintainers check it by hand on Ubuntu. Treat
+it as a starting point for your own snap.
+

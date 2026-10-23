@@ -109,6 +109,28 @@ internal static class PackageCommands
         [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
         RunAsync(context, Common(PackageTarget.Rpm, project, configuration, runtime, outputDirectory), cancellationToken);
 
+    [Command("package flathub", Description = "Write a Flathub source-build manifest with offline NuGet and npm sources from the committed lock files. --build builds it with flatpak-builder on Linux.",
+        Examples = ["dotnet runic package flathub --git-url https://github.com/example/notes.git --git-tag v1.2.0",
+            "dotnet runic package flathub --git-url https://github.com/example/notes.git --git-commit 0123abcd --build"])]
+    [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
+    internal static Task<CommandOutcome<PackageCommandResult>> Flathub(
+        CommandExecutionContext context,
+        [Option("--build", Description = "Build the manifest as Flathub does: install the runtime and SDK extensions, download the sources, then build offline and write a bundle. Linux only.")] bool build,
+        [Option("--git-url", ValueName = "URL", Required = true, Description = "The application's git repository, which Flathub checks out.")] string gitUrl,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = "The build configuration to evaluate.")] string configuration = "Release",
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--git-commit", ValueName = "SHA", ConflictsWith = ["git-tag"], Description = "Build this commit.")] string gitCommit = "",
+        [Option("--git-tag", ValueName = "TAG", ConflictsWith = ["git-commit"], Description = "Build this tag.")] string gitTag = "") =>
+        RunAsync(context, Common(PackageTarget.Flathub, project, configuration, "", outputDirectory) with
+        {
+            GitUrl = Value(gitUrl),
+            GitCommit = Value(gitCommit),
+            GitTag = Value(gitTag),
+            Build = build,
+        }, cancellationToken);
+
     private static PackageOptions Common(PackageTarget target, string project, string configuration, string runtime, string outputDirectory) =>
         new(target)
         {

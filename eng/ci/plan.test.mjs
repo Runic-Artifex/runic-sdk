@@ -304,7 +304,8 @@ test('every core solution project commits a NuGet lock file and no other lock fi
   for (const path of expected) assert.ok(existsSync(resolve(root, path)), `${path} is missing; run bun run lock:nuget`);
   // The Nix builder's fixtures are independent consumers outside the solution, restored for linux-x64 with their own
   // lock files, which buildRunicApplication reads (nix/tests).
-  const independent = path => path.startsWith('tests/fixtures/nix/');
+  // The Flathub fixture is one too: dotnet runic package flathub generates its sources from its NativeAOT lock file.
+  const independent = path => path.startsWith('tests/fixtures/nix/') || path.startsWith('tests/fixtures/flathub/');
   assert.deepEqual(tracked('*packages.lock.json', '*packages.*.lock.json').filter(path => !independent(path)).sort(), expected);
 });
 
@@ -430,7 +431,7 @@ test('owned files without a rule, engineering-only and neutral files plan no Win
     assert.equal(result.full, true, file);
     assert.deepEqual(result.platforms, [], file);
     assert.deepEqual(result.native.include.map(leg => leg.rid), ['linux-x64', 'linux-arm64'], file);
-    assert.deepEqual(result.packaging.include.map(leg => leg.target), ['flatpak', 'appimage', 'deb', 'rpm'], file);
+    assert.deepEqual(result.packaging.include.map(leg => leg.target), ['flatpak', 'appimage', 'deb', 'rpm', 'flathub'], file);
     assert.deepEqual(result.skip, ['wpf'], file);
   }
   // Any other unowned file plans every leg.

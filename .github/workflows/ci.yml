@@ -1520,24 +1520,25 @@ jobs:
       # flatpak-builder composes the AppStream data with appstream-compose, which reads the SVG icon through
       # librsvg's image loader.
       - name: Install flatpak-builder
-        if: matrix.target == 'flatpak'
+        if: matrix.target == 'flatpak' || matrix.target == 'flathub'
         uses: ./.github/actions/apt-install
         with:
           packages: flatpak flatpak-builder appstream appstream-compose librsvg2-common desktop-file-utils
           install-recommends: "false"
       - name: Prepare Flatpak
-        if: matrix.target == 'flatpak'
+        if: matrix.target == 'flatpak' || matrix.target == 'flathub'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      # The flathub leg adds the .NET and Node.js SDK extensions to the GNOME runtime and SDK.
       - uses: ./.github/actions/dependency-cache
-        if: matrix.target == 'flatpak'
+        if: matrix.target == 'flatpak' || matrix.target == 'flathub'
         with:
           path: |
             ~/.local/share/flatpak/runtime
             ~/.local/share/flatpak/repo
-          key: flatpak-gnome-50-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml') }}
-          restore-keys: flatpak-gnome-50-${{ runner.os }}-${{ runner.arch }}-
+          key: flatpak-gnome-50-${{ matrix.target == 'flathub' && 'flathub-' || '' }}${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml') }}
+          restore-keys: flatpak-gnome-50-${{ matrix.target == 'flathub' && 'flathub-' || '' }}${{ runner.os }}-${{ runner.arch }}-
       - name: Package, install and open the Flatpak
         if: matrix.target == 'flatpak'
         run: |
@@ -1676,6 +1677,40 @@ jobs:
             -w "$GITHUB_WORKSPACE" "$FEDORA_IMAGE" bash eng/ci/packaging-rpm.sh artifacts/package/rpm/runic.packaging.probe-1.2.3-1.x86_64.rpm \
             "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/rpm.json")"
           bun eng/ci/packaging-probe-check.mjs "$receipts/rpm.json" rpm
+      # The flathub leg: a git repository of tests/fixtures/flathub, whose manifest dotnet runic package flathub writes
+      # with sources from its committed lock files (D039.17) and builds as Flathub does: the runtime and SDK extensions,
+      # then every source, then the build without network access. The bundle is installed and opened.
+      - name: Generate, build offline, install and open the Flathub manifest
+        if: matrix.target == 'flathub'
+        run: |
+          source="$RUNNER_TEMP/flathub-source"
+          cp -R tests/fixtures/flathub "$source"
+          cp -R tools/Runic.Application.Templates/content/runic-app/icons "$source/App/icons"
+          git -C "$source" init -q
+          git -C "$source" add -A
+          git -C "$source" -c user.name=CI -c user.email=ci@invalid commit -qm "Flathub fixture"
+          output="$RUNNER_TEMP/flathub"
+          dotnet run --no-build -c Release --project "$TOOL" -- package flathub --project "$source/App" --git-url "file://$source" \
+            --git-commit "$(git -C "$source" rev-parse HEAD)" --build --output-directory "$output" --format json > "$RUNNER_TEMP/flathub.json"
+          node -e '
+            const { payload } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const kinds = payload.packages.map(item => item.format + ":" + item.signing).join(",");
+            if (payload.identity.id !== "org.runic.tests.FlathubProbe" || kinds !== "flathub-manifest:none,flatpak:none")
+              throw new Error("Unexpected package payload " + JSON.stringify(payload));' "$RUNNER_TEMP/flathub.json"
+          grep -q 'microsoft.dotnet.ilcompiler' "$output/nuget-sources.json"
+          grep -q 'is-number-7.0.0' "$output/npm-sources.json"
+          flatpak install --user -y --noninteractive --bundle "$output/org.runic.tests.FlathubProbe.flatpak"
+          receipts="$RUNNER_TEMP/receipts"
+          mkdir -p "$receipts"
+          flatpak run --user --filesystem="$receipts" org.runic.tests.FlathubProbe \
+            "runic-flathub-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/flathub.json")"
+          node -e '
+            const receipt = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (receipt.applicationId !== "org.runic.tests.FlathubProbe" || receipt.contentRoot !== "/app/lib/FlathubProbe/www"
+              || !receipt.contentRootHasIndex || !receipt.frontendDependency || !receipt.url.startsWith("runic-flathub-probe://receipt"))
+              throw new Error("The Flathub receipt failed: " + JSON.stringify(receipt));
+            console.log("PACKAGING_OK|flathub|package|" + receipt.applicationId);' "$receipts/flathub.json"
+          flatpak uninstall --user -y --noninteractive org.runic.tests.FlathubProbe
 
   # I-074: what NVDA (WebView2) and Orca (WebKitGTK, GTK 3 and GTK 4) say while the accessibility probe reads and changes
   # the accessibility fixture, as the native job's macOS leg checks VoiceOver. The probe starts the screen reader before
