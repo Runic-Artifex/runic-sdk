@@ -12,8 +12,8 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
     private static readonly Guid DefaultDomainPolicy = new("31B2F340-016D-11D2-945F-00C04FB984F9");
 
     private WindowsDirectoryClient DirectoryClient(DirectoryTransport transport = DirectoryTransport.SignedAndSealed,
-        DirectoryAuthentication authentication = DirectoryAuthentication.Negotiate, string? server = null) =>
-        new(new(server ?? options.Server!) { Transport = transport, Authentication = authentication }, options.Credential);
+        DirectoryAuthentication authentication = DirectoryAuthentication.Negotiate, string? server = null, bool reuse = false) =>
+        new(new(server ?? options.Server!) { Transport = transport, Authentication = authentication, ReuseConnection = reuse }, options.Credential);
     private WindowsDnsClient DnsClient() => new(options.DnsServer ?? options.Server!, options.Credential);
     // GPMC has no credential parameter and uses the calling thread's identity.
     private Task AsDomainIdentity(Func<Task> action) => NetworkLogon.RunAsync(options.Credential, action);
@@ -50,6 +50,7 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
                     }, token);
                 }
             await report.Check("ldap.tls-certificate-name-mismatch", CertificateNameMismatch, token);
+            await report.Check("ldap.connection-reuse", ConnectionReuse, token);
         }
         if (options.Includes("gpo")) await report.Check("gpo.inspect", () => AsDomainIdentity(async () =>
         {
@@ -90,7 +91,12 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
                 }, token);
             if (options.Includes("ldap"))
             {
-                if (fixtureCreated) await report.Check("ldap.objects-membership-password", () => Ldap(directory, ad, fixtureDn), token);
+                // The mutation suite runs on one reused connection; fixture setup and cleanup bind per operation.
+                if (fixtureCreated) await report.Check("ldap.objects-membership-password", async () =>
+                {
+                    using var reusing = DirectoryClient(reuse: true);
+                    await Ldap(reusing, new ActiveDirectoryClient(reusing), fixtureDn);
+                }, token);
                 else report.Skip("ldap.objects-membership-password", "Fixture OU creation failed or canceled.");
             }
             if (options.Includes("gpo"))
@@ -112,6 +118,29 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
             });
         }
     }
+    // A reusing client serves sequential and concurrent operations on one connection and refuses work once disposed.
+    private async Task ConnectionReuse()
+    {
+        var reusing = DirectoryClient(reuse: true);
+        try
+        {
+            var root = await reusing.ReadRootDseAsync(["defaultNamingContext", "dnsHostName"], token);
+            Require(root is not null && root.Attributes["defaultNamingContext"][0] is DirectoryValue.Text, "RootDSE was not read on a reused connection.");
+            var domainDn = ((DirectoryValue.Text)root!.Attributes["defaultNamingContext"][0]).Value;
+            var reads = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => reusing.FindAsync(domainDn, ["distinguishedName", "objectGUID"], token)));
+            Require(reads.All(read => read is not null && read.Attributes["distinguishedName"][0] is DirectoryValue.Text && read.Attributes["objectGUID"][0] is DirectoryValue.Binary),
+                "Concurrent reads on a reused connection returned wrong values.");
+            if (options.BaseDn is not null)
+                _ = await reusing.SearchAsync(new(options.BaseDn, "(objectClass=*)", DirectorySearchScope.Base, ["distinguishedName"]) { PageSize = 1 }, token);
+            Require(await reusing.FindAsync("CN=RunicMissing-" + report.Id[..12] + "," + domainDn, ["distinguishedName"], token) is null,
+                "A missing object was found on a reused connection.");
+            Require((await reusing.FindAsync(domainDn, ["distinguishedName"], token)) is not null, "The reused connection failed after a missing-object result.");
+        }
+        finally { reusing.Dispose(); }
+        try { _ = await reusing.ReadRootDseAsync(["dnsHostName"], token); throw new InvalidOperationException("A disposed client ran an operation."); }
+        catch (ObjectDisposedException) { }
+    }
+
     private async Task Ldap(WindowsDirectoryClient directory, ActiveDirectoryClient ad, string parent)
     {
         var owned = new List<string>();

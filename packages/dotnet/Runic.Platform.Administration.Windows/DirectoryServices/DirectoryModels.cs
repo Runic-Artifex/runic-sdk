@@ -31,6 +31,11 @@ public sealed record DirectoryConnectionOptions(string Server)
     public DirectoryAuthentication Authentication { get; init; } = DirectoryAuthentication.Negotiate;
     /// <summary>Native request timeout, between one second and five minutes.</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>Whether a <see cref="WindowsDirectoryClient"/> keeps one bound connection for all its operations.</summary>
+    /// <remarks>False (the default) opens and binds a connection for each operation. When true, the client binds on its
+    /// first operation, runs its operations one at a time on that connection, and closes it when the client is disposed.
+    /// A connection failure closes the connection without retrying the operation; the next operation binds again.</remarks>
+    public bool ReuseConnection { get; init; }
 }
 /// <summary>Scope of an LDAP search.</summary>
 public enum DirectorySearchScope

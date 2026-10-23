@@ -15,6 +15,7 @@ internal sealed unsafe partial class WmiConnection : IDisposable
 {
     private readonly ComObject _services;
     private readonly WmiIdentity? _identity;
+    private readonly BString? _principal;
     private readonly int _timeoutMilliseconds;
 
     internal WmiConnection(string server, string scope, NetworkCredential? credential, TimeSpan timeout)
@@ -23,28 +24,67 @@ internal sealed unsafe partial class WmiConnection : IDisposable
         Automation.RequireX64();
         if (timeout < TimeSpan.FromSeconds(1) || timeout > TimeSpan.FromMinutes(5)) throw new ArgumentOutOfRangeException(nameof(timeout));
         _timeoutMilliseconds = checked((int)timeout.TotalMilliseconds);
+        // A remote connection names the server's Kerberos principal, so the connect call already authenticates the
+        // server and never falls back to NTLM. Windows rejects an authority for a local connection.
+        var principal = IsLocalMachine(server) ? null : RemotePrincipal(server);
         using var locator = ComObject.Create(new("4590f811-1d3a-11d0-891f-00aa004b2e24"), new("dc12a687-737f-11cf-884d-00aa004b2e24"));
         using var target = new BString(@"\\" + server + "\\" + scope);
         using var user = credential is null ? null : new BString(
             string.IsNullOrEmpty(credential.Domain) ? credential.UserName : credential.Domain + "\\" + credential.UserName);
         using var password = credential is null ? null : new BString(credential.Password);
+        using var authority = principal is null ? null : new BString("kerberos:" + principal);
         nint result = 0;
-        _services = ComObject.FromResult(((IWbemLocator*)locator.Pointer)->ConnectServer(target.Native, user?.Native ?? default, password?.Native ?? default, default, 0x80, default, null, (IWbemServices**)&result).Value, result, "Connect Windows management");
+        _services = ComObject.FromResult(((IWbemLocator*)locator.Pointer)->ConnectServer(target.Native, user?.Native ?? default, password?.Native ?? default, default, 0x80, authority?.Native ?? default, null, (IWbemServices**)&result).Value, result, "Connect Windows management");
         try
         {
             _identity = credential is null ? null : new WmiIdentity(credential);
+            _principal = principal is null ? null : new BString(principal);
             Secure(_services);
         }
-        catch { _services.Dispose(); _identity?.Dispose(); throw; }
+        catch { _services.Dispose(); _identity?.Dispose(); _principal?.Dispose(); throw; }
+    }
+
+    /// <summary>The Kerberos service principal of a remote WMI server: the host SPN of the name the caller supplied.</summary>
+    /// <remarks>Kerberos needs a DNS or NetBIOS name; an IP address has no service principal.</remarks>
+    internal static string RemotePrincipal(string server)
+    {
+        var name = server.TrimEnd('.');
+        if (name.Length == 0 || IPAddress.TryParse(name.Trim('[', ']'), out _))
+            throw new ArgumentException("Remote Windows management needs the server's DNS or NetBIOS name for Kerberos authentication, not an IP address.", nameof(server));
+        return "host/" + name;
+    }
+
+    /// <summary>Whether a server name refers to this machine, for which WMI rejects an explicit authority.</summary>
+    internal static bool IsLocalMachine(string server)
+    {
+        var name = server.TrimEnd('.');
+        if (name is "." or "" || name.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (IPAddress.TryParse(name.Trim('[', ']'), out var address)) return IPAddress.IsLoopback(address);
+        try
+        {
+            if (name.Equals(System.Net.Dns.GetHostName(), StringComparison.OrdinalIgnoreCase)) return true;
+            var properties = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties();
+            return properties.DomainName.Length != 0 &&
+                name.Equals(properties.HostName + "." + properties.DomainName.TrimEnd('.'), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (System.Net.NetworkInformation.NetworkInformationException) { return false; }
+        catch (System.Net.Sockets.SocketException) { return false; }
     }
 
     private void Secure(ComObject proxy)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         // COM retains the identity pointer for the proxy's lifetime, so it is owned by this connection rather than the stack.
-        NativeError.Check(PInvoke.CoSetProxyBlanket((IUnknown*)proxy.Pointer, uint.MaxValue, uint.MaxValue, new PWSTR((char*)-1), RPC_C_AUTHN_LEVEL.RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_IMP_LEVEL.RPC_C_IMP_LEVEL_IMPERSONATE,
+        // A remote proxy keeps Kerberos and the server principal; a local proxy keeps the negotiated defaults.
+        NativeError.Check(PInvoke.CoSetProxyBlanket((IUnknown*)proxy.Pointer, _principal is null ? uint.MaxValue : RpcAuthenticationKerberos, uint.MaxValue,
+            _principal is null ? new PWSTR((char*)-1) : new PWSTR((char*)_principal.Pointer), RPC_C_AUTHN_LEVEL.RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_IMP_LEVEL.RPC_C_IMP_LEVEL_IMPERSONATE,
             _identity is null ? null : _identity.Value, 0).Value, "Secure Windows management proxy");
     }
+
+    // RPC_C_AUTHN_GSS_KERBEROS.
+    private const uint RpcAuthenticationKerberos = 16;
 
     internal ImmutableArray<ImmutableDictionary<string, object?>> Query(string query, string[] properties, CancellationToken cancellationToken)
     {
@@ -172,7 +212,7 @@ internal sealed unsafe partial class WmiConnection : IDisposable
         NativeError.Check(((IWbemClassObject*)input.Pointer)->Put((char*)property.Pointer, 0, &native, 0).Value, "Write Windows management method input");
     }
 
-    public void Dispose() { _services.Dispose(); _identity?.Dispose(); }
+    public void Dispose() { _services.Dispose(); _identity?.Dispose(); _principal?.Dispose(); }
 
     private sealed class WmiIdentity : IDisposable
     {

@@ -56,6 +56,13 @@ membership.
 
 - Clients are concrete sealed classes without interfaces, like `ServiceController`
   and `LdapConnection`. To substitute them in tests, wrap the members you use.
+- `WindowsDirectoryClient` opens and binds an LDAP connection for each operation by
+  default. Set `DirectoryConnectionOptions.ReuseConnection` to keep one bound
+  connection for the client's lifetime: operations then run one at a time on it, a
+  connection failure closes it (the failed operation is not retried and the next one
+  binds again), and `Dispose()` closes it. The client is `IDisposable` in both modes;
+  after `Dispose()` its operations throw `ObjectDisposedException`.
+  `ActiveDirectoryClient` uses the directory client it is given and does not dispose it.
 - Operations that can reach another machine or block on I/O are
   `…Async(…, CancellationToken)`: services, shares, domain membership and controller
   discovery, tasks, DNS, LDAP/AD and Group Policy, as well as the local COM-based
@@ -97,7 +104,11 @@ membership.
   native execution prevents that operation; once an indivisible native mutation
   starts, its actual result is returned. A cancellation request never means rollback.
 - Native COM runs on an owned apartment. The implementation does not set global
-  COM security. WMI uses explicit per-proxy authentication and packet privacy.
+  COM security. WMI uses explicit per-proxy authentication and packet privacy. A
+  remote WMI connection (`WindowsDnsClient` with another server) authenticates with
+  Kerberos to the server's `host/<name>` principal from the connect call on, so it
+  never falls back to NTLM: name the server by its DNS or NetBIOS name, not an IP
+  address, and the server must be in a domain or trust the caller's realm.
   Native RPC/COM calls can outlive a cancellation request; LDAP timeouts and WMI
   query wait bounds are not universal hard deadlines.
 - Process IDs are `int`, as in `System.Diagnostics.Process`. Raw native numbers
@@ -130,7 +141,12 @@ membership.
   Registration, scheduler state and last execution outcome are separate values.
 - Firewall names can be ambiguous and have no public persistent GUID in this API.
   Use the returned identity for writes; changed/ambiguous identity fails. Updates
-  retain unrelated native settings by editing the existing rule.
+  retain unrelated native settings by editing the existing rule. Neither create nor
+  update produces an inbound allow rule without a program, service, local port or
+  ICMP protocol (`ArgumentException`); an existing rule of that kind can still be
+  updated, for example disabled. Delete renames the rule it checked to a unique
+  temporary name and removes that name, so a rule that takes the name concurrently
+  is not removed.
 - DNS keys include full record data, not just owner name. A and AAAA addresses are
   `IPAddress` values; TTLs are `TimeSpan` values in whole seconds, and a
   specification's `TimeToLive = null` lets the server choose the TTL. Updating one record does

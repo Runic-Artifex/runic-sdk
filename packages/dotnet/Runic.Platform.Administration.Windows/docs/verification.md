@@ -234,6 +234,42 @@ zone held only SOA/NS, only the two default GPOs existed, and the client had no
 `RunicVerify-*` service, task, firewall rule or share. Both VMs were reverted to
 their snapshots.
 
+## 0.11 connection reuse, firewall scope and Kerberos WMI (2026-10-23, B22)
+
+The same fixture (DC `clean-promoted`, joined client `w319-009-pre-acceptance`) was
+run on the 0.11 changes: optional LDAP connection reuse, the firewall update scope
+check, deletion of the checked firewall rule, and Kerberos for remote WMI. The
+verifier was built on the client with .NET SDK 10.0.401 as NativeAOT (no warnings)
+and as JIT.
+
+| Run | Identity and logon | Command | NativeAOT | JIT |
+| --- | --- | --- | --- | --- |
+| Unit tests | — | `Runic.Platform.Administration.Windows.Tests` | 37 passed | 37 passed |
+| Local writes | elevated | `local --allow-changes` | 20 passed, exit 0 | same |
+| Local denied | non-elevated | `local --expect-denied --only services,tasks,firewall,shares` | 8 passed, exit 0 | same |
+| Domain writes | delegate, own logon (scheduled task) | `domain … --allow-changes` | 40 passed, 2 skipped (Basic binds need an explicit credential), exit 0 | same |
+| Domain writes | delegate, explicit `NetworkCredential` | `domain … --allow-changes --only ldap,dns --credential-stdin` | 34 passed, exit 0 | same |
+| Denied writes | restricted, own logon | `domain … --expect-denied` | 12 passed, 2 skipped, exit 0 | same |
+| Denied writes | restricted, explicit credential | `domain … --expect-denied --credential-stdin` | 14 passed, exit 0 | same |
+
+New in these runs:
+
+- `ldap.connection-reuse` read RootDSE, ran four concurrent reads, a paged search, a
+  missing-object lookup and a read after it on one connection, and was refused
+  with `ObjectDisposedException` after `Dispose()`. The whole LDAP mutation suite,
+  including the 3100-member ranged group, ran on one reused connection.
+- `firewall.update-scope`: an update to an inbound allow rule without a program or
+  local port threw `ArgumentException` and left the rule unchanged. After deletion,
+  no rule of the fixture's group remained under any name.
+- Remote DNS over WMI used Kerberos: the DC logged the client's logons of both
+  identities with the Kerberos package. The only other logons were the LDAP
+  simple binds of the Basic transport checks (two per explicit-credential run). An
+  IP address as DNS server failed before connecting, with the message that
+  Kerberos needs a server name.
+
+Cleanup was checked by the verifier's own cleanup checks; both VMs were reverted to
+their snapshots afterwards.
+
 ## Outside the verified scope
 
 Local service, task, firewall and share writes, and the domain scenarios, are
