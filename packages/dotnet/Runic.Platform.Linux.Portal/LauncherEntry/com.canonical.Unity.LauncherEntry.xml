@@ -1,0 +1,17 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- The launcher entry API of Unity, which docks such as KDE Plasma's task manager, Ubuntu Dock and Dash to Dock read for
+     a count, progress and urgency on an application's launcher. An application emits Update with the desktop entry's
+     application:// URI; a dock that starts later calls Query. Written from the interface's description in libunity
+     (https://wiki.ubuntu.com/Unity/LauncherAPI); no code is copied. -->
+<node>
+  <interface name="com.canonical.Unity.LauncherEntry">
+    <signal name="Update">
+      <arg type="s" name="app_uri"/>
+      <arg type="a{sv}" name="properties"/>
+    </signal>
+    <method name="Query">
+      <arg type="s" name="app_uri" direction="out"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+  </interface>
+</node>

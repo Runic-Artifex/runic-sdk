@@ -216,9 +216,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
 - `services.AddRunicPlatformServices()` registers native file dialogs, the
   clipboard, and the file launcher for each window scope:
   `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`,
-  `IDesktopClipboard` (HTML, RTF, images, files and a format watch on Windows
-  and macOS), and `IDesktopFileLauncher`; `IWindowPlatformServices` also sets the
-  window's taskbar badge and progress (Windows) or the Dock tile's (macOS). A ViewModel takes them in its constructor before its
+  `IDesktopClipboard` (HTML, RTF, images, files and a format watch), and
+  `IDesktopFileLauncher`; `IWindowPlatformServices` also sets the window's taskbar
+  badge and progress (Windows), the Dock tile's (macOS) or the application's Unity
+  launcher entry (GTK 3 and GTK 4), which `AddRunicPlatformServices(applicationId)`
+  names with the application ID (inside Flatpak the Flatpak ID serves). A ViewModel takes them in its constructor before its
   window opens. They bind to the window's native owner when it opens, and the
   provider is selected from the backend that is actually running:
   - Windows: `Runic.Platform.Windows`.

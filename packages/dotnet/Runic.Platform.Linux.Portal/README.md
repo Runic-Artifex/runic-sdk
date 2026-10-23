@@ -200,6 +200,7 @@ thread the service is on; an exception it throws is ignored.
 | `desktop-application-exec-invalid` | Warning | The desktop entry's `Exec` key cannot be parsed. |
 | `desktop-application-local-files-only` | Warning | The application opens only local files. |
 | `desktop-application-activation-failed` | Warning | D-Bus activation of the application failed. |
+| `launcher-entry-application-id-required` | Warning | A window's badge or progress names the application's desktop entry, which needs the application ID. |
 | `mimeapps-write-failed` | Warning | The user's `mimeapps.list` could not be written. |
 | `thumbnail-cache-unavailable` | Information | The host's thumbnail cache is not visible inside the sandbox. |
 | `thumbnailer-access-denied` | Warning | The sandbox does not allow talking to the thumbnailer. |
@@ -436,6 +437,22 @@ answers, reads are `Unavailable(BackendUnavailable)` and the
 reports a fresh state once one answers. It needs no window and no GTK. Inside
 Flatpak the portal needs no permission; NetworkManager needs
 `--system-talk-name=org.freedesktop.NetworkManager`.
+
+## Badges and progress
+
+A window's `SetBadgeAsync` and `SetProgressAsync` on GTK 3 and GTK 4 emit the Unity
+launcher API's `com.canonical.Unity.LauncherEntry.Update` signal on the session bus
+for `application://<id>.desktop`, with `count` and `count-visible` for a count,
+`urgent` for a dot, and `progress` and `progress-visible`; paused and failed
+progress look normal, and indeterminate progress shows no bar. An object below the
+application's object path answers `Query` for a dock that starts later. KDE
+Plasma's task manager, Ubuntu Dock and Dash to Dock show them; stock GNOME Shell
+does not, and the call still succeeds. The badge and progress belong to the
+application, which all windows share: the most recent call wins, and a window's
+go when it closes. The entry needs the application's ID, from
+`AddRunicPlatformServices(applicationId)` or, inside Flatpak, the Flatpak ID;
+without one the calls report `Unavailable(BackendUnavailable)` and the
+`launcher-entry-application-id-required` diagnostic.
 
 ## Desktop applications
 

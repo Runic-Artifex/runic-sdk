@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Runic.Platform.Runtime;
@@ -103,6 +104,7 @@ internal sealed class ClipboardTests
         }
         string actual = await observerOutput;
         Check(observer.ExitCode == 0 && actual == sample, "independent native observer: " + actual + " stderr: " + await observerError);
+        await FormatsAsync(clipboard);
         await using var replacement = LinuxPlatformProvider.CreateTextClipboard(owner);
         Check(await replacement.WriteTextAsync("replacement") is PlatformResult<PlatformUnit>.Success, "replacement owns clipboard");
         await clipboard.DisposeAsync();
@@ -241,6 +243,93 @@ internal sealed class ClipboardTests
         await presentation.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         Check(await pending.WaitAsync(TimeSpan.FromSeconds(1)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "stopped GTK loop chooser shutdown");
         Console.WriteLine("PASS GTK3 native directory chooser completes and presentation shutdown drains after the GTK loop stopped.");
+    }
+
+    // HTML, RTF, PNG and files written in one ownership and read back, by Runic and by an independent GTK process, and
+    // the owner-change watch when another process takes the clipboard.
+    private static async Task FormatsAsync(LinuxTextClipboard clipboard)
+    {
+        string directory = Directory.CreateTempSubdirectory("runic-clipboard-").FullName;
+        try
+        {
+            const string html = "<p>Runic <b>bold</b> é 日本</p>";
+            const string rtf = "{\\rtf1\\ansi caf\\'e9 \\b bold\\b0}";
+            string first = Path.Combine(directory, "first file #1.txt"), second = Path.Combine(directory, "second dir");
+            File.WriteAllText(first, "a");
+            Directory.CreateDirectory(second);
+            byte[] png = Png();
+            var write = await clipboard.WriteAsync(new DesktopClipboardContent { Text = "plain", Html = html, Rtf = rtf, Image = png, Files = [first, second] });
+            Check(write is PlatformResult<PlatformUnit>.Success, "one write of every format: " + write);
+            var formats = await clipboard.GetFormatsAsync();
+            Check(formats is PlatformResult<DesktopClipboardFormats>.Success { Value: var all } && all == (DesktopClipboardFormats.Text | DesktopClipboardFormats.Html
+                | DesktopClipboardFormats.Rtf | DesktopClipboardFormats.Image | DesktopClipboardFormats.Files), "every format: " + formats);
+            Check(await clipboard.ReadTextAsync(10) is PlatformResult<string?>.Success { Value: "plain" }, "text of one write");
+            Check(await clipboard.ReadHtmlAsync(html.Length) is PlatformResult<string?>.Success { Value: html }, "HTML");
+            Check(await clipboard.ReadHtmlAsync(html.Length - 1) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge }, "HTML bound");
+            Check(await clipboard.ReadRtfAsync(rtf.Length) is PlatformResult<string?>.Success { Value: rtf }, "RTF");
+            var image = await clipboard.ReadImageAsync(png.Length);
+            Check(image is PlatformResult<byte[]?>.Success { Value: { } same } && same.AsSpan().SequenceEqual(png), "PNG as written: " + image);
+            Check(await clipboard.ReadImageAsync(png.Length - 1) is PlatformResult<byte[]?>.Failed { Code: PlatformFailureCode.TooLarge }, "PNG bound");
+            var files = await clipboard.ReadFilesAsync(2);
+            Check(files is PlatformResult<ImmutableArray<string>>.Success { Value: [var a, var b] } && a == first && b == second, "files: " + files);
+            Check(await clipboard.ReadFilesAsync(1) is PlatformResult<ImmutableArray<string>>.Failed { Code: PlatformFailureCode.TooLarge }, "file bound");
+
+            // An independent GTK process reads what a GTK application pastes.
+            string observed = await PeerAsync("--observer-formats");
+            foreach (var expected in new[] { "text/html", "text/rtf", "image/png", "text/uri-list", "x-special/gnome-copied-files", "html:" + html,
+                "uris:" + LinuxTextClipboardUris(first, second), "image:2x1" })
+                Check(observed.Split('\n').Contains(expected), $"the independent reader sees {expected}: {observed}");
+            Console.WriteLine("PASS GTK 3 HTML, RTF, PNG and files in one ownership, read by Runic and by an independent GTK process");
+
+            // The watch reports the formats now, then the change when another process takes the clipboard.
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await using var watch = clipboard.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+            Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopClipboardFormats>.Success { Value: var now } && now.HasFlag(DesktopClipboardFormats.Files),
+                "the watch's first formats: " + watch.Current);
+            var taking = PeerAsync("--observer-take", "taken");
+            Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopClipboardFormats>.Success { Value: var changed } && !changed.HasFlag(DesktopClipboardFormats.Files),
+                "the watch after another process took the clipboard: " + watch.Current);
+            await taking;
+            Console.WriteLine("PASS GTK 3 owner-change watch");
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private static string LinuxTextClipboardUris(params string[] paths) => string.Join(" ", paths.Select(LinuxTextClipboard.UriOf));
+
+    // A 2×1 RGBA PNG, as GdkPixbuf writes it.
+    private static byte[] Png()
+    {
+        nint pixbuf = Native.PixbufNew(0, 1, 8, 2, 1);
+        nint buffer = 0;
+        try
+        {
+            Native.PixbufFill(pixbuf, 0x3060_90FF);
+            if (Native.SaveToBuffer(pixbuf, out buffer, out nuint size, "png", 0, 0, out _) == 0) throw new InvalidOperationException("PNG encoding failed.");
+            return Copy(buffer, size);
+        }
+        finally
+        {
+            if (buffer != 0) Native.Free(buffer);
+            Native.Unref(pixbuf);
+        }
+
+        static unsafe byte[] Copy(nint buffer, nuint size) => new ReadOnlySpan<byte>((void*)buffer, checked((int)size)).ToArray();
+    }
+
+    // Runs this executable as an independent GTK peer and returns what it printed.
+    private static async Task<string> PeerAsync(params string[] arguments)
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!) { RedirectStandardOutput = true, RedirectStandardError = true };
+        if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") start.ArgumentList.Add(Environment.GetCommandLineArgs()[0]);
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var peer = Process.Start(start)!;
+        var output = peer.StandardOutput.ReadToEndAsync();
+        var error = peer.StandardError.ReadToEndAsync();
+        try { await Task.WhenAll(output, error, peer.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(20)); }
+        finally { if (!peer.HasExited) peer.Kill(entireProcessTree: true); }
+        Check(peer.ExitCode == 0, $"the peer {arguments[0]} failed: {await error}");
+        return await output;
     }
 
     // Every native mode of the former executable exported the GTK3 portal parent first.
@@ -409,4 +498,19 @@ internal static partial class Native
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_wait_for_text")] internal static partial nint WaitText(nint clipboard);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_clear")] internal static partial void Clear(nint clipboard);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_free")] internal static partial void Free(nint pointer);
+    [LibraryImport("libgdk_pixbuf-2.0.so.0", EntryPoint = "gdk_pixbuf_new")] internal static partial nint PixbufNew(int colorspace, int alpha, int bits, int width, int height);
+    [LibraryImport("libgdk_pixbuf-2.0.so.0", EntryPoint = "gdk_pixbuf_fill")] internal static partial void PixbufFill(nint pixbuf, uint pixel);
+    [LibraryImport("libgdk_pixbuf-2.0.so.0", EntryPoint = "gdk_pixbuf_get_width")] internal static partial int PixbufWidth(nint pixbuf);
+    [LibraryImport("libgdk_pixbuf-2.0.so.0", EntryPoint = "gdk_pixbuf_get_height")] internal static partial int PixbufHeight(nint pixbuf);
+    [LibraryImport("libgdk_pixbuf-2.0.so.0", EntryPoint = "gdk_pixbuf_save_to_bufferv", StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int SaveToBuffer(nint pixbuf, out nint buffer, out nuint size, string type, nint keys, nint values, out nint error);
+    [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")] internal static partial void Unref(nint instance);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_wait_for_targets")] internal static partial int WaitTargets(nint clipboard, out nint targets, out int count);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_wait_for_contents")] internal static partial nint WaitContents(nint clipboard, nint target);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_wait_for_image")] internal static partial nint WaitImage(nint clipboard);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_clipboard_set_text", StringMarshalling = StringMarshalling.Utf8)] internal static partial void SetText(nint clipboard, string text, int length);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_get_length")] internal static partial int DataLength(nint selection);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_get_data")] internal static partial nint Data(nint selection);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_selection_data_free")] internal static partial void DataFree(nint selection);
+    [LibraryImport("libgdk-3.so.0", EntryPoint = "gdk_atom_name")] internal static partial nint AtomName(nint atom);
 }

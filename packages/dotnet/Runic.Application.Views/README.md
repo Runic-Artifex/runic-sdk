@@ -792,8 +792,8 @@ Use it for what the page cannot do: a command from a menu or a shortcut, work
 that finishes after the click, such as copying an export, and file lists. The
 page's own `navigator.clipboard` stays the simple choice for text and images it
 already has, under a user gesture and the web view's permission rules; it cannot
-copy files. Runic Desktop windows and WPF windows provide the formats on Windows
-and macOS; Linux and CS-WebUI report them unavailable in this release.
+copy files. Runic Desktop windows (Windows, macOS, GTK 3 and GTK 4) and WPF windows
+provide the formats; CS-WebUI reports them unavailable.
 
 ### Moved and renamed since 0.7.0-preview.6
 

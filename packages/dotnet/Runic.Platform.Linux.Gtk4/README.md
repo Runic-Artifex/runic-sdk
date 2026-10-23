@@ -9,6 +9,17 @@ exports only valid GTK 4 X11 or Wayland parent identifiers for `Runic.Platform.L
 file dialogs and file handoff. It never exposes a raw window pointer or silently changes an
 owned request into an unparented request.
 
+The clipboard is also an `IDesktopClipboard`. HTML and RTF are read as their MIME
+types' bytes through `gdk_clipboard_read_async`, in 64 KiB chunks up to the bound;
+images through `gdk_clipboard_read_texture_async`, which converts every image
+format GDK reads, saved as PNG (`gdk_texture_save_to_png_bytes`, GTK 4.6); files
+through `gdk_clipboard_read_value_async` with `GDK_TYPE_FILE_LIST`, which also
+takes the FileTransfer portal's `application/vnd.portal.filetransfer` in a
+Flatpak. A write sets one union content provider of every format, files as a
+`GDK_TYPE_FILE_LIST` value that GDK offers as `text/uri-list`,
+`x-special/gnome-copied-files` and through the portal. The watch is the clipboard's
+`changed` signal.
+
 Message boxes are `GtkAlertDialog`s (GTK 4.10 and later), modal for the window and
 answered through `gtk_alert_dialog_choose` with a `GCancellable`, which cancellation
 cancels. Its buttons take `_` mnemonics, in GNOME's order; the default and cancel

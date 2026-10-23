@@ -1,7 +1,7 @@
 # Runic.Platform.Linux (GTK 3)
 
 The GTK 3 window services for Linux x64: portal file dialogs and file handoff with
-GTK 3 parenting, the GTK 3 text clipboard, and message boxes. The package has
+GTK 3 parenting, the GTK 3 clipboard, and message boxes. The package has
 no public API. Runic.Application.Views.Desktop selects it for GTK 3 windows from
 `DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()`, and never in a
 GTK 4 process, which `Runic.Platform.Linux.Gtk4` serves. The package references the
@@ -40,6 +40,16 @@ for transfer refusal. Concurrent access reports ResourceBusy. A successful write
 means GTK acquired ownership; it does not promise clipboard-manager persistence
 when the application exits. Write cancellation is checked before acquisition and
 cannot replace the actual result once acquisition starts.
+
+The clipboard is also an `IDesktopClipboard`: `text/html`, `text/rtf` (with
+`application/rtf`; `text/richtext` is read too), `image/png` and, for files,
+`text/uri-list` with `x-special/gnome-copied-files`. A read asks for the targets,
+then for the one it names, bounded before managed copying; an image in another
+format that gdk-pixbuf reads is converted to PNG. A write takes the selection's
+ownership once with every target. The watch is the clipboard's `owner-change`
+signal, which X11 delivers through XFixes; on Wayland it arrives when a window of
+the application gains focus. GTK 3's handling of the FileTransfer portal for file
+lists inside Flatpak is not verified; GTK 4's provider handles it.
 
 Dispose the clipboard while the presentation dispatcher still runs. Disposal drains
 pending selection callbacks and releases only this instance's current ownership.

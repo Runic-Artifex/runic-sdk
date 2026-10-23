@@ -796,7 +796,9 @@ public static partial class DesktopPlatformServices
     private static IDesktopSettings CreatePortalSettings() => PortalApplication.Inferred.CreateSettings();
 #endif
 
-    internal static IWindowPlatformServices Create(DesktopNativeOwner owner, out DesktopPlatformProvider provider)
+    // The application ID names the Linux launcher entry of the window's badge and progress; without one the Flatpak ID
+    // does.
+    internal static IWindowPlatformServices Create(DesktopNativeOwner owner, out DesktopPlatformProvider provider, string? applicationId = null)
     {
         provider = DesktopPlatformProvider.None;
         if (!owner.IsAvailable) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
@@ -808,8 +810,8 @@ public static partial class DesktopPlatformServices
         if (provider == DesktopPlatformProvider.Windows && OperatingSystem.IsWindows()) native = CreateWindows(owner);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS()) native = CreateMacOS(owner);
-        else if (provider == DesktopPlatformProvider.LinuxGtk3 && OperatingSystem.IsLinux()) native = CreateGtk3(owner);
-        else if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux()) native = CreateGtk4(owner);
+        else if (provider == DesktopPlatformProvider.LinuxGtk3 && OperatingSystem.IsLinux()) native = CreateGtk3(owner, applicationId);
+        else if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux()) native = CreateGtk4(owner, applicationId);
 #endif
         if (native is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         return new BoundWindowPlatformServices(owner, selected);
@@ -1086,19 +1088,35 @@ public static partial class DesktopPlatformServices
 
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static NativeServices CreateGtk3(DesktopNativeOwner owner) => new(
+    private static NativeServices CreateGtk3(DesktopNativeOwner owner, string? applicationId) => new(
         LinuxPlatformProvider.CreateFileDialogs(owner),
         LinuxPlatformProvider.CreateTextClipboard(owner),
         LinuxPlatformProvider.CreateFileLauncher(owner),
-        LinuxPlatformProvider.CreateMessageBoxes(owner));
+        LinuxPlatformProvider.CreateMessageBoxes(owner),
+        LauncherEntry(applicationId));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SupportedOSPlatform("linux")]
-    private static NativeServices CreateGtk4(DesktopNativeOwner owner)
+    private static NativeServices CreateGtk4(DesktopNativeOwner owner, string? applicationId)
     {
         var portalOwner = Gtk4PlatformProvider.CreatePortalWindowOwner(owner);
         return new(PortalApplication.Inferred.CreateFileDialogs(portalOwner), Gtk4PlatformProvider.CreateTextClipboard(owner),
-            PortalApplication.Inferred.CreateFileLauncher(portalOwner), Gtk4PlatformProvider.CreateMessageBoxes(owner));
+            PortalApplication.Inferred.CreateFileLauncher(portalOwner), Gtk4PlatformProvider.CreateMessageBoxes(owner), LauncherEntry(applicationId));
+    }
+
+    // The window's view of the application's Unity launcher entry, named by the application ID or the Flatpak ID.
+    [SupportedOSPlatform("linux")]
+    private static IWindowTaskbar LauncherEntry(string? applicationId) =>
+        (applicationId ?? (Environment.GetEnvironmentVariable("FLATPAK_ID") is { Length: > 0 } flatpak ? flatpak : null)) is { } id
+            ? LauncherEntries.Applications.GetOrAdd(id, static id => new PortalApplication(id)).CreateWindowTaskbar()
+            : PortalApplication.Inferred.CreateWindowTaskbar();
+
+    // One PortalApplication per ID, so the windows of an application share its connection and launcher entry. A class of
+    // its own, so only a Linux process loads the Portal provider for it.
+    [SupportedOSPlatform("linux")]
+    private static class LauncherEntries
+    {
+        internal static readonly System.Collections.Concurrent.ConcurrentDictionary<string, PortalApplication> Applications = new(StringComparer.Ordinal);
     }
 #endif
 
@@ -1189,9 +1207,11 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? _contextMenu;
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
+    private readonly string? _applicationId;
 
-    internal DesktopWindowPlatformServices()
+    internal DesktopWindowPlatformServices(string? applicationId = null)
     {
+        _applicationId = applicationId;
         Monitors = new WindowMonitors(this);
         MessageBoxes = new WindowMessageBoxes(this);
     }
@@ -1218,7 +1238,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         {
             if (_bound is not null) throw new InvalidOperationException("The platform services are already bound to a window.");
             if (_disposal is not null) return;
-            _bound = DesktopPlatformServices.Create(owner, out _provider);
+            _bound = DesktopPlatformServices.Create(owner, out _provider, _applicationId);
             _window = owner.Window;
             Volatile.Write(ref _current, _bound);
         }
@@ -1548,7 +1568,7 @@ public static class DesktopPlatformServiceCollectionExtensions
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateThumbnails(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
-        services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
+        services.TryAddScoped(_ => new DesktopWindowPlatformServices(applicationId));
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard);
