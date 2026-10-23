@@ -533,9 +533,9 @@ menubar component, and may take over the shortcut matching with
 `shortcuts: "app"` while the bar is in the page
 ([specs/desktop/menu-bar-page.md](../../../specs/desktop/menu-bar-page.md)).
 
-This release shows the native bar on macOS, in the Windows window and in the
-GTK 3 and GTK 4 windows (below). The macOS window shows the declared menus in
-the application menu bar. The Windows (WebView2) window shows them in the
+This release shows the native bar on macOS, in the Windows window, and in the
+GTK 3 and GTK 4 windows or the Linux desktop's global menu (below). The macOS
+window shows the declared menus in the application menu bar. The Windows (WebView2) window shows them in the
 window: the menus in Windows order (File first, Help last, an `Application`
 menu as a plain menu with its title), each `AccessKey` underlined, shortcuts
 after the title (`Ctrl+Shift+S`), check and radio items with their marks, and
@@ -582,8 +582,45 @@ drawn as radio items. Each menu asks `CanExecute` when it opens. GTK 3 and GTK 4
 also show context menus: a `GtkMenu` (GTK 3), opened with the last button or
 key press on the page as its trigger event, or a `GtkPopoverMenu` (GTK 4)
 pointing at the page point or the last pointer position. `LayoutDirection`
-mirrors both. The desktop's global menu (KDE Plasma) comes in a later release;
-the in-window bar stays its fallback.
+mirrors both.
+
+### Linux: the desktop's global menu
+
+Where the desktop shows a global menu, such as KDE Plasma's Global Menu applet
+or the title bar's application menu button, a GTK 3 or GTK 4 window on X11 puts
+its `Native` bar there, as Qt and Chromium applications do, and
+`MenuBarPlacement` is `Global`. The window exports the bar on the session bus as
+`com.canonical.dbusmenu` (at `/org/runicartifex/MenuBar/<n>`), registers its X11
+window with `com.canonical.AppMenu.Registrar` and sets the
+`_KDE_NET_WM_APPMENU_SERVICE_NAME` and `_KDE_NET_WM_APPMENU_OBJECT_PATH`
+properties on it. The global menu shows the same menus in the same order, with
+access keys, shortcut text, check and radio marks, and items that follow
+`CanExecute` whenever a menu opens; choosing an item runs it through the
+window's command path on its GTK thread. Shortcuts stay with the window, after
+the page, as with the in-window bar.
+
+The window watches the registrar: KDE Plasma owns it only while a global menu is
+shown, so the bar moves into the global menu when one appears and back into the
+window when it goes away, and `MenuBarPlacementChanged` reports each move (event
+3015, `MenuBarPlacementChanged`, at Information). While the global menu shows the
+bar, the in-window bar is hidden. A frameless window has no in-window bar but
+still uses the global menu; a kiosk window uses neither. Without a registrar,
+for example on GNOME, the bar stays in the window, and without a session bus it
+does so silently. When the menu cannot be exported or the registrar refuses the
+window, the window reports `global-menu-failed` (a warning, logged as event
+3016, `GlobalMenuFailed`) once and keeps its bar. `LinuxDesktopOptions.GlobalMenu
+= false` always keeps the bar in the window; a custom window host receives it as
+`DesktopWindowHostOptions.GlobalMenu`.
+
+A Flatpak needs `--talk-name=com.canonical.AppMenu.Registrar` in its finish
+arguments; without it the registrar looks absent and the bar stays in the
+window. On KDE Plasma, a Flatpak without a visible registrar reports
+`global-menu-permission` once (a warning, logged as event 3015). No `--own-name`
+is needed: the global menu calls the application's unique bus name. Wayland
+windows keep the bar in the window in this release. Any program on the session
+bus can choose an enabled item of the exported menu, as with status icons: menu
+commands are user-level actions, and the calls are answered one at a time with
+bounded id lists.
 
 ### Context menus
 

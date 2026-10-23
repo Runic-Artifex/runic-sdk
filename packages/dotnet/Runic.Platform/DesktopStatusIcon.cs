@@ -37,7 +37,8 @@ public sealed record DesktopStatusIconState(DesktopIcon Icon, string Title)
     public string? Tooltip { get; init; }
     /// <summary>The menu, opened with the secondary button. An empty menu shows none.</summary>
     /// <remarks>
-    /// Command ids are unique, submenus nest at most four deep and the menu has at most 256 entries. Each
+    /// Items are unique by command id and <see cref="DesktopMenuItem.CommandParameter"/>, so one command id can serve
+    /// several items with different parameters; submenus nest at most four deep and the menu has at most 256 entries. Each
     /// <see cref="DesktopMenuItem"/> shows its <see cref="DesktopMenuItem.IsEnabled"/> and
     /// <see cref="DesktopMenuItem.IsChecked"/>; <see cref="DesktopMenuItem.Shortcut"/> and <see cref="DesktopMenu.Role"/>
     /// are ignored.

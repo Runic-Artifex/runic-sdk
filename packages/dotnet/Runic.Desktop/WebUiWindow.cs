@@ -648,6 +648,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 {
                     ConfigureCloseConfirmation(host);
                     await host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken).ConfigureAwait(false);
+                    RecordMenuBarPlacement(host);
                     PushMenuBar(host);
                 }
                 catch
@@ -724,6 +725,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     ConfigureCloseConfirmation(host);
                     host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken)
                         .AsTask().GetAwaiter().GetResult();
+                    RecordMenuBarPlacement(host);
                     PushMenuBar(host);
                 }
                 catch
@@ -1453,9 +1455,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private void EmbeddedHostMenuBarPlacementChanged(object? sender, EventArgs eventArgs)
     {
-        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
-            EmbeddedMenuBarPlacementChanged?.Invoke(host);
+        if (sender is not IWebUiEmbeddedHost host || !ReferenceEquals(Volatile.Read(ref _embeddedHost), host)) return;
+        var current = host.MenuBarPlacement;
+        var previous = (DesktopMenuBarPlacement)Interlocked.Exchange(ref _loggedPlacement, (int)current);
+        if (previous != current && _runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.MenuBarPlacementChanged(logger, previous, current, current == DesktopMenuBarPlacement.Global
+                ? "the desktop's global menu registrar appeared and took the window"
+                : previous == DesktopMenuBarPlacement.Global ? "the desktop's global menu went away" : "the window changed");
+        }
+        EmbeddedMenuBarPlacementChanged?.Invoke(host);
     }
+
+    // The placement last logged (event 3015), from when the current embedded window opened.
+    private int _loggedPlacement;
+
+    private void RecordMenuBarPlacement(IWebUiEmbeddedHost host) => Volatile.Write(ref _loggedPlacement, (int)host.MenuBarPlacement);
 
     internal Task<Runic.Platform.DesktopMenuItem?> ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry> items,
         Runic.Platform.DesktopContextMenuOptions options, CancellationToken cancellationToken)
@@ -1843,6 +1858,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
             MenuBarPresentation = _menuBarPresentation,
+            GlobalMenu = _runtimeOptions?.GlobalMenu ?? true,
             Monitor = _monitor,
             LayoutDirection = _layoutDirection,
             Language = _language,
@@ -1863,7 +1879,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 DesktopLog.DiagnosticSinkFailed(sinkLogger, exception, diagnostic.Code, DesktopLog.ErrorType(exception));
             else Trace.TraceWarning($"The diagnostic sink failed for {diagnostic.Code}: {exception.GetType().FullName}");
         }
-        if (_runtimeOptions?.Logger is { } logger)
+        if (_runtimeOptions?.Logger is { } globalMenuLogger && diagnostic.Code is LinuxGlobalMenu.FailedCode or LinuxGlobalMenu.PermissionCode)
+        {
+            // The Linux global menu's own events (3016, 3015); the bar stays in the window.
+            if (diagnostic.Code == LinuxGlobalMenu.FailedCode)
+                DesktopLog.GlobalMenuFailed(globalMenuLogger, diagnostic.Message);
+            else
+                DesktopLog.MenuBarPlacementChanged(globalMenuLogger, DesktopMenuBarPlacement.Window, DesktopMenuBarPlacement.Window,
+                    diagnostic.Message + " " + diagnostic.Remediation);
+        }
+        else if (_runtimeOptions?.Logger is { } logger)
         {
             DesktopLog.EmbeddedWindowDiagnostic(logger,
                 diagnostic.Severity == DesktopDiagnosticSeverity.Error ? LogLevel.Error : LogLevel.Warning,

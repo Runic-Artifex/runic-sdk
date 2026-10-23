@@ -304,7 +304,12 @@ public sealed class MenuWindowHostTests
     {
         var factory = new MenuFactory();
         IReadOnlyList<DesktopMenu> bar = [new("File", [new DesktopMenuItem("Save", "file.save")]) { Role = DesktopMenuRole.File }];
-        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false, MenuBar = bar });
+        var loggers = new ConfigurationValidationTests.RecordingLoggerFactory();
+        await using var host = await DesktopHost.StartAsync(new()
+        {
+            WindowHostFactory = factory, WaitForConnection = false, MenuBar = bar, LoggerFactory = loggers,
+            Linux = new() { GlobalMenu = false },
+        });
         Assert.DoesNotContain(host.Validate(new() { Browser = BrowserKind.Embedded }).Diagnostics,
             static item => item.Code == DesktopMenuBar.UnsupportedCode);
         await using var surface = await host.CreateSurfaceAsync();
@@ -315,6 +320,8 @@ public sealed class MenuWindowHostTests
         });
         var native = Assert.Single(factory.Hosts);
         Assert.Equal(DesktopMenuBarPresentation.Page, native.Options!.MenuBarPresentation);
+        // LinuxDesktopOptions.GlobalMenu reaches the window host.
+        Assert.False(native.Options.GlobalMenu);
         await WaitAsync(() => native.Bars.Count == 1);
         Assert.Equal(bar, native.Bars[0]);
         IReadOnlyList<DesktopMenu> translated = [new("Fichier", [new DesktopMenuItem("Enregistrer", "file.save")]) { Role = DesktopMenuRole.File }];
@@ -343,6 +350,10 @@ public sealed class MenuWindowHostTests
         native.Place(DesktopMenuBarPlacement.Global);
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(DesktopMenuBarPlacement.Global, window.MenuBarPlacement);
+        // Each move is logged with the placement before and after it (event 3015).
+        var moved = Assert.Single(loggers.Entries, static entry => entry.EventId.Id == 3015);
+        Assert.Equal(("MenuBarPlacementChanged", LogLevel.Information), (moved.EventId.Name, moved.Level));
+        Assert.Contains("from Page to Global", moved.Message, StringComparison.Ordinal);
 
         ImmutableArray<DesktopMenuEntry> menu = [new DesktopMenuItem("Rename", "row.rename") { CommandParameter = "row-7" }];
         var chosen = await window.ShowContextMenuAsync(menu);

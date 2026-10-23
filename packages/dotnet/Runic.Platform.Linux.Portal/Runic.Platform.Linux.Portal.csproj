@@ -13,6 +13,8 @@
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <!-- The IDesktopApplications argument checks, shared with DesktopApplications.Unavailable without a public type. -->
     <Compile Include="../Runic.Platform/DesktopApplicationNames.cs" Link="Shared/DesktopApplicationNames.cs" />
+    <!-- The com.canonical.dbusmenu server, shared with the Linux global menu of Runic Desktop's GTK windows. -->
+    <Compile Include="../Runic.Desktop/Internal/DBusMenuServer.cs" Link="Shared/DBusMenuServer.cs" />
     <!-- Every D-Bus call goes through Runic.Platform.Linux.DBus, with proxies its generator makes from the XML here. -->
     <ProjectReference Include="../Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <ProjectReference Include="../Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"

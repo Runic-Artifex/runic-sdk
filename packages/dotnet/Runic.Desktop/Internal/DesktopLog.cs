@@ -71,7 +71,15 @@ internal static partial class DesktopLog
         Message = "The menu command target's {Member} failed for {CommandId} with {ErrorType}.")]
     internal static partial void MenuCommandFailed(ILogger logger, Exception exception, string member, string commandId, string errorType);
 
-    // 3015 MenuBarPlacementChanged and 3016 GlobalMenuFailed belong to the Linux global menu.
+    // The Linux global menu: a window's bar moved into the desktop's global menu or back into the window, or the
+    // global menu is out of reach of a Flatpak sandbox (old and new placement are then the same).
+    [LoggerMessage(EventId = 3015, EventName = "MenuBarPlacementChanged", Level = LogLevel.Information,
+        Message = "The window's menu bar placement changed from {OldPlacement} to {NewPlacement}: {Reason}")]
+    internal static partial void MenuBarPlacementChanged(ILogger logger, DesktopMenuBarPlacement oldPlacement, DesktopMenuBarPlacement newPlacement, string reason);
+
+    [LoggerMessage(EventId = 3016, EventName = "GlobalMenuFailed", Level = LogLevel.Warning,
+        Message = "The window's menu bar could not go into the desktop's global menu and stays in the window: {DiagnosticMessage}")]
+    internal static partial void GlobalMenuFailed(ILogger logger, string diagnosticMessage);
 
     [LoggerMessage(EventId = 3017, EventName = "MenuBarPlacementHandlerFailed", Level = LogLevel.Error,
         Message = "A DesktopWindow.MenuBarPlacementChanged handler failed with {ErrorType}.")]

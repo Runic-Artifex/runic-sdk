@@ -753,6 +753,11 @@ jobs:
       - name: Exercise the D-Bus client and service API on a private bus
         if: runner.os == 'Linux'
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
+      # B10: the Linux global menu's dbusmenu export and registrar watch, with a fake registrar on a private bus.
+      - name: Exercise the Linux global menu on a private bus
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Desktop.Tests -c Release --no-build -- --treenode-filter "/*/*/*/*[Category=DBus]" --timeout 3m --output detailed
       # The private session bus starts inside xvfb-run: services it activates, such as xdg-desktop-portal-gtk, inherit
       # the bus's environment rather than the client's, and exited with "cannot open display" without DISPLAY.
       - name: Exercise GTK4 native window and platform services
@@ -774,6 +779,8 @@ jobs:
           for toolkit in gtk3 gtk4; do
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --menus "$toolkit"
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --menus "$toolkit" --rtl
+            # The bar in the desktop's global menu: a fake registrar in the smoke, RegisterWindow and the _KDE_* properties.
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --global-menu "$toolkit"
           done
           # B17: GtkAlertDialog message boxes for a GTK 4 window, answered by activating their buttons and closing them.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --message-boxes
@@ -807,6 +814,7 @@ jobs:
           LC_ALL=C GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --monitors gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --menus gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --message-boxes
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --global-menu gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot

@@ -50,7 +50,8 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.10.0, )"
+          "Runic.Platform": "[0.10.0, )",
+          "Runic.Platform.Linux.DBus": "[0.10.0, )"
         }
       },
       "runic.navigation": {
@@ -70,6 +71,14 @@
       },
       "runic.platform": {
         "type": "Project"
+      },
+      "runic.platform.linux.dbus": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Runic.Platform": "[0.10.0, )",
+          "Tmds.DBus.Protocol": "[0.95.1, )"
+        }
       },
       "runic.platform.runtime": {
         "type": "Project",
@@ -118,6 +127,12 @@
         "requested": "[1.0.4258.31, )",
         "resolved": "1.0.4258.31",
         "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+      },
+      "Tmds.DBus.Protocol": {
+        "type": "CentralTransitive",
+        "requested": "[0.95.1, )",
+        "resolved": "0.95.1",
+        "contentHash": "IbGhqZAqqgB/DkT70+lAk4MNv95tZtsTMFQ+S3uGy0aTfOkGVeFjeNJsX8dBI/3+CPnO5XW6lRQKGeFEgHElKw=="
       }
     }
   }

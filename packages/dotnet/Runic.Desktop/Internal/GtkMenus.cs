@@ -16,10 +16,16 @@ internal static class GtkMenus
     internal static bool ShowsInWindowBar(DesktopMenuBarPresentation presentation, bool frameless, bool kiosk) =>
         presentation == DesktopMenuBarPresentation.Native && !frameless && !kiosk;
 
-    internal static DesktopMenuBarPlacement Placement(DesktopMenuBarPresentation presentation, bool frameless, bool kiosk) =>
-        ShowsInWindowBar(presentation, frameless, kiosk) ? DesktopMenuBarPlacement.Window
+    internal static DesktopMenuBarPlacement Placement(DesktopMenuBarPresentation presentation, bool frameless, bool kiosk, bool global = false) =>
+        global && UsesGlobalMenu(presentation, kiosk, globalMenu: true) ? DesktopMenuBarPlacement.Global
+        : ShowsInWindowBar(presentation, frameless, kiosk) ? DesktopMenuBarPlacement.Window
         : presentation == DesktopMenuBarPresentation.Page ? DesktopMenuBarPlacement.Page
         : DesktopMenuBarPlacement.None;
+
+    // The desktop's global menu (LinuxGlobalMenu): the Native presentation of a window that is not a kiosk, frameless
+    // too, while LinuxDesktopOptions.GlobalMenu allows it.
+    internal static bool UsesGlobalMenu(DesktopMenuBarPresentation presentation, bool kiosk, bool globalMenu) =>
+        globalMenu && presentation == DesktopMenuBarPresentation.Native && !kiosk;
 
     // The radio groups of one menu level that have exactly one checked item. GTK radio items always keep one item of
     // their group checked, so a group with none or several checked is shown as check items drawn as radio items.

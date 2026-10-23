@@ -69,4 +69,7 @@ internal sealed record PresentationSurfaceRuntimeOptions(
 
     // DesktopSurfaceOptions.ContentSecurityPolicy: sent with the HTML of the surface's content.
     internal string? ContentSecurityPolicy { get; init; }
+
+    // LinuxDesktopOptions.GlobalMenu: whether a Native bar may go into the desktop's global menu.
+    internal bool GlobalMenu { get; init; } = true;
 }

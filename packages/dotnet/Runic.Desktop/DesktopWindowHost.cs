@@ -392,6 +392,16 @@ public sealed record DesktopWindowHostOptions
     /// <remarks>A host implementing <see cref="IDesktopMenuWindowHost"/> applies it; others ignore it.</remarks>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
+    /// <summary>
+    /// Gets whether a <see cref="DesktopMenuBarPresentation.Native"/> bar may go into the Linux desktop's global menu,
+    /// from <see cref="LinuxDesktopOptions.GlobalMenu"/>; <see langword="true"/> by default.
+    /// </summary>
+    /// <remarks>
+    /// A Linux host implementing <see cref="IDesktopMenuWindowHost"/> that can export its bar applies it and reports
+    /// <see cref="DesktopMenuBarPlacement.Global"/> while the global menu shows the bar; others ignore it.
+    /// </remarks>
+    public bool GlobalMenu { get; init; } = true;
+
     /// <summary>Gets the monitor to open on, from <see cref="DesktopWindowOptions.Monitor"/>; <see langword="null"/> when a placement's position or the platform decides.</summary>
     /// <remarks>A host implementing <see cref="IDesktopPlacementWindowHost"/> applies it; others ignore it.</remarks>
     public string? Monitor { get; init; }
@@ -524,6 +534,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
             MenuBarPresentation = options.MenuBarPresentation,
+            GlobalMenu = options.GlobalMenu,
             Monitor = options.Monitor,
             LayoutDirection = options.LayoutDirection,
             Language = options.Language,
