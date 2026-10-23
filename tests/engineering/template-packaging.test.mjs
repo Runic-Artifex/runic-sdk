@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { root } from "../../eng/run.mjs";
-import { checkApplicationId, fill, manifestFields, numericVersion, parseArguments, urlSchemes }
+import { checkApplicationId, fileTypes, fill, manifestFields, numericVersion, parseArguments, typeIdentifier, urlSchemes, webLinkHosts }
   from "../../tools/Runic.Application.Templates/content/runic-app/packaging/package.mjs";
 
 // The runic-app template's packaging/package.mjs: its inputs, and the manifests it fills. The packaging CI job builds,
@@ -16,8 +16,8 @@ const manifests = {
   macos: ["macos/Info.plist"],
   flatpak: ["linux/app.desktop", "linux/app.metainfo.xml", "linux/flatpak.yml"],
 };
-const identity = schemes => ({
-  id: "org.example.Notes", name: "Notes & Co", version: "2.1.0-preview.3", urlSchemes: schemes,
+const identity = (schemes, types = [], hosts = []) => ({
+  id: "org.example.Notes", name: "Notes & Co", version: "2.1.0-preview.3", urlSchemes: schemes, fileTypes: types, webLinkHosts: hosts,
   publisher: "CN=Example Ltd, O=Example Ltd", description: "Notes <for> everyone", homepage: "https://example.org/notes?a=1&b=2",
   executable: "Notes",
 });
@@ -45,6 +45,18 @@ test("package.mjs accepts only IDs and schemes every platform registers", () => 
   for (const scheme of ["https", "file", "1notes", "no_tes"]) assert.throws(() => urlSchemes(scheme), /RunicApplicationUrlSchemes/, scheme);
 });
 
+test("package.mjs accepts file types and web link hosts every platform declares", () => {
+  assert.deepEqual(fileTypes(" .Notes=Application/X-Example-Notes; .tar.gz ,.c+x"),
+    [{ extension: ".notes", mimeType: "application/x-example-notes" }, { extension: ".tar.gz", mimeType: undefined }, { extension: ".c+x", mimeType: undefined }]);
+  assert.deepEqual(fileTypes(""), []);
+  for (const entry of ["notes", ".", "..notes", ".notes.", ".no*tes", ".notes=text", ".notes=a/b=c", ".notes;.NOTES"])
+    assert.throws(() => fileTypes(entry), /RunicApplicationFileTypes/, entry);
+  assert.equal(typeIdentifier("org.example.Notes", ".c+x"), "org.example.Notes.c-x");
+  assert.deepEqual(webLinkHosts("Notes.Example.org; links.example.com"), ["notes.example.org", "links.example.com"]);
+  for (const host of ["example", "*.example.org", "example.org:443", "https://example.org", "-a.example.org", "a_b.example.org"])
+    assert.throws(() => webLinkHosts(host), /RunicApplicationWebLinkHosts/, host);
+});
+
 test("package.mjs makes numeric package versions", () => {
   assert.equal(numericVersion("2.1.0-preview.3", 4), "2.1.0.0");
   assert.equal(numericVersion("1.2", 3), "1.2.0");
@@ -56,7 +68,8 @@ test("package.mjs fills every field of its manifests, escaped, with and without 
   assert.throws(() => fill("{{Unknown}}", {}), /does not fill/);
   for (const [target, files] of Object.entries(manifests))
     for (const schemes of [[], ["org.example.notes", "notes-x"]]) {
-      const fields = manifestFields(identity(schemes), target);
+      const types = schemes.length ? [{ extension: ".notes", mimeType: "application/x-example-notes" }, { extension: ".tar.gz" }] : [];
+      const fields = manifestFields(identity(schemes, types, schemes.length ? ["notes.example.org"] : []), target);
       for (const file of files) {
         const text = fill(readFileSync(resolve(packaging, file), "utf8"), fields);
         assert.doesNotMatch(text, /\{\{|\}\}/, file);
@@ -73,6 +86,10 @@ test("package.mjs fills every field of its manifests, escaped, with and without 
         if (file === "macos/Info.plist") {
           assert.match(text, /<key>CFBundleShortVersionString<\/key><string>2\.1\.0<\/string>/);
           assert.equal(/CFBundleURLSchemes<\/key><array><string>org\.example\.notes<\/string><string>notes-x<\/string>/.test(text), schemes.length > 0);
+          assert.equal((text.match(/<key>LSItemContentTypes<\/key><array><string>org\.example\.Notes\.(notes|tar\.gz)<\/string>/g) ?? []).length, types.length);
+          assert.equal((text.match(/<key>UTTypeIdentifier<\/key><string>org\.example\.Notes\.(notes|tar\.gz)<\/string>/g) ?? []).length, types.length);
+          assert.equal(/<key>public\.mime-type<\/key><array><string>application\/x-example-notes<\/string>/.test(text), types.length > 0);
+          assert.equal(/<array><string>tar\.gz<\/string><\/array>/.test(text), types.length > 0);
         }
         if (file === "linux/app.desktop") {
           assert.match(text, /^Exec=Notes %U$/m);

@@ -15,7 +15,7 @@ internal sealed partial class MacOpenEventsNativeTests
     private const uint CoreEventClass = 0x61657674, OpenDocuments = 0x6F646F63, InternetEventClass = 0x4755524C, GetUrl = 0x4755524C;
     private const uint DirectObject = 0x2D2D2D2D;
 
-    [Test, Explicit, Category("NativeOpenEvents"), DisplayName("native open events: odoc and GURL reach the open requests; creating them after launch fails"), Timeout(120_000)]
+    [Test, Explicit, Category("NativeOpenEvents"), DisplayName("native open events: odoc, GURL and universal links reach the open requests; creating them after launch fails"), Timeout(120_000)]
     public async Task AppleEventsAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Apple events need macOS.");
@@ -23,15 +23,24 @@ internal sealed partial class MacOpenEventsNativeTests
         IDesktopOpenRequests? opens = null;
         await MacOsMainQueue.InvokeAsync(() =>
         {
-            opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"]) { IncludeFiles = true }, null, new ApplicationLaunch(["runic-test://from-arguments"], "/"));
+            opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"]) { IncludeFiles = true, WebLinkHosts = ["links.runic.test"] }, null,
+                new ApplicationLaunch(["runic-test://from-arguments"], "/"));
             // As the first window does.
             MacAppKit.EnsureApplication();
+            // A universal link as AppKit hands it to the delegate while the application launches, before any handler.
+            Check(ContinueActivity("NSUserActivityTypeBrowsingWeb", "https://links.runic.test/at-launch?id=1"), "the delegate takes a link to a web link host");
+            var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+            var applicationDelegate = Send(application, Sel("delegate"));
+            Check(applicationDelegate != 0 && Text(Send(Send(applicationDelegate, Sel("class")), Sel("description"))) == "RunicApplicationDelegate", "Runic sets the application delegate");
+            Check(BoolArg(applicationDelegate, Sel("applicationSupportsSecureRestorableState:"), application) != 0, "the delegate supports secure restorable state");
         });
         await using (opens!)
         {
             opens!.Opened += (_, request) => requests.Writer.TryWrite(request);
             string first = await NextAsync(requests, cancellationToken);
             Check(new Uri(first) == new Uri("runic-test://from-arguments"), $"this launch's arguments: {first}");
+            string atLaunch = await NextAsync(requests, cancellationToken);
+            Check(atLaunch == "https://links.runic.test/at-launch?id=1", $"the universal link at launch: {atLaunch}");
 
             string file = Path.Combine(Path.GetTempPath(), "runic open " + Guid.NewGuid().ToString("N")[..8] + ".txt");
             await File.WriteAllTextAsync(file, "probe", cancellationToken);
@@ -52,6 +61,36 @@ internal sealed partial class MacOpenEventsNativeTests
                 Check(opened.IsFile && opened.LocalPath == file, $"odoc opened the file: {opened}");
                 string url = await NextAsync(requests, cancellationToken);
                 Check(new Uri(url) == new Uri("runic-test://from-event?id=1"), $"GURL opened the registered URL and skipped the unregistered one: {url}");
+
+                // Universal links while running: only web-browsing activities for a web link host.
+                bool[] taken = [];
+                await MacOsMainQueue.InvokeAsync(() => taken =
+                [
+                    ContinueActivity("NSUserActivityTypeBrowsingWeb", "https://other.runic.test/ignored"),
+                    ContinueActivity("org.example.handoff", "https://links.runic.test/handoff"),
+                    ContinueActivity("NSUserActivityTypeBrowsingWeb", "https://LINKS.runic.test/later#x"),
+                ]);
+                Check(taken.SequenceEqual([false, false, true]), $"only the web-browsing link to the host is taken: {string.Join(",", taken)}");
+                string later = await NextAsync(requests, cancellationToken);
+                Check(new Uri(later) == new Uri("https://links.runic.test/later#x"), $"the universal link later: {later}");
+
+                // An application that sets its own delegate gets the method added to the delegate's class.
+                nint own = 0, previous = 0;
+                bool ownTaken = false, respondsBefore = true, respondsAfter = false;
+                await MacOsMainQueue.InvokeAsync(() =>
+                {
+                    var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+                    previous = Send(application, Sel("delegate"));
+                    own = Send(Send(OwnDelegateClass.Value, Sel("alloc")), Sel("init"));
+                    Arg(application, Sel("setDelegate:"), own);
+                    respondsBefore = BoolArg(own, Sel("respondsToSelector:"), Sel("application:continueUserActivity:restorationHandler:")) != 0;
+                    MacOpenEvents.SetDelegate();
+                    respondsAfter = BoolArg(own, Sel("respondsToSelector:"), Sel("application:continueUserActivity:restorationHandler:")) != 0;
+                    ownTaken = ContinueActivity("NSUserActivityTypeBrowsingWeb", "https://links.runic.test/own-delegate");
+                    Arg(application, Sel("setDelegate:"), previous);
+                });
+                Check(!respondsBefore && respondsAfter && ownTaken, $"the method is added to the application's delegate: {respondsBefore} {respondsAfter} {ownTaken}");
+                Check(await NextAsync(requests, cancellationToken) == "https://links.runic.test/own-delegate", "the application's delegate delivers the link");
             }
             finally { File.Delete(file); }
         }
@@ -97,6 +136,64 @@ internal sealed partial class MacOpenEventsNativeTests
         return exitCode;
     }
 
+    // Calls the application delegate's universal-link method as AppKit does for a continued activity. Main thread.
+    private static bool ContinueActivity(string type, string url)
+    {
+        using var pool = new Pool();
+        var activity = Arg(Send(Class("NSUserActivity"), Sel("alloc")), Sel("initWithActivityType:"), String(type));
+        Arg(activity, Sel("setWebpageURL:"), Arg(Class("NSURL"), Sel("URLWithString:"), String(url)));
+        var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+        var target = Send(application, Sel("delegate"));
+        bool taken = Continue(target, Sel("application:continueUserActivity:restorationHandler:"), application, activity, 0) != 0;
+        Release(activity);
+        return taken;
+    }
+
+    // An application's own delegate class, without a universal-link method.
+    private static readonly Lazy<nint> OwnDelegateClass = new(static () =>
+    {
+        var type = AllocateClass(Class("NSObject"), "RunicTestOwnApplicationDelegate", 0);
+        RegisterClass(type);
+        return type;
+    });
+
+    // Run from the open probe bundle before the CI script registers it with lsregister: the registration checks the
+    // bundle's Info.plist and registers it with LSRegisterURL, after which Launch Services lists it for its scheme and
+    // for plain text.
+    internal static int RunRegistrationProbe()
+    {
+        try
+        {
+            var registration = MacOSPlatformProvider.CreateOpenRegistration();
+            var probe = new DesktopOpenRegistration("Runic Open Probe") { UrlSchemes = ["runic-open-probe"], FileTypes = [new(".txt")] };
+            var undeclared = new DesktopOpenRegistration("Runic Open Probe") { UrlSchemes = ["runic-undeclared-probe"], FileTypes = [new(".runic-undeclared")] };
+            var refused = registration.RegisterAsync(undeclared).AsTask().GetAwaiter().GetResult();
+            Check(refused is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Message: { } message }
+                && message.Contains("runic-undeclared-probe:", StringComparison.Ordinal) && message.Contains(".runic-undeclared", StringComparison.Ordinal),
+                $"undeclared items are refused: {refused}");
+            var registered = registration.RegisterAsync(probe).AsTask().GetAwaiter().GetResult();
+            Check(registered.Succeeded, $"LSRegisterURL registers the bundle: {registered}");
+            PlatformResult<bool> listed = new PlatformResult<bool>.Success(false);
+            // Launch Services updates its database asynchronously.
+            for (int attempt = 0; attempt < 40 && listed is not PlatformResult<bool>.Success(true); attempt++)
+            {
+                if (attempt > 0) Thread.Sleep(500);
+                listed = registration.IsRegisteredAsync(probe).AsTask().GetAwaiter().GetResult();
+            }
+            Check(listed is PlatformResult<bool>.Success(true), $"Launch Services lists the bundle for its scheme and plain text: {listed}");
+            Check(registration.IsRegisteredAsync(undeclared).AsTask().GetAwaiter().GetResult() is PlatformResult<bool>.Success(false), "undeclared items are not registered");
+            Check(registration.UnregisterAsync(probe).AsTask().GetAwaiter().GetResult() is PlatformResult<bool>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+                "Launch Services has nothing to unregister");
+            Console.WriteLine("PASS LSRegisterURL registered the bundle, which Launch Services lists; undeclared items refused.");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("FAIL " + error);
+            return 1;
+        }
+    }
+
     private static unsafe void DispatchToSelf(uint eventClass, uint eventId, nint direct)
     {
         var target = Send(Class("NSAppleEventDescriptor"), Sel("currentProcessDescriptor"));
@@ -115,6 +212,9 @@ internal sealed partial class MacOpenEventsNativeTests
     private static async Task<string> NextAsync(Channel<DesktopOpenRequest> requests, CancellationToken cancellationToken) =>
         (await requests.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(20), cancellationToken)).Items.Single().ToString();
 
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Continue(nint target, nint selector, nint application, nint activity, nint restorationHandler);
+    [LibraryImport(ObjC, EntryPoint = "objc_allocateClassPair", StringMarshalling = StringMarshalling.Utf8)] private static partial nint AllocateClass(nint parent, string name, nuint extra);
+    [LibraryImport(ObjC, EntryPoint = "objc_registerClassPair")] private static partial void RegisterClass(nint type);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Create(nint target, nint selector, uint eventClass, uint eventId, nint targetDescriptor, short returnId, int transactionId);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static unsafe partial short Dispatch(nint target, nint selector, nint appleEvent, AppleEventDescriptor* reply, nint referenceConstant);
 

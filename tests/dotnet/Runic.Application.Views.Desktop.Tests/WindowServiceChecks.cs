@@ -396,15 +396,17 @@ internal sealed class WindowServiceChecks
             typeof(IDesktopMonitors)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
-            typeof(IDesktopVolumes), typeof(IDesktopApplications), typeof(IDesktopThumbnails)];
+            typeof(IDesktopVolumes), typeof(IDesktopApplications), typeof(IDesktopThumbnails), typeof(IDesktopFileBookmarks)];
+        // Registration names the application's entries, so only the overload with an application ID registers it.
+        Type[] withApplicationId = [typeof(IDesktopOpenRegistration)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];
         Type[] notServices = [typeof(IPlatformCapabilities), typeof(IDesktopServiceStatus), typeof(IDirectoryLease), typeof(IReadFileLease),
             typeof(IReadFileLeaseList), typeof(IDirectoryLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
-            typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply)];
+            typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply), typeof(IDesktopBookmarkAccess)];
         var contracts = typeof(IFileDialogs).Assembly.GetExportedTypes().Where(static type => type.IsInterface).ToHashSet();
-        var unclassified = contracts.Except(window).Except(application).Except(composed).Except(notServices).Select(static type => type.Name).ToArray();
+        var unclassified = contracts.Except(window).Except(application).Except(withApplicationId).Except(composed).Except(notServices).Select(static type => type.Name).ToArray();
         Require(unclassified.Length == 0, $"Classify these Runic.Platform interfaces for AddRunicPlatformServices: {string.Join(", ", unclassified)}");
 
         await using var provider = new ServiceCollection().AddRunicPlatformServices()
@@ -420,8 +422,12 @@ internal sealed class WindowServiceChecks
         var unbound = scope.ServiceProvider.GetRequiredService<IWindowPlatformServices>();
         Require(unbound.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)),
             "Window services outside a window did not report the missing native owner.");
-        foreach (var type in composed)
+        foreach (var type in composed.Concat(withApplicationId))
             Require(provider.GetService(type) is null, $"{type.Name} was registered without the application composing it.");
+        await using var identified = new ServiceCollection().AddRunicPlatformServices("org.example.Notes")
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        foreach (var type in withApplicationId)
+            Require(identified.GetService(type) is not null, $"{type.Name} is not registered with an application ID.");
     }
 
     // Linux and Windows pass opened files and URLs as arguments; macOS's Apple events are the native job's.
@@ -435,6 +441,35 @@ internal sealed class WindowServiceChecks
         var request = await opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Require(request.Items is [{ Scheme: "org.example.notes" }], $"The launch's registered URL was not delivered: {string.Join(", ", request.Items)}");
         Require(Catch(() => DesktopPlatformServices.CreateOpenRequests(new(["not a scheme"]))) is ArgumentException, "An invalid scheme was accepted.");
+    }
+
+    // The activation wrappers off their platforms: the launch is the arguments, D-Bus activation is Linux's, and
+    // bookmarks outside macOS are paths.
+    [Test]
+    public async Task ActivationWrappersSelectTheProvider()
+    {
+        var launch = DesktopPlatformServices.GetLaunch(["--new", "org.example.notes:draft"]);
+        Require(launch.Arguments.SequenceEqual(["--new", "org.example.notes:draft"]) && launch.WorkingDirectory == Environment.CurrentDirectory, "GetLaunch is the process launch.");
+        await using var instance = new NullInstance();
+        if (!OperatingSystem.IsLinux())
+            Require(await DesktopPlatformServices.ExportApplicationAsync("org.example.Notes", instance) is PlatformResult<IAsyncDisposable>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+                "D-Bus activation is unavailable off Linux.");
+        Require(Catch(() => DesktopPlatformServices.CreateOpenRegistration(" ")) is ArgumentException, "An empty application ID was accepted.");
+        if (OperatingSystem.IsMacOS()) return;
+        string file = Path.GetTempFileName();
+        try
+        {
+            var bookmarks = DesktopPlatformServices.CreateFileBookmarks();
+            Require((await bookmarks.CreateAsync(file)).TryGetValue(out var bookmark) && (await bookmarks.ResolveAsync(bookmark)).TryGetValue(out var access)
+                && access.LocalPath == file, "A path bookmark resolves to its file.");
+        }
+        finally { File.Delete(file); }
+    }
+
+    private sealed class NullInstance : IApplicationInstance
+    {
+        public event EventHandler<ApplicationLaunch>? Launched { add { } remove { } }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     [Test]

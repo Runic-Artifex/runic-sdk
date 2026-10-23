@@ -53,6 +53,117 @@ internal sealed class OpenRequestsTests
         }
     }
 
+    [Test, DisplayName("OPEN: https links of the web link hosts are taken; every other https URL is left alone")]
+    public void ParsesWebLinks()
+    {
+        var options = new DesktopOpenOptions(["notes"]) { WebLinkHosts = ["notes.example.org", "Links.Example.COM", "bücher.example"] };
+        var launch = new ApplicationLaunch(
+            ["https://notes.example.org/n/1?x=2", "https://LINKS.example.com/a", "https://other.example.org/", "http://notes.example.org/",
+                "https://notes.example.org:8443/", "https://user@notes.example.org/", "https://notes.example.org.evil.example/",
+                "https://sub.notes.example.org/", "https://xn--bcher-kva.example/b", "notes:x"], "/");
+        var request = DesktopOpenRequests.FromLaunch(launch, options) ?? throw new InvalidOperationException("No request.");
+        string[] items = [.. request.Items.Select(static item => item.ToString())];
+        Check(items.SequenceEqual(["https://notes.example.org/n/1?x=2", "https://links.example.com/a", "https://xn--bcher-kva.example/b", "notes:x"]),
+            $"only exact hosts, https, the default port and no user information: {string.Join(" | ", items)}");
+        Check(DesktopOpenRequests.FromLaunch(new ApplicationLaunch(["https://notes.example.org:443/"], "/"), options) is { Items.Length: 1 },
+            "an explicit default port is the default port");
+        Check(DesktopOpenRequests.FromLaunch(new ApplicationLaunch(["https://notes.example.org/"], "/"), new DesktopOpenOptions(["notes"])) is null,
+            "without web link hosts, https URLs stay with the application");
+        foreach (string host in new[] { "", "*.example.org", "example.org.", "user@example.org", "example.org:443", "https://example.org", "a b", "127.0.0.1", "[::1]" })
+        {
+            try { DesktopOpenRequests.FromLaunch(launch, new DesktopOpenOptions([]) { WebLinkHosts = [host] }); throw new InvalidOperationException($"'{host}' was accepted."); }
+            catch (ArgumentException) { }
+        }
+        try { DesktopOpenRequests.FromLaunch(launch, new DesktopOpenOptions([]) { WebLinkHosts = default }); throw new InvalidOperationException("default hosts were accepted."); }
+        catch (ArgumentException) { }
+    }
+
+    [Test, DisplayName("OPEN: registrations validate schemes, file types and the executable when created")]
+    public void ValidatesRegistrations()
+    {
+        var registration = new DesktopOpenRegistration("Notes")
+        {
+            UrlSchemes = ["org.example.notes"],
+            FileTypes = [new(".notes") { MimeType = "application/x-example-notes", Description = "Notes document", IconPath = "/opt/notes/notes.png" }, new(".tar.gz")],
+        };
+        Check(registration.FileTypes.Length == 2 && registration.Executable is null, "a valid registration");
+        Check(new DesktopOpenRegistration("Notes").UrlSchemes.IsEmpty && new DesktopOpenRegistration("Notes").FileTypes.IsEmpty, "empty by default");
+        Check(new DesktopOpenRegistration("Notes") { UrlSchemes = default }.UrlSchemes.IsEmpty, "default arrays are empty");
+        Action[] invalid =
+        [
+            () => _ = new DesktopOpenRegistration(""),
+            () => _ = new DesktopOpenRegistration("Notes\nExec=evil"),
+            () => _ = new DesktopOpenRegistration(null!),
+            () => _ = new DesktopOpenRegistration("Notes") { UrlSchemes = ["https"] },
+            () => _ = new DesktopOpenRegistration("Notes") { UrlSchemes = ["file"] },
+            () => _ = new DesktopOpenRegistration("Notes") { UrlSchemes = ["1abc"] },
+            () => _ = new DesktopOpenRegistration("Notes") { UrlSchemes = ["notes", "NOTES"] },
+            () => _ = new DesktopOpenRegistration("Notes") { FileTypes = [new(".notes"), new(".NOTES")] },
+            () => _ = new DesktopOpenRegistration("Notes") { FileTypes = [null!] },
+            () => _ = new DesktopOpenRegistration("Notes") { Executable = "notes" },
+            () => _ = new DesktopOpenRegistration("Notes") { Executable = OperatingSystem.IsWindows() ? "C:\\a\"b.exe" : "/opt/a\"b" },
+            () => _ = new DesktopFileType("notes"),
+            () => _ = new DesktopFileType("."),
+            () => _ = new DesktopFileType("..notes"),
+            () => _ = new DesktopFileType(".notes."),
+            () => _ = new DesktopFileType(".no tes"),
+            () => _ = new DesktopFileType(".a/b"),
+            () => _ = new DesktopFileType(".a;b"),
+            () => _ = new DesktopFileType(".*"),
+            () => _ = new DesktopFileType(".notes") { MimeType = "text" },
+            () => _ = new DesktopFileType(".notes") { MimeType = "text/*" },
+            () => _ = new DesktopFileType(".notes") { Description = "" },
+            () => _ = new DesktopFileType(".notes") { IconPath = "a\"b" },
+        ];
+        for (int index = 0; index < invalid.Length; index++)
+        {
+            try { invalid[index](); throw new InvalidOperationException($"Invalid registration {index} was accepted."); }
+            catch (ArgumentException) { }
+        }
+    }
+
+    [Test, DisplayName("OPEN: unavailable registration reports its reason and validates its argument")]
+    public async Task UnavailableRegistrationAsync()
+    {
+        var registration = DesktopOpenRegistrations.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        Check(DesktopServiceStatus.Get(registration) is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "status");
+        var notes = new DesktopOpenRegistration("Notes") { UrlSchemes = ["notes"] };
+        Check(await registration.RegisterAsync(notes) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "register");
+        Check(await registration.IsRegisteredAsync(notes) is PlatformResult<bool>.Unavailable, "is registered");
+        Check(await registration.UnregisterAsync(notes) is PlatformResult<bool>.Unavailable, "unregister");
+        try { await registration.RegisterAsync(null!); throw new InvalidOperationException("null was accepted."); }
+        catch (ArgumentNullException) { }
+        try { DesktopOpenRegistrations.Unavailable((PlatformUnavailableReason)99); throw new InvalidOperationException("an undefined reason was accepted."); }
+        catch (ArgumentOutOfRangeException) { }
+    }
+
+    [Test, DisplayName("OPEN: path bookmarks keep the path and resolve while the item exists")]
+    public async Task PathBookmarksAsync()
+    {
+        var bookmarks = new PathFileBookmarks();
+        string file = Path.Combine(Path.GetTempPath(), "runic bookmark " + Guid.NewGuid().ToString("N")[..8] + " é.txt");
+        await File.WriteAllTextAsync(file, "probe");
+        try
+        {
+            Check((await bookmarks.CreateAsync(file)).TryGetValue(out var bookmark) && !bookmark.IsEmpty, "a bookmark for an existing file");
+            var resolved = await bookmarks.ResolveAsync(bookmark);
+            Check(resolved.TryGetValue(out var access) && access.LocalPath == file && !access.IsStale, $"resolves to the file: {resolved}");
+            await access!.DisposeAsync();
+            File.Delete(file);
+            Check(await bookmarks.ResolveAsync(bookmark) is PlatformResult<IDesktopBookmarkAccess>.Failed { Code: PlatformFailureCode.NotFound }, "a deleted file is not found");
+            Check(await bookmarks.CreateAsync(file) is PlatformResult<ImmutableArray<byte>>.Failed { Code: PlatformFailureCode.NotFound }, "no bookmark for a missing file");
+            Check(await bookmarks.ResolveAsync([0xFF, 0xFE]) is PlatformResult<IDesktopBookmarkAccess>.Failed { Code: PlatformFailureCode.InvalidData }, "invalid UTF-8");
+            Check(await bookmarks.ResolveAsync([(byte)'a']) is PlatformResult<IDesktopBookmarkAccess>.Failed { Code: PlatformFailureCode.InvalidData }, "a relative path");
+            foreach (var invalid in new Func<Task>[] { async () => await bookmarks.CreateAsync("relative.txt"), async () => await bookmarks.CreateAsync(""),
+                async () => await bookmarks.ResolveAsync(default), async () => await bookmarks.ResolveAsync([]) })
+            {
+                try { await invalid(); throw new InvalidOperationException("An invalid argument was accepted."); }
+                catch (ArgumentException) { }
+            }
+        }
+        finally { File.Delete(file); }
+    }
+
     [Test, DisplayName("OPEN: this launch and each later launch with files or URLs become requests, in order, waiting for the first handler")]
     public async Task DeliversThroughTheInstanceAsync()
     {

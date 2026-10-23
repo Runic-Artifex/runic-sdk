@@ -21,9 +21,15 @@ internal static class Program
         // The running instance that a desktop registration starts, for the open-request test (OpenRequestsTests).
         if (args is ["--open-probe", var probeId, var probeScheme, .. var probeArguments])
             return OpenRequestsTests.RunProbeAsync(probeId, probeScheme, probeArguments).GetAwaiter().GetResult();
-        // Launched by LaunchServices from the bundle the CI script builds around this executable (MacOpenEventsNativeTests).
+        // Run from the bundles the CI scripts build around this executable: registration of the open probe with Launch
+        // Services and its launches by LaunchServices (MacOpenEventsNativeTests), and bookmarks in the App Sandbox
+        // fixture (MacBookmarksNativeTests). With other arguments, such as a filter, the bundle runs the tests.
         if (OperatingSystem.IsMacOS() && Environment.ProcessPath is { } path && path.Contains(".app/Contents/MacOS/", StringComparison.Ordinal))
-            return MacOpenEventsNativeTests.RunBundleProbe(path[..(path.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) + 4)]);
+        {
+            if (args is ["--registration-probe"]) return MacOpenEventsNativeTests.RunRegistrationProbe();
+            if (args is ["--bookmark-probe", var outside]) return MacBookmarksNativeTests.RunSandboxProbe(outside);
+            if (args.Length == 0) return MacOpenEventsNativeTests.RunBundleProbe(path[..(path.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) + 4)]);
+        }
         if (OperatingSystem.IsMacOS() && args.Any(static arg => arg.Contains("Category=NativeServices", StringComparison.Ordinal)
             || arg.Contains("Category=NativeSelect", StringComparison.Ordinal) || arg.Contains("Category=NativeAppKit", StringComparison.Ordinal)
             || arg.Contains("Category=NativeAppearance", StringComparison.Ordinal)

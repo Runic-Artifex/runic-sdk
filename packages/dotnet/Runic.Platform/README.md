@@ -425,6 +425,42 @@ opened URL and file as untrusted input: any web page can open a URL with the
 application's scheme. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists what
 each platform's package registers.
 
+`DesktopOpenOptions.WebLinkHosts` adds `https` links to the application's own
+hosts, such as `notes.example.org`: macOS universal links and Windows app URI
+handlers. Only a link whose host is one of them exactly, with the default port
+and no user information, is delivered; every other `https` URL stays with the
+application. The association with the host is the application's (an
+Associated Domains entitlement and an `apple-app-site-association` file on
+macOS, an `AppUriHandler` and a `windows-app-web-link` file on Windows).
+
+### Registering schemes and file types
+
+An application that installs itself, such as a zip or `dotnet run`, registers
+its schemes and file types for the current user with `IDesktopOpenRegistration`
+(`DesktopPlatformServices.CreateOpenRegistration(applicationId)`), when the
+user agrees. A registration never makes the application the default and never
+replaces another application's entry: it checks every item first and reports
+`Conflict`, with nothing written. A packaged or sandboxed application reports
+`Unavailable`: its package declares what it opens. macOS registers the running
+bundle, whose `Info.plist` must declare each item.
+
+```csharp
+var registration = new DesktopOpenRegistration("Notes")
+{
+    UrlSchemes = ["org.example.notes"],
+    FileTypes = [new(".notes") { MimeType = "application/x-example-notes", Description = "Notes document" }],
+};
+var result = await DesktopPlatformServices.CreateOpenRegistration("org.example.Notes").RegisterAsync(registration);
+```
+
+### Keeping access to files
+
+`IDesktopFileBookmarks` (`DesktopPlatformServices.CreateFileBookmarks()`) keeps
+access to a file across launches, as a recent-files list needs: on macOS a
+security-scoped bookmark inside the App Sandbox, elsewhere the path. Store the
+bytes `CreateAsync` returns, and dispose the access `ResolveAsync` returns when
+done with the file; when it `IsStale`, create and store a new bookmark.
+
 ## Secret storage
 
 `IDesktopSecretStore` keeps secrets, such as access tokens, in the user's

@@ -332,8 +332,9 @@ guide covers publish modes, signing and packaging per platform.
 
 `packaging/package.mjs` packages the application on the platform it runs on.
 It reads `ApplicationId`, `ApplicationTitle`, `Version`,
-`Description`, `PackageProjectUrl`, `RunicApplicationPublisher` and
-`RunicApplicationUrlSchemes` from the project file, publishes with NativeAOT, fills the `{{...}}` fields of
+`Description`, `PackageProjectUrl`, `RunicApplicationPublisher`,
+`RunicApplicationUrlSchemes`, `RunicApplicationFileTypes` and
+`RunicApplicationWebLinkHosts` from the project file, publishes with NativeAOT, fills the `{{...}}` fields of
 the manifests in `packaging/` and writes the package to `artifacts/package/`.
 Run it with Node 22 or later (or Bun) from the project directory:
 
@@ -383,11 +384,28 @@ redirect to `org.example.notes:/callback`) adds the scheme to every package:
 a `windows.protocol` extension in the MSIX manifest, `CFBundleURLTypes` in
 `Info.plist` and `x-scheme-handler/<scheme>` in the desktop entry. Windows and
 Linux start the application with the URL as its argument; macOS sends it as
-an Apple event. File types are commented examples in the manifests: a
-`windows.fileTypeAssociation` extension, `CFBundleDocumentTypes` with a
-`UTExportedTypeDeclarations` entry, and a MIME type in the desktop entry with
-a shared-mime-info definition for a type of your own. Treat opened URLs and
-files as untrusted input.
+an Apple event.
+
+`RunicApplicationFileTypes` lists the file types the application opens, such
+as `.notes=application/x-example-notes;.md`: an extension with its dot and,
+optionally, its MIME type. In `Info.plist` each becomes a document type with
+an exported uniform type identifier `<ApplicationId>.<extension>` that
+conforms to `public.data`, as the application's own type; for a standard type,
+such as Markdown, edit the generated entry to name the system's type instead.
+The MSIX manifest and the desktop entry keep commented examples: a
+`windows.fileTypeAssociation` extension, and a MIME type in the desktop entry
+with a shared-mime-info definition for a type of your own.
+
+`RunicApplicationWebLinkHosts` lists hosts, such as `notes.example.org`, whose
+`https` links open the application; pass the same hosts as
+`DesktopOpenOptions.WebLinkHosts`. On macOS these are universal links: sign the
+bundle with the `com.apple.developer.associated-domains` entitlement
+(`applinks:notes.example.org`), which needs a provisioning profile from your
+Apple Developer account embedded as `Contents/embedded.provisionprofile`, and
+serve `https://notes.example.org/.well-known/apple-app-site-association` with
+`{"applinks":{"details":[{"appIDs":["TEAMID.<ApplicationId>"],"components":[{"/":"/*"}]}]}}`.
+An ad-hoc signed bundle cannot carry the entitlement, so `package.mjs` does not
+add it. Treat opened URLs and files as untrusted input.
 <!--#endif -->
 <!--#if (nix) -->
 

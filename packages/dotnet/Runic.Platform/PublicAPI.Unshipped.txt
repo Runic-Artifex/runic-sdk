@@ -168,3 +168,53 @@ static Runic.Platform.DesktopRect.operator !=(Runic.Platform.DesktopRect left, R
 static Runic.Platform.DesktopRect.operator ==(Runic.Platform.DesktopRect left, Runic.Platform.DesktopRect right) -> bool
 ~override Runic.Platform.DesktopRect.Equals(object obj) -> bool
 ~override Runic.Platform.DesktopRect.ToString() -> string
+Runic.Platform.DesktopFileType
+Runic.Platform.DesktopFileType.<Clone>$() -> Runic.Platform.DesktopFileType!
+Runic.Platform.DesktopFileType.Deconstruct(out string! Extension) -> void
+Runic.Platform.DesktopFileType.Description.get -> string?
+Runic.Platform.DesktopFileType.Description.init -> void
+Runic.Platform.DesktopFileType.DesktopFileType(string! Extension) -> void
+Runic.Platform.DesktopFileType.Equals(Runic.Platform.DesktopFileType? other) -> bool
+Runic.Platform.DesktopFileType.Extension.get -> string!
+Runic.Platform.DesktopFileType.Extension.init -> void
+Runic.Platform.DesktopFileType.IconPath.get -> string?
+Runic.Platform.DesktopFileType.IconPath.init -> void
+Runic.Platform.DesktopFileType.MimeType.get -> string?
+Runic.Platform.DesktopFileType.MimeType.init -> void
+Runic.Platform.DesktopOpenOptions.WebLinkHosts.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopOpenOptions.WebLinkHosts.init -> void
+Runic.Platform.DesktopOpenRegistration
+Runic.Platform.DesktopOpenRegistration.<Clone>$() -> Runic.Platform.DesktopOpenRegistration!
+Runic.Platform.DesktopOpenRegistration.Deconstruct(out string! DisplayName) -> void
+Runic.Platform.DesktopOpenRegistration.DesktopOpenRegistration(string! DisplayName) -> void
+Runic.Platform.DesktopOpenRegistration.DisplayName.get -> string!
+Runic.Platform.DesktopOpenRegistration.DisplayName.init -> void
+Runic.Platform.DesktopOpenRegistration.Equals(Runic.Platform.DesktopOpenRegistration? other) -> bool
+Runic.Platform.DesktopOpenRegistration.Executable.get -> string?
+Runic.Platform.DesktopOpenRegistration.Executable.init -> void
+Runic.Platform.DesktopOpenRegistration.FileTypes.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopFileType!>
+Runic.Platform.DesktopOpenRegistration.FileTypes.init -> void
+Runic.Platform.DesktopOpenRegistration.UrlSchemes.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopOpenRegistration.UrlSchemes.init -> void
+Runic.Platform.DesktopOpenRegistrations
+Runic.Platform.IDesktopBookmarkAccess
+Runic.Platform.IDesktopBookmarkAccess.IsStale.get -> bool
+Runic.Platform.IDesktopBookmarkAccess.LocalPath.get -> string!
+Runic.Platform.IDesktopFileBookmarks
+Runic.Platform.IDesktopFileBookmarks.CreateAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<byte>>!>
+Runic.Platform.IDesktopFileBookmarks.ResolveAsync(System.Collections.Immutable.ImmutableArray<byte> bookmark, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.IDesktopBookmarkAccess!>!>
+Runic.Platform.IDesktopOpenRegistration
+Runic.Platform.IDesktopOpenRegistration.IsRegisteredAsync(Runic.Platform.DesktopOpenRegistration! registration, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<bool>!>
+Runic.Platform.IDesktopOpenRegistration.RegisterAsync(Runic.Platform.DesktopOpenRegistration! registration, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopOpenRegistration.UnregisterAsync(Runic.Platform.DesktopOpenRegistration! registration, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<bool>!>
+override Runic.Platform.DesktopFileType.Equals(object? obj) -> bool
+override Runic.Platform.DesktopFileType.GetHashCode() -> int
+override Runic.Platform.DesktopFileType.ToString() -> string!
+override Runic.Platform.DesktopOpenRegistration.Equals(object? obj) -> bool
+override Runic.Platform.DesktopOpenRegistration.GetHashCode() -> int
+override Runic.Platform.DesktopOpenRegistration.ToString() -> string!
+static Runic.Platform.DesktopFileType.operator !=(Runic.Platform.DesktopFileType? left, Runic.Platform.DesktopFileType? right) -> bool
+static Runic.Platform.DesktopFileType.operator ==(Runic.Platform.DesktopFileType? left, Runic.Platform.DesktopFileType? right) -> bool
+static Runic.Platform.DesktopOpenRegistration.operator !=(Runic.Platform.DesktopOpenRegistration? left, Runic.Platform.DesktopOpenRegistration? right) -> bool
+static Runic.Platform.DesktopOpenRegistration.operator ==(Runic.Platform.DesktopOpenRegistration? left, Runic.Platform.DesktopOpenRegistration? right) -> bool
+static Runic.Platform.DesktopOpenRegistrations.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopOpenRegistration!
