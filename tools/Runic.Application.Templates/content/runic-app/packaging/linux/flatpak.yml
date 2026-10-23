@@ -1,8 +1,9 @@
-# The flatpak-builder manifest that package.mjs fills in from the project file (the fields in double braces). It installs the NativeAOT
-# publish folder that package.mjs prepares in flatpak-source; the GNOME runtime provides GTK 4 and WebKitGTK 6, so
-# the project uses Runic Desktop on GTK 4 (--linux-gtk 4). The file types' MIME definitions and, for
-# RunicApplicationDBusActivatable, the D-Bus service file are installed when the project has them; Flatpak exports both,
-# and the application may own its ID on the session bus.
+# The flatpak-builder manifest that dotnet runic package flatpak fills in from the project file (the fields in double
+# braces). It installs the NativeAOT publish folder that the command prepares in flatpak-source; the GNOME runtime
+# provides GTK 4 and WebKitGTK 6, so the project uses Runic Desktop on GTK 4 (--linux-gtk 4). The file types' MIME
+# definitions, the D-Bus service file for RunicApplicationDBusActivatable and the scalable icon (icon.svg beside
+# RunicPackageIcon) are installed when the project has them (the ExtraInstalls field); Flatpak exports them, and the
+# application may own its ID on the session bus.
 app-id: {{ApplicationId}}
 runtime: org.gnome.Platform
 runtime-version: '50'
@@ -26,7 +27,6 @@ modules:
       - install -Dm644 {{ApplicationId}}.desktop /app/share/applications/{{ApplicationId}}.desktop
       - install -Dm644 {{ApplicationId}}.metainfo.xml /app/share/metainfo/{{ApplicationId}}.metainfo.xml{{ExtraInstalls}}
       - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/{{ApplicationId}}.png
-      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/{{ApplicationId}}.svg
     sources:
       - type: dir
         path: flatpak-source

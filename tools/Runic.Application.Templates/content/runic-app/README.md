@@ -160,7 +160,7 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#endif -->
 | `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
 <!--#if (packaging) -->
-| `packaging/` | `package.mjs` and the manifests it fills: MSIX on Windows, `.app` and disk image on macOS, Flatpak on Linux. See [Package it](#package-it). |
+| `packaging/` | The manifests `dotnet runic package` fills, which replace its built-in ones: MSIX on Windows, `.app` on macOS, the desktop entry, AppStream metadata and Flatpak manifest on Linux. See [Package it](#package-it). |
 <!--#endif -->
 <!--#if (frontend == "angular") -->
 | `Frontend/src/app` | Components connect generated clients with `injectView()` and render the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/angular`. |
@@ -348,40 +348,54 @@ ship those two together, without debug symbols. Users need no Node.js or package
 manager, only the platform WebView or a browser described above. The
 [Ship a Desktop application](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/shipping.md)
 guide covers publish modes, signing and packaging per platform.
-<!--#if (packaging) -->
 
 ## Package it
 
-`packaging/package.mjs` packages the application on the platform it runs on.
-It reads `ApplicationId`, `ApplicationTitle`, `Version`,
+`dotnet runic package <target>` packages the application on the platform it
+runs on. It reads `ApplicationId`, `ApplicationTitle`, `Version`,
 `Description`, `PackageProjectUrl`, `RunicApplicationPublisher`,
 `RunicApplicationUrlSchemes`, `RunicApplicationFileTypes`,
 `RunicApplicationWebLinkHosts` and `RunicApplicationDBusActivatable` from the
-project file, publishes with NativeAOT, fills the `{{...}}` fields of
-the manifests in `packaging/` and writes the package to `artifacts/package/`.
-Run it with Node 22 or later (or Bun) from the project directory:
+project file, publishes with NativeAOT, fills its manifests and writes the
+package to `artifacts/package/<target>/`:
 
 ```sh
-node packaging/package.mjs windows   # MSIX, on Windows with the Windows SDK
-node packaging/package.mjs macos     # .app in a disk image, on macOS with Xcode's command line tools
-node packaging/package.mjs flatpak   # Flatpak, on Linux with flatpak and flatpak-builder
+dotnet runic package windows    # MSIX, on Windows with the Windows SDK
+dotnet runic package macos      # .app in a disk image, on macOS with Xcode's command line tools
+dotnet runic package flatpak    # Flatpak, on Linux with flatpak-builder
+dotnet runic package appimage   # AppImage, on Linux with appimagetool
+dotnet runic package deb        # Debian package, on Linux with dpkg-deb
+dotnet runic package rpm        # rpm, on Linux with rpmbuild (also on Debian and Ubuntu)
 ```
 
-On Debian and Ubuntu, the Flatpak target needs `flatpak flatpak-builder
-appstream appstream-compose librsvg2-common desktop-file-utils` and the
-Flathub remote (`flatpak remote-add --user --if-not-exists flathub
-https://dl.flathub.org/repo/flathub.flatpakrepo`), from which flatpak-builder
-installs the GNOME runtime and SDK on the first build.
+<!--#if (packaging) -->
+The manifests in `packaging/` replace the command's built-in ones: edit them to
+change a package. A manifest you delete falls back to the built-in default.
+<!--#else -->
+To edit the manifests, create the project with `--packaging`, which copies the
+command's built-in manifests to `packaging/`, where they replace the defaults.
+<!--#endif -->
+`RunicPackageIcon` names the 512 px icon (`icons/icon.png`; the `icon.svg`
+beside it is the scalable icon on Linux) and `RunicPackageName` the deb and rpm
+package name (the lower-cased assembly name). `--format json` reports what was
+written. See
+[Package the application](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md#package-the-application)
+and the [packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/packaging.md)
+for each format's tools and for signing.
 
 | Platform | Package | Without credentials | To ship it |
 | --- | --- | --- | --- |
-| Windows | `<id>_<version>_x64.msix` from `packaging/windows/AppxManifest.xml` | Unsigned; Windows installs only signed packages. Sign it with a test certificate to try it. | A code-signing certificate whose subject is `RunicApplicationPublisher`: `--certificate app.pfx` (password in `RUNIC_SIGNING_PASSWORD`) or `--thumbprint <sha1>` from the certificate store, and `--timestamp-url` from your provider. A cloud signing service signs the unsigned package with its own `signtool` options. The Microsoft Store signs packages itself. |
-| macOS | `<name>.app` and `<name>-<version>.dmg` from `packaging/macos/Info.plist` and `entitlements.plist` | Ad-hoc signed with the hardened runtime: it runs on this Mac; Gatekeeper blocks it elsewhere. | An Apple Developer Program membership with a Developer ID Application certificate in the keychain (`--sign "Developer ID Application: Example Ltd (TEAMID)"`), and notarization credentials stored once with `xcrun notarytool store-credentials <profile>` (`--notary-profile <profile>`), which notarizes and staples the disk image. `--rid osx-arm64,osx-x64` builds a universal executable. |
-| Linux | `<id>.flatpak` and a repository in `artifacts/package/flatpak/repo`, from `packaging/linux/flatpak.yml`, `app.desktop` and `app.metainfo.xml` | Unsigned: install the bundle with `flatpak install --user <id>.flatpak`. | A GPG key for your own repository (`--gpg-sign <key id>`). Flathub reviews a submission from your account and builds from source in its own sandbox, which needs a manifest that builds the .NET project offline (the `org.freedesktop.Sdk.Extension.dotnet` SDK extension and generated NuGet sources) instead of installing this published folder. |
+| Windows | `<id>_<version>_x64.msix` from `windows/AppxManifest.xml` | Unsigned; Windows installs only signed packages. Sign it with a test certificate to try it. | A code-signing certificate whose subject is `RunicApplicationPublisher`: `--certificate app.pfx` (password in `RUNIC_SIGNING_PASSWORD`) or `--thumbprint <sha1>` from the certificate store, and `--timestamp-url` from your provider. A cloud signing service signs the unsigned package with its own `signtool` options. The Microsoft Store signs packages itself. |
+| macOS | `<name>.app` and `<name>-<version>.dmg` from `macos/Info.plist` and `entitlements.plist` | Ad-hoc signed with the hardened runtime: it runs on this Mac; Gatekeeper blocks it elsewhere. | An Apple Developer Program membership with a Developer ID Application certificate in the keychain (`--sign "Developer ID Application: Example Ltd (TEAMID)"`), and notarization credentials stored once with `xcrun notarytool store-credentials <profile>` (`--notary-profile <profile>`), which notarizes and staples the disk image. `--runtime osx-arm64,osx-x64` builds a universal executable. |
+| Linux | `<id>.flatpak` and a repository from `linux/flatpak.yml`, `app.desktop` and `app.metainfo.xml` | Unsigned: install the bundle with `flatpak install --user <id>.flatpak`. | A GPG key for your own repository (`--gpg-sign <key id>`). |
+| Linux | `<Name>-<version>-<arch>.AppImage` | Unsigned; it uses the system's GTK and WebKitGTK. | `appimagetool --sign` with your key; see the packaging guide. |
+| Linux | `<package>_<version>_<arch>.deb` and `<package>-<version>-1.<arch>.rpm` | Unsigned; they depend on the distribution's GTK and WebKitGTK. | Sign the apt repository, or the rpm with `rpmsign`. |
 
 The Flatpak runs on the GNOME runtime, which provides GTK 4 and WebKitGTK 6,
 so create the project with `--linux-gtk 4` for it. Inside Flatpak the
-application ID is `FLATPAK_ID`, which `WithGtk4` accepts when it matches.
+application ID is `FLATPAK_ID`, which `WithGtk4` accepts when it matches. The
+deb and rpm depend on GTK 3 and WebKitGTK 4.1, or on GTK 4 and WebKitGTK 6 with
+`--linux-gtk 4`.
 
 ### Identity on each platform
 
@@ -420,10 +434,11 @@ In the MSIX manifest each becomes a `uap3:FileTypeAssociation` with
 process; read them with `DesktopPlatformServices.GetLaunch(args)`. In the
 desktop entry each is a MIME type (its own, or
 `application/x-<last part of the ID>-<extension>`), whose shared-mime-info
-definition the Flatpak installs and exports.
+definition the Linux packages install.
 
 `RunicApplicationDBusActivatable` set to `true` adds `DBusActivatable=true` to
-the desktop entry and a D-Bus service file to the Flatpak: GNOME and KDE then
+the desktop entry and a D-Bus service file to the Flatpak, deb and rpm (not to the
+AppImage, which has no fixed path): GNOME and KDE then
 start the application through the session bus and deliver later opens to the
 running process. The application must then serve the activation, after
 claiming its instance:
@@ -437,12 +452,11 @@ bundle with the `com.apple.developer.associated-domains` entitlement
 Apple Developer account embedded as `Contents/embedded.provisionprofile`, and
 serve `https://notes.example.org/.well-known/apple-app-site-association` with
 `{"applinks":{"details":[{"appIDs":["TEAMID.<ApplicationId>"],"components":[{"/":"/*"}]}]}}`.
-An ad-hoc signed bundle cannot carry the entitlement, so `package.mjs` does not
-add it. On Windows these are app URI handlers: the MSIX manifest lists each
+An ad-hoc signed bundle cannot carry the entitlement, so `dotnet runic package`
+does not add it. On Windows these are app URI handlers: the MSIX manifest lists each
 host in a `uap3:AppUriHandler`, and each host serves
 `https://notes.example.org/.well-known/windows-app-web-link` with
 `[{"packageFamilyName":"<family name>","paths":["*"]}]`. Treat opened URLs and files as untrusted input.
-<!--#endif -->
 <!--#if (nix) -->
 
 ## Build it with Nix

@@ -1392,11 +1392,11 @@ jobs:
           RID: ${{ matrix.rid }}
 
   # W315-014, I-059: dotnet runic package (tools/dotnet-runic/Packaging) packages tests/native/Runic.Packaging.Probe on
-  # each OS without the maintainers' signing credentials (the Flatpak leg still runs the template's package.mjs): an
-  # MSIX signed with a test certificate, an ad-hoc signed .app with the hardened runtime in a disk image, and an
-  # unsigned Flatpak. Each package is installed and opened through its
-  # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs):
-  # in the MSIX also its protocol activation, its startup task turned on and off, and two files opened at once.
+  # each OS without the maintainers' signing credentials: an MSIX signed with a test certificate, an ad-hoc signed .app
+  # with the hardened runtime in a disk image, and an unsigned Flatpak, AppImage, deb and rpm (built on Ubuntu,
+  # installed in Fedora). Each package is installed and opened through its URL scheme, and the probe's receipt shows
+  # what the package gives the application (eng/ci/packaging-probe-check.mjs): in the MSIX also its protocol
+  # activation, its startup task turned on and off, and two files opened at once.
   packaging:
     name: Packaging / ${{ matrix.target }}
     needs: plan
@@ -1409,13 +1409,14 @@ jobs:
     timeout-minutes: 40
     env:
       PROBE: tests/native/Runic.Packaging.Probe/Runic.Packaging.Probe.csproj
-      PACKAGE: tools/Runic.Application.Templates/content/runic-app/packaging/package.mjs
       TOOL: tools/dotnet-runic/Runic.Application.Tool.csproj
+      # The Fedora image of the native job, which installs the rpm.
+      FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # package.mjs runs with node; nothing here runs npm or pnpm.
+      # node encodes the receipt URLs; nothing here runs npm or pnpm.
       - uses: ./.github/actions/setup-sdk
         with:
           nuget: packaging
@@ -1424,7 +1425,6 @@ jobs:
           install: "false"
       # dotnet runic package from this checkout; with --format json its payload is the only standard output.
       - name: Build dotnet runic
-        if: matrix.target == 'windows' || matrix.target == 'macos'
         run: dotnet build "$TOOL" -c Release -p:CI=true
         shell: bash
       # Windows installs only signed packages: a self-signed certificate whose subject is the probe's
@@ -1541,7 +1541,7 @@ jobs:
       - name: Package, install and open the Flatpak
         if: matrix.target == 'flatpak'
         run: |
-          node "$PACKAGE" flatpak --project "$PROBE" --output artifacts/package/flatpak
+          dotnet run --no-build -c Release --project "$TOOL" -- package flatpak --project "$PROBE" --output-directory artifacts/package/flatpak
           flatpak install --user -y --noninteractive --bundle artifacts/package/flatpak/org.runic.tests.PackagingProbe.flatpak
           entry=~/.local/share/flatpak/exports/share/applications/org.runic.tests.PackagingProbe.desktop
           desktop-file-validate "$entry"
@@ -1557,6 +1557,125 @@ jobs:
             "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/packaged.json")"
           bun eng/ci/packaging-probe-check.mjs "$receipts/packaged.json" flatpak
           flatpak uninstall --user -y --noninteractive org.runic.tests.PackagingProbe
+      # The AppImage leg: appimagetool and the type2 runtime, pinned by release and SHA-256, so packaging downloads
+      # nothing. The AppImage uses the host's GTK and WebKitGTK (D039.15); appimagetool validates the metainfo with
+      # appstreamcli. Both AppImages run with APPIMAGE_EXTRACT_AND_RUN, because the runner has no FUSE 2.
+      - name: Install the AppImage tools
+        if: matrix.target == 'appimage'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: appstream desktop-file-utils libgtk-3-0t64 libwebkit2gtk-4.1-0
+          install-recommends: "false"
+      - name: Download appimagetool and the AppImage runtime
+        if: matrix.target == 'appimage'
+        env:
+          APPIMAGETOOL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+          APPIMAGE_RUNTIME: https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
+          APPIMAGE_RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+        run: |
+          tools="$RUNNER_TEMP/appimage-tools"
+          mkdir -p "$tools"
+          eng/ci/retry.sh 3 120 curl -fsSL -o "$tools/appimagetool" "$APPIMAGETOOL"
+          eng/ci/retry.sh 3 120 curl -fsSL -o "$tools/runtime-x86_64" "$APPIMAGE_RUNTIME"
+          printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$tools/appimagetool" "$APPIMAGE_RUNTIME_SHA256" "$tools/runtime-x86_64" | sha256sum -c -
+          chmod +x "$tools/appimagetool"
+          echo "$tools" >> "$GITHUB_PATH"
+      - name: Package and open the AppImage
+        if: matrix.target == 'appimage'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          dotnet run --no-build -c Release --project "$TOOL" -- package appimage --project "$PROBE" --output-directory artifacts/package/appimage
+          appimage="$PWD/artifacts/package/appimage/Runic_Packaging_Probe-1.2.3-x86_64.AppImage"
+          test -x "$appimage"
+          # The desktop entry and icon at the AppDir's root; an AppImage is not D-Bus activatable.
+          (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract >/dev/null)
+          root="$RUNNER_TEMP/squashfs-root"
+          desktop-file-validate "$root/org.runic.tests.PackagingProbe.desktop"
+          grep -qx 'MimeType=x-scheme-handler/runic-packaging-probe;application/x-packagingprobe-runicprobe;' "$root/org.runic.tests.PackagingProbe.desktop"
+          if grep -q '^DBusActivatable' "$root/org.runic.tests.PackagingProbe.desktop"; then exit 1; fi
+          test -f "$root/org.runic.tests.PackagingProbe.png" && test -x "$root/AppRun"
+          test -f "$root/usr/share/metainfo/org.runic.tests.PackagingProbe.appdata.xml"
+          receipts="$RUNNER_TEMP/receipts"
+          mkdir -p "$receipts"
+          "$appimage" --appimage-extract-and-run \
+            "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/appimage.json")"
+          bun eng/ci/packaging-probe-check.mjs "$receipts/appimage.json" appimage
+      # The deb leg installs the package's dependencies through the bounded apt path first, so dpkg -i checks that its
+      # Depends names exist and are satisfied on Ubuntu 24.04.
+      - name: Install the deb dependencies
+        if: matrix.target == 'deb'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: desktop-file-utils xdg-utils libgtk-3-0t64 libwebkit2gtk-4.1-0
+          install-recommends: "false"
+      - name: Package, install and open the deb
+        if: matrix.target == 'deb'
+        run: |
+          dotnet run --no-build -c Release --project "$TOOL" -- package deb --project "$PROBE" --output-directory artifacts/package/deb
+          deb=artifacts/package/deb/runic.packaging.probe_1.2.3_amd64.deb
+          test "$(dpkg-deb -f "$deb" Depends)" = 'libc6, libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0'
+          sudo dpkg -i "$deb"
+          entry=/usr/share/applications/org.runic.tests.PackagingProbe.desktop
+          desktop-file-validate "$entry"
+          grep -qx 'MimeType=x-scheme-handler/runic-packaging-probe;application/x-packagingprobe-runicprobe;' "$entry"
+          grep -qx 'DBusActivatable=true' "$entry"
+          grep -qx 'Exec=/usr/bin/Runic.Packaging.Probe' /usr/share/dbus-1/services/org.runic.tests.PackagingProbe.service
+          test -f /usr/share/icons/hicolor/scalable/apps/org.runic.tests.PackagingProbe.svg
+          sudo update-desktop-database /usr/share/applications
+          test "$(xdg-mime query default x-scheme-handler/runic-packaging-probe)" = org.runic.tests.PackagingProbe.desktop
+          receipts="$RUNNER_TEMP/receipts"
+          mkdir -p "$receipts"
+          # The registered handler's Exec line with the URL for %U, as a desktop starts it without D-Bus activation (gio
+          # would activate it over D-Bus, which the probe does not serve; xdg-open needs a display).
+          url="runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/deb.json")"
+          exec_line=$(sed -n 's/^Exec=//p' "$entry")
+          test "$exec_line" = 'Runic.Packaging.Probe %U'
+          "${exec_line% %U}" "$url"
+          for _ in $(seq 60); do test -f "$receipts/deb.json" && break; sleep 1; done
+          bun eng/ci/packaging-probe-check.mjs "$receipts/deb.json" deb
+          sudo dpkg -r runic.packaging.probe
+      # The rpm leg builds on Ubuntu with rpmbuild and installs in the Fedora container, whose packages download with a
+      # time limit and are cached (eng/ci/README.md, "Fedora packages").
+      - name: Install rpmbuild
+        if: matrix.target == 'rpm'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: rpm desktop-file-utils
+          install-recommends: "false"
+      - name: Package the rpm
+        if: matrix.target == 'rpm'
+        run: |
+          dotnet run --no-build -c Release --project "$TOOL" -- package rpm --project "$PROBE" --output-directory artifacts/package/rpm
+          rpm=artifacts/package/rpm/runic.packaging.probe-1.2.3-1.x86_64.rpm
+          # Only WebKitGTK: automatic dependencies are off, because the NativeAOT binary loads GTK with dlopen.
+          test "$(rpm -qp --requires "$rpm" | grep -v '^rpmlib(')" = webkit2gtk4.1
+      - name: Prepare the Fedora package cache
+        id: dnf
+        if: matrix.target == 'rpm'
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" /var/cache/runic-dnf
+          prefix="dnf-packaging-$(printf '%s' "$FEDORA_IMAGE" | sha256sum | cut -c1-16)-$RUNNER_ARCH-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/dependency-cache
+        if: matrix.target == 'rpm'
+        with:
+          path: /var/cache/runic-dnf
+          key: ${{ steps.dnf.outputs.key }}
+          restore-keys: ${{ steps.dnf.outputs.prefix }}
+      - name: Install and open the rpm in Fedora
+        if: matrix.target == 'rpm'
+        timeout-minutes: 10
+        run: |
+          receipts="$RUNNER_TEMP/receipts"
+          mkdir -p "$receipts"
+          eng/ci/retry.sh 2 90 docker pull -q "$FEDORA_IMAGE"
+          docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$receipts:$receipts" -v /var/cache/runic-dnf:/var/cache/libdnf5 \
+            -w "$GITHUB_WORKSPACE" "$FEDORA_IMAGE" bash eng/ci/packaging-rpm.sh artifacts/package/rpm/runic.packaging.probe-1.2.3-1.x86_64.rpm \
+            "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/rpm.json")"
+          bun eng/ci/packaging-probe-check.mjs "$receipts/rpm.json" rpm
 
   # I-074: what NVDA (WebView2) and Orca (WebKitGTK, GTK 3 and GTK 4) say while the accessibility probe reads and changes
   # the accessibility fixture, as the native job's macOS leg checks VoiceOver. The probe starts the screen reader before

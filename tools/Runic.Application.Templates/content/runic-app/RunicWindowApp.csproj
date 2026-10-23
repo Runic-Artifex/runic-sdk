@@ -13,7 +13,7 @@
     <ApplicationTitle>__RUNIC_APPLICATION_NAME__</ApplicationTitle>
     <Version>1.0.0</Version>
 <!--#if (packaging) -->
-    <!-- packaging/package.mjs reads these too. The summary software centers and the Start menu show. -->
+    <!-- dotnet runic package reads these too. The summary software centers and the Start menu show. -->
     <Description>A Runic desktop application</Description>
     <PackageProjectUrl>https://example.com</PackageProjectUrl>
     <!-- The MSIX package's publisher: the subject of the certificate that signs it. -->

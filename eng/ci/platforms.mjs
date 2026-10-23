@@ -38,6 +38,10 @@ export const packagingLegs = [
   { os: "windows-latest", target: "windows", platform: "win-x64" },
   { os: "macos-26", target: "macos", platform: "osx-arm64" },
   { os: "ubuntu-24.04", target: "flatpak" },
+  { os: "ubuntu-24.04", target: "appimage" },
+  { os: "ubuntu-24.04", target: "deb" },
+  // Built on Ubuntu, installed in the Fedora container.
+  { os: "ubuntu-24.04", target: "rpm" },
 ];
 
 // The job names, as GitHub reports them, of every Windows and macOS leg. Pull requests run only

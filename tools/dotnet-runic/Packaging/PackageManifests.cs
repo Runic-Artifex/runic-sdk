@@ -85,7 +85,7 @@ internal static partial class PackageManifests
                 fields["DocumentTypes"] = MacOSDocumentTypes(identity, name);
                 break;
             default:
-                AddLinuxFields(fields, identity, name, now ?? ReleaseTime());
+                AddLinuxFields(fields, identity, target, name, now ?? ReleaseTime());
                 break;
         }
         return fields;
@@ -195,8 +195,11 @@ internal static partial class PackageManifests
         return text.ToString();
     }
 
-    private static void AddLinuxFields(Dictionary<string, string> fields, PackageIdentity identity, string name, DateTimeOffset now)
+    private static void AddLinuxFields(Dictionary<string, string> fields, PackageIdentity identity, PackageTarget target, string name, DateTimeOffset now)
     {
+        // Where the launcher is: /app/bin in the Flatpak sandbox, /usr/bin in a deb or rpm. An AppImage has no fixed
+        // path, so it cannot be D-Bus activated and its entry does not ask for it.
+        fields["BinDirectory"] = target == PackageTarget.Flatpak ? "/app/bin" : "/usr/bin";
         fields["ReleaseDate"] = now.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         fields["Homepage"] = EscapeXml(identity.Homepage);
         string[] mimeTypes =
@@ -205,15 +208,17 @@ internal static partial class PackageManifests
             .. identity.FileTypes.Select(type => PackageIdentity.LinuxMimeType(identity.Id, type)),
         ];
         fields["MimeTypes"] = mimeTypes.Length == 0 ? "" : $"MimeType={string.Concat(mimeTypes.Select(type => type + ";"))}\n";
-        fields["DBusActivatable"] = identity.DBusActivatable ? "DBusActivatable=true\n" : "";
+        fields["DBusActivatable"] = identity.DBusActivatable && target != PackageTarget.AppImage ? "DBusActivatable=true\n" : "";
         fields["MimeInfo"] = MimeInfo(identity, name);
-        // The installs that only some applications need: the file types' MIME definitions, the D-Bus service file and the
-        // scalable icon.
+        // The Flatpak installs that only some applications need: the file types' MIME definitions, the D-Bus service file
+        // and the scalable icon.
         var extra = new StringBuilder();
         if (identity.FileTypes.Count > 0)
             extra.Append(CultureInfo.InvariantCulture, $"\n      - install -Dm644 {identity.Id}.mime.xml /app/share/mime/packages/{identity.Id}.xml");
         if (identity.DBusActivatable)
             extra.Append(CultureInfo.InvariantCulture, $"\n      - install -Dm644 {identity.Id}.service /app/share/dbus-1/services/{identity.Id}.service");
+        if (identity.ScalableIcon is not null)
+            extra.Append(CultureInfo.InvariantCulture, $"\n      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/{identity.Id}.svg");
         fields["ExtraInstalls"] = extra.ToString();
         // The reverse-DNS prefix of the ID, as AppStream names developers.
         fields["DeveloperId"] = identity.Id[..identity.Id.LastIndexOf('.')];

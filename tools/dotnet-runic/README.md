@@ -587,9 +587,16 @@ packages it for one operating system. It runs on that operating system and uses
 the platform's own packaging tools:
 
 ```bash
-dotnet runic package windows   # MSIX, on Windows with the Windows SDK
-dotnet runic package macos     # .app in a disk image, on macOS with Xcode's command line tools
+dotnet runic package windows    # MSIX, on Windows with the Windows SDK
+dotnet runic package macos      # .app in a disk image, on macOS with Xcode's command line tools
+dotnet runic package flatpak    # Flatpak bundle, on Linux with flatpak-builder
+dotnet runic package appimage   # AppImage, on Linux with appimagetool
+dotnet runic package deb        # Debian package, on Linux with dpkg-deb
+dotnet runic package rpm        # rpm, on Linux with rpmbuild (also on Debian and Ubuntu)
 ```
+
+The [packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/packaging.md)
+lists each format's tools and how to sign with your own credentials.
 
 Every target takes `--project` (`-p`), `--configuration` (`-c`, `Release` by
 default), `--runtime` (`--rid`, `-r`; the host's architecture by default) and
@@ -609,7 +616,8 @@ The package's identity comes from the project file:
 | `RunicApplicationPublisher` | The MSIX `Publisher`, which must equal the signing certificate's subject; `--publisher` overrides it |
 | `RunicApplicationUrlSchemes`, `RunicApplicationFileTypes`, `RunicApplicationWebLinkHosts`, `RunicApplicationDBusActivatable` | The URL schemes, file types, web link hosts and D-Bus activation each package declares |
 | `RunicPackageIcon` | The 512 px PNG icon; `icons/icon.png` by default. An `icon.svg` beside it is the scalable icon on Linux |
-| `RunicPackageName` | The deb and rpm package name; the lower-cased assembly name by default |
+| `RunicPackageName` | The deb and rpm package name; the lower-cased assembly name by default, with characters a package name cannot have replaced by `-` |
+| `PackageLicenseExpression` | The rpm `License`; `LicenseRef-proprietary` by default |
 | `RunicPackagingDirectory` | The manifest overrides; `packaging/` by default |
 
 The tool embeds the manifests it fills: `windows/AppxManifest.xml`,
@@ -641,6 +649,37 @@ them with your own credentials to ship them. Runic signs nothing for you.
   `--notary-profile <name>` then notarizes and staples the disk image with a
   `notarytool store-credentials` profile. `--runtime osx-arm64,osx-x64` makes a
   universal binary with `lipo`.
+- **`flatpak`** publishes into `flatpak-source/`, writes `<ApplicationId>.yml`
+  from `linux/flatpak.yml` on the GNOME runtime (which provides GTK 4 and
+  WebKitGTK 6, so the project uses `Runic.Desktop.Gtk4`), validates the desktop
+  entry and metainfo with `desktop-file-validate` and `appstreamcli`, builds
+  with `flatpak-builder --install-deps-from=flathub` and writes
+  `<ApplicationId>.flatpak` with a repository in `repo/`. `--gpg-sign <key>`
+  signs both with your key.
+- **`appimage`** builds an AppDir (the publish folder in `usr/lib/<ApplicationId>`,
+  `AppRun`, the desktop entry and icon at its root, the metainfo as
+  `<ApplicationId>.appdata.xml`) and makes `<ApplicationTitle>-<version>-<arch>.AppImage`
+  (spaces become `_`) with `appimagetool` from `PATH`. It passes appimagetool a
+  local AppImage runtime, `runtime-<arch>` from the
+  [type2-runtime releases](https://github.com/AppImage/type2-runtime/releases)
+  beside appimagetool or the file `RUNIC_APPIMAGE_RUNTIME` names, so nothing is
+  downloaded while packaging. The AppImage uses the system's GTK and WebKitGTK,
+  so the target system needs them installed; it is not D-Bus activatable,
+  because it has no fixed path.
+- **`deb`** and **`rpm`** stage the same tree: the publish folder in
+  `/usr/lib/<ApplicationId>/`, a `/usr/bin/<AssemblyName>` link, the desktop
+  entry with the URL schemes and file types as `MimeType=`, the hicolor icons,
+  the metainfo, the file types' MIME definitions and, with
+  `RunicApplicationDBusActivatable`, the D-Bus service file. The package name is
+  `RunicPackageName`, and a prerelease version sorts before its release
+  (`1.2.3-preview.4` becomes `1.2.3~preview.4`). The deb depends on `libc6,
+  libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0`, or on `libc6, libgtk-4-1,
+  libwebkitgtk-6.0-4` when the project references `Runic.Desktop.Gtk4`, and is
+  built with `dpkg-deb --root-owner-group`. The rpm requires `webkit2gtk4.1` or
+  `webkitgtk6.0` with automatic dependencies off (the binary loads GTK with
+  `dlopen`, so rpm would not find them), takes its `License` from
+  `PackageLicenseExpression` and is built with `rpmbuild -bb`. Both validate the
+  desktop entry with `desktop-file-validate` when it is installed.
 
 Each target lists what it wrote in the `runic.application.tool.package/1`
 payload. `signing` is `none`, `adhoc`, `test` (a self-signed certificate, as in

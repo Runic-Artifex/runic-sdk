@@ -60,6 +60,55 @@ internal static class PackageCommands
             NotaryProfile = Value(notaryProfile),
         }, cancellationToken);
 
+    [Command("package flatpak", Description = "Package the application as a Flatpak bundle on the GNOME runtime. Runs on Linux with flatpak-builder.",
+        Examples = ["dotnet runic package flatpak", "dotnet runic package flatpak --gpg-sign 0123ABCD"])]
+    [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
+    internal static Task<CommandOutcome<PackageCommandResult>> Flatpak(
+        CommandExecutionContext context,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
+        [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
+        [Option("--gpg-sign", ValueName = "KEY", Description = "Sign the repository and bundle with this GPG key ID.")] string gpgSign = "") =>
+        RunAsync(context, Common(PackageTarget.Flatpak, project, configuration, runtime, outputDirectory) with { GpgKey = Value(gpgSign) }, cancellationToken);
+
+    [Command("package appimage", Description = "Package the application as an AppImage that uses the host's GTK and WebKitGTK. Runs on Linux with appimagetool.",
+        Examples = ["dotnet runic package appimage", "RUNIC_APPIMAGE_RUNTIME=runtime-x86_64 dotnet runic package appimage"])]
+    [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
+    internal static Task<CommandOutcome<PackageCommandResult>> AppImage(
+        CommandExecutionContext context,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
+        [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
+        RunAsync(context, Common(PackageTarget.AppImage, project, configuration, runtime, outputDirectory), cancellationToken);
+
+    [Command("package deb", Description = "Package the application as a Debian package. Runs on Linux with dpkg-deb.",
+        Examples = ["dotnet runic package deb", "dotnet runic package deb --runtime linux-arm64"])]
+    [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
+    internal static Task<CommandOutcome<PackageCommandResult>> Deb(
+        CommandExecutionContext context,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
+        [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
+        RunAsync(context, Common(PackageTarget.Deb, project, configuration, runtime, outputDirectory), cancellationToken);
+
+    [Command("package rpm", Description = "Package the application as an rpm. Runs on Linux with rpmbuild, also on Debian and Ubuntu.",
+        Examples = ["dotnet runic package rpm", "dotnet runic package rpm --runtime linux-arm64"])]
+    [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
+    internal static Task<CommandOutcome<PackageCommandResult>> Rpm(
+        CommandExecutionContext context,
+        CancellationToken cancellationToken,
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
+        [Option("--runtime", "--rid", "-r", Description = RuntimeDescription)] string runtime = "",
+        [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "") =>
+        RunAsync(context, Common(PackageTarget.Rpm, project, configuration, runtime, outputDirectory), cancellationToken);
+
     private static PackageOptions Common(PackageTarget target, string project, string configuration, string runtime, string outputDirectory) =>
         new(target)
         {
