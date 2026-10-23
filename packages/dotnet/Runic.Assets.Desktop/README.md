@@ -41,10 +41,9 @@ archive gets the same `Content-Type` on both hosts.
 
 `AssetRoutingOptions.ContentSecurityPolicy` is sent with HTML assets. The
 surface sends its `frame-ancestors` policy as a header of its own next to it,
-and the WebView enforces both. Scripts that the host runs in the page, such as
-the Views Bridge's messages, are evaluated with the `Function` constructor, so
-a policy for a Runic Desktop page must allow `'unsafe-eval'` for scripts; see
-the Runic.Desktop README. To give every HTML response of the surface a
+and the WebView enforces both. The Views Bridge works under `script-src 'self'`
+without `'unsafe-eval'`; only `DesktopSurface.ExecuteJavaScriptAsync` needs it.
+See the Runic.Desktop README. To give every HTML response of the surface a
 policy, including content the adapter does not serve, set
 `DesktopSurfaceOptions.ContentSecurityPolicy` instead; the same policy from both
 is sent once.

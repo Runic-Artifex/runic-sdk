@@ -75,10 +75,13 @@ The same Window and `async host => ...` body run on CS-WebUI with
   with the HTML of every Window's surface, unless `SurfaceOptions` set one of
   their own (`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of
   its own next to the surface's `frame-ancestors` policy, and the WebView
-  enforces both. The Bridge delivers its messages as host scripts that the
-  page evaluates with the `Function` constructor, so the policy must allow
-  `'self'` scripts and connections and `'unsafe-eval'`, as
-  `default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` does. It still blocks inline and foreign scripts.
+  enforces both. The Bridge needs `'self'` scripts and connections and no
+  `'unsafe-eval'`: `DesktopBridgeTransport` sends state as data, which the
+  served bridge script parses with `JSON.parse` before it calls the View, so
+  `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
+  works and blocks inline, foreign and evaluated scripts. Only
+  `DesktopSurface.ExecuteJavaScriptAsync`, which evaluates a string in the
+  page, needs `'unsafe-eval'`.
 - `RunicDesktopHostOptions.Resources` serves application files that are not part of
   the frontend build, such as icons from a cache, from each Window's own
   address. It is called with each Window as it opens, after its ViewModel is

@@ -85,9 +85,11 @@ navigation, downloads and developer tools. `null`, the default, is
 presentation's surface, unless `SurfaceOptions` set one of their own
 (`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of its own next
 to the surface's `frame-ancestors` policy, and WebView2 enforces both. The
-Bridge delivers its messages as host scripts that the page evaluates with the
-`Function` constructor, so the policy must allow `'unsafe-eval'` for scripts.
-A value with a line break or another control character is rejected.
+Bridge needs `'self'` scripts and connections and no `'unsafe-eval'`, as in
+`default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`;
+only `DesktopSurface.ExecuteJavaScriptAsync`, which evaluates a string in the
+page, needs `'unsafe-eval'`. A value with a line break or another control
+character is rejected.
 
 ### Share one Desktop host between hosts
 

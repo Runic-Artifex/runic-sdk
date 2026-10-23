@@ -121,8 +121,9 @@ static async Task RunAsyncSmoke()
     if (!SmokeSoak.Enabled)
     {
         await using var surface = await host.CreateSurfaceAsync(ContentSecurityPolicySmoke.SurfaceOptions());
+        using var probe = ContentSecurityPolicySmoke.Register(surface);
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true });
-        await ContentSecurityPolicySmoke.ExerciseAsync(surface);
+        await probe.ExerciseAsync();
     }
     if (!SmokeSoak.Enabled) await RunWindowStateSmokeAsync(host);
     if (!SmokeSoak.Enabled) await FileDropSmoke.RunAsync(host);
@@ -347,12 +348,17 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
             static (surface, _) => ExerciseRestartedWindowAsync(surface));
         if (!SmokeSoak.Enabled)
         {
-            await RunMacOsWindowAsync(
-                host,
-                ContentSecurityPolicySmoke.Page(),
-                new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true },
-                static (surface, _) => ContentSecurityPolicySmoke.ExerciseAsync(surface),
-                ContentSecurityPolicySmoke.Policy);
+            ContentSecurityPolicySmoke.Probe? probe = null;
+            try
+            {
+                await RunMacOsSurfaceWindowAsync(
+                    host,
+                    ContentSecurityPolicySmoke.SurfaceOptions(),
+                    new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true },
+                    (_, _) => probe!.ExerciseAsync(),
+                    surface => probe = ContentSecurityPolicySmoke.Register(surface));
+            }
+            finally { probe?.Dispose(); }
             DesktopWindowPlacement? saved = null;
             DesktopWindow? exercised = null;
             await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), WindowStateSmoke.DisconnectedMonitorOptions(),
@@ -374,21 +380,25 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
     }
 });
 
-static async Task RunMacOsWindowAsync(
+static Task RunMacOsWindowAsync(
     DesktopHost host,
     string content,
     DesktopWindowOptions options,
+    Func<DesktopSurface, DesktopWindow, Task> exercise) =>
+    RunMacOsSurfaceWindowAsync(host, new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) }, options, exercise);
+
+static async Task RunMacOsSurfaceWindowAsync(
+    DesktopHost host,
+    DesktopSurfaceOptions surfaceOptions,
+    DesktopWindowOptions options,
     Func<DesktopSurface, DesktopWindow, Task> exercise,
-    string? contentSecurityPolicy = null)
+    Action<DesktopSurface>? beforeOpen = null)
 {
-    var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
-    {
-        Content = new DesktopContent.Html(content),
-        ContentSecurityPolicy = contentSecurityPolicy,
-    });
+    var surface = await host.CreateSurfaceAsync(surfaceOptions);
     DesktopWindow? window = null;
     try
     {
+        beforeOpen?.Invoke(surface);
         Console.WriteLine("macOS: opening embedded window and authenticating bridge.");
         window = await surface.OpenWindowAsync(options);
         Console.WriteLine("macOS: exercising window while the event loop services native events.");

@@ -34,11 +34,11 @@ internal sealed class DesktopBridgeTransportTests
         var scripts = new List<string>();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var transport = new DesktopBridgeTransport(surface, script =>
+        using var transport = new DesktopBridgeTransport(surface, (_, state) =>
         {
             lock (scripts)
             {
-                scripts.Add(script);
+                scripts.Add(state);
                 if (scripts.Count == 1) { started.TrySetResult(); return release.Task; }
             }
             return Task.CompletedTask;
@@ -72,10 +72,10 @@ internal sealed class DesktopBridgeTransportTests
         await using var surface = await host.CreateSurfaceAsync();
         var scripts = new List<string>();
         var inFlight = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var transport = new DesktopBridgeTransport(surface, script =>
+        using var transport = new DesktopBridgeTransport(surface, (route, state) =>
         {
-            lock (scripts) scripts.Add(script);
-            return script.Contains("first", StringComparison.Ordinal) ? inFlight.Task : Task.CompletedTask;
+            lock (scripts) scripts.Add($"{route}:{state}");
+            return state.Contains("first", StringComparison.Ordinal) ? inFlight.Task : Task.CompletedTask;
         });
 
         transport.Publish("counter", "{\"value\":\"first\"}");
@@ -98,33 +98,33 @@ internal sealed class DesktopBridgeTransportTests
             Require(scripts.Count == 3 && scripts[2].Contains("latest", StringComparison.Ordinal)
                 && !scripts.Any(script => script.Contains("superseded", StringComparison.Ordinal)),
                 "A route did not deliver only its latest pending state after the in-flight script.");
-            Require(scripts[0].StartsWith("globalThis[\"__counterChanged\"]?.(", StringComparison.Ordinal),
-                $"The publication script changed shape: {scripts[0]}");
+            Require(scripts[0] == "counter:{\"value\":\"first\"}",
+                $"The publication changed shape: {scripts[0]}");
         }
     }
 
-    // I-018: the UTF-8 path runs the same script bytes as the string path, without a string in between.
+    // I-018: the UTF-8 path sends the same state bytes as the string path, without a string in between.
     [Test, NotInParallel(Order = 4)]
-    public async Task Utf8PublicationRunsTheBytesOfTheStringScript()
+    public async Task Utf8PublicationSendsTheBytesOfTheStringState()
     {
         await using var surface = await host.CreateSurfaceAsync();
-        var scripts = new List<string>();
-        var encoded = new List<byte[]>();
-        using var transport = new DesktopBridgeTransport(surface, script =>
+        var scripts = new List<(string Route, string State)>();
+        var encoded = new List<(string Route, byte[] State)>();
+        using var transport = new DesktopBridgeTransport(surface, (route, state) =>
         {
-            lock (scripts) scripts.Add(script);
+            lock (scripts) scripts.Add((route, state));
             return Task.CompletedTask;
-        }, script =>
+        }, (route, state) =>
         {
-            lock (encoded) encoded.Add(script.ToArray());
+            lock (encoded) encoded.Add((route, state.ToArray()));
             return Task.CompletedTask;
         });
         const string state = "{\"title\":\"Grüße 🎉 \\u2028\"}";
         await transport.PublishAsync("näme", state);
         await ((IBridgeUtf8Transport)transport).PublishUtf8Async("näme", System.Text.Encoding.UTF8.GetBytes(state));
-        Require(scripts.Count == 1 && encoded.Count == 1
-            && encoded[0].AsSpan().SequenceEqual(System.Text.Encoding.UTF8.GetBytes(scripts[0])),
-            $"The UTF-8 script differs from the string script: {scripts.FirstOrDefault()}");
+        Require(scripts.Count == 1 && encoded.Count == 1 && scripts[0] == ("näme", state) && encoded[0].Route == "näme"
+            && encoded[0].State.AsSpan().SequenceEqual(System.Text.Encoding.UTF8.GetBytes(scripts[0].State)),
+            $"The UTF-8 state differs from the string state: {scripts.FirstOrDefault()}");
         transport.Dispose();
         await transport.PublishUtf8Async("näme", System.Text.Encoding.UTF8.GetBytes(state));
         Require(encoded.Count == 1, "A disposed transport delivered a UTF-8 frame.");
@@ -135,7 +135,7 @@ internal sealed class DesktopBridgeTransportTests
     {
         await using var surface = await host.CreateSurfaceAsync();
         var delivered = 0;
-        var transport = new DesktopBridgeTransport(surface, _ =>
+        var transport = new DesktopBridgeTransport(surface, (_, _) =>
         {
             Interlocked.Increment(ref delivered);
             return Task.CompletedTask;

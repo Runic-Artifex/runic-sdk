@@ -2,8 +2,14 @@ namespace Runic.Desktop.Internal;
 
 internal static class WebUiBridge
 {
+    // The reserved raw-data function of Runic's state pushes (WebUiSession.PushStateAsync). The script handles it
+    // itself; a page cannot replace it. Keep it in sync with STATE_PUSH below.
+    internal const string StatePushFunction = "__runicViewsPush";
+
     // Implements the wire and public browser contract of webui-dev/webui's
-    // MIT-licensed TypeScript bridge at the pinned upstream revision.
+    // MIT-licensed TypeScript bridge at the pinned upstream revision. One difference: raw data for a name that is not
+    // a page function is dropped instead of being evaluated as a call expression, so no host-to-page traffic but
+    // CMD_JS/CMD_JS_QUICK (DesktopSurface.ExecuteJavaScriptAsync and the internal RunJavaScriptAsync) needs eval.
     internal const string Script = """
         (() => {
           "use strict";
@@ -28,6 +34,7 @@ internal static class WebUiBridge
           const BASE_PATH = "__BASE_PATH__";
           const SESSION_CREDENTIAL = __SESSION_CREDENTIAL__;
           const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
+          const STATE_PUSH = "__runicViewsPush";
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();
           const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
@@ -213,6 +220,15 @@ internal static class WebUiBridge
             }
           }
 
+          // A state push is the route, NUL and UTF-8 JSON, which has no raw NUL. Parsing data instead of evaluating
+          // script lets a Content-Security-Policy without 'unsafe-eval' receive Views state.
+          function dispatchStatePush(data) {
+            const separator = data.lastIndexOf(0);
+            if (separator < 0) return;
+            const callback = globalThis[`__${decoder.decode(data.subarray(0, separator))}Changed`];
+            if (typeof callback === "function") callback(JSON.parse(decoder.decode(data.subarray(separator + 1))));
+          }
+
           async function receivePacket(event) {
             const packet = new Uint8Array(event.data);
             if (packet.length < HEADER_SIZE || packet[0] !== SIGNATURE) return;
@@ -262,9 +278,13 @@ internal static class WebUiBridge
                 const start = HEADER_SIZE + functionBytes.length + 1;
                 const end = Math.max(start, packet.length - 1);
                 const data = packet.slice(start, end);
+                if (functionName === STATE_PUSH) {
+                  dispatchStatePush(data);
+                  return;
+                }
                 const handler = globalThis[functionName];
                 if (typeof handler === "function") handler(data);
-                else await AsyncFunction("userRawData", `${functionName}(userRawData)`)(data);
+                else if (logging) console.warn(`WebUI bridge: no page function ${functionName} receives raw data`);
                 return;
               }
               case CMD_ADD_ID:

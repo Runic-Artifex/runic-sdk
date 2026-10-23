@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text;
 using Runic.Platform;
 
 namespace Runic.Desktop;
@@ -194,9 +195,19 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
         _engine.RunJavaScriptAsync(script, cancellationToken);
 
-    /// <summary>Runs JavaScript, encoded as UTF-8, in every authenticated presentation session.</summary>
-    internal Task RunJavaScriptUtf8Async(ReadOnlyMemory<byte> script, CancellationToken cancellationToken = default) =>
-        _engine.RunJavaScriptUtf8Async(script, cancellationToken);
+    /// <summary>Pushes a View's state to every authenticated presentation session.</summary>
+    /// <remarks>
+    /// The page's bridge parses the JSON and calls <c>globalThis["__{route}Changed"]</c> with it when that is a
+    /// function. The state travels as data to a dispatcher in the served bridge script, not as script, so a policy
+    /// without <c>'unsafe-eval'</c> allows it.
+    /// </remarks>
+    internal Task PushStateAsync(string route, string stateJson, CancellationToken cancellationToken = default) =>
+        _engine.PushStateAsync(route, Encoding.UTF8.GetBytes(stateJson), cancellationToken);
+
+    /// <summary><see cref="PushStateAsync(string, string, CancellationToken)"/> for state encoded as UTF-8. The packets
+    /// are built before this returns.</summary>
+    internal Task PushStateUtf8Async(string route, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default) =>
+        _engine.PushStateAsync(route, stateUtf8, cancellationToken);
 
     /// <summary>Runs JavaScript and returns its string result from an authenticated presentation session.</summary>
     /// <param name="script">The script; its <c>return</c> value is the result.</param>
@@ -207,7 +218,9 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// The script runs in one authenticated session. While several are connected, such as browser tabs of a served
     /// surface, which one answers is not specified. A result is never cut: one larger than 16 MiB of UTF-8 fails
     /// instead. Typical callers are in-process tests of an embedded View and an application asking its page before
-    /// it closes.
+    /// it closes. The page evaluates the script with the <c>Function</c> constructor, so a
+    /// <see cref="DesktopSurfaceOptions.ContentSecurityPolicy"/> without <c>'unsafe-eval'</c> refuses it, and the call
+    /// fails with <see cref="InvalidOperationException"/>.
     /// </remarks>
     /// <exception cref="DesktopException">The result is larger than 16 MiB
     /// (<see cref="DesktopErrorCategory.LimitExceeded"/>, code <c>script-result-too-large</c>).</exception>

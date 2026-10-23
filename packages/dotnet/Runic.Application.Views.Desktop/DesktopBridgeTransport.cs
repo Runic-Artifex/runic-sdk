@@ -1,9 +1,7 @@
-using System.Buffers;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text;
-using System.Text.Encodings.Web;
 using Runic.Application.Views;
 using Runic.Desktop;
 
@@ -14,13 +12,17 @@ namespace Runic.Application.Views.Desktop;
 /// Disposing the transport removes every capability it registered and stops state
 /// delivery, while the surface itself stays open. A window uses this to close its
 /// browser routes before accepted operations have drained.
+/// <para>
+/// Published state reaches the page as data that the served bridge script parses with <c>JSON.parse</c> before it
+/// calls <c>__{name}Changed</c>, so a Content-Security-Policy without <c>'unsafe-eval'</c> receives it.
+/// </para>
 /// </remarks>
 public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8Transport, IDisposable
 {
     private readonly object _gate = new();
     private readonly DesktopSurface _surface;
-    private readonly Func<string, Task> _runJavaScript;
-    private readonly Func<ReadOnlyMemory<byte>, Task> _runJavaScriptUtf8;
+    private readonly Func<string, string, Task> _push;
+    private readonly Func<string, ReadOnlyMemory<byte>, Task> _pushUtf8;
     private readonly ILogger? _logger;
     private readonly HashSet<Registration> _registrations = [];
     private readonly Dictionary<string, Delivery> _deliveries = new(StringComparer.Ordinal);
@@ -28,8 +30,8 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8T
 
     /// <summary>Creates a transport for <paramref name="surface"/>.</summary>
     public DesktopBridgeTransport(DesktopSurface surface)
-        : this(surface ?? throw new ArgumentNullException(nameof(surface)), script => surface.RunJavaScriptAsync(script),
-            script => surface.RunJavaScriptUtf8Async(script))
+        : this(surface ?? throw new ArgumentNullException(nameof(surface)), (route, state) => surface.PushStateAsync(route, state),
+            (route, state) => surface.PushStateUtf8Async(route, state))
     {
     }
 
@@ -38,24 +40,24 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8T
 
     // Without a logger, delivery failures are written to System.Diagnostics.Trace.
     internal DesktopBridgeTransport(DesktopSurface surface, ILogger? logger)
-        : this(surface ?? throw new ArgumentNullException(nameof(surface)), script => surface.RunJavaScriptAsync(script),
-            script => surface.RunJavaScriptUtf8Async(script), logger)
+        : this(surface ?? throw new ArgumentNullException(nameof(surface)), (route, state) => surface.PushStateAsync(route, state),
+            (route, state) => surface.PushStateUtf8Async(route, state), logger)
     {
     }
 
-    // The script runners are replaceable for headless tests of delivery order. Without a UTF-8 runner, UTF-8
-    // scripts are decoded for the string runner.
-    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, Task> runJavaScript, ILogger? logger = null)
-        : this(surface, runJavaScript, script => runJavaScript(Encoding.UTF8.GetString(script.Span)), logger)
+    // The state senders, which take the route and the state's JSON, are replaceable for headless tests of delivery
+    // order. Without a UTF-8 sender, UTF-8 states are decoded for the string sender.
+    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, string, Task> push, ILogger? logger = null)
+        : this(surface, push, (route, state) => push(route, Encoding.UTF8.GetString(state.Span)), logger)
     {
     }
 
-    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, Task> runJavaScript,
-        Func<ReadOnlyMemory<byte>, Task> runJavaScriptUtf8, ILogger? logger = null)
+    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, string, Task> push,
+        Func<string, ReadOnlyMemory<byte>, Task> pushUtf8, ILogger? logger = null)
     {
         _surface = surface;
-        _runJavaScript = runJavaScript;
-        _runJavaScriptUtf8 = runJavaScriptUtf8;
+        _push = push;
+        _pushUtf8 = pushUtf8;
         _logger = logger;
     }
 
@@ -83,7 +85,7 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8T
 
     /// <summary>
     /// Queues a state publication without blocking the caller. A route has at most one
-    /// script in flight; a newer state replaces one that has not been sent yet.
+    /// state in flight; a newer state replaces one that has not been sent yet.
     /// </summary>
     public void Publish(string name, string stateJson)
     {
@@ -108,7 +110,7 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8T
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(stateJson);
         lock (_gate) if (_disposed) return;
-        await _runJavaScript($"{ScriptPrefix(name)}{stateJson}{ScriptSuffix}").ConfigureAwait(false);
+        await _push(name, stateJson).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -120,30 +122,8 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8T
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         lock (_gate) if (_disposed) return;
         cancellationToken.ThrowIfCancellationRequested();
-        // The callback name is ASCII: the encoder escapes everything else.
-        var prefix = ScriptPrefix(name);
-        var length = prefix.Length + stateUtf8.Length + ScriptSuffix.Length;
-        var buffer = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            var written = Encoding.UTF8.GetBytes(prefix, buffer);
-            stateUtf8.Span.CopyTo(buffer.AsSpan(written));
-            written += stateUtf8.Length;
-            written += Encoding.UTF8.GetBytes(ScriptSuffix, buffer.AsSpan(written));
-            await _runJavaScriptUtf8(buffer.AsMemory(0, written)).WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            // The packet was copied before the runner returned its task.
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        await _pushUtf8(name, stateUtf8).WaitAsync(cancellationToken).ConfigureAwait(false);
     }
-
-    private const string ScriptSuffix = ");";
-
-    // A JSON string literal, encoded without reflection-based serialization.
-    private static string ScriptPrefix(string name) =>
-        $"globalThis[\"{JavaScriptEncoder.Default.Encode($"__{name}Changed")}\"]?.(";
 
     /// <summary>Removes every registered capability and stops state delivery; the surface stays open.</summary>
     public void Dispose()
@@ -175,10 +155,9 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8T
 
     private async Task DeliverAsync(string name, string stateJson)
     {
-        var prefix = ScriptPrefix(name);
         while (true)
         {
-            try { await _runJavaScript($"{prefix}{stateJson}{ScriptSuffix}").ConfigureAwait(false); }
+            try { await _push(name, stateJson).ConfigureAwait(false); }
             catch (Exception error)
             {
                 if (_logger is null) Trace.TraceError($"Bridge snapshot delivery for {name} failed: {error}");
