@@ -563,7 +563,7 @@ internal static partial class WindowsMenuSmoke
     [LibraryImport("user32.dll")] private static partial nint GetMenu(nint window);
     [LibraryImport("user32.dll")] private static partial nint GetSubMenu(nint menu, int position);
     [LibraryImport("user32.dll")] private static partial int GetMenuItemCount(nint menu);
-    [LibraryImport("user32.dll")] private static partial uint GetMenuItemId(nint menu, int position);
+    [LibraryImport("user32.dll", EntryPoint = "GetMenuItemID")] private static partial uint GetMenuItemId(nint menu, int position);
     [LibraryImport("user32.dll")] private static partial uint GetMenuState(nint menu, uint id, uint flags);
     [LibraryImport("user32.dll", EntryPoint = "GetMenuItemInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
