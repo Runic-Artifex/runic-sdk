@@ -76,7 +76,10 @@ loads, such as an API or a font service, to the policy.
 <!--#if (frontend == "sveltekit") -->
 SvelteKit starts the page with an inline script. `kit.csp` in
 `Frontend/vite.config.ts` adds a page policy that allows that script by its
-hash, and the browser enforces both policies.
+hash, and the browser enforces both policies. The policy in `Program.cs` also
+allows the style attribute of SvelteKit's route announcer by its hash
+(`style-src-attr`); update that hash when an update of `@sveltejs/kit` changes
+the announcer.
 <!--#elif (frontend == "angular") -->
 The policy allows inline styles, which Angular adds for component styles, and
 `angular.json` turns off critical-CSS inlining, which would need an inline
