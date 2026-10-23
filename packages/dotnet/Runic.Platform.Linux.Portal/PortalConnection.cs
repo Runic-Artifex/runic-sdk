@@ -137,6 +137,9 @@ internal sealed class PortalBus
                 : await DBusConnection.ConnectToAddressAsync(_address, deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw new TimeoutException("The D-Bus connection timed out."); }
+        // Without DBUS_SESSION_BUS_ADDRESS the client looks for the session bus through X11, which a headless system
+        // may not have: there is no session bus.
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { throw new NativeBackendUnavailableException("No session bus.", error); }
         return result is PlatformResult<DBusConnection>.Success(var connection) ? new PortalLink(connection) : throw new NativeBackendUnavailableException();
     }
 

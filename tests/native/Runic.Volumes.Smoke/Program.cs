@@ -10,6 +10,9 @@ using Runic.Platform.Linux.Portal;
 //   mount-ro <id>           mount read-only
 //   unlock <id>             unlock with the passphrase on the first line of standard input
 //   watch <seconds>         print each change for that long
+// Network status against the machine's NetworkManager where no desktop portal runs (nixos/network-status):
+//   network                 print the state
+//   network-watch <seconds> print each state for that long
 // Each command ends with "result: ..." for the test script.
 await using var volumes = new PortalApplication().CreateVolumes();
 string command = args.Length > 0 ? args[0] : "list";
@@ -62,6 +65,31 @@ switch (command)
         }
         Console.WriteLine("result: watched");
         break;
+    case "network":
+        await using (var network = new PortalApplication().CreateNetworkStatus())
+            Report(await network.ReadAsync(), static state => DescribeNetwork(state));
+        break;
+    case "network-watch":
+        await using (var network = new PortalApplication().CreateNetworkStatus())
+        using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture))))
+        {
+            try
+            {
+                await foreach (var state in network.WatchAsync(deadline.Token))
+                {
+                    Console.WriteLine(state switch
+                    {
+                        PlatformResult<DesktopNetworkState>.Success(var value) => $"state: {DescribeNetwork(value)}",
+                        PlatformResult<DesktopNetworkState>.Unavailable unavailable => $"state: unavailable {unavailable.Reason}",
+                        _ => "state: other",
+                    });
+                    Console.Out.Flush();
+                }
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested) { }
+        }
+        Console.WriteLine("result: watched");
+        break;
     default:
         Console.Error.WriteLine($"Unknown command {command}.");
         return 2;
@@ -72,6 +100,9 @@ static string Describe(DesktopVolume volume) =>
     $"volume {volume.Id} name={volume.DisplayName} fs={volume.FileSystem} mounts=[{string.Join(',', volume.MountPaths)}] removable={volume.IsRemovable} " +
     $"system={volume.IsSystem} locked={volume.IsLocked} mount={volume.CanMount} unmount={volume.CanUnmount} eject={volume.CanEject} " +
     $"encrypted={volume.IsEncrypted} unlock={volume.UnlockMethod}";
+
+static string DescribeNetwork(DesktopNetworkState state) =>
+    $"network available={state.IsAvailable} connectivity={state.Connectivity} metered={(state.IsMetered is { } metered ? metered.ToString() : "unknown")}";
 
 static void Report<T>(PlatformResult<T> result, Func<T, string> success) => Console.WriteLine(result switch
 {

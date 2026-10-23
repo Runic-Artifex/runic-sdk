@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
-    <!-- nixos/volumes runs the NativeAOT publish of this program against a real UDisks2 and Polkit in a VM. -->
+    <!-- nixos/volumes and nixos/network-status run the NativeAOT publish of this program against a real UDisks2 and Polkit, and NetworkManager, in a VM. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
     <InvariantGlobalization>true</InvariantGlobalization>
