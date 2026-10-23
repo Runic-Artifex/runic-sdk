@@ -336,6 +336,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly object _modelGate;
     private readonly BridgeSnapshotDelivery _delivery;
     private readonly BridgeModelTurn _modelTurn;
+    // The replies of commands, setters and checked writes follow the state frames they produced (I-183).
+    private readonly BridgeReplyOrder _replyOrder;
     private IRunicModelContextLease? _modelContextLease;
     private readonly WindowContentSession? _content;
     // Read from the window's options when it opened; a Bridge without a window uses the environment.
@@ -433,6 +435,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
         _logger = content?.Logger ?? TraceFallbackLogger.Instance;
         _delivery = new(transport, name, _modelTurn, CaptureRequestedState, ModelName, _logger);
+        _replyOrder = BridgeReplyOrder.For(transport);
         _name = name;
         _writeSnapshot = writeSnapshot ?? throw new ArgumentNullException(nameof(writeSnapshot));
         _properties = properties;
@@ -511,12 +514,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             foreach (var property in properties.Where(property => property.CanWrite))
             {
                 var captured = property;
-                bindings.Add(transport.Bind($"{name}Set{property.Name}", e => _modelTurn.Run(() => Set(captured, e))));
+                bindings.Add(transport.Bind($"{name}Set{property.Name}", e => AfterPublished(_modelTurn.Run(() => Set(captured, e)))));
             }
             foreach (var property in _checkedProperties)
             {
                 var captured = property;
-                bindings.Add(transport.Bind($"{name}Write{captured.Descriptor.Name}", e => _modelTurn.Run(() => Write(captured, e))));
+                bindings.Add(transport.Bind($"{name}Write{captured.Descriptor.Name}", e => AfterPublished(_modelTurn.Run(() => Write(captured, e)))));
             }
             foreach (var command in commands)
             {
@@ -524,7 +527,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 // An asynchronous key resolver makes every route of the command asynchronous; the wire is the same.
                 var resolvesAsync = command.ResolveArgumentAsync is not null;
                 bindings.Add(command.ExecuteAsync is null && command.ExecuteResultAsync is null && command.ExecuteStreamAsync is null && !resolvesAsync
-                    ? transport.Bind($"{name}{command.Name}", e => _modelTurn.Run(() => Execute(captured, e)))
+                    ? transport.Bind($"{name}{command.Name}", e => AfterPublished(_modelTurn.Run(() => Execute(captured, e))))
                     : transport.BindAsync($"{name}{command.Name}", (e, token) => ExecuteAsync(captured, e, token)));
                 // The familiar awaited command route stays the default. A
                 // asynchronous descriptor gains an internal
@@ -556,6 +559,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             throw;
         }
     }
+
+    // A synchronous route's reply, once the frames its call produced were published.
+    private string AfterPublished(string reply) => _replyOrder.AfterPublished(reply, _modelTurn.IsCurrent);
 
     private string Reply()
     {
@@ -731,7 +737,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    private async ValueTask<string> ExecuteAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
+    // The awaited route's reply, once the frames the command produced were published.
+    private async ValueTask<string> ExecuteAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
+        await _replyOrder.AfterPublishedAsync(await ExecuteCoreAsync(descriptor, arguments, token).ConfigureAwait(false), token)
+            .ConfigureAwait(false);
+
+    private async ValueTask<string> ExecuteCoreAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
     {
         // The awaited route is window work like an admitted operation: closing
         // the window waits for it before the host disposes its scope, and

@@ -137,6 +137,10 @@ internal static class ViewLifetimeCheck
         }
         Require<SidebarView>(0);
         Require<HomeView>(0);
+        // I-174: a Bridge delivery still on its way when the window disposed its transport ends silently.
+        var closed = new RebindableBridgeTransport(new ProbeTransport());
+        closed.Dispose();
+        closed.Publish("shell", "{}");
         Console.WriteLine($"VIEW_LIFETIME_OK|{(useSplat ? "splat" : "microsoft-di")}|two-scopes|mounted-presentations|nested|dialog|detached");
     }
 
