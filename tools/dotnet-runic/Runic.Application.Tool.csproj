@@ -27,6 +27,16 @@
     <PackageReference Include="Runic.CommandLine" />
     <ProjectReference Include="../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
     <Compile Include="../Runic.Assets.Packer/AssetPackCommand.cs" Link="Shared/AssetPackCommand.cs" />
+  </ItemGroup>
+  <!-- package: the runic-app template's manifests are the embedded defaults that a project's packaging directory overrides. -->
+  <ItemGroup>
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/windows/AppxManifest.xml" LogicalName="Runic.Application.Tool.Packaging.windows.AppxManifest.xml" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/macos/Info.plist" LogicalName="Runic.Application.Tool.Packaging.macos.Info.plist" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/macos/entitlements.plist" LogicalName="Runic.Application.Tool.Packaging.macos.entitlements.plist" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/linux/app.desktop" LogicalName="Runic.Application.Tool.Packaging.linux.app.desktop" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/linux/app.metainfo.xml" LogicalName="Runic.Application.Tool.Packaging.linux.app.metainfo.xml" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/linux/app.service" LogicalName="Runic.Application.Tool.Packaging.linux.app.service" />
+    <EmbeddedResource Include="../Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml" LogicalName="Runic.Application.Tool.Packaging.linux.flatpak.yml" />
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk4NativeLibraries.cs" Link="Shared/Gtk4NativeLibraries.cs" />
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk3NativeLibraries.cs" Link="Shared/Gtk3NativeLibraries.cs" />
   </ItemGroup>

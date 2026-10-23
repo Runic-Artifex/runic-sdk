@@ -323,8 +323,8 @@ in 0.11. New identifiers may appear in later releases. With `--runtime`, the pay
 
 Every command writes human-readable text unless you pass `--format json` (or set
 `RUNIC_COMMANDLINE_OUTPUT=json`); then standard output is one
-`runic.commandline/1` envelope, and the human text of `dev` and `size` goes to
-standard error. `--output json`, the spelling before 0.9, still works as a
+`runic.commandline/1` envelope, and the human text of `dev`, `size` and `package`
+goes to standard error. `--output json`, the spelling before 0.9, still works as a
 hidden alias until 2.0. The same `--format human|json` selects the output of
 `runic-create` and `runic-translations`.
 
@@ -343,6 +343,7 @@ payloads are, under these identifiers:
 | `size` | `runic.application.tool.size/1`; the report file is `runic.size/2` |
 | `doctor` | `runic.application.tool.doctor/1` |
 | `assets pack` | `runic.assets.pack-result/1`, as the asset packer |
+| `package <target>` | `runic.application.tool.package/1` (since 0.11) |
 
 `runic.application.tool/1`, the payload of 0.8 and earlier, is gone: its
 `Command`, `ExitCode` and `Output` properties carried the human text.
@@ -574,6 +575,109 @@ A missing `--runtime` (`RAPPSIZE1001`), `--verify-argument` without `--verify`
 (`RAPPSIZE1002`), an existing `--report` (`RAPPSIZE1003`) or an invalid
 `--property` (`RAPPSIZE1005`, `RAPPSIZE1006`) is a usage error, exit code 2. A project whose publish settings MSBuild cannot evaluate
 (`RAPPSIZE1004`), a failed publish or a failed verification exits 1.
+
+## Package the application
+
+`package <target>` (since 0.11) publishes the application with Native AOT and
+packages it for one operating system. It runs on that operating system and uses
+the platform's own packaging tools:
+
+```bash
+dotnet runic package windows   # MSIX, on Windows with the Windows SDK
+dotnet runic package macos     # .app in a disk image, on macOS with Xcode's command line tools
+```
+
+Every target takes `--project` (`-p`), `--configuration` (`-c`, `Release` by
+default), `--runtime` (`--rid`, `-r`; the host's architecture by default) and
+`--output-directory` (`-o`; `artifacts/package/<target>` beside the project by
+default). The output directory is not `--output`, which stays the hidden alias
+of `--format`. A target of another operating system, or a runtime identifier of
+another operating system, is refused with `RAPPPKG1004` before anything is built.
+
+The package's identity comes from the project file:
+
+| Property | Use |
+| --- | --- |
+| `ApplicationId` | The package name, bundle identifier and Flatpak ID: a reverse-DNS name of ASCII letters and digits, each part starting with a letter, at most 50 characters (`RAPPPKG1001` otherwise) |
+| `ApplicationTitle` | The display name; the assembly name by default |
+| `Version` | The package version; MSIX and `Info.plist` use its numeric part (`1.2.3-preview.4` becomes `1.2.3.0` and `1.2.3`) |
+| `Description`, `PackageProjectUrl` | The package description and homepage |
+| `RunicApplicationPublisher` | The MSIX `Publisher`, which must equal the signing certificate's subject; `--publisher` overrides it |
+| `RunicApplicationUrlSchemes`, `RunicApplicationFileTypes`, `RunicApplicationWebLinkHosts`, `RunicApplicationDBusActivatable` | The URL schemes, file types, web link hosts and D-Bus activation each package declares |
+| `RunicPackageIcon` | The 512 px PNG icon; `icons/icon.png` by default. An `icon.svg` beside it is the scalable icon on Linux |
+| `RunicPackageName` | The deb and rpm package name; the lower-cased assembly name by default |
+| `RunicPackagingDirectory` | The manifest overrides; `packaging/` by default |
+
+The tool embeds the manifests it fills: `windows/AppxManifest.xml`,
+`macos/Info.plist`, `macos/entitlements.plist`, `linux/app.desktop`,
+`linux/app.metainfo.xml`, `linux/app.service` and `linux/flatpak.yml`. A file
+with the same path in the packaging directory replaces the embedded one, so the
+manifests a `--packaging` project of the `runic-app` template copies are
+editable. Both fill `{{Field}}` from the identity; a field the target does not
+fill is `RAPPPKG1006`.
+
+The packages are unsigned or ad-hoc signed: install them to test them, and sign
+them with your own credentials to ship them. Runic signs nothing for you.
+
+- **`windows`** writes the publish folder with `AppxManifest.xml` to `msix/` and
+  packs `<ApplicationId>_<version>_<arch>.msix` with `makeappx`. The manifest
+  declares the URL schemes, file types (several selected files reach one
+  process), app URI handlers and the login startup task. `--certificate app.pfx`
+  signs with a PFX file whose password is in `RUNIC_SIGNING_PASSWORD`, and
+  `--thumbprint <sha1>` with a certificate from the store; `--timestamp-url`
+  adds an RFC 3161 timestamp. `makeappx` and `signtool` are found on `PATH` or
+  in the newest Windows SDK folder.
+- **`macos`** builds `<ApplicationTitle>.app` (the executable in
+  `Contents/MacOS`, the frontend in `Contents/Resources/www`, none when the
+  application embeds it, and an `.icns` made with `sips` and `iconutil`), signs
+  it with the hardened runtime and `macos/entitlements.plist`, verifies it with
+  `codesign --verify --strict` and writes `<ApplicationTitle>-<version>.dmg`.
+  Without `--sign` the bundle is ad-hoc signed. `--sign "Developer ID
+  Application: …"` signs the bundle and the disk image with your identity, and
+  `--notary-profile <name>` then notarizes and staples the disk image with a
+  `notarytool store-credentials` profile. `--runtime osx-arm64,osx-x64` makes a
+  universal binary with `lipo`.
+
+Each target lists what it wrote in the `runic.application.tool.package/1`
+payload. `signing` is `none`, `adhoc`, `test` (a self-signed certificate, as in
+CI) or `identity` (your certificate or Developer ID):
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target", "identity", "packages", "warnings"],
+  "properties": {
+    "target": { "enum": ["windows", "macos", "flatpak", "appimage", "deb", "rpm", "flathub"] },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": { "id": { "type": "string" }, "version": { "type": "string" } }
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "format", "signing"],
+        "properties": {
+          "path": { "type": "string", "description": "Absolute path of the package file or directory." },
+          "format": { "type": "string", "description": "msix, app, dmg, flatpak, appimage, deb, rpm or flathub-manifest." },
+          "signing": { "enum": ["none", "adhoc", "test", "identity"] }
+        }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" }, "description": "For example that the package is unsigned or not notarized." }
+  }
+}
+```
+
+An invalid identity (`RAPPPKG1001`) or a target or runtime of another
+operating system (`RAPPPKG1004`) is a usage error, exit code 2. A missing
+packaging tool (`RAPPPKG1002`), a failed publish (`RAPPPKG1003`), a failing
+packaging tool (`RAPPPKG1005`) or a failed validation (`RAPPPKG1006`) exits 1.
 
 ## Support envelopes
 
