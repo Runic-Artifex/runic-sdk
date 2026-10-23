@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Runic.Desktop.Internal;
 using TUnit.Core;
 
@@ -35,12 +37,17 @@ public static class BrowserWarmUp
         }
     }
 
+    // Starts the browser at a loopback address and stops it once its first request arrives, the moment the cases
+    // wait for, or after a minute.
     private static async Task StartOnceAsync(string executable)
     {
         var profile = Directory.CreateTempSubdirectory("runic-desktop-warm-up-");
         var started = Stopwatch.StartNew();
         try
         {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             var startInfo = new ProcessStartInfo(executable)
             {
                 RedirectStandardOutput = true,
@@ -50,26 +57,39 @@ public static class BrowserWarmUp
             foreach (var argument in new[]
             {
                 "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
-                $"--user-data-dir={profile.FullName}", "--dump-dom", "about:blank",
+                $"--user-data-dir={profile.FullName}", $"http://127.0.0.1:{port}/",
             })
             {
                 startInfo.ArgumentList.Add(argument);
             }
             using var process = Process.Start(startInfo);
             if (process is null) return;
-            var drained = Task.WhenAll(process.StandardOutput.ReadToEndAsync(), process.StandardError.ReadToEndAsync());
+            _ = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
+            _ = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
+            string outcome;
             try
             {
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
-                await drained.WaitAsync(TimeSpan.FromSeconds(5));
+                using var accepted = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(60));
+                outcome = "requested its page";
             }
             catch (TimeoutException)
             {
-                process.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
+                outcome = "requested nothing";
             }
-            Console.WriteLine($"Browser warm-up: {Path.GetFileName(executable)} started and exited in {started.Elapsed.TotalSeconds:0.0} s.");
+            finally
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
+                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                }
+                catch (Exception exception) when (exception is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
+                {
+                }
+            }
+            Console.WriteLine($"Browser warm-up: {executable} {outcome} after {started.Elapsed.TotalSeconds:0.0} s.");
         }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or SocketException)
         {
             Console.WriteLine($"Browser warm-up of {executable} failed: {exception.Message}");
         }
