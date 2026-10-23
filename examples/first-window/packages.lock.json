@@ -28,7 +28,7 @@
       "runic.application.views.cswebui": {
         "type": "Project",
         "dependencies": {
-          "CsWebUi": "[2.5.0-beta.4.7, 3.0.0)",
+          "CsWebUi": "[2.5.0-beta.4.8, 3.0.0)",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Runic.Application.Views": "[0.10.0, )",
           "Runic.Platform": "[0.10.0, )"
@@ -46,18 +46,18 @@
       },
       "CsWebUi": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.7, 3.0.0)",
-        "resolved": "2.5.0-beta.4.7",
-        "contentHash": "qHo0PWbIqteewgp/LTjf5L2R0Qmt+Z7r0g4boIJZdPimcAMfPJsO/PvqcVWkI1efsVdkPJFGdFAb5Ep9ynMGzw==",
+        "requested": "[2.5.0-beta.4.8, 3.0.0)",
+        "resolved": "2.5.0-beta.4.8",
+        "contentHash": "aMxHOArj1jDnEFC7xGNkZGy0qvAUjc8vi58kUoSZbHEG29v3bdFC3zjkEVmfkpzME0H7PD0uzh/i0d0dbUSPGA==",
         "dependencies": {
-          "CsWebUi.Native": "2.5.0-beta.4.7"
+          "CsWebUi.Native": "2.5.0-beta.4.8"
         }
       },
       "CsWebUi.Native": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.7, 3.0.0)",
-        "resolved": "2.5.0-beta.4.7",
-        "contentHash": "B0LrDa68M0oGJDkkY869YhMeOqaKlNgS3/TUR/s/aQLTK6GLJ+GXxmhgLbTACg2HXD7W9QYysiM8EqdlhX7+BQ=="
+        "requested": "[2.5.0-beta.4.8, 3.0.0)",
+        "resolved": "2.5.0-beta.4.8",
+        "contentHash": "iBKMpmB1mRsLJ+nmnUhW7XPKbLpBEgLikRZGKRMIZKqd3TMeWkk6Kt7Cs711YM7/2q1Kr1NFf6+r0D3pBvdX3Q=="
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "CentralTransitive",

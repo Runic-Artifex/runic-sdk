@@ -31,8 +31,9 @@ internal sealed class CsWebUiBridgeTransport(WebUiWindow window) : IBridgeTransp
     internal const string StatePushFunction = "__runicViewsPush";
 
     // One uncoalesced WebSocket write per call to every connected client, so delta frames
-    // keep their order. WebUI blocks under its process-wide send lock until each socket
-    // write completes: TCP-level back-pressure, not acknowledgement. See IAsyncBridgeTransport.
+    // keep their order. WebUI blocks until each socket write completes: TCP-level
+    // back-pressure, not acknowledgement. Since WebUI 9264f7ae9 (webui#723, CsWebUi
+    // 2.5.0-beta.4.8) only this window's clients wait. See IAsyncBridgeTransport.
     // The state is raw data (webui_send_raw), the route, NUL and the state's UTF-8 JSON, which
     // runic-cswebui.js parses before it calls window.__{name}Changed. Unlike a script
     // (webui_run), it needs no 'unsafe-eval' in the page's Content-Security-Policy.
