@@ -7,10 +7,8 @@ Frontend/.angular/
 Frontend/.svelte-kit/
 # Typed View clients; dotnet build and dotnet runic dev regenerate them.
 Frontend/src/generated/
-#if (packaging)
 # dotnet runic package output
 /artifacts/
-#endif
 #if (nix)
 # nix build output
 /result
