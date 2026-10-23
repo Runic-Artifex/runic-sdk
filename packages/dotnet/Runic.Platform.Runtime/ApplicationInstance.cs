@@ -97,8 +97,18 @@ public static class ApplicationInstance
     /// <param name="args">The process's command-line arguments, as <c>Main</c> receives them.</param>
     /// <param name="cancellationToken">Cancels waiting for the running instance.</param>
     /// <returns>As <see cref="ClaimAsync(string, ApplicationLaunch, CancellationToken)"/>.</returns>
-    /// <remarks>Equivalent to <see cref="ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> with
-    /// <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>).</remarks>
+    /// <remarks>
+    /// <para>Equivalent to <see cref="ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> with
+    /// <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>).</para>
+    /// <para>
+    /// In an MSIX package, Windows hands a protocol activation or the files of a file-type activation to the process
+    /// through its activation, not <paramref name="args"/>, so this overload forwards none of them. Pass
+    /// <c>DesktopPlatformServices.GetLaunch(args)</c> (Runic.Application.Views.Desktop) or
+    /// <c>WindowsPlatformProvider.GetLaunch(args)</c> (Runic.Platform.Windows) to the overload that takes an
+    /// <see cref="ApplicationLaunch"/> instead; both return <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>)
+    /// outside a package.
+    /// </para>
+    /// </remarks>
     /// <example><code>
     /// var claim = await ApplicationInstance.ClaimAsync("org.example.App", args);
     /// </code></example>
@@ -121,8 +131,18 @@ public static class ApplicationInstance
     /// <param name="options">Whether the launches of this application are answered.</param>
     /// <param name="cancellationToken">Cancels waiting for the running instance.</param>
     /// <returns>As <see cref="ClaimAsync(string, ApplicationLaunch, ApplicationInstanceOptions, CancellationToken)"/>.</returns>
-    /// <remarks>Equivalent to <see cref="ClaimAsync(string, ApplicationLaunch, ApplicationInstanceOptions, CancellationToken)"/>
-    /// with <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>).</remarks>
+    /// <remarks>
+    /// <para>Equivalent to <see cref="ClaimAsync(string, ApplicationLaunch, ApplicationInstanceOptions, CancellationToken)"/>
+    /// with <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>).</para>
+    /// <para>
+    /// In an MSIX package, Windows hands a protocol activation or the files of a file-type activation to the process
+    /// through its activation, not <paramref name="args"/>, so this overload forwards none of them. Pass
+    /// <c>DesktopPlatformServices.GetLaunch(args)</c> (Runic.Application.Views.Desktop) or
+    /// <c>WindowsPlatformProvider.GetLaunch(args)</c> (Runic.Platform.Windows) to the overload that takes an
+    /// <see cref="ApplicationLaunch"/> instead; both return <see cref="ApplicationLaunch.FromProcess"/>(<paramref name="args"/>)
+    /// outside a package.
+    /// </para>
+    /// </remarks>
     // The overloads differ in their second parameter's type; only a null launch, which is refused, could bind to both.
     [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
         Justification = "Only a null second argument, which every overload refuses, is ambiguous. Remove once these lines are in PublicAPI.Shipped.txt.")]

@@ -8,6 +8,7 @@ import {
   ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
+import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
@@ -481,8 +482,12 @@ describe("injectBridgeConnection", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
       "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectLatestOperation",
-      "injectMenuBar", "injectOperation", "injectView",
+      "injectMenuBar", "injectOperation", "injectView", "onBridgeConnection",
     ]);
+    // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
+    expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);
+    expectTypeOf<root.BridgeConnectionState>().toEqualTypeOf<ViewsBridgeConnectionState>();
+    expectTypeOf<root.BridgeConnectionOptions>().toEqualTypeOf<ViewsBridgeConnectionOptions>();
   });
 });
 

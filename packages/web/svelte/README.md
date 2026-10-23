@@ -206,7 +206,8 @@ runs this hook against the packed packages and the desktop transport.
 ## `useBridgeConnection(options?)`
 
 Follows the page's connection to its .NET host. It wraps `onBridgeConnection`
-from `@runic-artifex/views` and returns `{ state }`, a reactive
+from `@runic-artifex/views` (re-exported here since 0.11, with the
+`BridgeConnectionState` and `BridgeConnectionOptions` types) and returns `{ state }`, a reactive
 `BridgeConnectionState`: `connecting`, `connected`, `reconnecting` or `lost` (a
 closed set, see
 [Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):

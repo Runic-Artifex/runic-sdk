@@ -274,6 +274,7 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 }
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   useMenuBar,
   type MenuBarEntry,

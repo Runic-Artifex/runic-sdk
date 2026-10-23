@@ -15,6 +15,7 @@ import {
   type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root_ from "../dist/index.js";
+import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 
 // React 18.3.0, the lowest supported React, exports act only as unstable_act.
 const act: typeof React.act = React.act ?? (React as unknown as { unstable_act: typeof React.act }).unstable_act;
@@ -226,9 +227,13 @@ describe("useView options", () => {
 
   test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11)", () => {
     expect(Object.keys(root_).sort()).toEqual([
-      "ViewOutlet", "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation",
+      "ViewOutlet", "onBridgeConnection", "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation",
       "useMenuBar", "useOperation", "useSuspenseView", "useView",
     ]);
+    // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
+    expect(root_.onBridgeConnection).toBe(viewsOnBridgeConnection);
+    expectTypeOf<root_.BridgeConnectionState>().toEqualTypeOf<ViewsBridgeConnectionState>();
+    expectTypeOf<root_.BridgeConnectionOptions>().toEqualTypeOf<ViewsBridgeConnectionOptions>();
   });
 });
 
