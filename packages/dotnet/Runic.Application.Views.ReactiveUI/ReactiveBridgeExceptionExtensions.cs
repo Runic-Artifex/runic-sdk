@@ -123,23 +123,25 @@ public static class ReactiveBridgeExceptionExtensions
 // - an exception that a Bridge call received is the Bridge's to report (its reply, and events 1000/1004 for an
 //   unexpected one), as for a command of any MVVM library;
 // - while ObserveBridgeExceptions observes the command, that handler replaces this logging.
-// ReactiveUI delivers ThrownExceptions on the command's output scheduler: with the model-context scheduler after
-// the failed execution's own observer, with the immediate scheduler before it. An exception is therefore held, and
-// logged when the hold ends unless a Bridge call received it:
+// ReactiveUI schedules the ThrownExceptions delivery on the command's output scheduler and then notifies the failed
+// execution's own observer on the thread that ended the execution: with the immediate scheduler the delivery comes
+// first, with a model-context or UI scheduler it can run before, after or at the same time on the scheduler's thread.
+// An exception is therefore held, and logged when the hold ends unless a Bridge call received it:
 // - while a Bridge call of the same command runs;
 // - while the Bridge call runs in whose flow the exception was raised (#473), so an exception that hand-written code
 //   received from a plain Execute and let propagate, or wrapped, reaches the call first. ReactiveUI delivers
 //   ThrownExceptions in the failing execution's execution context, which descends from the call: Runic's schedulers
 //   and a UI dispatcher restore it per item, and the immediate scheduler runs inline. A call whose flow raised it
 //   hands it to the enclosing call when it ends; the outermost one logs it.
+// A call can receive the exception and end while a concurrent delivery is being decided, after the first received
+// check and before the hold (I-196): Report checks the received mark again, after the holds.
 // The subscription also lasts until every execution that Runic started (a Bridge call, RunAsync) has ended (I-188):
 // ReactiveUI reports a cancelled execution's end on ThrownExceptions when its work stops, which can be after the call
 // returned and the Bridge detached, as when a retiring navigation entry cancels its operation. Without a subscriber,
 // ReactiveUI's default handler would end the process. An execution has ended when its observer received its end and,
-// for a failure, when ThrownExceptions delivered that failure. ReactiveUI calls the observer after it scheduled the
-// delivery on the output scheduler, so the delivery can come before or after. A failure reported after every Bridge
-// detached is logged with the logger of the Bridge that detached last, or written to Trace when no Bridge presented the
-// command.
+// for a failure, when ThrownExceptions delivered that failure, which can come before or after. A failure reported
+// after every Bridge detached is logged with the logger of the Bridge that detached last, or written to Trace when no
+// Bridge presented the command.
 // An execution that ReactiveUI ends by unsubscribing, without telling its observer (a cancelled CreateFromObservable
 // execution), never counts as ended: the command then stays observed, and its failures logged, for its lifetime.
 internal sealed class BridgeCommandFailures
@@ -232,9 +234,14 @@ internal sealed class BridgeCommandFailures
         }
     }
 
+    // The conformance suites' seam (I-196): runs when ThrownExceptions delivered an exception that no call had received
+    // yet, before Runic holds or reports it, so a case can let the receiving call end in between.
+    internal static Action<Exception>? UnreceivedDelivery;
+
     private void Handle(Exception error)
     {
         if (ReactiveBridgeExceptionExtensions.IsReported(error) || IsReceived(error)) return;
+        UnreceivedDelivery?.Invoke(error);
         if (ModelTurnFlow.CurrentCall is { } scope && scope.TryHold(this, error)) return;
         lock (_gate)
         {
@@ -256,14 +263,18 @@ internal sealed class BridgeCommandFailures
             held = [.. _held];
             _held.Clear();
         }
-        foreach (var error in held)
-            if (!IsReceived(error)) Report(error);
+        foreach (var error in held) Report(error);
     }
 
     internal static bool IsReceived(Exception error) => ReceivedByCall.TryGetValue(error, out _);
 
+    // Logs an exception that nothing holds any more, unless a call received it. The received check comes last, after
+    // the holds were checked: ReactiveUI notifies an execution's observer on the thread that ended the execution while
+    // it delivers ThrownExceptions on the output scheduler, so a call can receive the exception and end while Handle
+    // decides (I-196). A call marks the exception before it ends, so once no call holds it the mark is visible.
     internal void Report(Exception error)
     {
+        if (IsReceived(error)) return;
         Logging? logging;
         string? sourceName;
         bool detached;
