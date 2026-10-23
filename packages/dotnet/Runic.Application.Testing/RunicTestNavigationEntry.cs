@@ -24,7 +24,7 @@ public static class RunicTestNavigationEntry
     /// <param name="cancellationToken">Cancels the push.</param>
     /// <returns>The entry, current in its region.</returns>
     /// <exception cref="InvalidOperationException">The push did not commit, for example because <paramref name="create"/> threw.</exception>
-    public static async ValueTask<RunicTestNavigationEntry<TContent>> CreateAsync<TContent>(Func<NavigationEntryContext, TContent> create,
+    public static async Task<RunicTestNavigationEntry<TContent>> CreateAsync<TContent>(Func<NavigationEntryContext, TContent> create,
         IServiceProvider? services = null, CancellationToken cancellationToken = default) where TContent : class
     {
         ArgumentNullException.ThrowIfNull(create);
@@ -102,20 +102,20 @@ public sealed class RunicTestNavigationEntry<TContent> : IAsyncDisposable where 
     /// <summary>Pushes another entry over this one, which retains it.</summary>
     /// <param name="cancellationToken">Cancels the push.</param>
     /// <returns>The push's result.</returns>
-    public ValueTask<NavigationResult<object>> RetainAsync(CancellationToken cancellationToken = default) =>
-        Region.PushAsync(NavigationTarget.Own<object>(new RetainingPage()), cancellationToken: cancellationToken);
+    public Task<NavigationResult<object>> RetainAsync(CancellationToken cancellationToken = default) =>
+        Region.PushAsync(NavigationTarget.Own<object>(new RetainingPage()), cancellationToken: cancellationToken).AsTask();
 
     /// <summary>Goes back to this entry, which makes a retained entry current again.</summary>
     /// <param name="cancellationToken">Cancels the transition.</param>
     /// <returns>The transition's result, which is rejected when the entry is not retained.</returns>
-    public ValueTask<NavigationResult<object>> ActivateAsync(CancellationToken cancellationToken = default) =>
-        Region.BackToAsync(Entry.Id, cancellationToken: cancellationToken);
+    public Task<NavigationResult<object>> ActivateAsync(CancellationToken cancellationToken = default) =>
+        Region.BackToAsync(Entry.Id, cancellationToken: cancellationToken).AsTask();
 
     /// <summary>Clears the region, which retires the entry after its departure guards agree.</summary>
     /// <param name="cancellationToken">Cancels the transition.</param>
     /// <returns>The clear's result.</returns>
-    public ValueTask<NavigationResult<object>> RetireAsync(CancellationToken cancellationToken = default) =>
-        Region.ClearAsync(cancellationToken: cancellationToken);
+    public Task<NavigationResult<object>> RetireAsync(CancellationToken cancellationToken = default) =>
+        Region.ClearAsync(cancellationToken: cancellationToken).AsTask();
 
     /// <summary>Closes the navigator, which retires the entry without asking its guards, then its model context.</summary>
     public async ValueTask DisposeAsync()

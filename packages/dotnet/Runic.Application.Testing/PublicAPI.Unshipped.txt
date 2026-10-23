@@ -16,7 +16,7 @@ Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.init -> v
 Runic.Application.Testing.RunicCallReply<TModel>.ErrorReason.get -> string?
 Runic.Application.Testing.RunicTestNavigationEntry
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>
-Runic.Application.Testing.RunicTestNavigationEntry<TContent>.ActivateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.ActivateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Navigation.NavigationResult<object!>!>!
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Completion.get -> System.Threading.Tasks.Task<Runic.Navigation.NavigationCompletion<object?>!>!
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Content.get -> TContent!
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Context.get -> Runic.Navigation.NavigationEntryContext!
@@ -24,6 +24,6 @@ Runic.Application.Testing.RunicTestNavigationEntry<TContent>.DisposeAsync() -> S
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Entry.get -> Runic.Navigation.NavigationEntry<object!>!
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Navigator.get -> Runic.Navigation.RunicNavigator!
 Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Region.get -> Runic.Navigation.NavigationRegion<object!>!
-Runic.Application.Testing.RunicTestNavigationEntry<TContent>.RetainAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
-Runic.Application.Testing.RunicTestNavigationEntry<TContent>.RetireAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
-static Runic.Application.Testing.RunicTestNavigationEntry.CreateAsync<TContent>(System.Func<Runic.Navigation.NavigationEntryContext!, TContent!>! create, System.IServiceProvider? services = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Testing.RunicTestNavigationEntry<TContent!>!>
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.RetainAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Navigation.NavigationResult<object!>!>!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.RetireAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Navigation.NavigationResult<object!>!>!
+static Runic.Application.Testing.RunicTestNavigationEntry.CreateAsync<TContent>(System.Func<Runic.Navigation.NavigationEntryContext!, TContent!>! create, System.IServiceProvider? services = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestNavigationEntry<TContent!>!>!
