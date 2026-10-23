@@ -238,7 +238,7 @@ internal static partial class WindowsMenuSmoke
         if ((Read(bar, 2).State & MfsDisabled) != MfsDisabled) return (null, "the disabled Archive menu is not grayed");
         var file = GetSubMenu(bar, 0);
         var save = Read(file, 0);
-        if (save.Label != "&Enregistrer\tCtrl+S") return (null, $"Enregistrer reads '{save.Label}'");
+        if (save.Label != "Enregi&strer\tCtrl+S") return (null, $"Enregistrer reads '{save.Label}'");
         var tools = GetSubMenu(bar, 1);
         var entries = Enumerable.Range(0, GetMenuItemCount(tools)).Select(position => Read(tools, position)).ToArray();
         if (entries.Length != 10) return (null, $"Tools has {entries.Length} entries");
