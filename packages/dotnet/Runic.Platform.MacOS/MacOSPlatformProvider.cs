@@ -35,9 +35,8 @@ public static class MacOSPlatformProvider
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. Letters and punctuation are the keys that type them on
     /// the current keyboard layout; after the user switches input source the keys are registered again and
     /// <see cref="IDesktopGlobalShortcuts.BindingsChanged"/> reports a changed outcome. A combination another application
-    /// holds reports <see cref="DesktopGlobalShortcutStatus.Conflict"/>; the standard menus' shortcuts such as ⌘Q, and
-    /// Option or Option+Shift without Command or Control on macOS 15 and later, report
-    /// <see cref="DesktopGlobalShortcutStatus.Refused"/>.
+    /// holds reports <see cref="DesktopGlobalShortcutStatus.Conflict"/>; the standard menus' shortcuts such as ⌘Q, and a
+    /// combination <c>RegisterEventHotKey</c> rejects, report <see cref="DesktopGlobalShortcutStatus.Refused"/>.
     /// </remarks>
     public static IDesktopGlobalShortcuts CreateGlobalShortcuts()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacGlobalShortcuts(); }

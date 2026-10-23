@@ -36,7 +36,7 @@ public enum DesktopGlobalShortcutStatus
 
     /// <summary>
     /// The platform does not allow the key as a global shortcut: a key the system or the focused control keeps, such as
-    /// F12 on Windows or Ctrl+C, a combination macOS refuses, or a character the current keyboard layout cannot type.
+    /// F12 on Windows or Ctrl+C, a combination macOS rejects, or a character the current keyboard layout cannot type.
     /// </summary>
     Refused = 3,
 }

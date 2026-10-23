@@ -489,7 +489,7 @@ and the result is still `Success`. `ListAsync` returns the current bindings, and
 | Who chooses the key | The application, from its own settings | The application, from its own settings |
 | `ConfigureAsync` | `Unavailable(BackendUnavailable)` | `Unavailable(BackendUnavailable)` |
 | Punctuation and letters | The key that types the character on the current layout, with Shift when the layout needs it; a character that needs AltGr is refused | The key that types the character on the current ASCII-capable layout, registered again after the input source changes (`BindingsChanged`) |
-| Refused | F12, kept for debuggers, and the editing and window shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A, Alt+F4 and F10 alone) | The standard menus' shortcuts (⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H, ⌥⌘H, ⌘W, ⌘M), F21 to F24, and from macOS 15 Option or Option+Shift without Command or Control |
+| Refused | F12, kept for debuggers, and the editing and window shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A, Alt+F4 and F10 alone) | The standard menus' shortcuts (⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H, ⌥⌘H, ⌘W, ⌘M), F21 to F24, and any combination `RegisterEventHotKey` rejects |
 
 On Windows and macOS the application owns the binding: record the user's choice
 in a settings page with `shortcutFromEvent` from `@runic-artifex/views`, keep its

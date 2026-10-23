@@ -88,8 +88,8 @@ ASCII-capable layout (`UCKeyTranslate`), with Shift when the layout needs it for
 character, and are registered again when the user switches input source, with `BindingsChanged`
 when an outcome changed. A combination already registered reports `Conflict`
 (`eventHotKeyExistsErr`). The standard menus' shortcuts (⌘Q, ⌘W, ⌘C and the others the menu bar
-keeps), F21 to F24 and, from macOS 15, Option or Option+Shift without Command or Control report
-`Refused`. `ConfigureAsync` reports `BackendUnavailable`: the application offers its own settings.
+keeps), F21 to F24 and a combination `RegisterEventHotKey` rejects, such as Option alone on macOS
+releases that do not allow it, report `Refused`. `ConfigureAsync` reports `BackendUnavailable`: the application offers its own settings.
 
 ## Login startup
 

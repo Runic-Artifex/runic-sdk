@@ -180,27 +180,24 @@ internal sealed class GlobalShortcutTests
     public void MacOSMapsShortcutsForTheLayout()
     {
         uint command = DesktopShortcutKeys.CarbonCommand, shift = DesktopShortcutKeys.CarbonShift, option = DesktopShortcutKeys.CarbonOption;
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Alt+A"), Azerty, refusesOption: true) == (0x0Cu, command | option),
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Alt+A"), Azerty) == (0x0Cu, command | option),
             "a letter is the key that types it");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Alt+Z"), Azerty, refusesOption: true) == (0x06u, command | option),
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Alt+Z"), Azerty) == (0x06u, command | option),
             "a letter the layout search misses keeps its ANSI key");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+/"), Azerty, refusesOption: true) == (0x2Fu, command | shift),
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+/"), Azerty) == (0x2Fu, command | shift),
             "a shifted character adds Shift");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+1"), Azerty, refusesOption: true) == (0x12u, command),
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+1"), Azerty) == (0x12u, command),
             "digits keep the top-row keys");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Control+F5"), Azerty, refusesOption: true) == (0x60u, DesktopShortcutKeys.CarbonControl),
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Control+F5"), Azerty) == (0x60u, DesktopShortcutKeys.CarbonControl),
             "named keys have fixed codes");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+;"), Azerty, refusesOption: true) is null, "a missing character is refused");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Plus"), static c => c == '+' ? (0x18, true) : null, refusesOption: true)
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+;"), Azerty) is null, "a missing character is refused");
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Plus"), static c => c == '+' ? (0x18, true) : null)
             == (0x18u, command | shift), "Plus is the character +");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("F21"), Azerty, refusesOption: true) is null, "F21 has no Mac key");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Alt+Shift+K"), Azerty, refusesOption: true) is null
-            && MacGlobalShortcuts.Map(DesktopShortcut.Parse("Alt+K"), Azerty, refusesOption: true) is null,
-            "Option and Option+Shift alone are refused on macOS 15");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Alt+K"), Azerty, refusesOption: false) == (0x28u, option),
-            "Option alone registers before macOS 15");
-        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Q"), Azerty, refusesOption: false) is null
-            && MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Shift+Z"), Azerty, refusesOption: false) is null,
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("F21"), Azerty) is null, "F21 has no Mac key");
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Alt+K"), Azerty) == (0x28u, option),
+            "Option alone is left to RegisterEventHotKey, which macOS 26 accepts");
+        Check(MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Q"), Azerty) is null
+            && MacGlobalShortcuts.Map(DesktopShortcut.Parse("Primary+Shift+Z"), Azerty) is null,
             "the standard menus' shortcuts are refused");
     }
 }

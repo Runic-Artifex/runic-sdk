@@ -118,9 +118,9 @@ internal sealed partial class MacGlobalShortcuts : IDesktopGlobalShortcuts, IDes
     }
 
     // The key code and Carbon modifiers of a shortcut, or null when macOS cannot register it: a standard menu's shortcut,
-    // a key without a Mac key code, a character the layout lacks, and Option or Option+Shift alone, which macOS 15 and
-    // later refuse so that hot keys cannot read the characters Option types.
-    internal static (uint Code, uint Modifiers)? Map(DesktopShortcut shortcut, Func<char, (ushort Code, bool Shift)?> layout, bool refusesOption)
+    // a key without a Mac key code, or a character the layout lacks. Other refusals, such as Option or Option+Shift alone
+    // on macOS releases that reject them, are RegisterEventHotKey's own answer.
+    internal static (uint Code, uint Modifiers)? Map(DesktopShortcut shortcut, Func<char, (ushort Code, bool Shift)?> layout)
     {
         if (DesktopShortcutKeys.ReservedBy(shortcut, macOS: true) is not null) return null;
         var modifiers = DesktopShortcutKeys.CarbonModifiers(shortcut.Modifiers);
@@ -143,9 +143,6 @@ internal sealed partial class MacGlobalShortcuts : IDesktopGlobalShortcuts, IDes
             else if (char.IsAsciiLetter(character) && DesktopShortcutKeys.MacKeyCode(shortcut.Key) is { } ansi) code = ansi;
             else return null;
         }
-        if (refusesOption && (modifiers & DesktopShortcutKeys.CarbonOption) != 0
-            && (modifiers & (DesktopShortcutKeys.CarbonCommand | DesktopShortcutKeys.CarbonControl)) == 0)
-            return null;
         return (code, modifiers);
     }
 
@@ -153,7 +150,6 @@ internal sealed partial class MacGlobalShortcuts : IDesktopGlobalShortcuts, IDes
     private unsafe ImmutableArray<DesktopGlobalShortcutBinding> Register()
     {
         Unregister();
-        var refusesOption = OperatingSystem.IsMacOSVersionAtLeast(15);
         var layout = new KeyboardLayout();
         try
         {
@@ -166,13 +162,14 @@ internal sealed partial class MacGlobalShortcuts : IDesktopGlobalShortcuts, IDes
                 if (requested is { } shortcut)
                 {
                     status = DesktopGlobalShortcutStatus.Refused;
-                    if (Map(shortcut, layout.Find, refusesOption) is { } key)
+                    if (Map(shortcut, layout.Find) is { } key)
                     {
                         var id = new HotKeyId(Signature, (_instance << 8) | (uint)(index + 1));
                         nint hotKey;
                         var error = RegisterEventHotKey(key.Code, key.Modifiers, id, GetApplicationEventTarget(), 0, &hotKey);
                         if (error == 0) { _hotKeys.Add(hotKey); status = DesktopGlobalShortcutStatus.Bound; }
                         else if (error == HotKeyExists) status = DesktopGlobalShortcutStatus.Conflict;
+                        // Any other error, such as a combination the macOS release does not allow, stays Refused.
                     }
                 }
                 bindings.Add(DesktopGlobalShortcutRules.Binding(action.Id, requested, status, macOS: true));
