@@ -124,21 +124,43 @@ sent with HTML responses. New `runic-app` projects set one outside
 `Development`:
 
 ```text
-default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
-`script-src 'self'` alone does not cover the Bridge yet. Runic Desktop runs
-the scripts it sends to the page, including the Views Bridge's state and
-replies, with the `Function` constructor, so the policy needs `'unsafe-eval'`
-for now; it still blocks inline and foreign scripts. A later release removes
-that need. The Bridge WebSocket and Runic's bootstrap scripts come from the
-surface's own origin, which `'self'` covers, and in embedded windows the
-credential arrives in a document-start script, which page policies do not
-block. A development server is another origin: allow it only in development
-builds. Frameworks that emit inline scripts need their own CSP support: the
-SvelteKit starter uses `kit.csp` hash mode, and the Angular starter allows
-inline styles and turns off critical-CSS inlining. Check the policy in each
-WebView you ship on.
+`script-src 'self'` covers the Bridge on every host, in embedded WebViews and
+installed browsers alike. Runic's bridge and bootstrap scripts and the Bridge
+WebSocket come from the page's own origin, Bridge calls are data, and since
+0.11.0 the Views Bridge's state also arrives as data that the served bridge
+script parses with `JSON.parse`, without evaluating script. In embedded
+windows the credential arrives in a document-start script, which page policies
+do not block. The policy blocks inline, foreign and evaluated scripts
+(`eval`, `new Function`). Leave `'unsafe-eval'` out unless something else
+needs it:
+
+- `DesktopSurface.ExecuteJavaScriptAsync` evaluates its script in the page
+  with the `Function` constructor. Under a policy without `'unsafe-eval'` it
+  fails with `InvalidOperationException`. It is meant for tests and
+  diagnostics.
+- On CS-WebUI, an application's own `RunJavaScript`/`ExecuteJavaScript` calls,
+  and WebUI's `SetSize`/`SetPosition` while a browser window is connected,
+  evaluate script and need `'unsafe-eval'`. CS-WebUI serves `SetRootFolder`
+  files without headers of its own, so give such a page a
+  `<meta http-equiv="Content-Security-Policy">` policy; a `<meta>` policy cannot
+  carry `frame-ancestors`. Keep `runic-cswebui.js` copies current: a copy from
+  before 0.11.0 receives no state under any policy.
+
+`'self'` matches the same-origin `ws:` connection of the Bridge in current
+WebView2, WKWebView, WebKitGTK, Chromium and Firefox. An older WebKitGTK that
+does not needs `connect-src 'self' ws://127.0.0.1:*`.
+
+The policy does not cover development. A development server is another
+origin, and Vite's development client needs inline scripts and styles and its
+own WebSocket, so `runic-app` projects send no policy in `Development`
+(`dotnet runic dev`). Allow a development server only in development builds.
+Frameworks that emit inline scripts need their own CSP support: the SvelteKit
+starter uses `kit.csp` hash mode, and the Angular starter allows inline styles
+and turns off critical-CSS inlining. Check the policy in each WebView you ship
+on.
 
 ## Permissions
 
