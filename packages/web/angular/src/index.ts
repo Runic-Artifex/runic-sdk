@@ -9,3 +9,15 @@ export {
 } from "./inject-latest-operation.js";
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
+export {
+  injectMenuBar,
+  type InjectMenuBarOptions,
+  type MenuBarEntry,
+  type MenuBarHandle,
+  type MenuBarInvokeResult,
+  type MenuBarItem,
+  type MenuBarMenu,
+  type MenuBarRequest,
+  type MenuBarSeparator,
+  type MenuBarState,
+} from "./inject-menu-bar.js";

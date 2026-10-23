@@ -226,6 +226,37 @@ the current state at once; observing starts with the owner's effects, so a
 server render does not observe, and destroying the owner unsubscribes. An invalid
 `lostAfter` throws a `RangeError`.
 
+## `useMenuBar(options?)`
+
+Follows the declared menu bar of a Runic Desktop window that leaves it to the
+page (`DesktopMenuBarPresentation.Page`) while its owner lives. It wraps
+`createMenuBarController` from `@runic-artifex/views` (see
+[In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#in-page-menu-bar)) and returns `{ state, invoke, handleKeyDown }`, where `state` is a
+reactive `MenuBarState` property. The bar is rendered by the menubar component
+of the application's own UI library. Runic ships no menubar component.
+
+```svelte
+<script lang="ts">
+  import { useMenuBar } from "@runic-artifex/svelte";
+
+  let open = $state("");
+  const menuBar = useMenuBar({
+    onRequest: request => { if (request.kind === "open") open = request.menu.key; else focusFirstTrigger(); },
+  });
+</script>
+
+<!-- On macOS the application menu bar keeps the menus ("global"): render nothing. -->
+{#if menuBar.state.placement === "page"}<!-- the menubar component; an item's select handler calls menuBar.invoke(item) -->{/if}
+```
+
+Options are those of `createMenuBarController` (`shortcuts`, `keyboard`)
+without `signal`, plus `onRequest`, which receives the `focus` and `open`
+requests. Call it during component initialization (or in `$effect.root`). The
+controller starts with the owner's effects, so server rendering creates none
+and `state` stays `connecting`; `invoke` rejects with a `BridgeError`
+(`disconnected`) until then. Owner destruction disposes it, which also returns
+the `shortcuts: "app"` lease.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation helper is typed

@@ -239,6 +239,37 @@ StrictMode's simulated unmount keeps one subscription. A changed `lostAfter`
 subscribes again; an invalid one throws a `RangeError`. A server render reads
 `connecting` and does not observe.
 
+## `useMenuBar(options?)`
+
+Follows the declared menu bar of a Runic Desktop window that leaves it to the
+page (`DesktopMenuBarPresentation.Page`) while the component is mounted. It
+wraps `createMenuBarController` from `@runic-artifex/views` (see
+[In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#in-page-menu-bar)) and returns `{ state, invoke, handleKeyDown }`: `state` is a
+`MenuBarState`, and the bar is rendered by the menubar component of the
+application's own UI library. Runic ships no menubar component.
+
+```tsx
+import { useMenuBar } from "@runic-artifex/react";
+
+function AppMenuBar() {
+  const [open, setOpen] = useState("");
+  const menuBar = useMenuBar({
+    onRequest: request => request.kind === "open" ? setOpen(request.menu.key) : focusFirstTrigger(),
+  });
+  // On macOS the application menu bar keeps the menus ("global"): render nothing.
+  if (menuBar.state.placement !== "page") return null;
+  // Map menuBar.state.menus to the component; an item's select handler calls menuBar.invoke(item).
+}
+```
+
+Options are those of `createMenuBarController` (`shortcuts`, `keyboard`)
+without `signal`, plus `onRequest`, which receives the `focus` and `open`
+requests; the latest function is called. A changed `shortcuts` or `keyboard`
+creates a new controller, and unmounting disposes it, which also returns the
+`shortcuts: "app"` lease. StrictMode's simulated unmount keeps one controller.
+The controller starts in an effect, so a server render reads `connecting`, and
+`invoke` rejects with a `BridgeError` (`disconnected`) until then.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

@@ -226,6 +226,39 @@ Disposing the effect scope (unmounting the component) unsubscribes. Call it in
 `setup()` or `effectScope().run()`: outside an effect scope nothing stops it, and
 development builds warn. An invalid `lostAfter` throws a `RangeError`.
 
+## `useMenuBar(options?)`
+
+Follows the declared menu bar of a Runic Desktop window that leaves it to the
+page (`DesktopMenuBarPresentation.Page`) until the current effect scope is
+disposed. It wraps `createMenuBarController` from `@runic-artifex/views` (see
+[In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#in-page-menu-bar)) and returns `{ state, invoke, handleKeyDown }`: `state` is a shallow ref
+of a `MenuBarState`, and the bar is rendered by the menubar component of the
+application's own UI library. Runic ships no menubar component.
+
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
+import { useMenuBar } from "@runic-artifex/vue";
+
+const open = ref("");
+const { state: menuBar, invoke } = useMenuBar({
+  onRequest: request => { if (request.kind === "open") open.value = request.menu.key; else focusFirstTrigger(); },
+});
+</script>
+
+<template>
+  <!-- On macOS the application menu bar keeps the menus ("global"): render nothing. -->
+  <nav v-if="menuBar.placement === 'page'"><!-- the menubar component; an item's select handler calls invoke(item) --></nav>
+</template>
+```
+
+Options are those of `createMenuBarController` (`shortcuts`, `keyboard`)
+without `signal`, plus `onRequest`, which receives the `focus` and `open`
+requests. Stopping the scope disposes the controller, which also returns the
+`shortcuts: "app"` lease. Call it in `setup()` or `effectScope().run()`;
+outside an effect scope it is never released (development builds warn). Server
+rendering creates no controller: `state` stays `connecting`.
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

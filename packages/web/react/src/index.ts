@@ -361,3 +361,15 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
 
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export {
+  useMenuBar,
+  type MenuBarEntry,
+  type MenuBarHandle,
+  type MenuBarInvokeResult,
+  type MenuBarItem,
+  type MenuBarMenu,
+  type MenuBarRequest,
+  type MenuBarSeparator,
+  type MenuBarState,
+  type UseMenuBarOptions,
+} from "./menu-bar.js";

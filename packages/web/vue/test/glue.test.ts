@@ -3,13 +3,16 @@
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
-  useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useOperation, useView, ViewOutlet, type LatestOperationHandle, type ViewRegistry,
+  useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useView, ViewOutlet, type LatestOperationHandle,
+  type MenuBarHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root from "../dist/index.js";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
-  type RunicBridgeClient,
+  type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
+import { installMockMenuBar } from "@runic-artifex/views/mock";
+import { renderToString } from "vue/server-renderer";
 
 type State = { readonly count: number };
 
@@ -492,7 +495,106 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "ViewOutlet", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useOperation", "useView",
+      "ViewOutlet", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useMenuBar", "useOperation", "useView",
     ]);
+  });
+});
+
+// A menu bar as Runic Desktop reports it on Linux (specs/desktop/menu-bar-page.md), served by the mock host routes.
+// The lowest-peer run copies only this package, so the spec's fixture is not used here.
+const menuBarFixture: readonly MenuBarMenu[] = [
+  { kind: "menu", key: "1m", label: "File", accessKey: "F", accessKeyIndex: 0, role: "file", enabled: true, entries: [
+    { kind: "item", key: "1m/0i", label: "New", accessKey: "N", accessKeyIndex: 0, commandId: "file.new", enabled: true,
+      shortcut: "Primary+N", shortcutText: "Ctrl+N", ariaKeyShortcuts: "Control+N" },
+    { kind: "item", key: "1m/1i", label: "Save", accessKey: "S", accessKeyIndex: 0, commandId: "file.save", enabled: true },
+    { kind: "separator", key: "1m/2s" },
+  ] },
+  { kind: "menu", key: "0m", label: "Edit", accessKey: "E", accessKeyIndex: 0, role: "none", enabled: true, entries: [
+    { kind: "item", key: "0m/0i", label: "Find", accessKey: "F", accessKeyIndex: 0, commandId: "edit.find", enabled: false },
+  ] },
+];
+
+async function until(condition: () => boolean) {
+  for (let round = 0; !condition(); round++) {
+    if (round > 200) throw new Error("The condition was not met.");
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  await nextTick();
+}
+
+const keyDown = (init: KeyboardEventInit) => window.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, ...init }));
+
+describe("useMenuBar", () => {
+  const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
+  afterEach(() => { delete host.__runicBridge; });
+
+  test("renders the host's menus, invokes and delivers requests, and disposes when the component unmounts", async () => {
+    const mock = installMockMenuBar(menuBarFixture, { platform: "linux" });
+    const element = document.createElement("div");
+    const requests: MenuBarRequest[] = [];
+    let handle: MenuBarHandle | undefined;
+    const app = createApp(defineComponent({
+      setup() {
+        handle = useMenuBar({ onRequest: request => requests.push(request) });
+        expectTypeOf(handle.state.value).toEqualTypeOf<MenuBarState>();
+        return () => h("output", `${handle!.state.value.status} ${handle!.state.value.menus.map(menu => menu.label).join(",")}`);
+      },
+    }));
+    app.mount(element);
+    expect(element.textContent).toBe("connecting ");
+    await until(() => element.textContent === "ready File,Edit");
+    expect(handle!.state.value.menus).toEqual(menuBarFixture);
+    const save = menuBarFixture[0]!.entries[1]!;
+    if (save.kind !== "item") throw new Error("Save is an item.");
+    expect(await handle!.invoke(save)).toBe("executed");
+    keyDown({ key: "n", code: "KeyN", ctrlKey: true });
+    await until(() => mock.invocations.length === 2);
+    expect(mock.invocations.map(item => item.commandId)).toEqual(["file.save", "file.new"]);
+    keyDown({ key: "F10", code: "F10" });
+    keyDown({ key: "e", code: "KeyE", altKey: true });
+    expect(requests).toEqual([{ kind: "focus" }, { kind: "open", menu: handle!.state.value.menus[1] }]);
+    await nextTick();
+    expect(handle!.state.value.accessKeyHints).toBe(true);
+    mock.update({ menus: menuBarFixture.slice(0, 1) });
+    await until(() => element.textContent === "ready File");
+    app.unmount();
+    keyDown({ key: "n", code: "KeyN", ctrlKey: true });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(mock.invocations).toHaveLength(2);
+  });
+
+  test("shortcuts: \"app\" holds the lease until the effect scope stops", async () => {
+    const mock = installMockMenuBar(menuBarFixture, { platform: "linux" });
+    const scope = effectScope();
+    const bar = scope.run(() => useMenuBar({ shortcuts: "app" }))!;
+    expect(bar.state.value.shortcuts).toBe("app");
+    await until(() => bar.state.value.status === "ready" && mock.leased);
+    const event = new KeyboardEvent("keydown", { key: "n", code: "KeyN", ctrlKey: true, cancelable: true });
+    expect(bar.handleKeyDown(event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    await until(() => mock.invocations.length === 1);
+    scope.stop();
+    await until(() => !mock.leased);
+    mock.update({ menus: [] });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(bar.state.value.menus).toEqual(menuBarFixture);
+  });
+
+  test("server rendering creates no controller and stays connecting", async () => {
+    const mock = installMockMenuBar(menuBarFixture, { platform: "linux", shortcuts: "page" });
+    let handle: MenuBarHandle | undefined;
+    const html = await renderToString(createApp(defineComponent({
+      setup() {
+        handle = useMenuBar({ shortcuts: "app" });
+        return () => h("output", handle!.state.value.status);
+      },
+    })));
+    expect(html).toBe("<output>connecting</output>");
+    expect(handle!.state.value).toMatchObject({ status: "connecting", placement: "none", shortcuts: "app", menus: [] });
+    expect(handle!.handleKeyDown(new KeyboardEvent("keydown", { key: "n", ctrlKey: true }))).toBe(false);
+    await expect(handle!.invoke({ kind: "item", key: "1m/0i", label: "New", accessKeyIndex: 0, commandId: "file.new", enabled: true }))
+      .rejects.toMatchObject({ name: "BridgeError", kind: "unavailable" });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(mock.leased).toBe(false);
   });
 });

@@ -222,6 +222,33 @@ Destroying the injection context unsubscribes. Pass `injector` outside an
 injection context. Under server rendering (`PLATFORM_ID` is `"server"`) it does
 not observe and stays `connecting`. An invalid `lostAfter` throws a `RangeError`.
 
+## In-page menu bar
+
+`injectMenuBar(options?)` follows the declared menu bar of a Runic Desktop
+window that leaves it to the page (`DesktopMenuBarPresentation.Page`) for the
+lifetime of the injection context. It wraps `createMenuBarController` from
+`@runic-artifex/views` (see [In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#in-page-menu-bar))
+and returns `{ state, invoke, handleKeyDown }`, where `state` is a signal of a
+`MenuBarState`. The bar is rendered by the application's own menubar, for
+example the CDK Menu's `cdkMenuBar`. Runic ships no menubar component.
+
+```ts
+import { injectMenuBar } from "@runic-artifex/angular";
+
+readonly menuBar = injectMenuBar({
+  onRequest: request => request.kind === "open" ? this.openMenu(request.menu.key) : this.focusFirstItem(),
+});
+// On macOS the application menu bar keeps the menus ("global"): render nothing.
+// @if (menuBar.state().placement === "page") { <div cdkMenuBar>…(cdkMenuItemTriggered)="menuBar.invoke(item)"…</div> }
+```
+
+Options are those of `createMenuBarController` (`shortcuts`, `keyboard`)
+without `signal`, plus `onRequest`, which receives the `focus` and `open`
+requests, and `injector`, required outside an injection context. Destroying the
+injection context disposes the controller, which also returns the
+`shortcuts: "app"` lease. Under server rendering (`PLATFORM_ID` is `"server"`)
+it creates none and stays `connecting`.
+
 ## Errors
 
 The `error()` signal of `injectView` and of a command or operation is typed
