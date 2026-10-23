@@ -1051,8 +1051,35 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     public Task FocusAsync(CancellationToken cancellationToken = default)
         => GetEmbeddedHost().FocusAsync(cancellationToken).AsTask();
 
-    internal Task AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
-        => GetEmbeddedHost().AnnounceAsync(message, priority, cancellationToken).AsTask();
+    // The window's accessibility API announces the message, except on WebView2 while the keyboard focus is in the page:
+    // the focus is then in WebView2's browser process, and NVDA speaks a UI Automation notification only from the
+    // focused object's process (I-184). The page's Bridge then announces it in a live region, which NVDA speaks from the
+    // page's process. Without a connected Bridge the window announces it.
+    internal async Task AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
+    {
+        var host = GetEmbeddedHost();
+        if (host is WindowsWebView2Host { IsWebContentFocused: true }
+            && await AnnounceInPageAsync(message, priority, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+        await host.AnnounceAsync(message, priority, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Whether the page may announce DesktopWindow.AnnounceAsync (WebUiSession prepares its live regions).
+    internal bool AnnouncesInPage => _embeddedHost is WindowsWebView2Host;
+
+    // Announces the message in the live region of every authenticated page (WebUiBridge's announce); false when no
+    // page is connected.
+    internal async Task<bool> AnnounceInPageAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        var sessions = _sessions.Values.Where(static session => session.IsAuthenticated).ToArray();
+        if (sessions.Length == 0) return false;
+        var assertive = priority == DesktopAnnouncementPriority.Assertive;
+        await Task.WhenAll(sessions.Select(session => session.AnnounceAsync(message, assertive, cancellationToken))).ConfigureAwait(false);
+        return true;
+    }
 
     // Whether the current embedded window opened as a kiosk, which stays full-screen.
     internal bool IsKiosk => _kiosk;
