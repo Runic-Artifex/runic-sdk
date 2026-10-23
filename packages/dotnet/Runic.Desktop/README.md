@@ -849,7 +849,7 @@ VoiceOver on macOS, NVDA 2026.2 on Windows and Orca 46 on Linux (Ubuntu
 | `<input type="range">` | Slider with value, minimum and maximum; set through the Value interface; value-change event; Orca says "Volume horizontal slider 7", then the new value | Slider; `RangeValue`; value-change event; NVDA says "Volume slider 7", then "Volume slider 6" | Slider; `AXIncrement`; VoiceOver says "7 Volume slider", then the new value |
 | `<input type="number">` | An entry: its text, no range | Spinner with value, minimum and maximum | Number field: its value; minimum and maximum read 0 |
 | ARIA spin button whose value the page changes | Spin button; value-change event; Orca says "Restore points to keep 6 spin button" | Spinner; value-change event; NVDA says "Restore points to keep spin button 6 restore points" (`aria-valuetext`) | Stepper; VoiceOver says `aria-valuetext`, or a percentage of the range without it |
-| Increment of an ARIA spin button by the screen reader | AT-SPI has none: Orca sends arrow keys. Setting the value through AT-SPI aborts the web process ([#396](https://github.com/Runic-Artifex/runic-sdk/issues/396)) | `RangeValue.SetValue` is ignored: screen readers send arrow keys | `AXIncrement` reaches the page as Arrow Up |
+| Increment of an ARIA spin button by the screen reader | AT-SPI has none: Orca sends arrow keys. Setting the value through AT-SPI aborts the web process ([#396](https://github.com/Runic-Artifex/runic-sdk/issues/396)) | `RangeValue.SetValue` is ignored: screen readers send arrow keys; after Arrow Up NVDA says "7 restore points" | `AXIncrement` reaches the page as Arrow Up |
 | `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event; Orca says "Fruit List with 3 items", then "Apple" | List; `Selection` patterns; selection event; NVDA says "Fruit list", then "Apple 1 of 3" | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
 | Focus moved by the screen reader | Focus event; Orca follows it and says the control | Focus event; NVDA follows it and says the control | VoiceOver follows it and says the control |
 | Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)); Orca says nothing | `LiveRegionChanged`; NVDA says it | VoiceOver says it |
@@ -864,8 +864,19 @@ VoiceOver says (`eng/ci/macos-voiceover.sh` lets the job control VoiceOver).
 NVDA runs as a portable copy with the silence synthesizer and logs what it
 speaks (`eng/ci/windows-nvda.ps1`); Orca speaks through a Speech Dispatcher
 whose output module writes each utterance to a file. An increment of the ARIA
-spin button by the screen reader is checked with VoiceOver only: NVDA and Orca
-send arrow keys, which the probe does not.
+spin button by the screen reader is checked with VoiceOver and NVDA; Orca sends
+arrow keys, which the probe does not.
+
+With NVDA the probe changes the slider and the spin button and selects in the
+list box with the keys an NVDA user presses (arrows and Home), not with UI
+Automation. When WebView2 carries out a UI Automation action from another
+process, such as `Invoke`, `SetFocus`, `RangeValue.SetValue` or
+`SelectionItem.Select`, it activates its own window inside the application's
+window. Windows deactivates and reactivates the application's window, the
+focus is briefly on that window, and NVDA says the page again ("Runic
+accessibility fixture document", "main landmark") and can miss the value or
+selection change that the action made. Runic's window does not cause this, and
+keyboard input does not do it.
 
 On Linux, the embedded window is WebKitGTK, and a screen reader such as Orca
 reads the page through WebKit's accessibility tree. It differs from Chromium,

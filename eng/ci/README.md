@@ -139,7 +139,10 @@ screen reader's own logs are the `screen-reader-<reader>-<run>` artifact.
   and SHA-256, requires NV Access's Authenticode signature and creates a portable copy
   in `RUNNER_TEMP`. The probe gives it its own configuration (no welcome dialog, update
   check or sounds) and the silence synthesizer, and reads the speech that NVDA logs at
-  its input/output level. To update NVDA, change the version and hash in the script;
+  its input/output level. The speech checks change values and the list selection with
+  the keys an NVDA user presses (`SendInput`), since a UI Automation action makes WebView2
+  activate its own window and NVDA read the page again (Runic.Desktop README,
+  "Accessibility"). To update NVDA, change the version and hash in the script;
   NV Access publishes the launcher's SHA-1 at
   `https://api.nvaccess.org/nvdaUpdateCheck?versionType=stable`.
 - **Orca.** Ubuntu's `orca` package. The probe runs Orca with private XDG directories

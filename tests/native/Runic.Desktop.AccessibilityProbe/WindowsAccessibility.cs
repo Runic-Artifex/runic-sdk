@@ -1,10 +1,11 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
 // UI Automation, which Narrator and NVDA use: the fixture's top-level window by process ID, WebView2's provider tree
 // below it, the RangeValue, Selection, SelectionItem and Invoke patterns, and the property, selection, live region,
 // notification and focus events.
-internal sealed class WindowsAccessibility : AccessibilityClient
+internal sealed partial class WindowsAccessibility : AccessibilityClient
 {
     private readonly AutomationElement _window;
     private readonly List<(AutomationEvent Event, AutomationEventHandler Handler)> _handlers = [];
@@ -135,6 +136,71 @@ internal sealed class WindowsAccessibility : AccessibilityClient
         ((InvokePattern)((AutomationElement)control.Handle).GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         return Task.CompletedTask;
     }
+
+    // NVDA users change a slider or spin button and a list box's selection with the keyboard, which reaches the page.
+    // The speech checks do the same: when WebView2 carries out a UI Automation action from another process, it activates
+    // its own window, which deactivates and reactivates the application's window, and NVDA leaves the control, reads the
+    // document again and can miss the change it is checked for (I-185). The control has the focus.
+    internal override bool ActsWithKeys => true;
+
+    internal override Task StepWithKeysAsync(Control control, int direction, CancellationToken cancellationToken)
+    {
+        Press(direction > 0 ? VirtualKeyUp : VirtualKeyDown);
+        return Task.CompletedTask;
+    }
+
+    internal override Task SelectWithKeysAsync(Control control, string item, CancellationToken cancellationToken)
+    {
+        var items = ((AutomationElement)control.Handle).FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+            .Cast<AutomationElement>().Select(element => element.Current.Name).ToList();
+        var index = items.IndexOf(item);
+        if (index < 0) throw new InvalidOperationException($"'{control.Name}' has no item '{item}'.");
+        Press(VirtualKeyHome);
+        for (var step = 0; step < index; step++) Press(VirtualKeyDown);
+        return Task.CompletedTask;
+    }
+
+    private const ushort VirtualKeyHome = 0x24;
+    private const ushort VirtualKeyUp = 0x26;
+    private const ushort VirtualKeyDown = 0x28;
+
+    // A key press and release to the window with the keyboard focus. Home and the arrows are extended keys.
+    private static void Press(ushort key)
+    {
+        const uint InputKeyboard = 1;
+        const uint ExtendedKey = 1;
+        const uint KeyUp = 2;
+        Input[] inputs =
+        [
+            new() { Type = InputKeyboard, Keyboard = new KeyboardInput { VirtualKey = key, Flags = ExtendedKey } },
+            new() { Type = InputKeyboard, Keyboard = new KeyboardInput { VirtualKey = key, Flags = ExtendedKey | KeyUp } },
+        ];
+        if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) != inputs.Length)
+            throw new InvalidOperationException($"SendInput failed with error {Marshal.GetLastPInvokeError()}.");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        internal ushort VirtualKey;
+        internal ushort ScanCode;
+        internal uint Flags;
+        internal uint Time;
+        internal nint ExtraInfo;
+    }
+
+    // INPUT: the type, then the union of MOUSEINPUT (the largest member), KEYBDINPUT and HARDWAREINPUT.
+    [StructLayout(LayoutKind.Explicit)]
+    private struct Input
+    {
+        [FieldOffset(0)] internal uint Type;
+        [FieldOffset(8)] internal KeyboardInput Keyboard;
+        [FieldOffset(32)] private readonly long _mouseInputEnd;
+    }
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    private static partial uint SendInput(uint count, [In] Input[] inputs, int size);
 
     internal override Task<IReadOnlyList<string>> ReadSelectionAsync(Control control, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<string>>(Selection((AutomationElement)control.Handle));
