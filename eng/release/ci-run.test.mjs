@@ -18,7 +18,9 @@ test('selects the newest successful push, scheduled or manual run of ci.yml on m
   expect(successfulCiRuns([run(1), run(3), run(2, {conclusion: 'failure'})], {repository, sha}).map(r => r.id)).toEqual([3, 1]);
   for (const event of ['schedule', 'workflow_dispatch'])
     expect((await selectCiRun([run(4, {event})], {repository, sha}, jobs({}))).id).toBe(4);
+  // A merge queue run tests the same commit before main has it; the push run that follows counts.
   for (const other of [{head_sha: 'b'.repeat(40)}, {event: 'pull_request'}, {head_branch: 'feature'},
+    {event: 'merge_group', head_branch: 'gh-readonly-queue/main/pr-7-' + 'c'.repeat(40)}, {event: 'merge_group'},
     {path: '.github/workflows/publish-preview.yml'}, {head_repository: {full_name: 'fork/runic-sdk'}}])
     expect(() => successfulCiRuns([run(9, other)], {repository, sha})).toThrow('No run of .github/workflows/ci.yml on main');
 });

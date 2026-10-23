@@ -200,6 +200,8 @@ Other runs choose legs this way:
   managed code that a Windows or macOS host calls. The plan reads the labels when it
   runs and the label does not start a run, so after adding it push again or use
   **Re-run all jobs**. If the labels cannot be read, every leg runs.
+- **Merge queue entries** (`merge_group`) plan like an unlabelled pull request from
+  their merge group's diff; see [Merge queue](#merge-queue).
 - **Pushes to `main`** run every Linux job and the legs that the diff between the
   previous and the new head needs. Without that diff (a new branch, a force push whose
   old head cannot be fetched), every leg runs. Pushes queue rather than cancel each other.
@@ -240,6 +242,44 @@ files. Preview the plan for a branch with
 `bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`. To run every
 job for a pull request, start the workflow manually on its branch; to run every leg of
 its planned jobs, add the `ci:all-platforms` label.
+
+## Merge queue
+
+`main`'s ruleset can require pull requests to pass the merge queue. Queue a pull
+request with **Merge when ready** in the pull request page, or from the command line:
+
+```sh
+gh pr merge <number> --squash --auto
+```
+
+`--auto` queues it once its own checks pass; without the merge queue it enables
+auto-merge instead. GitHub then creates a temporary branch
+`gh-readonly-queue/main/pr-<number>-<sha>` holding `main` (with the entries ahead of
+it) plus the pull request, and runs `ci.yml` on it as a `merge_group` event. The
+`verify` check of that run decides whether the entry merges.
+
+- **What runs.** The plan diffs `merge_group.base_sha..head_sha`, the merge group's
+  parent (`main`, or the entry ahead of it in the queue) against the queued commit,
+  and the base checkout's planner and rules decide what is affected, as on a pull
+  request. Labels are not read, so a queue entry runs the jobs and the Windows and
+  macOS legs its diff needs, even when the pull request has `ci:all-platforms`; that
+  label's run already happened on the pull request. Without a usable diff the entry
+  runs everything.
+- **Concurrency.** Each entry has its own ref and so its own concurrency group: queue
+  runs do not cancel each other, pull request runs or pushes. When GitHub removes an
+  entry, for example because one ahead of it failed, it rebuilds the later entries
+  and starts new runs for them.
+- **After the merge.** The queue fast-forwards `main` to the tested commit, which
+  starts the usual push run (every Linux job and the legs the `before..after` diff
+  needs). Releases still take only push, scheduled or manual runs on `main`
+  ([eng/release/README.md](../release/README.md)); a queue run does not count.
+- **Flakes.** A failed entry leaves the queue and its pull request stays open. After a
+  transient failure, queue the pull request again (the same command or button);
+  rerunning the failed queue run's jobs does not put it back, because its temporary
+  branch is gone. Fix a reproducible failure with a new commit to the pull request.
+
+Preview a queue entry's plan with
+`bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`, as for a pull request.
 
 ## NuGet lock files
 

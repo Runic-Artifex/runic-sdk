@@ -461,6 +461,47 @@ test('pushes keep their platforms, and the label, schedules and manual runs plan
   assert.deepEqual(outputsOf(cli([])).native, { include: nativeLegs });
 });
 
+// Runs the plan step's script in a scratch repository whose `bun` stub records the planner calls.
+const planStep = (event, env, commits) => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'runic-ci-plan-step-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: directory, encoding: 'utf8',
+      env: { ...process.env, GIT_AUTHOR_NAME: 'ci', GIT_AUTHOR_EMAIL: 'ci@example.com', GIT_COMMITTER_NAME: 'ci', GIT_COMMITTER_EMAIL: 'ci@example.com' } }).trim();
+    git('init', '-q', '-b', 'main');
+    const shas = commits.map(file => {
+      writeFileSync(resolve(directory, file), file);
+      git('add', file);
+      git('commit', '-q', '-m', file);
+      return git('rev-parse', 'HEAD');
+    });
+    git('remote', 'add', 'origin', directory);
+    mkdirSync(resolve(directory, 'stub'));
+    writeFileSync(resolve(directory, 'stub/bun'), '#!/usr/bin/env bash\nif [[ "$2" == --affected ]]; then xargs -0 echo; else echo "bun $*"; fi\n', { mode: 0o755 });
+    mkdirSync(resolve(directory, 'temp'));
+    const output = resolve(directory, 'output');
+    const script = workflow.jobs.plan.steps.find(item => item.id === 'plan').run;
+    const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], { cwd: directory, encoding: 'utf8', env: { ...process.env,
+      PATH: `${resolve(directory, 'stub')}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: output,
+      RUNNER_TEMP: resolve(directory, 'temp'), ...env(shas) } });
+    assert.equal(result.status, 0, result.stderr);
+    return readFileSync(output, 'utf8').trim();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+};
+
+test('a merge queue entry plans its merge group diff like an unlabelled pull request', () => {
+  const queued = shas => ({ QUEUE_BASE: shas[0], QUEUE_HEAD: shas.at(-1) });
+  // The base planner reads base_sha..head_sha, without --all-linux or --all-platforms.
+  assert.equal(planStep('merge_group', queued, ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --plan b.txt');
+  // An entry behind another one in the queue: its base is not HEAD^1, so it is fetched.
+  assert.equal(planStep('merge_group', queued, ['a.txt', 'b.txt', 'c.txt']), 'bun eng/ci/plan.mjs --plan b.txt c.txt');
+  // A checkout that is not the queued head, or no base, plans everything.
+  for (const env of [shas => ({ QUEUE_BASE: shas[0], QUEUE_HEAD: shas[0] }), shas => ({ QUEUE_BASE: '', QUEUE_HEAD: shas[1] }),
+    shas => ({ QUEUE_BASE: 'f'.repeat(40), QUEUE_HEAD: shas[1] })])
+    assert.equal(planStep('merge_group', env, ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --all merge_group run without a usable diff');
+  // Pushes keep planning every Linux job from before..after.
+  assert.equal(planStep('push', shas => ({ BEFORE: shas[0] }), ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --plan b.txt --all-linux');
+});
+
 test('a base planner without platforms plans every leg, and invalid platforms are ignored', () => {
   const decided = affected(['packages/web/svelte/src/index.ts']);
   assert.deepEqual(parseAffected(JSON.stringify(decided)), decided);
@@ -492,8 +533,11 @@ test('the workflow plans platform legs, reads the label live and runs everything
   assert.match(step.run, /options=\(--all-linux\)/);
   assert.match(step.run, /bun eng\/ci\/plan\.mjs --plan "\$affected" "\$\{options\[@\]\}"/);
   assert.match(step.run, /bun eng\/ci\/plan\.mjs --all "\$reason"/);
+  assert.equal(step.env.QUEUE_BASE, '${{ github.event.merge_group.base_sha }}');
+  assert.equal(step.env.QUEUE_HEAD, '${{ github.event.merge_group.head_sha }}');
   // A label is read when the plan runs; adding one does not start a run by itself.
   assert.equal(workflow.on.pull_request, null);
+  assert.deepEqual(workflow.on.merge_group, { types: ['checks_requested'] });
   assert.equal(workflow.on.schedule.length, 1);
   assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
   assert.equal(workflow.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");

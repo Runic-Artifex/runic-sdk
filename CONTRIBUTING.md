@@ -74,7 +74,10 @@ with an email linked to your account. You cannot approve your own pull request.
 Branch deletion and force pushes to `main` are
 blocked. Organization administrators can bypass the ruleset, but only for
 emergencies such as a broken release or a CI outage that blocks a fix; follow an
-emergency push with a pull request that records why. Path-filtered workflows,
+emergency push with a pull request that records why. With the merge queue enabled,
+queue a pull request with `gh pr merge <number> --squash --auto` or **Merge when
+ready**; its `verify` check runs again on the queued commit
+([eng/ci/README.md](eng/ci/README.md#merge-queue)). Path-filtered workflows,
 such as the DynamicData consumer, are not required checks because a skipped
 workflow never reports.
 
