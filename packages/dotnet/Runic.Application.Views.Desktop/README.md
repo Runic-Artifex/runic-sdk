@@ -548,7 +548,9 @@ each window then serves that directory before its `www/` folder (which still
 supplies `runic-views.js`) and reloads when the directory changes: it navigates
 to the last HTML page it loaded, or to its start page, without the page's
 query, hash or `history.pushState` route, and its Bridge reconnects as after
-any reload. Outside `Development` the host ignores the variable. Events 2005 to
+any reload. A connected page is navigated through its Bridge; a window whose
+page has no Bridge, such as a half-written `index.html` or a build error page,
+is navigated through its WebView instead. Neither runs page script. Outside `Development` the host ignores the variable. Events 2005 to
 2007 report it. The
 [dotnet-runic README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)
 describes the frontend modes.

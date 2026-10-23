@@ -668,7 +668,13 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
     }
     public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
     { Options = options; State = InitialState; _open = true; return ValueTask.CompletedTask; }
-    public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    // The URLs the window's WebView was navigated to after it opened.
+    public System.Threading.Channels.Channel<Uri> Navigations { get; } = System.Threading.Channels.Channel.CreateUnbounded<Uri>();
+    public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default)
+    {
+        Navigations.Writer.TryWrite(url);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         if (_open) { _open = false; Closed?.Invoke(this, EventArgs.Empty); }

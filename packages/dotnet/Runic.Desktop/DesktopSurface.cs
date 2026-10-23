@@ -236,6 +236,13 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal Task NavigateAsync(string url, CancellationToken cancellationToken = default) =>
         _engine.NavigateAsync(url, cancellationToken);
 
+    /// <summary>
+    /// Navigates the open embedded window of this surface through its native WebView, without a page connection.
+    /// False when the surface has no open embedded window.
+    /// </summary>
+    internal Task<bool> NavigateWindowAsync(Uri url, CancellationToken cancellationToken = default) =>
+        _engine.NavigateEmbeddedWindowAsync(url, cancellationToken);
+
     /// <summary>Sends opaque bytes to every authenticated presentation session.</summary>
     internal Task SendAsync(
         string function,

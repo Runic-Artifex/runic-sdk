@@ -1142,6 +1142,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     /// <summary>Navigates every authenticated browser to a URL.</summary>
     public void Navigate(string url) => NavigateAsync(url).GetAwaiter().GetResult();
 
+    // Navigates the window's own WebView, which needs no page connection: a page without the Bridge, such as a
+    // build error page, cannot be navigated through its session. False without an open embedded window, for example
+    // when an installed browser shows the surface.
+    internal async Task<bool> NavigateEmbeddedWindowAsync(Uri url, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(url);
+        if (Volatile.Read(ref _embeddedHost) is not { IsOpen: true } host) return false;
+        await host.NavigateAsync(url, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     /// <summary>Navigates every authenticated browser to a URL.</summary>
     public Task NavigateAsync(string url, CancellationToken cancellationToken = default)
     {

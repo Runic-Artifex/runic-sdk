@@ -226,6 +226,68 @@ internal sealed class DevelopmentAssetsChecks
         }
     }
 
+    // #520: a page without the Bridge, such as a half-written index.html or a build error page, never connects, so a
+    // reload through the Bridge cannot reach it. Each later change navigates the window's WebView instead.
+    [Test, NotInParallel(Order = 35)]
+    public async Task AWindowWhosePageHasNoBridgeIsReloadedByLaterChanges()
+    {
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        string root = Directory.CreateTempSubdirectory("runic-dev-assets-").FullName;
+        try
+        {
+            string dist = Path.Combine(root, "dist");
+            string www = Path.Combine(root, "www");
+            Write(dist, "index.html", "<p>one</p>");
+            Write(dist, "settings.html", "<p>half-writ");
+            Write(www, "runic-views.js", "// host client");
+
+            await using var provider = Services();
+            var factory = new NativeDispatchFactory();
+            await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = factory,
+                WaitForConnection = false,
+            });
+            var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+            {
+                WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+            })
+            {
+                ReadEnvironment = name => name switch
+                {
+                    "DOTNET_ENVIRONMENT" => "Development",
+                    DevelopmentAssets.EnvironmentVariable => dist,
+                    _ => null,
+                },
+            };
+            await using var window = await host.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { ContentRoot = www });
+            var surface = ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Surface;
+            var webView = factory.Hosts.Single();
+            using var http = new HttpClient();
+
+            // The window loads a page that has no Bridge, so no page ever connects.
+            Check((await http.GetStringAsync(new Uri(surface.Url, "settings.html"), cancellation.Token)).Contains("half-writ",
+                StringComparison.Ordinal), "The window did not serve the frontend output directory.");
+            var expected = new Uri(surface.Url, "settings.html");
+            foreach (var content in new[] { "<p>settings two</p>", "<p>settings three</p>" })
+            {
+                Write(dist, "settings.html", content);
+                var url = await webView.Navigations.Reader.ReadAsync(cancellation.Token);
+                Check(url == expected, $"The WebView was navigated to '{url}'.");
+                // The navigated WebView loads the document again; it still has no Bridge.
+                while (!(await http.GetStringAsync(expected, cancellation.Token)).Contains(content, StringComparison.Ordinal))
+                    await Task.Delay(50, cancellation.Token);
+                // A change can arrive as more than one event, each of which reloads.
+                await Task.Delay(300, cancellation.Token);
+                while (webView.Navigations.Reader.TryRead(out _)) { }
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     // The surface admits one page at a time; a page that just left may still hold the connection for a moment.
     private static async Task<DesktopWireClient> ConnectWhenFreeAsync(DesktopSurface surface, CancellationToken cancellationToken)
     {
