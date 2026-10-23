@@ -950,6 +950,44 @@ private async Task SaveAsync(CancellationToken token)
   holds there. Navigation hooks are not commands; see
   [Runic.Navigation threading](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#threading).
 
+## State before a reply
+
+A command, setter or checked write often changes another View than the one
+it was called on, such as a page command that adds a document to its shell's
+list. The call's reply carries only its own View's state; the other Views'
+states travel as separate frames. Since 0.11, Runic sends every state frame
+that the call produced, on every route of the window, before it sends the
+reply (read-your-writes). When the page's call resolves, the other Views'
+clients have already applied those states, so code after `await` can read
+them without waiting for a subscription:
+
+```ts
+await workspace.load(request);
+const document = shell.snapshot.documents.at(-1); // includes what load added
+```
+
+- "Produced" means requested before the reply was ready: a change made in the
+  command, or in a model turn that ran before its reply, is included. A
+  change that work outside the command makes later, such as a timer or a
+  `Task.Run` that commits afterwards, arrives as an ordinary frame.
+- The guarantee covers awaited and synchronous commands (`{View}{Command}`),
+  setters (`{View}Set{Property}`) and checked writes (`{View}Write{Property}`)
+  on Runic Desktop, CS-WebUI, WPF and `Runic.Application.Testing`'s
+  in-memory transport. An operation's admission (`start{Command}`) replies at
+  once, as before; its status follows the [operation rules](#operation-results-and-parameterised-queries).
+- A reply waits at most 5 seconds for those frames. A page that takes no
+  frames for longer, for example because it is frozen in the debugger, gets
+  the reply anyway, and the states follow.
+- A synchronous route that a test calls inside the model turn, for example
+  through `IRunicModelContext.InvokeAsync`, replies at once: the states
+  cannot be captured until that turn ends.
+- A custom `IBridgeTransport` keeps the guarantee when `Publish` (or
+  `PublishAsync`/`PublishUtf8Async`) returns once the frame is on the
+  connection ahead of later sends, as Runic's hosts do.
+
+The wire is unchanged (Views protocol 3); clients of earlier releases see the
+same frames, only in this order.
+
 ## Read-only and settable state
 
 The web frontend is the View, so the usual MVVM rule applies: the ViewModel's

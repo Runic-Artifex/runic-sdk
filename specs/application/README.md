@@ -65,6 +65,24 @@ publication:
   is sent; Desktop implements this path. An `IBridgeUtf8Transport` receives
   each frame the same way, as the UTF-8 encoding of the string the other
   paths receive; Desktop and the in-memory test transport implement it.
+- **Reply order (read-your-writes, 0.11).** The reply of a command, setter or
+  checked-write route is returned to the transport only after every state
+  frame requested on any route of the same transport before the reply was
+  ready has been published, or found to have nothing to publish. A transport
+  is one window's connection, so the page applies those states before the
+  call resolves. The wait is bounded (5 s); after that the reply is sent and
+  the states follow. A synchronous route called inside the model turn that
+  the capture needs replies without waiting. Snapshot, `Can`, `Mount` and
+  operation admission routes do not wait. The order holds when the
+  transport's publish call returns once the frame is queued on the connection
+  ahead of later sends; Runic Desktop (the session's send queue), CS-WebUI
+  (`webui_send_raw` blocks until written), WPF and the in-memory transport
+  do. The wire format and Views protocol 3 are unchanged.
+- **Shutdown.** A frame that is on its way when its bridge is released and
+  the window disposes the transport is dropped silently: CS-WebUI's
+  rebindable transport ignores a publish after disposal, and the delivery
+  ignores an `ObjectDisposedException` from a transport after its bridge was
+  released.
 
 The browser host script defines `__runicBridge`:
 

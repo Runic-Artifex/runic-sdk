@@ -68,10 +68,16 @@ internal sealed class RebindableBridgeTransport : IBridgeTransport, IDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A state published after disposal is dropped: the window's routes are gone, and a Bridge's delivery that was
+    /// already on its way when the window closed must end silently (I-174).
+    /// </remarks>
     public void Publish(string name, string stateJson)
     {
-        lock (_gate) ThrowIfDisposed();
-        _inner.Publish(name, stateJson);
+        lock (_gate) if (_disposed) return;
+        // The window can be disposed right after this transport, while the state is being sent.
+        try { _inner.Publish(name, stateJson); }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed)) { }
     }
 
     private string DispatchSync(Route route, IBridgeArguments arguments)

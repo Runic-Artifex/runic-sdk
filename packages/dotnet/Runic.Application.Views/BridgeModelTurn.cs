@@ -23,6 +23,10 @@ internal sealed class BridgeModelTurn : IBridgeModelTurn
         return new(BridgeModelGates.For(model), context);
     }
 
+    // Whether the calling thread is inside this model's turn, where waiting
+    // for another turn of the model would deadlock.
+    public bool IsCurrent => _context?.IsExecuting ?? Monitor.IsEntered(_gate);
+
     public T Run<T>(Func<T> work)
     {
         ArgumentNullException.ThrowIfNull(work);
