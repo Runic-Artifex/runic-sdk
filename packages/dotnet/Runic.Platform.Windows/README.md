@@ -218,6 +218,20 @@ are metered, an unrestricted one is not, and an unknown cost is `null`.
 
 CI's `Native` jobs run the `NativeMessageBoxes` and `NativeNetwork` categories of
 `Runic.Platform.Windows.Tests` with JIT and NativeAOT.
+## Global shortcuts
+
+`WindowsPlatformProvider.CreateGlobalShortcuts()`, and `DesktopPlatformServices.CreateGlobalShortcuts()`
+and `AddRunicPlatformServices()` in `Runic.Application.Views.Desktop`, register each key with
+`RegisterHotKey` (`MOD_NOREPEAT`) on a message-only window on its own thread, created by the first
+`BindAsync`, so a tray-only or CS-WebUI application can use them. `WM_HOTKEY` raises `Activated` on
+a worker thread. Letters, digits, function and named keys use their virtual keys; a punctuation
+character is the key that types it on the keyboard layout (`VkKeyScanExW`), with Shift when the
+layout needs it, and a character that needs AltGr reports `Refused`. A key another application
+registered reports `Conflict` (`ERROR_HOTKEY_ALREADY_REGISTERED`). F12, which Windows keeps for
+debuggers, and the editing and window shortcuts report `Refused`. Rebinding and disposal unregister
+every key. The application chooses the keys, so `ConfigureAsync` reports `BackendUnavailable` and
+`BindingsChanged` is never raised. Windows has no Windows-key modifier in `DesktopShortcut`: the shell
+keeps most Win+key combinations.
 
 ## Status icon and window presentation
 

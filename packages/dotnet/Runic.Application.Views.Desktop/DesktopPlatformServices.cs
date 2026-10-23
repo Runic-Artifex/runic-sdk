@@ -159,6 +159,34 @@ public static partial class DesktopPlatformServices
         return icon ?? DesktopStatusIcon.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    /// <summary>Creates the application's global shortcuts from the provider for the operating system.</summary>
+    /// <param name="applicationId">On Linux the reverse-DNS ID of the installed desktop entry, under which the desktop keeps
+    /// the user's bindings; <see langword="null"/> uses the identity the desktop portal infers.</param>
+    /// <returns>Global shortcuts that the caller disposes at shutdown.</returns>
+    /// <remarks>
+    /// Windows registers each key with <c>RegisterHotKey</c> on a thread of its own, and macOS with Carbon's
+    /// <c>RegisterEventHotKey</c> once the Desktop event loop runs, reporting
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> without that loop; both ignore
+    /// <paramref name="applicationId"/>. Creating them registers nothing; the first
+    /// <see cref="IDesktopGlobalShortcuts.BindAsync"/> does. Other platforms report
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopGlobalShortcuts CreateGlobalShortcuts(string? applicationId = null) => CreateGlobalShortcuts(applicationId, null);
+
+    internal static IDesktopGlobalShortcuts CreateGlobalShortcuts(string? applicationId, ILogger? logger)
+    {
+        IDesktopGlobalShortcuts? shortcuts = null;
+        if (OperatingSystem.IsWindows()) shortcuts = Optional(CreateWindowsGlobalShortcuts);
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsMacOS()) shortcuts = CreateMacOSGlobalShortcuts();
+#endif
+        _ = applicationId;
+        _ = logger;
+        return shortcuts ?? DesktopGlobalShortcuts.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -169,6 +197,10 @@ public static partial class DesktopPlatformServices
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreateMacOSStatusIcon() => MacOSPlatformProvider.CreateStatusIcon();
+
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopGlobalShortcuts CreateMacOSGlobalShortcuts() => MacOSPlatformProvider.CreateGlobalShortcuts();
 
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -705,6 +737,10 @@ public static partial class DesktopPlatformServices
     [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreateWindowsStatusIcon() => WindowsPlatformProvider.CreateStatusIcon();
+
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopGlobalShortcuts CreateWindowsGlobalShortcuts() => WindowsPlatformProvider.CreateGlobalShortcuts();
 
     [SupportedOSPlatform("windows")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1366,7 +1402,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
     /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/>, <see cref="IDesktopMonitors"/> and <see cref="IDesktopMessageBoxes"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
-    /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
+    /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
     /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopApplications"/>, <see cref="IDesktopThumbnails"/> and
     /// <see cref="IDesktopFileBookmarks"/> for the application, without an application ID.
@@ -1381,7 +1417,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// The application services need no window, so they work the same with or without a native owner: they are
     /// singletons created by <see cref="DesktopPlatformServices.CreateSettings"/>,
     /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,
-    /// <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
+    /// <see cref="DesktopPlatformServices.CreateGlobalShortcuts(string?)"/>, <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateSecretStore()"/>, <see cref="DesktopPlatformServices.CreateTrash()"/>,
     /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
     /// and <see cref="DesktopPlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
@@ -1399,7 +1435,7 @@ public static class DesktopPlatformServiceCollectionExtensions
 
     /// <summary>
     /// Registers the same services as <see cref="AddRunicPlatformServices(IServiceCollection)"/>, with notifications,
-    /// the status icon, login startup and inhibition for the application identified by <paramref name="applicationId"/>,
+    /// the status icon, global shortcuts, login startup and inhibition for the application identified by <paramref name="applicationId"/>,
     /// and its <see cref="IDesktopOpenRegistration"/> (<see cref="DesktopPlatformServices.CreateOpenRegistration(string)"/>).
     /// </summary>
     /// <param name="services">The application's services.</param>
@@ -1431,6 +1467,8 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddSingleton(provider => DesktopPlatformServices.CreateLoginStartup(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(provider => DesktopPlatformServices.CreateStatusIcon(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(provider => DesktopPlatformServices.CreateGlobalShortcuts(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(provider => DesktopPlatformServices.CreateInhibition(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
@@ -359,6 +360,35 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's status icon.");
     }
 
+    // Global shortcuts are an application singleton like the status icon. Creating them registers no key; only BindAsync
+    // does, so nothing here touches the session's keyboard.
+    [Test, NotInParallel(Order = 31)]
+    public async Task PlatformServicesRegisterOneGlobalShortcutsForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var shortcuts = provider.GetRequiredService<IDesktopGlobalShortcuts>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(shortcuts, first.ServiceProvider.GetRequiredService<IDesktopGlobalShortcuts>()),
+                    "A Window scope got its own global shortcuts.");
+            var expected = OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsGlobalShortcuts"
+                : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacGlobalShortcuts" : null;
+            if (expected is not null)
+                Require(shortcuts.GetType().FullName == expected
+                    && await shortcuts.ListAsync() is PlatformResult<ImmutableArray<DesktopGlobalShortcutBinding>>.Success({ IsEmpty: true }),
+                    $"The operating system's global shortcuts were not registered: {shortcuts.GetType().FullName}");
+            else
+                Require(await shortcuts.ConfigureAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+                    "A platform without a global shortcut provider did not report it unconfigured.");
+        }
+
+        await using var custom = DesktopGlobalShortcuts.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopGlobalShortcuts>(), custom),
+            "AddRunicPlatformServices replaced the application's global shortcuts.");
+    }
+
     // Inhibition is an application singleton: a lease belongs to an operation, not to a window, and Windows and macOS
     // have no window in the request. Nothing here acquires a lease or connects to a session bus.
     [Test, NotInParallel(Order = 32)]
@@ -394,7 +424,7 @@ internal sealed class WindowServiceChecks
     {
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher),
             typeof(IDesktopMonitors), typeof(IDesktopMessageBoxes)];
-        Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
+        Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon), typeof(IDesktopGlobalShortcuts),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
             typeof(IDesktopVolumes), typeof(IDesktopNetworkStatus), typeof(IDesktopApplications), typeof(IDesktopThumbnails), typeof(IDesktopFileBookmarks)];
         // Registration names the application's entries, so only the overload with an application ID registers it.

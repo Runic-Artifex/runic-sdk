@@ -27,6 +27,20 @@ public static class MacOSPlatformProvider
     /// requests report <see cref="PlatformUnavailableReason.BackendUnavailable"/> after five seconds.</remarks>
     public static IDesktopStatusIcon CreateStatusIcon()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacStatusIcon(); }
+    /// <summary>Creates the application's global shortcuts, Carbon hot keys (<c>RegisterEventHotKey</c>).</summary>
+    /// <remarks>
+    /// They need no Accessibility permission. The Desktop event loop (<c>DesktopEventLoop.Run</c>) must service the main
+    /// thread, or requests report <see cref="PlatformUnavailableReason.BackendUnavailable"/> after five seconds. The
+    /// application chooses the keys, so <see cref="IDesktopGlobalShortcuts.ConfigureAsync"/> reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. Letters and punctuation are the keys that type them on
+    /// the current keyboard layout; after the user switches input source the keys are registered again and
+    /// <see cref="IDesktopGlobalShortcuts.BindingsChanged"/> reports a changed outcome. A combination another application
+    /// holds reports <see cref="DesktopGlobalShortcutStatus.Conflict"/>; the standard menus' shortcuts such as ⌘Q, and
+    /// Option or Option+Shift without Command or Control on macOS 15 and later, report
+    /// <see cref="DesktopGlobalShortcutStatus.Refused"/>.
+    /// </remarks>
+    public static IDesktopGlobalShortcuts CreateGlobalShortcuts()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacGlobalShortcuts(); }
     /// <summary>Creates login startup for the application bundle, through <c>SMAppService.mainAppService</c>.</summary>
     /// <remarks>macOS 13 and later; a process outside an application bundle, or an earlier macOS, reports
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. macOS starts the bundle without the request's arguments.</remarks>

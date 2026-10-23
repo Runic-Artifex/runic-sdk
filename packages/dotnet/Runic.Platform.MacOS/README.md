@@ -75,6 +75,22 @@ application while it shows windows too:
 <true/>
 ```
 
+## Global shortcuts
+
+`MacOSPlatformProvider.CreateGlobalShortcuts()`, and `DesktopPlatformServices.CreateGlobalShortcuts()`
+and `AddRunicPlatformServices()` in `Runic.Application.Views.Desktop`, register Carbon hot keys
+(`RegisterEventHotKey`) on the main thread and receive `kEventHotKeyPressed` on the application's
+event target. They need no Accessibility permission and take the key from the focused application,
+unlike a global `NSEvent` monitor. The Desktop event loop must service the main thread, with or
+without a window; otherwise requests report `BackendUnavailable` after five seconds. Named keys and
+digits use fixed key codes; letters and punctuation use the key that types them on the current
+ASCII-capable layout (`UCKeyTranslate`), with Shift when the layout needs it for a punctuation
+character, and are registered again when the user switches input source, with `BindingsChanged`
+when an outcome changed. A combination already registered reports `Conflict`
+(`eventHotKeyExistsErr`). The standard menus' shortcuts (⌘Q, ⌘W, ⌘C and the others the menu bar
+keeps), F21 to F24 and, from macOS 15, Option or Option+Shift without Command or Control report
+`Refused`. `ConfigureAsync` reports `BackendUnavailable`: the application offers its own settings.
+
 ## Login startup
 
 `MacOSPlatformProvider.CreateLoginStartup()` (and `DesktopPlatformServices.CreateLoginStartup()`) registers the application bundle as a

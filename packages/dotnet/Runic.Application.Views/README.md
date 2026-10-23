@@ -689,8 +689,43 @@ saveButton.setAttribute("aria-keyshortcuts", "Control+S Meta+S");
   the menu item or in the page, not both.
 - **Make shortcuts discoverable.** Show them beside the control or in the
   page's menus with `formatShortcut`, and set `aria-keyshortcuts` so screen
-  readers announce them. Global shortcuts, which work while the application is
-  in the background, are not supported yet.
+  readers announce them.
+
+Global shortcuts, which work while the application is in the background, are
+the application's `IDesktopGlobalShortcuts`, not the page's. Let the user choose
+the key on a settings page: `shortcutFromEvent` records a `keydown` as the same
+text, which the page sends through an ordinary command; the ViewModel keeps it
+in the application's settings and binds it.
+
+```ts
+import { shortcutFromEvent } from "@runic-artifex/views";
+
+keyField.addEventListener("keydown", (event) => {
+  const shortcut = shortcutFromEvent(event);
+  if (shortcut === null) return; // A modifier alone, a dead key or composition.
+  event.preventDefault();
+  void settings.chooseQuickNoteKey(shortcut);
+});
+```
+
+```csharp
+[RelayCommand]
+public async Task ChooseQuickNoteKeyAsync(string shortcut, CancellationToken cancellationToken)
+{
+    if (!DesktopShortcut.TryParse(shortcut, out var key)) return;
+    var result = await _shortcuts.BindAsync(
+        [new DesktopGlobalShortcut("quick-note", "Open a quick note") { PreferredShortcut = key }], cancellationToken);
+    if (result is PlatformResult<ImmutableArray<DesktopGlobalShortcutBinding>>.Success([{ Status: DesktopGlobalShortcutStatus.Bound }]))
+        _settings.QuickNoteKey = key.ToString();
+    else
+        QuickNoteKeyProblem = "That key is taken or not allowed; choose another.";
+}
+```
+
+Windows and macOS bind the key the application passes and report a key another
+application holds as `Conflict` and a key the system keeps, such as F12 or ⌘Q,
+as `Refused`. See
+[Global shortcuts](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#global-shortcuts).
 
 ### Receiving dropped files
 

@@ -602,7 +602,14 @@ handler, after calling `preventDefault()`; ViewModels use
 AppKit menu over the web view, GTK 3 and GTK 4 the menus above, and the
 Windows window a Win32 menu (`TrackPopupMenuEx`), mirrored for a right-to-left
 window; the web view keeps its own context menu where the page does not handle
-`contextmenu`. Global shortcuts are planned for later releases.
+`contextmenu`.
+
+Global shortcuts, which work while another application has the focus, are the
+application's `IDesktopGlobalShortcuts` from Runic.Platform
+(`DesktopPlatformServices.CreateGlobalShortcuts()` or `AddRunicPlatformServices()`):
+`RegisterHotKey` on Windows and Carbon hot keys on macOS, which run in the Desktop
+event loop with or without a window. See
+[Global shortcuts](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#global-shortcuts).
 
 ## File drops
 

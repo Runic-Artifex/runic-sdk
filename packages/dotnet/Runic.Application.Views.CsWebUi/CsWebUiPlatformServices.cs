@@ -35,7 +35,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// Registers every Runic platform service that Runic Desktop's <c>AddRunicPlatformServices</c> registers:
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>,
     /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMessageBoxes"/> per window scope, and one <see cref="IDesktopSettings"/>,
-    /// <see cref="IDesktopNotifications"/>, <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>,
+    /// <see cref="IDesktopNotifications"/>, <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>,
     /// <see cref="IDesktopInhibition"/>, <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>,
     /// <see cref="IDesktopFileTransfers"/>, <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application. CS-WebUI windows have no native owner, so every window
     /// operation and the capability snapshot report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. This
@@ -46,9 +46,9 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// ViewModels written against these services resolve and run on CS-WebUI and check the result or the capability
     /// snapshot; on Runic Desktop, whose <c>AddRunicPlatformServices</c> registers the same services, the same
     /// ViewModels get native dialogs, the clipboard, the desktop's appearance preferences, notifications, the status
-    /// icon, login startup, inhibition, secret storage, the trash, file transfers, the application database and thumbnails. The application services need no window, so a CS-WebUI
+    /// icon, global shortcuts, login startup, inhibition, secret storage, the trash, file transfers, the application database and thumbnails. The application services need no window, so a CS-WebUI
     /// application can use them by registering one from a platform provider, such as
-    /// <c>WindowsPlatformProvider.CreateSettings()</c>, <c>new PortalApplication().CreateInhibition()</c>,
+    /// <c>WindowsPlatformProvider.CreateSettings()</c>, <c>WindowsPlatformProvider.CreateGlobalShortcuts()</c>, <c>new PortalApplication().CreateInhibition()</c>,
     /// <c>new PortalApplication().CreateSecretStore()</c> or <c>MacOSPlatformProvider.CreateApplications()</c>, or the managed file transfers from
     /// <c>Runic.Platform.Runtime.LocalFileTransfers.Create()</c>, before calling this method. Existing registrations of
     /// these service types are kept.
@@ -59,6 +59,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
         services.TryAddSingleton(static _ => DesktopSettings.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopNotifications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopStatusIcon.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
+        services.TryAddSingleton(static _ => DesktopGlobalShortcuts.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopInhibition.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopSecretStore.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));

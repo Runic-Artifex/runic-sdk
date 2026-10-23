@@ -17,6 +17,9 @@
     <Compile Include="../Runic.Platform/DesktopUriPolicy.cs" Link="Shared/DesktopUriPolicy.cs" />
     <Compile Include="../Runic.Platform/DesktopMenuRules.cs" Link="Shared/DesktopMenuRules.cs" />
     <Compile Include="../Runic.Platform/DesktopMessageBoxRules.cs" Link="Shared/DesktopMessageBoxRules.cs" />
+    <!-- The key tables and the global shortcut rules; Runic.Desktop uses Runic.Platform's copies. -->
+    <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
+    <Compile Include="../Runic.Platform/DesktopGlobalShortcutRules.cs" Link="Shared/DesktopGlobalShortcutRules.cs" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

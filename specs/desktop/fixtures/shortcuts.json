@@ -1,5 +1,5 @@
 {
-  "description": "Keyboard shortcut text shared by DesktopShortcut (.NET Runic.Platform, Runic.Desktop.Tests) and matchesShortcut/formatShortcut (@runic-artifex/views). Primary is Command on Apple platforms and Ctrl elsewhere; Control is the Control key on Apple platforms and the same Ctrl elsewhere.",
+  "description": "Keyboard shortcut text shared by DesktopShortcut (.NET Runic.Platform, Runic.Desktop.Tests) and matchesShortcut/formatShortcut/shortcutFromEvent (@runic-artifex/views); the record cases are the text shortcutFromEvent gives a key press. Primary is Command on Apple platforms and Ctrl elsewhere; Control is the Control key on Apple platforms and the same Ctrl elsewhere.",
   "parse": [
     { "text": "Primary+S", "canonical": "Primary+S", "apple": "⌘S", "other": "Ctrl+S" },
     { "text": "primary+shift+s", "canonical": "Primary+Shift+S", "apple": "⇧⌘S", "other": "Ctrl+Shift+S" },
@@ -36,5 +36,33 @@
     { "shortcut": "Primary+ArrowUp", "apple": true, "event": { "key": "ArrowUp", "code": "ArrowUp", "metaKey": true }, "matches": true },
     { "shortcut": "Escape", "apple": true, "event": { "key": "Escape", "code": "Escape" }, "matches": true },
     { "shortcut": "Primary+S", "apple": false, "event": { "key": "s", "code": "KeyS", "ctrlKey": true, "repeat": true, "isComposing": true }, "matches": false }
+  ],
+  "record": [
+    { "apple": false, "event": { "key": "S", "code": "KeyS", "ctrlKey": true, "shiftKey": true }, "shortcut": "Primary+Shift+S" },
+    { "apple": true, "event": { "key": "s", "code": "KeyS", "metaKey": true }, "shortcut": "Primary+S" },
+    { "apple": true, "event": { "key": "s", "code": "KeyS", "ctrlKey": true }, "shortcut": "Control+S" },
+    { "apple": true, "event": { "key": "ß", "code": "KeyS", "metaKey": true, "altKey": true }, "shortcut": "Primary+Alt+S" },
+    { "apple": false, "event": { "key": "a", "code": "KeyQ", "ctrlKey": true, "altKey": true }, "shortcut": "Primary+Alt+A" },
+    { "apple": false, "event": { "key": "?", "code": "Slash", "ctrlKey": true, "shiftKey": true }, "shortcut": "Primary+?" },
+    { "apple": false, "event": { "key": "+", "code": "Equal", "ctrlKey": true, "shiftKey": true }, "shortcut": "Primary+Plus" },
+    { "apple": true, "event": { "key": ",", "code": "Comma", "metaKey": true }, "shortcut": "Primary+," },
+    { "apple": false, "event": { "key": "!", "code": "Digit1", "ctrlKey": true, "shiftKey": true }, "shortcut": "Primary+Shift+1" },
+    { "apple": false, "event": { "key": "é", "code": "Digit2", "ctrlKey": true }, "shortcut": "Primary+2" },
+    { "apple": false, "event": { "key": "5", "code": "Numpad5", "ctrlKey": true, "altKey": true }, "shortcut": "Primary+Alt+5" },
+    { "apple": false, "event": { "key": "F5", "code": "F5" }, "shortcut": "F5" },
+    { "apple": false, "event": { "key": " ", "code": "Space", "ctrlKey": true, "altKey": true }, "shortcut": "Primary+Alt+Space" },
+    { "apple": false, "event": { "key": "ArrowUp", "code": "ArrowUp", "altKey": true, "shiftKey": true }, "shortcut": "Alt+Shift+ArrowUp" },
+    { "apple": true, "event": { "key": "Enter", "code": "Enter", "metaKey": true, "shiftKey": true }, "shortcut": "Primary+Shift+Enter" },
+    { "apple": true, "event": { "key": "Tab", "code": "Tab", "ctrlKey": true, "metaKey": true }, "shortcut": "Primary+Control+Tab" },
+    { "apple": false, "event": { "key": "Control", "code": "ControlLeft", "ctrlKey": true }, "shortcut": null },
+    { "apple": true, "event": { "key": "Meta", "code": "MetaLeft", "metaKey": true }, "shortcut": null },
+    { "apple": false, "event": { "key": "Shift", "code": "ShiftLeft", "ctrlKey": true, "shiftKey": true }, "shortcut": null },
+    { "apple": false, "event": { "key": "Dead", "code": "BracketLeft", "ctrlKey": true }, "shortcut": null },
+    { "apple": false, "event": { "key": "Process", "code": "KeyA", "isComposing": true }, "shortcut": null },
+    { "apple": false, "event": { "key": "a", "code": "KeyA", "ctrlKey": true, "isComposing": true }, "shortcut": null },
+    { "apple": false, "event": { "key": "a", "code": "KeyA", "metaKey": true }, "shortcut": null },
+    { "apple": false, "event": { "key": "Unidentified", "code": "" }, "shortcut": null },
+    { "apple": false, "event": { "key": "F25", "code": "F25" }, "shortcut": null },
+    { "apple": true, "event": { "key": "≤", "code": "Comma", "altKey": true }, "shortcut": null }
   ]
 }

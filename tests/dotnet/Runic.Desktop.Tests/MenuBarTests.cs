@@ -27,6 +27,12 @@ public sealed class DesktopShortcutTests
         {
             Assert.False(DesktopShortcut.TryParse(item.GetString(), out _), item.GetString());
         }
+        // The text shortcutFromEvent records is DesktopShortcut's own, for IDesktopGlobalShortcuts.BindAsync.
+        foreach (var item in Cases().GetProperty("record").EnumerateArray())
+        {
+            if (item.GetProperty("shortcut").GetString() is not { } recorded) continue;
+            Assert.Equal(recorded, DesktopShortcut.Parse(recorded).ToString());
+        }
     }
 
     [Test]
