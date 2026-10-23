@@ -11,7 +11,10 @@ namespace Runic.Platform.Windows.Tests;
 // Run(args) also serves the clipboard peer processes, which Program.Main dispatches before the test platform parses
 // arguments: --native-hold holds the clipboard open, --native-write writes text, --native-write-content writes the
 // formats beyond text from a file of arguments, and --native-read-dib reports the CF_DIB that Windows offers. The
-// Native case runs the former --native mode through it. Every assertion reports the actual result.
+// Native case runs the former --native mode through it. Every assertion reports the actual result, with the Win32 error.
+// Another clipboard client on the runner, such as clipboard history or a viewer, may hold the clipboard briefly at any
+// time (#438, I-200), so every open, the peers' included, goes through the product's bounded busy retry; only the
+// contention checks open once, to see the busy result.
 internal sealed partial class NativeTests
 {
     [Test, Explicit, Category("Native")]
@@ -23,53 +26,59 @@ internal sealed partial class NativeTests
     internal static int Run(string[] args)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(8)) throw new PlatformNotSupportedException("Native clipboard evidence requires Windows.");
-        if (args[0] == "--native-hold")
-        {
-            Assert(Win32Clipboard.Open(0), "the peer holds the clipboard");
-            try { Console.WriteLine("ready"); Console.Out.Flush(); Console.ReadLine(); }
-            finally { Win32Clipboard.Close(); }
-            return 0;
-        }
-        if (args[0] == "--native-read-dib")
-        {
-            Console.WriteLine(ReadDib());
-            return 0;
-        }
         // A real HWND is required by EmptyClipboard/SetClipboardData; STATIC is a system class.
         nint window = CreateWindowExW(0, "STATIC", "Runic clipboard acceptance", 0, 0, 0, 1, 1, 0, 0, 0, 0);
-        if (window == 0) throw new InvalidOperationException($"Could not create clipboard owner HWND: Win32 error {Marshal.GetLastPInvokeError()}");
+        if (window == 0) throw new InvalidOperationException($"Could not create clipboard owner HWND: {Win32Error(Marshal.GetLastPInvokeError())}");
         try
         {
             var native = new Win32Clipboard();
+            // The product's clipboard, with its bounded busy retry, on this thread and window.
+            var clipboard = new WindowsTextClipboard(new InlineOwner(window), native, native);
+            if (args[0] == "--native-hold")
+            {
+                AssertResult(WithOpen(clipboard, () =>
+                {
+                    Console.WriteLine("ready"); Console.Out.Flush(); Console.ReadLine();
+                    return Unit;
+                }), "the peer holds the clipboard");
+                return 0;
+            }
+            if (args[0] == "--native-read-dib")
+            {
+                var dib = WithOpen(clipboard, ReadDib);
+                Assert(dib is PlatformResult<string>.Success, $"the peer opens the clipboard for its bitmap: {Describe(dib)}");
+                Console.WriteLine(((PlatformResult<string>.Success)dib).Value);
+                return 0;
+            }
             if (args[0] == "--native-write")
             {
-                AssertResult(native.Write(window, args[1]), "the peer's text write");
+                AssertResult(Wait(clipboard.WriteTextAsync(args[1])), "the peer's text write");
                 return 0;
             }
             if (args[0] == "--native-write-content")
             {
-                AssertResult(native.Write(window, Content(File.ReadAllLines(args[1]))), "the peer's content write");
+                AssertResult(Wait(clipboard.WriteAsync(Content(File.ReadAllLines(args[1])))), "the peer's content write");
                 return 0;
             }
             if (args[0] != "--native") throw new ArgumentException("Unknown native mode");
             foreach (string text in new[] { "", "Runic 🚀 Unicode 漢字\r\nsecond line" })
             {
                 RunPeer("--native-write", text);
-                AssertResult(native.Read(window, text.Length), text, "the peer's text");
-                if (text.Length > 0) AssertFailed(native.Read(window, text.Length - 1), PlatformFailureCode.TooLarge, "a read below the text's length");
+                AssertResult(Wait(clipboard.ReadTextAsync(text.Length)), text, "the peer's text");
+                if (text.Length > 0) AssertFailed(Wait(clipboard.ReadTextAsync(text.Length - 1)), PlatformFailureCode.TooLarge, "a read below the text's length");
             }
-            Assert(Win32Clipboard.Open(window), $"the clipboard opens: Win32 error {Marshal.GetLastPInvokeError()}");
-            try { Assert(Win32Clipboard.Empty(), $"the clipboard empties: Win32 error {Marshal.GetLastPInvokeError()}"); }
-            finally { Win32Clipboard.Close(); }
-            AssertResult(native.Read(window, 0), null, "an empty clipboard's text");
+            AssertResult(WithOpen(clipboard, Empty), "the clipboard empties");
+            AssertResult(Wait(clipboard.ReadTextAsync(0)), null, "an empty clipboard's text");
             AssertResult(native.Formats(), DesktopClipboardFormats.None, "an empty clipboard's formats");
             using (var holder = Start("--native-hold"))
             {
                 try
                 {
-                    Assert(holder.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult() == "ready", "the holder is ready");
-                    AssertFailed(native.Read(window, 10), PlatformFailureCode.ResourceBusy, "a read while another process holds the clipboard", PlatformFailureCode.PermissionDenied);
-                    AssertFailed(native.Write(window, "busy"), PlatformFailureCode.ResourceBusy, "a write while another process holds the clipboard", PlatformFailureCode.PermissionDenied);
+                    string? ready = holder.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
+                    Assert(ready == "ready", $"the holder is ready: {ready ?? $"exited with code {(holder.HasExited ? holder.ExitCode : null)}"}");
+                    // One attempt each, without the retry: a held clipboard is busy, whatever Win32 error OpenClipboard reports.
+                    AssertFailed(native.Read(window, 10), PlatformFailureCode.ResourceBusy, "a read while another process holds the clipboard");
+                    AssertFailed(native.Write(window, "busy"), PlatformFailureCode.ResourceBusy, "a write while another process holds the clipboard");
                     // The format query opens nothing, so a held clipboard does not matter.
                     AssertResult(native.Formats(), DesktopClipboardFormats.None, "the formats while another process holds the clipboard");
                 }
@@ -83,13 +92,11 @@ internal sealed partial class NativeTests
                     finally { StopChild(holder); }
                 }
             }
-            // Another clipboard client on the runner, such as clipboard history or a viewer, may open the clipboard right
-            // after the holder released it (#438). The product retries a busy clipboard ten times over about 740 ms,
-            // which covers such a client's brief open; the write goes through that retry, as an application's does.
-            var clipboard = new WindowsTextClipboard(new InlineOwner(window), native, native);
-            AssertResult(clipboard.WriteTextAsync("post-busy retry").AsTask().GetAwaiter().GetResult(), "the write after the holder released the clipboard");
+            // Another clipboard client may open the clipboard right after the holder released it (#438). The product
+            // retries a busy clipboard ten times over about 740 ms, which covers such a client's brief open.
+            AssertResult(Wait(clipboard.WriteTextAsync("post-busy retry")), "the write after the holder released the clipboard");
             Console.WriteLine("PASS Windows native cross-process Unicode, empty/no text, bounds, contention and retry");
-            Formats(window, native, clipboard);
+            Formats(native, clipboard);
             return 0;
         }
         finally { Assert(DestroyWindow(window) != 0, "the clipboard owner window is destroyed"); }
@@ -97,7 +104,7 @@ internal sealed partial class NativeTests
 
     // HTML, RTF, images and files across processes, one ownership for all formats, and the watch.
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
-    private static void Formats(nint window, Win32Clipboard native, WindowsTextClipboard clipboard)
+    private static void Formats(Win32Clipboard native, WindowsTextClipboard clipboard)
     {
         string directory = Path.Combine(Path.GetTempPath(), "runic-clipboard-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -106,14 +113,14 @@ internal sealed partial class NativeTests
             const string html = "<p>Runic <b>bold</b> é 日本 🜁</p>";
             RunPeer("--native-write-content", Arguments(directory, "html", html));
             AssertResult(native.Formats(), DesktopClipboardFormats.Html, "the formats of the peer's HTML");
-            AssertResult(native.ReadHtml(window, html.Length), html, "the peer's HTML fragment");
-            AssertFailed(native.ReadHtml(window, html.Length - 1), PlatformFailureCode.TooLarge, "a read below the HTML's length");
-            AssertResult(native.ReadRtf(window, 100), null, "RTF when there is none");
+            AssertResult(Wait(clipboard.ReadHtmlAsync(html.Length)), html, "the peer's HTML fragment");
+            AssertFailed(Wait(clipboard.ReadHtmlAsync(html.Length - 1)), PlatformFailureCode.TooLarge, "a read below the HTML's length");
+            AssertResult(Wait(clipboard.ReadRtfAsync(100)), null, "RTF when there is none");
 
             const string rtf = "{\\rtf1\\ansi café \\u8364? \\b bold\\b0}";
             RunPeer("--native-write-content", Arguments(directory, "rtf", rtf));
-            AssertResult(native.ReadRtf(window, rtf.Length), rtf, "the peer's RTF");
-            AssertFailed(native.ReadRtf(window, rtf.Length - 1), PlatformFailureCode.TooLarge, "a read below the RTF's length");
+            AssertResult(Wait(clipboard.ReadRtfAsync(rtf.Length)), rtf, "the peer's RTF");
+            AssertFailed(Wait(clipboard.ReadRtfAsync(rtf.Length - 1)), PlatformFailureCode.TooLarge, "a read below the RTF's length");
 
             // A PNG with alpha: read back as PNG, and offered to bitmap readers as a CF_DIB that Windows makes from the CF_DIBV5.
             var rgba = new byte[3 * 2 * 4];
@@ -123,22 +130,17 @@ internal sealed partial class NativeTests
             File.WriteAllBytes(image, png);
             RunPeer("--native-write-content", Arguments(directory, "image", image));
             AssertResult(native.Formats(), DesktopClipboardFormats.Image, "the formats of the peer's image");
-            var read = native.ReadImage(window, png.Length);
+            var read = Wait(clipboard.ReadImageAsync(png.Length));
             Assert(read is PlatformResult<byte[]?>.Success { Value: { } bytes } && bytes.AsSpan().SequenceEqual(png), $"the peer's PNG as written: {Describe(read)}");
-            AssertFailed(native.ReadImage(window, png.Length - 1), PlatformFailureCode.TooLarge, "a read below the PNG's length");
+            AssertFailed(Wait(clipboard.ReadImageAsync(png.Length - 1)), PlatformFailureCode.TooLarge, "a read below the PNG's length");
             string dib = RunPeer("--native-read-dib");
             Assert(dib.StartsWith("dib 3x2 ", StringComparison.Ordinal), $"a bitmap reader sees the image: {dib}");
             Console.WriteLine($"PASS HTML, RTF and PNG across processes; a bitmap reader sees {dib}");
 
             // Only a bitmap, as many applications offer: converted to PNG through WIC.
-            Assert(Win32Clipboard.Open(window), "the clipboard opens for a bitmap");
-            try
-            {
-                Assert(Win32Clipboard.Empty(), "the clipboard empties for a bitmap");
-                Assert(SetBitmap(), $"a 24-bit CF_DIB is set: Win32 error {Marshal.GetLastPInvokeError()}");
-            }
-            finally { Win32Clipboard.Close(); }
-            read = native.ReadImage(window, 1 << 20);
+            AssertResult(WithOpen(clipboard, () => Win32Clipboard.Empty() && SetBitmap() ? Unit : Win32Clipboard.Failed<PlatformUnit>()),
+                "a 24-bit CF_DIB alone is set");
+            read = Wait(clipboard.ReadImageAsync(1 << 20));
             Assert(read is PlatformResult<byte[]?>.Success { Value: { } converted } && ThumbnailImages.Decode(converted, 0, 0) is (4, 2, (0x30, 0x20, 0x10, 255)),
                 $"a CF_DIB is read as PNG: {Describe(read)}");
             Console.WriteLine("PASS a bitmap-only clipboard is read as PNG");
@@ -148,19 +150,20 @@ internal sealed partial class NativeTests
             Directory.CreateDirectory(second);
             RunPeer("--native-write-content", Arguments(directory, "files", first, second));
             AssertResult(native.Formats(), DesktopClipboardFormats.Files, "the formats of the peer's files");
-            var files = native.ReadFiles(window, 2);
+            var files = Wait(clipboard.ReadFilesAsync(2));
             Assert(files is PlatformResult<ImmutableArray<string>>.Success { Value: [var a, var b] } && a == first && b == second, $"the peer's files: {Describe(files)}");
-            AssertFailed(native.ReadFiles(window, 1), PlatformFailureCode.TooLarge, "a read of fewer files than offered");
+            AssertFailed(Wait(clipboard.ReadFilesAsync(1)), PlatformFailureCode.TooLarge, "a read of fewer files than offered");
             Console.WriteLine("PASS files across processes as CF_HDROP");
 
             // Every format in one ownership, written through the product's clipboard and read back.
             var all = new DesktopClipboardContent { Text = "plain", Html = html, Rtf = rtf, Image = png, Files = [first] };
-            AssertResult(clipboard.WriteAsync(all).AsTask().GetAwaiter().GetResult(), "one write of every format");
-            AssertResult(clipboard.GetFormatsAsync().AsTask().GetAwaiter().GetResult(), DesktopClipboardFormats.Text | DesktopClipboardFormats.Html
+            AssertResult(Wait(clipboard.WriteAsync(all)), "one write of every format");
+            AssertResult(Wait(clipboard.GetFormatsAsync()), DesktopClipboardFormats.Text | DesktopClipboardFormats.Html
                 | DesktopClipboardFormats.Rtf | DesktopClipboardFormats.Image | DesktopClipboardFormats.Files, "the formats of one write");
-            AssertResult(native.Read(window, 10), "plain", "the text of one write");
-            AssertResult(native.ReadHtml(window, 100), html, "the HTML of one write");
-            Assert(native.ReadFiles(window, 5) is PlatformResult<ImmutableArray<string>>.Success { Value: [var only] } && only == first, "the files of one write");
+            AssertResult(Wait(clipboard.ReadTextAsync(10)), "plain", "the text of one write");
+            AssertResult(Wait(clipboard.ReadHtmlAsync(100)), html, "the HTML of one write");
+            var written = Wait(clipboard.ReadFilesAsync(5));
+            Assert(written is PlatformResult<ImmutableArray<string>>.Success { Value: [var only] } && only == first, $"the files of one write: {Describe(written)}");
             Console.WriteLine("PASS every format in one ownership");
 
             // The watch reports the formats now and after another process's write, never the content.
@@ -205,20 +208,35 @@ internal sealed partial class NativeTests
 
     // What a reader that knows only bitmaps sees: the CF_DIB's size and bit depth.
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
-    private static unsafe string ReadDib()
+    private static unsafe PlatformResult<string> ReadDib()
     {
-        if (!Win32Clipboard.Open(0)) return $"busy {Marshal.GetLastPInvokeError()}";
-        try
-        {
-            nint memory = GetClipboardData(8); // CF_DIB
-            if (memory == 0) return "none";
-            byte* header = (byte*)GlobalLock(memory);
-            if (header == null) return "unlocked";
-            try { return $"dib {*(int*)(header + 4)}x{Math.Abs(*(int*)(header + 8))} {*(ushort*)(header + 14)}"; }
-            finally { GlobalUnlock(memory); }
-        }
-        finally { Win32Clipboard.Close(); }
+        nint memory = GetClipboardData(8); // CF_DIB
+        if (memory == 0) return new PlatformResult<string>.Success("none");
+        byte* header = (byte*)GlobalLock(memory);
+        if (header == null) return new PlatformResult<string>.Success("unlocked");
+        try { return new PlatformResult<string>.Success($"dib {*(int*)(header + 4)}x{Math.Abs(*(int*)(header + 8))} {*(ushort*)(header + 14)}"); }
+        finally { GlobalUnlock(memory); }
     }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+    private static PlatformResult<PlatformUnit> Empty() => Win32Clipboard.Empty() ? Unit : Win32Clipboard.Failed<PlatformUnit>();
+
+    private static readonly PlatformResult<PlatformUnit> Unit = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+
+    // Opens the clipboard as the product does, through its bounded busy retry, and runs work while it is open. A failed
+    // open is the product's busy failure with the Win32 error; work reports its own failure the same way.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+    private static PlatformResult<T> WithOpen<T>(WindowsTextClipboard clipboard, Func<PlatformResult<T>> work) =>
+        Wait(clipboard.InvokeAsync(handle =>
+        {
+            if (!Win32Clipboard.Open(handle)) return Win32Clipboard.Failed<T>(busy: true);
+            try { return work(); }
+            finally { Win32Clipboard.Close(); }
+        }, CancellationToken.None));
+
+    private static T Wait<T>(ValueTask<T> operation) => operation.AsTask().GetAwaiter().GetResult();
+
+    private static string Win32Error(int error) => $"Win32 error {error}: {new System.ComponentModel.Win32Exception(error).Message}";
 
     // A 4×2 24-bit CF_DIB, bottom-up, of one colour (BGR 10 20 30).
     private static unsafe bool SetBitmap()
@@ -232,7 +250,9 @@ internal sealed partial class NativeTests
         for (int i = 40; i < size; i += 3) (dib[i], dib[i + 1], dib[i + 2]) = (0x10, 0x20, 0x30);
         GlobalUnlock(memory);
         if (SetClipboardData(8, memory) != 0) return true;
+        int error = Marshal.GetLastPInvokeError();
         GlobalFree(memory);
+        Marshal.SetLastPInvokeError(error); // The caller reports SetClipboardData's error.
         return false;
     }
 

@@ -26,7 +26,10 @@ and `OpenDirectoriesAsync` `FOS_PICKFOLDERS` with it; and the initial folder
 uses `SetFolder`, which takes precedence over the folder Windows remembers for the
 application. Clipboard reads distinguish absent
 text (`null`) from empty text, reject over-limit payloads and return typed busy,
-permission and I/O failures. Text containing NUL is invalid. Cancellation before
+permission and I/O failures. A clipboard that could not be opened, which Win32
+reports as `ERROR_ACCESS_DENIED` while another window holds it, is
+`ResourceBusy` and is retried a bounded number of times; the diagnostic carries
+the Win32 error. Text containing NUL is invalid. Cancellation before
 native execution prevents the operation; after execution starts, the actual write
 outcome is returned. Win32 can clear the previous clipboard before a subsequent
 write fails; failures must not be interpreted as preservation of previous text.

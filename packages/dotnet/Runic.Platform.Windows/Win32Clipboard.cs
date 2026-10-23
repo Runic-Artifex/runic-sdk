@@ -80,11 +80,13 @@ internal sealed partial class Win32Clipboard : IWindowsClipboard, IWindowsClipbo
     [SupportedOSPlatform("windows8.0")] internal static bool Empty() => PInvoke.EmptyClipboard();
     [SupportedOSPlatform("windows8.0")] internal static void Close() => PInvoke.CloseClipboard();
 
-    private static PlatformResult<T> Failed<T>(bool busy = false)
+    // The failure of the last P/Invoke, with its Win32 error as the diagnostic. A failed OpenClipboard is busy: another
+    // window holding the clipboard makes it fail with ERROR_ACCESS_DENIED, and nothing changed, so the caller may retry.
+    internal static PlatformResult<T> Failed<T>(bool busy = false)
     {
         int error = Marshal.GetLastPInvokeError();
         return new PlatformResult<T>.Failed(
-            error == 5 ? PlatformFailureCode.PermissionDenied : busy ? PlatformFailureCode.ResourceBusy : PlatformFailureCode.Other,
+            busy ? PlatformFailureCode.ResourceBusy : error == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.Other,
             PlatformDiagnostic.FromWin32Error(error));
     }
 }
