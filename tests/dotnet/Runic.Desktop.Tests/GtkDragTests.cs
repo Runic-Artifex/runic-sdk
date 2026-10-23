@@ -131,6 +131,6 @@ public sealed class GtkDragTests
     public void TheGtkWindowsAdvertiseDragsOut()
     {
         Assert.True(LinuxWebKitGtkHost.KnownCapabilities.HasFlag(DesktopWindowCapabilities.FileDrag));
-        // GTK 4 reports FileDrag from GTK 4.22 only; its smoke checks the window.
+        // The GTK 4 smoke checks the GTK 4 window.
     }
 }

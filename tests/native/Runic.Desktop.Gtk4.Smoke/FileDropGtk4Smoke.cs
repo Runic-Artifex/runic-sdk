@@ -71,7 +71,7 @@ internal static partial class FileDropGtk4Smoke
             await LinuxDragOutSmoke.RunAsync(host, pointer, [file, folder], new LinuxDragOutSmoke.Toolkit
             {
                 Name = "GTK 4",
-                MayLackDragOut = !Runic.Desktop.Gtk4.Gtk4WindowHost.DragOutSupported,
+                CloseNatively = static window => window.InvokeNativeAsync(Gtk4Native.WindowClose).AsTask(),
                 PageWindow = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 400, Height = 300, X = 300, Y = 0 },
                 PageCenter = (500, 170),
                 SameFrame = (400, 170),

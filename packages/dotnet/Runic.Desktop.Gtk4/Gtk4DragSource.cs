@@ -17,21 +17,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopDragSourceWindowHost
     // GTK thread only: the running drag out.
     private Gtk4DragOut? _dragOut;
 
-    // FileDrag from GTK 4.22, where drag-out is verified: on GTK 4.14 (Ubuntu 24.04) closing the window after a drag
-    // out under X11 hung the GTK thread, cause not yet known (B11 PR 2). GTK 4.16 to 4.20 are untested.
-    internal static readonly bool DragOutSupported = ReadDragOutSupported();
-
-    internal static DesktopWindowCapabilities DragCapabilities => DragOutSupported ? DesktopWindowCapabilities.FileDrag : DesktopWindowCapabilities.None;
-
-    private static bool ReadDragOutSupported()
-    {
-        try { return Gtk4DragApi.MajorVersion() > 4 || Gtk4DragApi.MajorVersion() == 4 && Gtk4DragApi.MinorVersion() >= 22; }
-        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return false; }
-    }
-
     public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default)
     {
-        if (!DragOutSupported) return ValueTask.FromException<DesktopDragEffects>(new NotSupportedException("Drags out need GTK 4.22 or later."));
         ArgumentNullException.ThrowIfNull(data);
         if (!IsOpen) return ValueTask.FromException<DesktopDragEffects>(new InvalidOperationException("The GTK 4 window is not open."));
         cancellationToken.ThrowIfCancellationRequested();
@@ -76,6 +63,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopDragSourceWindowHost
             drag.Result.TrySetResult(DesktopDragEffects.None);
             return;
         }
+        // As GtkDragSource does after gdk_drag_begin (gtk_widget_reset_controllers): the drag now owns the pointer, so the
+        // press that started it ends in no release the view's gestures see. A gesture keeps a reference to the target of
+        // each of its points until the sequence ends, so on GTK 4.12 to 4.20 under X11 WebKit's gestures held the view,
+        // and closing the window waited for its finalization forever (I-197).
+        if (_webView is { } view) Gtk4DragApi.ResetGestures(view.Handle.DangerousGetHandle(), window.Handle.DangerousGetHandle());
         drag.Drag = native;
         drag.Owner = this;
         drag.Handle = GCHandle.Alloc(drag);
@@ -269,6 +261,39 @@ internal static unsafe partial class Gtk4DragApi
         DragIconSetChild(icon, image);
     }
 
+    // Ends the sequences of the gestures on the widget and its ancestors up to the top-level, as
+    // gtk_widget_reset_controllers (private) does for one widget; other controllers are left alone.
+    internal static void ResetGestures(nint widget, nint toplevel)
+    {
+        var gestureType = GestureGetType();
+        for (var current = widget; current != 0; current = current == toplevel ? 0 : WidgetGetParent(current))
+        {
+            var controllers = WidgetObserveControllers(current);
+            if (controllers == 0) continue;
+            try
+            {
+                var count = ListModelGetNItems(controllers);
+                for (uint index = 0; index < count; index++)
+                {
+                    var controller = ListModelGetItem(controllers, index);
+                    if (controller == 0) continue;
+                    try
+                    {
+                        if (TypeCheckInstanceIsA(controller, gestureType) != 0) EventControllerReset(controller);
+                    }
+                    finally
+                    {
+                        ObjectUnref(controller);
+                    }
+                }
+            }
+            finally
+            {
+                ObjectUnref(controllers);
+            }
+        }
+    }
+
     internal static nuint Connect(nint instance, string signal, nint callback, nint context) =>
         SignalConnectData(instance, signal, callback, context, 0, 0);
 
@@ -277,6 +302,20 @@ internal static unsafe partial class Gtk4DragApi
         if (handler != 0) SignalHandlerDisconnect(instance, handler);
     }
 
+    [LibraryImport(Gtk, EntryPoint = "gtk_gesture_get_type")]
+    private static partial nuint GestureGetType();
+    [LibraryImport(Gtk, EntryPoint = "gtk_event_controller_reset")]
+    private static partial void EventControllerReset(nint controller);
+    [LibraryImport(Gtk, EntryPoint = "gtk_widget_observe_controllers")]
+    private static partial nint WidgetObserveControllers(nint widget);
+    [LibraryImport(Gtk, EntryPoint = "gtk_widget_get_parent")]
+    private static partial nint WidgetGetParent(nint widget);
+    [LibraryImport(Gio, EntryPoint = "g_list_model_get_n_items")]
+    private static partial uint ListModelGetNItems(nint list);
+    [LibraryImport(Gio, EntryPoint = "g_list_model_get_item")]
+    private static partial nint ListModelGetItem(nint list, uint index);
+    [LibraryImport(GObject, EntryPoint = "g_type_check_instance_is_a")]
+    private static partial int TypeCheckInstanceIsA(nint instance, nuint type);
     [LibraryImport(Gtk, EntryPoint = "gdk_surface_get_display")]
     private static partial nint SurfaceGetDisplay(nint surface);
     [LibraryImport(Gtk, EntryPoint = "gdk_display_get_default_seat")]
@@ -289,8 +328,6 @@ internal static unsafe partial class Gtk4DragApi
     internal static partial nint DragBegin(nint surface, nint device, nint content, int actions, double dx, double dy);
     [LibraryImport(Gtk, EntryPoint = "gdk_drag_get_selected_action")]
     internal static partial int SelectedAction(nint drag);
-    [LibraryImport(Gtk, EntryPoint = "gtk_get_major_version")] internal static partial uint MajorVersion();
-    [LibraryImport(Gtk, EntryPoint = "gtk_get_minor_version")] internal static partial uint MinorVersion();
     [LibraryImport(Gtk, EntryPoint = "gdk_drag_drop_done")]
     private static partial void DragDropDoneCore(nint drag, int success);
     internal static void DragDropDone(nint drag, bool success) => DragDropDoneCore(drag, success ? 1 : 0);
