@@ -273,7 +273,7 @@ internal sealed partial class SecretPortalStore : IDesktopSecretStore
         {
             if (_secret is not null) return _secret;
             byte[] retrieved = _secretSource is not null ? await _secretSource(cancellationToken).ConfigureAwait(false)
-                : await RetrieveSecretAsync(cancellationToken).ConfigureAwait(false);
+                : await RetrieveSecretOnceMoreAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (retrieved.Length != PortalSecretSize) throw new SecretServiceFailure(PlatformFailureCode.InvalidData);
@@ -284,6 +284,22 @@ internal sealed partial class SecretPortalStore : IDesktopSecretStore
             finally { CryptographicOperations.ZeroMemory(retrieved); }
         }
         finally { _gate.Release(); }
+    }
+
+    // xdg-desktop-portal 1.22 takes its bus name before it exports org.freedesktop.portal.Secret: it creates the
+    // backend's proxy asynchronously (secret.c, init_secret) and exports Secret only when that completes. The call that
+    // activates the portal is delivered as soon as the name is taken, so it can find no Secret interface yet (I-198).
+    // One more attempt after a short delay; a portal that really has no Secret interface still reports it.
+    internal static readonly TimeSpan ActivationRetryDelay = TimeSpan.FromMilliseconds(250);
+
+    private async Task<byte[]> RetrieveSecretOnceMoreAsync(CancellationToken cancellationToken)
+    {
+        try { return await RetrieveSecretAsync(cancellationToken).ConfigureAwait(false); }
+        catch (SecretPortalUnavailable error) when (error.Reason is "org.freedesktop.DBus.Error.UnknownMethod" or "org.freedesktop.DBus.Error.UnknownInterface")
+        {
+            await Task.Delay(ActivationRetryDelay, cancellationToken).ConfigureAwait(false);
+            return await RetrieveSecretAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     // org.freedesktop.portal.Secret.RetrieveSecret(h fd, a{sv} options): the portal writes the secret into the pipe's
