@@ -13,6 +13,8 @@
 *.yaml text eol=lf
 # Unified diffs preserve upstream whitespace, including context prefixes.
 eng/ci/*.patch text eol=lf -whitespace
+# Pinned upstream protocol files: their SHA-256 is checked, so every checkout keeps upstream's bytes.
+packages/dotnet/Runic.Desktop/Internal/Wayland/*.xml -text
 .* text eol=lf
 *.ps1 text eol=crlf
 *.png binary

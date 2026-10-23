@@ -32,6 +32,7 @@
     <None Include="../../../specs/desktop/fixtures/shortcuts.json" Link="fixtures/shortcuts.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/desktop/fixtures/menu-entries.json" Link="fixtures/menu-entries.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../fixtures/desktop/evidence/conformance/dotnet-m6.json" Link="conformance/dotnet-m6.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../packages/dotnet/Runic.Desktop/Internal/Wayland/*" Link="wayland/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
 
   </ItemGroup>
   <Target Name="IncludeWebView2AbiContract" BeforeTargets="AssignTargetPaths">

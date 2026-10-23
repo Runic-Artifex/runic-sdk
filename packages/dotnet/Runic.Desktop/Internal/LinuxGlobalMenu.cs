@@ -23,25 +23,28 @@ internal interface ILinuxGlobalMenuWindow
     // The bar went into the desktop's global menu (true) or came back into the window (false).
     void PlacementChanged(bool global);
 
-    // Sets KDE's application menu properties on the window's X11 window, as Qt does: the menu's bus name and path.
-    void Annotate(string serviceName, string objectPath);
+    // Associates the window with the menu's bus name and path. X11: KDE's application menu properties on the window, as
+    // Qt sets them; returns true. Wayland: org_kde_kwin_appmenu on the window's surface (and on every surface GTK creates
+    // for it later); returns false when the compositor does not offer it, so the bar stays in the window.
+    bool Annotate(string serviceName, string objectPath);
 
     // A diagnostic of the window (any thread): global-menu-failed or global-menu-permission.
     void Report(DesktopDiagnostic diagnostic);
 }
 
-// B10, D036.9: one X11 window's menu bar in the desktop's global menu, such as KDE Plasma's Global Menu applet or the
-// title bar's application menu button.
+// B10, D036.9: one window's menu bar in the desktop's global menu, such as KDE Plasma's Global Menu applet or the title
+// bar's application menu button.
 // - The bar is exported as com.canonical.dbusmenu (DBusMenuServer) at /org/runicartifex/MenuBar/<n> on the process's
 //   shared session connection, with the planner's entries: ids by planned key (a changed toggle kind is a new id, as
 //   Plasma's importer requires), _ before the access key, shortcuts as aas and check or radio marks.
-// - The window is associated with the menu as Qt does: com.canonical.AppMenu.Registrar.RegisterWindow(xid, path) from
-//   the exporting connection, and the _KDE_NET_WM_APPMENU_* properties on the X11 window.
-// - The registrar's owner decides the placement: kded owns it only while a global menu view exists. The owner is
-//   watched, so the bar moves when one appears or goes away, and the window registers again with a new owner.
+// - The window is associated with the menu as Qt does. X11: com.canonical.AppMenu.Registrar.RegisterWindow(xid, path)
+//   from the exporting connection, and the _KDE_NET_WM_APPMENU_* properties on the X11 window. Wayland:
+//   org_kde_kwin_appmenu.set_address(name, path) on the window's surface (WaylandAppMenu); there is nothing to register.
+// - The registrar's owner decides the placement: kded owns it only while a global menu view exists, also on Wayland,
+//   where KWin advertises its appmenu global unconditionally. The owner is watched, so the bar moves when one appears or
+//   goes away, and an X11 window registers again with a new owner.
 // - enabled is the declaration and CanExecute, read on the GTK thread when the layout is built and again when a client
 //   is about to show a submenu. A click runs the item on the GTK thread through the window's command path.
-// Wayland (org_kde_kwin_appmenu) is not handled here: a Wayland window keeps its bar in the window.
 internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
 {
     internal const string RegistrarName = "com.canonical.AppMenu.Registrar";
@@ -58,7 +61,8 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
     private static int s_permissionReported;
 
     private readonly ILinuxGlobalMenuWindow _window;
-    private readonly uint _xid;
+    // The X11 window, or null for a Wayland window.
+    private readonly uint? _xid;
     private readonly DBusMenuServer _server;
     private readonly MenuIdAllocator _ids = new();
     private readonly CancellationTokenSource _stopped = new();
@@ -75,7 +79,7 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
     // GTK thread: the placement last passed to the window.
     private bool _global;
 
-    private LinuxGlobalMenu(ILinuxGlobalMenuWindow window, uint xid)
+    private LinuxGlobalMenu(ILinuxGlobalMenuWindow window, uint? xid)
     {
         _window = window;
         _xid = xid;
@@ -88,8 +92,9 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
     // The connection the menu is exported on; for tests.
     internal DBusConnection? Connection => Volatile.Read(ref _connection);
 
-    // GTK thread. Exports the window's planned bar and follows the registrar from now on.
-    internal static LinuxGlobalMenu Start(ILinuxGlobalMenuWindow window, uint xid, ImmutableArray<PlannedMenuEntry> plan)
+    // GTK thread. Exports the window's planned bar and follows the registrar from now on. xid is the X11 window; null
+    // for a Wayland window, which Annotate associates with the menu.
+    internal static LinuxGlobalMenu Start(ILinuxGlobalMenuWindow window, uint? xid, ImmutableArray<PlannedMenuEntry> plan)
     {
         ArgumentNullException.ThrowIfNull(window);
         var menu = new LinuxGlobalMenu(window, xid);
@@ -226,10 +231,14 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
         _server.LayoutUpdated(Layout.Revision);
         try
         {
+            var associated = false;
             await _window.InvokeAsync(() =>
             {
-                if (!token.IsCancellationRequested) _window.Annotate(connection.UniqueName, path);
+                if (!token.IsCancellationRequested) associated = _window.Annotate(connection.UniqueName, path);
             }, _stopped.Token).ConfigureAwait(false);
+            // A Wayland compositor without org_kde_kwin_appmenu (GNOME, wlroots) shows no global menu: the bar stays in
+            // the window, without a diagnostic, whoever owns the registrar.
+            if (_xid is null && !associated) return;
             await foreach (var owner in connection.WatchNameOwnerAsync(RegistrarName, token).ConfigureAwait(false))
             {
                 if (owner is null)
@@ -239,8 +248,9 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
                     await PlaceAsync(false).ConfigureAwait(false);
                     continue;
                 }
-                // A registrar that starts or restarts knows no window yet.
-                var registered = await RegisterAsync(connection, path, token).ConfigureAwait(false);
+                // A registrar that starts or restarts knows no X11 window yet. A Wayland window is associated through
+                // the compositor, which tells the menu view itself.
+                var registered = _xid is not { } xid || await RegisterAsync(connection, xid, path, token).ConfigureAwait(false);
                 await PlaceAsync(registered).ConfigureAwait(false);
             }
         }
@@ -257,13 +267,13 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
         if (!token.IsCancellationRequested) await PlaceAsync(false).ConfigureAwait(false);
     }
 
-    private async Task<bool> RegisterAsync(DBusConnection connection, string path, CancellationToken token)
+    private async Task<bool> RegisterAsync(DBusConnection connection, uint xid, string path, CancellationToken token)
     {
         try
         {
             await connection.CallMethodAsync(new DBusMethodCall(RegistrarName, new DBusObjectPath(RegistrarPath), RegistrarInterface, "RegisterWindow")
             {
-                Arguments = [DBusValue.From(_xid), DBusValue.From(new DBusObjectPath(path))],
+                Arguments = [DBusValue.From(xid), DBusValue.From(new DBusObjectPath(path))],
                 Timeout = Timeout,
             }, token).ConfigureAwait(false);
             _registered = true;
@@ -368,14 +378,14 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
         {
             // Stopping reports nothing.
         }
-        if (_registered && Volatile.Read(ref _connection) is { Disconnected.IsCancellationRequested: false } connection)
+        if (_registered && _xid is { } xid && Volatile.Read(ref _connection) is { Disconnected.IsCancellationRequested: false } connection)
         {
             _registered = false;
             try
             {
                 await connection.CallMethodAsync(new DBusMethodCall(RegistrarName, new DBusObjectPath(RegistrarPath), RegistrarInterface, "UnregisterWindow")
                 {
-                    Arguments = [DBusValue.From(_xid)],
+                    Arguments = [DBusValue.From(xid)],
                     Timeout = Timeout,
                 }).ConfigureAwait(false);
             }

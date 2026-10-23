@@ -243,6 +243,96 @@ public sealed class GlobalMenuTests
         Assert.Contains("org.runic.Test.Refused", diagnostic.Message, StringComparison.Ordinal);
     }
 
+    [Test, Explicit, Category("DBus")]
+    public async Task AWaylandWindowFollowsTheRegistrarWithoutRegistering()
+    {
+        // KWin offers org_kde_kwin_appmenu: the registrar's owner alone decides, and nothing is registered with it.
+        var registrar = await FakeRegistrar.StartAsync();
+        var window = new FakeWindow("file.save") { Wayland = true };
+        await using (var menu = await window.StartAsync(Plan(Bar)))
+        {
+            await window.WaitForAsync(global: true);
+            Assert.Equal((menu.Connection!.UniqueName, menu.ObjectPath!), window.Annotation);
+            await registrar.DisposeAsync();
+            await window.WaitForAsync(global: false);
+            registrar = await FakeRegistrar.StartAsync();
+            await window.WaitForAsync(global: true);
+            Assert.Equal([true, false, true], window.Placements);
+            Assert.False(registrar.Registrations.Reader.TryRead(out _));
+        }
+        await Task.Delay(300);
+        Assert.False(registrar.Unregistrations.Reader.TryRead(out _));
+        await registrar.DisposeAsync();
+        Assert.Empty(window.Diagnostics);
+    }
+
+    [Test, Explicit, Category("DBus")]
+    public async Task AWaylandWindowWithoutKdeAppmenuKeepsItsBar()
+    {
+        // GNOME or wlroots with a registrar owned by an extension: no org_kde_kwin_appmenu, so the bar stays.
+        await using var registrar = await FakeRegistrar.StartAsync();
+        var window = new FakeWindow { Wayland = true, AppMenu = false };
+        await using var menu = await window.StartAsync(Plan(Bar));
+        await window.WaitForAnnotationAsync();
+        await Task.Delay(300);
+        Assert.Empty(window.Placements);
+        Assert.Empty(window.Diagnostics);
+        Assert.False(registrar.Registrations.Reader.TryRead(out _));
+    }
+
+    // The descriptors match what wayland-scanner generates from the pinned appmenu.xml: interface names and versions,
+    // and per request its name, its signature ("since" prefix, one code per argument) and the interface of each
+    // object and new_id argument.
+    [Test]
+    public unsafe void TheAppmenuDescriptorsMatchThePinnedProtocol()
+    {
+        var protocolDirectory = Path.Combine(AppContext.BaseDirectory, "wayland");
+        var manifest = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(protocolDirectory, "upstream.json"))).RootElement;
+        Assert.Matches("^[0-9a-f]{40}$", manifest.GetProperty("revision").GetString()!);
+        var pinned = manifest.GetProperty("files")[0];
+        var bytes = File.ReadAllBytes(Path.Combine(protocolDirectory, pinned.GetProperty("file").GetString()!));
+        Assert.Equal(pinned.GetProperty("sha256").GetString(), Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)));
+
+        var surfaceName = System.Runtime.InteropServices.Marshal.StringToCoTaskMemUTF8("wl_surface");
+        var surface = new WlInterface { Name = (byte*)surfaceName, Version = 6 };
+        var protocol = AppMenuProtocol.Build((nint)(&surface));
+        var actual = new[] { AppMenuProtocol.Describe(protocol.Manager), AppMenuProtocol.Describe(protocol.AppMenu) };
+        var xml = System.Xml.Linq.XDocument.Load(new MemoryStream(bytes));
+        var expected = xml.Root!.Elements("interface").Select(static element => (
+            Name: (string)element.Attribute("name")!,
+            Version: (int)element.Attribute("version")!,
+            Requests: element.Elements("request").Select(static request => (
+                Name: (string)request.Attribute("name")!,
+                Signature: Signature(request),
+                Types: request.Elements("arg").Select(static arg => (string?)arg.Attribute("interface")).ToArray())).ToArray(),
+            Events: element.Elements("event").Count())).ToArray();
+        Assert.Equal(expected.Length, actual.Length);
+        for (var index = 0; index < expected.Length; index++)
+        {
+            Assert.Equal(expected[index].Name, actual[index].Name);
+            Assert.Equal(expected[index].Version, actual[index].Version);
+            Assert.Equal(expected[index].Version, AppMenuProtocol.Version);
+            Assert.Equal(expected[index].Events, actual[index].Events);
+            Assert.Equal(expected[index].Requests.Select(static request => (request.Name, request.Signature)),
+                actual[index].Requests.Select(static request => (request.Name, request.Signature)));
+            for (var request = 0; request < expected[index].Requests.Length; request++)
+                Assert.Equal(expected[index].Requests[request].Types, actual[index].Requests[request].Types);
+        }
+        System.Runtime.InteropServices.Marshal.FreeCoTaskMem(surfaceName);
+
+        // wayland-scanner's signature: the since version, then i u f s o n a h per argument, ? before a nullable one.
+        static string Signature(System.Xml.Linq.XElement request)
+        {
+            var codes = request.Elements("arg").Select(static arg =>
+                ((string?)arg.Attribute("allow-null") == "true" ? "?" : "") + (string)arg.Attribute("type")! switch
+                {
+                    "int" => "i", "uint" => "u", "fixed" => "f", "string" => "s", "object" => "o", "new_id" => "n", "array" => "a", "fd" => "h",
+                    var type => throw new InvalidOperationException("Unknown argument type " + type),
+                });
+            return (request.Attribute("since") is { } since && since.Value != "1" ? since.Value : "") + string.Concat(codes);
+        }
+    }
+
     private static async Task<DBusConnection> ConnectAsync() =>
         await DBusConnection.ConnectAsync(DBusBus.Session) is PlatformResult<DBusConnection>.Success(var connection)
             ? connection
@@ -300,6 +390,10 @@ public sealed class GlobalMenuTests
 #pragma warning disable CA1001 // The semaphore has no wait handle to release.
     private sealed class FakeWindow(params string[] allowed) : ILinuxGlobalMenuWindow
     {
+        // A Wayland window: no XID, and whether the compositor offers org_kde_kwin_appmenu.
+        internal bool Wayland { get; init; }
+        internal bool AppMenu { get; init; } = true;
+
         private readonly ConcurrentDictionary<string, bool> _allowed = new(allowed.Select(static id => KeyValuePair.Create(id, true)));
         private readonly SemaphoreSlim _thread = new(1, 1);
         private readonly List<bool> _placements = [];
@@ -320,7 +414,7 @@ public sealed class GlobalMenuTests
         internal async Task<LinuxGlobalMenu> StartAsync(ImmutableArray<PlannedMenuEntry> plan)
         {
             LinuxGlobalMenu? menu = null;
-            await InvokeAsync(() => menu = LinuxGlobalMenu.Start(this, Xid, plan), default);
+            await InvokeAsync(() => menu = LinuxGlobalMenu.Start(this, Wayland ? null : Xid, plan), default);
             return menu!;
         }
 
@@ -353,7 +447,11 @@ public sealed class GlobalMenuTests
             lock (_placements) _placements.Add(global);
         }
 
-        public void Annotate(string serviceName, string objectPath) => Annotation = (serviceName, objectPath);
+        public bool Annotate(string serviceName, string objectPath)
+        {
+            Annotation = (serviceName, objectPath);
+            return !Wayland || AppMenu;
+        }
 
         public void Report(DesktopDiagnostic diagnostic) => Diagnostics.Enqueue(diagnostic);
     }

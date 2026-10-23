@@ -1,0 +1,12 @@
+{
+  "repository": "https://invent.kde.org/libraries/plasma-wayland-protocols",
+  "revision": "4c015e90ae6c88f2ffa766e899387ef431eade49",
+  "tag": "v1.21.0",
+  "files": [
+    {
+      "path": "src/protocols/appmenu.xml",
+      "file": "appmenu.xml",
+      "sha256": "7d0251ee00d3d4bc7ee41e3cd1161beaf68a0c18c4f56f48ff1907a475846022"
+    }
+  ]
+}

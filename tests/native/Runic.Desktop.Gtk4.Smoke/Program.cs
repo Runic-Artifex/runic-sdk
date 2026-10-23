@@ -59,6 +59,10 @@ if (Array.IndexOf(args, "--menus") is var menus and >= 0)
 if (Array.IndexOf(args, "--global-menu") is var globalMenu and >= 0)
     return GlobalMenuSmoke.Run(globalMenu + 1 < args.Length ? args[globalMenu + 1] : "gtk4");
 
+// --global-menu-session gtk3|gtk4 <log> (B10): a window with a bar on a real desktop session, for nixos/global-menu.
+if (Array.IndexOf(args, "--global-menu-session") is var globalMenuSession and >= 0 && globalMenuSession + 2 < args.Length)
+    return GlobalMenuSessionSmoke.Run(args[globalMenuSession + 1], args[globalMenuSession + 2]);
+
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)

@@ -30,6 +30,7 @@
     <Compile Include="../Runic.Desktop/Internal/GtkMenus.cs" Link="Shared/GtkMenus.cs" />
     <Compile Include="../Runic.Desktop/Internal/DBusMenuServer.cs" Link="Shared/DBusMenuServer.cs" />
     <Compile Include="../Runic.Desktop/Internal/LinuxGlobalMenu.cs" Link="Shared/LinuxGlobalMenu.cs" />
+    <Compile Include="../Runic.Desktop/Internal/WaylandAppMenu.cs" Link="Shared/WaylandAppMenu.cs" />
     <Compile Include="../Runic.Platform/DesktopUriPolicy.cs" Link="Shared/DesktopUriPolicy.cs" />
     <Compile Include="../Runic.Platform/DesktopDragRules.cs" Link="Shared/DesktopDragRules.cs" />
     <EmbeddedResource Include="../Runic.Desktop/Internal/WebKitGtkKeyboard.js" Link="Shared/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />
