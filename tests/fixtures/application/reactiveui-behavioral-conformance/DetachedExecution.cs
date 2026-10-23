@@ -55,10 +55,11 @@ internal sealed class DetachedExecutionTests
         var failingLog = new RecordingLogger();
         await CancelThenDetachAsync(failingCommand, failing, ReactiveCommandExecution.ObserveFailures(failingCommand, failingLog, "Page.Export"));
         failing.Release.TrySetResult();
-        await WaitUntilAsync(() => !failingLog.Entries.IsEmpty, "A failure after the Bridge detached was not logged.");
+        await failingLog.WaitForAsync(static entry => entry.Id == 1042, "A failure after the Bridge detached was not logged.");
         await WhenIdleAsync(failingCommand, context);
-        Require(failingLog.Entries.Single() is { Id: 1042, Source: "Page.Export", Exception: InvalidOperationException { Message: "disk full" } },
-            $"A failure after the Bridge detached was not logged once as event 1042: {string.Join(", ", failingLog.Entries)}");
+        Require(failingLog.Entries.Count == 1
+            && failingLog.Entries.Single() is { Id: 1042, Source: "Page.Export", Exception: InvalidOperationException { Message: "disk full" } },
+            $"A failure after the Bridge detached was not logged once as event 1042: {failingLog.Describe()}");
         Require(handled.IsEmpty, "A failure after the Bridge detached reached the default handler.");
 
         // RunAsync from hand-written code with no Bridge at all: a cancellation reported after the call returned does not
@@ -111,7 +112,7 @@ internal sealed class DetachedExecutionTests
     {
         var idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using (command.IsExecuting.Subscribe(new Next<bool>(executing => { if (!executing) idle.TrySetResult(); })))
-            await idle.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await idle.Task.WaitAsync(ConformanceWait.Timeout);
         for (var turn = 0; turn < 3; turn++)
         {
             await Task.Delay(20);
@@ -121,11 +122,7 @@ internal sealed class DetachedExecutionTests
 
     private static FlavorUnit UnitValue() => FlavorUnit.Default;
 
-    private static async Task WaitUntilAsync(Func<bool> condition, string message)
-    {
-        for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
-        Require(condition(), message);
-    }
+    private static Task WaitUntilAsync(Func<bool> condition, string message) => ConformanceWait.UntilAsync(condition, message);
 
     private static async Task RequireThrowsAsync<TException>(Func<Task> operation, string message) where TException : Exception
     {

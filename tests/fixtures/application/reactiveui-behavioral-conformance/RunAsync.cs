@@ -41,6 +41,7 @@ internal sealed class RunAsyncTests
         });
         var log = new RecordingLogger();
         using (ReactiveCommandExecution.ObserveFailures(failing, log, "Failing"))
+        using (var deliveries = new ThrownExceptionsProbe(failing.ThrownExceptions))
         {
             Exception? inTurn = null;
             await context.InvokeAsync(() => _ = CaptureAsync(failing, error => inTurn = error));
@@ -48,9 +49,11 @@ internal sealed class RunAsyncTests
             await CaptureAsync(failing, error => outside = error);
             await WaitUntilAsync(() => inTurn is not null, "RunAsync in a turn did not fail.");
             Require(ReferenceEquals(inTurn, failure) && ReferenceEquals(outside, failure), "RunAsync did not rethrow the command's exception unchanged.");
+            // Both calls have ended; once ThrownExceptions delivered both failures, Runic has decided about them.
+            await deliveries.WaitAsync(2, "The failures that RunAsync received were not delivered on ThrownExceptions.");
             await Task.Delay(150);
             await context.InvokeAsync(() => { });
-            Require(log.Entries.IsEmpty, $"A failure that RunAsync received was logged: {string.Join(", ", log.Entries)}");
+            Require(log.Entries.IsEmpty, $"A failure that RunAsync received was logged: {log.Describe()}");
         }
 
         // Cancelling the token disposes the execution, which cancels the body's token, and cancels the task.
@@ -163,11 +166,7 @@ internal sealed class RunAsyncTests
         }
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, string message)
-    {
-        for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
-        Require(condition(), message);
-    }
+    private static Task WaitUntilAsync(Func<bool> condition, string message) => ConformanceWait.UntilAsync(condition, message);
 
     private static async Task RequireThrowsAsync<TException>(Func<Task> operation, string message) where TException : Exception
     {
