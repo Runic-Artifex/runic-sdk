@@ -456,8 +456,8 @@ public enum DesktopWindowCapabilities
     FileDrop = 1 << 9,
 
     /// <summary>
-    /// The window can be hidden and shown again without closing it (<see cref="DesktopWindow.SetVisibleAsync"/> and
-    /// <see cref="DesktopWindow.HideAsync"/>). Every embedded window reports it.
+    /// The window can be hidden and shown again without closing it (<see cref="DesktopWindow.SetVisibleAsync"/>,
+    /// <see cref="DesktopWindow.HideAsync"/> and <see cref="DesktopWindow.ShowAsync"/>). Every embedded window reports it.
     /// </summary>
     Visibility = 1 << 10,
 
@@ -480,7 +480,7 @@ public enum DesktopWindowCapabilities
 
     /// <summary>
     /// The window can be placed on a chosen monitor: <see cref="DesktopWindow.MoveToMonitorAsync"/> and
-    /// <see cref="DesktopWindowOptions.Monitor"/>. Wayland lets no application position its windows, so GTK windows
+    /// <see cref="DesktopWindowOptions.MonitorId"/>. Wayland lets no application position its windows, so GTK windows
     /// there do not report it.
     /// </summary>
     MonitorPlacement = 1 << 14,
@@ -663,7 +663,7 @@ public sealed record DesktopWindowOptions
     /// <see cref="DesktopWindowCapabilities.MonitorPlacement"/>; on Wayland the GTK 4 window still opens a
     /// <see cref="DesktopWindowPlacement.FullScreen"/> placement on this monitor. Installed browsers ignore it.
     /// </remarks>
-    public string? Monitor { get; init; }
+    public string? MonitorId { get; init; }
 
     /// <summary>
     /// Gets the direction of the embedded window's native parts: <see cref="Runic.Platform.DesktopLayoutDirection.Default"/>,
@@ -728,7 +728,7 @@ public sealed record DesktopWindowOptions
             Y = hasPosition ? placement.Y : null,
             Centered = false,
             // A restored position decides where the window opens.
-            Monitor = hasPosition ? null : Monitor,
+            MonitorId = hasPosition ? null : MonitorId,
         };
     }
 }

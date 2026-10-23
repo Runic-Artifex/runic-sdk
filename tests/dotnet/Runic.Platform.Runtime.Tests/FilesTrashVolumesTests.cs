@@ -30,8 +30,8 @@ internal sealed class FilesTrashVolumesTests
         var (name, extensions) = typed;
         Check(name == "Pictures" && extensions is ["png"], "Deconstruct is unchanged.");
 
-        Check(!new OpenFileOptions().ShowsFilterChoice && !new SaveFileOptions("a.txt").ShowsFilterChoice, "No pop-up by default.");
-        Check(new OpenFileOptions { ShowsFilterChoice = true } != new OpenFileOptions(), "ShowsFilterChoice is part of equality.");
+        Check(!new OpenFileOptions().ShowFilterChoice && !new SaveFileOptions("a.txt").ShowFilterChoice, "No pop-up by default.");
+        Check(new OpenFileOptions { ShowFilterChoice = true } != new OpenFileOptions(), "ShowFilterChoice is part of equality.");
     }
 
     [Test, DisplayName("FILTERS: the chosen filter and the pop-up option pass through the backend and presentation")]
@@ -42,9 +42,9 @@ internal sealed class FilesTrashVolumesTests
         {
             var picker = new Picker { Files = [first], Chosen = Text };
             var backend = new NativePickerBackend(new Owner(), picker);
-            var options = new OpenFileOptions { Filters = [Images, Text], ShowsFilterChoice = true };
+            var options = new OpenFileOptions { Filters = [Images, Text], ShowFilterChoice = true };
             var opened = await backend.OpenFileAsync(options);
-            Check(picker.Request is { ShowsFilterChoice: true, Filters: [_, _] }, "The pop-up option reaches the picker.");
+            Check(picker.Request is { ShowFilterChoice: true, Filters: [_, _] }, "The pop-up option reaches the picker.");
             Check(opened is PickerResult<IReadFileLease>.Selected { SelectedFilter: var chosen } && chosen == Text, $"Open: {opened}");
             if (opened is PickerResult<IReadFileLease>.Selected(var lease)) await lease.DisposeAsync();
 
@@ -62,8 +62,8 @@ internal sealed class FilesTrashVolumesTests
 
             picker.Files = [Path.Combine(directory, "saved.txt")];
             picker.Chosen = Text;
-            var saved = await backend.SaveFileAsync(new SaveFileOptions("saved.txt") { Filters = [Images, Text], ShowsFilterChoice = true });
-            Check(picker.Request is { Save: true, ShowsFilterChoice: true }, "The save request asks for the pop-up.");
+            var saved = await backend.SaveFileAsync(new SaveFileOptions("saved.txt") { Filters = [Images, Text], ShowFilterChoice = true });
+            Check(picker.Request is { Save: true, ShowFilterChoice: true }, "The save request asks for the pop-up.");
             Check(saved is PickerResult<ISaveFileLease>.Selected { SelectedFilter: var savedFilter } && savedFilter == Text, $"Save: {saved}");
             if (saved is PickerResult<ISaveFileLease>.Selected(var saveLease)) await saveLease.DisposeAsync();
 

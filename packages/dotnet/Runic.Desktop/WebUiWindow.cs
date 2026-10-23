@@ -1906,7 +1906,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             StartupProgress = description => HandshakeLog.Record(description),
             MenuBarPresentation = _menuBarPresentation,
             GlobalMenu = _runtimeOptions?.GlobalMenu ?? true,
-            Monitor = _monitor,
+            MonitorId = _monitor,
             LayoutDirection = _layoutDirection,
             Language = _language,
         };

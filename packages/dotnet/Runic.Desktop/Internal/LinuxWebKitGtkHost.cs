@@ -243,8 +243,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         int? x = options.X;
         int? y = options.Y;
         var isWayland = Api.IsWaylandDisplay();
-        // DesktopWindowOptions.Monitor: centered on its work area on X11; on Wayland only a full-screen placement uses it.
-        var chosen = options.Monitor is { } monitorId ? FindMonitor(monitorId) : null;
+        // DesktopWindowOptions.MonitorId: centered on its work area on X11; on Wayland only a full-screen placement uses it.
+        var chosen = options.MonitorId is { } monitorId ? FindMonitor(monitorId) : null;
         _fullScreenMonitor = chosen?.Index ?? -1;
         if (options.Placement is not null && Api.CanReportState)
         {

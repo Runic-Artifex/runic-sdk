@@ -277,8 +277,8 @@ rules: `AccessKey` underlined, shortcuts as hints in `InputGestureText`, check
 and radio items with the check mark, disabled entries and menus grayed. Without
 `options.X` and `Y` it opens at the pointer; with them at that page point of the
 `RunicWebView` with the keyboard focus, or the window's first one, in CSS pixels
-times the page zoom. The snapshot reports `platform.menus.context` available and
-no `platform.menus.bar`: the WPF window owns its chrome, so a menu bar is the
+times the page zoom. The snapshot reports `platform.contextMenu` available and
+no `platform.menuBar`: the WPF window owns its chrome, so a menu bar is the
 application's own WPF `Menu`. A ViewModel in a `RunicViewHost` gets the same
 menus at its control through its Runic window's services: the hosted Desktop
 window reports `DesktopWindowCapabilities.ContextMenu` and the placement `None`.

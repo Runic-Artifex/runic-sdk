@@ -337,7 +337,7 @@ internal sealed class ServeOnlyChecks
                 Check(ReferenceEquals(surface, ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Surface),
                     $"GetSurface returned another surface than the Window's ({mode}).");
                 // I-022: the presentation without the ViewModel type; a served Window has none.
-                var presentation = DesktopPlatformServices.GetWindow(window);
+                var presentation = DesktopPlatformServices.GetDesktopWindow(window);
                 Check(mode == "served"
                         ? presentation is null
                         : ReferenceEquals(presentation, ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Window),

@@ -230,8 +230,8 @@ selects the provider for the running backend from `services.AddRunicPlatformServ
 
 `DesktopWindowOptions.Hidden` opens an embedded window without showing it, and
 an installed browser headless. `DesktopWindow.SetVisibleAsync(false)`, or
-`HideAsync`, hides an open embedded window and `SetVisibleAsync(true)` shows it
-again; `FocusAsync` shows it and gives it focus. Every embedded window reports
+`HideAsync`, hides an open embedded window and `SetVisibleAsync(true)`, or
+`ShowAsync`, shows it again; `FocusAsync` shows it and gives it focus. Every embedded window reports
 `DesktopWindowCapabilities.Visibility`; an installed browser cannot be hidden.
 A hidden window stays open: its page keeps running, its Bridge stays connected,
 `IsOpen` stays `true` and `WaitForCloseAsync` keeps waiting. Only the
@@ -252,7 +252,7 @@ for the native window's resources to be released.
 var window = await surface.OpenWindowAsync(new DesktopWindowOptions());
 window.Closed += (_, _) => settings.Save(window.State?.Placement);
 await window.HideAsync();             // to the status icon
-await window.SetVisibleAsync(true);   // back
+await window.ShowAsync();             // back
 ```
 
 `DesktopWindow.NativeHandle` is the top-level window of an open embedded window,
@@ -391,7 +391,7 @@ await foreach (var result in host.Monitors.WatchAsync(cancellationToken))
 }
 ```
 
-`DesktopWindowOptions.Monitor` opens a window centered on a monitor's work
+`DesktopWindowOptions.MonitorId` opens a window centered on a monitor's work
 area; a placement with a position decides instead, so a restored window opens
 where it was. `DesktopWindow.MoveToMonitorAsync` moves an open window there,
 and `DesktopWindowState.MonitorId` reports the monitor that holds most of it.
@@ -404,7 +404,7 @@ and `DesktopWindowCapabilities.FullScreen`:
 | Windows WebView2 | Yes, without a window too (WPF) | Yes | Yes: the frame goes and the window covers its monitor |
 | macOS WKWebView | Yes, while `DesktopEventLoop` runs | Yes; a full-screen window moves when it leaves full screen | Yes: its own full-screen space |
 | Linux GTK 3 and GTK 4 (X11) | Yes; the identifier is the connector, such as `HDMI-1` | Yes | Yes, with a window manager |
-| Linux GTK 3 and GTK 4 (Wayland) | Yes, without work areas or a primary monitor | No; a full-screen placement still opens on `Monitor` | Yes |
+| Linux GTK 3 and GTK 4 (Wayland) | Yes, without work areas or a primary monitor | No; a full-screen placement still opens on `MonitorId` | Yes |
 | Installed browser | Yes (the host's) | No | No |
 | Custom `IDesktopWindowHostFactory` | `IDesktopWindowHostFactory.Monitors` | When its host implements `IDesktopPlacementWindowHost` | Same |
 

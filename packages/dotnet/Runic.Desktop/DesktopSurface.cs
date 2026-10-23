@@ -434,7 +434,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
-        _engine.SetMonitorAndLanguage(options.Monitor, options.LayoutDirection, options.Language);
+        _engine.SetMonitorAndLanguage(options.MonitorId, options.LayoutDirection, options.Language);
     }
 
     private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }
@@ -603,7 +603,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(options), "LayoutDirection contains an unsupported value.");
         }
-        if (options.Monitor is { } monitor && (monitor.Length == 0 || monitor.Contains('\0')))
+        if (options.MonitorId is { } monitor && (monitor.Length == 0 || monitor.Contains('\0')))
         {
             throw new ArgumentException("Monitor must be a monitor identifier from DesktopHost.Monitors, or null.", nameof(options));
         }
@@ -1171,11 +1171,26 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <summary>Hides the window without closing it, as <see cref="SetVisibleAsync"/> with <see langword="false"/>.</summary>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the native window has been hidden.</returns>
-    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Visibility"/>. <see cref="SetVisibleAsync"/> or <see cref="FocusAsync"/> shows it again.</remarks>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Visibility"/>. <see cref="ShowAsync"/> or <see cref="FocusAsync"/> shows it again.</remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public ValueTask HideAsync(CancellationToken cancellationToken = default) => SetVisibleAsync(false, cancellationToken);
+
+    /// <summary>
+    /// Shows a hidden window, as <see cref="SetVisibleAsync"/> with <see langword="true"/>. A window that is shown stays
+    /// as it is.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the native window has been shown.</returns>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.Visibility"/>. Whether showing also activates the window is up to the
+    /// platform and window manager; <see cref="FocusAsync"/> shows and activates it everywhere.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask ShowAsync(CancellationToken cancellationToken = default) => SetVisibleAsync(true, cancellationToken);
 
     /// <summary>Asks the screen reader to announce a message, such as the result of an action.</summary>
     /// <param name="message">The text to speak, in the page's language.</param>

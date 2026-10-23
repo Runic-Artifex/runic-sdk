@@ -230,9 +230,9 @@ public static class PlatformCapabilityIds
     /// Unavailable for a window without a native bar, including one that renders the bar in its page; the in-page menu
     /// bar reports its own placement.
     /// </remarks>
-    public const string MenuBar = "platform.menus.bar";
+    public const string MenuBar = "platform.menuBar";
     /// <summary>Showing native context menus through <see cref="IWindowPlatformServices.ShowContextMenuAsync"/>.</summary>
-    public const string ContextMenu = "platform.menus.context";
+    public const string ContextMenu = "platform.contextMenu";
     /// <summary>Selecting several directories through <see cref="IFileDialogs.OpenDirectoriesAsync"/>.</summary>
     public const string DirectoriesOpenMultiple = "platform.directories.openMultiple";
     /// <summary>Listing and watching the desktop's monitors through <see cref="IWindowPlatformServices.Monitors"/>.</summary>

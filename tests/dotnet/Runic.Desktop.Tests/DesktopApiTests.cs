@@ -1047,9 +1047,10 @@ public sealed class DesktopApiTests
         Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.Visibility));
         await window.HideAsync();
         Assert.True(window.IsOpen);
-        await window.SetVisibleAsync(true);
+        await window.ShowAsync();
         await window.SetVisibleAsync(false);
-        Assert.Equal([false, true, false], factory.Host!.Visibility.ToArray());
+        await window.SetVisibleAsync(true);
+        Assert.Equal([false, true, false, true], factory.Host!.Visibility.ToArray());
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await window.SetVisibleAsync(true, cancelled.Token));
@@ -1057,6 +1058,7 @@ public sealed class DesktopApiTests
         await window.CloseAsync();
         Assert.Equal(DesktopWindowCapabilities.None, window.Capabilities);
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await window.HideAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await window.ShowAsync());
     }
 
     // I-024: Closed is raised once, on the thread pool, whatever closed the window; a throwing handler does not stop

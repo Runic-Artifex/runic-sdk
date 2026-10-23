@@ -72,9 +72,9 @@ internal static class DesktopWindowOptionValidation
                     nameof(DesktopWindowOptions.ConfirmCloseAsync),
                     "Remove ConfirmCloseAsync, or use a window host whose Capabilities include CloseConfirmation."));
             }
-            if (options.Monitor is not null && !customFactory.Capabilities.HasFlag(DesktopWindowCapabilities.MonitorPlacement))
+            if (options.MonitorId is not null && !customFactory.Capabilities.HasFlag(DesktopWindowCapabilities.MonitorPlacement))
             {
-                diagnostics.Add(Ignored("The configured embedded-window host", nameof(DesktopWindowOptions.Monitor),
+                diagnostics.Add(Ignored("The configured embedded-window host", nameof(DesktopWindowOptions.MonitorId),
                     "Remove the option, or use a window host whose Capabilities include MonitorPlacement."));
             }
             diagnostics.AddRange(customFactory.ValidateOptions(ToHostOptions(options)));
@@ -143,9 +143,9 @@ internal static class DesktopWindowOptionValidation
                 "A browser opens with the saved size and position but not full-screen. " + remediation)
                 with { Message = $"{presentation} ignores {Prefix}{nameof(DesktopWindowOptions.Placement)}.{nameof(DesktopWindowPlacement.FullScreen)}." });
         }
-        if (options.Monitor is not null)
+        if (options.MonitorId is not null)
         {
-            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Monitor), remediation));
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.MonitorId), remediation));
         }
         if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
         {
@@ -282,7 +282,7 @@ internal static class DesktopWindowOptionValidation
             ? WebContentRules.Resolve(webContent, Environment.GetEnvironmentVariable)
             : DesktopWindowHostOptions.SafeWebContent,
         MenuBarPresentation = options.MenuBarPresentation,
-        Monitor = options.Monitor,
+        MonitorId = options.MonitorId,
         LayoutDirection = options.LayoutDirection,
         Language = options.Language,
     };

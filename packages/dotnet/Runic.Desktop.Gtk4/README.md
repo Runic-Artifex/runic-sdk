@@ -124,11 +124,11 @@ Wayland reports neither, so there `WorkArea` equals `Bounds` and no monitor is
 primary. `DesktopWindowState.MonitorId` is the monitor GDK places the window on.
 
 `DesktopWindow.SetFullScreenAsync` and a placement saved full-screen work on X11
-and Wayland, on the monitor of `DesktopWindowOptions.Monitor` or the last
+and Wayland, on the monitor of `DesktopWindowOptions.MonitorId` or the last
 `MoveToMonitorAsync` (`gtk_window_fullscreen_on_monitor`), else where the window
 is; X11 needs a window manager for full screen. Opening on a monitor and
 `MoveToMonitorAsync` (`DesktopWindowCapabilities.MonitorPlacement`) need X11; on
-Wayland `Validate` reports `Monitor` ignored except for a full-screen placement,
+Wayland `Validate` reports `MonitorId` ignored except for a full-screen placement,
 and whether the compositor honours the monitor for full screen is its choice.
 `DesktopWindowOptions.LayoutDirection` sets the direction of the window, its
 header bar and the view, and `Language` WebKitGTK's preferred languages

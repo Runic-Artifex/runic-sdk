@@ -14,7 +14,7 @@ internal sealed partial class LinuxWebKitGtkHost
 {
     internal static IDesktopMonitors Monitors { get; } = new MonitorSource();
 
-    // The monitor index for gtk_window_fullscreen_on_monitor, from DesktopWindowOptions.Monitor; -1 for none.
+    // The monitor index for gtk_window_fullscreen_on_monitor, from DesktopWindowOptions.MonitorId; -1 for none.
     private int _fullScreenMonitor = -1;
 
     private readonly record struct ChosenMonitor(int Index, DesktopMonitor Monitor);

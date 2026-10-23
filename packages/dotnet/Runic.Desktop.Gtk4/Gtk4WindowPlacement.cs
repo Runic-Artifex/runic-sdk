@@ -10,7 +10,7 @@ namespace Runic.Desktop.Gtk4;
 [SupportedOSPlatform("linux")]
 internal sealed partial class Gtk4WindowHost
 {
-    // GTK thread only: the monitor for full screen, from DesktopWindowOptions.Monitor or MoveToMonitorAsync.
+    // GTK thread only: the monitor for full screen, from DesktopWindowOptions.MonitorId or MoveToMonitorAsync.
     private Gdk.Monitor? _fullScreenMonitor;
 
     private static ScreenRect ToScreenRect(DesktopRect rect) => new(rect.X, rect.Y, rect.Width, rect.Height);

@@ -80,6 +80,17 @@ if (token.TryGetValue(out var value)) { /* value is null when none is stored */ 
 string status = token.Match(_ => "ready", unavailable => $"unavailable: {unavailable.Reason}", failed => $"failed: {failed.Code}");
 ```
 
+`PickerResult<T>` has `TryGetValue(out T value)` and `Match` too; its `Match`
+passes the `Selected` case, which also carries `SelectedFilter`, and has a
+function for `Dismissed`. The caller owns the selected resource either way:
+
+```csharp
+if ((await files.OpenFileAsync(new())).TryGetValue(out var lease))
+{
+    await using (lease) { /* read */ }
+}
+```
+
 ## File dialog options
 
 `OpenFileOptions` and `SaveFileOptions` take `Filters` and `InitialDirectory`,
@@ -131,26 +142,26 @@ whether the window's dialogs can.
 user confirmed the dialog, so a save can add that filter's extension or an import
 can pick a parser. It is `null` without filters, for directories and where the
 dialog does not say. macOS shows a filter pop-up, and so reports the filter, only
-when `ShowsFilterChoice` is set on `OpenFileOptions` or `SaveFileOptions`:
+when `ShowFilterChoice` is set on `OpenFileOptions` or `SaveFileOptions`:
 
 ```csharp
-var options = new SaveFileOptions("drawing") { Filters = [png, svg], ShowsFilterChoice = true };
+var options = new SaveFileOptions("drawing") { Filters = [png, svg], ShowFilterChoice = true };
 if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected { SelectedFilter: var format } saved)
     await using (saved.Value) { /* write the drawing as format ?? png */ }
 ```
 
 | Option | Windows | macOS | Linux portal (GTK 3 and GTK 4) | Linux GTK 3 native chooser |
 | --- | --- | --- | --- | --- |
-| Filters | File type list (`SetFileTypes`) | The union of every filter restricts the panel (`allowedContentTypes`); with `ShowsFilterChoice`, a pop-up below the panel selects one filter | FileChooser `filters` and `current_filter` | File type list |
+| Filters | File type list (`SetFileTypes`) | The union of every filter restricts the panel (`allowedContentTypes`); with `ShowFilterChoice`, a pop-up below the panel selects one filter | FileChooser `filters` and `current_filter` | File type list |
 | MIME types | Ignored: extensions only | `UTType(mimeType:)`; `image/*`, `audio/*`, `video/*`, `text/*`, `font/*` and `model/*` map to their abstract types, other wildcards are skipped | `(1, type)` patterns in each filter | `gtk_file_filter_add_mime_type` |
-| Chosen filter (`SelectedFilter`) | `GetFileTypeIndex` | The pop-up's filter with `ShowsFilterChoice`, otherwise `null` | The response's `current_filter`, when the portal returns it | `gtk_file_chooser_get_filter` |
+| Chosen filter (`SelectedFilter`) | `GetFileTypeIndex` | The pop-up's filter with `ShowFilterChoice`, otherwise `null` | The response's `current_filter`, when the portal returns it | `gtk_file_chooser_get_filter` |
 | Multiple selection | `FOS_ALLOWMULTISELECT` | `allowsMultipleSelection` | FileChooser `multiple` | `select-multiple` |
 | Multiple directories | `FOS_PICKFOLDERS` with `FOS_ALLOWMULTISELECT` | `canChooseDirectories` with `allowsMultipleSelection`, security scope per URL | FileChooser `directory` with `multiple` (version 3 and later) | `SELECT_FOLDER` with `select-multiple` |
 | Initial folder | `SetFolder`, which overrides the folder Windows remembers | `directoryURL` | FileChooser `current_folder`; ignored when opening by portals before FileChooser version 4 | `current-folder` |
 | Suggested name | `SetFileName` | `nameFieldStringValue` | FileChooser `current_name` | `current-name` |
 
 On macOS a save panel with filters may add the first allowed extension, or with
-`ShowsFilterChoice` the chosen filter's, to a name the user types without one.
+`ShowFilterChoice` the chosen filter's, to a name the user types without one.
 
 ## Window services
 
@@ -174,7 +185,7 @@ owner, `OwnerClosed` after it closed and `BackendUnavailable` when the window
 cannot announce. An `IWindowPlatformServices` implementation that does not
 override it reports `OwnerUnavailable`.
 
-`Monitors` lists the desktop's monitors (`IDesktopMonitors`): `GetMonitorsAsync`
+`Monitors` lists the desktop's monitors (`IDesktopMonitors`): `ListAsync`
 returns each `DesktopMonitor` with an opaque `Id`, a `DisplayName`, its
 `Bounds` and `WorkArea` as `DesktopRect` in the units of the window's position
 and size, its `Scale` and whether it `IsPrimary`, the primary one first.
@@ -518,8 +529,8 @@ window's native menu, or reports `Unavailable`: `OwnerUnavailable` before the wi
 opens and on a host without a native owner, `OwnerClosed` after it closed, and
 `BackendUnavailable` for a window without native context menus. An implementation
 written before 0.11 reports `OwnerUnavailable`. The capability snapshot reports
-`PlatformCapabilityIds.ContextMenu` (`platform.menus.context`) and
-`PlatformCapabilityIds.MenuBar` (`platform.menus.bar`, a bar shown natively in the
+`PlatformCapabilityIds.ContextMenu` (`platform.contextMenu`) and
+`PlatformCapabilityIds.MenuBar` (`platform.menuBar`, a bar shown natively in the
 window or a global menu bar; an in-page bar does not count).
 
 ```csharp

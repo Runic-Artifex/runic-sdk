@@ -17,7 +17,7 @@ internal abstract class DesktopMonitorSource : IDesktopMonitors
     internal static bool SameMonitors(ImmutableArray<DesktopMonitor> left, ImmutableArray<DesktopMonitor> right) =>
         left.IsDefault == right.IsDefault && (left.IsDefault || left.SequenceEqual(right));
 
-    public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> GetMonitorsAsync(CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> ListAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ReadAsync(cancellationToken);

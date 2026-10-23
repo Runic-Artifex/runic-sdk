@@ -1,6 +1,7 @@
 #nullable enable
 Runic.Desktop.DesktopWindow.Closed -> System.EventHandler?
 Runic.Desktop.DesktopWindow.HideAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.ShowAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindowCapabilities.Visibility = 1024 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopMenuBarPlacement
@@ -90,21 +91,21 @@ Runic.Desktop.DesktopWindowHostOptions.Language.get -> string?
 Runic.Desktop.DesktopWindowHostOptions.Language.init -> void
 Runic.Desktop.DesktopWindowHostOptions.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
 Runic.Desktop.DesktopWindowHostOptions.LayoutDirection.init -> void
-Runic.Desktop.DesktopWindowHostOptions.Monitor.get -> string?
-Runic.Desktop.DesktopWindowHostOptions.Monitor.init -> void
+Runic.Desktop.DesktopWindowHostOptions.MonitorId.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.MonitorId.init -> void
 Runic.Desktop.DesktopWindowOptions.Language.get -> string?
 Runic.Desktop.DesktopWindowOptions.Language.init -> void
 Runic.Desktop.DesktopWindowOptions.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
 Runic.Desktop.DesktopWindowOptions.LayoutDirection.init -> void
-Runic.Desktop.DesktopWindowOptions.Monitor.get -> string?
-Runic.Desktop.DesktopWindowOptions.Monitor.init -> void
+Runic.Desktop.DesktopWindowOptions.MonitorId.get -> string?
+Runic.Desktop.DesktopWindowOptions.MonitorId.init -> void
 Runic.Desktop.DesktopWindowPlacement.FullScreen.get -> bool
 Runic.Desktop.DesktopWindowPlacement.FullScreen.init -> void
 Runic.Desktop.DesktopWindowState.MonitorId.get -> string?
 Runic.Desktop.DesktopWindowState.MonitorId.init -> void
 Runic.Desktop.IDesktopPlacementWindowHost
-Runic.Desktop.IDesktopPlacementWindowHost.MoveToMonitorAsync(string! monitorId, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.IDesktopPlacementWindowHost.SetFullScreenAsync(bool fullScreen, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopPlacementWindowHost.MoveToMonitorAsync(string! monitorId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopPlacementWindowHost.SetFullScreenAsync(bool fullScreen, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopWindowHostFactory.Monitors.get -> Runic.Platform.IDesktopMonitors!
 override Runic.Desktop.DesktopStandardMenuTitles.Equals(object? obj) -> bool
 override Runic.Desktop.DesktopStandardMenuTitles.GetHashCode() -> int

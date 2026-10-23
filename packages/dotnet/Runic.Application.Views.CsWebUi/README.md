@@ -44,7 +44,7 @@ content root and size from `RunicWindowOptions`, and shows `StartPage`. The
 Window owns the native window, scope, and attachments until it is disposed or
 `CloseAsync` drains its accepted operations. Its `Host` is a
 `CsWebUiBridgeWindow<TViewModel>`; `Window` exposes the underlying
-`WebUiWindow`; `CsWebUiPlatformServices.GetNativeWindow(window)` returns it for
+`WebUiWindow`; `CsWebUiPlatformServices.GetWebUiWindow(window)` returns it for
 any Window of this host without naming the ViewModel type, and `null` for
 another host's. `WaitForCloseAsync` completes when WebUI reports that its
 windows have closed: CS-WebUI reports closing for all of its windows at once,

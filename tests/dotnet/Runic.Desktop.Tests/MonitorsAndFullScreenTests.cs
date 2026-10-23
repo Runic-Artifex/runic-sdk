@@ -33,7 +33,7 @@ public sealed class MonitorsAndFullScreenTests
     public async Task UnavailableMonitorsReportTheReasonAndWatchWaits()
     {
         var monitors = DesktopMonitors.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-        var list = await monitors.GetMonitorsAsync();
+        var list = await monitors.ListAsync();
         Assert.Equal(PlatformUnavailableReason.BackendUnavailable, Assert.IsType<PlatformResult<ImmutableArray<DesktopMonitor>>.Unavailable>(list).Reason);
         Assert.IsType<CapabilityStatus.Unavailable>(DesktopServiceStatus.Get(monitors));
         using var cancellation = new CancellationTokenSource();
@@ -81,12 +81,12 @@ public sealed class MonitorsAndFullScreenTests
         await using (var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new PlacementFactory { Monitors = monitors } }))
         {
             Assert.Same(monitors, host.Monitors);
-            Assert.Equal([Laptop, External], Success(await host.Monitors.GetMonitorsAsync()));
+            Assert.Equal([Laptop, External], Success(await host.Monitors.ListAsync()));
         }
         // A factory without monitors reports them unavailable.
         await using (var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new MinimalFactory() }))
         {
-            var result = await host.Monitors.GetMonitorsAsync();
+            var result = await host.Monitors.ListAsync();
             Assert.Equal(PlatformUnavailableReason.BackendUnavailable,
                 Assert.IsType<PlatformResult<ImmutableArray<DesktopMonitor>>.Unavailable>(result).Reason);
         }
@@ -101,12 +101,12 @@ public sealed class MonitorsAndFullScreenTests
         await using var window = await surface.OpenWindowAsync(new()
         {
             Browser = BrowserKind.Embedded,
-            Monitor = "external",
+            MonitorId = "external",
             LayoutDirection = DesktopLayoutDirection.RightToLeft,
             Language = "ar-EG",
         });
         var native = factory.Hosts[0];
-        Assert.Equal("external", native.Options!.Monitor);
+        Assert.Equal("external", native.Options!.MonitorId);
         Assert.Equal(DesktopLayoutDirection.RightToLeft, native.Options.LayoutDirection);
         Assert.Equal("ar-EG", native.Options.Language);
         Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement));
@@ -148,18 +148,18 @@ public sealed class MonitorsAndFullScreenTests
         await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
         await using var surface = await host.CreateSurfaceAsync();
         var placement = new DesktopWindowPlacement { X = 100, Y = 80, Width = 900, Height = 600, FullScreen = true };
-        await using (await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, Monitor = "external", Placement = placement }))
+        await using (await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, MonitorId = "external", Placement = placement }))
         {
-            Assert.Null(factory.Hosts[0].Options!.Monitor);
+            Assert.Null(factory.Hosts[0].Options!.MonitorId);
             Assert.True(factory.Hosts[0].Options!.Placement!.FullScreen);
         }
         // Without a saved position the monitor still decides.
         await using (await surface.OpenWindowAsync(new()
         {
-            Browser = BrowserKind.Embedded, Monitor = "external", Placement = placement with { X = null, Y = null },
+            Browser = BrowserKind.Embedded, MonitorId = "external", Placement = placement with { X = null, Y = null },
         }))
         {
-            Assert.Equal("external", factory.Hosts[1].Options!.Monitor);
+            Assert.Equal("external", factory.Hosts[1].Options!.MonitorId);
         }
     }
 
@@ -203,7 +203,7 @@ public sealed class MonitorsAndFullScreenTests
         await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new PlacementFactory(), WaitForConnection = false });
         await using var surface = await host.CreateSurfaceAsync();
         await Assert.ThrowsAsync<ArgumentException>(async () => await surface.OpenWindowAsync(new() { Language = "en_US" }));
-        await Assert.ThrowsAsync<ArgumentException>(async () => await surface.OpenWindowAsync(new() { Monitor = "" }));
+        await Assert.ThrowsAsync<ArgumentException>(async () => await surface.OpenWindowAsync(new() { MonitorId = "" }));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await surface.OpenWindowAsync(new() { LayoutDirection = (DesktopLayoutDirection)7 }));
         Assert.Contains(host.Validate(new() { Language = "en_US" }).Diagnostics, static item => item.Code == "window-option-invalid");
@@ -216,7 +216,7 @@ public sealed class MonitorsAndFullScreenTests
         var preflight = host.GetPresentationPreflight(new()
         {
             Browser = BrowserKind.Chrome,
-            Monitor = "external",
+            MonitorId = "external",
             LayoutDirection = DesktopLayoutDirection.RightToLeft,
             Language = "he-IL",
             Placement = new() { Width = 900, Height = 700, FullScreen = true },
@@ -229,19 +229,19 @@ public sealed class MonitorsAndFullScreenTests
         }
         Assert.Contains(preflight.OptionDiagnostics, static item => item.Message.Contains("Placement.FullScreen", StringComparison.Ordinal));
         // Without a saved position, the monitor applies and a browser ignores it.
-        Assert.Contains(preflight.OptionDiagnostics, static item => item.Option == "DesktopWindowOptions.Monitor");
+        Assert.Contains(preflight.OptionDiagnostics, static item => item.Option == "DesktopWindowOptions.MonitorId");
     }
 
     [Test]
     public async Task ACustomHostWithoutMonitorPlacementReportsTheMonitorIgnored()
     {
         await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new MinimalFactory() });
-        var diagnostics = host.Validate(new() { Monitor = "external" }).Diagnostics;
-        Assert.Contains(diagnostics, static item => item.Option == "DesktopWindowOptions.Monitor"
+        var diagnostics = host.Validate(new() { MonitorId = "external" }).Diagnostics;
+        Assert.Contains(diagnostics, static item => item.Option == "DesktopWindowOptions.MonitorId"
             && item.Severity == DesktopDiagnosticSeverity.Warning);
         await using var placing = await DesktopHost.StartAsync(new() { WindowHostFactory = new PlacementFactory() });
-        Assert.DoesNotContain(placing.Validate(new() { Monitor = "external" }).Diagnostics,
-            static item => item.Option == "DesktopWindowOptions.Monitor");
+        Assert.DoesNotContain(placing.Validate(new() { MonitorId = "external" }).Diagnostics,
+            static item => item.Option == "DesktopWindowOptions.MonitorId");
     }
 
     [Test]

@@ -730,8 +730,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             var height = options.Height;
             var x11 = Gtk4X11Placement.IsActive;
             (int X, int Y)? position = x11 && options.X is { } requestedX && options.Y is { } requestedY ? (requestedX, requestedY) : null;
-            // DesktopWindowOptions.Monitor: centered on its work area on X11; on Wayland only full screen uses it.
-            var chosen = options.Monitor is { } monitorId ? Gtk4Monitors.Find(monitorId) : null;
+            // DesktopWindowOptions.MonitorId: centered on its work area on X11; on Wayland only full screen uses it.
+            var chosen = options.MonitorId is { } monitorId ? Gtk4Monitors.Find(monitorId) : null;
             _fullScreenMonitor = chosen?.Handle;
             if (options.Placement is not null)
             {
@@ -979,9 +979,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         if (!string.IsNullOrWhiteSpace(options.IconFile))
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.IconFile), "GTK 4 window icon files are not implemented."));
         // On Wayland a chosen monitor applies only to a full-screen placement; the compositor places other windows.
-        if (options.Monitor is not null && !x11 && options.Placement is not { FullScreen: true })
-            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Monitor),
-                "GTK 4 on Wayland ignores DesktopWindowOptions.Monitor except for a full-screen placement; the compositor places the window.",
+        if (options.MonitorId is not null && !x11 && options.Placement is not { FullScreen: true })
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.MonitorId),
+                "GTK 4 on Wayland ignores DesktopWindowOptions.MonitorId except for a full-screen placement; the compositor places the window.",
                 "Remove the option on Wayland, or rely on the compositor's placement.") with { Severity = DesktopDiagnosticSeverity.Warning });
         return diagnostics;
     }

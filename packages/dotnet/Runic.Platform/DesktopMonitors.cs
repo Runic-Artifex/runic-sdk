@@ -14,7 +14,7 @@ public readonly record struct DesktopRect(int X, int Y, int Width, int Height);
 /// <param name="Id">
 /// The platform's identifier of the monitor; treat it as opaque. It stays the same across restarts where the operating
 /// system has a stable one: the display's device path on Windows, its display UUID on macOS and its connector name on
-/// Linux. Pass it to <c>DesktopWindow.MoveToMonitorAsync</c> or <c>DesktopWindowOptions.Monitor</c>.
+/// Linux. Pass it to <c>DesktopWindow.MoveToMonitorAsync</c> or <c>DesktopWindowOptions.MonitorId</c>.
 /// </param>
 /// <param name="DisplayName">A name to show, such as the monitor's model, or its connector where the model is unknown.</param>
 /// <remarks>
@@ -49,7 +49,7 @@ public interface IDesktopMonitors
 {
     /// <summary>Lists the connected monitors, the primary one first where there is one.</summary>
     /// <param name="cancellationToken">Cancels waiting for the result.</param>
-    ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> GetMonitorsAsync(CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> ListAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Reports the current monitors, then the whole list again after each change.</summary>
     /// <param name="cancellationToken">Ends the watch.</param>
@@ -80,7 +80,7 @@ public static class DesktopMonitors
     {
         public CapabilityStatus Status { get; } = DesktopServiceStatus.Unavailable(reason);
 
-        public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> GetMonitorsAsync(CancellationToken cancellationToken = default)
+        public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> ListAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult<PlatformResult<ImmutableArray<DesktopMonitor>>>(
