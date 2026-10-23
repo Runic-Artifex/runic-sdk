@@ -118,8 +118,16 @@ completion depends on a later command.
 ## In-page menu bar
 
 The React, Vue, Svelte and Angular frontends render the window's menu bar in the
-page, as a Runic Desktop window with `DesktopMenuBarPresentation.Page` shows it,
-each with a popular headless menubar library. Runic ships no menubar component:
+page, as a CS-WebUI window always does and a Runic Desktop window with
+`DesktopMenuBarPresentation.Page` does, each with a popular headless menubar
+library. [NotesMenu.cs](NotesMenu.cs) declares the bar
+(`RunicCsWebUiHostOptions.MenuBar`): File, Edit, View and Help, with Save's
+shortcut, an Undo that its command's `CanExecute` keeps disabled, a radio group
+for the pane and a check item for the sidebar. `ShellViewModel`, the window's
+root ViewModel, runs the items (`IRunicMenuCommandSource`), and a View choice,
+which this example only records, replaces the bar with
+`RunicCsWebUiHost.SetMenuBar` so the checked state follows. Runic ships no
+menubar component:
 the adapter's `useMenuBar` or `injectMenuBar` provides the menus, `invoke` and
 the Alt/F10 and access-key requests, and the library provides the WAI-ARIA
 menubar (roles, roving focus, arrow keys, typeahead and Escape).
@@ -139,10 +147,11 @@ An `open` request sets the library's open menu; a `focus` request focuses the
 first menu. The plain and Effect frontends render none
 ([Frontend/src/menu-bar.ts](Frontend/src/menu-bar.ts)).
 
-This example's CS-WebUI host serves no menu bar routes, so the bar stays
-`unavailable` and hidden there. [menu-bar-smoke.mjs](menu-bar-smoke.mjs) serves a
-built frontend in Chromium with `installMockMenuBar` from
-`@runic-artifex/views/mock` as the host and checks, with real keys and clicks:
+[menu-bar-smoke.mjs](menu-bar-smoke.mjs) serves a built frontend in Chromium,
+with `installMockMenuBar` from `@runic-artifex/views/mock` as the host or, with
+`RUNIC_MENU_BAR_HOST=cswebui`, with this example's CS-WebUI host
+(`--serve-only --trace-menu`, which prints each command that ran), and checks,
+with real keys and clicks:
 click and invoke, an Alt tap and F10 focusing File, arrows, Escape returning to
 the trigger, Alt+V opening View, radio and check items following the host, a
 disabled item that does not run, Ctrl+S running Save once, and an axe-core scan
@@ -210,7 +219,13 @@ RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/bro
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/menu-bar-smoke.mjs
 ```
 
-`menu-bar-smoke.mjs` needs no .NET build; it takes any of the React, Vue,
-Svelte or Angular outputs above, and axe-core from the plain frontend's install.
+`menu-bar-smoke.mjs` takes any of the React, Vue, Svelte or Angular outputs
+above, and axe-core from the plain frontend's install. With the mock it needs no
+.NET build; `RUNIC_MENU_BAR_HOST=cswebui` runs the Release build of this
+example:
+
+```sh
+RUNIC_MENU_BAR_HOST=cswebui RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/menu-bar-smoke.mjs
+```
 
 On Linux with Nix, prefix the commands with `direnv exec .`.
