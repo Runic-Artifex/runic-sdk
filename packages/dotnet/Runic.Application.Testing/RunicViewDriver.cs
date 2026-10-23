@@ -99,34 +99,68 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         return new(route, json);
     }
 
-    // The can and start routes of a command with an asynchronous key resolver are asynchronous; the call waits for
-    // the resolver as a synchronous route call waits for its model turn.
-    private string CallBlocking(string route, BridgeTestArguments arguments) => _transport.IsAsync(route)
-        ? _transport.CallAsync(route, arguments).AsTask().GetAwaiter().GetResult()
+    // The can and start routes of a command with an asynchronous key resolver are asynchronous. A synchronous call
+    // would block the test thread on the resolver, which may wait for the fake clock or the model turn that thread owns.
+    private string CallSynchronous(string route, BridgeTestArguments arguments, string asyncMethod) => _transport.IsAsync(route)
+        ? throw new InvalidOperationException(
+            $"{route} waits for the command's asynchronous key resolver; call {asyncMethod} and await it instead.")
         : _transport.Call(route, arguments);
 
+    private async Task<string> CallEitherAsync(string route, BridgeTestArguments arguments, CancellationToken cancellationToken) =>
+        _transport.IsAsync(route)
+            ? await _transport.CallAsync(route, arguments, cancellationToken).ConfigureAwait(false)
+            : _transport.Call(route, arguments);
+
+    private string CanRoute(Expression<Func<TModel, object?>> command) =>
+        $"{Route}Can{RunicMembers.CommandName(RunicMembers.Property(command))}";
+
+    private static bool CanReply(string route, string reply) => reply switch
+    {
+        "true" => true,
+        "false" => false,
+        _ => throw new InvalidOperationException($"{route} returned '{reply}'."),
+    };
+
     /// <summary>Asks whether a command with an argument can execute (<c>can{Command}(input)</c>).</summary>
-    /// <remarks>For a command with an asynchronous key resolver, waits until the resolver finishes.</remarks>
+    /// <remarks>
+    /// A command with an asynchronous key resolver (a <c>[RunicCommandKey]</c> method that returns a task) answers
+    /// only after the resolver finishes, so this method refuses it instead of blocking the test thread; use
+    /// <see cref="CanExecuteAsync"/>.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The command has an asynchronous key resolver.</exception>
     public bool CanExecute(Expression<Func<TModel, object?>> command, string argumentJson)
     {
         ArgumentNullException.ThrowIfNull(argumentJson);
-        var route = $"{Route}Can{RunicMembers.CommandName(RunicMembers.Property(command))}";
-        var reply = CallBlocking(route, new(StringValue: argumentJson));
-        return reply switch
-        {
-            "true" => true,
-            "false" => false,
-            _ => throw new InvalidOperationException($"{route} returned '{reply}'."),
-        };
+        var route = CanRoute(command);
+        return CanReply(route, CallSynchronous(route, new(StringValue: argumentJson), nameof(CanExecuteAsync)));
     }
 
     /// <summary>
-    /// Starts an asynchronous command as a recoverable operation (<c>start{Command}()</c>).
+    /// Asks whether a command with an argument can execute (<c>can{Command}(input)</c>), waiting for an asynchronous key
+    /// resolver.
     /// </summary>
-    /// <param name="command">The command property.</param>
-    /// <param name="argumentJson">The command input as wire JSON, for a command with an argument.</param>
-    /// <param name="requestId">The idempotency key; the host issues <c>request{n}</c> when omitted.</param>
-    public RunicTestOperation Start(Expression<Func<TModel, object?>> command, string? argumentJson = null, string? requestId = null)
+    /// <remarks>
+    /// A resolver that waits on the host's fake clock finishes only after the test advances it: start the call, advance
+    /// <see cref="RunicWindowTestHost{TViewModel}.Time"/>, then await the call. A command whose key resolver is
+    /// synchronous, or that takes no key, answers at once.
+    /// </remarks>
+    /// <param name="command">The command property, such as <c>vm => vm.DeleteCommand</c>.</param>
+    /// <param name="argumentJson">The command input or key as wire JSON.</param>
+    /// <param name="cancellationToken">Cancels the resolution, as a closed client connection does.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async Task<bool> CanExecuteAsync(Expression<Func<TModel, object?>> command, string argumentJson,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(argumentJson);
+        var route = CanRoute(command);
+        var reply = await CallEitherAsync(route, new(StringValue: argumentJson), cancellationToken).ConfigureAwait(false);
+        // A cancelled resolution answers false, as for a closed connection; the caller asked to stop instead.
+        cancellationToken.ThrowIfCancellationRequested();
+        return CanReply(route, reply);
+    }
+
+    private (string Member, string RequestId, string Payload) StartPayload(Expression<Func<TModel, object?>> command,
+        string? argumentJson, string? requestId)
     {
         var member = RunicMembers.CommandName(RunicMembers.Property(command));
         requestId ??= $"request{_nextId()}";
@@ -138,8 +172,48 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WriteRawValue(argumentJson);
             writer.WriteEndObject();
         });
-        var admission = CallBlocking($"{Route}Start{member}", new(StringValue: payload));
-        return new(_transport, $"{typeof(TModel).FullName}:{Fingerprint.Value}:{Route}", member, requestId, admission);
+        return (member, requestId, payload);
+    }
+
+    private RunicTestOperation Operation(string member, string requestId, string admission) =>
+        new(_transport, $"{typeof(TModel).FullName}:{Fingerprint.Value}:{Route}", member, requestId, admission);
+
+    /// <summary>
+    /// Starts an asynchronous command as a recoverable operation (<c>start{Command}()</c>).
+    /// </summary>
+    /// <remarks>
+    /// A command with an asynchronous key resolver is admitted only after the resolver finishes, so this method refuses
+    /// it instead of blocking the test thread; use <see cref="StartAsync"/>.
+    /// </remarks>
+    /// <param name="command">The command property.</param>
+    /// <param name="argumentJson">The command input as wire JSON, for a command with an argument.</param>
+    /// <param name="requestId">The idempotency key; the host issues <c>request{n}</c> when omitted.</param>
+    /// <exception cref="InvalidOperationException">The command has an asynchronous key resolver.</exception>
+    public RunicTestOperation Start(Expression<Func<TModel, object?>> command, string? argumentJson = null, string? requestId = null)
+    {
+        var (member, id, payload) = StartPayload(command, argumentJson, requestId);
+        return Operation(member, id, CallSynchronous($"{Route}Start{member}", new(StringValue: payload), nameof(StartAsync)));
+    }
+
+    /// <summary>
+    /// Starts an asynchronous command as a recoverable operation (<c>start{Command}()</c>), waiting for an asynchronous
+    /// key resolver before the admission.
+    /// </summary>
+    /// <remarks>
+    /// The task completes with the admission; await <see cref="RunicTestOperation.WaitAsync"/> for the outcome. A
+    /// resolver that waits on the host's fake clock finishes only after the test advances
+    /// <see cref="RunicWindowTestHost{TViewModel}.Time"/>.
+    /// </remarks>
+    /// <param name="command">The command property.</param>
+    /// <param name="argumentJson">The command input or key as wire JSON, for a command with an argument.</param>
+    /// <param name="requestId">The idempotency key; the host issues <c>request{n}</c> when omitted.</param>
+    /// <param name="cancellationToken">Cancels the resolution, as a closed client connection does.</param>
+    public async Task<RunicTestOperation> StartAsync(Expression<Func<TModel, object?>> command, string? argumentJson = null,
+        string? requestId = null, CancellationToken cancellationToken = default)
+    {
+        var (member, id, payload) = StartPayload(command, argumentJson, requestId);
+        var admission = await CallEitherAsync($"{Route}Start{member}", new(StringValue: payload), cancellationToken).ConfigureAwait(false);
+        return Operation(member, id, admission);
     }
 
     /// <summary>
