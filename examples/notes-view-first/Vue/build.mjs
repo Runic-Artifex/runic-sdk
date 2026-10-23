@@ -3,10 +3,12 @@ import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Bundles the plain frontend with its Editor replaced by src/editor.ts, as the
-// Effect variant does. The binding is the workspace source of @runic-artifex/vue;
-// Vue itself resolves from that package's install, so there is one copy.
+// Effect variant does, and its menu bar by src/menu-bar.ts. The binding is the
+// workspace source of @runic-artifex/vue; Vue itself resolves from that
+// package's install, also for Reka UI, so there is one copy.
 const frontend = fileURLToPath(new URL("../Frontend/", import.meta.url));
 const editor = fileURLToPath(new URL("./src/editor.ts", import.meta.url));
+const menuBar = fileURLToPath(new URL("./src/menu-bar.ts", import.meta.url));
 const binding = fileURLToPath(new URL("../../../packages/web/vue/", import.meta.url));
 const result = await Bun.build({
   entrypoints: [`${frontend}src/app.ts`],
@@ -20,6 +22,8 @@ const result = await Bun.build({
     setup(build) {
       build.onResolve({ filter: /^\.\/editor\.js$/ }, ({ importer }) =>
         basename(importer) === "document.ts" && dirname(importer) === `${frontend}src` ? { path: editor } : undefined);
+      build.onResolve({ filter: /^\.\/menu-bar\.js$/ }, ({ importer }) =>
+        basename(importer) === "app.ts" && dirname(importer) === `${frontend}src` ? { path: menuBar } : undefined);
       build.onResolve({ filter: /^(vue)(\/.*)?$/ }, ({ path }) => ({ path: Bun.resolveSync(path, binding) }));
     },
   }],

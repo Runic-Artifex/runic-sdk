@@ -259,6 +259,54 @@ requests. Stopping the scope disposes the controller, which also returns the
 outside an effect scope it is never released (development builds warn). Server
 rendering creates no controller: `state` stays `connecting`.
 
+### With Reka UI
+
+Reka UI's `MenubarRoot` with `v-model` of the open menu; the
+[Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first#in-page-menu-bar) adds submenus, check and radio
+items and is tested with real keys:
+
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
+import { MenubarContent, MenubarItem, MenubarMenu, MenubarPortal, MenubarRoot, MenubarSeparator, MenubarTrigger } from "reka-ui";
+import { splitAccessKey } from "@runic-artifex/views";
+import { useMenuBar } from "@runic-artifex/vue";
+
+const bar = ref<{ $el: HTMLElement }>();
+const open = ref("");
+const { state: menuBar, invoke } = useMenuBar({
+  onRequest: request => {
+    if (request.kind === "open") open.value = request.menu.key;
+    else bar.value?.$el.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+  },
+});
+</script>
+
+<template>
+  <MenubarRoot v-if="menuBar.placement === 'page'" ref="bar" v-model="open" aria-label="Application">
+    <MenubarMenu v-for="menu in menuBar.menus" :key="menu.key" :value="menu.key">
+      <MenubarTrigger :disabled="!menu.enabled">
+        <template v-for="(part, index) in splitAccessKey(menu)" :key="index">
+          <u v-if="index === 1 && menuBar.accessKeyHints">{{ part }}</u><template v-else>{{ part }}</template>
+        </template>
+      </MenubarTrigger>
+      <MenubarPortal>
+        <MenubarContent align="start">
+          <template v-for="entry in menu.entries" :key="entry.key">
+            <MenubarSeparator v-if="entry.kind === 'separator'" />
+            <MenubarItem v-else-if="entry.kind === 'item'" :disabled="!entry.enabled"
+              :aria-keyshortcuts="entry.ariaKeyShortcuts" @select="invoke(entry)">
+              {{ entry.label }} <kbd aria-hidden="true">{{ entry.shortcutText }}</kbd>
+            </MenubarItem>
+            <!-- a submenu: MenubarSub; check and radio items: MenubarCheckboxItem, MenubarRadioGroup -->
+          </template>
+        </MenubarContent>
+      </MenubarPortal>
+    </MenubarMenu>
+  </MenubarRoot>
+</template>
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

@@ -249,6 +249,58 @@ injection context disposes the controller, which also returns the
 `shortcuts: "app"` lease. Under server rendering (`PLATFORM_ID` is `"server"`)
 it creates none and stays `connecting`.
 
+### With the CDK Menu
+
+The CDK's `cdkMenuBar` with `CdkMenuTrigger.open()` for `open` requests; the
+[Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first#in-page-menu-bar) adds submenus, check and radio
+items (`cdkMenuItemCheckbox`, `cdkMenuItemRadio` in a `cdkMenuGroup`) and is
+tested with real keys:
+
+```ts
+@Component({
+  selector: "app-menu-bar",
+  imports: [CdkMenuBar, CdkMenu, CdkMenuItem, CdkMenuTrigger],
+  template: `
+    @if (menuBar.state().placement === "page") {
+      <div cdkMenuBar aria-label="Application">
+        @for (menu of menuBar.state().menus; track menu.key) {
+          <button cdkMenuItem [cdkMenuTriggerFor]="popup" [cdkMenuTriggerData]="{ $implicit: menu.key }"
+            [cdkMenuItemDisabled]="!menu.enabled">{{ menu.label }}</button>
+        }
+      </div>
+    }
+    <!-- The CDK keeps a trigger's first data, so the popup reads the current entries by key. -->
+    <ng-template #popup let-key>
+      <div cdkMenu>
+        @for (entry of entriesOf(key); track entry.key) {
+          @if (entry.kind === "separator") { <div role="separator"></div> }
+          @else if (entry.kind === "item") {
+            <button cdkMenuItem [cdkMenuItemDisabled]="!entry.enabled" [attr.aria-keyshortcuts]="entry.ariaKeyShortcuts ?? null"
+              (cdkMenuItemTriggered)="menuBar.invoke(entry)">{{ entry.label }} <kbd aria-hidden="true">{{ entry.shortcutText }}</kbd></button>
+          }
+        }
+      </div>
+    </ng-template>
+  `,
+})
+export class AppMenuBar {
+  private readonly bar = viewChild(CdkMenuBar);
+  private readonly items = viewChildren(CdkMenuItem);
+  readonly menuBar = injectMenuBar({
+    onRequest: request => {
+      const bar = this.bar();
+      if (request.kind === "focus") bar?.focusFirstItem("keyboard");
+      else if (request.kind === "open") {
+        const index = this.menuBar.state().menus.indexOf(request.menu);
+        const item = this.items()[index];
+        if (bar && item) { bar.setActiveMenuItem(item); item.getMenuTrigger()?.open(); }
+      }
+    },
+  });
+  entriesOf(key: string) { return this.menuBar.state().menus.find(menu => menu.key === key)?.entries ?? []; }
+}
+```
+
 ## Errors
 
 The `error()` signal of `injectView` and of a command or operation is typed
