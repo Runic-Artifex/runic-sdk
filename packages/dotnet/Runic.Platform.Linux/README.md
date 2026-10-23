@@ -1,7 +1,7 @@
 # Runic.Platform.Linux (GTK 3)
 
 The GTK 3 window services for Linux x64: portal file dialogs and file handoff with
-GTK 3 parenting, and the GTK 3 text clipboard. The package has
+GTK 3 parenting, the GTK 3 text clipboard, and message boxes. The package has
 no public API. Runic.Application.Views.Desktop selects it for GTK 3 windows from
 `DesktopPlatformServices.ForWindow` and `services.AddRunicPlatformServices()`, and never in a
 GTK 4 process, which `Runic.Platform.Linux.Gtk4` serves. The package references the
@@ -16,6 +16,20 @@ an implicit toolkit fallback.
 The portal dialogs also serve Flatpak and Snap applications. Saves are atomic, including
 through a Flatpak document view; see [portal behavior](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md).
 A session bus, GTK3, a display and the appropriate portal backend must be installed.
+
+Message boxes are `GtkMessageDialog`s, modal, transient for the window and destroyed
+with it, shown with `gtk_widget_show` and answered through their `response` signal
+(never `gtk_dialog_run`, so the window's loop keeps running). The message and detail
+are the dialog's text and secondary text, the kind its message type, `Title` its title,
+and the window's text direction becomes the dialog's. Buttons are added in GNOME's
+order (others, then Cancel, then the default button) with `_` mnemonics; the default
+button is the default response with the `suggested-action` style, a destructive one
+has `destructive-action`, and the cancel button answers `GTK_RESPONSE_CANCEL`. Esc and
+the close button choose the cancel button, or answer `null` without one. A box without
+buttons shows GTK's OK button. Cancellation destroys the dialog. GTK runs in the
+application's process, also inside Flatpak: there is no portal for message dialogs.
+The `NativeMessageBoxes` category of `tests/dotnet/Runic.Platform.Linux.Tests` checks
+them under Xvfb with JIT and NativeAOT.
 
 The clipboard serves UTF-8 text with GTK selection ownership.
 Read limits bound managed decoding and string allocation; GTK itself receives the

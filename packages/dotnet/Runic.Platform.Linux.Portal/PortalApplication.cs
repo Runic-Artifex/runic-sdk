@@ -88,6 +88,22 @@ public sealed class PortalApplication
     /// connects to nothing; the first request does.</remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "A factory of the provider instance, as the other services are; the volumes need no identity.")]
     public IDesktopVolumes CreateVolumes() => new UDisksVolumes();
+    /// <summary>Creates the computer's network status from the NetworkMonitor portal, or from NetworkManager where no
+    /// portal answers.</summary>
+    /// <remarks>
+    /// <para>
+    /// xdg-desktop-portal implements <c>org.freedesktop.portal.NetworkMonitor</c> itself, for sandboxed and unsandboxed
+    /// applications alike: <c>GetStatus</c> from version 3 (<c>available</c>, <c>metered</c> and <c>connectivity</c>, whose
+    /// local, limited, captive-portal and full levels map to <see cref="DesktopNetworkConnectivity"/>), the separate
+    /// getters before, and its <c>changed</c> signal. Without a portal, such as under a minimal window manager, it reads
+    /// NetworkManager's <c>State</c>, <c>Connectivity</c> and <c>Metered</c> on the system bus and follows their
+    /// <c>PropertiesChanged</c>. When neither answers, reads report <see cref="PlatformUnavailableReason.BackendUnavailable"/>
+    /// and the diagnostic <c>network-monitor-unavailable</c>.
+    /// </para>
+    /// <para>A watch reports <see cref="PlatformResult{T}.Unavailable"/> when the portal or NetworkManager stops and a
+    /// fresh state once one answers again. It needs no window and connects to nothing until the first request.</para>
+    /// </remarks>
+    public IDesktopNetworkStatus CreateNetworkStatus() => new NetworkStatusService(new PortalNetworkStatus(this));
     /// <summary>Creates the registration of this application's URL schemes and file types with the desktop, for the
     /// current user.</summary>
     /// <remarks>

@@ -187,7 +187,9 @@ implementation that does not override the member reports `OwnerUnavailable`.
 ### Message boxes
 
 `MessageBoxes` (`IDesktopMessageBoxes`) shows a native message box modal to the
-window: a task dialog on Windows, a sheet (`NSAlert`) on macOS. Use one where the
+window: a task dialog on Windows, a sheet (`NSAlert`) on macOS, a
+`GtkMessageDialog` for a GTK 3 window and a `GtkAlertDialog` (GTK 4.10 and later)
+for a GTK 4 window. Use one where the
 page cannot answer, such as before it loaded, while it is busy, or for a close
 confirmation in `GuardClose` that must follow the platform's button order and
 keys; screen readers announce it as a system alert. Keep ordinary prompts in the
@@ -213,16 +215,20 @@ one `Default` button, which Return chooses, and one `Cancel` button, which Esc
 and the close button choose; without a cancel button Windows and macOS can only
 be answered with a button. Each platform places the buttons by role: Windows
 shows the default button first and the cancel button last, macOS the default
-button rightmost with the cancel button beside it. `Destructive` is styled on
-macOS 11 and later; Windows has no destructive style. `AccessKey` marks a letter
+button rightmost with the cancel button beside it, and GTK the default button
+last with the cancel button before it. Esc in a GTK box without a cancel button
+closes it with `null`. `Destructive` is styled on macOS 11 and later and on GTK 3;
+Windows and GTK 4 alert dialogs have no destructive style, and GTK 4 alert dialogs
+show no icon. `AccessKey` marks a letter
 as for menu items; `&` and `_` in a label are shown as written. `Title` is the
-caption on Windows (the owner window's title when `null`); macOS sheets have no
-title. A right-to-left window on Windows gets a mirrored dialog; macOS follows the
+caption on Windows (the owner window's title when `null`) and the GTK 3 title;
+macOS sheets and GTK 4 alert dialogs have none. A right-to-left window on Windows
+and GTK 3 gets a right-to-left box; macOS and GTK 4 alert dialogs follow the
 application's language. Cancelling the token closes the box and throws. The
 capability is `PlatformCapabilityIds.MessageBoxes`: `OwnerUnavailable` before the
 window opens and on hosts without a native owner, `OwnerClosed` after it closed
 (closing the window closes its box), `BackendUnavailable` where Windows cannot
-activate Common Controls 6, and `ProviderNotConfigured` on Linux in this release.
+activate Common Controls 6 or GTK 4 is older than 4.10.
 `DesktopMessageBoxes.Unavailable(reason)` stands in where there are none, and an
 implementation that does not override the member reports `OwnerUnavailable`.
 
@@ -345,7 +351,7 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's) and sheets (macOS); `ProviderNotConfigured` on Linux | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's), sheets (macOS), GTK 3 message dialogs and GTK 4 alert dialogs | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
@@ -867,12 +873,12 @@ await foreach (var result in network.WatchAsync(cancellationToken))
 | --- | --- |
 | Windows | The Network List Manager's connectivity hint (Windows 10 version 2004 and later; earlier `Unavailable(BackendUnavailable)`). Its check reports a captive portal, and a network whose check failed otherwise, as constrained internet access, which is `CaptivePortal`. A fixed or variable cost, a connection over its data limit and roaming are metered |
 | macOS | Network.framework's path monitor. macOS has no public captive-portal or internet check: an available network has `Unknown` connectivity. Expensive paths (cellular, a personal hotspot) and constrained ones (Low Data Mode) are metered |
+| Linux | The NetworkMonitor desktop portal, which xdg-desktop-portal answers for sandboxed and unsandboxed applications; NetworkManager on the system bus where no portal answers. Both report captive portals and metered connections. Neither answering is `Unavailable(BackendUnavailable)` with the `network-monitor-unavailable` diagnostic |
 
 When the source goes away, the watch reports `Unavailable` and continues with a
 fresh state once it is back; without a source it reports `Unavailable` once and
 waits. `DesktopPlatformServices.CreateNetworkStatus()` and
-`AddRunicPlatformServices()` create one instance for the application; Linux
-reports `Unavailable(ProviderNotConfigured)` in this release. Hosts without a
+`AddRunicPlatformServices()` create one instance for the application. Hosts without a
 provider register `DesktopNetworkStatus.Unavailable(reason)`.
 
 ## Thumbnails

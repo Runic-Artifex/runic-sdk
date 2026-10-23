@@ -381,10 +381,12 @@ The same Window and `async host => ...` body run on CS-WebUI with
 - `AddRunicPlatformServices()` also registers `IDesktopNetworkStatus`, one
   singleton created by `DesktopPlatformServices.CreateNetworkStatus()`: online,
   metered and captive portal, read or watched, from the Network List Manager's
-  connectivity hint on Windows and Network.framework's path monitor on macOS; see
+  connectivity hint on Windows, Network.framework's path monitor on macOS and the
+  NetworkMonitor portal or NetworkManager on Linux; see
   [Network status](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#network-status).
   Per window it registers `IDesktopMessageBoxes`, the window's native message
-  boxes: task dialogs on Windows, also for a WPF window, and sheets on macOS; see
+  boxes: task dialogs on Windows, also for a WPF window, sheets on macOS and GTK
+  message or alert dialogs on Linux; see
   [Message boxes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#message-boxes).
 - The secret store and the application database are registered without an
   application ID, also by `AddRunicPlatformServices(applicationId)`.

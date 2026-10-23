@@ -22,11 +22,21 @@ internal sealed class PortalConnection
     internal static string? RegisteredIdentity(PortalApplication? application) =>
         application?.ApplicationId is { } id && !File.Exists("/.flatpak-info") && Environment.GetEnvironmentVariable("SNAP") is null ? id : null;
 
-    internal static async Task<PortalConnection> OpenAsync(string? address, string destination,
+    internal static Task<PortalConnection> OpenAsync(string? address, string destination,
         PortalApplication? application, CancellationToken cancellationToken)
     {
         string? identity = RegisteredIdentity(application);
-        var link = await PortalBus.Session(address, identity).ConnectAsync(cancellationToken).ConfigureAwait(false);
+        return OpenAsync(PortalBus.Session(address, identity), identity, destination, application, cancellationToken);
+    }
+
+    // A service on the system bus, such as NetworkManager, bound to its owner as a portal call is; no identity is registered.
+    internal static Task<PortalConnection> OpenSystemAsync(string? address, string destination, CancellationToken cancellationToken) =>
+        OpenAsync(PortalBus.System(address), null, destination, null, cancellationToken);
+
+    private static async Task<PortalConnection> OpenAsync(PortalBus bus, string? identity, string destination,
+        PortalApplication? application, CancellationToken cancellationToken)
+    {
+        var link = await bus.ConnectAsync(cancellationToken).ConfigureAwait(false);
         var connection = link.Connection;
         // The watch follows the name from before this query, so a change after it is never missed; the query itself is
         // current even when the watch has not read the latest change yet.
