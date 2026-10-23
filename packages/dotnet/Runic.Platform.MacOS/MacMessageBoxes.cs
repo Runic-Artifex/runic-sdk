@@ -22,6 +22,8 @@ internal sealed class MacMessageBoxes(INativeWindowOwner owner) : IDesktopMessag
         var generation = owner.Generation;
         var result = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         nint alert = 0, window = 0;
+        // Set by the sheet's completion on the main thread; the cancellation reports before the sheet ends.
+        bool answered = false;
         Task ending = Task.CompletedTask;
         CancellationTokenRegistration registration = default;
         try
@@ -56,7 +58,7 @@ internal sealed class MacMessageBoxes(INativeWindowOwner owner) : IDesktopMessag
                 }
                 window = handle;
                 Send(window, Sel("retain"));
-                var completion = MacDesktopBlock.Response(response => result.TrySetResult(response));
+                var completion = MacDesktopBlock.Response(response => { answered = true; result.TrySetResult(response); });
                 try { Args(alert, Sel("beginSheetModalForWindow:completionHandler:"), window, completion); }
                 finally { MacDesktopBlock.Release(completion); }
                 Shown?.Invoke(alert);
@@ -66,7 +68,7 @@ internal sealed class MacMessageBoxes(INativeWindowOwner owner) : IDesktopMessag
                 ending = MacOsMainQueue.InvokeAsync(() =>
                 {
                     using var pool = new Pool();
-                    if (!result.Task.IsCompleted) Args(window, Sel("endSheet:returnCode:"), Send(alert, Sel("window")), 0);
+                    if (!answered) Args(window, Sel("endSheet:returnCode:"), Send(alert, Sel("window")), 0);
                 }).AsTask();
                 result.TrySetCanceled(cancellationToken);
             });
