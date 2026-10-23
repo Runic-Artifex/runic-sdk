@@ -294,7 +294,7 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
     /// <see cref="DesktopWindowCapabilities.Move"/> and <see cref="DesktopWindowCapabilities.MonitorPlacement"/> only on X11.
     /// </remarks>
     public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities | DesktopWindowCapabilities.Announcements |
-        Gtk4WindowHost.PositionCapabilities;
+        Gtk4WindowHost.PositionCapabilities | Gtk4WindowHost.DragCapabilities;
 
     /// <inheritdoc />
     /// <remarks>
@@ -470,7 +470,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     // FileDrop only once WebKit's drop target was found; see Gtk4FileDrops.
     public DesktopWindowCapabilities Capabilities => (_window is null || _receivesFileDrops ? SupportedCapabilities : SupportedCapabilities & ~DesktopWindowCapabilities.FileDrop) |
-        (Gtk4Announcement.IsAvailable ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) | PositionCapabilities;
+        (Gtk4Announcement.IsAvailable ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) | PositionCapabilities |
+        DragCapabilities;
 
     // GTK 4 positions windows only on X11 (Gtk4X11Placement).
     internal static DesktopWindowCapabilities PositionCapabilities =>
@@ -796,7 +797,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             if (contentManager.RegisterScriptMessageHandler(FileDropSupport.WebKitMessageHandler, WebKitGtkKeyboard.ScriptWorld))
             {
                 UserContentManager.ScriptMessageReceivedSignal.Connect(contentManager, OnFileDropMessage, false, FileDropSupport.WebKitMessageHandler);
-                using var dropScript = UserScript.NewForWorld(FileDropSupport.WebKitScript, UserContentInjectedFrames.TopFrame,
+                // In every frame, so drops into same-origin frames carry their label; the handler checks the frame origin.
+                using var dropScript = UserScript.NewForWorld(FileDropSupport.WebKitScript, UserContentInjectedFrames.AllFrames,
                     UserScriptInjectionTime.Start, WebKitGtkKeyboard.ScriptWorld, null, null);
                 contentManager.AddScript(dropScript);
             }
@@ -1057,9 +1059,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         }
     }
 
+    // The script runs in every frame (D037.2); a report from a subframe of another origin than the presented one refuses
+    // the drop. The page's effect chooses among the actions the drop offers (Gtk4FileDrops).
     private void OnFileDropMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
     {
-        if (IsOpen) _drops?.PageReport(FileDropSupport.DecodeLabel(args.Value.ToString()));
+        if (!IsOpen) return;
+        var report = FileDropSupport.DecodeReport(args.Value.ToString());
+        _drops?.PageReport(report.Label, refused: !GtkDragSupport.AcceptsReport(_presentedUrl, report.Origin), report.Effect);
     }
 
     private void OnMediaFramesMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
@@ -1068,9 +1074,10 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         _mediaFrames?.Receive(args.Value.ToString());
     }
 
-    internal void NativeFileDrop(IReadOnlyList<string> paths)
+    // The drop's paths and the actions it offers (gdk_drop_get_actions).
+    internal void NativeFileDrop(IReadOnlyList<string> paths, Runic.Platform.DesktopDragEffects offered)
     {
-        if (IsOpen) _drops?.NativeDrop(paths);
+        if (IsOpen) _drops?.NativeDrop(paths, [], GtkDragSupport.OfferedDropEffect(offered), offered);
     }
 
     private void DetachZoomHandlers(Gtk.EventControllerKey? keys, UserContentManager? contentManager)
@@ -1725,6 +1732,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             return;
         }
+        ReleaseDragOut();
         _drops?.Dispose();
         Gtk4FileDrops.Disconnect(this);
         DisconnectDownloads();

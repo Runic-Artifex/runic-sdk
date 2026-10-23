@@ -138,6 +138,11 @@ would leave the page without its drop event; Runic instead adds GLib emission
 hooks for WebKit's target, reads the drop's `GdkFileList` when the drag is
 accepted, and delivers the paths when the drop happens, while WebKit performs
 the drop as before. See [File drops](../Runic.Desktop/README.md#file-drops).
+The window also reports `DesktopWindowCapabilities.FileDrag`:
+`DesktopWindow.StartDragAsync` starts `gdk_drag_begin` with the paths as a
+`GdkFileList` while the primary button is held; on X11, GTK 4 cancels such a
+drag only when it is dropped where nothing accepts it, not on Escape. See
+[Dragging files out](../Runic.Desktop/README.md#dragging-files-out).
 
 The native smoke runs GTK4/WebKit6 under isolated X11: bridge JavaScript,
 close veto/retry, sequential DesktopHost windows, capability reporting, GTK
