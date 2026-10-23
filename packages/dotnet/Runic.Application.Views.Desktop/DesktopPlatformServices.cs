@@ -662,6 +662,36 @@ public static partial class DesktopPlatformServices
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopVolumes CreateWindowsVolumes() => WindowsPlatformProvider.CreateVolumes();
 
+    /// <summary>Creates the computer's network status for the operating system: online, metered and captive portal.</summary>
+    /// <returns>Application-scoped network status that the caller disposes at shutdown.</returns>
+    /// <remarks>
+    /// Windows reads the Network List Manager's connectivity hint (Windows 10 version 2004 and later), whose check also
+    /// finds captive portals; macOS follows Network.framework's path monitor, which has no captive-portal check, so its
+    /// connectivity is <see cref="DesktopNetworkConnectivity.Unknown"/> while a network is available. Elsewhere the
+    /// status reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>. It needs no window.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopNetworkStatus CreateNetworkStatus()
+    {
+        IDesktopNetworkStatus? status = null;
+        if (OperatingSystem.IsWindows()) status = Optional(CreateWindowsNetworkStatus);
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsMacOS()) status = CreateMacOSNetworkStatus();
+#endif
+        return status ?? DesktopNetworkStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopNetworkStatus CreateWindowsNetworkStatus() => WindowsPlatformProvider.CreateNetworkStatus();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopNetworkStatus CreateMacOSNetworkStatus() => MacOSPlatformProvider.CreateNetworkStatus();
+#endif
+
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -978,7 +1008,8 @@ public static partial class DesktopPlatformServices
     private static NativeServices CreateWindows(INativeWindowOwner owner) => new(
         WindowsPlatformProvider.CreateFileDialogs(owner),
         WindowsPlatformProvider.CreateTextClipboard(owner),
-        Optional(() => WindowsPlatformProvider.CreateFileLauncher(owner)));
+        Optional(() => WindowsPlatformProvider.CreateFileLauncher(owner)),
+        Optional(() => WindowsPlatformProvider.CreateMessageBoxes(owner)));
 
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -986,7 +1017,8 @@ public static partial class DesktopPlatformServices
     private static NativeServices CreateMacOS(DesktopNativeOwner owner) => new(
         MacOSPlatformProvider.CreateFileDialogs(owner),
         MacOSPlatformProvider.CreateTextClipboard(owner),
-        MacOSPlatformProvider.CreateFileLauncher(owner));
+        MacOSPlatformProvider.CreateFileLauncher(owner),
+        MacOSPlatformProvider.CreateMessageBoxes(owner));
 
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1012,7 +1044,9 @@ public static partial class DesktopPlatformServices
         catch (PlatformNotSupportedException) { return null; }
     }
 
-    internal readonly record struct NativeServices(IPickerBackend Dialogs, ITextClipboard? Clipboard, IDesktopFileLauncher? Launcher);
+    // A provider without message boxes leaves them null, which reports ProviderNotConfigured.
+    internal readonly record struct NativeServices(IPickerBackend Dialogs, ITextClipboard? Clipboard, IDesktopFileLauncher? Launcher,
+        IDesktopMessageBoxes? MessageBoxes = null);
 
     private sealed class BoundWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
     {
@@ -1020,6 +1054,7 @@ public static partial class DesktopPlatformServices
         private readonly PresentationFiles _files;
         private readonly PresentationClipboard _clipboard;
         private readonly PresentationFileLauncher _launcher;
+        private readonly PresentationMessageBoxes _messageBoxes;
 
         public BoundWindowPlatformServices(INativeWindowOwner owner, NativeServices native, IDesktopMonitors? monitors = null)
         {
@@ -1029,18 +1064,20 @@ public static partial class DesktopPlatformServices
             _files = new PresentationFiles(_lifetime, native.Dialogs);
             _clipboard = new PresentationClipboard(_lifetime, native.Clipboard);
             _launcher = new PresentationFileLauncher(_lifetime, native.Launcher);
+            _messageBoxes = new PresentationMessageBoxes(_lifetime, native.MessageBoxes);
         }
 
         public IFileDialogs FileDialogs => _files;
         public ITextClipboard Clipboard => _clipboard;
         public IDesktopFileLauncher FileLauncher => _launcher;
+        public IDesktopMessageBoxes MessageBoxes => _messageBoxes;
 
         // A WPF window lists the monitors of Windows, which need no Desktop window.
         public IDesktopMonitors Monitors { get; }
 
         public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation,
             _files.GetSnapshot().Statuses.SetItems(_clipboard.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses)
-                .SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value));
+                .SetItems(_messageBoxes.GetSnapshot().Statuses).SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value));
 
         public async ValueTask DisposeAsync()
         {
@@ -1080,7 +1117,11 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
 
-    internal DesktopWindowPlatformServices() => Monitors = new WindowMonitors(this);
+    internal DesktopWindowPlatformServices()
+    {
+        Monitors = new WindowMonitors(this);
+        MessageBoxes = new WindowMessageBoxes(this);
+    }
 
     /// <summary>Gets the provider selected when the window opened, or <see cref="DesktopPlatformProvider.None"/> before that.</summary>
     public DesktopPlatformProvider Provider { get { lock (_gate) return _provider; } }
@@ -1188,6 +1229,23 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
 
         public IAsyncEnumerable<PlatformResult<ImmutableArray<DesktopMonitor>>> WatchAsync(CancellationToken cancellationToken = default) =>
             services.CurrentMonitors.WatchAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Task dialogs on Windows, also for a WPF window, and sheets on macOS, once the window opens. Before that they report
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and after these services stop
+    /// <see cref="PlatformUnavailableReason.OwnerClosed"/>; stopping closes a box that is shown. The instance stays the
+    /// same, so a ViewModel can keep it from its constructor.
+    /// </remarks>
+    public IDesktopMessageBoxes MessageBoxes { get; }
+
+    private sealed class WindowMessageBoxes(DesktopWindowPlatformServices services) : IDesktopMessageBoxes, IDesktopServiceStatus
+    {
+        public CapabilityStatus Status => DesktopServiceStatus.Get(services.Current.MessageBoxes);
+
+        public ValueTask<PlatformResult<DesktopMessageBoxButton?>> ShowAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken = default) =>
+            services.Current.MessageBoxes.ShowAsync(messageBox, cancellationToken);
     }
 
     /// <summary>Asks the screen reader to announce a message for the window, such as the result of an action.</summary>
@@ -1307,10 +1365,10 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
     /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMonitors"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
+    /// <see cref="IDesktopFileLauncher"/>, <see cref="IDesktopMonitors"/> and <see cref="IDesktopMessageBoxes"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
-    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopApplications"/>, <see cref="IDesktopThumbnails"/> and
+    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopApplications"/>, <see cref="IDesktopThumbnails"/> and
     /// <see cref="IDesktopFileBookmarks"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
@@ -1325,7 +1383,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateSecretStore()"/>, <see cref="DesktopPlatformServices.CreateTrash()"/>,
-    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
+    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
     /// and <see cref="DesktopPlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
@@ -1386,6 +1444,7 @@ public static class DesktopPlatformServiceCollectionExtensions
             services.TryAddSingleton(provider => DesktopPlatformServices.CreateOpenRegistration(applicationId,
                 provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateVolumes());
+        services.TryAddSingleton(static _ => DesktopPlatformServices.CreateNetworkStatus());
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateApplications(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateThumbnails(
@@ -1396,6 +1455,7 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileLauncher);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Monitors);
+        services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().MessageBoxes);
         return services;
     }
 }

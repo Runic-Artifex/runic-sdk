@@ -23,6 +23,83 @@ internal sealed class MacAppKitNativeTests
         await LoginItemAsync();
         await PresentationAsync(cancellationToken);
         await FilterChoiceAsync();
+        await MessageBoxesAsync(cancellationToken);
+    }
+
+    // NSAlert sheets on a Desktop window, answered in process with performClick: (the runner grants no Accessibility
+    // permission for synthesized keys); the key equivalents show which buttons Return and Esc choose.
+    private static async Task MessageBoxesAsync(CancellationToken cancellationToken)
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WaitForConnection = false }, cancellationToken);
+        await using var surface = await host.CreateSurfaceAsync(new()
+        {
+            Content = new DesktopContent.Html("<!doctype html><meta charset=\"utf-8\"><title>Runic message boxes</title><p>Message boxes</p>"),
+        }, cancellationToken);
+        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, Width = 480, Height = 320 }, cancellationToken);
+        var owner = new WindowOwner(window);
+        var save = new DesktopMessageBoxButton("save", "Save") { Role = DesktopMessageBoxButtonRole.Default };
+        var discard = new DesktopMessageBoxButton("discard", "Don't Save") { Role = DesktopMessageBoxButtonRole.Destructive };
+        var cancel = new DesktopMessageBoxButton("cancel", "Cancel") { Role = DesktopMessageBoxButtonRole.Cancel };
+        var close = new DesktopMessageBox("Save changes?") { Detail = "Your changes are lost otherwise.", Kind = DesktopMessageBoxKind.Warning, Buttons = [discard, cancel, save] };
+
+        string layout = "";
+        var result = await ShowAsync(owner, close, alert =>
+        {
+            layout = string.Join(";", Buttons(alert).Select(static button =>
+                $"{Text(Send(button, Sel("title")))}[{Text(Send(button, Sel("keyEquivalent"))).Replace("\r", "Return", StringComparison.Ordinal).Replace("\u001b", "Esc", StringComparison.Ordinal)}]" +
+                (BoolArg(button, Sel("respondsToSelector:"), Sel("hasDestructiveAction")) != 0 && Bool(button, Sel("hasDestructiveAction")) != 0 ? "!" : "")));
+            return Buttons(alert)[0];
+        }, cancellationToken);
+        Require(layout == "Save[Return];Cancel[Esc];Don't Save[]!", $"Unexpected sheet buttons {layout}.");
+        Require(result is PlatformResult<DesktopMessageBoxButton?>.Success(var saved) && saved == save, $"The default button's click: {result}.");
+        result = await ShowAsync(owner, close, alert => Buttons(alert)[1], cancellationToken);
+        Require(result is PlatformResult<DesktopMessageBoxButton?>.Success(var cancelled) && cancelled == cancel, $"The cancel button's click: {result}.");
+        Pass($"the sheet orders the buttons, keys Return and Esc, marks the destructive one and returns the clicked button: {layout}");
+
+        result = await ShowAsync(owner, new DesktopMessageBox("Exported."), alert => Buttons(alert) is [var only] ? only : 0, cancellationToken);
+        Require(result is PlatformResult<DesktopMessageBoxButton?>.Success(null), $"A box without buttons: {result}.");
+        Pass("a box without buttons shows NSAlert's OK and answers null");
+
+        var boxes = new MacMessageBoxes(owner);
+        var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
+        boxes.Shown = alert => shown.TrySetResult(alert);
+        using (var cancellation = new CancellationTokenSource())
+        {
+            var pending = boxes.ShowAsync(close, cancellation.Token).AsTask();
+            var alert = await shown.Task.WaitAsync(Step, cancellationToken);
+            cancellation.Cancel();
+            try { await pending.WaitAsync(Step, cancellationToken); throw new InvalidOperationException("A cancelled sheet returned."); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+            await WaitAsync(() => WindowAsync(owner, static handle => Send(handle, Sel("attachedSheet")) == 0), "the cancelled sheet ends");
+        }
+        Pass("cancellation ends the sheet");
+        await window.CloseAsync(cancellationToken);
+        Require(await new MacMessageBoxes(owner).ShowAsync(close, cancellationToken) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "A closed window's box.");
+        Pass("a closed window reports its boxes closed");
+    }
+
+    // Shows a sheet and clicks the button that choose picks, on the main thread once the sheet began.
+    private static async Task<PlatformResult<DesktopMessageBoxButton?>> ShowAsync(INativeWindowOwner owner, DesktopMessageBox box, Func<nint, nint> choose,
+        CancellationToken cancellationToken)
+    {
+        var boxes = new MacMessageBoxes(owner);
+        var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
+        boxes.Shown = alert => shown.TrySetResult(alert);
+        var pending = boxes.ShowAsync(box, cancellationToken).AsTask();
+        var alert = await shown.Task.WaitAsync(Step, cancellationToken);
+        await MacOsMainQueue.InvokeAsync(() =>
+        {
+            using var pool = new Pool();
+            Arg(choose(alert), Sel("performClick:"), 0);
+        });
+        return await pending.WaitAsync(Step, cancellationToken);
+    }
+
+    private static nint[] Buttons(nint alert)
+    {
+        var buttons = Send(alert, Sel("buttons"));
+        return [.. Enumerable.Range(0, (int)Send(buttons, Sel("count"))).Select(index => Arg(buttons, Sel("objectAtIndex:"), index))];
     }
 
     // The file panel's filter pop-up (ShowsFilterChoice): the registered target class swaps allowedContentTypes. The

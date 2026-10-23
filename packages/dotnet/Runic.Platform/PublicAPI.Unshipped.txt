@@ -218,3 +218,87 @@ static Runic.Platform.DesktopFileType.operator ==(Runic.Platform.DesktopFileType
 static Runic.Platform.DesktopOpenRegistration.operator !=(Runic.Platform.DesktopOpenRegistration? left, Runic.Platform.DesktopOpenRegistration? right) -> bool
 static Runic.Platform.DesktopOpenRegistration.operator ==(Runic.Platform.DesktopOpenRegistration? left, Runic.Platform.DesktopOpenRegistration? right) -> bool
 static Runic.Platform.DesktopOpenRegistrations.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopOpenRegistration!
+Runic.Platform.DesktopMessageBox
+Runic.Platform.DesktopMessageBox.<Clone>$() -> Runic.Platform.DesktopMessageBox!
+Runic.Platform.DesktopMessageBox.Buttons.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMessageBoxButton!>
+Runic.Platform.DesktopMessageBox.Buttons.init -> void
+Runic.Platform.DesktopMessageBox.Deconstruct(out string! Message) -> void
+Runic.Platform.DesktopMessageBox.DesktopMessageBox(string! Message) -> void
+Runic.Platform.DesktopMessageBox.Detail.get -> string?
+Runic.Platform.DesktopMessageBox.Detail.init -> void
+Runic.Platform.DesktopMessageBox.Equals(Runic.Platform.DesktopMessageBox? other) -> bool
+Runic.Platform.DesktopMessageBox.Kind.get -> Runic.Platform.DesktopMessageBoxKind
+Runic.Platform.DesktopMessageBox.Kind.init -> void
+Runic.Platform.DesktopMessageBox.Message.get -> string!
+Runic.Platform.DesktopMessageBox.Message.init -> void
+Runic.Platform.DesktopMessageBox.OwnerPolicy.get -> Runic.Platform.OwnerPolicy
+Runic.Platform.DesktopMessageBox.OwnerPolicy.init -> void
+Runic.Platform.DesktopMessageBox.Title.get -> string?
+Runic.Platform.DesktopMessageBox.Title.init -> void
+Runic.Platform.DesktopMessageBoxButton
+Runic.Platform.DesktopMessageBoxButton.<Clone>$() -> Runic.Platform.DesktopMessageBoxButton!
+Runic.Platform.DesktopMessageBoxButton.AccessKey.get -> char?
+Runic.Platform.DesktopMessageBoxButton.AccessKey.init -> void
+Runic.Platform.DesktopMessageBoxButton.Deconstruct(out string! Id, out string! Label) -> void
+Runic.Platform.DesktopMessageBoxButton.DesktopMessageBoxButton(string! Id, string! Label) -> void
+Runic.Platform.DesktopMessageBoxButton.Equals(Runic.Platform.DesktopMessageBoxButton? other) -> bool
+Runic.Platform.DesktopMessageBoxButton.Id.get -> string!
+Runic.Platform.DesktopMessageBoxButton.Id.init -> void
+Runic.Platform.DesktopMessageBoxButton.Label.get -> string!
+Runic.Platform.DesktopMessageBoxButton.Label.init -> void
+Runic.Platform.DesktopMessageBoxButton.Role.get -> Runic.Platform.DesktopMessageBoxButtonRole
+Runic.Platform.DesktopMessageBoxButton.Role.init -> void
+Runic.Platform.DesktopMessageBoxButtonRole
+Runic.Platform.DesktopMessageBoxButtonRole.Cancel = 2 -> Runic.Platform.DesktopMessageBoxButtonRole
+Runic.Platform.DesktopMessageBoxButtonRole.Default = 1 -> Runic.Platform.DesktopMessageBoxButtonRole
+Runic.Platform.DesktopMessageBoxButtonRole.Destructive = 3 -> Runic.Platform.DesktopMessageBoxButtonRole
+Runic.Platform.DesktopMessageBoxButtonRole.Normal = 0 -> Runic.Platform.DesktopMessageBoxButtonRole
+Runic.Platform.DesktopMessageBoxKind
+Runic.Platform.DesktopMessageBoxKind.Error = 3 -> Runic.Platform.DesktopMessageBoxKind
+Runic.Platform.DesktopMessageBoxKind.Information = 1 -> Runic.Platform.DesktopMessageBoxKind
+Runic.Platform.DesktopMessageBoxKind.None = 0 -> Runic.Platform.DesktopMessageBoxKind
+Runic.Platform.DesktopMessageBoxKind.Warning = 2 -> Runic.Platform.DesktopMessageBoxKind
+Runic.Platform.DesktopMessageBoxes
+Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkConnectivity.CaptivePortal = 4 -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkConnectivity.Internet = 5 -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkConnectivity.Limited = 3 -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkConnectivity.Local = 2 -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkConnectivity.None = 1 -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkConnectivity.Unknown = 0 -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkState
+Runic.Platform.DesktopNetworkState.<Clone>$() -> Runic.Platform.DesktopNetworkState!
+Runic.Platform.DesktopNetworkState.Connectivity.get -> Runic.Platform.DesktopNetworkConnectivity
+Runic.Platform.DesktopNetworkState.Connectivity.init -> void
+Runic.Platform.DesktopNetworkState.Deconstruct(out bool IsAvailable) -> void
+Runic.Platform.DesktopNetworkState.DesktopNetworkState(bool IsAvailable) -> void
+Runic.Platform.DesktopNetworkState.Equals(Runic.Platform.DesktopNetworkState? other) -> bool
+Runic.Platform.DesktopNetworkState.IsAvailable.get -> bool
+Runic.Platform.DesktopNetworkState.IsAvailable.init -> void
+Runic.Platform.DesktopNetworkState.IsMetered.get -> bool?
+Runic.Platform.DesktopNetworkState.IsMetered.init -> void
+Runic.Platform.DesktopNetworkStatus
+Runic.Platform.IDesktopMessageBoxes
+Runic.Platform.IDesktopMessageBoxes.ShowAsync(Runic.Platform.DesktopMessageBox! messageBox, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopMessageBoxButton?>!>
+Runic.Platform.IDesktopNetworkStatus
+Runic.Platform.IDesktopNetworkStatus.ReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopNetworkState!>!>
+Runic.Platform.IDesktopNetworkStatus.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopNetworkState!>!>!
+Runic.Platform.IWindowPlatformServices.MessageBoxes.get -> Runic.Platform.IDesktopMessageBoxes!
+const Runic.Platform.PlatformCapabilityIds.MessageBoxes = "platform.messageBoxes" -> string!
+override Runic.Platform.DesktopMessageBox.Equals(object? obj) -> bool
+override Runic.Platform.DesktopMessageBox.GetHashCode() -> int
+override Runic.Platform.DesktopMessageBox.ToString() -> string!
+override Runic.Platform.DesktopMessageBoxButton.Equals(object? obj) -> bool
+override Runic.Platform.DesktopMessageBoxButton.GetHashCode() -> int
+override Runic.Platform.DesktopMessageBoxButton.ToString() -> string!
+override Runic.Platform.DesktopNetworkState.Equals(object? obj) -> bool
+override Runic.Platform.DesktopNetworkState.GetHashCode() -> int
+override Runic.Platform.DesktopNetworkState.ToString() -> string!
+static Runic.Platform.DesktopMessageBox.operator !=(Runic.Platform.DesktopMessageBox? left, Runic.Platform.DesktopMessageBox? right) -> bool
+static Runic.Platform.DesktopMessageBox.operator ==(Runic.Platform.DesktopMessageBox? left, Runic.Platform.DesktopMessageBox? right) -> bool
+static Runic.Platform.DesktopMessageBoxButton.operator !=(Runic.Platform.DesktopMessageBoxButton? left, Runic.Platform.DesktopMessageBoxButton? right) -> bool
+static Runic.Platform.DesktopMessageBoxButton.operator ==(Runic.Platform.DesktopMessageBoxButton? left, Runic.Platform.DesktopMessageBoxButton? right) -> bool
+static Runic.Platform.DesktopMessageBoxes.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopMessageBoxes!
+static Runic.Platform.DesktopNetworkState.operator !=(Runic.Platform.DesktopNetworkState? left, Runic.Platform.DesktopNetworkState? right) -> bool
+static Runic.Platform.DesktopNetworkState.operator ==(Runic.Platform.DesktopNetworkState? left, Runic.Platform.DesktopNetworkState? right) -> bool
+static Runic.Platform.DesktopNetworkStatus.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopNetworkStatus!

@@ -173,6 +173,39 @@ public static class WindowsPlatformProvider
         return new NativePickerBackend(owner, new WindowsFilePicker(owner));
     }
 
+    /// <summary>Creates the computer's network status from the Network List Manager's connectivity hint.</summary>
+    /// <remarks>
+    /// <para>
+    /// Windows reports the connectivity of its own internet check and the cost of the preferred connection
+    /// (<c>GetNetworkConnectivityHint</c>, watched with <c>NotifyNetworkConnectivityHintChange</c>). A captive portal, and
+    /// a network whose check failed in another way, is constrained internet access, which Runic reports as
+    /// <see cref="DesktopNetworkConnectivity.CaptivePortal"/>. A fixed or variable cost, a connection over its data limit
+    /// and roaming are metered.
+    /// </para>
+    /// <para>The API needs Windows 10 version 2004 (build 19041); an older Windows reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. It needs no window.</para>
+    /// </remarks>
+    public static IDesktopNetworkStatus CreateNetworkStatus()
+    {
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+        return OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041) && WindowsNetworkStatus.IsSupported
+            ? new NetworkStatusService(new WindowsNetworkStatus())
+            : DesktopNetworkStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+    }
+
+    // Task dialogs owned by a window, on its thread. Without Common Controls version 6 every box is unavailable.
+    internal static IDesktopMessageBoxes CreateMessageBoxes(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+        return CreateMessageBoxes(owner, WindowsCommonControls.Shared);
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    internal static IDesktopMessageBoxes CreateMessageBoxes(INativeWindowOwner owner, WindowsCommonControls? controls) => controls is not null
+        ? new WindowsMessageBoxes(owner, controls)
+        : DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+
     // Native Unicode text clipboard services for a window.
     internal static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {

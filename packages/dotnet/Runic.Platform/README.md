@@ -159,7 +159,7 @@ launcher of one window, and reports their capabilities together under
 `WindowPlatformServices.CapabilityIds`. Host adapters register it, and its
 parts, per window scope through `services.AddRunicPlatformServices()`, so a
 ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher`,
-`IDesktopMonitors` or `IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
+`IDesktopMonitors`, `IDesktopMessageBoxes` or `IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
 them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
 capabilities all report that reason. Tests can use the same instance.
@@ -182,6 +182,48 @@ and size, its `Scale` and whether it `IsPrimary`, the primary one first.
 ends with the result when reading fails. The monitors come from the window's
 host, such as `DesktopHost.Monitors`, under `PlatformCapabilityIds.Monitors`;
 `DesktopMonitors.Unavailable(reason)` stands in where there are none, and an
+implementation that does not override the member reports `OwnerUnavailable`.
+
+### Message boxes
+
+`MessageBoxes` (`IDesktopMessageBoxes`) shows a native message box modal to the
+window: a task dialog on Windows, a sheet (`NSAlert`) on macOS. Use one where the
+page cannot answer, such as before it loaded, while it is busy, or for a close
+confirmation in `GuardClose` that must follow the platform's button order and
+keys; screen readers announce it as a system alert. Keep ordinary prompts in the
+page, where they follow the application's design.
+
+```csharp
+var save = new DesktopMessageBoxButton("save", "Save") { Role = DesktopMessageBoxButtonRole.Default, AccessKey = 's' };
+var discard = new DesktopMessageBoxButton("discard", "Don't Save") { Role = DesktopMessageBoxButtonRole.Destructive, AccessKey = 'n' };
+var cancel = new DesktopMessageBoxButton("cancel", "Cancel") { Role = DesktopMessageBoxButtonRole.Cancel };
+var result = await services.MessageBoxes.ShowAsync(new DesktopMessageBox("Save changes to “Notes”?")
+{
+    Detail = "Your changes are lost if you don't save them.",
+    Kind = DesktopMessageBoxKind.Warning,
+    Buttons = [save, discard, cancel],
+});
+if (result is PlatformResult<DesktopMessageBoxButton?>.Success { Value.Id: "save" }) await SaveAsync();
+```
+
+`ShowAsync` returns the chosen button, one of `Buttons`, or `null` when the box
+had no buttons of the application (it then shows one localized OK button) or
+GTK closed it without one. A box has at most six buttons with unique ids, at most
+one `Default` button, which Return chooses, and one `Cancel` button, which Esc
+and the close button choose; without a cancel button Windows and macOS can only
+be answered with a button. Each platform places the buttons by role: Windows
+shows the default button first and the cancel button last, macOS the default
+button rightmost with the cancel button beside it. `Destructive` is styled on
+macOS 11 and later; Windows has no destructive style. `AccessKey` marks a letter
+as for menu items; `&` and `_` in a label are shown as written. `Title` is the
+caption on Windows (the owner window's title when `null`); macOS sheets have no
+title. A right-to-left window on Windows gets a mirrored dialog; macOS follows the
+application's language. Cancelling the token closes the box and throws. The
+capability is `PlatformCapabilityIds.MessageBoxes`: `OwnerUnavailable` before the
+window opens and on hosts without a native owner, `OwnerClosed` after it closed
+(closing the window closes its box), `BackendUnavailable` where Windows cannot
+activate Common Controls 6, and `ProviderNotConfigured` on Linux in this release.
+`DesktopMessageBoxes.Unavailable(reason)` stands in where there are none, and an
 implementation that does not override the member reports `OwnerUnavailable`.
 
 The capability identifiers are constants of `PlatformCapabilityIds`, so a typo
@@ -303,13 +345,14 @@ either.
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's) and sheets (macOS); `ProviderNotConfigured` on Linux | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The native menu bar (macOS; the GTK 3 and GTK 4 windows' own bar), while the window is key, and `DesktopWindow.TryExecuteMenuItemAsync` | None | None |
 | Context menus, `IWindowPlatformServices.ShowContextMenuAsync` | The window's native menu where it has `DesktopWindowCapabilities.ContextMenu` (macOS, GTK 3, GTK 4); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopNetworkStatus`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -799,6 +842,38 @@ await volumes.MountAsync(stick.Id, new DesktopVolumeMountOptions { ReadOnly = tr
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)
 has the per-platform behaviour and its verification.
+
+## Network status
+
+`IDesktopNetworkStatus` reports what the operating system knows about the
+network: `ReadAsync` returns a `DesktopNetworkState`, and `WatchAsync` reports the
+current state, then each change; a change that leaves the state as it was is not
+reported. `IsAvailable` says whether a usable route exists (`false` always comes
+with `Connectivity` `None`), `Connectivity` how far it reaches as the operating
+system's own check found (`Local`, `Limited`, `CaptivePortal`, `Internet`, or
+`Unknown` where it does not check), and `IsMetered` whether the connection is
+metered, `null` when unknown. It is the operating system's view, not a promise
+that a server answers: try the request, and use the state to explain a failure
+or postpone work, such as a large download on a metered connection or until the
+user signed in to a captive portal.
+
+```csharp
+await foreach (var result in network.WatchAsync(cancellationToken))
+    if (result is PlatformResult<DesktopNetworkState>.Success(var state))
+        ShowOfflineBanner(!state.IsAvailable || state.Connectivity == DesktopNetworkConnectivity.CaptivePortal);
+```
+
+| Platform | Source |
+| --- | --- |
+| Windows | The Network List Manager's connectivity hint (Windows 10 version 2004 and later; earlier `Unavailable(BackendUnavailable)`). Its check reports a captive portal, and a network whose check failed otherwise, as constrained internet access, which is `CaptivePortal`. A fixed or variable cost, a connection over its data limit and roaming are metered |
+| macOS | Network.framework's path monitor. macOS has no public captive-portal or internet check: an available network has `Unknown` connectivity. Expensive paths (cellular, a personal hotspot) and constrained ones (Low Data Mode) are metered |
+
+When the source goes away, the watch reports `Unavailable` and continues with a
+fresh state once it is back; without a source it reports `Unavailable` once and
+waits. `DesktopPlatformServices.CreateNetworkStatus()` and
+`AddRunicPlatformServices()` create one instance for the application; Linux
+reports `Unavailable(ProviderNotConfigured)` in this release. Hosts without a
+provider register `DesktopNetworkStatus.Unavailable(reason)`.
 
 ## Thumbnails
 
