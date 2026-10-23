@@ -249,7 +249,7 @@ internal sealed partial class ToolTests
     {
         (int exitCode, string help) = RunCli("package", "--help");
         Equal(0, exitCode);
-        foreach (string target in new[] { "windows", "macos", "flatpak", "appimage", "deb", "rpm" }) Contains(help, target);
+        foreach (string target in new[] { "windows", "macos", "flatpak", "appimage", "deb", "rpm", "flathub" }) Contains(help, target);
         (_, string windows) = RunCli("package", "windows", "--help");
         foreach (string option in new[] { "--project", "--configuration", "--runtime", "--output-directory", "-o", "--publisher", "--certificate", "--thumbprint", "--timestamp-url" })
             Contains(windows, option);
@@ -258,7 +258,7 @@ internal sealed partial class ToolTests
             Contains(macos, option);
         (int completionExit, string completion) = RunCli("completion", "bash");
         Equal(0, completionExit);
-        foreach (string word in new[] { "package", "--output-directory", "--notary-profile", "--thumbprint", "--gpg-sign", "appimage" })
+        foreach (string word in new[] { "package", "--output-directory", "--notary-profile", "--thumbprint", "--gpg-sign", "appimage", "--git-url", "--git-tag" })
             Contains(completion, word);
 
         // Conflicting and incomplete signing options are usage errors before any work.
@@ -376,6 +376,113 @@ internal sealed partial class ToolTests
         workspace.Write("icons/icon.svg", "<svg/>");
         Contains(PackageManifests.Fields(withIcon, PackageTarget.Flatpak)["ExtraInstalls"],
             "install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/org.example.Notes.svg");
+    }
+
+    [Test, DisplayName("package flathub lists the NativeAOT lock file's packages and the npm lock file's tarballs")]
+    public void PackageFlathubSources()
+    {
+        string fixture = Path.Combine(RepositoryRoot(), "tests", "fixtures", "flathub", "App");
+        IReadOnlyList<(FlathubNuGetPackage Package, string ContentHash)> locked =
+            FlathubSources.ReadNuGetLock(File.ReadAllText(Path.Combine(fixture, "packages.aot.lock.json")));
+        // Every runtime identifier's packages, once, including both NativeAOT compiler packages.
+        foreach (string id in new[] { "Microsoft.DotNet.ILCompiler", "runtime.linux-x64.Microsoft.DotNet.ILCompiler", "runtime.linux-arm64.Microsoft.DotNet.ILCompiler", "Microsoft.Extensions.DependencyInjection" })
+            Equal(1, locked.Count(entry => entry.Package.Id == id));
+        IReadOnlyList<FlathubNuGetPackage> merged = FlathubSources.Merge([.. locked.Select(entry => entry.Package), new("Microsoft.NETCore.App.Runtime.linux-x64", "10.0.12"), new("microsoft.dotnet.ilcompiler", "10.0.12")]);
+        Equal(locked.Count + 1, merged.Count);
+        string nuget = FlathubSources.NuGetSources([new("Microsoft.DotNet.ILCompiler", "10.0.12")], _ => "ab12");
+        Equal("""
+            [
+              {
+                "type": "file",
+                "url": "https://api.nuget.org/v3-flatcontainer/microsoft.dotnet.ilcompiler/10.0.12/microsoft.dotnet.ilcompiler.10.0.12.nupkg",
+                "sha512": "ab12",
+                "dest": "nuget-sources",
+                "dest-filename": "microsoft.dotnet.ilcompiler.10.0.12.nupkg"
+              }
+            ]
+
+            """, nuget);
+        // The cache's .nupkg.sha512 holds the hash of the signed file in base64.
+        Equal("d27a15fb", FlathubSources.HexFromBase64("0noV+w==\n"));
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.ReadNuGetLock(
+            """{"version":1,"dependencies":{"net10.0":{"A":{"type":"Direct","resolved":"1.0.0"}}}}""")).Code);
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.ReadNuGetLock(
+            """{"version":1,"dependencies":{"net10.0":{"A":{"resolved":"1.0.0","contentHash":"x"}},"net10.0/linux-x64":{"A":{"resolved":"1.0.0","contentHash":"y"}}}}""")).Code);
+
+        using JsonDocument npm = JsonDocument.Parse(FlathubSources.NpmSources(File.ReadAllText(Path.Combine(fixture, "Frontend", "package-lock.json"))));
+        JsonElement tarball = npm.RootElement.EnumerateArray().Single();
+        Equal("https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz", tarball.GetProperty("url").GetString());
+        True(tarball.GetProperty("sha512").GetString()!.StartsWith("e350a27e483a", StringComparison.Ordinal), npm.RootElement.ToString());
+        Equal("flatpak-node/npm-tarballs", tarball.GetProperty("dest").GetString());
+
+        // Packages for another OS or musl are left out; one CPU gets only-arches; workspace links are skipped.
+        string packageLock = """
+            {"lockfileVersion":3,"packages":{"":{"name":"app"},
+              "node_modules/@esbuild/linux-x64":{"version":"0.25.0","resolved":"https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.25.0.tgz","integrity":"sha512-AAAA","os":["linux"],"cpu":["x64"]},
+              "node_modules/@esbuild/linux-arm64":{"version":"0.25.0","resolved":"https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.25.0.tgz","integrity":"sha512-AAAB","os":["linux"],"cpu":["arm64"]},
+              "node_modules/@esbuild/darwin-arm64":{"version":"0.25.0","resolved":"https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.0.tgz","integrity":"sha512-AAAC","os":["darwin"],"cpu":["arm64"]},
+              "node_modules/@rollup/rollup-linux-x64-musl":{"version":"4.0.0","resolved":"https://registry.npmjs.org/x.tgz","integrity":"sha512-AAAD","os":["linux"],"cpu":["x64"],"libc":["musl"]},
+              "node_modules/@esbuild/linux-ia32":{"version":"0.25.0","resolved":"https://registry.npmjs.org/y.tgz","integrity":"sha512-AAAE","os":["linux"],"cpu":["ia32"]},
+              "node_modules/local":{"resolved":"../local","link":true},
+              "node_modules/sha256-only":{"version":"1.0.0","resolved":"https://registry.npmjs.org/z.tgz","integrity":"sha1-AAAA sha256-AAAF"}}}
+            """;
+        using JsonDocument filtered = JsonDocument.Parse(FlathubSources.NpmSources(packageLock));
+        string[] described = [.. filtered.RootElement.EnumerateArray().Select(source =>
+            source.GetProperty("dest-filename").GetString() + "|" + (source.TryGetProperty("only-arches", out JsonElement arches) ? arches[0].GetString() : "all")
+            + "|" + (source.TryGetProperty("sha256", out _) ? "sha256" : "sha512"))];
+        SequenceEqual(["esbuild-linux-x64-0.25.0-000000.tgz|x86_64|sha512", "esbuild-linux-arm64-0.25.0-000001.tgz|aarch64|sha512",
+            "sha256-only-1.0.0-000005.tgz|all|sha256"], described);
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.NpmSources(
+            """{"lockfileVersion":3,"packages":{"node_modules/a":{"version":"1.0.0","resolved":"https://registry.npmjs.org/a.tgz","integrity":"sha1-AAAA"}}}""")).Code);
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.NpmSources(
+            """{"lockfileVersion":3,"packages":{"node_modules/a":{"version":"1.0.0","resolved":"git+ssh://git@github.com/a/a.git#abc"}}}""")).Code);
+    }
+
+    [Test, DisplayName("package flathub writes a source-build manifest pinned to the lock file's runtime")]
+    public void PackageFlathubManifest()
+    {
+        PackageIdentity identity = PackageIdentityFor(["notes"], [new(".notes", null)], dbus: true);
+        string manifest = FlathubPackager.Manifest(
+            new FlathubBuild(identity, "https://example.org/notes.git", null, "v2.1.0", "src/Notes App/Notes.csproj", "src/Notes App/Frontend", "10.0.12", true),
+            "src/Notes App/icons/icon.png", null);
+        foreach (string line in new[]
+        {
+            "app-id: org.example.Notes\n", "runtime: org.gnome.Platform\nruntime-version: '50'\nsdk: org.gnome.Sdk\n",
+            "  - org.freedesktop.Sdk.Extension.dotnet10\n  - org.freedesktop.Sdk.Extension.node24\n",
+            "append-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/node24/bin\n", "RUNIC_RUNTIME: linux-arm64\n",
+            "cd ''src/Notes App/Frontend'' && npm ci --offline", "dotnet publish ''src/Notes App/Notes.csproj'' -c Release -r \"$RUNIC_RUNTIME\" -p:PublishAot=true -p:RuntimeFrameworkVersion=10.0.12 -p:RestoreLockedMode=true",
+            "--source \"$PWD/nuget-sources\"", "      - type: git\n        url: 'https://example.org/notes.git'\n        tag: 'v2.1.0'\n",
+            "      - nuget-sources.json\n      - npm-sources.json\n", "install -Dm644 org.example.Notes.mime.xml", "install -Dm644 org.example.Notes.service",
+            "path: org.example.Notes.service\n", "''#!/bin/sh\\nexec \"/app/lib/Notes/Notes\" \"$@\"\\n'' > /app/bin/Notes",
+            "install -Dm644 ''src/Notes App/icons/icon.png'' /app/share/icons/hicolor/512x512/apps/org.example.Notes.png",
+        })
+        {
+            Contains(manifest, line);
+        }
+        DoesNotContain(manifest, "commit:");
+        DoesNotContain(manifest, "scalable");
+        string withoutFrontend = FlathubPackager.Manifest(
+            new FlathubBuild(identity, "https://example.org/notes.git", "0123abcd", null, "Notes.csproj", null, "10.0.12", false), "icons/icon.png", "icons/icon.svg");
+        DoesNotContain(withoutFrontend, "node24");
+        DoesNotContain(withoutFrontend, "npm ci");
+        DoesNotContain(withoutFrontend, "      - npm-sources.json");
+        Contains(withoutFrontend, "        commit: '0123abcd'\n");
+        Contains(withoutFrontend, "install -Dm644 icons/icon.svg /app/share/icons/hicolor/scalable/apps/org.example.Notes.svg");
+
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubPackager.Validate(new PackageOptions(PackageTarget.Flathub), "linux")).Code);
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubPackager.Validate(
+            new PackageOptions(PackageTarget.Flathub) { GitCommit = "a", GitTag = "b" }, "linux")).Code);
+        Equal(PackageCodes.WrongOperatingSystem, Throws<DevUsageException>(() => FlathubPackager.Validate(
+            new PackageOptions(PackageTarget.Flathub) { GitTag = "v1", Build = true }, "osx")).Code);
+        FlathubPackager.Validate(new PackageOptions(PackageTarget.Flathub) { GitTag = "v1" }, "win");
+
+        // On the command line: --git-url is required, and the commit and tag conflict.
+        Equal(2, RunCli("package", "flathub", "--git-tag", "v1").ExitCode);
+        Equal(2, RunCli("package", "flathub", "--git-url", "https://example.org/a.git", "--git-tag", "v1", "--git-commit", "a").ExitCode);
+        (int exitCode, string output) = RunCli("package", "flathub", "--git-url", "https://example.org/a.git", "--format", "json");
+        Equal(2, exitCode);
+        using JsonDocument document = JsonDocument.Parse(output);
+        Equal(PackageCodes.FlathubSourcesUnavailable, document.RootElement.GetProperty("fault").GetProperty("code").GetString());
     }
 
     private static string RepositoryRoot()

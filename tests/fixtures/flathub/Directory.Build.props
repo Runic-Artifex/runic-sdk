@@ -1,0 +1,3 @@
+<Project>
+  <!-- An independent consumer: nothing from the SDK repository's build applies to it. -->
+</Project>

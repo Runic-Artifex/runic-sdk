@@ -387,7 +387,13 @@ The packaging job's Linux legs install `flatpak-builder`, `rpm`, `appstream` and
 `appimagetool` and the AppImage type2 runtime from their GitHub releases, pinned by
 version and SHA-256 in `.github/workflows/ci.yml`, so `dotnet runic package appimage`
 downloads nothing. To update them, change the URLs and hashes there; GitHub shows each
-release asset's SHA-256.
+release asset's SHA-256. The `flathub` leg builds `tests/fixtures/flathub`, an
+independent project with its own lock files, from a temporary git repository with
+`dotnet runic package flathub --build`; its Flatpak cache entry
+(`flatpak-gnome-50-flathub-…`) also holds the .NET and Node.js SDK extensions. The
+manifest pins the runtime to the fixture's lock file, so a newer .NET SDK needs no new
+lock files; to change a dependency, restore them in a copy outside the repository
+(`dotnet restore -p:PublishAot=true`, then `dotnet restore`) and commit them.
 
 ## Source snapshots and artifacts
 
