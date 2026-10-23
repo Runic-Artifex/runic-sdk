@@ -1902,6 +1902,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 .ToArray(),
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
+            // The log of the open in progress: BeginConnection replaced it before the window is shown.
+            StartupProgress = description => HandshakeLog.Record(description),
             MenuBarPresentation = _menuBarPresentation,
             GlobalMenu = _runtimeOptions?.GlobalMenu ?? true,
             Monitor = _monitor,

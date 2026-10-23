@@ -49,14 +49,21 @@ runs:
     - name: Check the installed browser can start
       shell: bash
       run: |
+        # browser.close() has hung for 48 minutes on win-arm64 after the browser answered, so
+        # closing is time-limited and the whole check has a deadline. Exiting kills the browser.
         bun --input-type=module -e '
           import { chromium } from "playwright-core";
           const started = Date.now();
+          setTimeout(() => { console.error("::error title=Browser check timed out::Chromium did not start and answer within 180 s."); process.exit(1); }, 180000);
           const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, headless: true, timeout: 120000 });
           try {
             const page = await browser.newPage();
             await page.setContent("<title>Runic browser readiness</title>");
             if (await page.title() !== "Runic browser readiness") throw new Error("Browser renderer did not respond");
             console.log(`Chromium ready in ${Date.now() - started} ms`);
-          } finally { await browser.close(); }
+          } finally {
+            const closed = await Promise.race([browser.close().then(() => true), new Promise(resolve => setTimeout(resolve, 30000, false))]);
+            if (!closed) console.log("::warning title=Browser close timed out::Chromium answered but did not close within 30 s; the check exits instead.");
+          }
+          process.exit(0);
         '

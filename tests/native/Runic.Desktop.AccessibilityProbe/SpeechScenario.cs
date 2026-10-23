@@ -19,12 +19,8 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
             var keep = await FindAsync(ControlKind.SpinButton, Fixture.Keep, cancellationToken);
             var fruit = await FindAsync(ControlKind.ListBox, Fixture.Fruit, cancellationToken);
 
-            await ExpectAsync("announcement-polite", Contains(Fixture.PoliteAnnouncement),
-                async () => await client.PressAsync(await FindAsync(ControlKind.Button, Fixture.Announce, cancellationToken), cancellationToken),
-                cancellationToken);
-            await ExpectAsync("announcement-assertive", Contains(Fixture.AssertiveAnnouncement),
-                async () => await client.PressAsync(await FindAsync(ControlKind.Button, Fixture.Alert, cancellationToken), cancellationToken),
-                cancellationToken);
+            await ExpectAnnouncementAsync("announcement-polite", Fixture.PoliteAnnouncement, Fixture.Announce, cancellationToken);
+            await ExpectAnnouncementAsync("announcement-assertive", Fixture.AssertiveAnnouncement, Fixture.Alert, cancellationToken);
             await ExpectAsync("live-region", Contains(Fixture.Saved(2)),
                 async () => await client.PressAsync(await FindAsync(ControlKind.Button, Fixture.Save, cancellationToken), cancellationToken),
                 cancellationToken);
@@ -165,15 +161,49 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
         await RecordAsync(check, expected, mark, cancellationToken);
     }
 
-    private async Task RecordAsync(string check, Expected expected, int mark, CancellationToken cancellationToken)
+    // An announcement made while the screen reader is still speaking can be lost: VoiceOver's sampled phrase showed only
+    // the hints around it, and NVDA once said nothing (I-166). The press waits until the screen reader has been quiet for
+    // a moment; an announcement it still does not say is announced once more, and the check reports the second press.
+    private async Task ExpectAnnouncementAsync(string check, string text, string button, CancellationToken cancellationToken)
+    {
+        var expected = Contains(text);
+        for (var press = 1; press <= 2; press++)
+        {
+            await QuietAsync(cancellationToken);
+            var mark = Mark();
+            await client.PressAsync(await FindAsync(ControlKind.Button, button, cancellationToken), cancellationToken);
+            if (press == 1 && await HeardAsync(mark, expected, SpeechTimeout, cancellationToken) is null)
+            {
+                string heard;
+                lock (_lock) heard = string.Join(" | ", _phrases.Skip(mark));
+                Console.WriteLine($"  {reader.Name} did not say '{text}' after the first press (it said: {heard}); pressing '{button}' again.");
+                continue;
+            }
+            await RecordAsync(check, expected, mark, cancellationToken, press == 2 ? " on the second press" : "");
+            return;
+        }
+    }
+
+    // Until the screen reader has said nothing for 1.5 s, at most 8 s.
+    private async Task QuietAsync(CancellationToken cancellationToken)
+    {
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+        while (DateTime.UtcNow < until)
+        {
+            lock (_lock) if (DateTime.UtcNow - _lastPhrase > TimeSpan.FromMilliseconds(1500)) return;
+            await Task.Delay(100, cancellationToken);
+        }
+    }
+
+    private async Task RecordAsync(string check, Expected expected, int mark, CancellationToken cancellationToken, string note = "")
     {
         var id = Id(check);
         var spoken = await HeardAsync(mark, expected, SpeechTimeout, cancellationToken);
         var gap = expectations.Gap(id);
         string heard;
         lock (_lock) heard = string.Join(" | ", _phrases.Skip(mark));
-        if (spoken is not null && gap is null) report.Pass(id, $"{reader.Name} said '{spoken}'");
-        else if (spoken is not null) report.Pass(id, $"{reader.Name} said '{spoken}' (listed as a known gap: {gap}; update Expectations.cs and the documentation)");
+        if (spoken is not null && gap is null) report.Pass(id, $"{reader.Name} said '{spoken}'{note}");
+        else if (spoken is not null) report.Pass(id, $"{reader.Name} said '{spoken}'{note} (listed as a known gap: {gap}; update Expectations.cs and the documentation)");
         else if (gap is not null) report.Gap(id, $"{reader.Name} did not say '{expected.Text}'; it said: {heard}", gap);
         else report.Fail(id, $"{reader.Name} did not say '{expected.Text}'; it said: {heard}");
     }

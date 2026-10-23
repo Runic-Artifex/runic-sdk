@@ -418,6 +418,9 @@ public sealed record DesktopWindowHostOptions
     /// thread, including the window's own; a sink that throws is logged, not rethrown.
     /// </summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
+
+    // The Bridge handshake log of the presentation (WebUiEmbeddedHostOptions.StartupProgress), for Runic's own hosts.
+    internal Action<string>? StartupProgress { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -554,6 +557,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             AdditionalOrigins = options.AdditionalOrigins,
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
+            StartupProgress = options.StartupProgress,
             MenuBarPresentation = options.MenuBarPresentation,
             GlobalMenu = options.GlobalMenu,
             Monitor = options.Monitor,
