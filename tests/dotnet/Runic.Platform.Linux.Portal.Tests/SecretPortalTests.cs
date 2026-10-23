@@ -173,6 +173,19 @@ internal sealed class SecretPortalTests
         portal.Secret = Secret(4);
         Check(await dismissed.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "via-portal" }, "a failed retrieval is retried");
 
+        // The portal that has not exported Secret yet when the activating call arrives: one more attempt succeeds.
+        portal.MissingFor = 1;
+        portal.Calls = 0;
+        var activating = new SecretPortalStore(destination: connection.UniqueName!, application: application, path: scratch.Keyring);
+        Check(await activating.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "via-portal" }
+            && portal.Calls == 2, $"retried once after UnknownMethod: {portal.Calls} calls");
+        // Still UnknownMethod on the second attempt: reported as before, after exactly two calls.
+        portal.MissingFor = 2;
+        portal.Calls = 0;
+        var still = new SecretPortalStore(destination: connection.UniqueName!, application: application, path: scratch.Keyring);
+        Check(await still.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }
+            && portal.Calls == 2, $"one retry only: {portal.Calls} calls");
+
         portal.Missing = true;
         var missing = new SecretPortalStore(destination: connection.UniqueName!, application: application, path: scratch.Keyring);
         Check(await missing.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
@@ -250,11 +263,15 @@ internal sealed class SecretPortalTests
         public byte[] Secret = [];
         public uint Response;
         public bool Missing;
+        // Answers this many RetrieveSecret calls with UnknownMethod first, as xdg-desktop-portal 1.22 does for the call
+        // that activates it (I-198).
+        public int MissingFor;
         public int Calls;
         public string? HandleToken;
 
         public ValueTask HandleMethodAsync(MethodContext context)
         {
+            if (MissingFor > 0 && context.Request.MemberAsString == "RetrieveSecret") { MissingFor--; Calls++; context.ReplyUnknownMethodError(); return ValueTask.CompletedTask; }
             if (Missing || context.Request.InterfaceAsString != "org.freedesktop.portal.Secret" || context.Request.MemberAsString != "RetrieveSecret")
             { context.ReplyUnknownMethodError(); return ValueTask.CompletedTask; }
             Calls++;
