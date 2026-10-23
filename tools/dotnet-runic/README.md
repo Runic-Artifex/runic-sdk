@@ -748,7 +748,7 @@ CI) or `identity` (your certificate or Developer ID):
 
 Warnings, such as an unsigned package, do not fail the command: human output
 prints `warning RAPPPKG2001: …` lines and the payload lists them with their
-codes ([`RAPPPKG2001`–`2006`](../../docs/diagnostics.md#rapppkg2001)).
+codes ([`RAPPPKG2001`–`2006`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#rapppkg2001)).
 An invalid identity (`RAPPPKG1001`) or a target or runtime of another
 operating system (`RAPPPKG1004`) is a usage error, exit code 2. A missing
 packaging tool (`RAPPPKG1002`), a failed publish (`RAPPPKG1003`), a failing
