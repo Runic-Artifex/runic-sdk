@@ -310,6 +310,11 @@ test('template lanes cover every framework once and run the creator check in one
   const sandbox = steps.findIndex(item => item.run === 'eng/ci/permit-webkit-sandbox.sh');
   assert.ok(sandbox > install && sandbox < steps.indexOf(step));
   assert.equal(steps[sandbox].if, "matrix.desktop-smoke == '1'");
+  // I-195: every lane requires the Chromium Content-Security-Policy check, so its browser installs first.
+  assert.equal(workflow.jobs.templates.env?.RUNIC_TEMPLATE_BROWSER_CHECK, '1');
+  const browser = steps.findIndex(item => item.uses === './.github/actions/install-browser');
+  assert.ok(browser >= 0 && browser < steps.indexOf(step));
+  assert.equal(steps[browser].if, undefined);
   // Each lane verifies only the variants of its framework, so the --linux-gtk 4 (gtk4 flag) variants must belong to
   // the smoke lane's framework, or their smoke would be skipped silently.
   const smokeFrameworks = strategy.matrix.include.filter(item => item['desktop-smoke'] === '1').map(item => item.first);

@@ -148,6 +148,22 @@ export PATH="$package_manager_directory/bin:$PATH"
 [[ "$(cd "$template_tmp" && pnpm --version)" == "$pnpm_version" ]]
 [[ "$(bun --version)" == "$bun_version" ]]
 
+# The browser check (run_browser_check) opens each frontend's production page in Chromium under its real
+# Content-Security-Policy and fails on any violation. RUNIC_TEMPLATE_BROWSER_CHECK=1 requires it (CI), 0 skips it,
+# and auto, the default, runs it when PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH names a browser.
+browser_check="${RUNIC_TEMPLATE_BROWSER_CHECK:-auto}"
+case "$browser_check" in
+  auto) [[ -n "${PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:-}" ]] && browser_check=1 || browser_check=0 ;;
+  0|1) ;;
+  *) echo "RUNIC_TEMPLATE_BROWSER_CHECK must be 0, 1 or auto." >&2; exit 2 ;;
+esac
+if [[ "$browser_check" == 1 ]]; then
+  # The collector must see a violation before its silence can pass a page.
+  bun "$script_directory/check-template-page.mjs" --self-check
+else
+  echo "BROWSER_CSP_SKIPPED|no Chromium (set PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH or RUNIC_TEMPLATE_BROWSER_CHECK=1)"
+fi
+
 npm_archive_version() {
   bun -e '
     const { execFileSync } = require("node:child_process");
@@ -614,6 +630,11 @@ verify_template() {
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   fi
+  # Each frontend's page runs in Chromium under its policy on both hosts: the default Runic Desktop project and the
+  # CS-WebUI variant, both with npm. The policy depends on the frontend alone, so the GTK 4 variant adds nothing.
+  if [[ "$browser_check" == 1 && "$manager" == npm && "$linux_gtk" == 3 ]]; then
+    run_browser_check "$output" "$project_name" "$framework" "$host"
+  fi
   # The smoke lane opens the default Runic Desktop (GTK 3) project once, with
   # npm, and every GTK 4 variant.
   if [[ "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]] &&
@@ -654,6 +675,28 @@ run_generated_tests() {
     exit 1
   fi
   echo "TESTS_OK|$project_name"
+}
+
+# Serves the Release build as a production application does (RUNIC_APPLICATION_SERVE_ONLY, no DOTNET_ENVIRONMENT)
+# and opens its page in Chromium, which must report no Content-Security-Policy violation while the Bridge connects
+# and the Counter View increments. Runic Desktop sends the generated Program.cs policy as a header; CS-WebUI sends no
+# headers. SvelteKit's kit.csp adds a <meta> policy on both hosts.
+run_browser_check() {
+  local output="$1"
+  local project_name="$2"
+  local framework="$3"
+  local host="$4"
+  local options=(--host "$host")
+  [[ "$host" == desktop ]] && options+=(--policy-from "$output/Program.cs")
+  [[ "$framework" == sveltekit ]] && options+=(--meta-policy)
+  local log="$output/browser-check.log"
+  if ! bun "$script_directory/check-template-page.mjs" "${options[@]}" -- \
+    env -C "$output" dotnet "$output/bin/Release/net10.0/$project_name.dll" > "$log" 2>&1; then
+    echo "The $framework $host page failed the browser check." >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
 }
 
 # Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:

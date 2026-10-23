@@ -397,7 +397,10 @@ an old build for changed source.
 The build job packs the package candidates after archiving its outputs, independently
 of test completion, and uploads them as `runic-sdk-<run>`. The package-consumer,
 template and WPF jobs validate these candidates. The two template lanes each run two
-frameworks as named steps.
+frameworks as named steps. Every template lane installs Chromium and opens each
+frontend's production page, served by the Runic Desktop and CS-WebUI projects with
+their real Content-Security-Policy, and fails on any policy violation
+(`RUNIC_TEMPLATE_BROWSER_CHECK=1`, `tests/templates/check-template-page.mjs`).
 Only the final `verify` gate succeeding means all required jobs have passed.
 
 Desktop conformance (`Runic.Desktop.Tests`, a TUnit suite) runs in the native job
