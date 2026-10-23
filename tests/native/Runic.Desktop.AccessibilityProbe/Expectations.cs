@@ -12,11 +12,6 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
         "WebKit posts the page's notifications to VoiceOver, not to an AXObserver of the public API";
     private const string HeardByVoiceOver = WebKitNotifications + "; checked by what VoiceOver says (voiceover-*)";
 
-    // NVDA queues the window's UI Automation notification but speaks one only from the application of the focused
-    // object (event_UIA_notification in NVDAObjects/UIA); the page's focus is in WebView2's browser process.
-    private const string NvdaNotifications = "NVDA speaks a UI Automation notification only from the focused object's "
-        + "application, and the page's focus is in WebView2's browser process";
-
     private const string WebKitGtkLiveRegion = "WebKitGTK sends no AT-SPI event for a changed live region (#318); announce with AnnounceAsync";
 
     // screenReader: the --screen-reader that runs, or null. Its speech checks are named after it (orca-*, nvda-*,
@@ -29,11 +24,9 @@ internal sealed class Expectations(IReadOnlyDictionary<string, string> gaps)
             ["live-region"] = WebKitGtkLiveRegion,
             ["orca-live-region"] = WebKitGtkLiveRegion,
         },
-        "webview2" => new Dictionary<string, string>
-        {
-            ["nvda-announcement-polite"] = NvdaNotifications,
-            ["nvda-announcement-assertive"] = NvdaNotifications,
-        },
+        // NVDA speaks a UI Automation notification only from the focused object's application (event_UIA_notification
+        // in NVDAObjects/UIA). While the page has the focus, in WebView2's browser process, the page announces (I-184).
+        "webview2" => new Dictionary<string, string>(),
         "wkwebview" => new Dictionary<string, string>
         {
             ["number-range"] = "WebKit exposes <input type=\"number\"> as a text field whose AXMinValue and AXMaxValue are 0",

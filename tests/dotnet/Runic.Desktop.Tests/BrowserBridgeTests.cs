@@ -179,6 +179,87 @@ public sealed class BrowserBridgeTests
         }
     }
 
+    // I-184: an announcement the host sends while the page has the focus reaches a live region of the Bridge's own, under
+    // the template's policy (no string evaluation, no inline style). A repeated message is added again, and the region
+    // is visually hidden through the CSSOM without a policy violation.
+    [Test]
+    public async Task AnnouncementReachesTheBridgeLiveRegionUnderTheTemplatePolicyInChromium()
+    {
+        var chrome = FindChrome();
+        if (chrome is null)
+        {
+            return;
+        }
+
+        const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var window = new WebUiWindow();
+        window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(path switch
+        {
+            "/strict.html" => new WebUiContent("""
+                <!doctype html>
+                <html><head><title>WAIT</title><script src="webui.js"></script><script src="strict.js"></script></head>
+                <body data-result="waiting"><main>Page</main></body></html>
+                """u8.ToArray(), "text/html; charset=utf-8", headers: new Dictionary<string, string> { ["Content-Security-Policy"] = Policy }),
+            "/strict.js" => WebUiContent.FromText("""
+                const violations = [];
+                const heard = [];
+                document.addEventListener('securitypolicyviolation', event => violations.push(event.violatedDirective));
+                const observer = new MutationObserver(records => {
+                  for (const record of records) {
+                    const region = record.target;
+                    if (!(region instanceof HTMLElement) || !region.dataset.runicAnnouncer) continue;
+                    for (const line of record.addedNodes) heard.push(`${region.getAttribute('aria-live')}:${line.textContent}`);
+                  }
+                  if (heard.length < 3) return;
+                  observer.disconnect();
+                  const style = getComputedStyle(document.querySelector('[data-runic-announcer=polite]'));
+                  const regions = document.querySelectorAll('[data-runic-announcer]').length;
+                  document.body.dataset.result = `${heard.join('|')}:${regions}:${style.position}:${style.width}:${violations.join(',')}`;
+                  document.title = 'PASS';
+                });
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+                webui.connected.then(() => webui.call('ready')).catch(error => {
+                  globalThis.testError = String(error?.stack ?? error);
+                  document.title = 'FAIL';
+                });
+                """, "text/javascript; charset=utf-8"),
+            _ => null,
+        }));
+        window.Bind("ready", e => _ = Task.Run(async () =>
+        {
+            await window.AnnounceInPageAsync("Saved", DesktopAnnouncementPriority.Polite, timeout.Token);
+            await window.AnnounceInPageAsync("Saved", DesktopAnnouncementPriority.Polite, timeout.Token);
+            await window.AnnounceInPageAsync("Disk full", DesktopAnnouncementPriority.Assertive, timeout.Token);
+        }));
+
+        var url = new Uri(await window.StartServerAsync("unused", timeout.Token), "strict.html");
+        Assert.False(await window.AnnounceInPageAsync("Nobody", DesktopAnnouncementPriority.Polite, timeout.Token));
+        var profile = Directory.CreateTempSubdirectory("runic-desktop-chrome-");
+        using var process = StartChrome(chrome, profile.FullName, url);
+        using var browserOutputLifetime = new CancellationTokenSource();
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError, browserOutputLifetime.Token);
+        try
+        {
+            var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
+            var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, url, timeout.Token);
+            using var devTools = new ClientWebSocket();
+            await devTools.ConnectAsync(debuggerUrl, timeout.Token);
+
+            await WaitForBridgeResultAsync(devTools, "polite:Saved|polite:Saved|assertive:Disk full:2:absolute:1px:", timeout.Token);
+        }
+        finally
+        {
+            try { await StopChromeAsync(process, profile.FullName); }
+            finally
+            {
+                await browserOutputLifetime.CancelAsync();
+                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+            }
+            await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
+        }
+    }
+
     private static async Task WaitForBridgeResultAsync(
         ClientWebSocket socket,
         string expected,

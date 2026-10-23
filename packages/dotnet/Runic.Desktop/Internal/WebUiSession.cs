@@ -274,6 +274,18 @@ internal sealed class WebUiSession : IAsyncDisposable
         return SendPacketAsync(packet, cancellationToken);
     }
 
+    // An announcement to WebUiBridge's reserved raw-data function: "polite" or "assertive", NUL and the message as
+    // UTF-8. The page's bridge adds the message to its live region of that politeness, without evaluating script.
+    public Task AnnounceAsync(string message, bool assertive, CancellationToken cancellationToken)
+    {
+        if (!IsAuthenticated) return Task.CompletedTask;
+        var politeness = assertive ? "assertive"u8 : "polite"u8;
+        var data = new byte[politeness.Length + 1 + Encoding.UTF8.GetByteCount(message)];
+        politeness.CopyTo(data);
+        Encoding.UTF8.GetBytes(message, data.AsSpan(politeness.Length + 1));
+        return SendRawAsync(WebUiBridge.AnnounceFunction, data, cancellationToken);
+    }
+
     public async Task<byte[]> ExecuteJavaScriptAsync(
         string script,
         TimeSpan? timeout,
