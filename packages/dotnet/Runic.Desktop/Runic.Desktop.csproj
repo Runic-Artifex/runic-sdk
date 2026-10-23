@@ -22,6 +22,8 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <!-- The menu model (DesktopMenu, DesktopMenuItem, DesktopShortcut) is shared with status icons (D031.2). -->
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- The Linux global menu exports the window's bar over com.canonical.dbusmenu on the session bus (D036.11). -->
+    <ProjectReference Include="../Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
     <!-- The Bridge of Runic Windows and Views runs over the internal presentation transport: capabilities, scripts in
          every session and the connection identity (D029.2). The exact-version package reference keeps the two in step. -->

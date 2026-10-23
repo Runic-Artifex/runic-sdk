@@ -113,3 +113,5 @@ static Runic.Desktop.DesktopStandardMenuTitles.operator !=(Runic.Desktop.Desktop
 static Runic.Desktop.DesktopStandardMenuTitles.operator ==(Runic.Desktop.DesktopStandardMenuTitles? left, Runic.Desktop.DesktopStandardMenuTitles? right) -> bool
 Runic.Desktop.DesktopSurfaceOptions.ContentSecurityPolicy.get -> string?
 Runic.Desktop.DesktopSurfaceOptions.ContentSecurityPolicy.init -> void
+Runic.Desktop.DesktopWindowHostOptions.GlobalMenu.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.GlobalMenu.init -> void

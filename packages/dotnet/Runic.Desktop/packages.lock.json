@@ -22,6 +22,19 @@
       },
       "runic.platform": {
         "type": "Project"
+      },
+      "runic.platform.linux.dbus": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform": "[0.10.0, )",
+          "Tmds.DBus.Protocol": "[0.95.1, )"
+        }
+      },
+      "Tmds.DBus.Protocol": {
+        "type": "CentralTransitive",
+        "requested": "[0.95.1, )",
+        "resolved": "0.95.1",
+        "contentHash": "IbGhqZAqqgB/DkT70+lAk4MNv95tZtsTMFQ+S3uGy0aTfOkGVeFjeNJsX8dBI/3+CPnO5XW6lRQKGeFEgHElKw=="
       }
     }
   }

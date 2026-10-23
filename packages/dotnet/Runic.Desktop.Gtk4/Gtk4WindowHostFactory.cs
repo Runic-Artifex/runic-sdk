@@ -894,6 +894,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             registered = true;
             Volatile.Write(ref _isOpen, 1);
             UpdateState();
+            // The window is realized, also when hidden, so it has its X11 surface.
+            StartGlobalMenu(options, window);
         }
         catch
         {

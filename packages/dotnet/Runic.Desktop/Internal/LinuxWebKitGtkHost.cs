@@ -175,6 +175,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             if (visible)
             {
                 Api.GtkWidgetShowAll(_window);
+                // The global menu keeps showing the bar.
+                if (_globalPlacement && _menuBar != 0) Api.GtkWidgetHide(_menuBar);
             }
             else
             {
@@ -371,6 +373,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.GtkWidgetHide(_window);
         }
+        // The window is realized now, also when hidden, so it has its X11 window.
+        StartGlobalMenu(options);
 
         Volatile.Write(ref _isOpen, 1);
         UpdateState();

@@ -55,6 +55,10 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
 if (Array.IndexOf(args, "--menus") is var menus and >= 0)
     return MenuSmoke.Run(menus + 1 < args.Length ? args[menus + 1] : "gtk4", args.Contains("--rtl", StringComparer.Ordinal));
 
+// --global-menu gtk3|gtk4 (B10): the bar in the desktop's global menu, with a fake registrar on a private session bus.
+if (Array.IndexOf(args, "--global-menu") is var globalMenu and >= 0)
+    return GlobalMenuSmoke.Run(globalMenu + 1 < args.Length ? args[globalMenu + 1] : "gtk4");
+
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)

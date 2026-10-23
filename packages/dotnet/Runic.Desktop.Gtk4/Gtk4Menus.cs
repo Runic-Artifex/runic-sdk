@@ -31,6 +31,10 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
     private Gtk4MenuModel? _barModel;
     private readonly MenuIdAllocator _barIds = new();
     private GtkMenuShortcuts _shortcuts = GtkMenuShortcuts.Empty;
+    // The planned bar, which the global menu exports too, the window's global menu, and whether it shows the bar now.
+    private ImmutableArray<PlannedMenuEntry> _plan = [];
+    private LinuxGlobalMenu? _globalMenu;
+    private volatile bool _globalPlacement;
     private Gtk4ContextMenu? _contextMenu;
     private Gtk.EventControllerMotion? _pointerMotion;
     private (double X, double Y)? _pointer;
@@ -42,15 +46,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
     }
 
     public DesktopMenuBarPlacement MenuBarPlacement => IsOpen && _options is { } options
-        ? GtkMenus.Placement(options.MenuBarPresentation, options.Frameless, options.Kiosk)
+        ? GtkMenus.Placement(options.MenuBarPresentation, options.Frameless, options.Kiosk, _globalPlacement)
         : DesktopMenuBarPlacement.None;
 
-    // The in-window bar does not move; the Linux global menu raises it later.
-    public event EventHandler? MenuBarPlacementChanged
-    {
-        add { }
-        remove { }
-    }
+    // Raised on the GTK thread when the bar goes into the desktop's global menu or comes back.
+    public event EventHandler? MenuBarPlacementChanged;
 
     // Internal for the smokes: the bar, or null.
     internal Gtk.PopoverMenuBar? MenuBarWidget => _menuBar;
@@ -87,6 +87,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         if (!IsOpen) return;
         var plan = DesktopMenuPlanner.PlanBar(menus, MenuPlatform.Linux);
         _shortcuts = GtkMenuShortcuts.Create(plan);
+        _plan = plan;
+        _globalMenu?.SetMenus(plan);
         if (_menuBar is { } old)
         {
             _menuBox?.Remove(old);
@@ -121,6 +123,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
                 widget.Dispose();
             }
         }
+        // The global menu shows the bar: the window keeps it hidden until the global menu goes away.
+        if (_globalPlacement) bar.SetVisible(false);
         box.Prepend(bar);
         _menuBar = bar;
         _barModel = model;
@@ -346,6 +350,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
     // GTK thread, before the window's native objects are released: an open context menu completes with null.
     private void ReleaseMenus(WebKit.WebView webView)
     {
+        StopGlobalMenu();
         if (_contextMenu is { } session)
         {
             session.Chosen = null;
@@ -366,6 +371,59 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         _menuBox?.Dispose();
         _menuBox = null;
         _shortcuts = GtkMenuShortcuts.Empty;
+        _plan = [];
+    }
+
+    // B10, D036.9: the bar in the desktop's global menu (LinuxGlobalMenu). On X11, a window with the Native presentation
+    // that is not a kiosk exports its bar once it is realized, and LinuxDesktopOptions.GlobalMenu allows it. While the
+    // global menu shows it, the in-window bar is hidden, not removed; a frameless window has none.
+    private void StartGlobalMenu(DesktopWindowHostOptions options, Gtk.Window window)
+    {
+        if (!GtkMenus.UsesGlobalMenu(options.MenuBarPresentation, options.Kiosk, options.GlobalMenu)
+            || Gtk4X11Placement.X11Window(SurfaceOf(window)) is not { Xid: not 0 and <= uint.MaxValue } x11)
+            return;
+        _globalMenu = LinuxGlobalMenu.Start(new GlobalMenuWindow(this), (uint)x11.Xid, _plan);
+    }
+
+    // GTK thread: the bar went into the global menu or came back.
+    private void OnGlobalPlacement(bool global)
+    {
+        if (!IsOpen) return;
+        _globalPlacement = global;
+        _menuBar?.SetVisible(!global);
+        MenuBarPlacementChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // GTK thread, when the window closes.
+    private void StopGlobalMenu()
+    {
+        var menu = _globalMenu;
+        _globalMenu = null;
+        _globalPlacement = false;
+        if (menu is not null) _ = menu.DisposeAsync().AsTask();
+    }
+
+
+    private sealed class GlobalMenuWindow(Gtk4WindowHost host) : ILinuxGlobalMenuWindow
+    {
+        public Task InvokeAsync(Action action, CancellationToken cancellationToken) => Gtk4Dispatcher.Instance.InvokeAsync(() =>
+        {
+            if (host.IsOpen) action();
+        }, cancellationToken);
+
+        public bool CanExecute(DesktopMenuItem item) => host.MenuCommands is { } commands && commands.CanExecute(item);
+
+        public void Execute(DesktopMenuItem item) => host.RunMenuItem(item);
+
+        public void PlacementChanged(bool global) => host.OnGlobalPlacement(global);
+
+        public void Annotate(string serviceName, string objectPath)
+        {
+            if (host._window is { } window && Gtk4X11Placement.X11Window(SurfaceOf(window)) is { Xid: not 0 } x11)
+                LinuxGlobalMenu.X11.Annotate(x11.Display, x11.Xid, serviceName, objectPath);
+        }
+
+        public void Report(DesktopDiagnostic diagnostic) => host._options?.DiagnosticSink?.Invoke(diagnostic);
     }
 
     private static void ReleaseWrappers(Gtk4MenuModel? model, Gtk.PopoverMenuBar? bar)

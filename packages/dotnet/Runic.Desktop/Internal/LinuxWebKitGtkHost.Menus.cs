@@ -25,6 +25,8 @@ internal sealed partial class LinuxWebKitGtkHost
     private nint _menuBar;
     private Gtk3MenuWidgets? _barWidgets;
     private GtkMenuShortcuts _shortcuts = GtkMenuShortcuts.Empty;
+    // The planned bar, which the global menu exports too.
+    private System.Collections.Immutable.ImmutableArray<PlannedMenuEntry> _plan = [];
     private bool _menuSignalsMuted;
     private Gtk3ContextMenu? _contextMenu;
     private nint _triggerEvent;
@@ -36,7 +38,7 @@ internal sealed partial class LinuxWebKitGtkHost
     }
 
     public DesktopMenuBarPlacement MenuBarPlacement => IsOpen && _options is { } options
-        ? GtkMenus.Placement(options.MenuBarPresentation, options.Frameless, options.Kiosk)
+        ? GtkMenus.Placement(options.MenuBarPresentation, options.Frameless, options.Kiosk, _globalPlacement)
         : DesktopMenuBarPlacement.None;
 
     public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default)
@@ -64,6 +66,8 @@ internal sealed partial class LinuxWebKitGtkHost
     {
         var plan = DesktopMenuPlanner.PlanBar(menus, MenuPlatform.Linux);
         _shortcuts = GtkMenuShortcuts.Create(plan);
+        _plan = plan;
+        _globalMenu?.SetMenus(plan);
         if (_menuBar != 0)
         {
             Api.GtkWidgetDestroy(_menuBar);
@@ -78,6 +82,8 @@ internal sealed partial class LinuxWebKitGtkHost
         MenuApi.BoxPackStart(_menuBox, bar, expand: false);
         MenuApi.BoxReorderChild(_menuBox, bar, 0);
         Api.GtkWidgetShowAll(bar);
+        // The global menu shows the bar: the window keeps it hidden until the global menu goes away.
+        if (_globalPlacement) Api.GtkWidgetHide(bar);
         _menuBar = bar;
         _barWidgets = widgets;
     }
@@ -368,6 +374,7 @@ internal sealed partial class LinuxWebKitGtkHost
     // GTK thread, when the window is destroyed: an open context menu completes with null.
     private void ReleaseMenus()
     {
+        StopGlobalMenu();
         if (_contextMenu is { } session)
         {
             session.Chosen = null;
@@ -380,6 +387,7 @@ internal sealed partial class LinuxWebKitGtkHost
         }
         _barWidgets = null;
         _shortcuts = GtkMenuShortcuts.Empty;
+        _plan = [];
         _menuBar = 0;
         _menuBox = 0;
     }

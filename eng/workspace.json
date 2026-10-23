@@ -178,9 +178,21 @@
         "packages/dotnet/Runic.Platform"
       ]
     },
-    "desktop": {
+    "linux-dbus": {
       "dependsOn": [
         "platform-contracts"
+      ],
+      "paths": [
+        "packages/dotnet/Runic.Platform.Linux.DBus",
+        "packages/dotnet/Runic.Platform.Linux.DBus.Generator",
+        "tests/dotnet/Runic.Platform.Linux.DBus.Tests",
+        "tests/dotnet/Runic.Platform.Linux.DBus.Generator.Tests"
+      ]
+    },
+    "desktop": {
+      "dependsOn": [
+        "platform-contracts",
+        "linux-dbus"
       ],
       "paths": [
         "packages/dotnet/Runic.Desktop",
@@ -386,10 +398,6 @@
         "tests/native/Runic.Lifetime.Smoke",
         "packages/dotnet/Runic.Platform.Linux.Polkit",
         "tests/dotnet/Runic.Platform.Linux.Polkit.Tests",
-        "packages/dotnet/Runic.Platform.Linux.DBus",
-        "packages/dotnet/Runic.Platform.Linux.DBus.Generator",
-        "tests/dotnet/Runic.Platform.Linux.DBus.Tests",
-        "tests/dotnet/Runic.Platform.Linux.DBus.Generator.Tests",
         "tests/native/Runic.Privileged.Smoke",
         "tests/native/Runic.Volumes.Smoke",
         "packages/dotnet/Runic.Platform.Windows.Elevation",

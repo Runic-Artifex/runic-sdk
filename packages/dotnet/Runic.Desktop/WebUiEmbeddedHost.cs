@@ -182,6 +182,9 @@ internal sealed record WebUiEmbeddedHostOptions
     /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
+    /// <summary>Whether a Native bar may go into the Linux desktop's global menu (LinuxDesktopOptions.GlobalMenu).</summary>
+    public bool GlobalMenu { get; init; } = true;
+
     /// <summary>The monitor to open centered on (DesktopWindowOptions.Monitor), replacing X, Y and Centered; null otherwise.</summary>
     public string? Monitor { get; init; }
 

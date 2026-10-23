@@ -33,7 +33,7 @@ internal sealed class StatusIconTests
         Check(await icon.HideAsync() is PlatformResult<PlatformUnit>.Unavailable, "hide unavailable");
     }
 
-    [Test, DisplayName("status icon state is bounded and menu IDs are unique")]
+    [Test, DisplayName("status icon state is bounded and menu items are unique by ID and parameter")]
     public void Validation()
     {
         DesktopServiceValidation.StatusIcon(State());
@@ -41,6 +41,12 @@ internal sealed class StatusIconTests
         Rejects(State() with { Icon = new DesktopIcon() }, "icon without name or image");
         Rejects(State() with { Icon = new DesktopIcon { Images = [new DesktopIconImage(2, 2, [1, 2, 3])] } }, "image size mismatch");
         Rejects(State() with { Menu = [new DesktopMenuItem("One", "a"), new DesktopMenuItem("Two", "a")] }, "duplicate IDs");
+        Rejects(State() with { Menu = [new DesktopMenuItem("One", "a") { CommandParameter = "1" }, new DesktopMenuItem("Two", "a") { CommandParameter = "1" }] },
+            "duplicate IDs with the same parameter");
+        DesktopServiceValidation.StatusIcon(State() with
+        {
+            Menu = [new DesktopMenuItem("One", "a"), new DesktopMenuItem("Two", "a") { CommandParameter = "" }, new DesktopMenuItem("Three", "a") { CommandParameter = "3" }],
+        });
         Rejects(State() with { Menu = [new DesktopMenu("Deep", [new DesktopMenuItem("One", "a")]), new DesktopMenuItem("Two", "a")] }, "duplicate nested IDs");
         var deep = ImmutableArray.Create<DesktopMenuEntry>(new DesktopMenuItem("Leaf", "leaf"));
         for (int i = 0; i < 6; i++) deep = [new DesktopMenu("Level", deep)];
@@ -139,12 +145,20 @@ internal sealed class StatusIconTests
             static (message, _) => message.GetBodyReader().ReadUInt32(), notification => { if (notification.HasValue) layout.TrySetResult(notification.Value); },
             emitOnCapturedContext: false, flags: ObserverFlags.EmitAll);
         Check(await icon.ShowAsync(State(DesktopStatusIconStatus.NeedsAttention) with
-        { Menu = [new DesktopMenuItem("Quit", "quit"), new DesktopMenuItem("Check daily", "check") { IsChecked = false }] }) is PlatformResult<PlatformUnit>.Success, "update");
+        { Menu = [new DesktopMenuItem("Quit", "quit"), new DesktopMenuItem("Check daily", "check") { IsChecked = false },
+            new DesktopMenuItem("a.txt", "recent") { CommandParameter = "a.txt" }, new DesktopMenuItem("b.txt", "recent") { CommandParameter = "b.txt" }] })
+            is PlatformResult<PlatformUnit>.Success, "update");
         Check(await status.Task.WaitAsync(Wait) == "NeedsAttention", "NewStatus carries the status");
         Check(await layout.Task.WaitAsync(Wait) > revision, "LayoutUpdated carries a newer revision");
         var (_, updated) = await Layout(host, item);
-        Check(updated.Children.Count == 2 && updated.Children[0].Props["label"] == "Quit", "new menu served");
+        Check(updated.Children.Count == 4 && updated.Children[0].Props["label"] == "Quit", "new menu served");
         Check(updated.Children[1].Id == root.Children[2].Id && updated.Children[0].Id != root.Children[0].Id, "entries keep their IDs; new ones get new IDs");
+        // One command id with two parameters: two entries, and the click reports the chosen one's parameter.
+        Check(updated.Children[2].Id != updated.Children[3].Id, "items with one id and different parameters are separate entries");
+        await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
+        { writer.WriteInt32(updated.Children[3].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
+        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait) is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "recent", CommandParameter: "b.txt" },
+            "a click reports the item's command id and parameter");
         try
         {
             await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>

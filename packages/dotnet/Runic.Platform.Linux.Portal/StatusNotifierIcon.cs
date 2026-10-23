@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Runic.Platform.Linux.DBus;
+using Runic.Platform.Linux.DBus.Menus;
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Linux.Portal;
@@ -14,7 +15,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
 {
     internal const string ItemPath = "/StatusNotifierItem", MenuPath = "/MenuBar";
     private const string ItemInterface = "org.kde.StatusNotifierItem", WatcherInterface = "org.kde.StatusNotifierWatcher",
-        MenuInterface = "com.canonical.dbusmenu", PropertiesInterface = "org.freedesktop.DBus.Properties";
+        PropertiesInterface = "org.freedesktop.DBus.Properties";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
     // Hosts call ProvideXdgActivationToken just before Activate; an older token has expired.
     private static readonly TimeSpan TokenLifetime = TimeSpan.FromSeconds(10);
@@ -22,7 +23,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     // Activations wait for the application's handler in a queue this long; later ones are dropped until it drains.
     internal const int ActivationQueueLimit = 32;
     // dbusmenu id lists (GetGroupProperties, EventGroup) longer than this are refused before they are read in full.
-    internal const int MenuIdLimit = 1024;
+    internal const int MenuIdLimit = DBusMenuServer.MenuIdLimit;
     // XDG activation tokens are short; a longer one is ignored rather than kept.
     private const int TokenLengthLimit = 4096;
     private static int s_instances;
@@ -43,7 +44,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     private int _dropping;
     private Task? _pump;
     private DesktopStatusIconState? _state;
-    private Menu _menu = Menu.Empty;
+    private DBusMenuLayout _menu = Menu.Empty;
     private uint _revision;
     private (string Token, long Timestamp)? _activationToken;
     private Session? _session;
@@ -63,8 +64,8 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             {
                 previous = _state;
                 _state = state;
-                _menu = Menu.Build(state.Menu, _ids);
                 _revision++;
+                _menu = Menu.Build(state.Menu, _ids, _revision);
             }
             if (_session is null)
             {
@@ -122,7 +123,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         internal DBusConnection? Own { get; } = own;
         internal string Name { get; } = name;
         internal ItemObject Item { get; set; } = null!;
-        internal MenuObject Menu { get; set; } = null!;
+        internal DBusMenuServer Menu { get; set; } = null!;
         internal List<IAsyncDisposable> Exports { get; } = [];
         internal DBusSignalSubscription? WatcherOwner { get; set; }
         internal CancellationTokenSource Stopped { get; } = new();
@@ -183,7 +184,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     private bool TryExport(Session session)
     {
         session.Item = new ItemObject(this);
-        session.Menu = new MenuObject(this);
+        session.Menu = new DBusMenuServer(new MenuOwner(this));
         try
         {
             session.Exports.Add(session.Connection.Export(new DBusObjectPath(ItemPath), session.Item));
@@ -314,10 +315,10 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         if (previous.Status != state.Status) item.Emit("NewStatus", DBusValue.From(StatusName(state.Status)));
         uint revision;
         lock (_lock) revision = _revision;
-        session.Menu.Emit("LayoutUpdated", DBusValue.From(revision), DBusValue.From(0));
+        session.Menu.LayoutUpdated(revision);
     }
 
-    private void Raise(DesktopStatusIconActivationKind kind, string? commandId = null)
+    private void Raise(DesktopStatusIconActivationKind kind, DesktopMenuItem? item = null)
     {
         (string Token, long Timestamp)? token;
         lock (_lock) { token = _activationToken; _activationToken = null; }
@@ -328,7 +329,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             catch (ArgumentException) { /* An unusable token cannot raise a window; activate without it. */ }
         }
         // TryWrite fails when the queue is full, or after disposal; the newest activation is the one dropped.
-        if (!_activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, commandId) { PlatformContext = context })
+        if (!_activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, item?.CommandId) { PlatformContext = context, CommandParameter = item?.CommandParameter })
             && !_disposed && Interlocked.Exchange(ref _dropping, 1) == 0)
             _application.Diagnose("status-icon-activations-dropped",
                 $"More than {ActivationQueueLimit} status icon activations waited for the Activated handler; later ones were dropped.",
@@ -470,144 +471,12 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             throw new DBusException(DBusException.PropertyReadOnly, "Status icon properties are read-only.");
     }
 
-    // The com.canonical.dbusmenu object, answered one call at a time like the item.
-    private sealed class MenuObject(StatusNotifierIcon icon) : DBusObject
+    // A dbusmenu tree with 0 for the root, built for DBusMenuServer. Entries keep their numeric ID across menu changes:
+    // commands by their ID and parameter, separators and submenus by their place among their parent's entries of the
+    // same kind. IDs are never reused.
+    private static class Menu
     {
-        private static readonly string[] MenuObjectProperties = ["Version", "TextDirection", "Status", "IconThemePath"];
-
-        protected override int MaxConcurrentCalls => 1;
-        protected override string IntrospectionXml => MenuXml;
-
-        internal void Emit(string member, params ReadOnlySpan<DBusValue> arguments) => EmitSignal(MenuInterface, member, arguments);
-
-        protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context)
-        {
-            if (context.Interface != MenuInterface) throw UnknownMethod(context);
-            Menu menu; uint revision;
-            lock (icon._lock) { menu = icon._menu; revision = icon._revision; }
-            Takes(context, context.Member switch
-            {
-                "GetLayout" => "iias",
-                "GetGroupProperties" => "aias",
-                "GetProperty" => "is",
-                "Event" => "isvu",
-                "EventGroup" => "a(isvu)",
-                "AboutToShow" => "i",
-                "AboutToShowGroup" => "ai",
-                _ => throw UnknownMethod(context),
-            });
-            var arguments = context.Arguments;
-            ImmutableArray<DBusValue> reply;
-            switch (context.Member)
-            {
-                case "GetLayout":
-                {
-                    int parent = arguments[0].GetInt32(), depth = arguments[1].GetInt32();
-                    if (!menu.Nodes.TryGetValue(parent, out var node)) throw UnknownId(parent);
-                    reply = [DBusValue.From(revision), menu.Layout(node, depth)];
-                    break;
-                }
-                case "GetGroupProperties":
-                {
-                    // Each id is answered once, so the reply is no longer than the menu.
-                    var items = arguments[0].GetItems();
-                    if (items.Length > MenuIdLimit) throw TooMany();
-                    var answered = new List<DBusValue>();
-                    var seen = new HashSet<int>();
-                    foreach (var item in items)
-                    {
-                        int id = item.GetInt32();
-                        if (seen.Add(id) && menu.Nodes.TryGetValue(id, out var node)) answered.Add(DBusValue.Struct(DBusValue.From(id), Menu.Properties(node)));
-                    }
-                    reply = [DBusValue.Array("(ia{sv})", answered)];
-                    break;
-                }
-                case "GetProperty":
-                {
-                    int id = arguments[0].GetInt32(); string name = arguments[1].GetString();
-                    if (!menu.Nodes.TryGetValue(id, out var node)) throw UnknownId(id);
-                    reply = Menu.Property(node, name) is { } value ? [DBusValue.Variant(value)]
-                        : throw new DBusException(DBusException.InvalidArgs, $"No property {name}.");
-                    break;
-                }
-                case "Event":
-                {
-                    int id = arguments[0].GetInt32(); string kind = arguments[1].GetString();
-                    if (!menu.Nodes.ContainsKey(id)) throw UnknownId(id);
-                    Choose(menu, id, kind);
-                    reply = [];
-                    break;
-                }
-                case "EventGroup":
-                {
-                    // The events are read in full before any is chosen, so a refused group activates nothing. An entry
-                    // clicked twice in one group is chosen once, and an unknown id is reported once.
-                    var events = arguments[0].GetItems();
-                    if (events.Length > MenuIdLimit) throw TooMany();
-                    var unknown = new List<int>();
-                    var chosen = new List<(int Id, string Kind)>();
-                    var seen = new HashSet<(int, string)>();
-                    foreach (var entry in events)
-                    {
-                        var fields = entry.GetFields();
-                        int id = fields[0].GetInt32(); string kind = fields[1].GetString();
-                        if (!seen.Add((id, kind))) continue;
-                        if (menu.Nodes.ContainsKey(id)) chosen.Add((id, kind));
-                        else if (!unknown.Contains(id)) unknown.Add(id);
-                    }
-                    foreach (var (id, kind) in chosen) Choose(menu, id, kind);
-                    reply = [DBusValue.Array("i", unknown.Select(static id => DBusValue.From(id)))];
-                    break;
-                }
-                case "AboutToShow": reply = [DBusValue.From(false)]; break;
-                default: reply = [DBusValue.Array("i", []), DBusValue.Array("i", [])]; break; // AboutToShowGroup
-            }
-            return ValueTask.FromResult(reply);
-        }
-
-        private void Choose(Menu menu, int id, string kind)
-        {
-            // Hosts also report "hovered", "opened" and "closed"; only a click chooses.
-            if (kind == "clicked" && menu.Nodes[id].Item is DesktopMenuItem { IsEnabled: true } command)
-                icon.Raise(DesktopStatusIconActivationKind.MenuItem, command.CommandId);
-        }
-
-        private static DBusException UnknownId(int id) => new(DBusException.InvalidArgs, $"No menu entry {id}.");
-
-        private static DBusException TooMany() => new(DBusException.LimitsExceeded, $"A menu call takes at most {MenuIdLimit} ids or events.");
-
-        protected override ValueTask<DBusValue> GetPropertyAsync(string interfaceName, string name, DBusMethodContext context) =>
-            interfaceName == MenuInterface && MenuProperty(name) is { } value ? ValueTask.FromResult(value)
-                : throw new DBusException(DBusException.UnknownProperty, $"No property {name}.");
-
-        protected override ValueTask<ImmutableDictionary<string, DBusValue>> GetAllPropertiesAsync(string interfaceName, DBusMethodContext context)
-        {
-            var properties = ImmutableDictionary.CreateBuilder<string, DBusValue>(StringComparer.Ordinal);
-            if (interfaceName == MenuInterface)
-                foreach (var name in MenuObjectProperties) properties[name] = MenuProperty(name)!.Value;
-            return ValueTask.FromResult(properties.ToImmutable());
-        }
-
-        protected override ValueTask SetPropertyAsync(string interfaceName, string name, DBusValue value, DBusMethodContext context) =>
-            throw new DBusException(DBusException.PropertyReadOnly, "Menu properties are read-only.");
-
-        private static DBusValue? MenuProperty(string name) => name switch
-        {
-            "Version" => DBusValue.From(3u),
-            "TextDirection" => DBusValue.From("ltr"),
-            "Status" => DBusValue.From("normal"),
-            "IconThemePath" => DBusValue.StringArray([]),
-            _ => null,
-        };
-    }
-
-    // A dbusmenu tree with 0 for the root. Entries keep their numeric ID across menu changes: commands by their ID,
-    // separators and submenus by their place among their parent's entries of the same kind. IDs are never reused.
-    private sealed class Menu
-    {
-        internal sealed record Node(int Id, DesktopMenuEntry? Item, ImmutableArray<int> Children);
-        internal Dictionary<int, Node> Nodes { get; } = [];
-        internal static Menu Empty { get; } = Build([], new Ids());
+        internal static DBusMenuLayout Empty { get; } = Build([], new Ids(), 0);
 
         internal sealed class Ids
         {
@@ -616,14 +485,15 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             internal int For(string key) => _ids.TryGetValue(key, out int id) ? id : _ids[key] = _next++;
         }
 
-        internal static Menu Build(ImmutableArray<DesktopMenuEntry> items, Ids ids)
+        internal static DBusMenuLayout Build(ImmutableArray<DesktopMenuEntry> items, Ids ids, uint revision)
         {
-            var menu = new Menu();
-            menu.Add(0, "", null, items, ids);
-            return menu;
+            var nodes = new Dictionary<int, DBusMenuNode>();
+            Add(nodes, 0, "", null, items, ids);
+            return new DBusMenuLayout(revision, nodes);
         }
 
-        private void Add(int id, string path, DesktopMenuEntry? item, ImmutableArray<DesktopMenuEntry> children, Ids ids)
+        private static void Add(Dictionary<int, DBusMenuNode> nodes, int id, string path, DesktopMenuEntry? item,
+            ImmutableArray<DesktopMenuEntry> children, Ids ids)
         {
             var childIds = ImmutableArray.CreateBuilder<int>(children.Length);
             int separators = 0;
@@ -632,7 +502,8 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             {
                 string? key = child switch
                 {
-                    DesktopMenuItem command => "command:" + command.CommandId,
+                    // A parameter has no NUL, so it cannot run into the id.
+                    DesktopMenuItem command => "command:" + command.CommandId + (command.CommandParameter is { } parameter ? "\0" + parameter : ""),
                     DesktopMenu submenu => $"{path}/submenu:{submenu.Title}#{(submenus[submenu.Title] = submenus.GetValueOrDefault(submenu.Title) + 1)}",
                     DesktopMenuSeparator => $"{path}/separator#{++separators}",
                     // An entry kind of a later release.
@@ -641,50 +512,41 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 if (key is null) continue;
                 int childId = ids.For(key);
                 childIds.Add(childId);
-                Add(childId, key, child, child is DesktopMenu nested ? nested.Items : [], ids);
+                Add(nodes, childId, key, child, child is DesktopMenu nested ? nested.Items : [], ids);
             }
-            Nodes[id] = new Node(id, item, childIds.ToImmutable());
+            nodes[id] = new DBusMenuNode(id, Describe(item), childIds.ToImmutable(), item);
         }
 
-        internal DBusValue Layout(Node node, int depth) => DBusValue.Struct(DBusValue.From(node.Id), Properties(node),
-            DBusValue.Array("v", depth == 0 ? [] : node.Children.Select(child => DBusValue.Variant(Layout(Nodes[child], depth - 1)))));
-
-        private static readonly string[] PropertyNames = ["type", "label", "enabled", "toggle-type", "toggle-state", "children-display"];
-
-        // Only properties that differ from dbusmenu's defaults are sent.
-        internal static DBusValue Properties(Node node) => DBusValue.VariantDictionary(PropertyNames.Where(name => Has(node, name))
-            .Select(name => KeyValuePair.Create(name, Property(node, name)!.Value)));
-
-        private static bool Has(Node node, string name) => (node.Item, name) switch
+        // Status icons ignore access keys and shortcuts. An underscore marks dbusmenu's access key; it is doubled to
+        // show it literally.
+        private static ImmutableArray<KeyValuePair<string, DBusValue>> Describe(DesktopMenuEntry? item) => item switch
         {
-            (null, "children-display") => true,
-            (DesktopMenuSeparator, "type") => true,
-            (DesktopMenuItem, "label") or (DesktopMenu, "label") => true,
-            (DesktopMenuItem { IsEnabled: false }, "enabled") or (DesktopMenu { IsEnabled: false }, "enabled") => true,
-            (DesktopMenuItem { IsChecked: not null }, "toggle-type" or "toggle-state") => true,
-            (DesktopMenu, "children-display") => true,
-            _ => false,
+            null => DBusMenuNode.Describe(submenu: true),
+            DesktopMenuSeparator => DBusMenuNode.Describe(separator: true),
+            DesktopMenu submenu => DBusMenuNode.Describe(label: Escape(submenu.Title), enabled: submenu.IsEnabled, submenu: true),
+            DesktopMenuItem command => DBusMenuNode.Describe(label: Escape(command.Title), enabled: command.IsEnabled,
+                toggleType: command.IsChecked is null ? null : "checkmark", toggled: command.IsChecked == true),
+            _ => [],
         };
 
-        internal static DBusValue? Property(Node node, string name) => name switch
-        {
-            "type" => DBusValue.From(node.Item is DesktopMenuSeparator ? "separator" : "standard"),
-            // An underscore marks dbusmenu's access key; double it to show it literally.
-            "label" => DBusValue.From(Label(node.Item).Replace("_", "__", StringComparison.Ordinal)),
-            "enabled" => DBusValue.From(node.Item switch { DesktopMenuItem c => c.IsEnabled, DesktopMenu s => s.IsEnabled, _ => true }),
-            "visible" => DBusValue.From(true),
-            "toggle-type" => DBusValue.From(node.Item is DesktopMenuItem { IsChecked: not null } ? "checkmark" : ""),
-            "toggle-state" => DBusValue.From(node.Item is DesktopMenuItem { IsChecked: true } ? 1 : 0),
-            "children-display" => DBusValue.From(node.Item is null or DesktopMenu ? "submenu" : ""),
-            _ => null,
-        };
+        private static string Escape(string title) => title.Replace("_", "__", StringComparison.Ordinal);
+    }
 
-        private static string Label(DesktopMenuEntry? item) => item switch
+    // The menu's answers to DBusMenuServer: the current layout, and a click on an enabled command.
+    private sealed class MenuOwner(StatusNotifierIcon icon) : IDBusMenuOwner
+    {
+        public DBusMenuLayout Layout
         {
-            DesktopMenuItem command => command.Title,
-            DesktopMenu submenu => submenu.Title,
-            _ => "",
-        };
+            get { lock (icon._lock) return icon._menu; }
+        }
+
+        public void Clicked(DBusMenuNode node)
+        {
+            if (node.Source is DesktopMenuItem { IsEnabled: true } command) icon.Raise(DesktopStatusIconActivationKind.MenuItem, command);
+        }
+
+        // The menu is replaced only by ShowAsync, which announces it.
+        public ValueTask<bool> AboutToShowAsync(DBusMenuNode node) => ValueTask.FromResult(false);
     }
 
     private const string ItemXml = """
@@ -716,25 +578,6 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
           <signal name="NewOverlayIcon"/>
           <signal name="NewToolTip"/>
           <signal name="NewStatus"><arg name="status" type="s"/></signal>
-        </interface>
-        """;
-
-    private const string MenuXml = """
-        <interface name="com.canonical.dbusmenu">
-          <property name="Version" type="u" access="read"/>
-          <property name="TextDirection" type="s" access="read"/>
-          <property name="Status" type="s" access="read"/>
-          <property name="IconThemePath" type="as" access="read"/>
-          <method name="GetLayout"><arg type="i" name="parentId" direction="in"/><arg type="i" name="recursionDepth" direction="in"/><arg type="as" name="propertyNames" direction="in"/><arg type="u" name="revision" direction="out"/><arg type="(ia{sv}av)" name="layout" direction="out"/></method>
-          <method name="GetGroupProperties"><arg type="ai" name="ids" direction="in"/><arg type="as" name="propertyNames" direction="in"/><arg type="a(ia{sv})" name="properties" direction="out"/></method>
-          <method name="GetProperty"><arg type="i" name="id" direction="in"/><arg type="s" name="name" direction="in"/><arg type="v" name="value" direction="out"/></method>
-          <method name="Event"><arg type="i" name="id" direction="in"/><arg type="s" name="eventId" direction="in"/><arg type="v" name="data" direction="in"/><arg type="u" name="timestamp" direction="in"/></method>
-          <method name="EventGroup"><arg type="a(isvu)" name="events" direction="in"/><arg type="ai" name="idErrors" direction="out"/></method>
-          <method name="AboutToShow"><arg type="i" name="id" direction="in"/><arg type="b" name="needUpdate" direction="out"/></method>
-          <method name="AboutToShowGroup"><arg type="ai" name="ids" direction="in"/><arg type="ai" name="updatesNeeded" direction="out"/><arg type="ai" name="idErrors" direction="out"/></method>
-          <signal name="ItemsPropertiesUpdated"><arg type="a(ia{sv})" name="updatedProps"/><arg type="a(ias)" name="removedProps"/></signal>
-          <signal name="LayoutUpdated"><arg type="u" name="revision"/><arg type="i" name="parent"/></signal>
-          <signal name="ItemActivationRequested"><arg type="i" name="id"/><arg type="u" name="timestamp"/></signal>
         </interface>
         """;
 }

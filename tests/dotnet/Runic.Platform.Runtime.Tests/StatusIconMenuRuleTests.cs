@@ -91,6 +91,13 @@ internal sealed class StatusIconMenuRuleTests
     {
         var duplicate = Rejects(() => Validate(new DesktopMenuItem("One", "a"), new DesktopMenu("More", [new DesktopMenuItem("Two", "a")])), "a repeated command id");
         Check(duplicate.Message.Contains("'a'", StringComparison.Ordinal), "the duplicate message names the id");
+        // Items are unique by id and parameter: one id can serve several parameters, and no parameter differs from "".
+        Validate(new DesktopMenuItem("One", "a"), new DesktopMenuItem("Two", "a") { CommandParameter = "" },
+            new DesktopMenu("More", [new DesktopMenuItem("Three", "a") { CommandParameter = "3" }]));
+        var sameParameter = Rejects(() => Validate(new DesktopMenuItem("One", "a") { CommandParameter = "3" },
+            new DesktopMenu("More", [new DesktopMenuItem("Two", "a") { CommandParameter = "3" }])), "a repeated id and parameter");
+        Check(sameParameter.Message.Contains("'a'", StringComparison.Ordinal) && sameParameter.Message.Contains("parameter", StringComparison.Ordinal),
+            "the message names the id and the parameter rule");
         Rejects(() => Validate(new DesktopMenu("More", default)), "a default item list");
         Rejects(() => Validate(new DesktopMenuItem("One", "a"), null!), "a null entry");
         // Shortcut and Role are ignored by status icons; IsEnabled and IsChecked are their state.

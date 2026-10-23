@@ -234,6 +234,8 @@ unavailable and reports `status-icon-no-watcher` or `status-icon-no-host`. The
 icon stays ready and registers once a watcher starts, and again after it
 restarts. `HideAsync` releases the icon's bus name, which removes it. A sandbox
 must allow owning `org.kde.StatusNotifierItem-*` names and talking to the watcher.
+A chosen menu item's activation carries its `CommandId` and `CommandParameter`;
+items are unique by the two together.
 
 The status area talks to the icon over the session bus, which does not say
 which program is calling. Any program in the user's session can therefore

@@ -85,6 +85,14 @@ internal static unsafe class Gtk4X11Placement
         return true;
     }
 
+    // GTK thread. The X display and window of a realized surface on X11, for the global menu's properties; zeros on
+    // Wayland.
+    internal static (nint Display, nuint Xid) X11Window(nint surface)
+    {
+        if (!IsActive || surface == 0 || Functions.Value is not { } api || !api.IsX11Surface(surface)) return default;
+        return (api.XDisplay(surface), api.Xid(surface));
+    }
+
     // GTK thread. A monitor's work area on X11; null on Wayland, which reports none.
     internal static ScreenRect? MonitorWorkArea(nint monitor) =>
         s_displayIsX11 == true && Functions.Value is { } api ? api.MonitorWorkArea(monitor) : null;

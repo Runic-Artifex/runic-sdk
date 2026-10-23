@@ -159,7 +159,7 @@ internal static class DesktopServiceValidation
         Icon(state.Icon);
         if (state.AttentionIcon is not null) Icon(state.AttentionIcon);
         int count = 0;
-        Menu(state.Menu, new HashSet<string>(StringComparer.Ordinal), 0, ref count);
+        Menu(state.Menu, new HashSet<(string, string?)>(), 0, ref count);
     }
     private static void Icon(DesktopIcon icon)
     {
@@ -176,7 +176,8 @@ internal static class DesktopServiceValidation
                 throw new ArgumentException("Status icon images need 1 to 512 pixels on each side and four RGBA bytes per pixel.");
         }
     }
-    private static void Menu(ImmutableArray<DesktopMenuEntry> entries, HashSet<string> ids, int depth, ref int count)
+    // Items are unique by command id and parameter, so an activation names the chosen item.
+    private static void Menu(ImmutableArray<DesktopMenuEntry> entries, HashSet<(string, string?)> ids, int depth, ref int count)
     {
         if (entries.IsDefault) throw new ArgumentException("Status icon menus must be initialized.");
         if (depth > 4) throw new ArgumentException("Status icon menus nest at most four submenus deep.");
@@ -190,7 +191,10 @@ internal static class DesktopServiceValidation
                 case DesktopMenuItem item:
                     DesktopMenuRules.Title(item.Title, "A status icon menu item");
                     DesktopMenuRules.Item(item, $"the status icon menu item '{item.Title}'");
-                    if (!ids.Add(item.CommandId)) throw new ArgumentException($"The command id '{item.CommandId}' appears twice; status icon menu command ids must be unique.");
+                    if (!ids.Add((item.CommandId, item.CommandParameter)))
+                        throw new ArgumentException(item.CommandParameter is null
+                            ? $"The command id '{item.CommandId}' appears twice without a parameter; status icon menu items must be unique by command id and parameter."
+                            : $"The command id '{item.CommandId}' appears twice with the same parameter; status icon menu items must be unique by command id and parameter.");
                     break;
                 case DesktopMenu submenu:
                     DesktopMenuRules.Title(submenu.Title, "A status icon submenu");

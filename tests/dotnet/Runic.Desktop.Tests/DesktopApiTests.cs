@@ -861,6 +861,24 @@ public sealed class DesktopApiTests
         report(crashed with { Severity = DesktopDiagnosticSeverity.Error });
         Assert.Contains(loggers.Entries, entry => entry.EventId.Id == 3009);
         Assert.Contains(loggers.Entries, entry => entry.EventId.Id == 3010 && entry.Level == LogLevel.Error);
+
+        // The Linux global menu's diagnostics reach the sink and are logged as its own events (3016, 3015), not 3010.
+        failSink = false;
+        var before = loggers.Entries.Count(static entry => entry.EventId.Id == 3010);
+        report(new DesktopDiagnostic(DesktopErrorCategory.Unavailable, "global-menu-failed", "The registrar refused the window.", Retryable: true)
+        {
+            Severity = DesktopDiagnosticSeverity.Warning,
+        });
+        report(new DesktopDiagnostic(DesktopErrorCategory.Unavailable, "global-menu-permission", "No registrar in the sandbox.", Retryable: true,
+            Remediation: "Add --talk-name=com.canonical.AppMenu.Registrar.") { Severity = DesktopDiagnosticSeverity.Warning });
+        Assert.Contains(reported, static diagnostic => diagnostic.Code == "global-menu-failed");
+        var failed = Assert.Single(loggers.Entries, static entry => entry.EventId.Id == 3016);
+        Assert.Equal(("GlobalMenuFailed", LogLevel.Warning), (failed.EventId.Name, failed.Level));
+        Assert.Contains("The registrar refused the window.", failed.Message, StringComparison.Ordinal);
+        var permission = Assert.Single(loggers.Entries, static entry => entry.EventId.Id == 3015);
+        Assert.Equal(("MenuBarPlacementChanged", LogLevel.Information), (permission.EventId.Name, permission.Level));
+        Assert.Contains("--talk-name=com.canonical.AppMenu.Registrar", permission.Message, StringComparison.Ordinal);
+        Assert.Equal(before, loggers.Entries.Count(static entry => entry.EventId.Id == 3010));
     }
 
     [Test]

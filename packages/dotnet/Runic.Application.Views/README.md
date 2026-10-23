@@ -2247,6 +2247,11 @@ NativeAOT symbols and what to attach to a bug report.
 | 3010 | `EmbeddedWindowDiagnostic` | Warning or Error | An embedded window reports an event of its own: on Linux, `web-process-terminated` when the WebKitGTK web process crashed and the page was reloaded (Warning), or was not reloaded after three reloads within a minute (Error). | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3011 | `WindowStateHandlerFailed` | Error | A `DesktopWindow.StateChanged` handler threw; later handlers and events still run. | `ErrorType` |
 | 3012 | `FileDropHandlerFailed` | Error | A `DesktopWindow.FilesDropped` handler threw; later handlers and drops still run. | `ErrorType` |
+| 3013 | `WindowClosedHandlerFailed` | Error | A `DesktopWindow.Closed` handler threw; later handlers still run. | `ErrorType` |
+| 3014 | `MenuCommandFailed` | Error | A menu command target's `CanExecute` or `Execute` threw; the item counts as not runnable. | `Member`, `CommandId`, `ErrorType` |
+| 3015 | `MenuBarPlacementChanged` | Information | On Linux, a window's menu bar moved into the desktop's global menu or back into the window, or a Flatpak cannot reach the global menu registrar (`global-menu-permission`, the placement unchanged). | `OldPlacement`, `NewPlacement`, `Reason` |
+| 3016 | `GlobalMenuFailed` | Warning | On Linux, the window's menu could not be exported or the global menu registrar refused the window (`global-menu-failed`); the bar stays in the window. Once per window. | `DiagnosticMessage` |
+| 3017 | `MenuBarPlacementHandlerFailed` | Error | A `DesktopWindow.MenuBarPlacementChanged` handler threw; later handlers and events still run. | `ErrorType` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
