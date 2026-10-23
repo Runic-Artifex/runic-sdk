@@ -7,6 +7,7 @@ namespace Runic.Desktop.Internal;
 // The window's menu bar, its shortcuts and context menus (B10). Window thread only, except where noted.
 internal sealed partial class WindowsWebView2Host
 {
+    private const uint WmCancelMode = 0x001F;
     private const uint WmCommand = 0x0111;
     private const uint WmSysCommand = 0x0112;
     private const uint WmInitMenuPopup = 0x0117;
@@ -210,7 +211,7 @@ internal sealed partial class WindowsWebView2Host
     private void HideBarForFullScreen()
     {
         if (_hiddenBar != 0 || Native.GetMenu(_window) is not (not 0 and var bar)) return;
-        if (_inMenuLoop) Native.EndMenu();
+        if (_inMenuLoop) CancelMenuMode();
         if (Native.SetMenu(_window, 0)) _hiddenBar = bar;
     }
 
@@ -267,7 +268,7 @@ internal sealed partial class WindowsWebView2Host
         if (!_inMenuLoop) return false;
         _destroyAfterMenu = true;
         _contextMenu?.Dismiss();
-        Native.EndMenu();
+        CancelMenuMode();
         return true;
     }
 
@@ -297,7 +298,13 @@ internal sealed partial class WindowsWebView2Host
     private async Task<DesktopMenuItem?> ShowContextMenuCoreAsync(ContextMenuSession session, ImmutableArray<DesktopMenuEntry> items,
         DesktopContextMenuOptions options)
     {
-        // Cancelling closes the open menu from its own thread. The work below returns once the menu has closed.
+        // A new menu dismisses the open one, which returns null: WM_CANCELMODE reaches the open menu's loop.
+        if (Volatile.Read(ref _contextMenu) is { } open)
+        {
+            open.Dismiss();
+            CancelMenuMode();
+        }
+        // Cancelling closes the open menu. The work below returns once the menu has closed.
         using var registration = session.CancellationToken.UnsafeRegister(static state =>
         {
             var (host, session) = ((WindowsWebView2Host, ContextMenuSession))state!;
@@ -319,11 +326,20 @@ internal sealed partial class WindowsWebView2Host
     private void DismissContextMenu(ContextMenuSession session)
     {
         session.Dismiss();
+        if (ReferenceEquals(Volatile.Read(ref _contextMenu), session)) CancelMenuMode();
         PostNative(() =>
         {
-            if (ReferenceEquals(_contextMenu, session)) Native.EndMenu();
+            if (ReferenceEquals(_contextMenu, session)) CancelMenuMode();
             else if (_nextContextMenu is { } next && ReferenceEquals(next.Session, session)) { _nextContextMenu = null; session.Complete(null); }
         });
+    }
+
+    // Any thread: ends the window's open menu, a context menu or the bar's, as a click elsewhere would. The menu's
+    // modal loop handles WM_CANCELMODE for its owner.
+    private void CancelMenuMode()
+    {
+        var window = _window;
+        if (window != 0) Native.PostMessage(window, WmCancelMode, 0, 0);
     }
 
     // Runs work on the window thread after the current message, without a caller to wait; nothing runs once the window closed.
@@ -345,7 +361,7 @@ internal sealed partial class WindowsWebView2Host
             _contextMenu?.Dismiss();
             _nextContextMenu?.Session.Complete(null);
             _nextContextMenu = (session, items, options);
-            Native.EndMenu();
+            CancelMenuMode();
             return;
         }
         TrackContextMenu(session, items, options);
@@ -371,7 +387,7 @@ internal sealed partial class WindowsWebView2Host
         var rightToLeft = IsRightToLeft;
         var model = WindowsMenuModel.ForContextMenu(items, rightToLeft);
         var menu = CreateMenu(model.Entries, popup: true, popups: null);
-        _contextMenu = session;
+        Volatile.Write(ref _contextMenu, session);
         uint chosen;
         try
         {
@@ -384,7 +400,7 @@ internal sealed partial class WindowsWebView2Host
         }
         finally
         {
-            _contextMenu = null;
+            Volatile.Write(ref _contextMenu, null);
             Native.DestroyMenu(menu);
         }
         // A disabled item cannot be chosen; an id of no item is no choice.
@@ -464,10 +480,6 @@ internal sealed partial class WindowsWebView2Host
 
         [LibraryImport("user32.dll")]
         internal static partial int EnableMenuItem(nint menu, uint item, uint flags);
-
-        [LibraryImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static partial bool EndMenu();
 
         [LibraryImport("user32.dll")]
         internal static partial int TrackPopupMenuEx(nint menu, uint flags, int x, int y, nint window, nint parameters);

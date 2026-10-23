@@ -354,7 +354,7 @@ internal static partial class WindowsMenuSmoke
         var firstMenu = await TrackingAsync(0);
         using var cancel = new CancellationTokenSource();
         var second = window.ShowContextMenuAsync(items, cancellationToken: cancel.Token).AsTask();
-        Require(await first.WaitAsync(Deadline) is null, "a menu replaced by a later one returns null");
+        Require(await CompletedAsync(first, window) is null, "a menu replaced by a later one returns null");
         await TrackingAsync(firstMenu, allowSame: true);
         cancel.Cancel();
         try
@@ -364,6 +364,20 @@ internal static partial class WindowsMenuSmoke
         }
         catch (OperationCanceledException) { }
         await WaitForAsync(() => FindMenuWindow(window.NativeHandle) == 0, "no menu open after the last one closed");
+    }
+
+    // The menu's result, or a failure that says what is still open.
+    private static async Task<DesktopMenuItem?> CompletedAsync(Task<DesktopMenuItem?> menu, DesktopWindow window)
+    {
+        try
+        {
+            return await menu.WaitAsync(Deadline);
+        }
+        catch (TimeoutException)
+        {
+            throw new InvalidOperationException($"Menus: a context menu did not complete; menu window {FindMenuWindow(window.NativeHandle)}, " +
+                $"menu-mode flags 0x{MenuFlags(window.NativeHandle):X}.");
+        }
     }
 
     // Opens a context menu at a page point and chooses its first item with the keyboard, from the menu's idle loop.
