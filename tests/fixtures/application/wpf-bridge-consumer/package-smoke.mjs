@@ -82,11 +82,13 @@ try {
   exists("Single/bin/Release/net10.0-windows/www/index.html");
   exists("Single/bin/Release/net10.0-windows/www/assets/app.js");
   // A Windows-only application gets the -windows Runic.Application.Views.Desktop, which
-  // references only the Windows platform provider.
+  // references only the Windows platform provider. Runic.Desktop itself references the D-Bus
+  // client for the Linux global menu (D036.11), a managed library that stays unused on Windows.
   const output = readdirSync(join(directory, "Single/bin/Release/net10.0-windows"));
   assert.ok(output.includes("Runic.Platform.Windows.dll"), "The Windows platform provider is missing.");
-  assert.deepEqual(output.filter(name => /^(Runic\.Platform\.(Linux|MacOS)|Tmds\.DBus)/.test(name)), [],
-    "The Windows-only application ships Linux or macOS platform assemblies.");
+  assert.deepEqual(output.filter(name => /^(Runic\.Platform\.(Linux|MacOS)|Tmds\.DBus)/.test(name)).sort(),
+    ["Runic.Platform.Linux.DBus.dll", "Tmds.DBus.Protocol.dll"],
+    "The Windows-only application ships Linux or macOS platform providers.");
   // The frontend's installed packages and build output are not project items.
   mkdirSync(join(directory, "Single/Frontend/node_modules/stand-in"), { recursive: true });
   writeFileSync(join(directory, "Single/Frontend/node_modules/stand-in/package.json"), "{}");
