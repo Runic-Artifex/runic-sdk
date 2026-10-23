@@ -929,7 +929,7 @@ public static partial class DesktopPlatformServices
     /// disposed. <see cref="RunicDesktopHost.GetSurface"/> returns the surface the same way.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
-    public static DesktopWindow? GetWindow(IRunicWindow window)
+    public static DesktopWindow? GetDesktopWindow(IRunicWindow window)
     {
         ArgumentNullException.ThrowIfNull(window);
         return window.Host is IDesktopNativeOwnerSource source ? source.WindowOrNull : null;
@@ -1392,8 +1392,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     {
         public CapabilityStatus Status => DesktopServiceStatus.Get(services.CurrentMonitors);
 
-        public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> GetMonitorsAsync(CancellationToken cancellationToken = default) =>
-            services.CurrentMonitors.GetMonitorsAsync(cancellationToken);
+        public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> ListAsync(CancellationToken cancellationToken = default) =>
+            services.CurrentMonitors.ListAsync(cancellationToken);
 
         public IAsyncEnumerable<PlatformResult<ImmutableArray<DesktopMonitor>>> WatchAsync(CancellationToken cancellationToken = default) =>
             services.CurrentMonitors.WatchAsync(cancellationToken);

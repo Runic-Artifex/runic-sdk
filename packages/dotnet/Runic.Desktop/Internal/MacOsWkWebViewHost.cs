@@ -432,7 +432,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             FitPlacement(hasPosition: options.X is not null && options.Y is not null);
         }
         // A monitor to open on replaces the position; a placement with a position leaves it unset.
-        if (options.Monitor is { } monitorId && FindScreen(monitorId) is { } screen)
+        if (options.MonitorId is { } monitorId && FindScreen(monitorId) is { } screen)
         {
             MoveToScreen(screen);
         }

@@ -39,7 +39,7 @@ A directory picker that implements
 `INativeDirectoryPicker.SelectDirectoriesAsync(initialDirectory, cancellationToken)`
 returns `true` from `SupportsMultipleDirectorySelection`, which `OpenDirectoriesAsync`
 and the `platform.directories.openMultiple` capability follow the same way. The
-request's `ShowsFilterChoice` asks for a filter choice where the dialog has none of
+request's `ShowFilterChoice` asks for a filter choice where the dialog has none of
 its own; a picker reports the filter the user left selected as the first
 selection's `NativeFileSelection.SelectedFilter`, and the backend passes it on as
 `PickerResult<T>.Selected.SelectedFilter` only when it is one of the request's

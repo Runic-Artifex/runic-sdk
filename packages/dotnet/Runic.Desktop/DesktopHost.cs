@@ -83,7 +83,7 @@ public sealed class DesktopHost : IAsyncDisposable
     /// which reports <see cref="PlatformUnavailableReason.BackendUnavailable"/> unless the factory provides them, as the GTK 4
     /// factory does. A monitor's <see cref="DesktopMonitor.WorkArea"/> can be passed to <see cref="DesktopWindow.MoveAsync"/>
     /// as it is, and its <see cref="DesktopMonitor.Id"/> to <see cref="DesktopWindow.MoveToMonitorAsync"/> and
-    /// <see cref="DesktopWindowOptions.Monitor"/>.
+    /// <see cref="DesktopWindowOptions.MonitorId"/>.
     /// </para>
     /// </remarks>
     /// <example><code>

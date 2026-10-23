@@ -39,6 +39,40 @@ internal sealed class PlatformHelpersTests
         Check(success == new PlatformResult<int>.Success(42), "Equality is unchanged.");
     }
 
+    [Test, DisplayName("RESULT: PickerResult's TryGetValue and Match cover every case; ToString is unchanged")]
+    public void PickerResultHelpers()
+    {
+        var lease = new Lease();
+        var filter = new FileDialogFilter("Text", ["txt"]);
+        PickerResult<Lease> selected = new PickerResult<Lease>.Selected(lease) { SelectedFilter = filter };
+        PickerResult<Lease> dismissed = new PickerResult<Lease>.Dismissed();
+        PickerResult<Lease> unavailable = new PickerResult<Lease>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        PickerResult<Lease> failed = new PickerResult<Lease>.Failed(PlatformFailureCode.NotFound, PlatformDiagnostic.FromErrno(2));
+
+        Check(selected.TryGetValue(out var value) && ReferenceEquals(value, lease), "TryGetValue returns the selected resource.");
+        Check(!dismissed.TryGetValue(out value) && value is null && !unavailable.TryGetValue(out value) && value is null
+            && !failed.TryGetValue(out value) && value is null, "TryGetValue is false with null for the other cases.");
+
+        string Describe(PickerResult<Lease> result) => result.Match(
+            s => $"selected {s.SelectedFilter?.Name}", _ => "dismissed", u => $"unavailable {u.Reason}", f => $"failed {f.Code} {f.Diagnostic?.Code}");
+        Check(Describe(selected) == "selected Text", Describe(selected));
+        Check(Describe(dismissed) == "dismissed", Describe(dismissed));
+        Check(Describe(unavailable) == "unavailable BackendUnavailable", Describe(unavailable));
+        Check(Describe(failed) == "failed NotFound 2", Describe(failed));
+        Throws<ArgumentNullException>(() => selected.Match(null!, _ => 0, _ => 0, _ => 0));
+        Throws<ArgumentNullException>(() => selected.Match(_ => 0, null!, _ => 0, _ => 0));
+        Throws<ArgumentNullException>(() => selected.Match(_ => 0, _ => 0, null!, _ => 0));
+        Throws<ArgumentNullException>(() => selected.Match(_ => 0, _ => 0, _ => 0, null!));
+
+        Check(dismissed.ToString() == "Dismissed { }", dismissed.ToString());
+        Check(unavailable.ToString() == "Unavailable { Reason = BackendUnavailable }", unavailable.ToString());
+    }
+
+    private sealed class Lease : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     [Test, DisplayName("THUMBNAILS: the scale overload asks for device pixels, at most MaximumSize")]
     public async Task ThumbnailScaleAsync()
     {

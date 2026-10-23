@@ -35,8 +35,8 @@ Runic.Platform.DesktopMenuItem.RadioGroup.init -> void
 Runic.Platform.DesktopStatusIconActivation.CommandParameter.get -> string?
 Runic.Platform.DesktopStatusIconActivation.CommandParameter.init -> void
 Runic.Platform.IWindowPlatformServices.ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> items, Runic.Platform.DesktopContextMenuOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopMenuItem?>!>
-const Runic.Platform.PlatformCapabilityIds.ContextMenu = "platform.menus.context" -> string!
-const Runic.Platform.PlatformCapabilityIds.MenuBar = "platform.menus.bar" -> string!
+const Runic.Platform.PlatformCapabilityIds.ContextMenu = "platform.contextMenu" -> string!
+const Runic.Platform.PlatformCapabilityIds.MenuBar = "platform.menuBar" -> string!
 override Runic.Platform.DesktopContextMenuOptions.Equals(object? obj) -> bool
 override Runic.Platform.DesktopContextMenuOptions.GetHashCode() -> int
 override Runic.Platform.DesktopContextMenuOptions.ToString() -> string!
@@ -103,12 +103,12 @@ Runic.Platform.IDesktopVolumes.UnlockAsync(string! volumeId, System.ReadOnlyMemo
 Runic.Platform.IDesktopVolumes.UnlockAsync(string! volumeId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopVolume!>!>
 Runic.Platform.IDirectoryLeaseList
 Runic.Platform.IFileDialogs.OpenDirectoriesAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLeaseList!>!>
-Runic.Platform.OpenFileOptions.ShowsFilterChoice.get -> bool
-Runic.Platform.OpenFileOptions.ShowsFilterChoice.init -> void
+Runic.Platform.OpenFileOptions.ShowFilterChoice.get -> bool
+Runic.Platform.OpenFileOptions.ShowFilterChoice.init -> void
 Runic.Platform.PickerResult<T>.Selected.SelectedFilter.get -> Runic.Platform.FileDialogFilter?
 Runic.Platform.PickerResult<T>.Selected.SelectedFilter.init -> void
-Runic.Platform.SaveFileOptions.ShowsFilterChoice.get -> bool
-Runic.Platform.SaveFileOptions.ShowsFilterChoice.init -> void
+Runic.Platform.SaveFileOptions.ShowFilterChoice.get -> bool
+Runic.Platform.SaveFileOptions.ShowFilterChoice.init -> void
 static Runic.Platform.DesktopTrashItem.operator !=(Runic.Platform.DesktopTrashItem? left, Runic.Platform.DesktopTrashItem? right) -> bool
 static Runic.Platform.DesktopTrashItem.operator ==(Runic.Platform.DesktopTrashItem? left, Runic.Platform.DesktopTrashItem? right) -> bool
 static Runic.Platform.DesktopTrashProgress.operator !=(Runic.Platform.DesktopTrashProgress left, Runic.Platform.DesktopTrashProgress right) -> bool
@@ -153,7 +153,7 @@ Runic.Platform.DesktopRect.Y.init -> void
 Runic.Platform.DesktopStatusIconState.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
 Runic.Platform.DesktopStatusIconState.LayoutDirection.init -> void
 Runic.Platform.IDesktopMonitors
-Runic.Platform.IDesktopMonitors.GetMonitorsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMonitor!>>!>
+Runic.Platform.IDesktopMonitors.ListAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMonitor!>>!>
 Runic.Platform.IDesktopMonitors.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMonitor!>>!>!
 Runic.Platform.IWindowPlatformServices.Monitors.get -> Runic.Platform.IDesktopMonitors!
 const Runic.Platform.PlatformCapabilityIds.Monitors = "platform.monitors" -> string!
@@ -360,8 +360,8 @@ Runic.Platform.DesktopGlobalShortcutsChange.DesktopGlobalShortcutsChange(System.
 Runic.Platform.DesktopGlobalShortcutsChange.Bindings.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!>
 Runic.Platform.DesktopGlobalShortcutsChange.Bindings.init -> void
 Runic.Platform.DesktopGlobalShortcutStatus
-Runic.Platform.DesktopGlobalShortcutStatus.Bound = 0 -> Runic.Platform.DesktopGlobalShortcutStatus
-Runic.Platform.DesktopGlobalShortcutStatus.Unbound = 1 -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutStatus.Bound = 1 -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutStatus.Unbound = 0 -> Runic.Platform.DesktopGlobalShortcutStatus
 Runic.Platform.DesktopGlobalShortcutStatus.Conflict = 2 -> Runic.Platform.DesktopGlobalShortcutStatus
 Runic.Platform.DesktopGlobalShortcutStatus.Refused = 3 -> Runic.Platform.DesktopGlobalShortcutStatus
 Runic.Platform.IDesktopGlobalShortcuts
@@ -489,3 +489,5 @@ override Runic.Platform.DesktopSecretStoreOptions.GetHashCode() -> int
 override Runic.Platform.DesktopSecretStoreOptions.ToString() -> string!
 static Runic.Platform.DesktopSecretStoreOptions.operator !=(Runic.Platform.DesktopSecretStoreOptions? left, Runic.Platform.DesktopSecretStoreOptions? right) -> bool
 static Runic.Platform.DesktopSecretStoreOptions.operator ==(Runic.Platform.DesktopSecretStoreOptions? left, Runic.Platform.DesktopSecretStoreOptions? right) -> bool
+Runic.Platform.PickerResult<T>.Match<TResult>(System.Func<Runic.Platform.PickerResult<T>.Selected!, TResult>! selected, System.Func<Runic.Platform.PickerResult<T>.Dismissed!, TResult>! dismissed, System.Func<Runic.Platform.PickerResult<T>.Unavailable!, TResult>! unavailable, System.Func<Runic.Platform.PickerResult<T>.Failed!, TResult>! failed) -> TResult
+Runic.Platform.PickerResult<T>.TryGetValue(out T value) -> bool

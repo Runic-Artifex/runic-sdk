@@ -56,6 +56,8 @@ internal sealed class GlobalShortcutTests
             is { Status: DesktopGlobalShortcutStatus.Conflict, TriggerDescription: "⇧⌘S" }, "a conflict reports the requested key in macOS text");
         Check(DesktopGlobalShortcutRules.Binding("a", null, DesktopGlobalShortcutStatus.Refused, macOS: false)
             is { Status: DesktopGlobalShortcutStatus.Unbound, Shortcut: null, TriggerDescription: null }, "no key is unbound");
+        Check(new DesktopGlobalShortcutBinding("a").Status == DesktopGlobalShortcutStatus.Unbound && default(DesktopGlobalShortcutStatus) == DesktopGlobalShortcutStatus.Unbound,
+            "a binding that sets no status reports no key");
         Check(DesktopGlobalShortcutRules.Requested(new DesktopGlobalShortcut("a", "A") { PreferredShortcut = default(DesktopShortcut) }) is null,
             "the default shortcut is no key");
     }

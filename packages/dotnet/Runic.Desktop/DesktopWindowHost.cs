@@ -106,7 +106,7 @@ public interface IDesktopWindowStateHost : IDesktopWindowHost
 /// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>. Report
 /// <see cref="DesktopWindowCapabilities.FullScreen"/> and <see cref="DesktopWindowCapabilities.MonitorPlacement"/> in
 /// <see cref="IDesktopWindowHost.Capabilities"/> for the operations the window supports; Runic Desktop calls a member only
-/// with its flag. When opening, apply <see cref="DesktopWindowHostOptions.Monitor"/> and a
+/// with its flag. When opening, apply <see cref="DesktopWindowHostOptions.MonitorId"/> and a
 /// <see cref="DesktopWindowPlacement.FullScreen"/> placement, and report <see cref="DesktopWindowState.IsFullScreen"/>,
 /// <see cref="DesktopWindowState.MonitorId"/> and <see cref="DesktopWindowPlacement.FullScreen"/> in the state. Monitor
 /// identifiers are those of <see cref="IDesktopWindowHostFactory.Monitors"/>.
@@ -117,13 +117,13 @@ public interface IDesktopPlacementWindowHost : IDesktopWindowHost
     /// <param name="fullScreen"><see langword="true"/> to enter full screen; <see langword="false"/> to leave it.</param>
     /// <param name="cancellationToken">Cancels the queued native work.</param>
     /// <returns>A task that completes when the window has been asked to change.</returns>
-    ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken);
+    ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default);
 
     /// <summary>Moves the window to a monitor, centered on its work area and shrunk to fit it.</summary>
     /// <param name="monitorId">The <see cref="DesktopMonitor.Id"/> of a connected monitor.</param>
     /// <param name="cancellationToken">Cancels the queued native work.</param>
     /// <returns>A task that completes when the window has moved; it fails with <see cref="ArgumentException"/> when no connected monitor has this identifier.</returns>
-    ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken);
+    ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>An optional native host that shows the menu bar and context menus.</summary>
@@ -402,9 +402,9 @@ public sealed record DesktopWindowHostOptions
     /// </remarks>
     public bool GlobalMenu { get; init; } = true;
 
-    /// <summary>Gets the monitor to open on, from <see cref="DesktopWindowOptions.Monitor"/>; <see langword="null"/> when a placement's position or the platform decides.</summary>
+    /// <summary>Gets the monitor to open on, from <see cref="DesktopWindowOptions.MonitorId"/>; <see langword="null"/> when a placement's position or the platform decides.</summary>
     /// <remarks>A host implementing <see cref="IDesktopPlacementWindowHost"/> applies it; others ignore it.</remarks>
-    public string? Monitor { get; init; }
+    public string? MonitorId { get; init; }
 
     /// <summary>Gets the direction of the window's native parts, from <see cref="DesktopWindowOptions.LayoutDirection"/>.</summary>
     public DesktopLayoutDirection LayoutDirection { get; init; }
@@ -556,7 +556,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             DiagnosticSink = options.ReportDiagnostic,
             MenuBarPresentation = options.MenuBarPresentation,
             GlobalMenu = options.GlobalMenu,
-            Monitor = options.Monitor,
+            MonitorId = options.MonitorId,
             LayoutDirection = options.LayoutDirection,
             Language = options.Language,
         }, cancellationToken);

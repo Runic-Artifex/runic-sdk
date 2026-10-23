@@ -79,7 +79,7 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
     private async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectCoreAsync(NativeFileDialogRequest request, bool directory, CancellationToken cancellationToken)
     {
         bool save = request.Save, multiple = request.AllowMultiple && !save;
-        bool showsChoice = request.ShowsFilterChoice && !directory && !request.Filters.IsDefaultOrEmpty;
+        bool showsChoice = request.ShowFilterChoice && !directory && !request.Filters.IsDefaultOrEmpty;
         FilterChoice? choice = null;
         string? suggestedName = request.SuggestedName;
         nint panel = 0;

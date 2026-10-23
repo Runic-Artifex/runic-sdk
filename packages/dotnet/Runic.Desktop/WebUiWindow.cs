@@ -1904,7 +1904,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ReportDiagnostic = ReportEmbeddedDiagnostic,
             MenuBarPresentation = _menuBarPresentation,
             GlobalMenu = _runtimeOptions?.GlobalMenu ?? true,
-            Monitor = _monitor,
+            MonitorId = _monitor,
             LayoutDirection = _layoutDirection,
             Language = _language,
         };

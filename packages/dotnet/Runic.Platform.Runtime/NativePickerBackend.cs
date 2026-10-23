@@ -40,8 +40,8 @@ public sealed record NativeFileDialogRequest(bool Save, string? SuggestedName)
     /// <summary>Whether an open dialog lets the user select more than one file. Never set for a save dialog.</summary>
     public bool AllowMultiple { get; init; }
     /// <summary>Whether the dialog should offer a choice between <see cref="Filters"/> where it does not by itself, as
-    /// <see cref="OpenFileOptions.ShowsFilterChoice"/> asks.</summary>
-    public bool ShowsFilterChoice { get; init; }
+    /// <see cref="OpenFileOptions.ShowFilterChoice"/> asks.</summary>
+    public bool ShowFilterChoice { get; init; }
 }
 /// <summary>Optional directory-selection support for a native file picker.</summary>
 public interface INativeDirectoryPicker
@@ -219,7 +219,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
             selections = await picker.SelectAsync(new NativeFileDialogRequest(false, null)
             {
                 Filters = options.Filters, InitialDirectory = options.InitialDirectory, AllowMultiple = multiple,
-                ShowsFilterChoice = options.ShowsFilterChoice,
+                ShowFilterChoice = options.ShowFilterChoice,
             }, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsAvailable) return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -269,7 +269,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
         {
             var selections = await picker.SelectAsync(new NativeFileDialogRequest(true, options.SuggestedName)
             {
-                Filters = options.Filters, InitialDirectory = options.InitialDirectory, ShowsFilterChoice = options.ShowsFilterChoice,
+                Filters = options.Filters, InitialDirectory = options.InitialDirectory, ShowFilterChoice = options.ShowFilterChoice,
             }, cancellationToken).ConfigureAwait(false);
             if (selections is { Count: > 1 })
             {

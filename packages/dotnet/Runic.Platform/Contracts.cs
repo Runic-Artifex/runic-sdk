@@ -210,7 +210,7 @@ public abstract record PickerResult<T> where T : IAsyncDisposable
         /// <remarks>
         /// <see langword="null"/> when the dialog offered no filters, for a directory selection, and when the dialog
         /// does not report its filter: Windows always reports it, macOS only with a filter pop-up
-        /// (<c>ShowsFilterChoice</c>), the Linux GTK chooser always and the xdg-desktop-portal FileChooser when the
+        /// (<c>ShowFilterChoice</c>), the Linux GTK chooser always and the xdg-desktop-portal FileChooser when the
         /// portal returns <c>current_filter</c>. The selection itself may still match no filter.
         /// </remarks>
         public FileDialogFilter? SelectedFilter { get; init; }
@@ -227,6 +227,55 @@ public abstract record PickerResult<T> where T : IAsyncDisposable
     /// <param name="Code">The classified failure. Branch on this value.</param>
     /// <param name="Diagnostic">Native error detail for logs and support, when the provider observed one.</param>
     public sealed record Failed(PlatformFailureCode Code, PlatformDiagnostic? Diagnostic = null) : PickerResult<T>;
+
+    /// <summary>Gets the acquired resource of a <see cref="Selected"/>.</summary>
+    /// <param name="value">The acquired resource when this is a <see cref="Selected"/>; otherwise the default. Dispose it.</param>
+    /// <returns><see langword="true"/> for a <see cref="Selected"/>; <see langword="false"/> for <see cref="Dismissed"/>,
+    /// <see cref="Unavailable"/> and <see cref="Failed"/>.</returns>
+    /// <example><code>
+    /// if ((await dialogs.OpenFileAsync(options)).TryGetValue(out var lease))
+    /// {
+    ///     await using (lease) { … }
+    /// }
+    /// </code></example>
+    public bool TryGetValue([MaybeNullWhen(false)] out T value)
+    {
+        if (this is Selected selected)
+        {
+            value = selected.Value;
+            return true;
+        }
+        value = default;
+        return false;
+    }
+
+    /// <summary>Calls the function for this case and returns its result.</summary>
+    /// <typeparam name="TResult">The type the functions return.</typeparam>
+    /// <param name="selected">
+    /// Called with a <see cref="Selected"/> case, which also carries <see cref="Selected.SelectedFilter"/>. It owns the
+    /// acquired resource: dispose <see cref="Selected.Value"/>.
+    /// </param>
+    /// <param name="dismissed">Called with a <see cref="Dismissed"/> case.</param>
+    /// <param name="unavailable">Called with an <see cref="Unavailable"/> case.</param>
+    /// <param name="failed">Called with a <see cref="Failed"/> case.</param>
+    /// <returns>What the called function returned.</returns>
+    /// <exception cref="ArgumentNullException">A function is <see langword="null"/>.</exception>
+    public TResult Match<TResult>(Func<Selected, TResult> selected, Func<Dismissed, TResult> dismissed,
+        Func<Unavailable, TResult> unavailable, Func<Failed, TResult> failed)
+    {
+        ArgumentNullException.ThrowIfNull(selected);
+        ArgumentNullException.ThrowIfNull(dismissed);
+        ArgumentNullException.ThrowIfNull(unavailable);
+        ArgumentNullException.ThrowIfNull(failed);
+        return this switch
+        {
+            Selected value => selected(value),
+            Dismissed none => dismissed(none),
+            Unavailable reason => unavailable(reason),
+            Failed failure => failed(failure),
+            _ => throw new UnreachableException(),
+        };
+    }
 }
 
 /// <summary>The observed outcome after an atomic replacement attempt. An uncertain commit must not be retried automatically.</summary>
@@ -252,7 +301,7 @@ public abstract record FileCommitResult
 /// A filter is a hint to the dialog: it limits which files the dialog shows, but the user can still choose or type a
 /// name that matches no filter on some platforms, and Runic does not reject such a selection. Validate the content
 /// you read. Extensions match case-insensitively on every platform. macOS shows no filter pop-up unless
-/// <see cref="OpenFileOptions.ShowsFilterChoice"/> or <see cref="SaveFileOptions.ShowsFilterChoice"/> asks for one:
+/// <see cref="OpenFileOptions.ShowFilterChoice"/> or <see cref="SaveFileOptions.ShowFilterChoice"/> asks for one:
 /// without it, its panel offers the files of every filter at once.
 /// </remarks>
 /// <param name="Name">The name the dialog shows, in the user's language.</param>
@@ -357,7 +406,7 @@ public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.Requi
     /// <see cref="PickerResult{T}.Selected.SelectedFilter"/>. With it, the panel shows the first filter's files and the
     /// pop-up switches between filters. Windows and Linux always show their own filter choice and ignore this value.
     /// </remarks>
-    public bool ShowsFilterChoice { get; init; }
+    public bool ShowFilterChoice { get; init; }
 }
 
 /// <summary>Options for selecting existing local directories.</summary>
@@ -399,7 +448,7 @@ public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPoli
     /// <see cref="PickerResult{T}.Selected.SelectedFilter"/>. With it, the panel shows the first filter's files and the
     /// pop-up switches between filters. Windows and Linux always show their own filter choice and ignore this value.
     /// </remarks>
-    public bool ShowsFilterChoice { get; init; }
+    public bool ShowFilterChoice { get; init; }
 }
 
 internal static class FileDialogOptions

@@ -572,7 +572,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             }
 
             // A monitor to open on replaces the position; the window then centers on its work area.
-            var monitor = options.Monitor is { } monitorId ? WindowsMonitors.Find(monitorId) : null;
+            var monitor = options.MonitorId is { } monitorId ? WindowsMonitors.Find(monitorId) : null;
             if (monitor is { } chosen)
             {
                 x = chosen.WorkArea.X;

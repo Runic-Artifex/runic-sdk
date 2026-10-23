@@ -151,7 +151,7 @@ internal sealed partial class MacAppKitNativeTests
         return [.. Enumerable.Range(0, (int)Send(buttons, Sel("count"))).Select(index => Arg(buttons, Sel("objectAtIndex:"), index))];
     }
 
-    // The file panel's filter pop-up (ShowsFilterChoice): the registered target class swaps allowedContentTypes. The
+    // The file panel's filter pop-up (ShowFilterChoice): the registered target class swaps allowedContentTypes. The
     // panel is never shown; choosing in a shown panel is a manual check.
     private static async Task FilterChoiceAsync()
     {

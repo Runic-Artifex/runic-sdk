@@ -125,7 +125,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   stops new operations and waits for accepted ones before releasing the scope.
   `RunicDesktopHost.GetSurface(window)` returns the `Surface` of any Window of
   this host without naming its ViewModel type, and `null` for another host's;
-  `DesktopPlatformServices.GetWindow(window)` returns its `DesktopWindow` the
+  `DesktopPlatformServices.GetDesktopWindow(window)` returns its `DesktopWindow` the
   same way, also `null` under `RUNIC_APPLICATION_SERVE_ONLY=1`, for example to
   hide it with `HideAsync` or subscribe to `Closed`.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI

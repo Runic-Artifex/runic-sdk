@@ -25,11 +25,14 @@ public sealed record DesktopGlobalShortcut(string Id, string Description)
 /// <remarks>This set is open: a minor release may add values, so handle unknown values.</remarks>
 public enum DesktopGlobalShortcutStatus
 {
-    /// <summary>The key starts the action.</summary>
-    Bound = 0,
+    /// <summary>
+    /// No key is assigned: the action has no preferred shortcut, or on Linux the user left it unassigned. The default
+    /// value, so a binding that does not set <see cref="DesktopGlobalShortcutBinding.Status"/> reports no key.
+    /// </summary>
+    Unbound = 0,
 
-    /// <summary>No key is assigned: the action has no preferred shortcut, or on Linux the user left it unassigned.</summary>
-    Unbound = 1,
+    /// <summary>The key starts the action.</summary>
+    Bound = 1,
 
     /// <summary>Another application, or another action of this one, already uses the key.</summary>
     Conflict = 2,

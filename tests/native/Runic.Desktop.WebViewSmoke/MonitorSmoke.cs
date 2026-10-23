@@ -41,7 +41,7 @@ internal static partial class MonitorSmoke
         {
             var window = await surface.OpenWindowAsync(new DesktopWindowOptions
             {
-                Browser = BrowserKind.Embedded, Width = 520, Height = 360, Monitor = primary.Id,
+                Browser = BrowserKind.Embedded, Width = 520, Height = 360, MonitorId = primary.Id,
             });
             Require(window.Capabilities.HasFlag(DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement),
                 $"the window advertises FullScreen and MonitorPlacement, not {window.Capabilities}");
@@ -116,7 +116,7 @@ internal static partial class MonitorSmoke
 
     private static async Task<ImmutableArray<DesktopMonitor>> CheckMonitorsAsync(DesktopHost host)
     {
-        var result = await host.Monitors.GetMonitorsAsync();
+        var result = await host.Monitors.ListAsync();
         if (result is not PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var monitors })
             throw new InvalidOperationException($"The host did not list its monitors: {result}.");
         foreach (var monitor in monitors) Console.WriteLine($"Monitors: {monitor}.");

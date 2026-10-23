@@ -1,7 +1,7 @@
 #nullable enable
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateApplications(string! applicationId) -> Runic.Platform.IDesktopApplications!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string! applicationId) -> Runic.Platform.IDesktopSecretStore!
-static Runic.Application.Views.Desktop.DesktopPlatformServices.GetWindow(Runic.Application.Views.IRunicWindow! window) -> Runic.Desktop.DesktopWindow?
+static Runic.Application.Views.Desktop.DesktopPlatformServices.GetDesktopWindow(Runic.Application.Views.IRunicWindow! window) -> Runic.Desktop.DesktopWindow?
 Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishUtf8Async(string! name, System.ReadOnlyMemory<byte> stateUtf8, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.get -> int?
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.init -> void

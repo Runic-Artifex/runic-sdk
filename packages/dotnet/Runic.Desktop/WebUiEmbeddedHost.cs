@@ -189,8 +189,8 @@ internal sealed record WebUiEmbeddedHostOptions
     /// <summary>Whether a Native bar may go into the Linux desktop's global menu (LinuxDesktopOptions.GlobalMenu).</summary>
     public bool GlobalMenu { get; init; } = true;
 
-    /// <summary>The monitor to open centered on (DesktopWindowOptions.Monitor), replacing X, Y and Centered; null otherwise.</summary>
-    public string? Monitor { get; init; }
+    /// <summary>The monitor to open centered on (DesktopWindowOptions.MonitorId), replacing X, Y and Centered; null otherwise.</summary>
+    public string? MonitorId { get; init; }
 
     /// <summary>The direction of the window's native parts (DesktopWindowOptions.LayoutDirection).</summary>
     public DesktopLayoutDirection LayoutDirection { get; init; }
