@@ -149,20 +149,21 @@ internal sealed class PlainExecuteTests
                 // Logged: the remaining case (the caller handled it, which Runic cannot tell from fire-and-forget) and a
                 // fire-and-forget failure, when the Bridge call ends.
                 var expected = caller is "handles" or "fire-and-forget";
-                var logged = await InBridgeCallAsync(context, scheduler, caller);
-                if (logged != expected) failures.Add($"{scheduler}/{caller}: logged={logged}");
+                Collect(failures, await InBridgeCallAsync(context, scheduler, caller, expected));
             }
             // The remaining case outside any Bridge call: a plain Execute in a turn whose caller handles the exception.
-            if (!await OutsideBridgeCallAsync(context, scheduler, runAsync: false, inTurn: true))
-                failures.Add($"{scheduler}/outside-call-handles: logged=False");
+            Collect(failures, await OutsideBridgeCallAsync(context, scheduler, runAsync: false, inTurn: true, "outside-call-handles"));
             // RunAsync (#471) covers it, in a turn and outside any turn.
-            if (await OutsideBridgeCallAsync(context, scheduler, runAsync: true, inTurn: true))
-                failures.Add($"{scheduler}/outside-call-run-async-handles: logged=True");
-            if (await OutsideBridgeCallAsync(context, scheduler, runAsync: true, inTurn: false))
-                failures.Add($"{scheduler}/outside-turn-run-async-handles: logged=True");
-            if (!await InStreamCallAsync(context, scheduler)) failures.Add($"{scheduler}/fire-and-forget-in-stream: not logged while the stream ran");
+            Collect(failures, await OutsideBridgeCallAsync(context, scheduler, runAsync: true, inTurn: true, "outside-call-run-async-handles"));
+            Collect(failures, await OutsideBridgeCallAsync(context, scheduler, runAsync: true, inTurn: false, "outside-turn-run-async-handles"));
+            Collect(failures, await InStreamCallAsync(context, scheduler));
         }
         Require(failures.Count == 0, "Event 1042 for the native command differs: " + string.Join("; ", failures));
+
+        static void Collect(List<string> failures, string? failure)
+        {
+            if (failure is not null) failures.Add(failure);
+        }
     }
 
     private static FlavorScheduler? SchedulerOf(RunicModelContext context, string kind) => kind switch
@@ -183,7 +184,28 @@ internal sealed class PlainExecuteTests
             throw new InvalidOperationException("disk full " + id);
         }, null, SchedulerOf(context, scheduler));
 
-    private static async Task<bool> InBridgeCallAsync(RunicModelContext context, string scheduler, string caller)
+    // Called once Runic has decided about the native command's failure: it was delivered on ThrownExceptions
+    // (ThrownExceptionsProbe) and every call that could hold it had ended, or the expected entry arrived. The settle
+    // then gives an unexpected later entry the time these cases always gave it, so the checks are no less strict.
+    private static async Task SettleAsync(RunicModelContext context)
+    {
+        await Task.Delay(150);
+        await context.InvokeAsync(() => { });
+    }
+
+    // Whether the native command's log holds exactly what the case expects: the native's own failure logged once as
+    // event 1042, or nothing. Returns the difference, or null.
+    private static string? NativeLogDiffers(RecordingLogger log, string name, bool expected, int id)
+    {
+        var entries = log.Entries.ToArray();
+        var matches = expected
+            ? entries is [{ Id: 1042, Exception: InvalidOperationException { Message: var message } }] && message == "disk full " + id
+            : entries.Length == 0;
+        return matches ? null
+            : $"{name}: expected {(expected ? $"one event 1042 for 'disk full {id}'" : "nothing")}, logged {log.Describe()}";
+    }
+
+    private static async Task<string?> InBridgeCallAsync(RunicModelContext context, string scheduler, string caller, bool expected)
     {
         var native = Native(context, scheduler);
         var nativeLog = new RecordingLogger();
@@ -233,32 +255,43 @@ internal sealed class PlainExecuteTests
         });
         using (ReactiveCommandExecution.ObserveFailures(native, nativeLog, "Native"))
         using (ReactiveCommandExecution.ObserveFailures(wrapper, wrapperLog, "Wrapper"))
+        using (var nativeDeliveries = new ThrownExceptionsProbe(native.ThrownExceptions))
+        using (var wrapperDeliveries = new ThrownExceptionsProbe(wrapper.ThrownExceptions))
         {
             Task? call = null;
             await context.InvokeAsync(() => call = ReactiveCommandExecution.ExecuteCompletion(wrapper, 7, CancellationToken.None));
-            try { await call!.WaitAsync(TimeSpan.FromSeconds(5)); }
-            catch (Exception error) when (error is InvalidOperationException or AggregateException) { }
-            // Let a late ThrownExceptions delivery arrive; the context runs its turns in order.
-            await Task.Delay(150);
-            await context.InvokeAsync(() => { });
-            Require(wrapperLog.Entries.IsEmpty, $"{scheduler}/{caller}: the wrapper's own failure, which its Bridge call received, was logged.");
-            return nativeLog.Entries.Any(entry => entry.Id == 1042);
+            var wrapperFailed = false;
+            try { await call!.WaitAsync(ConformanceWait.Timeout); }
+            catch (Exception error) when (error is InvalidOperationException or AggregateException) { wrapperFailed = true; }
+            // The Bridge call has ended, with what it held; wait for the deliveries that can still arrive after it.
+            await nativeDeliveries.WaitAsync(1, $"{scheduler}/{caller}: the native command's failure was not delivered on ThrownExceptions.");
+            if (wrapperFailed)
+                await wrapperDeliveries.WaitAsync(1, $"{scheduler}/{caller}: the wrapper's failure was not delivered on ThrownExceptions.");
+            if (expected) await nativeLog.TryWaitForAsync(static entry => entry.Id == 1042);
+            await SettleAsync(context);
+            Require(wrapperLog.Entries.IsEmpty,
+                $"{scheduler}/{caller}: the wrapper's own failure, which its Bridge call received, was logged: {wrapperLog.Describe()}");
+            return NativeLogDiffers(nativeLog, $"{scheduler}/{caller}", expected, 7);
         }
     }
 
-    private static async Task<bool> OutsideBridgeCallAsync(RunicModelContext context, string scheduler, bool runAsync, bool inTurn)
+    // A plain Execute is logged, as the caller's handling cannot be told from fire-and-forget; RunAsync is not.
+    private static async Task<string?> OutsideBridgeCallAsync(RunicModelContext context, string scheduler, bool runAsync, bool inTurn, string name)
     {
         var native = Native(context, scheduler);
         var nativeLog = new RecordingLogger();
         using (ReactiveCommandExecution.ObserveFailures(native, nativeLog, "Native"))
+        using (var deliveries = new ThrownExceptionsProbe(native.ThrownExceptions))
         {
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             if (inTurn) await context.InvokeAsync(() => _ = HandleAsync());
             else _ = Task.Run(HandleAsync);
-            await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await Task.Delay(150);
-            await context.InvokeAsync(() => { });
-            return nativeLog.Entries.Any(entry => entry.Id == 1042);
+            // RunAsync's call has ended once the caller handled its exception; then wait for the delivery.
+            await done.Task.WaitAsync(ConformanceWait.Timeout);
+            await deliveries.WaitAsync(1, $"{scheduler}/{name}: the native command's failure was not delivered on ThrownExceptions.");
+            if (!runAsync) await nativeLog.TryWaitForAsync(static entry => entry.Id == 1042);
+            await SettleAsync(context);
+            return NativeLogDiffers(nativeLog, $"{scheduler}/{name}", expected: !runAsync, 3);
 
             async Task HandleAsync()
             {
@@ -275,7 +308,7 @@ internal sealed class PlainExecuteTests
 
     // A stream operation can stay open as long as its client wants, so its flow holds no failures until it ends: a
     // fire-and-forget failure in it is logged while the stream still runs.
-    private static async Task<bool> InStreamCallAsync(RunicModelContext context, string scheduler)
+    private static async Task<string?> InStreamCallAsync(RunicModelContext context, string scheduler)
     {
         var native = Native(context, scheduler);
         var nativeLog = new RecordingLogger();
@@ -291,12 +324,14 @@ internal sealed class PlainExecuteTests
             Task? call = null;
             await context.InvokeAsync(() => call = ReactiveCommandExecution.ExecuteStream(streaming, 5, new BridgeOperationStream(),
                 static value => value.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellation.Token));
-            for (var attempt = 0; attempt < 200 && !nativeLog.Entries.Any(entry => entry.Id == 1042); attempt++) await Task.Delay(10);
-            var logged = nativeLog.Entries.Any(entry => entry.Id == 1042) && !call!.IsCompleted;
+            await nativeLog.TryWaitForAsync(static entry => entry.Id == 1042);
+            var running = !call!.IsCompleted;
+            await SettleAsync(context);
+            var differs = NativeLogDiffers(nativeLog, $"{scheduler}/fire-and-forget-in-stream", expected: true, 5);
             await cancellation.CancelAsync();
-            try { await call!.WaitAsync(TimeSpan.FromSeconds(5)); }
+            try { await call.WaitAsync(ConformanceWait.Timeout); }
             catch (OperationCanceledException) { }
-            return logged;
+            return differs ?? (running ? null : $"{scheduler}/fire-and-forget-in-stream: not logged while the stream ran");
         }
     }
 
@@ -321,11 +356,7 @@ internal sealed class PlainExecuteTests
     private static string Describe(List<RunicModelContext?> observed, RunicModelContext first, RunicModelContext second) =>
         string.Join(",", observed.Select(context => context is null ? "outside" : context == first ? "first" : context == second ? "second" : "other"));
 
-    private static async Task WaitUntilAsync(Func<bool> condition, string message)
-    {
-        for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
-        Require(condition(), message);
-    }
+    private static Task WaitUntilAsync(Func<bool> condition, string message) => ConformanceWait.UntilAsync(condition, message);
 
     private static void Require(bool condition, string message)
     {

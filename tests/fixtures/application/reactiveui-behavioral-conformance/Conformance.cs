@@ -339,7 +339,7 @@ internal sealed class ConformanceTests
                     () => ReactiveCommandExecution.Execute(command, false, CancellationToken.None), "The declared failure was not thrown.");
                 await RequireThrowsAsync<InvalidOperationException>(
                     () => ReactiveCommandExecution.Execute(command, true, CancellationToken.None), "The unexpected failure was not thrown.");
-                await WaitUntilAsync(() => !logger.Entries.IsEmpty, "An unexpected exception was not logged.");
+                await logger.WaitForAsync(static entry => entry.Id == 1042, "An unexpected exception was not logged.");
                 await Task.Delay(100);
             }
             Require(logger.Entries.Single().Source == "command", $"Event 1042 did not name the observed command: {logger.Entries.Single().Source}");
@@ -772,11 +772,7 @@ internal sealed class ConformanceTests
     }
 
 
-    private static async Task WaitUntilAsync(Func<bool> condition, string message)
-    {
-        for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
-        Require(condition(), message);
-    }
+    private static Task WaitUntilAsync(Func<bool> condition, string message) => ConformanceWait.UntilAsync(condition, message);
 
     private static FlavorUnit UnitValue()
     {
@@ -910,12 +906,116 @@ sealed class ExceptionRecorder(Action<Exception> record) : IObserver<Exception>
 
 sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger
 {
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _sites = new();
+    private TaskCompletionSource _logged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public System.Collections.Concurrent.ConcurrentQueue<(int Id, Microsoft.Extensions.Logging.LogLevel Level, Exception? Exception, string? Source)> Entries { get; } = new();
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
     public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
     public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
-        Exception? exception, Func<TState, Exception?, string> formatter) => Entries.Enqueue((eventId.Id, logLevel, exception,
+        Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        _sites.Enqueue(Environment.StackTrace);
+        Entries.Enqueue((eventId.Id, logLevel, exception,
             (state as IEnumerable<KeyValuePair<string, object?>>)?.FirstOrDefault(pair => pair.Key is "Source" or "Scheduler").Value as string));
+        Interlocked.Exchange(ref _logged, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+    }
+
+    // Waits until at least count entries match, signalled by Log; false once ConformanceWait.Timeout passed without them.
+    public async Task<bool> TryWaitForAsync(Func<(int Id, Microsoft.Extensions.Logging.LogLevel Level, Exception? Exception, string? Source), bool> match, int count = 1)
+    {
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            var logged = Volatile.Read(ref _logged).Task;
+            if (Entries.Count(match) >= count) return true;
+            var remaining = ConformanceWait.Timeout - deadline.Elapsed;
+            if (remaining <= TimeSpan.Zero) return false;
+            try { await logged.WaitAsync(remaining); }
+            catch (TimeoutException) { }
+        }
+    }
+
+    // Waits as TryWaitForAsync does and fails with message and the entries logged so far when they do not arrive.
+    public async Task WaitForAsync(Func<(int Id, Microsoft.Extensions.Logging.LogLevel Level, Exception? Exception, string? Source), bool> match,
+        string message, int count = 1)
+    {
+        if (!await TryWaitForAsync(match, count))
+            throw new InvalidOperationException($"{message} (waited {ConformanceWait.Timeout.TotalSeconds:0} s; logged: {Describe()})");
+    }
+
+    // The entries with the exception's type and message, and where each was logged, for failure messages.
+    public string Describe()
+    {
+        var entries = Entries.ToArray();
+        if (entries.Length == 0) return "nothing";
+        var sites = _sites.ToArray();
+        return string.Join("; ", entries.Select((entry, index) => $"[{entry.Id} {entry.Level} {entry.Source} "
+            + $"{entry.Exception?.GetType().FullName}: {entry.Exception?.Message}] logged at:{Environment.NewLine}"
+            + (index < sites.Length ? sites[index] : "?")));
+    }
+}
+
+static class ConformanceWait
+{
+    // Generous: the conditions these cases wait for normally hold within milliseconds, but a loaded CI runner can
+    // delay a turn or a thread-pool item by seconds. A case that waits this long has failed.
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
+    public static async Task UntilAsync(Func<bool> condition, string message)
+    {
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition())
+        {
+            if (deadline.Elapsed >= Timeout)
+            {
+                if (condition()) return;
+                throw new InvalidOperationException($"{message} (waited {Timeout.TotalSeconds:0} s)");
+            }
+            await Task.Delay(10);
+        }
+    }
+}
+
+// Counts the exceptions a command delivers on ThrownExceptions. ReactiveUI notifies ThrownExceptions observers in the
+// order they subscribed, one after the other on the delivering thread, so once a probe subscribed after
+// ReactiveCommandExecution.ObserveFailures has seen a delivery, Runic has handled it: it logged the exception, ignored
+// it, or held it for a call whose end the case awaits.
+sealed class ThrownExceptionsProbe : IObserver<Exception>, IDisposable
+{
+    private readonly IDisposable _subscription;
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Exception> _delivered = new();
+    private TaskCompletionSource _next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public ThrownExceptionsProbe(IObservable<Exception> thrownExceptions) => _subscription = thrownExceptions.Subscribe(this);
+
+    public IReadOnlyCollection<Exception> Delivered => _delivered;
+
+    public async Task WaitAsync(int count, string message)
+    {
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            var next = Volatile.Read(ref _next).Task;
+            if (_delivered.Count >= count) return;
+            var remaining = ConformanceWait.Timeout - deadline.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                throw new InvalidOperationException($"{message} (waited {ConformanceWait.Timeout.TotalSeconds:0} s for {count}, delivered {_delivered.Count})");
+            try { await next.WaitAsync(remaining); }
+            catch (TimeoutException) { }
+        }
+    }
+
+    public void OnNext(Exception value)
+    {
+        _delivered.Enqueue(value);
+        Interlocked.Exchange(ref _next, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+    }
+
+    public void OnError(Exception error) { }
+    public void OnCompleted() { }
+    public void Dispose() => _subscription.Dispose();
 }
 
 sealed class EmptyDisposable : IDisposable
