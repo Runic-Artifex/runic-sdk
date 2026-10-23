@@ -263,6 +263,9 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
         Uri entryModule = new(origin, entry);
         string probe = "Vite client";
         string lastResponse = "no response";
+        // The last attempt that finished. The deadline can cut off the next attempt before its first answer; reporting
+        // that one would say "Vite client: no response" about a server that answered everything but the session.
+        (string Probe, string Response)? finished = null;
         try
         {
             while (true)
@@ -324,12 +327,17 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                     lastResponse = "request timed out";
                 }
 
+                finished = (probe, lastResponse);
                 await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token)
                     .ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            if (finished is { } last && lastResponse == "no response" && Stage(last.Probe) >= Stage(probe))
+            {
+                (probe, lastResponse) = last;
+            }
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
                 probe == "session confirmation"
@@ -341,6 +349,13 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                       "and Vite entry module.");
         }
     }
+
+    private static int Stage(string probe) => probe switch
+    {
+        "Vite client" => 0,
+        "application entry" => 1,
+        _ => 2,
+    };
 
     /// <summary>Whether the response carries exactly this session's value in <see cref="SessionHeader"/>.</summary>
     internal static bool ConfirmsSession(HttpResponseMessage response, string session) =>
