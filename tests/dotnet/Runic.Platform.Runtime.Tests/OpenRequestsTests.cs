@@ -213,32 +213,130 @@ internal sealed class OpenRequestsTests
         else throw new PlatformNotSupportedException("macOS registration is checked by the CI bundle script.");
     }
 
+    // The registration API writes the desktop entry (and the MIME definition, refreshed with update-mime-database when
+    // installed), refusing an ID the "package" installed; gio then starts this executable, which RUNIC_OPEN_PROBE
+    // (passed to gio's environment) makes forward to the running instance. Then D-Bus activation: a service file in
+    // XDG_DATA_HOME, an Open call that starts the activatable probe (cold), and Open, Activate and ActivateAction calls
+    // that reach the same process (warm).
     private static async Task LinuxAsync()
     {
+        if (!OperatingSystem.IsLinux()) return;
         // The CI step runs this under dbus-run-session with a temporary HOME and XDG directories and no display.
         string data = Environment.GetEnvironmentVariable("XDG_DATA_HOME") ?? throw new InvalidOperationException("Set XDG_DATA_HOME.");
         string config = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") ?? throw new InvalidOperationException("Set XDG_CONFIG_HOME.");
-        string scheme = "runic-open-" + Guid.NewGuid().ToString("N")[..8], id = "org.runic.tests.Open" + Guid.NewGuid().ToString("N")[..8];
+        string systemData = Environment.GetEnvironmentVariable("XDG_DATA_DIRS")?.Split(':')[0] ?? throw new InvalidOperationException("Set XDG_DATA_DIRS.");
+        string suffix = Guid.NewGuid().ToString("N")[..8], scheme = "runic-open-" + suffix, id = "org.runic.tests.Open" + suffix;
+        Console.WriteLine($"update-desktop-database: {Which("update-desktop-database") ?? "not installed"}; update-mime-database: {Which("update-mime-database") ?? "not installed"}");
         await using var primary = await ProbeAsync(id, scheme);
         string desktopId = id + ".desktop";
-        System.IO.Directory.CreateDirectory(Path.Combine(data, "applications"));
-        File.WriteAllText(Path.Combine(data, "applications", desktopId),
-            $"[Desktop Entry]\nType=Application\nName=Runic open probe\nExec={DesktopExec(id, scheme)} %U\nMimeType=x-scheme-handler/{scheme};text/plain;\nNoDisplay=true\n");
+
+        // An entry the package installed is never overwritten.
+        string packaged = "org.runic.tests.Packaged" + suffix;
+        System.IO.Directory.CreateDirectory(Path.Combine(systemData, "applications"));
+        File.WriteAllText(Path.Combine(systemData, "applications", packaged + ".desktop"), "[Desktop Entry]\nType=Application\nName=Packaged\nExec=/usr/bin/packaged %U\n");
+        var refused = await new Runic.Platform.Linux.Portal.PortalApplication(packaged).CreateOpenRegistration()
+            .RegisterAsync(new DesktopOpenRegistration("Packaged") { UrlSchemes = [scheme + "-packaged"] });
+        Check(refused is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Conflict }, $"a packaged entry is a conflict: {refused}");
+        Check(!File.Exists(Path.Combine(data, "applications", packaged + ".desktop")), "nothing is written for a packaged entry");
+
+        var registration = new Runic.Platform.Linux.Portal.PortalApplication(id).CreateOpenRegistration();
+        var probe = new DesktopOpenRegistration("Runic open probe") { UrlSchemes = [scheme], FileTypes = [new(".txt") { MimeType = "text/plain" }] };
+        Check(await registration.RegisterAsync(probe) is PlatformResult<PlatformUnit>.Success, "the scheme and file type are registered");
+        Check(await registration.IsRegisteredAsync(probe) is PlatformResult<bool>.Success { Value: true }, "the entry points to this executable");
         System.IO.Directory.CreateDirectory(config);
         File.WriteAllText(Path.Combine(config, "mimeapps.list"), $"[Default Applications]\nx-scheme-handler/{scheme}={desktopId}\ntext/plain={desktopId}\n");
-        string file = Path.Combine(Path.GetTempPath(), "runic open " + Guid.NewGuid().ToString("N")[..8] + ".txt");
+        string file = Path.Combine(Path.GetTempPath(), "runic open " + suffix + ".txt");
         File.WriteAllText(file, "probe");
         try
         {
-            Run("gio", "open", scheme + "://item?id=1");
+            var environment = new Dictionary<string, string> { ["RUNIC_OPEN_PROBE"] = id + " " + scheme };
+            Run(environment, "gio", "open", scheme + "://item?id=1");
             string url = await primary.NextAsync();
-            Check(new Uri(url) == new Uri(scheme + "://item?id=1"), $"gio opened the URL through the x-scheme-handler entry: {url}");
-            Run("gio", "open", file);
+            Check(new Uri(url) == new Uri(scheme + "://item?id=1"), $"gio opened the URL through the registered entry: {url}");
+            Run(environment, "gio", "open", file);
             string opened = await primary.NextAsync();
-            Check(new Uri(opened).LocalPath == file, $"gio opened the file through the MimeType entry: {opened}");
-            Console.WriteLine("PASS open: gio delivered a URL and a file through a desktop entry to the running instance.");
+            Check(new Uri(opened).LocalPath == file, $"gio opened the file through the registered entry: {opened}");
+            Check(await registration.UnregisterAsync(probe) is PlatformResult<bool>.Success { Value: true }, "unregistered");
+            Check(!File.Exists(Path.Combine(data, "applications", desktopId)), "the entry is removed");
+            Console.WriteLine("PASS open: IDesktopOpenRegistration wrote a desktop entry through which gio delivered a URL and a file to the running instance; a packaged entry was refused.");
         }
         finally { File.Delete(file); }
+
+        await DBusActivationAsync(data, suffix);
+    }
+
+    private static async Task DBusActivationAsync(string data, string suffix)
+    {
+        string id = "org.runic.tests.Activation" + suffix, scheme = "runic-activation-" + suffix, path = "/" + id.Replace('.', '/');
+        string log = Path.Combine(Path.GetTempPath(), "runic-activation-" + suffix + ".log");
+        System.IO.Directory.CreateDirectory(Path.Combine(data, "dbus-1", "services"));
+        File.WriteAllText(Path.Combine(data, "dbus-1", "services", id + ".service"),
+            $"[D-BUS Service]\nName={id}\nExec={string.Join(' ', new[] { Executable() }.Concat(ProbeArguments(id, scheme)).Select(static argument => "\"" + argument + "\""))} --dbus-probe \"{log}\"\n");
+        System.IO.Directory.CreateDirectory(Path.Combine(data, "applications"));
+        File.WriteAllText(Path.Combine(data, "applications", id + ".desktop"),
+            $"[Desktop Entry]\nType=Application\nName=Activation\nExec=probe %U\nDBusActivatable=true\nActions=compose;\n\n[Desktop Action compose]\nName=Compose\nExec=probe --compose\n");
+        Run(null, "gdbus", "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path", "/org/freedesktop/DBus", "--method", "org.freedesktop.DBus.ReloadConfig");
+        int? pid = null;
+        try
+        {
+            // Cold: the bus starts the probe, which claims the instance and owns the name; the call waits for it.
+            Run(null, "gdbus", "call", "--session", "--timeout", "30", "--dest", id, "--object-path", path, "--method", "org.freedesktop.Application.Open",
+                $"['{scheme}://cold']", "{'activation-token': <'cold-token'>}");
+            var lines = await LogAsync(log, static lines => lines.Any(static line => line.StartsWith("open ", StringComparison.Ordinal)));
+            pid = lines.FirstOrDefault(static line => line.StartsWith("pid ", StringComparison.Ordinal)) is { } first ? int.Parse(first[4..], System.Globalization.CultureInfo.InvariantCulture) : null;
+            Check(pid is not null && lines.Contains($"open {scheme}://cold/") && lines.Contains($"launch [{scheme}://cold] token=cold-token"),
+                "the bus started the probe and delivered Open with the token: " + string.Join(" | ", lines));
+            // Warm: the same process answers.
+            Run(null, "gdbus", "call", "--session", "--dest", id, "--object-path", path, "--method", "org.freedesktop.Application.Open", $"['{scheme}://warm']", "{}");
+            Run(null, "gdbus", "call", "--session", "--dest", id, "--object-path", path, "--method", "org.freedesktop.Application.Activate", "{'activation-token': <'warm-token'>}");
+            Run(null, "gdbus", "call", "--session", "--dest", id, "--object-path", path, "--method", "org.freedesktop.Application.ActivateAction", "compose", "[]", "{}");
+            lines = await LogAsync(log, static lines => lines.Any(static line => line == "launch [--compose] token="));
+            Check(lines.Contains($"open {scheme}://warm/") && lines.Contains("launch [] token=warm-token") && lines.Count(static line => line.StartsWith("pid ", StringComparison.Ordinal)) == 1,
+                "Open, Activate and ActivateAction reached the running probe: " + string.Join(" | ", lines));
+            Console.WriteLine("PASS D-Bus activation: the bus started the activatable probe for Open (cold), and Open, Activate and ActivateAction reached it (warm).");
+        }
+        finally
+        {
+            if (pid is { } running) try { Process.GetProcessById(running).Kill(); } catch (ArgumentException) { } catch (InvalidOperationException) { }
+            File.Delete(log);
+        }
+    }
+
+    private static async Task<List<string>> LogAsync(string log, Func<List<string>, bool> done)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (true)
+        {
+            var lines = File.Exists(log) ? (await File.ReadAllLinesAsync(log)).ToList() : [];
+            if (done(lines)) return lines;
+            if (DateTime.UtcNow > deadline) throw new InvalidOperationException("The activation probe did not log in time: " + string.Join(" | ", lines));
+            await Task.Delay(200);
+        }
+    }
+
+    private static string? Which(string program) =>
+        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(':').Select(directory => Path.Combine(directory, program)).FirstOrDefault(File.Exists);
+
+    // The D-Bus-activatable probe the bus starts: claims the instance, exports its activation and logs each launch and
+    // open request until it is killed or a minute passes.
+    internal static async Task<int> RunDBusProbeAsync(string id, string scheme, string log)
+    {
+        if (!OperatingSystem.IsLinux()) return 1;
+        var claim = await ApplicationInstance.ClaimAsync(id, ApplicationLaunch.FromProcess([]));
+        if (claim is not PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }) return 1;
+        var gate = new Lock();
+        void Write(string line) { lock (gate) File.AppendAllLines(log, [line]); }
+        await using (instance)
+        {
+            instance.Launched += (_, launch) => Write($"launch [{string.Join(' ', launch.Arguments)}] token={launch.PlatformContext?.ActivationToken}");
+            await using var opens = ApplicationInstance.CreateOpenRequests(new DesktopOpenOptions([scheme]), instance);
+            opens.Opened += (_, request) => { foreach (var item in request.Items) Write("open " + item); };
+            var exported = await new Runic.Platform.Linux.Portal.PortalApplication(id).ExportApplicationAsync(instance);
+            if (!exported.TryGetValue(out var export)) { Write("export failed " + exported); return 1; }
+            Write("pid " + Environment.ProcessId);
+            await using (export) await Task.Delay(TimeSpan.FromSeconds(60));
+        }
+        return 0;
     }
 
     // The registration API writes the scheme (IDesktopOpenRegistration), refusing a foreign entry first; the shell then
@@ -319,10 +417,11 @@ internal sealed class OpenRequestsTests
     private static string WindowsCommand(string id, string scheme) =>
         string.Join(' ', new[] { Executable() }.Concat(ProbeArguments(id, scheme)).Select(static argument => "\"" + argument + "\""));
 
-    private static void Run(string program, params string[] arguments)
+    private static void Run(IReadOnlyDictionary<string, string>? environment, string program, params string[] arguments)
     {
         var start = new ProcessStartInfo(program) { UseShellExecute = false };
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>()) start.Environment[name] = value;
         using var process = Process.Start(start) ?? throw new InvalidOperationException($"{program} did not start.");
         process.WaitForExit();
         Check(process.ExitCode == 0, $"{program} {string.Join(' ', arguments)} exited with {process.ExitCode}");

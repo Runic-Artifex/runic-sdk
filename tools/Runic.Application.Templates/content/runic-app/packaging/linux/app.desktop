@@ -7,4 +7,4 @@ Icon={{ApplicationId}}
 Terminal=false
 Categories=Utility;
 StartupNotify=true
-{{MimeTypes}}
+{{MimeTypes}}{{DBusActivatable}}

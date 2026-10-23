@@ -1426,7 +1426,11 @@ jobs:
           flatpak install --user -y --noninteractive --bundle artifacts/package/flatpak/org.runic.tests.PackagingProbe.flatpak
           entry=~/.local/share/flatpak/exports/share/applications/org.runic.tests.PackagingProbe.desktop
           desktop-file-validate "$entry"
-          grep -qx 'MimeType=x-scheme-handler/runic-packaging-probe;' "$entry"
+          grep -qx 'MimeType=x-scheme-handler/runic-packaging-probe;application/x-packagingprobe-runicprobe;' "$entry"
+          grep -qx 'DBusActivatable=true' "$entry"
+          # The file type's MIME definition and the D-Bus service file are exported with the entry.
+          grep -q 'glob pattern="\*.runicprobe"' ~/.local/share/flatpak/exports/share/mime/packages/org.runic.tests.PackagingProbe.xml
+          grep -qx 'Name=org.runic.tests.PackagingProbe' ~/.local/share/flatpak/exports/share/dbus-1/services/org.runic.tests.PackagingProbe.service
           test -f ~/.local/share/flatpak/exports/share/icons/hicolor/scalable/apps/org.runic.tests.PackagingProbe.svg
           receipts="$RUNNER_TEMP/receipts"
           mkdir -p "$receipts"

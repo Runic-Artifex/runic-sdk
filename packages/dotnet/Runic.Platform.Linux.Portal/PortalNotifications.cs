@@ -20,7 +20,7 @@ internal sealed class PortalNotifications(string? address = null, string destina
     private DBusSignalSubscription? _actions;
     // The application's bus name and its org.freedesktop.Application object, on the connection that owns them.
     private DBusConnection? _owner;
-    private IAsyncDisposable? _activation;
+    private ApplicationBusObject? _activation;
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
 
@@ -162,35 +162,28 @@ internal sealed class PortalNotifications(string? address = null, string destina
     private async Task OwnApplicationNameAsync(DBusConnection connection, string id, CancellationToken cancellationToken)
     {
         await ReleaseApplicationNameAsync().ConfigureAwait(false);
-        IAsyncDisposable activation;
-        // Another service of this process already answers for the name.
-        try { activation = connection.Export(new DBusObjectPath("/" + id.Replace('.', '/').Replace('-', '_')), new ActivationObject(this)); }
-        catch (InvalidOperationException) { throw new NotificationCapacityException(); }
-        try
+        ApplicationBusObject shared;
+        // The name and object, shared with D-Bus activation of the same application on this connection.
+        try { shared = await ApplicationBusObject.AcquireAsync(connection, id, cancellationToken).ConfigureAwait(false); }
+        catch (Exception error) when (error is InvalidOperationException or ApplicationBusObject.NameTakenException) { throw new NotificationCapacityException(); }
+        if (shared.Notifications is not null)
         {
-            // The export above shows no other service of this process answers for the name, so a name this connection
-            // already owns, from a request whose caller stopped waiting, is ours.
-            var reply = await connection.RequestNameAsync(id, DBusRequestNameOptions.DoNotQueue, CancellationToken.None).AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-            if (reply is not (DBusRequestNameReply.PrimaryOwner or DBusRequestNameReply.AlreadyOwner)) throw new NotificationCapacityException();
+            // Another notifications service of this process answers for the name.
+            await shared.ReleaseAsync().ConfigureAwait(false);
+            throw new NotificationCapacityException();
         }
-        catch
-        {
-            await activation.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
+        shared.Notifications = OnInstalledActivation;
         _owner = connection;
-        _activation = activation;
+        _activation = shared;
     }
 
     private async Task ReleaseApplicationNameAsync()
     {
-        var (owner, activation) = (_owner, _activation);
+        var activation = _activation;
         _owner = null; _activation = null;
-        if (activation is not null) await activation.DisposeAsync().ConfigureAwait(false);
-        if (owner is null || ApplicationId is null || owner.Disconnected.IsCancellationRequested) return;
-        try { await owner.ReleaseNameAsync(ApplicationId).AsTask().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); }
-        catch (Exception error) when (error is DBusException or TimeoutException) { /* Closing the connection releases the name too. */ }
+        if (activation is null) return;
+        activation.Notifications = null;
+        await activation.ReleaseAsync().ConfigureAwait(false);
     }
 
     private async ValueTask ResetConnectionAsync()
@@ -240,37 +233,23 @@ internal sealed class PortalNotifications(string? address = null, string destina
     }
     private static string Target(DesktopNotification notification, string action) =>
         notification.Id + "\n" + action + "\n" + notification.ActivationUri?.AbsoluteUri;
-    // org.freedesktop.Application at the application's object path; only ActivateAction of a notification is answered.
-    private sealed class ActivationObject(PortalNotifications owner) : DBusObject
+    // org.freedesktop.Application.ActivateAction("runic-notification", [target], platform data) at the application's
+    // object path (ApplicationBusObject); throws ArgumentException for an activation it does not accept.
+    private void OnInstalledActivation(ImmutableArray<DBusValue> parameters, ImmutableDictionary<string, DBusValue> platformData)
     {
-        protected override ValueTask<ImmutableArray<DBusValue>> HandleMethodAsync(DBusMethodContext context)
-        {
-            if (context.Interface != "org.freedesktop.Application" || context.Member != "ActivateAction")
-                throw new DBusException(DBusException.UnknownMethod, "Only notification actions are exported here.");
-            try
-            {
-                if (context.Signature.Value != "sava{sv}") throw new ArgumentException("Unexpected signature.");
-                var action = context.Arguments[0].GetString();
-                var parameters = context.Arguments[1].GetItems();
-                var platformData = PortalValues.Variants(context.Arguments[2]);
-                string? ContextString(string key) => platformData.TryGetValue(key, out var value) && value.Signature.Value == "s" ? value.GetString() : null;
-                var activationContext = new DesktopActivationContext(ContextString("activation-token"), ContextString("desktop-startup-id"));
-                if (action != "runic-notification" || parameters.Length != 1 || parameters[0].GetVariant() is not { Signature.Value: "s" } targetValue)
-                    throw new ArgumentException("Unknown notification action.");
-                var target = targetValue.GetString();
-                if (target.Length > 2200) throw new ArgumentException("Notification target is too long.");
-                var parts = target.Split('\n');
-                if (parts.Length != 3) throw new ArgumentException("Invalid notification target.");
-                DesktopServiceValidation.Identifier(parts[0]); DesktopServiceValidation.Identifier(parts[1]);
-                Uri? uri = parts[2].Length == 0 ? null : new Uri(parts[2], UriKind.Absolute);
-                if (uri is { IsFile: true }) throw new ArgumentException("File activation targets are not accepted.");
-                // Installed activation can arrive after restart. Consumers validate the IDs against their durable state.
-                owner.OnInstalledAction(parts[0], parts[1], uri, activationContext);
-                return ValueTask.FromResult(ImmutableArray<DBusValue>.Empty);
-            }
-            catch (Exception error) when (error is ArgumentException or InvalidOperationException or FormatException)
-            { throw new DBusException(DBusException.InvalidArgs, "Invalid notification activation."); }
-        }
+        string? ContextString(string key) => platformData.TryGetValue(key, out var value) && value.Signature.Value == "s" ? value.GetString() : null;
+        var activationContext = new DesktopActivationContext(ContextString("activation-token"), ContextString("desktop-startup-id"));
+        if (parameters.Length != 1 || parameters[0] is not { Signature.Value: "s" } targetValue)
+            throw new ArgumentException("Unknown notification action.");
+        var target = targetValue.GetString();
+        if (target.Length > 2200) throw new ArgumentException("Notification target is too long.");
+        var parts = target.Split('\n');
+        if (parts.Length != 3) throw new ArgumentException("Invalid notification target.");
+        DesktopServiceValidation.Identifier(parts[0]); DesktopServiceValidation.Identifier(parts[1]);
+        Uri? uri = parts[2].Length == 0 ? null : new Uri(parts[2], UriKind.Absolute);
+        if (uri is { IsFile: true }) throw new ArgumentException("File activation targets are not accepted.");
+        // Installed activation can arrive after restart. Consumers validate the IDs against their durable state.
+        OnInstalledAction(parts[0], parts[1], uri, activationContext);
     }
     private sealed class NotificationCapacityException : Exception;
 }

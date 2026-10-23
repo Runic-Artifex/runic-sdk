@@ -800,7 +800,7 @@ verify_package_names() {
     echo "--packaging did not copy packaging/ unchanged." >&2
     exit 1
   fi
-  for property in Description PackageProjectUrl RunicApplicationPublisher RunicApplicationUrlSchemes RunicApplicationFileTypes RunicApplicationWebLinkHosts; do
+  for property in Description PackageProjectUrl RunicApplicationPublisher RunicApplicationUrlSchemes RunicApplicationFileTypes RunicApplicationWebLinkHosts RunicApplicationDBusActivatable; do
     grep -Fq "<$property>" "$names_directory/packaged/Packaged.csproj"
   done
   grep -Fxq '/artifacts/' "$names_directory/packaged/.gitignore"

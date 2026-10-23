@@ -172,6 +172,16 @@ public static class ApplicationInstance
         queue.OnDispose(() => { instance.Launched -= handler; return ValueTask.CompletedTask; });
     }
 
+    // Hands a launch that arrived another way, such as a D-Bus activation (Runic.Platform.Linux.Portal), to the running
+    // instance's Launched handlers as if a later process had forwarded it. False when the instance is ending, has no
+    // handler in time, or is not one ClaimAsync created.
+    internal static async ValueTask<bool> DeliverAsync(IApplicationInstance instance, ApplicationLaunch launch, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(launch);
+        return instance is RunningInstance running && await running.DeliverLocalAsync(launch, cancellationToken).ConfigureAwait(false);
+    }
+
     internal static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
         string? directory, CancellationToken cancellationToken) => ClaimAsync(applicationId, launch, HandOver, directory, cancellationToken);
 
@@ -657,6 +667,14 @@ public static class ApplicationInstance
             // A handler may already write: the reply sends its messages after Delivered.
             await reply.StartAsync().ConfigureAwait(false);
             return true;
+        }
+
+        internal async Task<bool> DeliverLocalAsync(ApplicationLaunch launch, CancellationToken cancellationToken)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopping, cancellationToken);
+            timeout.CancelAfter(ForwardTimeout);
+            try { return await DeliverAsync(new Pending(launch), timeout.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }
         }
 
         private async Task<bool> DeliverAsync(Pending pending, CancellationToken timeout)

@@ -186,6 +186,8 @@ thread the service is on; an exception it throws is ignored.
 | `login-startup-identity-unspecified` | Warning | Login startup outside a sandbox needs an application ID. |
 | `login-startup-foreign-entry` | Warning | Another autostart entry uses the application's name. |
 | `login-startup-portal-unavailable` | Warning | The Background portal is missing or failed. |
+| `open-registration-foreign-entry` | Warning | A desktop entry or MIME definition of the application's ID that Runic did not write exists; nothing was registered. |
+| `dbus-activation-name-taken` | Warning | Another process owns the application's ID on the session bus, so D-Bus activation is not served. |
 | `secret-service-unavailable` | Warning | No Secret Service answers on the session bus. |
 | `secret-service-plain-session` | Information | The Secret Service offered only an unencrypted session. |
 | `trash-portal-unavailable` | Warning | The Trash portal could not move the item. |
@@ -269,6 +271,52 @@ in a sandbox, where the portal knows the application.
 ```csharp
 var startup = portals.CreateLoginStartup();
 await startup.EnableAsync(new LoginStartupRequest(["--background"]) { Reason = "Keep watching for updates." });
+```
+
+## Registration and D-Bus activation
+
+`PortalApplication.CreateOpenRegistration()` registers the application's URL
+schemes and file types for the current user, for an application that installs
+itself (an AppImage, a tarball, `dotnet run`). Outside a sandbox it writes
+`$XDG_DATA_HOME/applications/<applicationId>.desktop` with
+`Exec="<executable>" %U`, `MimeType=` (`x-scheme-handler/<scheme>` and the
+file types) and `X-Runic-Registered=true`, and, for a file type whose extension
+the shared MIME-info database does not give its `MimeType`, a definition with
+the extension's glob in `$XDG_DATA_HOME/mime/packages/<applicationId>.xml`.
+`update-mime-database` and `update-desktop-database` run when they are
+installed; GIO also watches the directories. A file type without a `MimeType`
+uses the database's type for its extension. A registration replaces the
+application's earlier one and never sets a default (`mimeapps.list`).
+
+An entry of the same ID that the application's package installed in
+`XDG_DATA_DIRS`, or one in `XDG_DATA_HOME` without the marker, is refused with
+`Conflict` and `open-registration-foreign-entry`, and nothing is written.
+Inside Flatpak or Snap the manifest exports the entry and the MIME definitions,
+so every request reports `Unavailable(BackendUnavailable)`.
+
+`PortalApplication.ExportApplicationAsync(instance)` serves D-Bus activation
+for a desktop entry with `DBusActivatable=true`: it owns the application ID on
+the session bus and answers `org.freedesktop.Application` at
+`/org/example/Notes` (the ID with `.` as `/` and `-` as `_`). `Activate`
+becomes a launch of the running instance without arguments, `Open` a launch
+with the URIs, which the instance's open requests deliver, and
+`ActivateAction` a launch with the `Exec` arguments of the entry's
+`[Desktop Action <name>]` (listed in `Actions`); an `activation-token` or
+`desktop-startup-id` becomes the launch's `PlatformContext`. Another process
+owning the name is `ResourceBusy` with `dbus-activation-name-taken`.
+Notifications of the same ID share the name and the object, which answers
+their actions. The desktop starts the application through a D-Bus service
+file (`share/dbus-1/services/<applicationId>.service`, `Exec=` the program);
+GNOME and KDE then deliver later opens to the running process without
+starting another.
+
+```csharp
+var claim = await ApplicationInstance.ClaimAsync(id, args);
+if (claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } })
+{
+    await using var opens = DesktopPlatformServices.CreateOpenRequests(new(["org.example.notes"]) { IncludeFiles = true }, instance, launch);
+    var exported = await new PortalApplication(id).ExportApplicationAsync(instance);
+}
 ```
 
 ## Secret storage

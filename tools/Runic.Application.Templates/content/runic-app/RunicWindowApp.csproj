@@ -27,6 +27,9 @@
     <!-- Hosts whose https links the application opens, separated by semicolons, such as notes.example.org: Windows app
          URI handlers and macOS universal links, which also need a file on each host; see the README. -->
     <RunicApplicationWebLinkHosts></RunicApplicationWebLinkHosts>
+    <!-- true when the application serves D-Bus activation on Linux (PortalApplication.ExportApplicationAsync): the
+         desktop entry sets DBusActivatable=true and the Flatpak exports a D-Bus service file. -->
+    <RunicApplicationDBusActivatable>false</RunicApplicationDBusActivatable>
 <!--#endif -->
     <!-- The Explorer and taskbar icon; icons/ holds the same placeholder as SVG and PNG. -->
     <ApplicationIcon>icons/icon.ico</ApplicationIcon>
