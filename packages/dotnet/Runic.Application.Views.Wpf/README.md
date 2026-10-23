@@ -255,6 +255,19 @@ replace those not yet spoken. It returns `Success` once the window raised it,
 closed. Send each message one way: a live region in a `RunicViewHost`'s page
 reaches the screen reader too.
 
+`ShowContextMenuAsync(items, options)` opens a WPF `ContextMenu` and returns the
+chosen item, `null` when the user dismissed it or a later menu of the window
+replaced it; cancelling the token closes it. Entries follow the Windows menu
+rules: `AccessKey` underlined, shortcuts as hints in `InputGestureText`, check
+and radio items with the check mark, disabled entries and menus grayed. Without
+`options.X` and `Y` it opens at the pointer; with them at that page point of the
+`RunicWebView` with the keyboard focus, or the window's first one, in CSS pixels
+times the page zoom. The snapshot reports `platform.menus.context` available and
+no `platform.menus.bar`: the WPF window owns its chrome, so a menu bar is the
+application's own WPF `Menu`. A ViewModel in a `RunicViewHost` gets the same
+menus at its control through its Runic window's services: the hosted Desktop
+window reports `DesktopWindowCapabilities.ContextMenu` and the placement `None`.
+
 ## Bring the window forward for a second launch
 
 A WPF application that keeps one copy running with

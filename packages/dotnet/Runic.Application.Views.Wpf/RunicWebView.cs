@@ -90,7 +90,7 @@ public sealed partial class RunicWebView : HwndHost
     private sealed class HostFactory(RunicWebView view) : IDesktopWindowHostFactory
     {
         public bool IsSupported => WindowsWebView2Host.IsSupported;
-        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop;
+        public DesktopWindowCapabilities Capabilities => PresentationHost.HostCapabilities;
 
         // The monitors of Windows, in the WebView2 window's units (physical pixels).
         public Runic.Platform.IDesktopMonitors Monitors => Runic.Desktop.Internal.WindowsMonitors.Shared;
@@ -99,8 +99,12 @@ public sealed partial class RunicWebView : HwndHost
             WpfPresentationOptions.Validate(options);
     }
 
-    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost
+    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost, IDesktopMenuWindowHost
     {
+        // WPF owns the window and its chrome, so the declared menu bar is the application's to show (a WPF Menu);
+        // context menus are WPF ContextMenus over the control.
+        internal const DesktopWindowCapabilities HostCapabilities =
+            DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.ContextMenu;
         private WindowsWebView2Controller? _controller;
         private bool _closing;
         private bool _open;
@@ -108,7 +112,24 @@ public sealed partial class RunicWebView : HwndHost
         public bool SupportsDocumentStartScript => true;
         public bool SupportsCloseConfirmation => true;
         // Files dropped on the child WebView reach the host, not the WPF shell's Drop event, which the HWND covers.
-        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop;
+        public DesktopWindowCapabilities Capabilities => HostCapabilities;
+        public IDesktopMenuCommandTarget? MenuCommands { get; set; }
+        public DesktopMenuBarPlacement MenuBarPlacement => DesktopMenuBarPlacement.None;
+        public event EventHandler? MenuBarPlacementChanged { add { } remove { } }
+        public ValueTask SetMenuBarAsync(IReadOnlyList<Runic.Platform.DesktopMenu> menus, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        // A page point is relative to this control, in CSS pixels times the page zoom.
+        public ValueTask<Runic.Platform.DesktopMenuItem?> ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry> items,
+            Runic.Platform.DesktopContextMenuOptions options, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return new(view.Dispatcher.InvokeAsync(() =>
+            {
+                if (!IsOpen) return Task.FromResult<Runic.Platform.DesktopMenuItem?>(null);
+                return WpfContextMenu.Show(view, items, options, () => _controller?.ZoomFactor ?? 1, cancellationToken);
+            }, System.Windows.Threading.DispatcherPriority.Normal, cancellationToken).Task.Unwrap());
+        }
         public event EventHandler? Closed;
         public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
         public bool IsOpen => Volatile.Read(ref _open);

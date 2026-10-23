@@ -865,6 +865,14 @@ jobs:
         env:
           RUNIC_TEST_DISPLAY_SCALING: "1"
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --monitors
+      # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
+      # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
+      # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page
+      # point), right-to-left menus, and Page and frameless windows. The arm64 runner delivers no SendInput.
+      - name: Exercise the WebView2 menu bar, shortcuts and context menus
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --menus
       # W315-018: Runic.Desktop.AccessibilityProbe reads and changes a page through AT-SPI (GTK 3 and GTK 4), UI
       # Automation (WebView2) or the macOS accessibility API (WKWebView) from its own process, as a screen reader does:
       # roles, range values, selection, their change events, focus, live regions and AnnounceAsync. On macOS VoiceOver

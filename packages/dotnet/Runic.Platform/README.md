@@ -373,8 +373,9 @@ the id or title and the rule.
 | `Role`, `AccessKey` | Ignored | `Role` ignored; access key on Windows and Linux | Where the menu goes; access key on Windows and Linux |
 | Choosing an item | `IDesktopStatusIcon.Activated` with `Kind` `MenuItem`, the item's `CommandId` and `CommandParameter` | `Success` with the chosen item, `null` when dismissed | The command target's `Execute(DesktopMenuItem)` |
 
-The status icon reports `CommandParameter` on macOS in this release; Windows and
-Linux status icons report `null`.
+The status icon reports `CommandParameter` on macOS and Windows in this release;
+the Linux status icon reports `null`. Its command ids stay unique until the Linux
+status icon carries the parameter too.
 
 `DesktopStatusIconState.LayoutDirection` mirrors the Windows status icon's menu
 for `DesktopLayoutDirection.RightToLeft` (`TPM_LAYOUTRTL`, items read right to

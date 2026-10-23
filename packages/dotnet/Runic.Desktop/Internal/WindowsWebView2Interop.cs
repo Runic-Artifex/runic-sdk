@@ -30,8 +30,10 @@ internal static partial class WindowsWebView2Interop
     internal const int WindowCloseRequestedSlot = 59;
     internal const int ControllerVisibleSlot = 4;
     internal const int ControllerBoundsSlot = 6;
+    internal const int ControllerZoomFactorSlot = 7;
     internal const int ControllerFocusSlot = 12;
     internal const int ControllerMoveFocusRequestedSlot = 13;
+    internal const int ControllerAcceleratorKeyPressedSlot = 19;
     internal const int ControllerCloseSlot = 24;
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
@@ -50,6 +52,10 @@ internal static partial class WindowsWebView2Interop
     internal const int ObjectCollectionCountSlot = 3;
     internal const int ObjectCollectionValueSlot = 4;
     internal const int FilePathSlot = 3;
+    internal const int AcceleratorKeyKindSlot = 3;
+    internal const int AcceleratorVirtualKeySlot = 4;
+    internal const int AcceleratorBrowserKeyEnabledSlot = 10;
+    internal static readonly Guid AcceleratorKeyPressedEventArgs2 = new("03b2c8c8-7799-4e34-bd66-ed26aa85f2bf");
     internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
     internal static readonly Guid WebView4Interface = new("20d02d59-6df2-42dc-bd06-f98a694b1302");
     internal static readonly Guid FileInterface = new("f2c19559-6bc1-4583-a757-90021be9afec");
@@ -127,6 +133,13 @@ internal static partial class WindowsWebView2Interop
     {
         nint result;
         Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, uint, nint*, int>)Slot(instance, slot))(instance, index, &result));
+        return result;
+    }
+
+    internal static unsafe double GetDouble(nint instance, int slot)
+    {
+        double result;
+        Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, double*, int>)Slot(instance, slot))(instance, &result));
         return result;
     }
 
@@ -243,6 +256,8 @@ internal sealed class WindowsWebView2Controller : IDisposable
 
     internal Rectangle Bounds { set => WindowsWebView2Interop.SetBounds(_controller, value); }
     internal bool IsVisible { set => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerVisibleSlot, value ? 1 : 0); }
+    // The page zoom: CSS pixels times this are device-independent pixels.
+    internal double ZoomFactor => WindowsWebView2Interop.GetDouble(_controller, WindowsWebView2Interop.ControllerZoomFactorSlot);
     internal void MoveFocus(int reason = 0) => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerFocusSlot, reason);
     internal void Navigate(string url) => WindowsWebView2Interop.Navigate(_webView, url);
 
@@ -256,6 +271,39 @@ internal sealed class WindowsWebView2Controller : IDisposable
             if (reason is 1 or 2 && moveFocus(reason))
                 WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.MoveFocusHandledSlot, 1);
         }));
+
+    // A key down that is the shortcut of a declared menu item keeps the browser's own accelerator for it off, such as
+    // Ctrl+P printing or F5 reloading; the page still receives the key first and reports it when unhandled
+    // (EnableMenuKeysAsync). An older runtime without ICoreWebView2AcceleratorKeyPressedEventArgs2 keeps its accelerators.
+    internal void RegisterAcceleratorKeys(Func<int, bool> isShortcut) =>
+        AddEvent<IWebViewAcceleratorKeyPressed>(_controller, WindowsWebView2Interop.ControllerAcceleratorKeyPressedSlot, new WebViewEvent(args =>
+        {
+            // COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN (0) and SYSTEM_KEY_DOWN (2).
+            var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.AcceleratorKeyKindSlot);
+            if (kind is not (0 or 2) || !isShortcut((int)WindowsWebView2Interop.GetUnsigned(args, WindowsWebView2Interop.AcceleratorVirtualKeySlot)))
+                return;
+            nint args2;
+            try { args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.AcceleratorKeyPressedEventArgs2); }
+            catch (InvalidCastException) { return; }
+            try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.AcceleratorBrowserKeyEnabledSlot, 0); }
+            finally { WindowsWebView2Interop.Release(args2); }
+        }));
+
+    // The keys the page left unhandled, reported by WindowsMenuKeys.Script from the top-level document of the
+    // presented origin, with the script's token.
+    internal async Task EnableMenuKeysAsync(Uri presentedUrl, Action<MenuKeyReport> pressed)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+        {
+            if (!PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.WebMessageSourceSlot))) return;
+            string? message;
+            try { message = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
+            catch (ArgumentException) { return; } // Not a string message: not ours.
+            if (WindowsMenuKeys.Parse(message, token) is { } report) pressed(report);
+        }));
+        await AddDocumentStartScriptAsync(WindowsMenuKeys.Script(token));
+    }
 
     // Native checks drive trusted input (for example a Tab key) through the DevTools protocol.
     internal async Task<string> CallDevToolsProtocolMethodAsync(string method, string parameters)
@@ -490,6 +538,8 @@ internal partial interface IWebViewNavigationStarting { [PreserveSig] int Invoke
 internal partial interface IWebViewNewWindowRequested { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("efedc989-c396-41ca-83f7-07f845a55724")]
 internal partial interface IWebViewDownloadStarting { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("b29c7e28-fa79-41a8-8e44-65811c76dcb2")]
+internal partial interface IWebViewAcceleratorKeyPressed { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("5c4889f0-5ef6-4c5a-952c-d8f1b92d0574")]
 internal partial interface IWebViewDevToolsCompleted { [PreserveSig] int Invoke(int errorCode, nint result); }
 
@@ -548,7 +598,8 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 
 [GeneratedComClass]
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
-    IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting
+    IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting,
+    IWebViewAcceleratorKeyPressed
 {
     public int Invoke(nint sender, nint args)
     {

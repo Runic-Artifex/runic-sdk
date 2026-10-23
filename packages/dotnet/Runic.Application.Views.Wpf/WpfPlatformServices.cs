@@ -50,7 +50,8 @@ public static class WpfPlatformServices
         void Bind()
         {
             if (owner.Attach())
-                services.BindWindows(owner, (message, priority, cancellationToken) => AnnounceAsync(window, owner, message, priority, cancellationToken));
+                services.BindWindows(owner, (message, priority, cancellationToken) => AnnounceAsync(window, owner, message, priority, cancellationToken),
+                    (items, options, cancellationToken) => ShowContextMenuAsync(window, owner, items, options, cancellationToken));
         }
         void OnSourceInitialized(object? sender, EventArgs args)
         {
@@ -138,6 +139,55 @@ public static class WpfPlatformServices
         {
             return Closed;
         }
+    }
+
+    // A WPF ContextMenu over the window: at the pointer, or at a page point of the RunicWebView that has the keyboard
+    // focus, else of the window's first one, else of the window's content.
+    private static async ValueTask<PlatformResult<DesktopMenuItem?>> ShowContextMenuAsync(Window window, WpfWindowOwner owner,
+        System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions? options, CancellationToken cancellationToken)
+    {
+        var dispatcher = window.Dispatcher;
+        if (!owner.IsAvailable || dispatcher.HasShutdownStarted) return MenuClosed;
+        try
+        {
+            var shown = await dispatcher.InvokeAsync(() =>
+            {
+                if (!owner.IsAvailable) return null;
+                var view = FindWebView(window);
+                FrameworkElement target = view ?? window.Content as FrameworkElement ?? window;
+                return WpfContextMenu.Show(target, items, options ?? new DesktopContextMenuOptions(),
+                    view is null ? static () => 1 : () => view.Controller?.ZoomFactor ?? 1, cancellationToken);
+            }, DispatcherPriority.Normal, cancellationToken);
+            if (shown is null) return MenuClosed;
+            return new PlatformResult<DesktopMenuItem?>.Success(await shown.ConfigureAwait(false));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && dispatcher.HasShutdownStarted)
+        {
+            return MenuClosed;
+        }
+    }
+
+    private static readonly PlatformResult<DesktopMenuItem?> MenuClosed =
+        new PlatformResult<DesktopMenuItem?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+
+    private static RunicWebView? FindWebView(DependencyObject root)
+    {
+        RunicWebView? first = null;
+        var pending = new Stack<DependencyObject>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (current is RunicWebView view)
+            {
+                if (view.IsKeyboardFocusWithin) return view;
+                first ??= view;
+                continue;
+            }
+            for (var index = System.Windows.Media.VisualTreeHelper.GetChildrenCount(current) - 1; index >= 0; index--)
+                pending.Push(System.Windows.Media.VisualTreeHelper.GetChild(current, index));
+        }
+        return first;
     }
 
     private static PlatformResult<PlatformUnit> Present(Window window)

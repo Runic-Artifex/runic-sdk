@@ -86,8 +86,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
-        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
-    public DesktopWindowCapabilities Capabilities => KnownCapabilities;
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement |
+        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
+    // A frameless or kiosk window has no frame for a menu bar.
+    public DesktopWindowCapabilities Capabilities => _options is { Frameless: true } or { Kiosk: true }
+        ? KnownCapabilities & ~DesktopWindowCapabilities.MenuBar
+        : KnownCapabilities;
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
 
@@ -263,6 +267,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         _maximizeWhenShown = false;
         _windowedStyle = Native.GetWindowLongPtr(_window, GwlStyle);
         _fullScreen = true;
+        HideBarForFullScreen();
         Native.SetWindowLongPtr(_window, GwlStyle, _windowedStyle & ~(nint)(WsCaption | WsThickFrame));
         var monitor = info.Monitor;
         Native.SetWindowPos(_window, 0, monitor.Left, monitor.Top, monitor.Right - monitor.Left, monitor.Bottom - monitor.Top,
@@ -277,6 +282,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         var visible = Native.IsWindowVisible(_window);
         Native.SetWindowLongPtr(_window, GwlStyle, _windowedStyle);
         _fullScreen = false;
+        ShowBarAfterFullScreen();
         var placement = _windowedPlacement;
         // A hidden window keeps hidden and maximizes when it is shown.
         placement.ShowCommand = !visible ? (uint)SwHide : _windowedMaximized ? SwShowMaximized : SwShowNormal;
@@ -384,7 +390,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     {
         if (IsOpen)
         {
-            await InvokeAsync(() => Native.DestroyWindow(_window), cancellationToken).ConfigureAwait(false);
+            // An open menu closes first; the window goes once the menu's loop returned.
+            await InvokeAsync(() => { if (!DeferDestroyForMenu()) Native.DestroyWindow(_window); }, cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -649,6 +656,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 await _controller.AddDocumentStartScriptAsync(documentStartScript);
             }
             await _controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
+            // The declared shortcuts, in every menu bar presentation: the page sees each key first.
+            _controller.RegisterAcceleratorKeys(IsMenuShortcut);
+            await _controller.EnableMenuKeysAsync(url, OnMenuKey);
             _controller.Navigate(url.AbsoluteUri);
             if (!string.IsNullOrWhiteSpace(options.IconFile))
             {
@@ -816,6 +826,23 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 }
                 Native.DestroyWindow(window);
                 return 0;
+            case WmCommand when host is not null && lParam == 0 && (wParam >> 16) == 0:
+                host.RunBarItem((uint)(wParam & 0xFFFF));
+                return 0;
+            case WmInitMenuPopup when host is not null && (lParam >> 16) == 0:
+                host.InitializePopup((nint)wParam);
+                return 0;
+            case WmSysCommand when host is not null && host.SwallowsKeyMenu(wParam, lParam):
+                return 0;
+            case WmEnterMenuLoop:
+                host?.EnterMenuLoop();
+                return 0;
+            case WmExitMenuLoop:
+                host?.ExitMenuLoop();
+                return 0;
+            case WmEnterIdle when wParam == MsgfMenu && host?._contextMenu is not null:
+                ContextMenuIdle?.Invoke(lParam);
+                return 0;
             case WmGetObject when (int)lParam == WindowsAnnouncementProvider.RootObjectId && host is { _provider: not 0 }:
                 return WindowsAnnouncementProvider.Return(window, wParam, lParam, host._provider);
             case WmDestroy:
@@ -825,6 +852,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     WindowsAnnouncementProvider.Destroy(window, provider);
                 }
                 host?.CloseController();
+                host?.CompleteContextMenus();
+                host?.DestroyHiddenBar();
                 host?.HandleClosed();
                 Native.PostQuitMessage(0);
                 return 0;

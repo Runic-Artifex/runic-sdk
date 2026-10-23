@@ -10,18 +10,24 @@ internal static class WindowsStatusIconModel
     internal const int TooltipCapacity = 128;
 
     internal abstract record Entry;
-    internal sealed record Command(uint Id, string CommandId, string Label, bool Enabled, bool? Checked) : Entry;
+    internal sealed record Command(uint Id, string CommandId, string Label, bool Enabled, bool? Checked) : Entry
+    {
+        // DesktopStatusIconActivation.CommandParameter of the item.
+        internal string? CommandParameter { get; init; }
+    }
     internal sealed record Separator : Entry;
     internal sealed record Submenu(string Label, bool Enabled, ImmutableArray<Entry> Entries) : Entry;
 
     // A command keeps its Win32 ID across menu changes, so a choice made while the state changes still lands on the
-    // command the user saw. The menu is resolved against the snapshot it was built from.
+    // command the user saw. The menu is resolved against the snapshot it was built from. A command is its id and
+    // parameter: items that differ only in their parameter get IDs of their own.
     internal sealed class Ids
     {
-        private readonly Dictionary<string, uint> _ids = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string CommandId, string? Parameter), uint> _ids = new();
         // TrackPopupMenuEx returns 0 when nothing was chosen, so IDs start at 1.
         private uint _next = 1;
-        internal uint For(string commandId) => _ids.TryGetValue(commandId, out uint id) ? id : _ids[commandId] = _next++;
+        internal uint For(string commandId, string? parameter = null) =>
+            _ids.TryGetValue((commandId, parameter), out uint id) ? id : _ids[(commandId, parameter)] = _next++;
     }
 
     internal sealed record Menu(ImmutableArray<Entry> Entries, ImmutableDictionary<uint, Command> Commands)
@@ -29,7 +35,8 @@ internal static class WindowsStatusIconModel
         internal static Menu Empty { get; } = new([], ImmutableDictionary<uint, Command>.Empty);
         internal bool IsEmpty => Entries.IsEmpty;
         // Only an enabled command is chosen; a disabled one cannot be clicked, and an unknown ID came from another menu.
-        internal string? Choose(uint id) => Commands.TryGetValue(id, out var command) && command.Enabled ? command.CommandId : null;
+        internal Command? ChooseCommand(uint id) => Commands.TryGetValue(id, out var command) && command.Enabled ? command : null;
+        internal string? Choose(uint id) => ChooseCommand(id)?.CommandId;
     }
 
     internal static Menu BuildMenu(ImmutableArray<DesktopMenuEntry> items, Ids ids)
@@ -47,7 +54,8 @@ internal static class WindowsStatusIconModel
             switch (item)
             {
                 case DesktopMenuItem command:
-                    var entry = new Command(ids.For(command.CommandId), command.CommandId, MenuLabel(command.Title), command.IsEnabled, command.IsChecked);
+                    var entry = new Command(ids.For(command.CommandId, command.CommandParameter), command.CommandId, MenuLabel(command.Title),
+                        command.IsEnabled, command.IsChecked) { CommandParameter = command.CommandParameter };
                     commands[entry.Id] = entry;
                     entries.Add(entry);
                     break;

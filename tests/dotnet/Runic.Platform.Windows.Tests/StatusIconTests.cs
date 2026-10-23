@@ -19,7 +19,7 @@ internal sealed partial class StatusIconTests
     private static ImmutableArray<DesktopMenuEntry> Menu(bool checkedDaily, params DesktopMenuItem[] extra) =>
     [
         .. extra,
-        new DesktopMenuItem("Open & show", "open"),
+        new DesktopMenuItem("Open & show", "open") { CommandParameter = "front" },
         new DesktopMenuItem("Check daily", "daily") { IsChecked = checkedDaily },
         new DesktopMenuSeparator(),
         new DesktopMenu("More", [new DesktopMenuItem("About", "about"), new DesktopMenuItem("Off", "off") { IsEnabled = false }]),
@@ -45,6 +45,26 @@ internal sealed partial class StatusIconTests
         Check(first.Choose(first.Commands.Single(c => c.Value.CommandId == "off").Key) is null, "a disabled command is never chosen");
         Check(first.Choose(9999) is null && first.Choose(0) is null, "an unknown ID chooses nothing");
         Check(Model.BuildMenu([], ids).IsEmpty, "an empty menu shows none");
+    }
+
+    // B10: an item's CommandParameter reaches the activation, and items that differ only in their parameter are
+    // commands of their own.
+    [Test]
+    public void MenuCommandsCarryTheirParameter()
+    {
+        var ids = new Model.Ids();
+        ImmutableArray<DesktopMenuEntry> zoom =
+        [
+            new DesktopMenuItem("Small", "zoom") { CommandParameter = "0.8" },
+            new DesktopMenuItem("Large", "zoom") { CommandParameter = "1.5" },
+            new DesktopMenuItem("Reset", "zoom"),
+        ];
+        var menu = Model.BuildMenu(zoom, ids);
+        Check(menu.Commands.Count == 3 && menu.Commands.Keys.Distinct().Count() == 3, "each (id, parameter) has its own ID");
+        var large = menu.Commands.Single(c => c.Value.CommandParameter == "1.5").Key;
+        Check(menu.ChooseCommand(large) is { CommandId: "zoom", CommandParameter: "1.5" }, "the chosen ID resolves to its command and parameter");
+        Check(menu.ChooseCommand(menu.Commands.Single(c => c.Value.CommandParameter is null).Key) is { CommandParameter: null }, "an item without a parameter has none");
+        Check(Model.BuildMenu([zoom[1], zoom[0]], ids).Commands.Single(c => c.Value.CommandParameter == "1.5").Key == large, "IDs stay with their (id, parameter)");
     }
 
     [Test]
@@ -144,7 +164,8 @@ internal sealed partial class StatusIconTests
         Check(popup != 0, "the context menu opens");
         Post(popup, WM_KEYDOWN, VK_DOWN, 0);
         Post(popup, WM_KEYDOWN, VK_RETURN, 0);
-        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open" }, "a menu choice raises its command");
+        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open", CommandParameter: "front" },
+            "a menu choice raises its command with its parameter");
         Check(await WaitForAsync(() => FindWindowW("#32768", null) == 0 ? 1 : 0) == 1, "the menu closes");
 
         if (shown is PlatformResult<PlatformUnit>.Success)

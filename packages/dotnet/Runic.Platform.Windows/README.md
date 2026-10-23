@@ -187,8 +187,9 @@ on Windows. It is a `Shell_NotifyIconW` icon with `NOTIFYICON_VERSION_4`, owned
 by a hidden window on its own thread. A click or Space/Enter (`NIN_SELECT`,
 `NIN_KEYSELECT`) raises `Primary`, a middle click `Secondary`, and the context
 menu opens with `TrackPopupMenuEx` after the window takes the foreground, as the
-shell requires. Menu commands keep their IDs across `ShowAsync` calls, and a
-choice resolves against the menu that was shown. Activations arrive one at a
+shell requires. Menu commands, an item's `CommandId` with its
+`CommandParameter`, keep their IDs across `ShowAsync` calls, and a choice
+resolves against the menu that was shown and reports both. Activations arrive one at a
 time, in order, on a worker thread.
 
 The icon is drawn from the state's RGBA images with `CreateIconIndirect`, using

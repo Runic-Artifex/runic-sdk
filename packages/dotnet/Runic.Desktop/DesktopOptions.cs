@@ -132,8 +132,9 @@ public sealed record DesktopHostOptions
     public bool HandlesShutdownWithoutWindow { get; init; }
 
     /// <summary>
-    /// Gets the application's menus for the macOS menu bar, beside the standard application, File, Edit, View and
-    /// Window menus; empty by default. Windows and Linux show no native menu bar in this release.
+    /// Gets the application's menus for the menu bar: on macOS beside the standard application, File, Edit, View and
+    /// Window menus, in a Windows window on their own; empty by default. The GTK windows show no native menu bar in this
+    /// release.
     /// </summary>
     /// <remarks>
     /// Each <see cref="DesktopMenuItem"/> names a command that the key window's <see cref="DesktopWindow.MenuCommands"/>

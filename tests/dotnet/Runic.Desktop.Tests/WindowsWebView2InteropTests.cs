@@ -24,6 +24,12 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2Controller", "put_Bounds", WindowsWebView2Interop.ControllerBoundsSlot),
             ("ICoreWebView2Controller", "MoveFocus", WindowsWebView2Interop.ControllerFocusSlot),
             ("ICoreWebView2Controller", "Close", WindowsWebView2Interop.ControllerCloseSlot),
+            ("ICoreWebView2Controller", "get_ZoomFactor", WindowsWebView2Interop.ControllerZoomFactorSlot),
+            ("ICoreWebView2Controller", "add_AcceleratorKeyPressed", WindowsWebView2Interop.ControllerAcceleratorKeyPressedSlot),
+            ("ICoreWebView2Controller", "remove_AcceleratorKeyPressed", WindowsWebView2Interop.ControllerAcceleratorKeyPressedSlot + 1),
+            ("ICoreWebView2AcceleratorKeyPressedEventArgs", "get_KeyEventKind", WindowsWebView2Interop.AcceleratorKeyKindSlot),
+            ("ICoreWebView2AcceleratorKeyPressedEventArgs", "get_VirtualKey", WindowsWebView2Interop.AcceleratorVirtualKeySlot),
+            ("ICoreWebView2AcceleratorKeyPressedEventArgs2", "put_IsBrowserAcceleratorKeyEnabled", WindowsWebView2Interop.AcceleratorBrowserKeyEnabledSlot),
             ("ICoreWebView2Controller", "get_CoreWebView2", WindowsWebView2Interop.ControllerWebViewSlot),
             ("ICoreWebView2Controller2", "put_DefaultBackgroundColor", WindowsWebView2Interop.ControllerBackgroundSlot),
             ("ICoreWebView2Environment", "CreateCoreWebView2Controller", WindowsWebView2Interop.EnvironmentCreateControllerSlot),
@@ -141,6 +147,15 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventHandler"), typeof(IWebViewWebMessageReceived).GUID);
         Assert.Equal(Interface("ICoreWebView2WebMessageReceivedEventArgs2"), WindowsWebView2Interop.WebMessageReceivedEventArgs2);
         Assert.Equal(Interface("ICoreWebView2File"), WindowsWebView2Interop.FileInterface);
+    }
+
+    [Test]
+    public void MenuKeyInterfacesMatchThePinnedMicrosoftSdkHeader()
+    {
+        var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
+        Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
+        Assert.Equal(Interface("ICoreWebView2AcceleratorKeyPressedEventHandler"), typeof(IWebViewAcceleratorKeyPressed).GUID);
+        Assert.Equal(Interface("ICoreWebView2AcceleratorKeyPressedEventArgs2"), WindowsWebView2Interop.AcceleratorKeyPressedEventArgs2);
     }
 
     [Test]
