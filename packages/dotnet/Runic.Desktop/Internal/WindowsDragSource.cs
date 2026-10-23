@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using Runic.Platform;
 
 namespace Runic.Desktop.Internal;
 
-// A drag out of a Win32 window: the shell's own data object for the paths (CF_HDROP, the shell ID list and what
-// Explorer asks for), with the text, the first URI and the preferred effect added, dragged through SHDoDragDrop with the
-// shell's default drop source and drag image. It runs on the window's STA thread while the primary button is held: the
+// A drag out of a Win32 window: the shell's own data object for the paths (the shell ID list and what Explorer asks
+// for), with CF_HDROP, the text, the first URI and the preferred effect added, dragged through SHDoDragDrop with the
+// shell's drag image and Runic's drop source. It runs on the window's STA thread while the primary button is held: the
 // WebView2 child shares the window's input state, so the OLE loop takes the capture over from the browser process
 // after the page cancelled its own dragstart.
 internal static partial class WindowsDragSource
@@ -18,7 +19,7 @@ internal static partial class WindowsDragSource
     private const uint MoveableMemory = 0x0002; // GMEM_MOVEABLE
 
     // On the window's STA thread. None without a held primary button, when cancelled or dropped nowhere.
-    internal static DesktopDragEffects Run(nint window, DesktopDragData data)
+    internal static unsafe DesktopDragEffects Run(nint window, DesktopDragData data)
     {
         if (!PrimaryButtonDown()) return DesktopDragEffects.None;
         // The window thread is a COM STA; the drag loop needs OLE as well.
@@ -28,7 +29,12 @@ internal static partial class WindowsDragSource
             var dataObject = CreateDataObject(data);
             try
             {
-                var hr = SHDoDragDrop(window, dataObject, 0, ToDropEffect(data.AllowedEffects), out var effect);
+                var source = new DropSource();
+                var sourcePointer = (nint)ComInterfaceMarshaller<IDropSource>.ConvertToUnmanaged(source);
+                int hr;
+                uint effect;
+                try { hr = SHDoDragDrop(window, dataObject, sourcePointer, ToDropEffect(data.AllowedEffects), out effect); }
+                finally { ComInterfaceMarshaller<IDropSource>.Free((void*)sourcePointer); }
                 if (hr < 0) Marshal.ThrowExceptionForHR(hr);
                 if (hr == DragDropCancel) return DesktopDragEffects.None;
                 var performed = FromDropEffect(effect);
@@ -54,6 +60,27 @@ internal static partial class WindowsDragSource
         var key = GetSystemMetrics(23) != 0 ? 0x02 : 0x01; // SM_SWAPBUTTON: VK_RBUTTON, else VK_LBUTTON
         return (GetAsyncKeyState(key) & 0x8000) != 0;
     }
+
+    // The keyboard focus is in the WebView2 browser process, whose thread receives the Escape key message, so the OLE
+    // loop never reports it: the source reads Escape's state itself (down now, or pressed since the last read). The drag drops once no mouse button is held.
+    [GeneratedComInterface, Guid("00000121-0000-0000-C000-000000000046")]
+    internal partial interface IDropSource
+    {
+        [PreserveSig] int QueryContinueDrag(int escapePressed, uint keyState);
+        [PreserveSig] int GiveFeedback(uint effect);
+    }
+
+    [GeneratedComClass]
+    internal sealed partial class DropSource : IDropSource
+    {
+        public int QueryContinueDrag(int escapePressed, uint keyState) => Continue(escapePressed != 0 || (GetAsyncKeyState(0x1B) & 0x8001) != 0, keyState);
+
+        public int GiveFeedback(uint effect) => 0x00040102; // DRAGDROP_S_USEDEFAULTCURSORS
+    }
+
+    // DRAGDROP_S_CANCEL on Escape, DRAGDROP_S_DROP once neither MK_LBUTTON nor MK_RBUTTON is held, else S_OK.
+    internal static int Continue(bool escape, uint keyState) =>
+        escape ? DragDropCancel : (keyState & 0x3) == 0 ? 0x00040100 : 0;
 
     internal static uint ToDropEffect(DesktopDragEffects effects) => (uint)effects; // DROPEFFECT_COPY 1, MOVE 2, LINK 4
 

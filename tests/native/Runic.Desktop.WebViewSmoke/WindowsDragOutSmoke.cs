@@ -150,6 +150,15 @@ internal static partial class WindowsFileDropSmoke
         return effect == NoDesktopInput ? null : effect;
     }
 
+    private static unsafe void Key(ushort key, bool up)
+    {
+        var input = new Input { Type = 1 };
+        // A keyboard input shares the mouse field's offset: wVk, then dwFlags (KEYEVENTF_KEYUP).
+        ((ushort*)&input.Mouse)[0] = key;
+        if (up) ((uint*)&input.Mouse)[1] = 0x0002;
+        _ = SendInput(1, &input, sizeof(Input));
+    }
+
     private static (int X, int Y) ClientToScreenPoint(nint window, (int X, int Y) point)
     {
         var screen = new Point { X = point.X, Y = point.Y };
@@ -227,7 +236,10 @@ internal static partial class WindowsFileDropSmoke
             await Task.Delay(300);
             if (end == DragEnd.Escape)
             {
-                Escape();
+                // Held for a moment, as a user presses it.
+                Key(0x1B, up: false);
+                await Task.Delay(200);
+                Key(0x1B, up: true);
                 await Task.Delay(300);
             }
             Mouse(drop.X, drop.Y, MouseLeftUp);

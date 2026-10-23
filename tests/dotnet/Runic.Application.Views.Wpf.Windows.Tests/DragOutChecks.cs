@@ -144,10 +144,11 @@ internal sealed partial class DragOutChecks
         {
             target.Close();
             window.Close();
-            System.IO.File.Delete(file);
         }
+        // The data rules run first, so the file still exists here.
         Program.Check(await services.StartDragAsync(data) is PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerClosed),
             "A closed window did not report the owner closed for a drag.");
+        System.IO.File.Delete(file);
     }
 
     private sealed class Attachment : IDisposable
