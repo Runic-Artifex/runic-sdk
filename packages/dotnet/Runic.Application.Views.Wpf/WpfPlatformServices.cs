@@ -13,7 +13,7 @@ namespace Runic.Application.Views.Wpf;
 /// <summary>Native platform services for the application's own WPF windows.</summary>
 public static class WpfPlatformServices
 {
-    /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher and screen-reader announcements owned by it.</summary>
+    /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher, screen-reader announcements, message boxes and taskbar badge and progress owned by it.</summary>
     /// <param name="window">The window, on its own thread.</param>
     /// <returns>
     /// Services for a ViewModel that takes <see cref="IWindowPlatformServices"/>, as on Runic Desktop, where
@@ -49,9 +49,13 @@ public static class WpfPlatformServices
         var owner = new WpfWindowOwner(window);
         void Bind()
         {
-            if (owner.Attach())
-                services.BindWindows(owner, (message, priority, cancellationToken) => AnnounceAsync(window, owner, message, priority, cancellationToken),
-                    (items, options, cancellationToken) => ShowContextMenuAsync(window, owner, items, options, cancellationToken));
+            if (!owner.Attach()) return;
+            services.BindWindows(owner, (message, priority, cancellationToken) => AnnounceAsync(window, owner, message, priority, cancellationToken),
+                (items, options, cancellationToken) => ShowContextMenuAsync(window, owner, items, options, cancellationToken));
+            // Explorer's TaskbarButtonCreated, when the button appears and after Explorer restarts, applies the window's
+            // badge and progress again.
+            if (OperatingSystem.IsWindowsVersionAtLeast(8) && HwndSource.FromHwnd(new WindowInteropHelper(window).Handle) is { } source)
+                source.AddHook(TaskbarHook);
         }
         void OnSourceInitialized(object? sender, EventArgs args)
         {
@@ -71,6 +75,13 @@ public static class WpfPlatformServices
         if (new WindowInteropHelper(window).Handle != 0) Bind();
         else window.SourceInitialized += OnSourceInitialized;
         return services;
+    }
+
+    private static nint TaskbarHook(nint window, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        if (OperatingSystem.IsWindowsVersionAtLeast(8) && message != 0 && (uint)message == DesktopPlatformServices.WindowsTaskbarButtonCreatedMessage)
+            DesktopPlatformServices.WindowsTaskbarButtonCreated(window);
+        return 0;
     }
 
     /// <summary>Brings a WPF window to the front, for example for a launch that another copy of the application forwarded.</summary>

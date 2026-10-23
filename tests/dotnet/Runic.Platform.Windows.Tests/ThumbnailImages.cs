@@ -3,8 +3,9 @@ using System.IO.Compression;
 
 namespace Runic.Platform.Tests;
 
-// Test images for the thumbnail cases on Windows and macOS: a generated BMP to thumbnail, and a small decoder for the
-// non-interlaced 8-bit RGB and RGBA PNG files the providers write, to check the pixels.
+// Test images for the thumbnail and clipboard cases on Windows and macOS: a generated BMP to thumbnail, a small decoder
+// for the non-interlaced 8-bit RGB and RGBA PNG files the providers write, to check the pixels, and an encoder for the
+// PNG files the clipboard cases write.
 internal static class ThumbnailImages
 {
     /// <summary>A 24-bit BMP of one colour.</summary>
@@ -32,6 +33,14 @@ internal static class ThumbnailImages
 
     /// <summary>The size from the IHDR chunk and the pixel at (x, y) as RGBA.</summary>
     public static (int Width, int Height, (byte R, byte G, byte B, byte A) Pixel) Decode(ReadOnlySpan<byte> png, double x, double y)
+    {
+        var (width, height, rgba) = Pixels(png);
+        int at = ((int)(y * (height - 1)) * width + (int)(x * (width - 1))) * 4;
+        return (width, height, (rgba[at], rgba[at + 1], rgba[at + 2], rgba[at + 3]));
+    }
+
+    /// <summary>The size and every pixel as RGBA, top-down.</summary>
+    public static (int Width, int Height, byte[] Rgba) Pixels(ReadOnlySpan<byte> png)
     {
         if (!png.StartsWith((ReadOnlySpan<byte>)[0x89, (byte)'P', (byte)'N', (byte)'G', 0x0d, 0x0a, 0x1a, 0x0a])) throw new InvalidDataException("Not a PNG.");
         int width = 0, height = 0, depth = 0, color = 0, interlace = 0;
@@ -79,8 +88,51 @@ internal static class ThumbnailImages
                 });
             }
         }
-        int at = (int)(y * (height - 1)) * stride + (int)(x * (width - 1)) * channels;
-        return (width, height, (pixels[at], pixels[at + 1], pixels[at + 2], channels == 4 ? pixels[at + 3] : (byte)255));
+        if (channels == 4) return (width, height, pixels);
+        var rgba = new byte[width * height * 4];
+        for (int i = 0, j = 0; i < pixels.Length; i += 3, j += 4)
+            (rgba[j], rgba[j + 1], rgba[j + 2], rgba[j + 3]) = (pixels[i], pixels[i + 1], pixels[i + 2], 255);
+        return (width, height, rgba);
+    }
+
+    /// <summary>A non-interlaced 8-bit RGBA PNG of top-down pixels, unfiltered.</summary>
+    public static byte[] Png(int width, int height, ReadOnlySpan<byte> rgba)
+    {
+        var output = new MemoryStream();
+        output.Write([0x89, (byte)'P', (byte)'N', (byte)'G', 0x0d, 0x0a, 0x1a, 0x0a]);
+        var header = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(header, width);
+        BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), height);
+        header[8] = 8; header[9] = 6;
+        Chunk(output, "IHDR"u8, header);
+        var raw = new MemoryStream();
+        using (var deflater = new ZLibStream(raw, CompressionLevel.SmallestSize, leaveOpen: true))
+            for (int row = 0; row < height; row++)
+            {
+                deflater.WriteByte(0);
+                deflater.Write(rgba.Slice(row * width * 4, width * 4));
+            }
+        Chunk(output, "IDAT"u8, raw.ToArray());
+        Chunk(output, "IEND"u8, []);
+        return output.ToArray();
+    }
+
+    private static void Chunk(Stream output, ReadOnlySpan<byte> type, ReadOnlySpan<byte> body)
+    {
+        Span<byte> number = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(number, body.Length);
+        output.Write(number);
+        output.Write(type);
+        output.Write(body);
+        uint crc = 0xFFFFFFFF;
+        foreach (var part in new[] { type.ToArray(), body.ToArray() })
+            foreach (byte value in part)
+            {
+                crc ^= value;
+                for (int bit = 0; bit < 8; bit++) crc = (crc & 1) != 0 ? 0xEDB88320 ^ (crc >> 1) : crc >> 1;
+            }
+        BinaryPrimitives.WriteUInt32BigEndian(number, ~crc);
+        output.Write(number);
     }
 
     private static int Paeth(int a, int b, int c)

@@ -3,7 +3,9 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.MacOS;
 
-internal sealed partial class MacOsTextClipboard(INativeWindowOwner owner) : ITextClipboard
+// The general pasteboard through the Pasteboard Manager, on the window's thread. MacOsClipboardData.cs adds the formats
+// beyond text and the watch.
+internal sealed partial class MacOsTextClipboard(INativeWindowOwner owner) : IDesktopClipboard
 {
     public ValueTask<PlatformResult<string?>> ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken = default)
     {

@@ -19,5 +19,9 @@
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The taskbar badge's expected glyphs (ClipboardDataPortableTests.BadgeGlyphs). -->
+    <None Include="BadgeImages/*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

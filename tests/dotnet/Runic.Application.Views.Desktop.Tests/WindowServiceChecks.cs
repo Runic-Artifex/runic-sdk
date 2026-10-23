@@ -422,7 +422,7 @@ internal sealed class WindowServiceChecks
     [Test, NotInParallel(Order = 32)]
     public async Task PlatformServicesRegisterEveryPlatformService()
     {
-        Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher),
+        Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopClipboard), typeof(IDesktopFileLauncher),
             typeof(IDesktopMonitors), typeof(IDesktopMessageBoxes)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon), typeof(IDesktopGlobalShortcuts),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),

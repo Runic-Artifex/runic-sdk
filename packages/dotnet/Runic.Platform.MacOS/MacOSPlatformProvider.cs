@@ -171,8 +171,16 @@ public static class MacOSPlatformProvider
         return new MacMessageBoxes(owner);
     }
 
-    // AppKit text clipboard services for a window.
-    internal static ITextClipboard CreateTextClipboard(INativeWindowOwner owner)
+    // Badge and progress on the Dock tile, which the application's windows share.
+    internal static IWindowTaskbar CreateTaskbar(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
+        return new MacDockTile(owner);
+    }
+
+    // The general pasteboard for a window: text, HTML, RTF, images, files and the format watch.
+    internal static IDesktopClipboard CreateTextClipboard(INativeWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");

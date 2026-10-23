@@ -15,7 +15,7 @@ internal sealed partial class MacAppKitNativeTests
 {
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(15);
 
-    [Test, Explicit, Category("NativeAppKit"), DisplayName("native AppKit: status item, login item and window presentation"), Timeout(180_000)]
+    [Test, Explicit, Category("NativeAppKit"), DisplayName("native AppKit: status item, login item, window presentation, message boxes and the Dock tile"), Timeout(180_000)]
     public async Task NativeAppKitAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The AppKit checks need macOS.");
@@ -26,6 +26,53 @@ internal sealed partial class MacAppKitNativeTests
         await FilterChoiceAsync();
         await MessageBoxesAsync(cancellationToken);
         await GlobalShortcutsAsync();
+        await DockTileAsync(cancellationToken);
+    }
+
+    // The Dock tile's badge label and progress bar, read back from AppKit; what the Dock draws stays a manual check.
+    private static async Task DockTileAsync(CancellationToken cancellationToken)
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WaitForConnection = false }, cancellationToken);
+        await using var surface = await host.CreateSurfaceAsync(new()
+        {
+            Content = new DesktopContent.Html("<!doctype html><meta charset=\"utf-8\"><title>Runic dock</title><p>Dock</p>"),
+        }, cancellationToken);
+        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, Width = 320, Height = 240 }, cancellationToken);
+        var owner = new WindowOwner(window);
+        var tile = new MacDockTile(owner);
+        foreach (var (badge, label) in new (DesktopBadge?, string?)[] { (new() { Count = 5 }, "5"), (new() { Count = 120 }, "99+"), (new(), "\u2022"), (null, null) })
+        {
+            var result = await tile.SetBadgeAsync(badge, cancellationToken);
+            string? shown = null;
+            await MacOsMainQueue.InvokeAsync(() => shown = MacDockTile.BadgeLabel());
+            Require(result is PlatformResult<PlatformUnit>.Success && shown == label, $"The badge {badge}: {result}, label {shown ?? "none"}.");
+        }
+        Pass("the Dock tile's badge label shows a count, 99+ and a dot, and clears");
+
+        foreach (var (progress, expected) in new (DesktopProgress?, (bool, bool, double))[]
+            { (new(0.4), (true, false, 0.4)), (new(null), (true, true, 0.4)), (new(1) { State = DesktopProgressState.Error }, (true, false, 1)), (null, (false, false, 0)) })
+        {
+            var result = await tile.SetProgressAsync(progress, cancellationToken);
+            (bool, bool, double) shown = default;
+            await MacOsMainQueue.InvokeAsync(() => shown = MacDockTile.Progress());
+            Require(result is PlatformResult<PlatformUnit>.Success && shown == expected, $"The progress {progress}: {result}, shown {shown}.");
+        }
+        Pass("the Dock tile's progress bar shows a value and indeterminate progress, and clears");
+
+        // The most recent window wins; a window's badge goes when its presentation stops.
+        var other = new MacDockTile(owner);
+        Require(await tile.SetBadgeAsync(new() { Count = 1 }, cancellationToken) is PlatformResult<PlatformUnit>.Success
+            && await other.SetBadgeAsync(new() { Count = 2 }, cancellationToken) is PlatformResult<PlatformUnit>.Success, "Two windows' badges.");
+        await tile.DisposeAsync();
+        string? kept = null;
+        await MacOsMainQueue.InvokeAsync(() => kept = MacDockTile.BadgeLabel());
+        Require(kept == "2", $"Stopping a window that no longer owns the badge keeps the other's: {kept}.");
+        await other.DisposeAsync();
+        await MacOsMainQueue.InvokeAsync(() => kept = MacDockTile.BadgeLabel());
+        Require(kept is null, $"Stopping the badge's window clears it: {kept}.");
+        await window.CloseAsync(cancellationToken);
+        Require(await new MacDockTile(owner).SetBadgeAsync(new() { Count = 3 }, cancellationToken) is PlatformResult<PlatformUnit>.Unavailable, "A closed window's badge.");
+        Pass("the most recent window's badge wins and goes with its window");
     }
 
     // NSAlert sheets on a Desktop window, answered in process with performClick: (the runner grants no Accessibility

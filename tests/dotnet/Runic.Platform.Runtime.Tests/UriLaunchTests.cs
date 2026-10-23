@@ -186,13 +186,13 @@ internal sealed class UriLaunchTests
     {
         string[] constants = [.. typeof(PlatformCapabilityIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             .Select(static field => (string)field.GetRawConstantValue()!)];
-        Check(constants.Length == 14 && constants.Distinct().Count() == constants.Length, "fourteen distinct constants");
+        Check(constants.Length == 19 && constants.Distinct().Count() == constants.Length, "nineteen distinct constants");
         Check(WindowPlatformServices.CapabilityIds.Order(StringComparer.Ordinal).SequenceEqual(constants.Order(StringComparer.Ordinal)), "CapabilityIds holds every constant");
         Check(WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable).GetSnapshot().Statuses.Keys.Order(StringComparer.Ordinal)
             .SequenceEqual(constants.Order(StringComparer.Ordinal)), "the unavailable services report every constant");
         await using var lifetime = new PresentationLifetime(() => true, Guid.NewGuid());
         IPlatformCapabilities[] parts = [new PresentationFileLauncher(lifetime), new PresentationClipboard(lifetime), new PresentationFiles(lifetime),
-            new PresentationMessageBoxes(lifetime)];
+            new PresentationMessageBoxes(lifetime), new PresentationTaskbar(lifetime)];
         // The menu and monitor capabilities come from the window host, which shows menus and lists monitors without a
         // platform provider.
         string[] menus = [PlatformCapabilityIds.MenuBar, PlatformCapabilityIds.ContextMenu, PlatformCapabilityIds.Monitors];

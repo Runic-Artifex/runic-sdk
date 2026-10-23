@@ -154,11 +154,11 @@ On macOS a save panel with filters may add the first allowed extension, or with
 
 ## Window services
 
-`IWindowPlatformServices` groups the file dialogs, text clipboard and file
+`IWindowPlatformServices` groups the file dialogs, clipboard and file
 launcher of one window, and reports their capabilities together under
 `WindowPlatformServices.CapabilityIds`. Host adapters register it, and its
 parts, per window scope through `services.AddRunicPlatformServices()`, so a
-ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher`,
+ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher`,
 `IDesktopMonitors`, `IDesktopMessageBoxes` or `IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
 them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
@@ -231,6 +231,79 @@ window opens and on hosts without a native owner, `OwnerClosed` after it closed
 activate Common Controls 6 or GTK 4 is older than 4.10.
 `DesktopMessageBoxes.Unavailable(reason)` stands in where there are none, and an
 implementation that does not override the member reports `OwnerUnavailable`.
+
+### Clipboard
+
+`Clipboard` reads and writes bounded Unicode text (`ITextClipboard`). The
+clipboard of Runic's hosts is also an `IDesktopClipboard`, which a ViewModel can
+take directly or reach with `services.Clipboard as IDesktopClipboard`: HTML,
+Rich Text Format, PNG images and lists of local files, from C# code such as a
+command or a background export. A page can still use the browser's clipboard,
+but only under a user gesture and the web view's permission rules, and never for
+files.
+
+```csharp
+await clipboard.WriteAsync(new DesktopClipboardContent
+{
+    Text = "Name\tTotal\nApples\t3",
+    Html = "<table><tr><th>Name</th><th>Total</th></tr><tr><td>Apples</td><td>3</td></tr></table>",
+});
+if (await clipboard.GetFormatsAsync() is PlatformResult<DesktopClipboardFormats>.Success { Value: var formats }
+    && formats.HasFlag(DesktopClipboardFormats.Image)
+    && await clipboard.ReadImageAsync(16 << 20) is PlatformResult<byte[]?>.Success { Value: { } png })
+    await InsertImageAsync(png);
+```
+
+`WriteAsync` replaces the clipboard with every format the
+`DesktopClipboardContent` sets, offered together, so each application pastes
+the one it understands best. Set at least one format; text, HTML and RTF must not
+contain NUL characters, the image must be a PNG file, and files must be fully
+qualified (at most 4096) and exist, or the write reports `InvalidData` or
+`NotFound` and changes nothing. Each read takes only the format it names and is
+bounded, as `ReadTextAsync` is: `ReadHtmlAsync` and `ReadRtfAsync` in
+characters, `ReadImageAsync` in PNG bytes and `ReadFilesAsync` in paths; more
+reports `TooLarge`, and a successful `null` or empty list means the format is
+not there. `GetFormatsAsync` reads which formats are there without reading any.
+
+| | Windows | macOS |
+| --- | --- | --- |
+| HTML | `CF_HTML` ("HTML Format"); a write wraps a fragment in a document, a read returns the copied fragment | `public.html`, as written |
+| RTF | "Rich Text Format" | `public.rtf` |
+| Image | "PNG", else a bitmap converted to PNG; a write also offers `CF_DIBV5` for applications that read only bitmaps | `public.png`, else `public.tiff` converted to PNG |
+| Files | `CF_HDROP` with a copy drop effect | One `public.file-url` item per file |
+| Watch | `WM_CLIPBOARDUPDATE` | The change count, compared four times a second |
+
+RTF is bytes: each character is one byte (Latin-1), and RTF's escapes such as
+`\u8364?` carry other characters. `WatchAsync` reports the formats now and again
+after each change, never the content: read it when the user pastes, as other
+applications' content is theirs. The capabilities are
+`ClipboardReadData`, `ClipboardWriteData` and `ClipboardWatch`; a custom
+`ITextClipboard` stays text-only, and a provider without the formats, Linux in
+this release, reports them `BackendUnavailable`.
+
+### Badges and progress
+
+`SetBadgeAsync` shows a count (`DesktopBadge.Count`, `99+` above 99) or, without
+one, a dot that asks for attention; `SetProgressAsync` shows a `DesktopProgress`
+from 0 to 1, or indeterminate progress with a `null` value. `null` removes either.
+
+```csharp
+await services.SetBadgeAsync(new DesktopBadge { Count = unread, Description = $"{unread} unread messages" });
+await services.SetProgressAsync(new DesktopProgress(done / (double)total));
+await services.SetProgressAsync(null);
+```
+
+On Windows both belong to the window's taskbar button: Runic draws the badge as
+an overlay icon at the window's scale, with `Description` as its accessible
+text, and colours the bar for `DesktopProgressState.Paused` and `Error`; the state
+comes back after Explorer restarts. On macOS both belong to the application's
+Dock icon, which all windows share: the most recent call wins, and a window's
+badge and progress go when it closes; the Dock draws `Paused` and `Error` as a
+normal bar. The capabilities are `TaskbarBadge` and `TaskbarProgress`:
+`OwnerUnavailable` before the window opens and on hosts without a native owner,
+`OwnerClosed` after it closed, and `ProviderNotConfigured` on Linux in this
+release. An implementation that does not override the members reports
+`OwnerUnavailable`.
 
 The capability identifiers are constants of `PlatformCapabilityIds`, so a typo
 does not compile:
@@ -350,7 +423,8 @@ either.
 
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
-| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Badges and progress, `IWindowPlatformServices.SetBadgeAsync` and `SetProgressAsync` | The taskbar button (Windows, also a WPF window's) or the Dock tile (macOS); `ProviderNotConfigured` on Linux | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's), sheets (macOS), GTK 3 message dialogs and GTK 4 alert dialogs | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |

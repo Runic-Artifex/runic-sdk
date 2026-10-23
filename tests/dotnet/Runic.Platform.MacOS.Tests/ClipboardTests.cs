@@ -10,7 +10,7 @@ namespace Runic.Platform.MacOS.Tests;
 // select it with --treenode-filter "/*/*/*/*[Category=Native]" on every OS.
 internal sealed class ClipboardTests
 {
-    [Test, Category("Native")]
+    [Test, Category("Native"), NotInParallel("pasteboard")]
     public void AppKitClipboard()
     {
         if (!OperatingSystem.IsMacOS())
@@ -134,6 +134,25 @@ internal static partial class PasteboardProbe
             if (data != 0) CFRelease(data);
             if (board != 0) CFRelease(board);
             CFRelease(name); CFRelease(image); CFRelease(flavor);
+        }
+    }
+    // One item with only this flavor, as an application that offers a single representation leaves it.
+    internal static unsafe void SetOnly(string flavorName, byte[] bytes)
+    {
+        nint name = CFStringCreateWithCString(0, "com.apple.pasteboard.clipboard", 0x08000100);
+        nint flavor = CFStringCreateWithCString(0, flavorName, 0x08000100);
+        nint board = 0, data = 0;
+        try
+        {
+            if (PasteboardCreate(name, out board) != 0 || PasteboardClear(board) != 0) throw new InvalidOperationException("Probe pasteboard setup failed.");
+            fixed (byte* pointer = bytes) data = CFDataCreate(0, pointer, bytes.Length);
+            if (PasteboardPutItemFlavor(board, 1, flavor, data, 0) != 0) throw new InvalidOperationException("Probe write failed.");
+        }
+        finally
+        {
+            if (data != 0) CFRelease(data);
+            if (board != 0) CFRelease(board);
+            CFRelease(name); CFRelease(flavor);
         }
     }
     private const string Services = "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";

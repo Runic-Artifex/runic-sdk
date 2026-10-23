@@ -257,6 +257,12 @@ replace those not yet spoken. It returns `Success` once the window raised it,
 closed. Send each message one way: a live region in a `RunicViewHost`'s page
 reaches the screen reader too.
 
+`Clipboard` is also an `IDesktopClipboard`, with HTML, RTF, PNG images and files,
+and `SetBadgeAsync` and `SetProgressAsync` show a badge and progress on the
+window's taskbar button, as for a Runic Desktop window. The services hook the
+window's `HwndSource` for Explorer's `TaskbarButtonCreated`, so the badge and
+progress return after Explorer restarts.
+
 `ShowContextMenuAsync(items, options)` opens a WPF `ContextMenu` and returns the
 chosen item, `null` when the user dismissed it or a later menu of the window
 replaced it; cancelling the token closes it. Entries follow the Windows menu

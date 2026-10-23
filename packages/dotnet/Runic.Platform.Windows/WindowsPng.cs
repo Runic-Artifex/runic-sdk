@@ -8,7 +8,7 @@ using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace Runic.Platform.Windows;
 
-// PNG through WIC for thumbnails and icons: a shell bitmap (premultiplied alpha, or none) or an icon (its alpha channel
+// PNG through WIC for thumbnails, icons and clipboard images: a shell bitmap (premultiplied alpha, or none) or an icon (its alpha channel
 // or its AND mask, as WIC reads HICONs), converted to 32-bit BGRA with straight alpha and encoded in memory.
 internal static unsafe class WindowsPng
 {
@@ -26,25 +26,137 @@ internal static unsafe class WindowsPng
         IWICImagingFactory* imaging = null;
         IWICBitmap* source = null;
         IWICFormatConverter* converter = null;
+        try
+        {
+            int hr = CreateFactory(out imaging);
+            if (hr < 0) { unavailable = true; return hr; }
+            hr = bitmap.IsNull ? imaging->CreateBitmapFromHICON(icon, &source).Value
+                : imaging->CreateBitmapFromHBITMAP(bitmap, default, AlphaOption(bitmap), &source).Value;
+            // The shell's bitmaps carry premultiplied alpha; PNG stores straight alpha.
+            if (hr >= 0) hr = Convert(imaging, (IWICBitmapSource*)source, out converter);
+            if (hr >= 0) hr = EncodeSource(imaging, converter, out png, out width, out height);
+            return hr;
+        }
+        finally
+        {
+            if (converter is not null) converter->Release();
+            if (source is not null) source->Release();
+            if (imaging is not null) imaging->Release();
+        }
+    }
+
+    // Decodes an image file in a format WIC reads, such as a BMP built from a clipboard bitmap, and encodes its first
+    // frame as PNG. An HRESULT.
+    [SupportedOSPlatform("windows8.0")]
+    internal static int Transcode(ReadOnlySpan<byte> file, out byte[]? png)
+    {
+        png = null;
+        IWICImagingFactory* imaging = null;
+        IWICFormatConverter* converter = null;
+        try
+        {
+            int hr = CreateFactory(out imaging);
+            if (hr >= 0) hr = DecodeFrame(imaging, file, out converter);
+            if (hr >= 0) hr = EncodeSource(imaging, converter, out png, out _, out _);
+            return hr;
+        }
+        finally
+        {
+            if (converter is not null) converter->Release();
+            if (imaging is not null) imaging->Release();
+        }
+    }
+
+    // Decodes an image file's first frame to top-down 32-bit BGRA with straight alpha. An HRESULT.
+    [SupportedOSPlatform("windows8.0")]
+    internal static int Decode(ReadOnlySpan<byte> file, out int width, out int height, out byte[]? bgra)
+    {
+        width = height = 0;
+        bgra = null;
+        IWICImagingFactory* imaging = null;
+        IWICFormatConverter* converter = null;
+        try
+        {
+            int hr = CreateFactory(out imaging);
+            if (hr >= 0) hr = DecodeFrame(imaging, file, out converter);
+            uint w = 0, h = 0;
+            if (hr >= 0) hr = converter->GetSize(&w, &h).Value;
+            if (hr < 0) return hr;
+            if (w == 0 || h == 0 || w > 32768 || h > 32768) return unchecked((int)0x88982F50); // WINCODEC_ERR_IMAGESIZEOUTOFRANGE
+            var pixels = new byte[checked((int)(w * h * 4))];
+            fixed (byte* buffer = pixels) hr = converter->CopyPixels(null, w * 4, (uint)pixels.Length, buffer).Value;
+            if (hr < 0) return hr;
+            (width, height, bgra) = ((int)w, (int)h, pixels);
+            return 0;
+        }
+        finally
+        {
+            if (converter is not null) converter->Release();
+            if (imaging is not null) imaging->Release();
+        }
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    private static int CreateFactory(out IWICImagingFactory* imaging)
+    {
+        Guid clsid = ImagingFactoryClass, factoryId = typeof(IWICImagingFactory).GUID;
+        void* instance = null;
+        int hr = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &factoryId, &instance).Value;
+        imaging = hr < 0 ? null : (IWICImagingFactory*)instance;
+        return hr;
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    private static int DecodeFrame(IWICImagingFactory* imaging, ReadOnlySpan<byte> file, out IWICFormatConverter* converter)
+    {
+        converter = null;
+        IStream* stream = null;
+        IWICBitmapDecoder* decoder = null;
+        IWICBitmapFrameDecode* frame = null;
+        try
+        {
+            fixed (byte* bytes = file) stream = PInvoke.SHCreateMemStream(bytes, checked((uint)file.Length));
+            if (stream is null) return unchecked((int)0x8007000E);
+            int hr = imaging->CreateDecoderFromStream(stream, null, WICDecodeOptions.WICDecodeMetadataCacheOnDemand, &decoder).Value;
+            if (hr >= 0) hr = decoder->GetFrame(0, &frame).Value;
+            if (hr >= 0) hr = Convert(imaging, (IWICBitmapSource*)frame, out converter);
+            return hr;
+        }
+        finally
+        {
+            if (frame is not null) frame->Release();
+            if (decoder is not null) decoder->Release();
+            if (stream is not null) stream->Release();
+        }
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    private static int Convert(IWICImagingFactory* imaging, IWICBitmapSource* source, out IWICFormatConverter* converter)
+    {
+        IWICFormatConverter* created = null;
+        int hr = imaging->CreateFormatConverter(&created).Value;
+        Guid format = PixelFormatBgra;
+        if (hr >= 0) hr = created->Initialize(source, &format, WICBitmapDitherType.WICBitmapDitherTypeNone, null, 0,
+            WICBitmapPaletteType.WICBitmapPaletteTypeCustom).Value;
+        if (hr < 0 && created is not null) { created->Release(); created = null; }
+        converter = created;
+        return hr;
+    }
+
+    // Encodes 32-bit BGRA pixels as a PNG in memory.
+    [SupportedOSPlatform("windows8.0")]
+    private static int EncodeSource(IWICImagingFactory* imaging, IWICFormatConverter* converter, out byte[]? png, out uint width, out uint height)
+    {
+        png = null;
+        width = height = 0;
         IStream* stream = null;
         IWICBitmapEncoder* encoder = null;
         IWICBitmapFrameEncode* frame = null;
         try
         {
-            Guid clsid = ImagingFactoryClass, factoryId = typeof(IWICImagingFactory).GUID;
-            void* instance = null;
-            int hr = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &factoryId, &instance).Value;
-            if (hr < 0) { unavailable = true; return hr; }
-            imaging = (IWICImagingFactory*)instance;
-            hr = bitmap.IsNull ? imaging->CreateBitmapFromHICON(icon, &source).Value
-                : imaging->CreateBitmapFromHBITMAP(bitmap, default, AlphaOption(bitmap), &source).Value;
             uint w = 0, h = 0;
-            if (hr >= 0) hr = source->GetSize(&w, &h).Value;
-            if (hr >= 0) hr = imaging->CreateFormatConverter(&converter).Value;
-            // The shell's bitmaps carry premultiplied alpha; PNG stores straight alpha.
+            int hr = converter->GetSize(&w, &h).Value;
             Guid format = PixelFormatBgra;
-            if (hr >= 0) hr = converter->Initialize((IWICBitmapSource*)source, &format, WICBitmapDitherType.WICBitmapDitherTypeNone, null, 0,
-                WICBitmapPaletteType.WICBitmapPaletteTypeCustom).Value;
             if (hr >= 0) stream = PInvoke.SHCreateMemStream(null, 0);
             if (hr >= 0 && stream is null) hr = unchecked((int)0x8007000E);
             Guid container = ContainerFormatPng;
@@ -74,9 +186,6 @@ internal static unsafe class WindowsPng
             if (frame is not null) frame->Release();
             if (encoder is not null) encoder->Release();
             if (stream is not null) stream->Release();
-            if (converter is not null) converter->Release();
-            if (source is not null) source->Release();
-            if (imaging is not null) imaging->Release();
         }
     }
 

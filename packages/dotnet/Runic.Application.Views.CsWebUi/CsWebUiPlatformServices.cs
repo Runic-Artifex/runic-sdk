@@ -33,7 +33,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
 {
     /// <summary>
     /// Registers every Runic platform service that Runic Desktop's <c>AddRunicPlatformServices</c> registers:
-    /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>,
+    /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>, <see cref="IDesktopClipboard"/>,
     /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMessageBoxes"/> per window scope, and one <see cref="IDesktopSettings"/>,
     /// <see cref="IDesktopNotifications"/>, <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>,
     /// <see cref="IDesktopInhibition"/>, <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>,
@@ -72,6 +72,8 @@ public static class CsWebUiPlatformServiceCollectionExtensions
         services.TryAddScoped(static _ => WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard);
+        services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().Clipboard as IDesktopClipboard
+            ?? (IDesktopClipboard)WindowPlatformServices.Unavailable(PlatformUnavailableReason.BackendUnavailable).Clipboard);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileLauncher);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().MessageBoxes);
         return services;
