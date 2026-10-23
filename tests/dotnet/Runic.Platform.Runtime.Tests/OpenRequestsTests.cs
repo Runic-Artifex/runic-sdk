@@ -241,27 +241,53 @@ internal sealed class OpenRequestsTests
         finally { File.Delete(file); }
     }
 
+    // The registration API writes the scheme (IDesktopOpenRegistration), refusing a foreign entry first; the shell then
+    // starts this executable with the URL as its only argument (Program.cs), which forwards it to the running instance.
     private static async Task WindowsAsync()
     {
         if (!OperatingSystem.IsWindows()) return;
-        string scheme = "runic-open-" + Guid.NewGuid().ToString("N")[..8], id = "org.runic.tests.Open" + Guid.NewGuid().ToString("N")[..8];
+        string suffix = Guid.NewGuid().ToString("N")[..8], scheme = "runic-open-" + suffix, id = "org.runic.tests.Open" + suffix;
+        string foreign = scheme + "-foreign", foreignKey = @"Software\Classes\" + foreign;
         await using var primary = await ProbeAsync(id, scheme);
-        string key = @"Software\Classes\" + scheme;
+        var registration = Runic.Platform.Windows.WindowsPlatformProvider.CreateOpenRegistration(id);
+        var probe = new DesktopOpenRegistration("Runic open probe") { UrlSchemes = [scheme], FileTypes = [new("." + scheme)] };
         try
         {
-            using (var root = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(key))
-            {
-                root.SetValue("", "URL:Runic open probe");
-                root.SetValue("URL Protocol", "");
-                using var command = root.CreateSubKey(@"shell\open\command");
-                command.SetValue("", WindowsCommand(id, scheme) + " \"%1\"");
-            }
+            using (var command = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(foreignKey + @"\shell\open\command"))
+                command.SetValue("", "\"C:\\Other\\Other.exe\" \"%1\"");
+            var refused = await registration.RegisterAsync(probe with { UrlSchemes = [scheme, foreign] });
+            Check(refused is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Conflict }, $"a foreign protocol is a conflict: {refused}");
+            Check(Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\" + scheme) is null, "nothing is written when one item conflicts");
+
+            Check(await registration.RegisterAsync(probe) is PlatformResult<PlatformUnit>.Success, "the scheme and file type are registered");
+            Check(await registration.IsRegisteredAsync(probe) is PlatformResult<bool>.Success { Value: true }, "the registration points to this executable");
             using (Process.Start(new ProcessStartInfo(scheme + ":item?id=1") { UseShellExecute = true })) { }
             string url = await primary.NextAsync();
             Check(new Uri(url) == new Uri(scheme + ":item?id=1"), $"the shell opened the URL through the registered protocol: {url}");
-            Console.WriteLine("PASS open: the Windows shell delivered a registered URL to the running instance.");
+            Check(await registration.UnregisterAsync(probe) is PlatformResult<bool>.Success { Value: true }, "unregistered");
+            Check(await registration.IsRegisteredAsync(probe) is PlatformResult<bool>.Success { Value: false }, "no longer registered");
+            Check(Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\" + scheme) is null, "the protocol key is removed");
+            Check(Microsoft.Win32.Registry.CurrentUser.OpenSubKey(foreignKey) is not null, "the foreign protocol stays");
+            Console.WriteLine("PASS open: IDesktopOpenRegistration registered a URL protocol that the Windows shell opened into the running instance; a foreign entry was refused.");
         }
-        finally { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(key, throwOnMissingSubKey: false); }
+        finally
+        {
+            await registration.UnregisterAsync(probe);
+            foreach (string key in new[] { foreignKey, @"Software\Classes\" + scheme, @"Software\Classes\." + scheme, @"Software\Classes\" + id + "." + scheme, @"Software\" + id })
+                Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(key, throwOnMissingSubKey: false);
+            using var registered = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\RegisteredApplications", writable: true);
+            registered?.DeleteValue(id, throwOnMissingValue: false);
+        }
+    }
+
+    // The process the shell starts for a registered probe scheme: its only argument is the URL, whose scheme names the
+    // probe's instance.
+    internal static (string Id, string Scheme)? RegisteredProbe(string argument)
+    {
+        int colon = argument.IndexOf(':', StringComparison.Ordinal);
+        if (colon != "runic-open-".Length + 8 || !argument.StartsWith("runic-open-", StringComparison.OrdinalIgnoreCase)) return null;
+        string suffix = argument["runic-open-".Length..colon].ToLowerInvariant();
+        return suffix.All(char.IsAsciiHexDigitLower) ? ("org.runic.tests.Open" + suffix, "runic-open-" + suffix) : null;
     }
 
     // The probe: the running instance of a test application, in another process, that prints each request's items.

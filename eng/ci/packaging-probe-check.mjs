@@ -1,6 +1,7 @@
 // Checks the receipt that tests/native/Runic.Packaging.Probe writes when its installed package opens its URL scheme
 // (see the packaging job in .github/workflows/ci.yml). Usage: bun eng/ci/packaging-probe-check.mjs <receipt> <platform>
-// [unpackaged], where platform is windows, macos or flatpak; "unpackaged" checks a copy run outside its package.
+// [unpackaged|files], where platform is windows, macos or flatpak; "unpackaged" checks a copy run outside its package,
+// "files" the receipt of a package opened with two files at once (Windows).
 import { existsSync, readFileSync } from "node:fs";
 
 const [path, platform, mode] = process.argv.slice(2);
@@ -12,17 +13,31 @@ const id = "org.runic.tests.PackagingProbe";
 expect(receipt.applicationId === id, `applicationId is ${receipt.applicationId}`);
 expect(receipt.applicationName === "Runic Packaging Probe", `applicationName is ${receipt.applicationName}`);
 // The Windows shell normalizes the URL to runic-packaging-probe://receipt/?path=...
-expect(/^runic-packaging-probe:\/\/receipt\/?\?path=/i.test(receipt.url ?? ""), `the probe was opened with ${receipt.url}`);
+if (mode === "files")
+  expect(receipt.url === null, `a file activation carries the URL ${receipt.url}`);
+else
+  expect(/^runic-packaging-probe:\/\/receipt\/?\?path=/i.test(receipt.url ?? ""), `the probe was opened with ${receipt.url}`);
 expect(receipt.contentRootHasIndex === true, `the content root ${receipt.contentRoot} has no index.html`);
 if (mode === "unpackaged") {
   expect(receipt.packageIdentity === null, `an unpackaged copy has the package identity ${receipt.packageIdentity}`);
   expect(receipt.loginStartup !== "Unavailable(BackendUnavailable)", `unpackaged login startup is ${receipt.loginStartup}`);
+  if (platform === "windows") expect(receipt.openRegistration === "Success(False)", `unpackaged registration reports ${receipt.openRegistration}`);
+} else if (mode === "files") {
+  // Two files selected together reach one process, through the activation's files (MultiSelectModel="Player").
+  const names = (receipt.files ?? []).map(file => file.split(/[\\/]/).pop()).sort();
+  expect(names.join(",") === "first.runicprobe,second.runicprobe", `the file activation delivered ${JSON.stringify(receipt.files)}`);
+  expect(receipt.activationKind === 3, `the activation kind is ${receipt.activationKind}, not File`);
 } else if (platform === "windows") {
   expect(new RegExp(`^${id.replace(/\./g, "\\.")}_[a-z0-9]{13}!App$`).test(receipt.packageIdentity ?? ""),
     `the MSIX package's AppUserModelID is ${receipt.packageIdentity}`);
   // Runic shows toasts under the package's AppUserModelID, which Windows registered at install.
   expect(receipt.notifications === "Success", `notifications in the package report ${receipt.notifications}`);
-  expect(receipt.loginStartup === "Unavailable(BackendUnavailable)", `login startup in the package reports ${receipt.loginStartup}`);
+  // The package's desktop:StartupTask (LoginStartup), off at install, turned on and off again.
+  expect(receipt.loginStartup === "Success(False)", `login startup in the package reports ${receipt.loginStartup}`);
+  expect(receipt.loginStartupCycle === "Success,Success(True),Success,Success(False)", `the startup task cycle reports ${receipt.loginStartupCycle}`);
+  // The package declares its scheme; the registration API leaves it to the package.
+  expect(receipt.openRegistration === "Unavailable(BackendUnavailable)", `registration in the package reports ${receipt.openRegistration}`);
+  expect(receipt.activationKind === 4, `the activation kind is ${receipt.activationKind}, not Protocol`);
 } else if (platform === "macos") {
   expect(receipt.packageIdentity === id, `the bundle identifier is ${receipt.packageIdentity}`);
   expect(/\.app\/Contents\/Resources\/www\/?$/.test(receipt.contentRoot ?? ""), `the bundle's content root is ${receipt.contentRoot}`);

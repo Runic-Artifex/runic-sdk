@@ -33,12 +33,17 @@ public static class WindowsPlatformProvider
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
         return new WindowsDesktopNotifications(WindowsPackageIdentity.NotificationsApplicationId(applicationId, WindowsPackageIdentity.Current));
     }
-    /// <summary>Creates login startup through the user's Run key, under <paramref name="applicationId"/>.</summary>
+    /// <summary>Creates login startup through the user's Run key, under <paramref name="applicationId"/>, or the package's
+    /// startup task.</summary>
     /// <remarks>
-    /// An entry the user turned off in Task Manager stays off: enabling reports PermissionDenied until the application
-    /// disables it. A process installed from an MSIX package gets
-    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>: Windows redirects its writes to the Run key into the
-    /// package, where they have no effect. Such a package declares a <c>desktop:StartupTask</c> in its manifest instead.
+    /// <para>An entry the user turned off in Task Manager stays off: enabling reports PermissionDenied until the application
+    /// disables it.</para>
+    /// <para>A process installed from an MSIX package uses the <c>desktop:StartupTask</c> with <c>TaskId="LoginStartup"</c>
+    /// that its manifest declares, through <c>Windows.ApplicationModel.StartupTask</c>: Windows redirects its writes to the
+    /// Run key into the package, where they have no effect. Windows starts the application with the manifest's
+    /// arguments, not the request's. A task the user or a policy turned off reports
+    /// <see cref="PlatformFailureCode.PermissionDenied"/> and stays off, and a package without the task reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</para>
     /// </remarks>
     public static IDesktopLoginStartup CreateLoginStartup(string applicationId) => CreateLoginStartup(applicationId, WindowsPackageIdentity.Current);
 
@@ -48,9 +53,55 @@ public static class WindowsPlatformProvider
         if (applicationId.Length > 128 || applicationId.Contains('\0') || applicationId.Contains('\\'))
             throw new ArgumentException("Use the application's ID, at most 128 characters.", nameof(applicationId));
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
-        return packageApplicationId is null
-            ? new WindowsLoginStartup(applicationId)
+        if (packageApplicationId is null) return new WindowsLoginStartup(applicationId);
+        return OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134)
+            ? new WindowsStartupTask(WindowsStartupTask.DefaultTaskId)
             : DesktopLoginStartup.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+    }
+
+    /// <summary>Creates the per-user registration of URL schemes and file types under <c>HKEY_CURRENT_USER\Software\Classes</c>.</summary>
+    /// <param name="applicationId">The application's ID: the prefix of its file types' ProgIDs (<c>&lt;applicationId&gt;.notes</c>)
+    /// and the name of its <c>Capabilities</c>, which <c>RegisteredApplications</c> lists so that Settings, Default apps,
+    /// shows the application.</param>
+    /// <remarks>
+    /// <para>A scheme gets a URL protocol key and a file type a ProgID, each with the command <c>"&lt;executable&gt;" "%1"</c>,
+    /// and the extension's <c>OpenWithProgids</c> lists the ProgID; the extension's default is never set, so the user
+    /// keeps choosing defaults. A key in the current user's or the machine's classes that names another command belongs
+    /// to another application: <see cref="IDesktopOpenRegistration.RegisterAsync"/> reports
+    /// <see cref="PlatformFailureCode.Conflict"/> before writing anything. Registering and unregistering notify the shell
+    /// (<c>SHChangeNotify</c>).</para>
+    /// <para>A process installed from an MSIX package reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>:
+    /// Windows redirects its writes into the package, whose manifest declares <c>uap:Protocol</c> and
+    /// <c>uap:FileTypeAssociation</c> extensions instead.</para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty, longer than 128 characters, or contains a backslash or NUL.</exception>
+    public static IDesktopOpenRegistration CreateOpenRegistration(string applicationId) => CreateOpenRegistration(applicationId, WindowsPackageIdentity.Current);
+
+    internal static IDesktopOpenRegistration CreateOpenRegistration(string applicationId, string? packageApplicationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        if (applicationId.Length > 128 || applicationId.Contains('\0') || applicationId.Contains('\\') || applicationId.Contains('"'))
+            throw new ArgumentException("Use the application's ID, at most 128 characters.", nameof(applicationId));
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+        return packageApplicationId is null
+            ? new WindowsOpenRegistration(applicationId)
+            : DesktopOpenRegistrations.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+    }
+
+    /// <summary>This process's launch, with the items of an MSIX package's activation as arguments.</summary>
+    /// <param name="arguments">The process's arguments, as <c>Main</c> receives them.</param>
+    /// <remarks>
+    /// Outside a package, the same as <see cref="ApplicationLaunch.FromProcess"/>. In a package it reads the activation
+    /// (<c>AppInstance.GetActivatedEventArgs</c>): a protocol activation adds its URI and a file activation every file,
+    /// several at once for a file type with <c>MultiSelectModel="Player"</c>, in one process; items the arguments
+    /// already carry are not repeated. A launch or startup task activation carries only the arguments.
+    /// </remarks>
+    public static ApplicationLaunch GetLaunch(IEnumerable<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        var list = arguments.ToList();
+        if (WindowsPackageIdentity.Current is null || !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134)) return ApplicationLaunch.FromProcess(list);
+        return WindowsActivation.Merge(list, WindowsActivation.Read());
     }
     /// <summary>Creates secret storage in the user's Credential Manager, as generic credentials.</summary>
     /// <remarks>Each secret is a credential whose target is <c>service/account</c>, with <c>/</c> and <c>%</c> in the

@@ -28,7 +28,9 @@ internal sealed class LoginStartupTests
     }
 
     // The runner's test process has no package identity, read through GetCurrentApplicationUserModelId, and a packaged
-    // process gets no Run-key login startup: Windows redirects its HKCU writes into the package.
+    // process gets the package's startup task instead of the Run key, whose HKCU writes Windows redirects into the
+    // package. Without a package, as here, the startup task reports unavailable; the packaging job turns a real one on
+    // and off.
     [Test, Explicit, Category("NativeLoginStartup")]
     public async Task PackageIdentityAsync()
     {
@@ -36,6 +38,7 @@ internal sealed class LoginStartupTests
         Check(WindowsPackageIdentity.Current is null);
         Check(WindowsPlatformProvider.CreateLoginStartup("org.example.App", null) is WindowsLoginStartup);
         var packaged = WindowsPlatformProvider.CreateLoginStartup("org.example.App", "Example.App_1a2b3c4d5e6f7!App");
+        Check(packaged is WindowsStartupTask);
         Check(await packaged.IsEnabledAsync() is PlatformResult<bool>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
         Check(await packaged.EnableAsync(new LoginStartupRequest([])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
         Check(await packaged.DisableAsync() is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });

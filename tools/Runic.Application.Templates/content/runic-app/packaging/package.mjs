@@ -103,6 +103,7 @@ export function manifestFields(identity, target, rid = "") {
   const xml = Object.fromEntries(Object.entries(identity).map(([key, value]) => [key, escapeXml(value)]));
   const schemes = identity.urlSchemes;
   const types = identity.fileTypes ?? [];
+  const hosts = identity.webLinkHosts ?? [];
   const fields = {
     ApplicationId: identity.id,
     ApplicationName: xml.name,
@@ -114,13 +115,30 @@ export function manifestFields(identity, target, rid = "") {
     fields.Publisher = xml.publisher;
     fields.Architecture = rid.endsWith("arm64") ? "arm64" : "x64";
     fields.PackageVersion = numericVersion(identity.version, 4);
-    fields.Extensions = schemes.length === 0 ? "" : `
+    // URL schemes, file types (all selected files in one process, MultiSelectModel="Player"), app URI handlers for the
+    // web link hosts, and the startup task that login startup enables in a package.
+    fields.Extensions = `
       <Extensions>${schemes.map(scheme => `
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="${scheme}">
             <uap:DisplayName>${xml.name}</uap:DisplayName>
           </uap:Protocol>
-        </uap:Extension>`).join("")}
+        </uap:Extension>`).join("")}${types.map(type => `
+        <uap3:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name="${type.extension.slice(1).replace(/[^a-z0-9.-]/g, "-")}" MultiSelectModel="Player">
+            <uap:SupportedFileTypes>
+              <uap:FileType${type.mimeType ? ` ContentType="${escapeXml(type.mimeType)}"` : ""}>${type.extension}</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>`).join("")}${hosts.length === 0 ? "" : `
+        <uap3:Extension Category="windows.appUriHandler">
+          <uap3:AppUriHandler>${hosts.map(host => `
+            <uap3:Host Name="${host}" />`).join("")}
+          </uap3:AppUriHandler>
+        </uap3:Extension>`}
+        <desktop:Extension Category="windows.startupTask" Executable="${identity.executable}.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="LoginStartup" Enabled="false" DisplayName="${xml.name}" />
+        </desktop:Extension>
       </Extensions>`;
   } else if (target === "macos") {
     fields.BundleVersion = numericVersion(identity.version, 3);

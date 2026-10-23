@@ -1294,7 +1294,8 @@ jobs:
   # W315-014: the runic-app template's packaging/package.mjs packages tests/native/Runic.Packaging.Probe on each OS
   # without the maintainers' signing credentials: an MSIX signed with a test certificate, an ad-hoc signed .app with
   # the hardened runtime in a disk image, and an unsigned Flatpak. Each package is installed and opened through its
-  # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs).
+  # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs):
+  # in the MSIX also its protocol activation, its startup task turned on and off, and two files opened at once.
   packaging:
     name: Packaging / ${{ matrix.target }}
     needs: plan
@@ -1355,6 +1356,23 @@ jobs:
             if (-not (Test-Path $receipt)) { throw 'Opening the URL scheme did not start the packaged probe' }
             bun eng/ci/packaging-probe-check.mjs $receipt windows
             if ($LASTEXITCODE -ne 0) { throw 'The packaged receipt failed' }
+
+            # Two files opened together, as Explorer opens a multiple selection: the shell's open verb on both items at
+            # once (FolderItems.InvokeVerbEx). With MultiSelectModel="Player" one process gets both through GetLaunch.
+            # (IApplicationActivationManager.ActivateForFile refuses full-trust applications.)
+            $files = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\files" -Force
+            'first' | Set-Content "$files\first.runicprobe"; 'second' | Set-Content "$files\second.runicprobe"
+            $items = (New-Object -ComObject Shell.Application).NameSpace($files.FullName).Items()
+            $items.Filter(0x40, '*.runicprobe')
+            if ($items.Count -ne 2) { throw "The shell lists $($items.Count) probe files" }
+            $items.InvokeVerbEx('open')
+            $receipt = "$files\files-receipt.json"
+            for ($i = 0; $i -lt 60 -and -not (Test-Path $receipt); $i++) { Start-Sleep -Seconds 1 }
+            if (-not (Test-Path $receipt)) { throw 'Opening two files of the package did not start the probe' }
+            # A second process, one per file, would rewrite the receipt with one file.
+            Start-Sleep -Seconds 5
+            bun eng/ci/packaging-probe-check.mjs $receipt windows files
+            if ($LASTEXITCODE -ne 0) { throw 'The file activation receipt failed' }
           } finally {
             Get-AppxPackage -Name org.runic.tests.PackagingProbe | Remove-AppxPackage
           }

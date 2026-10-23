@@ -81,7 +81,13 @@ test("package.mjs fills every field of its manifests, escaped, with and without 
           assert.match(text, /Version="2\.1\.0\.0"/);
           assert.match(text, /Publisher="CN=Example Ltd, O=Example Ltd"/);
           assert.equal((text.match(/<uap:Protocol Name="/g) ?? []).length, schemes.length);
-          assert.equal(/<Extensions>/.test(text), schemes.length > 0, "an empty Extensions element is invalid");
+          // The startup task is always declared, so Extensions is never empty.
+          assert.match(text, /<desktop:StartupTask TaskId="LoginStartup" Enabled="false" DisplayName="Notes &amp; Co" \/>/);
+          assert.match(text, /<desktop:Extension Category="windows.startupTask" Executable="Notes\.exe" EntryPoint="Windows\.FullTrustApplication">/);
+          assert.equal((text.match(/<uap3:FileTypeAssociation Name="(notes|tar\.gz)" MultiSelectModel="Player">/g) ?? []).length, types.length);
+          assert.equal(/<uap:FileType ContentType="application\/x-example-notes">\.notes<\/uap:FileType>/.test(text), types.length > 0);
+          assert.equal(/<uap3:Host Name="notes\.example\.org" \/>/.test(text), schemes.length > 0);
+          assert.equal(/windows\.appUriHandler/.test(text), schemes.length > 0, "no handler without hosts");
         }
         if (file === "macos/Info.plist") {
           assert.match(text, /<key>CFBundleShortVersionString<\/key><string>2\.1\.0<\/string>/);
@@ -110,7 +116,7 @@ test("the packaging probe declares what the template's packaging reads", () => {
   const template = readFileSync(resolve(packaging, "../RunicWindowApp.csproj"), "utf8");
   // W319-003 D17: the identity uses the MSBuild names ApplicationId and ApplicationTitle, which the assembly
   // metadata that ApplicationIdentity.cs reads repeats.
-  for (const property of ["ApplicationId", "ApplicationTitle", "Version", "Description", "PackageProjectUrl", "RunicApplicationPublisher", "RunicApplicationUrlSchemes"]) {
+  for (const property of ["ApplicationId", "ApplicationTitle", "Version", "Description", "PackageProjectUrl", "RunicApplicationPublisher", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes"]) {
     assert.match(probe, new RegExp(`<${property}>[^<]+</${property}>`), property);
     assert.match(template, new RegExp(`<${property}>`), property);
   }

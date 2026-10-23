@@ -50,10 +50,24 @@ A process installed from an MSIX package has the package's identity, and
 Windows registers its AppUserModelID (`PackageFamilyName!App`) with the
 package. `WindowsPlatformProvider.CreateNotifications` then shows toasts under
 that ID and ignores the one the application passes, which it cannot know
-before the package is signed. Login startup through the Run key reports
-`Unavailable(BackendUnavailable)` in a package: Windows redirects the
-package's writes to `HKCU` into the package, where Windows never reads them.
-Declare a `desktop:StartupTask` extension in the package manifest instead.
+before the package is signed. Windows redirects the package's writes to
+`HKCU` into the package, where Windows never reads them, so login startup in a
+package uses the manifest's `desktop:StartupTask` with `TaskId="LoginStartup"`
+(`Windows.ApplicationModel.StartupTask`) instead of the Run key: `EnableAsync`
+turns the task on (the manifest's arguments apply, not the request's), a task
+the user turned off in Settings or Task Manager reports `PermissionDenied` and
+stays off, and a package without the task reports `Unavailable`. The runic-app
+template declares it. `CreateOpenRegistration` reports
+`Unavailable(BackendUnavailable)` in a package, whose manifest declares its
+schemes and file types.
+
+`WindowsPlatformProvider.GetLaunch(args)` reads a packaged process's activation
+(`AppInstance.GetActivatedEventArgs`, through raw WinRT calls that NativeAOT
+keeps): a protocol activation's URI and a file activation's files become the
+launch's arguments, so `CreateOpenRequests` delivers them. With
+`MultiSelectModel="Player"` on the file type, several files the user opens at
+once reach one process. Outside a package it is `ApplicationLaunch.FromProcess`.
+
 An unpackaged application (a ZIP or an installer) registers its
 AppUserModelID itself, with a Start menu shortcut whose
 `System.AppUserModel.ID` property is the ID.
@@ -66,6 +80,22 @@ the running instance. The application's installer registers the URL scheme and
 file types per user under `HKCU\Software\Classes`, with the command
 `"C:\…\App.exe" "%1"` quoted so a URL cannot add arguments, or declares them in
 an MSIX manifest. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists the keys.
+
+An application without an installer registers itself with
+`WindowsPlatformProvider.CreateOpenRegistration(applicationId)`: a URL protocol
+key per scheme and a ProgID `<applicationId>.<extension>` per file type, both
+with that command, the extension's `OpenWithProgids` entry, and `Capabilities`
+listed under `RegisteredApplications`, so Settings, Default apps, shows the
+application. The extension's default stays the user's choice. Each key carries
+the application ID, so registering again (for example from a new folder)
+updates it; a key in the user's or the machine's classes that names another
+command is `Conflict`, checked for every item before anything is written.
+`UnregisterAsync` removes only the application's own keys. Both notify the
+shell with `SHChangeNotify(SHCNE_ASSOCCHANGED)`.
+
+`https` links to `DesktopOpenOptions.WebLinkHosts` arrive from a package's
+`uap3:AppUriHandler` once each host serves `/.well-known/windows-app-web-link`
+naming the package; verify that with your own domain.
 
 ## Trash
 

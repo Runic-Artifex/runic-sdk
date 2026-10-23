@@ -8,14 +8,19 @@ using RunicWindowApp;
 
 // Opened as runic-packaging-probe://receipt?path=<file>, as an installed package opens its URL scheme, the probe
 // writes what the package gives it to <file> as JSON and exits: the URL, its identity on this platform, the content
-// root Runic resolves, and on Windows what notifications and login startup report there. It also writes one
-// diagnostic through the template's DiagnosticsLog, to standard error and the log.
-string? url = args.FirstOrDefault(argument => argument.StartsWith("runic-packaging-probe:", StringComparison.OrdinalIgnoreCase));
-string? receipt = url is null ? null : ReceiptPath(new Uri(url));
+// root Runic resolves, and on Windows what notifications, login startup and registration report there and which
+// activation the package delivered. Opened with .runicprobe files instead, it writes the files it received to
+// files-receipt.json beside the first. It also writes one diagnostic through the template's DiagnosticsLog, to
+// standard error and the log.
+var launch = OperatingSystem.IsWindows() ? WindowsPlatformProvider.GetLaunch(args) : ApplicationLaunch.FromProcess(args);
+var opened = DesktopOpenRequests.FromLaunch(launch, new(["runic-packaging-probe"]) { IncludeFiles = true })?.Items ?? [];
+string? url = opened.FirstOrDefault(static item => item.Scheme == "runic-packaging-probe")?.OriginalString;
+string[] files = [.. opened.Where(static item => item.IsFile && item.LocalPath.EndsWith(".runicprobe", StringComparison.OrdinalIgnoreCase)).Select(static item => item.LocalPath)];
+string? receipt = url is not null ? ReceiptPath(new Uri(url)) : files.Length > 0 ? Path.Combine(Path.GetDirectoryName(files[0])!, "files-receipt.json") : null;
 DiagnosticsLog.Write("Info packaging-probe: the packaging probe ran.");
 if (receipt is null)
 {
-    Console.Error.WriteLine("Open the probe as runic-packaging-probe://receipt?path=<receipt file>.");
+    Console.Error.WriteLine("Open the probe as runic-packaging-probe://receipt?path=<receipt file>, or with .runicprobe files.");
     return 2;
 }
 
@@ -31,11 +36,26 @@ using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = 
     json.WriteString("contentRoot", contentRoot);
     json.WriteBoolean("contentRootHasIndex", File.Exists(Path.Combine(contentRoot, "index.html")));
     json.WriteString("diagnosticsLog", DiagnosticsLog.Path);
+    json.WriteStartArray("files");
+    foreach (string file in files) json.WriteStringValue(file);
+    json.WriteEndArray();
+    json.WriteNumber("processId", Environment.ProcessId);
     if (OperatingSystem.IsWindows())
     {
         await using var notifications = WindowsPlatformProvider.CreateNotifications(ApplicationIdentity.Id);
         json.WriteString("notifications", Describe(await notifications.RequestPermissionAsync()));
-        json.WriteString("loginStartup", Describe(await WindowsPlatformProvider.CreateLoginStartup(ApplicationIdentity.Id).IsEnabledAsync()));
+        var startup = WindowsPlatformProvider.CreateLoginStartup(ApplicationIdentity.Id);
+        json.WriteString("loginStartup", Describe(await startup.IsEnabledAsync()));
+        json.WriteString("openRegistration", Describe(await WindowsPlatformProvider.CreateOpenRegistration(ApplicationIdentity.Id)
+            .IsRegisteredAsync(new DesktopOpenRegistration("Runic Packaging Probe") { UrlSchemes = ["runic-packaging-probe"] })));
+        if (PackageIdentity() is not null)
+        {
+            json.WriteNumber("activationKind", OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134) ? WindowsActivation.Read()?.Kind ?? -1 : -1);
+            // The package's startup task: on, then off again.
+            if (url is not null)
+                json.WriteString("loginStartupCycle", string.Join(",", Describe(await startup.EnableAsync(new([]))), Describe(await startup.IsEnabledAsync()),
+                    Describe(await startup.DisableAsync()), Describe(await startup.IsEnabledAsync())));
+        }
     }
     json.WriteEndObject();
 }
@@ -51,6 +71,7 @@ static string? ReceiptPath(Uri url)
 
 static string Describe<T>(PlatformResult<T> result) => result switch
 {
+    PlatformResult<bool>.Success { Value: var value } => $"Success({value})",
     PlatformResult<T>.Success => "Success",
     PlatformResult<T>.Unavailable unavailable => $"Unavailable({unavailable.Reason})",
     PlatformResult<T>.Failed failed => $"Failed({failed.Code})",

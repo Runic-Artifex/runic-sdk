@@ -17,6 +17,8 @@
     <Compile Include="../Runic.Platform/DesktopApplicationNames.cs" Link="Shared/DesktopApplicationNames.cs" />
     <InternalsVisibleTo Include="Runic.Platform.Windows.Tests" />
     <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
+    <!-- The packaging job's probe reports which activation the package delivered (WindowsActivation). -->
+    <InternalsVisibleTo Include="Runic.Packaging.Probe" />
     <!-- DesktopPlatformServices creates each window's services and presentation, which are not public API. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
     <!-- The window services (dialogs, clipboard, file handoff) are internal; the native smoke drives the dialogs directly. -->
