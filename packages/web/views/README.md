@@ -371,6 +371,24 @@ instead of detecting it from `navigator`. See the
 [shortcut guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#keyboard-shortcuts-in-the-page)
 for which keys to leave to text fields and the web view.
 
+`shortcutFromEvent(event)` records a key press as that text, such as
+`Primary+Shift+S`, for a settings page where the user chooses a key: send it
+through an ordinary command, keep it in the application's settings and pass it
+to `DesktopShortcut.Parse`, for example for a global shortcut
+(`IDesktopGlobalShortcuts`). It gives `null` for a modifier pressed alone, a dead
+key, input method composition and, outside Apple platforms, the Windows or Super
+key. A punctuation character is recorded as typed, without Shift, and a digit as
+its key on the top row or the keypad.
+
+```ts
+input.addEventListener("keydown", (event) => {
+  const shortcut = shortcutFromEvent(event);
+  if (shortcut === null) return;
+  event.preventDefault();
+  void settings.setQuickNoteShortcut(shortcut);
+});
+```
+
 ## In-page menu bar
 
 A Runic Desktop window with `MenuBarPresentation = DesktopMenuBarPresentation.Page`

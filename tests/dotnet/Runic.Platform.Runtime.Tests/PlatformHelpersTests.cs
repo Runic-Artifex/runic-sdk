@@ -76,7 +76,7 @@ internal sealed class PlatformHelpersTests
             DesktopLoginStartup.Unavailable(reason), DesktopInhibition.Unavailable(reason), DesktopSecretStore.Unavailable(reason),
             DesktopOpenRequests.Unavailable(reason), DesktopTrash.Unavailable(reason), DesktopFileTransfers.Unavailable(reason),
             DesktopVolumes.Unavailable(reason), DesktopApplications.Unavailable(reason), DesktopThumbnails.Unavailable(reason),
-            DesktopPrivilegedActions.Unavailable(reason),
+            DesktopPrivilegedActions.Unavailable(reason), DesktopGlobalShortcuts.Unavailable(reason),
         ];
         foreach (object service in services)
         {

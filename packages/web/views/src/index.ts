@@ -96,3 +96,4 @@ export {
   type MenuBarSeparator,
   type MenuBarState,
 } from "./menu-bar.js";
+export { shortcutFromEvent } from "./shortcut-recording.js";

@@ -452,6 +452,61 @@ async Task ShowRowMenuAsync(string key, double x, double y)
 }
 ```
 
+## Global shortcuts
+
+`IDesktopGlobalShortcuts` binds named actions to keys that work while another
+application has the focus, such as a quick-note window or a push-to-talk key. It
+is one service for the application, created by a provider's
+`CreateGlobalShortcuts()` or registered by `AddRunicPlatformServices`, and
+disposing it removes every binding.
+
+```csharp
+var bindings = await shortcuts.BindAsync(
+[
+    new DesktopGlobalShortcut("quick-note", "Open a quick note")
+    {
+        PreferredShortcut = DesktopShortcut.TryParse(settings.QuickNoteKey, out var key) ? key : null,
+    },
+]);
+shortcuts.Activated += (_, activation) => { if (activation.Id == "quick-note") OpenQuickNote(activation.PlatformContext); };
+```
+
+`BindAsync` replaces the whole set: at most 32 actions, each with a unique id
+under the command id rule (1 to 64 ASCII letters, digits, dots, underscores or
+hyphens) and a description of at most 256 characters, which the Linux desktop
+shows where the user assigns keys. It throws `ArgumentException` for a set outside
+these rules. The result has one `DesktopGlobalShortcutBinding` per action, in
+order, with its `Status`:
+
+| Status | Means |
+| --- | --- |
+| `Bound` | The key starts the action; `Shortcut` and `TriggerDescription` show it |
+| `Unbound` | No key: the action has no `PreferredShortcut`, or the user left it unassigned |
+| `Conflict` | Another application, or another action of the set, has the key |
+| `Refused` | The platform does not allow the key, such as F12 on Windows, ⌘Q or Ctrl+C, or a character the keyboard layout cannot type |
+
+The set is open: handle unknown statuses. A key that cannot be bound fails alone,
+and the result is still `Success`. `ListAsync` returns the current bindings, and
+`BindingsChanged` reports bindings the user or the desktop changed.
+
+| | Windows | macOS |
+| --- | --- | --- |
+| Mechanism | `RegisterHotKey` on a message-only window on its own thread | Carbon `RegisterEventHotKey`; needs no Accessibility permission, and the Desktop event loop must run |
+| Who chooses the key | The application, from its own settings | The application, from its own settings |
+| `ConfigureAsync` | `Unavailable(BackendUnavailable)` | `Unavailable(BackendUnavailable)` |
+| Punctuation and letters | The key that types the character on the current layout, with Shift when the layout needs it; a character that needs AltGr is refused | The key that types the character on the current ASCII-capable layout, registered again after the input source changes (`BindingsChanged`) |
+| Refused | F12, kept for debuggers, and the editing and window shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A, Alt+F4 and F10 alone) | The standard menus' shortcuts (⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H, ⌥⌘H, ⌘W, ⌘M), F21 to F24, and any combination `RegisterEventHotKey` rejects |
+
+On Windows and macOS the application owns the binding: record the user's choice
+in a settings page with `shortcutFromEvent` from `@runic-artifex/views`, keep its
+`DesktopShortcut.ToString()` text in the application's settings and pass it as
+`PreferredShortcut` at startup. Runic stores nothing. Only key presses are
+reported, not releases, and a held key reports one press. `Activated` and
+`BindingsChanged` are raised on a worker thread; present a window through its
+presentation, passing `PlatformContext` where there is one.
+`DesktopGlobalShortcuts.Unavailable(reason)` stands in on hosts without a
+provider.
+
 ## Opening files and URLs
 
 `IDesktopOpenRequests` raises `Opened` with the files and URLs the user opens

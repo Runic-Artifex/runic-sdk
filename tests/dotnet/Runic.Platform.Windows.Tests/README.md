@@ -53,6 +53,13 @@ checks that a repeated `NIN_KEYSELECT` raises one primary action, that an outsid
 starts a new window. Disposal must finish within ten seconds and remove the icon. Without a taskbar (`Shell_TrayWnd`) it accepts an unavailable
 `ShowAsync` and skips the `TaskbarCreated` step. CI runs it with JIT and NativeAOT.
 
+`--treenode-filter "/*/*/*/*[Category=NativeGlobalShortcuts]"` registers global
+shortcuts with `RegisterHotKey` on the signed-in desktop: Ctrl+Alt+Shift+F9 binds,
+F12 and Ctrl+C are refused, the same key again conflicts, a `SendInput` press of the
+key raises `Activated`, a second registration of the key conflicts, and rebinding,
+an empty set and disposal release the keys. It types the combination into whatever
+window has the focus, so run it on a test session. CI runs it with JIT and NativeAOT.
+
 `--treenode-filter "/*/*/*/*[Category=NativeVolumes]"` lists the volumes and checks
 the system volume, then creates a 64 MB VHD in the temporary directory with
 `diskpart`, attaches it, formats it as NTFS with a label unique to the run and

@@ -7,10 +7,11 @@ using TUnit.Core;
 using static Runic.Platform.MacOS.MacDesktopNative;
 
 // The macOS services that need AppKit without a user: a real NSStatusItem in the menu bar, its menu and actions, the
-// login item of an unbundled process, and bringing a Desktop window forward. Program.cs runs the category inside the
-// Desktop event loop, so the status item starts without a window, as in a windowless application. CI runs it on the
-// macOS runner under JIT and NativeAOT. Opening the menu and SMAppService with a signed bundle stay manual checks.
-internal sealed class MacAppKitNativeTests
+// login item of an unbundled process, bringing a Desktop window forward, and Carbon global shortcuts. Program.cs runs
+// the category inside the Desktop event loop, so the status item starts without a window, as in a windowless
+// application. CI runs it on the macOS runner under JIT and NativeAOT. Opening the menu and SMAppService with a signed
+// bundle stay manual checks.
+internal sealed partial class MacAppKitNativeTests
 {
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(15);
 
@@ -24,6 +25,7 @@ internal sealed class MacAppKitNativeTests
         await PresentationAsync(cancellationToken);
         await FilterChoiceAsync();
         await MessageBoxesAsync(cancellationToken);
+        await GlobalShortcutsAsync();
     }
 
     // NSAlert sheets on a Desktop window, answered in process with performClick: (the runner grants no Accessibility

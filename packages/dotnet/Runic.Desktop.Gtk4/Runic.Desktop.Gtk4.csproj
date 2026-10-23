@@ -25,6 +25,7 @@
     <Compile Include="../Runic.Desktop/Internal/WindowPlacementClamp.cs" Link="Shared/WindowPlacementClamp.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMonitorSource.cs" Link="Shared/DesktopMonitorSource.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />
+    <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
     <Compile Include="../Runic.Desktop/Internal/GtkMenus.cs" Link="Shared/GtkMenus.cs" />
     <Compile Include="../Runic.Platform/DesktopUriPolicy.cs" Link="Shared/DesktopUriPolicy.cs" />
     <EmbeddedResource Include="../Runic.Desktop/Internal/WebKitGtkKeyboard.js" Link="Shared/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />

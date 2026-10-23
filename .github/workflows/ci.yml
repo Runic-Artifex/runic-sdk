@@ -1032,6 +1032,14 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
+      # RegisterHotKey on the runner's desktop session: bind, SendInput reaching the hot key, conflicts and release.
+      - name: Verify Windows global shortcuts with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeGlobalShortcuts]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeGlobalShortcuts]" --output detailed
       - name: Verify Windows window presentation with JIT and NativeAOT
         if: runner.os == 'Windows'
         timeout-minutes: 3
@@ -1137,14 +1145,15 @@ jobs:
         run: |
           dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/platform-runtime-aot
           ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}
-      # A real NSStatusItem without a window, its menu and actions, the unbundled login item and window presentation.
+      # A real NSStatusItem without a window, its menu and actions, the unbundled login item, window presentation and
+      # Carbon global shortcuts. The detailed output keeps the hot key findings the case reports without requiring them.
       - name: Verify macOS status item, login item and window presentation with JIT and NativeAOT
         if: runner.os == 'macOS'
         timeout-minutes: 8
         shell: bash
         run: |
-          dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
-          ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
+          dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]" --output detailed
+          ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeAppKit]" --output detailed
       # W315-011: accent colour, Increase contrast and Reduce motion written before each process starts, and dark mode
       # switched through System Events while one runs. The script restores the preferences.
       - name: Verify macOS appearance preferences with JIT and NativeAOT

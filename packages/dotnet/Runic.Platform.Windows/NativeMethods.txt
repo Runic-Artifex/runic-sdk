@@ -200,3 +200,8 @@ GetNetworkConnectivityHint
 NotifyNetworkConnectivityHintChange
 CancelMibChangeNotify2
 NL_NETWORK_CONNECTIVITY_HINT
+RegisterHotKey
+UnregisterHotKey
+VkKeyScanEx
+GetKeyboardLayout
+WM_HOTKEY

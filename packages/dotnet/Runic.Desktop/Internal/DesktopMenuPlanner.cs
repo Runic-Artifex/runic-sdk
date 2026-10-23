@@ -60,16 +60,17 @@ internal sealed record PlannedShortcut(
 
 // Plans a declared menu bar or context menu for a renderer: the platform's menu order, stable keys, access keys and
 // escaping, and each shortcut's native forms. Pure, so every renderer (Win32, GTK 3, GTK 4, dbusmenu and the in-page
-// state) shares one result and the rules are tested on every platform; self-contained, as Runic.Desktop.Gtk4 links it.
+// state) shares one result and the rules are tested on every platform. Runic.Desktop.Gtk4 links it with DesktopShortcutKeys.
 internal static class DesktopMenuPlanner
 {
     internal static MenuPlatform CurrentPlatform =>
         OperatingSystem.IsMacOS() ? MenuPlatform.MacOS : OperatingSystem.IsWindows() ? MenuPlatform.Windows : MenuPlatform.Linux;
 
-    // Win32 ACCEL flags.
-    internal const byte FVirtKey = 0x01, FShift = 0x04, FControl = 0x08, FAlt = 0x10;
-    // GdkModifierType.
-    internal const uint GdkShiftMask = 1 << 0, GdkControlMask = 1 << 2, GdkAltMask = 1 << 3;
+    // The key tables are DesktopShortcutKeys of Runic.Platform, which the platform providers' global shortcuts share.
+    internal const byte FVirtKey = DesktopShortcutKeys.FVirtKey, FShift = DesktopShortcutKeys.FShift,
+        FControl = DesktopShortcutKeys.FControl, FAlt = DesktopShortcutKeys.FAlt;
+    internal const uint GdkShiftMask = DesktopShortcutKeys.GdkShiftMask, GdkControlMask = DesktopShortcutKeys.GdkControlMask,
+        GdkAltMask = DesktopShortcutKeys.GdkAltMask;
 
     // The menus of a bar in the platform's order: on Windows and Linux File first, the rest as declared with the
     // Application menu as a plain menu, then Help. macOS keeps the declaration; its host places menus among the standard ones.
@@ -164,51 +165,17 @@ internal static class DesktopMenuPlanner
         return text.ToString();
     }
 
-    // The key equivalents of the standard menus Runic Desktop provides on macOS, with their items.
-    internal static readonly (DesktopShortcut Shortcut, string Item)[] ReservedMacOS =
-    [
-        (new("Z"), "Edit ▸ Undo"),
-        (new("Z", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Shift), "Edit ▸ Redo"),
-        (new("X"), "Edit ▸ Cut"),
-        (new("C"), "Edit ▸ Copy"),
-        (new("V"), "Edit ▸ Paste"),
-        (new("A"), "Edit ▸ Select All"),
-        (new("Q"), "Quit"),
-        (new("H"), "Hide"),
-        (new("H", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Alt), "Hide Others"),
-        (new("W"), "File ▸ Close"),
-        (new("M"), "Window ▸ Minimize"),
-    ];
+    internal static (DesktopShortcut Shortcut, string Item)[] ReservedMacOS => DesktopShortcutKeys.ReservedMacOS;
 
-    // The editing and window shortcuts that Windows and Linux keep for the focused control and the window manager.
-    internal static readonly (DesktopShortcut Shortcut, string Item)[] ReservedOther =
-    [
-        (new("Z"), "Undo"),
-        (new("Y"), "Redo"),
-        (new("Z", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Shift), "Redo"),
-        (new("X"), "Cut"),
-        (new("C"), "Copy"),
-        (new("V"), "Paste"),
-        (new("A"), "Select All"),
-        (new("F4", DesktopShortcutModifiers.Alt), "Close Window"),
-        (new("F10", DesktopShortcutModifiers.None), "the menu bar"),
-    ];
+    internal static (DesktopShortcut Shortcut, string Item)[] ReservedOther => DesktopShortcutKeys.ReservedOther;
 
     // A shortcut as the platform tells it apart: Control and Primary are both Ctrl on Windows and Linux.
     internal static DesktopShortcut Normalize(DesktopShortcut shortcut, MenuPlatform platform) =>
-        platform != MenuPlatform.MacOS && (shortcut.Modifiers & DesktopShortcutModifiers.Control) != 0
-            ? new DesktopShortcut(shortcut.Key, (shortcut.Modifiers & ~DesktopShortcutModifiers.Control) | DesktopShortcutModifiers.Primary)
-            : shortcut;
+        platform != MenuPlatform.MacOS ? DesktopShortcutKeys.WithoutControl(shortcut) : shortcut;
 
     // The standard item that keeps a shortcut on the platform, or null.
-    internal static string? ReservedBy(DesktopShortcut shortcut, MenuPlatform platform)
-    {
-        if (shortcut.Key.Length == 0) return null;
-        if (platform == MenuPlatform.MacOS)
-            return ReservedMacOS.FirstOrDefault(reserved => reserved.Shortcut == shortcut).Item;
-        var normalized = Normalize(shortcut, platform);
-        return ReservedOther.FirstOrDefault(reserved => reserved.Shortcut == normalized).Item;
-    }
+    internal static string? ReservedBy(DesktopShortcut shortcut, MenuPlatform platform) =>
+        DesktopShortcutKeys.ReservedBy(shortcut, platform == MenuPlatform.MacOS);
 
     internal static bool IsReserved(DesktopShortcut shortcut, MenuPlatform platform) => ReservedBy(shortcut, platform) is not null;
 
@@ -263,81 +230,11 @@ internal static class DesktopMenuPlanner
         return text.Append(shortcut.Key).ToString();
     }
 
-    // The Win32 virtual-key code; punctuation uses the US layout's OEM keys, and other characters have none.
-    internal static ushort? VirtualKey(string key) => key switch
-    {
-        [var letter] when char.IsAsciiLetterUpper(letter) => letter,
-        [var digit] when char.IsAsciiDigit(digit) => digit,
-        ['F', .. var number] when number.Length > 0 && int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out var f) =>
-            (ushort)(0x70 + f - 1),
-        "Enter" => 0x0D,
-        "Escape" => 0x1B,
-        "Tab" => 0x09,
-        "Space" => 0x20,
-        "Backspace" => 0x08,
-        "Delete" => 0x2E,
-        "ArrowLeft" => 0x25,
-        "ArrowUp" => 0x26,
-        "ArrowRight" => 0x27,
-        "ArrowDown" => 0x28,
-        "Home" => 0x24,
-        "End" => 0x23,
-        "PageUp" => 0x21,
-        "PageDown" => 0x22,
-        "Plus" or "=" => 0xBB,
-        "," => 0xBC,
-        "-" => 0xBD,
-        "." => 0xBE,
-        "/" => 0xBF,
-        ";" => 0xBA,
-        "`" => 0xC0,
-        "[" => 0xDB,
-        "\\" => 0xDC,
-        "]" => 0xDD,
-        "'" => 0xDE,
-        _ => null,
-    };
+    internal static ushort? VirtualKey(string key) => DesktopShortcutKeys.VirtualKey(key);
 
-    // The GDK keyval: letters lower-case with the Shift mask carrying case, as GTK accelerators use them.
-    internal static uint? GdkKeyval(string key) => key switch
-    {
-        [var letter] when char.IsAsciiLetterUpper(letter) => char.ToLowerInvariant(letter),
-        [var character] when character is > ' ' and < (char)0x7F => character,
-        ['F', .. var number] when number.Length > 0 && int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out var f) =>
-            (uint)(0xFFBE + f - 1),
-        "Enter" => 0xFF0D,
-        "Escape" => 0xFF1B,
-        "Tab" => 0xFF09,
-        "Space" => 0x20,
-        "Backspace" => 0xFF08,
-        "Delete" => 0xFFFF,
-        "Home" => 0xFF50,
-        "ArrowLeft" => 0xFF51,
-        "ArrowUp" => 0xFF52,
-        "ArrowRight" => 0xFF53,
-        "ArrowDown" => 0xFF54,
-        "PageUp" => 0xFF55,
-        "PageDown" => 0xFF56,
-        "End" => 0xFF57,
-        "Plus" => 0x2B,
-        _ => null,
-    };
+    internal static uint? GdkKeyval(string key) => DesktopShortcutKeys.GdkKeyval(key);
 
-    // The key of a dbusmenu shortcut, in Qt's portable key names as Qt's own exporter writes them.
-    internal static string QtKeyName(string key) => key switch
-    {
-        "Enter" => "Return",
-        "Escape" => "Esc",
-        "Delete" => "Del",
-        "ArrowUp" => "Up",
-        "ArrowDown" => "Down",
-        "ArrowLeft" => "Left",
-        "ArrowRight" => "Right",
-        "PageUp" => "PgUp",
-        "PageDown" => "PgDown",
-        "Plus" => "+",
-        _ => key,
-    };
+    internal static string QtKeyName(string key) => DesktopShortcutKeys.QtKeyName(key);
 }
 
 // Native item ids for planned keys. A key keeps its id across rebuilds and an id is never given to another key, so a

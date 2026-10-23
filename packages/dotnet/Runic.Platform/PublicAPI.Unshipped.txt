@@ -302,3 +302,76 @@ static Runic.Platform.DesktopMessageBoxes.Unavailable(Runic.Platform.PlatformUna
 static Runic.Platform.DesktopNetworkState.operator !=(Runic.Platform.DesktopNetworkState? left, Runic.Platform.DesktopNetworkState? right) -> bool
 static Runic.Platform.DesktopNetworkState.operator ==(Runic.Platform.DesktopNetworkState? left, Runic.Platform.DesktopNetworkState? right) -> bool
 static Runic.Platform.DesktopNetworkStatus.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopNetworkStatus!
+Runic.Platform.DesktopGlobalShortcut
+Runic.Platform.DesktopGlobalShortcut.<Clone>$() -> Runic.Platform.DesktopGlobalShortcut!
+Runic.Platform.DesktopGlobalShortcut.Equals(Runic.Platform.DesktopGlobalShortcut? other) -> bool
+override Runic.Platform.DesktopGlobalShortcut.Equals(object? obj) -> bool
+override Runic.Platform.DesktopGlobalShortcut.GetHashCode() -> int
+override Runic.Platform.DesktopGlobalShortcut.ToString() -> string!
+static Runic.Platform.DesktopGlobalShortcut.operator !=(Runic.Platform.DesktopGlobalShortcut? left, Runic.Platform.DesktopGlobalShortcut? right) -> bool
+static Runic.Platform.DesktopGlobalShortcut.operator ==(Runic.Platform.DesktopGlobalShortcut? left, Runic.Platform.DesktopGlobalShortcut? right) -> bool
+Runic.Platform.DesktopGlobalShortcut.DesktopGlobalShortcut(string! Id, string! Description) -> void
+Runic.Platform.DesktopGlobalShortcut.Deconstruct(out string! Id, out string! Description) -> void
+Runic.Platform.DesktopGlobalShortcut.Id.get -> string!
+Runic.Platform.DesktopGlobalShortcut.Id.init -> void
+Runic.Platform.DesktopGlobalShortcut.Description.get -> string!
+Runic.Platform.DesktopGlobalShortcut.Description.init -> void
+Runic.Platform.DesktopGlobalShortcut.PreferredShortcut.get -> Runic.Platform.DesktopShortcut?
+Runic.Platform.DesktopGlobalShortcut.PreferredShortcut.init -> void
+Runic.Platform.DesktopGlobalShortcutBinding
+Runic.Platform.DesktopGlobalShortcutBinding.<Clone>$() -> Runic.Platform.DesktopGlobalShortcutBinding!
+Runic.Platform.DesktopGlobalShortcutBinding.Equals(Runic.Platform.DesktopGlobalShortcutBinding? other) -> bool
+override Runic.Platform.DesktopGlobalShortcutBinding.Equals(object? obj) -> bool
+override Runic.Platform.DesktopGlobalShortcutBinding.GetHashCode() -> int
+override Runic.Platform.DesktopGlobalShortcutBinding.ToString() -> string!
+static Runic.Platform.DesktopGlobalShortcutBinding.operator !=(Runic.Platform.DesktopGlobalShortcutBinding? left, Runic.Platform.DesktopGlobalShortcutBinding? right) -> bool
+static Runic.Platform.DesktopGlobalShortcutBinding.operator ==(Runic.Platform.DesktopGlobalShortcutBinding? left, Runic.Platform.DesktopGlobalShortcutBinding? right) -> bool
+Runic.Platform.DesktopGlobalShortcutBinding.DesktopGlobalShortcutBinding(string! Id) -> void
+Runic.Platform.DesktopGlobalShortcutBinding.Id.get -> string!
+Runic.Platform.DesktopGlobalShortcutBinding.Id.init -> void
+Runic.Platform.DesktopGlobalShortcutBinding.Shortcut.get -> Runic.Platform.DesktopShortcut?
+Runic.Platform.DesktopGlobalShortcutBinding.Shortcut.init -> void
+Runic.Platform.DesktopGlobalShortcutBinding.TriggerDescription.get -> string?
+Runic.Platform.DesktopGlobalShortcutBinding.TriggerDescription.init -> void
+Runic.Platform.DesktopGlobalShortcutBinding.Status.get -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutBinding.Status.init -> void
+Runic.Platform.DesktopGlobalShortcutActivation
+Runic.Platform.DesktopGlobalShortcutActivation.<Clone>$() -> Runic.Platform.DesktopGlobalShortcutActivation!
+Runic.Platform.DesktopGlobalShortcutActivation.Equals(Runic.Platform.DesktopGlobalShortcutActivation? other) -> bool
+override Runic.Platform.DesktopGlobalShortcutActivation.Equals(object? obj) -> bool
+override Runic.Platform.DesktopGlobalShortcutActivation.GetHashCode() -> int
+override Runic.Platform.DesktopGlobalShortcutActivation.ToString() -> string!
+static Runic.Platform.DesktopGlobalShortcutActivation.operator !=(Runic.Platform.DesktopGlobalShortcutActivation? left, Runic.Platform.DesktopGlobalShortcutActivation? right) -> bool
+static Runic.Platform.DesktopGlobalShortcutActivation.operator ==(Runic.Platform.DesktopGlobalShortcutActivation? left, Runic.Platform.DesktopGlobalShortcutActivation? right) -> bool
+Runic.Platform.DesktopGlobalShortcutActivation.DesktopGlobalShortcutActivation(string! Id) -> void
+Runic.Platform.DesktopGlobalShortcutActivation.Id.get -> string!
+Runic.Platform.DesktopGlobalShortcutActivation.Id.init -> void
+Runic.Platform.DesktopGlobalShortcutActivation.PlatformContext.get -> Runic.Platform.DesktopActivationContext?
+Runic.Platform.DesktopGlobalShortcutActivation.PlatformContext.init -> void
+Runic.Platform.DesktopGlobalShortcutsChange
+Runic.Platform.DesktopGlobalShortcutsChange.<Clone>$() -> Runic.Platform.DesktopGlobalShortcutsChange!
+Runic.Platform.DesktopGlobalShortcutsChange.Equals(Runic.Platform.DesktopGlobalShortcutsChange? other) -> bool
+override Runic.Platform.DesktopGlobalShortcutsChange.Equals(object? obj) -> bool
+override Runic.Platform.DesktopGlobalShortcutsChange.GetHashCode() -> int
+override Runic.Platform.DesktopGlobalShortcutsChange.ToString() -> string!
+static Runic.Platform.DesktopGlobalShortcutsChange.operator !=(Runic.Platform.DesktopGlobalShortcutsChange? left, Runic.Platform.DesktopGlobalShortcutsChange? right) -> bool
+static Runic.Platform.DesktopGlobalShortcutsChange.operator ==(Runic.Platform.DesktopGlobalShortcutsChange? left, Runic.Platform.DesktopGlobalShortcutsChange? right) -> bool
+Runic.Platform.DesktopGlobalShortcutsChange.DesktopGlobalShortcutsChange(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!> Bindings) -> void
+Runic.Platform.DesktopGlobalShortcutsChange.Bindings.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!>
+Runic.Platform.DesktopGlobalShortcutsChange.Bindings.init -> void
+Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutStatus.Bound = 0 -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutStatus.Unbound = 1 -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutStatus.Conflict = 2 -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.DesktopGlobalShortcutStatus.Refused = 3 -> Runic.Platform.DesktopGlobalShortcutStatus
+Runic.Platform.IDesktopGlobalShortcuts
+Runic.Platform.IDesktopGlobalShortcuts.Activated -> System.EventHandler<Runic.Platform.DesktopGlobalShortcutActivation!>?
+Runic.Platform.IDesktopGlobalShortcuts.BindingsChanged -> System.EventHandler<Runic.Platform.DesktopGlobalShortcutsChange!>?
+Runic.Platform.IDesktopGlobalShortcuts.BindAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcut!> shortcuts, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!>>!>
+Runic.Platform.IDesktopGlobalShortcuts.ListAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!>>!>
+Runic.Platform.IDesktopGlobalShortcuts.ConfigureAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.DesktopGlobalShortcuts
+static Runic.Platform.DesktopGlobalShortcuts.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopGlobalShortcuts!
+Runic.Platform.DesktopGlobalShortcutBinding.Deconstruct(out string! Id) -> void
+Runic.Platform.DesktopGlobalShortcutActivation.Deconstruct(out string! Id) -> void
+Runic.Platform.DesktopGlobalShortcutsChange.Deconstruct(out System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopGlobalShortcutBinding!> Bindings) -> void

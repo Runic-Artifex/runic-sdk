@@ -153,6 +153,17 @@ public static class WindowsPlatformProvider
     /// own.</remarks>
     public static IDesktopStatusIcon CreateStatusIcon()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsStatusIcon(); }
+    /// <summary>Creates the application's global shortcuts, registered with <c>RegisterHotKey</c>.</summary>
+    /// <remarks>
+    /// It needs no window: the keys belong to a message-only window on a thread of its own, created by the first
+    /// <see cref="IDesktopGlobalShortcuts.BindAsync"/>. The application chooses the keys, so
+    /// <see cref="IDesktopGlobalShortcuts.ConfigureAsync"/> reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// A key another application registered reports <see cref="DesktopGlobalShortcutStatus.Conflict"/>; F12, which Windows
+    /// keeps for debuggers, the editing and window shortcuts such as Ctrl+C and Alt+F4, and a character the keyboard layout
+    /// types only with AltGr report <see cref="DesktopGlobalShortcutStatus.Refused"/>.
+    /// </remarks>
+    public static IDesktopGlobalShortcuts CreateGlobalShortcuts()
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsGlobalShortcuts(); }
 
     // Restores and raises an owned window, or flashes its taskbar button; used by DesktopPlatformServices.PresentAsync.
     internal static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativeWindowOwner owner, CancellationToken cancellationToken)
