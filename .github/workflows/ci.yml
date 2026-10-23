@@ -410,24 +410,29 @@ jobs:
           (cd examples/notes-view-first/Effect && bun run --bun build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
       # Each Notes frontend also renders the in-page menu bar with a headless library (Base UI, Reka UI, Bits UI,
-      # CDK Menu); menu-bar-smoke drives it in Chromium against the mock host and scans it with axe-core.
+      # CDK Menu); menu-bar-smoke drives it in Chromium against the mock host and the example's CS-WebUI host, and
+      # scans it with axe-core.
       - name: Exercise the React and Vue Notes editor and menu bar variants
         run: |
           (cd examples/notes-view-first/React && bun install --frozen-lockfile && bun run --bun build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/menu-bar-smoke.mjs
+          RUNIC_MENU_BAR_HOST=cswebui RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/menu-bar-smoke.mjs
           (cd examples/notes-view-first/Vue && bun install --frozen-lockfile && bun run --bun build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/menu-bar-smoke.mjs
+          RUNIC_MENU_BAR_HOST=cswebui RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/menu-bar-smoke.mjs
       - name: Exercise Svelte and Angular View outlets and menu bars
         run: |
           (cd examples/notes-view-first/Svelte && bun install --frozen-lockfile && bun run build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/browser-smoke.mjs
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/menu-bar-smoke.mjs
+          RUNIC_MENU_BAR_HOST=cswebui RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/menu-bar-smoke.mjs
           npm --prefix examples/notes-view-first/Angular ci
           npm --prefix examples/notes-view-first/Angular run build
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/menu-bar-smoke.mjs
+          RUNIC_MENU_BAR_HOST=cswebui RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/menu-bar-smoke.mjs
           (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile && bun run build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-reactive-views/Svelte/dist" node examples/notes-reactive-views/browser-smoke.mjs
           npm --prefix examples/notes-reactive-views/Angular ci
@@ -1266,7 +1271,7 @@ jobs:
           dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --dpi
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
-      # FirstWindow and the probes use the CS-WebUI host.
+      # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes from Chromium.
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
@@ -1279,6 +1284,7 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
+            GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
             GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
           else
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
@@ -1286,6 +1292,7 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-close-guard
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
+            RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
             RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
       # Development tooling, independent of the architecture: Windows x64 runs it.

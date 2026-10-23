@@ -1,4 +1,6 @@
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using CsWebUi;
 using CsWebUiWindowProbes;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,8 +29,10 @@ switch (args.SingleOrDefault())
     case "--probe-platform-services":
         await ProbePlatformServicesAsync();
         break;
+    case "--probe-menu-bar":
+        return ProbeMenuBar();
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar");
         return 2;
 }
 WebUiApplication.Clean();
@@ -250,6 +254,58 @@ static int ProbeShowFailure()
     return 0;
 }
 
+// The in-page menu bar (D036.14): the host serves its bar on the Window's reserved routes, and menu-bar-probe.mjs drives
+// them from Chromium (the state reaches the page, enabled follows CanExecuteChanged, invoke answers executed, disabled
+// and stale, SetMenuBar reaches the page, the shortcut lease). The Window serves a page that loads only webui.js and
+// runic-cswebui.js; the probe prints its URL, waits for a line on standard input and then checks what the commands ran.
+static int ProbeMenuBar()
+{
+    if (new RunicCsWebUiHostOptions().MenuBar.Count != 0) throw new InvalidOperationException("RunicCsWebUiHostOptions.MenuBar is not empty by default.");
+    try
+    {
+        _ = new RunicCsWebUiHost(new ServiceCollection().BuildServiceProvider(), new RunicCsWebUiHostOptions
+        {
+            MenuBar = [DesktopMenuProbe.Menu("File", new Runic.Platform.DesktopMenuItem("Save", "runic.save"))],
+        });
+        throw new InvalidOperationException("A reserved command id did not fail the host.");
+    }
+    catch (ArgumentException error) when (error.Message.Contains("runic.", StringComparison.Ordinal))
+    {
+    }
+    var root = Directory.CreateTempSubdirectory("runic-cswebui-menu-");
+    try
+    {
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-cswebui.js"), Path.Combine(root.FullName, "runic-cswebui.js"));
+        File.WriteAllText(Path.Combine(root.FullName, "index.html"),
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Menu bar probe</title>" +
+            "<script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body></body></html>");
+        var services = new ServiceCollection();
+        services.AddSingleton<MenuProbe>();
+        services.AddScoped<MenuProbeViewModel>();
+        services.AddRunicViews();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        var probe = provider.GetRequiredService<MenuProbe>();
+        var result = RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions { MenuBar = MenuProbe.Bar("a") }, async host =>
+        {
+            probe.Host = host;
+            if (host.MenuBar.Count != 3) throw new InvalidOperationException("RunicCsWebUiHost.MenuBar is not the declared bar.");
+            await using var window = await host.OpenWindowAsync<MenuProbeWindow>(new RunicWindowOptions { ContentRoot = root.FullName });
+            await window.WaitForCloseAsync();
+            return 0;
+        });
+        if (result != 0) return result;
+        if (probe.Saves != 1 || probe.Locks != 1 || !probe.Modes.SequenceEqual(["b"]) || probe.Undos != 0)
+            throw new InvalidOperationException(
+                $"The menu commands ran {probe.Saves} saves, {probe.Locks} locks, {probe.Undos} undos and modes [{string.Join(", ", probe.Modes)}].");
+        Console.WriteLine("CSWEBUI_MENU_BAR_OK");
+        return 0;
+    }
+    finally
+    {
+        root.Delete(recursive: true);
+    }
+}
+
 // The WebUI library CsWebUi.Native bundles: beside the executable when published, under runtimes/<rid>/native otherwise.
 static string BundledNativeLibrary()
 {
@@ -336,6 +392,77 @@ namespace CsWebUiWindowProbes
     }
 
     public sealed partial class ProbeWindow : RunicWindow<ProbeViewModel>;
+
+    internal static class DesktopMenuProbe
+    {
+        internal static Runic.Platform.DesktopMenu Menu(string title, params Runic.Platform.DesktopMenuEntry[] items) => new(title, [.. items]);
+    }
+
+    // What the menu commands ran, and the host whose bar the mode command replaces.
+    public sealed class MenuProbe
+    {
+        internal RunicCsWebUiHost? Host { get; set; }
+        internal int Saves;
+        internal int Locks;
+        internal int Undos;
+        internal List<string> Modes { get; } = [];
+
+        // Edit is declared before File, which the page receives first on Windows and Linux. Undo is disabled in the
+        // declaration although its command can run.
+        internal static IReadOnlyList<Runic.Platform.DesktopMenu> Bar(string mode) =>
+        [
+            DesktopMenuProbe.Menu("Edit", new Runic.Platform.DesktopMenuItem("Undo", "edit.undo") { IsEnabled = false }),
+            new("File", [
+                new Runic.Platform.DesktopMenuItem("Save", "file.save")
+                    { AccessKey = 'S', Shortcut = new Runic.Platform.DesktopShortcut("S") },
+                new Runic.Platform.DesktopMenuSeparator(),
+                new Runic.Platform.DesktopMenuItem("Lock", "file.lock"),
+            ]) { Role = Runic.Platform.DesktopMenuRole.File },
+            DesktopMenuProbe.Menu("View",
+                new Runic.Platform.DesktopMenuItem("Mode A", "view.mode") { RadioGroup = "mode", IsChecked = mode == "a", CommandParameter = "a" },
+                new Runic.Platform.DesktopMenuItem("Mode B", "view.mode") { RadioGroup = "mode", IsChecked = mode == "b", CommandParameter = "b" }),
+        ];
+    }
+
+    // Save runs until Lock locks the document; Mode replaces the bar with the chosen mode checked.
+    public sealed partial class MenuProbeViewModel(MenuProbe probe) : ObservableObject, IRunicMenuCommandSource
+    {
+        [ObservableProperty] private bool locked;
+
+        public ICommand? GetMenuCommand(string commandId) => commandId switch
+        {
+            "file.save" => SaveCommand,
+            "file.lock" => LockCommand,
+            "edit.undo" => UndoCommand,
+            "view.mode" => ModeCommand,
+            _ => null,
+        };
+
+        [RelayCommand(CanExecute = nameof(CanSave))]
+        private void Save() => Interlocked.Increment(ref probe.Saves);
+
+        private bool CanSave() => !Locked;
+
+        [RelayCommand]
+        private void Lock()
+        {
+            Interlocked.Increment(ref probe.Locks);
+            Locked = true;
+            SaveCommand.NotifyCanExecuteChanged();
+        }
+
+        [RelayCommand]
+        private void Undo() => Interlocked.Increment(ref probe.Undos);
+
+        [RelayCommand]
+        private void Mode(string? mode)
+        {
+            lock (probe.Modes) probe.Modes.Add(mode ?? "");
+            probe.Host!.SetMenuBar(MenuProbe.Bar(mode ?? ""));
+        }
+    }
+
+    public sealed partial class MenuProbeWindow : RunicWindow<MenuProbeViewModel>;
 
     public sealed partial class GuardedProbeViewModel : ObservableObject
     {

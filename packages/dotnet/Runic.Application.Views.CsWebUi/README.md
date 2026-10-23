@@ -127,8 +127,8 @@ it to use one on CS-WebUI. The
 [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
 lists each service's result on both hosts. A root ViewModel that implements `IRunicFileDropTarget` is
 never called here: a browser window reports no dropped paths, so the page only
-gets HTML5 `File` objects. Likewise there is no native menu bar: an `IRunicMenuCommandSource`
-is never asked, so render menus in the page, bound to the same commands.
+gets HTML5 `File` objects. There is no native menu bar either: the page renders
+`RunicCsWebUiHostOptions.MenuBar` (see [Menu bar](#menu-bar)).
 
 When WebUI cannot show a window, because it finds no browser, the selected
 browser does not exist or does not start, or the page does not connect within
@@ -169,6 +169,49 @@ browser. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
 GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.
+
+## Menu bar
+
+A CS-WebUI window has no native menu bar, so the page renders the host's bar
+with its own menubar component, as a Runic Desktop window with
+`DesktopMenuBarPresentation.Page` does. Declare the menus with
+`RunicCsWebUiHostOptions.MenuBar`, the same `DesktopMenu` model and rules as
+Runic Desktop's `DesktopHostOptions.MenuBar`, and run them with the Window's
+root ViewModel (`IRunicMenuCommandSource`):
+
+```csharp
+return RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions
+{
+    MenuBar =
+    [
+        new DesktopMenu("File", [new DesktopMenuItem("Save", "file.save") { Shortcut = new DesktopShortcut("S") }])
+            { Role = DesktopMenuRole.File, AccessKey = 'F' },
+    ],
+}, async host => { ... });
+```
+
+The page reads the bar with `createMenuBarController()` from
+`@runic-artifex/views`, or `useMenuBar` and `injectMenuBar` in the framework
+adapters; see
+[In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#in-page-menu-bar).
+The routes are those of Runic Desktop
+([specs/desktop/menu-bar-page.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/menu-bar-page.md)),
+from the same source, so the same frontend runs on both hosts:
+
+- `placement` is `"page"` on every platform while the host declares menus, and
+  `"none"` with an empty bar.
+- An item is enabled while its `IsEnabled` and its command's
+  `CanExecute(CommandParameter)` are `true`, following `CanExecuteChanged`, and
+  `invoke` runs `Execute(CommandParameter)` in the ViewModel's model turn. The
+  host asks the ViewModel for each id when the Window opens and after
+  `SetMenuBar`. There are no application commands, so an id the ViewModel
+  returns `null` for stays disabled. A failure is logged as event 2102,
+  `CsWebUiMenuCommandFailed`.
+- WebUI reports no keys to .NET, so the page's controller matches the items'
+  shortcuts (`shortcuts` `"page"`), and `shortcuts: "app"` leaves them to the
+  page's own handler.
+- `host.SetMenuBar(menus)` replaces the bar in every Window of the host, for
+  example with new checked state, and `host.MenuBar` returns it.
 
 ## Build output
 

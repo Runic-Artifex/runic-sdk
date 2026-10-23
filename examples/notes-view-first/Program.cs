@@ -25,6 +25,18 @@ if (portOption >= 0)
     port = value;
 }
 var serveOnly = args.Contains("--serve-only", StringComparer.Ordinal);
+// menu-bar-smoke.mjs reads which menu commands ran.
+if (args.Contains("--trace-menu", StringComparer.Ordinal))
+{
+    NotesMenuBar.Trace = command =>
+    {
+        lock (Console.Out)
+        {
+            Console.WriteLine($"MENU_INVOKED {command}");
+            Console.Out.Flush();
+        }
+    };
+}
 
 using var app = NotesApplication.Create(useSplat);
 // Server mode only starts the windows' servers, below.

@@ -392,8 +392,10 @@ input.addEventListener("keydown", (event) => {
 ## In-page menu bar
 
 A Runic Desktop window with `MenuBarPresentation = DesktopMenuBarPresentation.Page`
-leaves its menu bar to the page, so the bar can match the application's look.
-`createMenuBarController()` follows the window's declared `DesktopHost.MenuBar`
+leaves its menu bar to the page, so the bar can match the application's look; a
+CS-WebUI window, which has no native bar, always does with
+`RunicCsWebUiHostOptions.MenuBar`. `createMenuBarController()` follows the
+window's declared bar (`DesktopHost.MenuBar` or `RunicCsWebUiHost.MenuBar`)
 as headless state; the page renders it with the menubar component of its own UI
 library (Base UI, Radix, Reka UI, Bits UI, Angular CDK Menu or its own markup).
 Runic ships no menubar component. The framework adapters wrap the controller as
@@ -423,12 +425,12 @@ await bar.invoke(item); // "executed", "disabled" or "stale"
 ```
 
 - `status` is `connecting`, then `ready`; `unavailable` on a host without the
-  in-page menu bar routes (an earlier Runic Desktop or CS-WebUI), and `failed`
+  in-page menu bar routes (an earlier Runic Desktop or CS-WebUI host), and `failed`
   with `error` otherwise. `placement` is `page`, `window`, `global` or `none`.
 - By default Runic keeps the items' shortcuts, so they work whichever component
   renders the bar: the host matches them after the page saw the key
   (`shortcuts` `host`), or, where the host has no key path such as an installed
-  browser, the controller matches them in a bubbling `keydown` listener
+  browser or CS-WebUI, the controller matches them in a bubbling `keydown` listener
   (`shortcuts` `page`). Either way a page that keeps a key calls
   `preventDefault()`. With `createMenuBarController({ shortcuts: "app" })` the
   page matches them itself, for example with `bar.handleKeyDown(event)`, and the

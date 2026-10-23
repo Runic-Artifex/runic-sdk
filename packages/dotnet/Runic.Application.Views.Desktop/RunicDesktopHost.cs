@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
+using Runic.Application.Views.Menus;
 using Runic.Desktop;
 using Runic.Navigation;
 using Runic.Platform;
@@ -181,7 +182,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                     "The Desktop host already has application menu commands. Dispose the previous UseApplicationMenu result first.");
             }
             // Without a model context the commands resolve before this returns; nothing waits on the binding.
-            var binding = MenuCommandBinding.Bind(Desktop, id => copy.GetValueOrDefault(id), logger);
+            var binding = MenuCommandBinding.Bind(new DesktopMenuBarSource(Desktop), id => copy.GetValueOrDefault(id), logger);
             Desktop.MenuCommands = binding;
             return new ApplicationMenu(Desktop, binding);
         }
@@ -410,7 +411,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             });
             var session = content;
             // The reserved routes of an in-page menu bar, bound before the page loads.
-            var menuRoutes = new MenuBarPageRoutes(Desktop, transport, WindowOptions.MenuBarPresentation,
+            var menuSource = new DesktopMenuBarSource(Desktop);
+            var menuRoutes = new MenuBarPageRoutes(menuSource, transport,
                 (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             IDisposable connections;
@@ -460,15 +462,15 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
             MenuCommandBinding? menu = null;
-            if (viewModel is IRunicMenuCommandSource menuSource)
+            if (viewModel is IRunicMenuCommandSource menuCommands)
             {
                 var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                menu = await MenuCommandBinding.BindAsync(Desktop, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
+                menu = await MenuCommandBinding.BindAsync(menuSource, content.ModelContext, menuCommands.GetMenuCommand, menuLogger)
                     .ConfigureAwait(false);
                 if (!owner.SetMenuCommands(menu)) menu = null;
             }
-            menuRoutes.Attach(presentation, menu);
+            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation), menu);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
         }

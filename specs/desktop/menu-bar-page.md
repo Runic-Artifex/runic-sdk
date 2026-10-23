@@ -4,7 +4,10 @@ A window whose `DesktopWindowOptions.MenuBarPresentation` is `Page` leaves the m
 of `DesktopHost.MenuBar` to the page, which renders it with its own components
 (`createMenuBarController` in `@runic-artifex/views`). The page reads the bar and runs
 its items through four reserved Bridge routes that `Runic.Application.Views.Desktop`
-binds on every Runic Window's transport. They are not Views protocol messages: Views
+binds on every Runic Window's transport. `Runic.Application.Views.CsWebUi` binds the
+same routes, from the same source, for `RunicCsWebUiHostOptions.MenuBar`: a CS-WebUI
+window has no native bar, so its `placement` is `page` while the host declares menus
+(`none` without), and its `shortcuts` is `page`, because WebUI reports no keys to .NET. They are not Views protocol messages: Views
 protocol 3 and generated clients are unchanged, and a host without these routes leaves
 the page's controller `unavailable`.
 
@@ -28,8 +31,9 @@ Other answers:
 - `{ "kind": "busy" }`: the connection already has 4 pending waits (64 for the window).
   The page waits about a second before it asks again.
 - `{ "kind": "released" }`: the window closed.
-- `{ "kind": "invalid-request" }`: the request is not one of the shapes above.
-- An empty answer (Runic Desktop) or a Views `released` envelope (CS-WebUI) from a host
+- `{ "kind": "invalid-request" }`: the request is not one of the shapes above, for
+  example a `revision` or `after` that is not a number.
+- An empty answer (Runic Desktop) or a Views `released` envelope (CS-WebUI) from an earlier host
   that does not serve the route. The page reports `unavailable`.
 
 ## State

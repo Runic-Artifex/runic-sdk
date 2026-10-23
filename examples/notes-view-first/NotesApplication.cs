@@ -40,13 +40,20 @@ public sealed class NotesApplication : IDisposable
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }));
     }
 
-    // Opens a Notes window in its own scope. Without show, the caller shows it or starts its server.
-    public ValueTask<NotesWindow> OpenWindowAsync(string webRoot, int width, int height, ushort? port = null, bool show = true) =>
-        new RunicCsWebUiHost(_services, new RunicCsWebUiHostOptions
+    // Opens a Notes window in its own scope. Without show, the caller shows it or starts its server. The page renders
+    // the menu bar, which follows the View choices; the hosts live as long as the application.
+    public ValueTask<NotesWindow> OpenWindowAsync(string webRoot, int width, int height, ushort? port = null, bool show = true)
+    {
+        var menu = _services.GetRequiredService<NotesMenuBar>();
+        var host = new RunicCsWebUiHost(_services, new RunicCsWebUiHostOptions
         {
             ConfigureWindow = port is { } value ? native => native.SetPort(value) : null,
             ShowWindow = show ? null : static (_, _) => { },
-        }).OpenWindowAsync<NotesWindow>(new RunicWindowOptions { ContentRoot = webRoot, Width = width, Height = height });
+            MenuBar = menu.Current,
+        });
+        menu.Changed += host.SetMenuBar;
+        return host.OpenWindowAsync<NotesWindow>(new RunicWindowOptions { ContentRoot = webRoot, Width = width, Height = height });
+    }
 
 
     public void Dispose()
@@ -92,6 +99,8 @@ public static class NotesServices
         services.AddScoped<PreviewViewModel>();
         services.AddScoped<WorkspaceNavigation>();
         services.AddScoped<SidebarViewModel>();
+        services.TryAddSingleton<NotesMenuBar>();
+        services.AddScoped<NotesMenuCommands>();
         services.AddScoped<ShellViewModel>();
         return services;
     }

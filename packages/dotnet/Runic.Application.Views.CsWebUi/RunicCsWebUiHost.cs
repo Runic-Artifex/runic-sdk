@@ -2,7 +2,9 @@ using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
+using Runic.Application.Views.Menus;
 using Runic.Navigation;
+using Runic.Platform;
 
 namespace Runic.Application.Views.CsWebUi;
 
@@ -71,7 +73,28 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        _menuBar = new CsWebUiMenuBar(options.MenuBar ?? throw new ArgumentNullException(nameof(options), "MenuBar is null."));
     }
+
+    private readonly CsWebUiMenuBar _menuBar;
+
+    /// <summary>
+    /// Gets the menus of each window's menu bar: <see cref="RunicCsWebUiHostOptions.MenuBar"/>, or those of the last
+    /// <see cref="SetMenuBar"/>.
+    /// </summary>
+    public IReadOnlyList<DesktopMenu> MenuBar => _menuBar.MenuBar;
+
+    /// <summary>
+    /// Replaces the menus of the menu bar in the page of every Window this host opened, for example with new checked
+    /// state or titles in a new language.
+    /// </summary>
+    /// <param name="menus">The new menus; empty removes the bar.</param>
+    /// <remarks>
+    /// The pages follow at once, and each Window's root ViewModel is asked again for the commands of the new ids. The
+    /// rules are those of <see cref="RunicCsWebUiHostOptions.MenuBar"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A menu or item is incomplete; see <see cref="RunicCsWebUiHostOptions.MenuBar"/>.</exception>
+    public void SetMenuBar(IReadOnlyList<DesktopMenu> menus) => _menuBar.Set(menus);
 
     private readonly bool? _includeFailureDetail;
     private readonly int? _maximumInputBytes;
@@ -189,6 +212,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         RebindableBridgeTransport? transport = null;
         WindowContentSession? content = null;
         WebUiBinding? connectionBinding = null;
+        MenuBarPageRoutes? menuRoutes = null;
         CsWebUiBridgeWindow<TViewModel>? host = null;
         try
         {
@@ -207,12 +231,21 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
             });
             var session = content;
+            var menuLogger = (scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(CsWebUiLog.LogCategory))
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+            // The reserved routes of the in-page menu bar, bound before the page loads (D036.14).
+            menuRoutes = new MenuBarPageRoutes(_menuBar, transport, menuLogger);
+            var menu = menuRoutes;
             // Only the all-events binding receives disconnects. runic-cswebui.js
             // stops WebUI from also sending click events for elements with ids.
             connectionBinding = window.Bind("", e =>
             {
                 if (e.EventType == WebUiEventType.Disconnected)
-                    session.ReleaseConnection($"{e.ClientId}:{e.ConnectionId}");
+                {
+                    var connection = $"{e.ClientId}:{e.ConnectionId}";
+                    session.ReleaseConnection(connection);
+                    menu.ReleaseConnection(connection);
+                }
                 // With this binding, WebUI cancels the page's navigations from each (re)connect until
                 // runic-cswebui.js allows them before a Bridge call, and reports each one here; ignoring it dropped a
                 // reload or a link before the first call (#196). CS-WebUI does not expose the destination of a
@@ -220,10 +253,22 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 else if (e.EventType == WebUiEventType.Navigation)
                     e.SendRaw(ContinueNavigationFunction, ContinueNavigationData);
             });
-            host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, connectionBinding, viewModel);
+            var bindings = new Bindings(connectionBinding, menuRoutes);
+            connectionBinding = null;
+            menuRoutes = null;
+            host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, bindings, viewModel);
             var attachment = opening.AttachBridge(transport, content);
             try { host.Attach(attachment); }
             catch { attachment.Dispose(); throw; }
+            // The root ViewModel runs the bar's commands; the window releases them with its routes.
+            MenuCommandBinding? menuCommands = null;
+            if (viewModel is IRunicMenuCommandSource menuSource)
+            {
+                menuCommands = await MenuCommandBinding.BindAsync(_menuBar, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
+                    .ConfigureAwait(false);
+                bindings.Add(menuCommands);
+            }
+            menu.Attach(new CsWebUiMenuBarPageWindow(_menuBar, menuCommands), menuCommands);
             // A browser window closes without asking the application, and WebUI reports the close only after it
             // happened: a guarded Window opens unguarded, with a warning (D018.10).
             if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("CS-WebUI");
@@ -252,12 +297,52 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             else
             {
                 connectionBinding?.Dispose();
+                menuRoutes?.Dispose();
                 content?.Dispose();
                 transport?.Dispose();
                 window?.Dispose();
                 await scope.DisposeAsync().ConfigureAwait(false);
             }
             throw;
+        }
+    }
+
+    // The window's all-events binding, its menu bar routes and its menu commands, released together when the window
+    // closes. A binding added after the window closed is released at once.
+    private sealed class Bindings(IDisposable connection, IDisposable routes) : IDisposable
+    {
+        private readonly object _gate = new();
+        private MenuCommandBinding? _commands;
+        private bool _disposed;
+
+        internal void Add(MenuCommandBinding commands)
+        {
+            lock (_gate)
+            {
+                if (!_disposed)
+                {
+                    _commands = commands;
+                    return;
+                }
+            }
+            commands.Dispose();
+        }
+
+        public void Dispose()
+        {
+            MenuCommandBinding? commands;
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                commands = _commands;
+            }
+            try { connection.Dispose(); }
+            finally
+            {
+                try { routes.Dispose(); }
+                finally { commands?.Dispose(); }
+            }
         }
     }
 

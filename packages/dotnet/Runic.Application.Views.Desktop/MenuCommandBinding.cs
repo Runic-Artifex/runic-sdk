@@ -1,28 +1,28 @@
 using System.Collections.Concurrent;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
-using Runic.Desktop;
 using Runic.Navigation;
 using Runic.Platform;
 
-namespace Runic.Application.Views.Desktop;
+namespace Runic.Application.Views.Menus;
 
 // Binds the menu bar's command ids to ICommands: those of a Window's root ViewModel (IRunicMenuCommandSource), or the
 // application's (RunicDesktopHost.UseApplicationMenu). AppKit asks CanExecute on its main thread while it shows a menu or
 // matches a key, so the availability of each command is cached per command id and parameter and updated from
 // CanExecuteChanged. Resolving and running a command happens in the model turn of the ViewModel, when there is one.
-// An item's CommandParameter is the command's parameter.
-internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposable
+// An item's CommandParameter is the command's parameter. Shared with Runic.Application.Views.CsWebUi, like
+// MenuBarPageRoutes; on Runic Desktop it is also the window's IDesktopMenuCommandTarget (MenuCommandBinding.Desktop.cs).
+internal sealed partial class MenuCommandBinding : IDisposable
 {
     private readonly IRunicModelContext? _context;
     private readonly Func<string, ICommand?> _resolve;
     private readonly ILogger _logger;
-    private readonly DesktopHost _host;
+    private readonly IMenuBarSource _host;
     private readonly object _gate = new();
     private Dictionary<MenuCommandKey, Entry> _entries = [];
     private bool _disposed;
 
-    private MenuCommandBinding(DesktopHost host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger)
+    private MenuCommandBinding(IMenuBarSource host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger)
     {
         _host = host;
         _context = context;
@@ -32,7 +32,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
 
     // Binds application commands, which have no model context: the menu bar's command ids resolve before this
     // returns, and again whenever the bar changes.
-    internal static MenuCommandBinding Bind(DesktopHost host, Func<string, ICommand?> resolve, ILogger logger)
+    internal static MenuCommandBinding Bind(IMenuBarSource host, Func<string, ICommand?> resolve, ILogger logger)
     {
         var binding = new MenuCommandBinding(host, context: null, resolve, logger);
         host.MenuBarChanged += binding.OnMenuBarChanged;
@@ -41,7 +41,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
     }
 
     // Binds every command id of the host's menu bar now, and again whenever the bar changes.
-    internal static async ValueTask<MenuCommandBinding> BindAsync(DesktopHost host, IRunicModelContext? context,
+    internal static async ValueTask<MenuCommandBinding> BindAsync(IMenuBarSource host, IRunicModelContext? context,
         Func<string, ICommand?> resolve, ILogger logger)
     {
         var binding = new MenuCommandBinding(host, context, resolve, logger);
@@ -59,7 +59,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         try { Changed?.Invoke(this, EventArgs.Empty); }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            DesktopLog.MenuCommandFailed(_logger, error, "*", error.GetType().FullName ?? error.GetType().Name);
+            MenuBarLog.CommandFailed(_logger, error, "*");
         }
     }
 
@@ -91,7 +91,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         }
         catch (Exception error)
         {
-            DesktopLog.MenuCommandFailed(_logger, error, entry.CommandId, error.GetType().FullName ?? error.GetType().Name);
+            MenuBarLog.CommandFailed(_logger, error, entry.CommandId);
         }
     }
 
@@ -128,7 +128,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         }
         catch (Exception error)
         {
-            DesktopLog.MenuCommandFailed(_logger, error, "*", error.GetType().FullName ?? error.GetType().Name);
+            MenuBarLog.CommandFailed(_logger, error, "*");
         }
     }
 

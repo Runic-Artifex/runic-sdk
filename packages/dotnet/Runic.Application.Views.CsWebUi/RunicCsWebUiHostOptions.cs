@@ -1,4 +1,5 @@
 using CsWebUi;
+using Runic.Platform;
 
 namespace Runic.Application.Views.CsWebUi;
 
@@ -55,4 +56,31 @@ public sealed record RunicCsWebUiHostOptions
     /// 64 MiB. <see langword="null"/>, the default, is 1 MiB. The host reads it when each Window opens.
     /// </summary>
     public int? MaximumInputBytes { get; init; }
+
+    /// <summary>
+    /// The menus of each window's menu bar, which the page renders, since a CS-WebUI window has no native bar; empty, the
+    /// default, for none. <see cref="RunicCsWebUiHost.SetMenuBar"/> replaces them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The menus follow the rules of Runic Desktop's <c>DesktopHostOptions.MenuBar</c>, and the page reads them, as a
+    /// Runic Desktop window with <c>DesktopMenuBarPresentation.Page</c> does, through <c>createMenuBarController</c> of
+    /// <c>@runic-artifex/views</c> or the framework adapters' <c>useMenuBar</c> and <c>injectMenuBar</c>, with its own
+    /// menubar component. Its <c>placement</c> is <c>"page"</c> while there are menus, on every platform.
+    /// </para>
+    /// <para>
+    /// Each <see cref="DesktopMenuItem"/> names a command of the Window's root ViewModel
+    /// (<see cref="IRunicMenuCommandSource"/>): the item is enabled while its <see cref="DesktopMenuItem.IsEnabled"/> and
+    /// the command's <c>CanExecute(CommandParameter)</c> are <see langword="true"/>, following <c>CanExecuteChanged</c>, and
+    /// runs <c>Execute(CommandParameter)</c> in the ViewModel's model turn. WebUI reports no keys to .NET, so the page
+    /// matches the items' shortcuts (<c>shortcuts: "page"</c>). A failing command is logged as event 2102,
+    /// <c>CsWebUiMenuCommandFailed</c>.
+    /// </para>
+    /// <para>
+    /// Creating the host throws <see cref="ArgumentException"/> for a blank title or one longer than 128 characters, a
+    /// command id outside 1 to 64 ASCII letters, digits, dots, underscores or hyphens or starting with <c>runic.</c>, or a
+    /// second Application, File or Help menu.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<DesktopMenu> MenuBar { get; init; } = [];
 }

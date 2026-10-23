@@ -53,8 +53,12 @@ public sealed class WorkspaceNavigation
 }
 
 // The generator presents each region's Current as a content slot; nothing is forwarded.
-public partial class ShellViewModel(SidebarViewModel sidebar, WorkspaceNavigation navigation) : ObservableObject
+// As the window's root ViewModel it also runs the menu bar's commands (NotesMenu.cs).
+public partial class ShellViewModel(SidebarViewModel sidebar, WorkspaceNavigation navigation, NotesMenuCommands menu)
+    : ObservableObject, IRunicMenuCommandSource
 {
+    public System.Windows.Input.ICommand? GetMenuCommand(string commandId) => menu.Get(commandId);
+
     public SidebarViewModel Sidebar { get; } = sidebar;
     public NavigationRegion<IMainViewModel> Main => navigation.Main;
     public NavigationRegion<IDialogViewModel> Dialog => navigation.Dialog;

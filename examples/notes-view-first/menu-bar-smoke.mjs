@@ -1,18 +1,24 @@
 // The in-page menu bar of a Notes frontend (RUNIC_WEB_ROOT: React, Vue, Svelte or Angular) in Chromium, driven
-// with real keys and clicks. The built page is served as it is, with `installMockMenuBar` as the host: the
-// example's CS-WebUI host has no in-page menu bar routes yet, so the menus come from the mock. Checks the menubar
-// library's integration: click and invoke, Alt and F10 focus, arrows, Alt plus an access key, Escape, checked,
-// radio and disabled items, a page-matched shortcut, and an axe-core scan of the open menubar.
+// with real keys and clicks. Checks the menubar library's integration: click and invoke, Alt and F10 focus, arrows,
+// Alt plus an access key, Escape, checked, radio and disabled items, a page-matched shortcut, and an axe-core scan of
+// the open menubar.
+// By default the built page is served as it is, with `installMockMenuBar` as the host. With
+// RUNIC_MENU_BAR_HOST=cswebui the example's CS-WebUI host serves it instead (the Release build of NotesViewFirst,
+// --serve-only --trace-menu): the bar is the one NotesMenu.cs declares, the ViewModel's commands run the items and
+// report them on standard output, and the ViewModel replaces the bar when the pane changes.
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright-core";
-import { scaled } from "../shared/smoke.mjs";
+import { pause, scaled, tail, waitFor } from "../shared/smoke.mjs";
 
 const root = process.env.RUNIC_WEB_ROOT;
 if (!root) throw new Error("Set RUNIC_WEB_ROOT to a built Notes frontend.");
+const realHost = process.env.RUNIC_MENU_BAR_HOST === "cswebui";
+if (!realHost && process.env.RUNIC_MENU_BAR_HOST) throw new Error(`RUNIC_MENU_BAR_HOST is "cswebui" or unset, not "${process.env.RUNIC_MENU_BAR_HOST}".`);
 // A secure origin, as the host's own, for the page's crypto.randomUUID; nothing listens there.
 const origin = "http://localhost:4173";
 const mock = fileURLToPath(new URL("../../packages/web/views/src/mock.ts", import.meta.url));
@@ -63,12 +69,29 @@ const { outputFiles: [script] } = await build({
 });
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
-const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, headless: true });
+// The CS-WebUI host, when it serves the page, and the menu commands it reports.
+let host, hostOutput = "", hostErrors = "";
+const hostInvocations = () => [...hostOutput.matchAll(/^MENU_INVOKED (\S+)$/gm)].map(match => match[1]);
+let url = `${origin}/`;
+if (realHost) {
+  const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesViewFirst.dll", import.meta.url));
+  host = spawn("dotnet", [dll, "--serve-only", "--trace-menu", "--web-root", root], { stdio: ["pipe", "pipe", "pipe"] });
+  host.stdout.on("data", chunk => { hostOutput += chunk; });
+  host.stderr.on("data", chunk => { hostErrors += chunk; });
+  url = await waitFor(() => {
+    if (host.exitCode !== null) throw new Error(`The Notes host exited: ${hostErrors}`);
+    return hostOutput.match(/^Main: (\S+)$/m)?.[1];
+  }, { timeout: 20_000, label: "the Notes host URL", detail: () => `host stdout:\n${tail(hostOutput)}\nhost stderr:\n${tail(hostErrors)}` })
+    .catch(error => { host.kill("SIGTERM"); throw error; });
+}
+
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, headless: true })
+  .catch(error => { host?.kill("SIGTERM"); throw error; });
 let page;
 try {
   page = await browser.newPage();
   page.setDefaultTimeout(scaled(10_000));
-  await page.route(`${origin}/**`, async route => {
+  if (!realHost) await page.route(`${origin}/**`, async route => {
     const path = decodeURIComponent(new URL(route.request().url()).pathname);
     // The CS-WebUI scripts would install their own Bridge over the mock.
     if (/^\/(?:webui|runic-cswebui|runic-dev-reload)\.js$/.test(path)) return route.fulfill({ contentType: "text/javascript", body: "" });
@@ -77,13 +100,13 @@ try {
     try { return route.fulfill({ contentType: types[extname(file)] ?? "application/octet-stream", body: await readFile(file) }); }
     catch { return route.fulfill({ status: 404, body: "" }); }
   });
-  await page.addInitScript({ content: script.text });
-  await page.goto(`${origin}/`);
+  if (!realHost) await page.addInitScript({ content: script.text });
+  await page.goto(url);
 
   const menubar = page.getByRole("menubar");
   const trigger = name => menubar.getByRole("menuitem", { name, exact: true });
   const openMenu = page.getByRole("menu").first();
-  const invocations = () => page.evaluate(() => globalThis.__menuBarHost.invocations.map(entry =>
+  const invocations = async () => realHost ? hostInvocations() : page.evaluate(() => globalThis.__menuBarHost.invocations.map(entry =>
     entry.commandParameter === undefined ? entry.commandId : `${entry.commandId}:${entry.commandParameter}`));
   const active = () => page.evaluate(() => {
     const element = document.activeElement;
@@ -99,7 +122,7 @@ try {
     });
   };
   const expectInvocations = async (expected, step) => {
-    await page.waitForFunction(count => globalThis.__menuBarHost.invocations.length >= count, expected.length, { timeout: scaled(5_000) })
+    await waitFor(async () => (await invocations()).length >= expected.length, { timeout: 5_000, label: "the invocations" })
       .catch(() => undefined);
     // A second run of the same item would land within this pause.
     await page.waitForTimeout(150);
@@ -110,7 +133,13 @@ try {
     await page.getByRole("menu").first().waitFor({ state: "hidden", timeout: scaled(5_000) })
       .catch(() => { throw new Error(`${step}: a menu is still open.`); });
   };
-  const blur = () => page.evaluate(() => { document.activeElement?.blur?.(); document.body.focus(); });
+  // Also parks the pointer away from the bar: a menubar that opens menus on hover would follow a pointer left on a
+  // trigger by an earlier click when the page's layout changes under it, as the real host's pushes can make it do.
+  const blur = async () => {
+    const { width, height } = page.viewportSize() ?? { width: 800, height: 600 };
+    await page.mouse.move(width - 1, height - 1);
+    await page.evaluate(() => { document.activeElement?.blur?.(); document.body.focus(); });
+  };
 
   // The bar renders the host's menus in the platform's order.
   await menubar.waitFor();
@@ -173,8 +202,8 @@ try {
   await page.keyboard.press("Enter");
   await expectInvocations(["file.save", "view.pane:preview"], "Enter on Preview");
   await expectClosed("After Preview");
-  // The host changes the pane, as the ViewModel does; the bar follows.
-  await page.evaluate(() => globalThis.__menuBarHost.update({ menus: globalThis.__menuBars.preview }));
+  // The host changes the pane, as the ViewModel does; the bar follows. The CS-WebUI host's ViewModel does it itself.
+  if (!realHost) await page.evaluate(() => globalThis.__menuBarHost.update({ menus: globalThis.__menuBars.preview }));
   await blur();
   await page.keyboard.press("Alt+v");
   await radio("Preview").waitFor();
@@ -196,10 +225,18 @@ try {
   await page.keyboard.press("Control+s");
   await expectInvocations(["file.save", "view.pane:preview", "file.save"], "Control+S");
 
-  console.log(`MENU_BAR_OK ${root}`);
+  console.log(`MENU_BAR_OK ${realHost ? "cswebui" : "mock"} ${root}`);
 } catch (error) {
   if (page) console.error(`Page:\n${(await page.locator("body").innerHTML().catch(() => "unavailable")).slice(0, 6000)}`);
+  if (host) console.error(`Host stdout:\n${tail(hostOutput)}\nHost stderr:\n${tail(hostErrors)}`);
   throw error;
 } finally {
-  await browser.close();
+  try { await browser.close(); }
+  finally {
+    if (host) {
+      if (host.exitCode === null) host.stdin.end("\n");
+      await pause(500);
+      if (host.exitCode === null) host.kill("SIGTERM");
+    }
+  }
 }
