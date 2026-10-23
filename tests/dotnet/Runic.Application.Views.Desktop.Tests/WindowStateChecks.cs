@@ -83,6 +83,48 @@ internal sealed class WindowStateChecks
         Require(unopened, "The state of a Window that never opened did not throw.");
     }
 
+    // SEC-06: RunicDesktopHostOptions.ContentSecurityPolicy reaches every Window's surface, unless the surface options
+    // set a policy of their own.
+    [Test, NotInParallel(Order = 39)]
+    public async Task HostPolicyReachesEveryWindowSurface()
+    {
+        const string HostPolicy = "default-src 'self'; object-src 'none'";
+        const string SurfacePolicy = "default-src 'none'";
+        await using var provider = CreateProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
+        using var client = new HttpClient();
+        foreach ((DesktopSurfaceOptions surface, string expected) in new[]
+        {
+            (new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }, HostPolicy),
+            (new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>"), ContentSecurityPolicy = SurfacePolicy }, SurfacePolicy),
+        })
+        {
+            var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+            {
+                SurfaceOptions = surface,
+                WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+                ContentSecurityPolicy = HostPolicy,
+            });
+            var window = await host.OpenWindowAsync<FileWindow>();
+            try
+            {
+                using var response = await client.GetAsync(RunicDesktopHost.GetSurface(window)!.Url);
+                string[] policies = [.. response.Headers.GetValues("Content-Security-Policy")];
+                Require(policies.SequenceEqual(["frame-ancestors 'self'", expected]),
+                    $"The Window's surface sent {string.Join(" | ", policies)}.");
+            }
+            finally
+            {
+                await window.DisposeAsync();
+            }
+        }
+
+        bool rejected = false;
+        try { _ = new RunicDesktopHostOptions { ContentSecurityPolicy = "default-src 'self'\nX-Injected: 1" }; }
+        catch (ArgumentException) { rejected = true; }
+        Require(rejected, "A policy with a line break was accepted.");
+    }
+
     private static ServiceProvider CreateProvider()
     {
         var services = new ServiceCollection();

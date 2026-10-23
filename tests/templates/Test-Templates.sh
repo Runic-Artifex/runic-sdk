@@ -379,7 +379,12 @@ verify_template() {
     desktop)
       host_client=runic-desktop-views.js
       grep -Fq 'Runic.Application.Views.Desktop' "$output/$project_name.csproj"
-      grep -Fq 'return RunicDesktopHost.Run(provider, options, RunAsync);' "$output/Program.cs"
+      grep -Fq 'return RunicDesktopHost.Run(provider, options, hostOptions, RunAsync);' "$output/Program.cs"
+      # SEC-06: a Content-Security-Policy outside Development, with 'unsafe-eval' for the Bridge's host scripts.
+      grep -Fq "ContentSecurityPolicy = developing ? null : contentSecurityPolicy" "$output/Program.cs"
+      grep -Fq "script-src 'self'" "$output/Program.cs"
+      grep -Fq "'unsafe-eval'" "$output/Program.cs"
+      grep -Fq "object-src 'none'; base-uri 'self'; frame-ancestors 'none'\";" "$output/Program.cs"
       grep -Fq 'DiagnosticSink = ReportDiagnostic' "$output/Program.cs"
       ;;
   esac

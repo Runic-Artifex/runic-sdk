@@ -92,6 +92,57 @@ app.MapGet("/download/{name}", async (HttpContext context, string name) =>
 });
 ```
 
+A minimal-API handler can return `RunicAssetResults.Asset` instead. The path
+resolves with the same routing rules when the result runs, against the source's
+current manifest, and a path that does not resolve is `404`:
+
+```csharp
+app.MapGet("/app/{**path}", (string? path) => RunicAssetResults.Asset(assets, path ?? ""));
+```
+
+## Content-Security-Policy
+
+Set `AssetRoutingOptions.ContentSecurityPolicy` to send a policy with every
+HTML asset; scripts, styles and other assets are sent without it. The archive
+carries no policy, because only the application knows its script and connect
+origins:
+
+```csharp
+app.MapRunicAssetSource(assets, routing: new AssetRoutingOptions
+{
+    ContentSecurityPolicy = "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+});
+```
+
+`MapRunicAssetSource`, `RunicAssetResults.Asset` and the Desktop adapter send
+it; `WriteAssetAsync` does not. A value with a line break or another control
+character throws `ArgumentException`.
+
+## Static files middleware
+
+`RunicAssetFileProvider` exposes a source as an `IFileProvider`, for
+`UseStaticFiles`, `UseDefaultFiles`, `UseDirectoryBrowser` or another consumer
+of file providers:
+
+```csharp
+var files = new RunicAssetFileProvider(assets);
+app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+```
+
+Its files are the declared assets and its directories are their parents. A
+file has no physical path, and its last-modified time is the archive format's
+fixed timestamp (1980-01-01). `CreateReadStream` waits for the source's
+`OpenAsync`: archive, embedded and development-directory sources open at once,
+and another source blocks the request thread. `Watch` fires on the next change
+of a source that implements `IAssetSourceChangeNotifier`, such as
+`DevelopmentDirectoryAssetSource`, whatever the filter.
+
+The static files middleware computes its own entity tags from the length and
+the timestamp, and applies neither the manifest's cache modes nor a
+Content-Security-Policy. Prefer `MapRunicAssetSource` when nothing else needs a
+file provider.
+
 ## HTTP behavior
 
 Responses preserve the manifest-owned content type, length, cache-control

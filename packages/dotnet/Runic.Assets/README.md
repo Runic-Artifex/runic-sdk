@@ -199,9 +199,12 @@ and `AssetManifest.TryResolveRequestPath` return `false` for such paths instead
 of throwing, so request handlers can pass untrusted paths to them directly.
 `AssetManifest` is immutable and ordinally ordered.
 Each entry carries media type, length, SHA-256 digest, strong entity tag,
-Subresource Integrity token, and cache policy. CSP is host policy rather than
-archive content: the archive cannot safely invent an application's script or
-connect origins. ASP.NET Core delivery supports RFC conditional requests and
+Subresource Integrity token, and cache policy. A Content-Security-Policy is
+host policy rather than archive content, because the archive cannot know an
+application's script or connect origins. Set it with
+`AssetRoutingOptions.ContentSecurityPolicy`, which the ASP.NET Core and Desktop
+adapters send with HTML assets, or with `DesktopSurfaceOptions.ContentSecurityPolicy`
+for a whole Runic Desktop surface. ASP.NET Core delivery supports RFC conditional requests and
 single byte ranges directly from this metadata. Archive reads validate declared content and can be bounded with
 `AssetArchiveReadOptions` when input is not trusted.
 

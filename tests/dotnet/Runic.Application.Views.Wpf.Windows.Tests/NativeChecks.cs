@@ -598,6 +598,43 @@ internal sealed class NativeChecks
         finally { window.Close(); }
     }
 
+    // SEC-06: RunicViewHost.ContentSecurityPolicy reaches WebView2: the page's inline script is blocked while the
+    // Bridge runs host scripts ('unsafe-eval'), and a value with a line break is rejected. The WebView holds the
+    // surface's only client, so the check reads the page rather than the response headers.
+    [Test, NotInParallel("WpfSuite", Order = 31)]
+    public async Task HostSendsItsContentSecurityPolicy()
+    {
+        const string Policy = "default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'";
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((_, _) => new Attachment());
+        await using var services = collection.BuildServiceProvider();
+        var host = new RunicViewHost
+        {
+            SurfaceOptions = new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("<!doctype html><title>csp</title><script src=\"webui.js\"></script><script>document.title = 'inline script ran';</script>"),
+            },
+            ViewModel = new HostedModel(),
+            ContentSecurityPolicy = Policy,
+        };
+        var rejected = false;
+        try { host.ContentSecurityPolicy = "default-src 'self'\r\nX-Injected: 1"; }
+        catch (ArgumentException) { rejected = true; }
+        Program.Check(rejected && host.ContentSecurityPolicy == Policy, "A policy with a line break was accepted.");
+        var window = new Window { Content = host, Width = 600, Height = 400, Title = "RunicViewHost content security policy" };
+        RunicViewHost.SetServices(window, services);
+        window.Show();
+        try
+        {
+            Program.Check(await SettledAsync(host) == RunicViewHostState.Open, $"The host did not open: {host.State} {host.Error}");
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var title = await host.Surface!.ExecuteJavaScriptAsync("return document.title;", cancellationToken: deadline.Token);
+            Program.Check(title == "csp", $"The host's policy did not block the inline script: the title is '{title}'.");
+            Console.WriteLine("RunicViewHost.ContentSecurityPolicy checks passed.");
+        }
+        finally { window.Close(); }
+    }
+
     // D034.7: hosts given one application-owned DesktopHost serve their surfaces from its listener; unloading one
     // releases only its surface, and a host without one keeps its own. A disposed shared host fails the open.
     [Test, NotInParallel("WpfSuite", Order = 24)]

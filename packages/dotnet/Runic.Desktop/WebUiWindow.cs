@@ -2402,7 +2402,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var response = await requestHandler(context, path, cancellationToken).ConfigureAwait(false);
             if (response is not null)
             {
-                await SendVirtualContentAsync(context, path, response, cancellationToken).ConfigureAwait(false);
+                await SendVirtualContentAsync(context, path, response, ContentSecurityPolicy, cancellationToken).ConfigureAwait(false);
                 return;
             }
         }
@@ -2412,7 +2412,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var virtualContent = await handler(path, cancellationToken).ConfigureAwait(false);
             if (virtualContent is not null)
             {
-                await SendVirtualContentAsync(context, path, virtualContent, cancellationToken).ConfigureAwait(false);
+                await SendVirtualContentAsync(context, path, virtualContent, ContentSecurityPolicy, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -2428,6 +2428,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             if (_embeddedHtml is not null)
             {
+                AddContentSecurityPolicy(context.Response.Headers, ContentSecurityPolicy);
                 await SendTextAsync(context, _embeddedHtml, "text/html; charset=utf-8").ConfigureAwait(false);
                 return;
             }
@@ -2446,7 +2447,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var localPath = ResolveLocalPath(path);
         if (localPath is not null && File.Exists(localPath))
         {
-            await SendFileAsync(context, localPath, path).ConfigureAwait(false);
+            await SendFileAsync(context, localPath, path, ContentSecurityPolicy).ConfigureAwait(false);
             return;
         }
 
@@ -2468,7 +2469,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var resource = await resourceHandler(context, path, cancellationToken).ConfigureAwait(false);
             if (resource is not null)
             {
-                await SendVirtualContentAsync(context, path, resource, cancellationToken).ConfigureAwait(false);
+                await SendVirtualContentAsync(context, path, resource, ContentSecurityPolicy, cancellationToken).ConfigureAwait(false);
                 return;
             }
         }
@@ -3296,6 +3297,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         HttpContext context,
         string path,
         WebUiContent content,
+        string? contentSecurityPolicy,
         CancellationToken cancellationToken)
     {
         context.Response.StatusCode = content.StatusCode;
@@ -3304,8 +3306,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             foreach (var header in content.Headers)
             {
+                // A handler's policy is sent beside the surface's framing policy instead of replacing it.
+                if (string.Equals(header.Key, Microsoft.Net.Http.Headers.HeaderNames.ContentSecurityPolicy, StringComparison.OrdinalIgnoreCase))
+                {
+                    AddContentSecurityPolicy(context.Response.Headers, header.Value);
+                    continue;
+                }
                 context.Response.Headers[header.Key] = header.Value;
             }
+        }
+        if (IsHtml(context.Response.ContentType))
+        {
+            AddContentSecurityPolicy(context.Response.Headers, contentSecurityPolicy);
         }
         context.Response.ContentLength = content.ContentLength;
         if (!HttpMethods.IsHead(context.Request.Method))
@@ -3314,16 +3326,47 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
-    private static async Task SendFileAsync(HttpContext context, string filePath, string requestPath)
+    private static async Task SendFileAsync(HttpContext context, string filePath, string requestPath, string? contentSecurityPolicy)
     {
         var file = new FileInfo(filePath);
         context.Response.ContentType = GetContentType(requestPath);
+        if (IsHtml(context.Response.ContentType))
+        {
+            AddContentSecurityPolicy(context.Response.Headers, contentSecurityPolicy);
+        }
         context.Response.ContentLength = file.Length;
         if (!HttpMethods.IsHead(context.Request.Method))
         {
             await context.Response.SendFileAsync(file.FullName, context.RequestAborted).ConfigureAwait(false);
         }
     }
+
+    // SEC-06: DesktopSurfaceOptions.ContentSecurityPolicy and a handler's own policy are each a header of their
+    // own next to the framing policy that PrepareResponseAsync sets, so every policy is enforced and none
+    // drops frame-ancestors. A policy already sent is not repeated.
+    private string? ContentSecurityPolicy => _runtimeOptions?.ContentSecurityPolicy;
+
+    internal static void AddContentSecurityPolicy(IHeaderDictionary headers, string? policy)
+    {
+        if (string.IsNullOrEmpty(policy))
+        {
+            return;
+        }
+        var current = headers.ContentSecurityPolicy;
+        foreach (var value in current)
+        {
+            if (string.Equals(value, policy, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+        headers.ContentSecurityPolicy = Microsoft.Extensions.Primitives.StringValues.Concat(current, policy);
+    }
+
+    private static bool IsHtml(string? contentType) =>
+        contentType is not null &&
+        contentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) &&
+        (contentType.Length == "text/html".Length || contentType["text/html".Length] is ';' or ' ');
 
     private static Task SendTextAsync(HttpContext context, string content, string contentType)
     {

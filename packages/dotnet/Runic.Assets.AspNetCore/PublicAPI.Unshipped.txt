@@ -1,1 +1,8 @@
 #nullable enable
+Runic.Assets.AspNetCore.RunicAssetFileProvider
+Runic.Assets.AspNetCore.RunicAssetFileProvider.GetDirectoryContents(string! subpath) -> Microsoft.Extensions.FileProviders.IDirectoryContents!
+Runic.Assets.AspNetCore.RunicAssetFileProvider.GetFileInfo(string! subpath) -> Microsoft.Extensions.FileProviders.IFileInfo!
+Runic.Assets.AspNetCore.RunicAssetFileProvider.RunicAssetFileProvider(Runic.Assets.IAssetSource! source) -> void
+Runic.Assets.AspNetCore.RunicAssetFileProvider.Watch(string! filter) -> Microsoft.Extensions.Primitives.IChangeToken!
+Runic.Assets.AspNetCore.RunicAssetResults
+static Runic.Assets.AspNetCore.RunicAssetResults.Asset(Runic.Assets.IAssetSource! source, string! relativePath, Runic.Assets.AssetRoutingOptions? routing = null) -> Microsoft.AspNetCore.Http.IResult!

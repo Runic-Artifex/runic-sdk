@@ -118,6 +118,12 @@ static async Task RunAsyncSmoke()
         await GtkWidgetLifetime.ObserveAsync(window.NativeHandle);
     }
     await GtkWidgetLifetime.AssertReleasedAsync();
+    if (!SmokeSoak.Enabled)
+    {
+        await using var surface = await host.CreateSurfaceAsync(ContentSecurityPolicySmoke.SurfaceOptions());
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true });
+        await ContentSecurityPolicySmoke.ExerciseAsync(surface);
+    }
     if (!SmokeSoak.Enabled) await RunWindowStateSmokeAsync(host);
     if (!SmokeSoak.Enabled) await FileDropSmoke.RunAsync(host);
     SmokeSoak.Completed();
@@ -341,6 +347,12 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
             static (surface, _) => ExerciseRestartedWindowAsync(surface));
         if (!SmokeSoak.Enabled)
         {
+            await RunMacOsWindowAsync(
+                host,
+                ContentSecurityPolicySmoke.Page(),
+                new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true },
+                static (surface, _) => ContentSecurityPolicySmoke.ExerciseAsync(surface),
+                ContentSecurityPolicySmoke.Policy);
             DesktopWindowPlacement? saved = null;
             DesktopWindow? exercised = null;
             await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), WindowStateSmoke.DisconnectedMonitorOptions(),
@@ -366,9 +378,14 @@ static async Task RunMacOsWindowAsync(
     DesktopHost host,
     string content,
     DesktopWindowOptions options,
-    Func<DesktopSurface, DesktopWindow, Task> exercise)
+    Func<DesktopSurface, DesktopWindow, Task> exercise,
+    string? contentSecurityPolicy = null)
 {
-    var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) });
+    var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+    {
+        Content = new DesktopContent.Html(content),
+        ContentSecurityPolicy = contentSecurityPolicy,
+    });
     DesktopWindow? window = null;
     try
     {

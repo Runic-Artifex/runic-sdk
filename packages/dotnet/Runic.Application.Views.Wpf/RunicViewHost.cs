@@ -77,6 +77,10 @@ public class RunicViewHost : Decorator
     public static readonly DependencyProperty SurfaceOptionsProperty = DependencyProperty.Register(nameof(SurfaceOptions),
         typeof(DesktopSurfaceOptions), typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
 
+    /// <summary>Identifies the <see cref="ContentSecurityPolicy"/> dependency property.</summary>
+    public static readonly DependencyProperty ContentSecurityPolicyProperty = DependencyProperty.Register(nameof(ContentSecurityPolicy),
+        typeof(string), typeof(RunicViewHost), new PropertyMetadata(null, Reopen), IsValidContentSecurityPolicy);
+
     /// <summary>Identifies the <see cref="WebContent"/> dependency property.</summary>
     public static readonly DependencyProperty WebContentProperty = DependencyProperty.Register(nameof(WebContent),
         typeof(DesktopWebContentPolicy), typeof(RunicViewHost), new PropertyMetadata(null, Reopen));
@@ -174,6 +178,36 @@ public class RunicViewHost : Decorator
     {
         get => (DesktopSurfaceOptions?)GetValue(SurfaceOptionsProperty);
         set => SetValue(SurfaceOptionsProperty, value);
+    }
+
+    /// <summary>
+    /// Gets or sets the <c>Content-Security-Policy</c> that the presentation's surface sends with its HTML, or
+    /// <see langword="null"/>, the default, for none (<see cref="DesktopSurfaceOptions.ContentSecurityPolicy"/>).
+    /// </summary>
+    /// <remarks>
+    /// It applies to the default surface options and to <see cref="SurfaceOptions"/> that set no policy of their own,
+    /// as a header of its own next to the surface's <c>frame-ancestors</c> policy. The Bridge delivers its messages as
+    /// host scripts that the page evaluates with the <c>Function</c> constructor, so the policy must allow
+    /// <c>'unsafe-eval'</c> for scripts. A value with a line break or another control character is rejected. A change
+    /// reopens the presentation.
+    /// </remarks>
+    public string? ContentSecurityPolicy
+    {
+        get => (string?)GetValue(ContentSecurityPolicyProperty);
+        set => SetValue(ContentSecurityPolicyProperty, value);
+    }
+
+    private static bool IsValidContentSecurityPolicy(object? value)
+    {
+        try
+        {
+            _ = new DesktopSurfaceOptions { ContentSecurityPolicy = (string?)value };
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -288,6 +322,8 @@ public class RunicViewHost : Decorator
         {
             Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, ContentRoot ?? DefaultWebRoot), StartPage),
         };
+        if (surfaceOptions.ContentSecurityPolicy is null && ContentSecurityPolicy is { } policy)
+            surfaceOptions = surfaceOptions with { ContentSecurityPolicy = policy };
         var webContent = WebContent ?? DesktopWebContentPolicy.Default;
         var shared = Desktop;
         var control = new RunicWebView();

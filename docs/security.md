@@ -112,23 +112,33 @@ Since 0.11.0 every Runic Desktop surface response sends
 `Content-Security-Policy: frame-ancestors 'self'`, followed by the surface's
 `AdditionalOrigins`, and `X-Frame-Options: SAMEORIGIN`, so a page of another
 origin cannot frame the application. A content handler that sets its own
-`Content-Security-Policy` header replaces that one; keep a `frame-ancestors`
-directive in it.
+`Content-Security-Policy` header sends it as a second header, so the framing
+policy stays in force.
 
-Runic does not set a Content-Security-Policy for your pages' scripts. Add one as
-a defence in depth against injected script, in a `<meta http-equiv>` tag of your
-HTML or as a header from a content handler, for example:
+Add a Content-Security-Policy for your pages' scripts as a defence in depth
+against injected script. Set `RunicDesktopHostOptions.ContentSecurityPolicy`
+(Views on Runic Desktop), `RunicViewHost.ContentSecurityPolicy` (WPF),
+`DesktopSurfaceOptions.ContentSecurityPolicy` (a Runic Desktop surface) or
+`AssetRoutingOptions.ContentSecurityPolicy` (Runic Assets adapters); each is
+sent with HTML responses. New `runic-app` projects set one outside
+`Development`:
 
 ```text
-default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'
+default-src 'self'; script-src 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
-The Bridge connects to the surface's own origin, and Runic's bootstrap scripts
-are served from it, so `'self'` covers them; in embedded windows the credential
-arrives in a document-start script, which page policies do not block. A
-development server is another origin: allow it only in development builds.
-Frameworks that emit inline scripts, such as SvelteKit, need their own CSP
-support (hashes or nonces). Check the policy in each WebView you ship on.
+`script-src 'self'` alone does not cover the Bridge yet. Runic Desktop runs
+the scripts it sends to the page, including the Views Bridge's state and
+replies, with the `Function` constructor, so the policy needs `'unsafe-eval'`
+for now; it still blocks inline and foreign scripts. A later release removes
+that need. The Bridge WebSocket and Runic's bootstrap scripts come from the
+surface's own origin, which `'self'` covers, and in embedded windows the
+credential arrives in a document-start script, which page policies do not
+block. A development server is another origin: allow it only in development
+builds. Frameworks that emit inline scripts need their own CSP support: the
+SvelteKit starter uses `kit.csp` hash mode, and the Angular starter allows
+inline styles and turns off critical-CSS inlining. Check the policy in each
+WebView you ship on.
 
 ## Permissions
 

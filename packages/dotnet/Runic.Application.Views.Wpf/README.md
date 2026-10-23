@@ -42,7 +42,7 @@ The host owns the hosting lifecycle:
   the native child's `Loaded` before starting the presentation.
 - It closes when it is **unloaded** or `ViewModel` becomes `null`. Changing
   `ViewModel`, `Services`, `ModelContext`, `ContentRoot`, `StartPage`,
-  `SurfaceOptions`, `WebContent` or `Desktop` closes the session and opens a
+  `SurfaceOptions`, `ContentSecurityPolicy`, `WebContent` or `Desktop` closes the session and opens a
   fresh one.
 - Changes run **one at a time**. A newer change cancels an open in progress,
   and changes that queue behind a running one collapse into the latest.
@@ -78,6 +78,14 @@ never creates or disposes a ViewModel, a scope or a navigation entry.
 `DesktopWindowOptions.WebContent` does for a Desktop window: external
 navigation, downloads and developer tools. `null`, the default, is
 `DesktopWebContentPolicy.Default`.
+
+`ContentSecurityPolicy` sends a `Content-Security-Policy` with the HTML of the
+presentation's surface, unless `SurfaceOptions` set one of their own
+(`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of its own next
+to the surface's `frame-ancestors` policy, and WebView2 enforces both. The
+Bridge delivers its messages as host scripts that the page evaluates with the
+`Function` constructor, so the policy must allow `'unsafe-eval'` for scripts.
+A value with a line break or another control character is rejected.
 
 ### Share one Desktop host between hosts
 
