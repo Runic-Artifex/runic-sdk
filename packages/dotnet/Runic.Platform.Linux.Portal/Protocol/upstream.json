@@ -49,6 +49,11 @@
       "path": "data/org.freedesktop.portal.Trash.xml",
       "file": "org.freedesktop.portal.Trash.xml",
       "sha256": "5544720fa0362e48825ae430c879b0e41205c852fd653c137f025fa709cd36b7"
+    },
+    {
+      "path": "data/org.freedesktop.portal.NetworkMonitor.xml",
+      "file": "org.freedesktop.portal.NetworkMonitor.xml",
+      "sha256": "b5437b97248d0162902e7aac696d4d92953cd99b107f8cbbf5271b631559df08"
     }
   ]
 }

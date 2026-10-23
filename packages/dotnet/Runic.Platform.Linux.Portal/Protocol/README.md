@@ -1,7 +1,7 @@
 # Portal protocol generation
 
 The Registry, Notification, Inhibit, Request, Settings, OpenURI, FileChooser,
-Background and Trash XML files are upstream inputs, pinned to the commit and SHA-256
+Background, Trash and NetworkMonitor XML files are upstream inputs, pinned to the commit and SHA-256
 hashes in `upstream.json`. Every file is unmodified except
 `org.freedesktop.portal.Settings.xml`, whose deprecated `Read` method is removed
 (the provider uses `ReadAll`, and the generator warns about the `Deprecated`

@@ -6,3 +6,4 @@ Runic.Platform.Linux.Portal.PortalDiagnosticSeverity.Information = 0 -> Runic.Pl
 Runic.Platform.Linux.Portal.PortalDiagnosticSeverity.Warning = 1 -> Runic.Platform.Linux.Portal.PortalDiagnosticSeverity
 Runic.Platform.Linux.Portal.PortalApplication.CreateOpenRegistration() -> Runic.Platform.IDesktopOpenRegistration!
 Runic.Platform.Linux.Portal.PortalApplication.ExportApplicationAsync(Runic.Platform.IApplicationInstance! instance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.IAsyncDisposable!>!>
+Runic.Platform.Linux.Portal.PortalApplication.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!

@@ -30,6 +30,13 @@ internal static class LinuxPlatformProvider
 
     internal static bool IsSandboxed() => File.Exists("/.flatpak-info") || Environment.GetEnvironmentVariable("SNAP") is not null;
 
+    // GtkMessageDialogs transient for the GTK 3 window.
+    internal static IDesktopMessageBoxes CreateMessageBoxes(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return new Gtk3MessageBoxes(owner);
+    }
+
     // The GTK clipboard; it is IAsyncDisposable and must be disposed before the owner's dispatcher stops.
     internal static LinuxTextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {

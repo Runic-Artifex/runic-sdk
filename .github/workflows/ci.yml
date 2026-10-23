@@ -764,6 +764,8 @@ jobs:
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --menus "$toolkit"
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --menus "$toolkit" --rtl
           done
+          # B17: GtkAlertDialog message boxes for a GTK 4 window, answered by activating their buttons and closing them.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --message-boxes
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
@@ -793,6 +795,7 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
           LC_ALL=C GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --monitors gtk4
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --menus gtk4
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --message-boxes
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
@@ -973,6 +976,11 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 3
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=Native]"
+      # B17: GtkMessageDialogs for a GTK 3 window, answered with the default response, gtk_window_close and clicks.
+      - name: Verify native GTK message boxes
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]"
       - name: Verify native GTK directory chooser lifecycle
         if: runner.os == 'Linux'
         timeout-minutes: 3
@@ -1049,6 +1057,7 @@ jobs:
         run: |
           artifacts/clipboard-aot/Runic.Platform.Linux.Tests
           GDK_BACKEND=x11 xvfb-run -a artifacts/clipboard-aot/Runic.Platform.Linux.Tests --treenode-filter "/*/*/*/*[Category=Native]"
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a artifacts/clipboard-aot/Runic.Platform.Linux.Tests --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]"
       - name: Verify NativeAOT clipboard
         if: runner.os != 'Linux'
         timeout-minutes: 3

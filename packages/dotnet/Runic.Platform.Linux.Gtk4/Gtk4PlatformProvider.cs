@@ -18,6 +18,13 @@ internal static class Gtk4PlatformProvider
         return new Gtk4TextClipboard(owner);
     }
 
+    /// <summary>Creates GtkAlertDialog message boxes for the GTK 4 window; unavailable before GTK 4.10.</summary>
+    public static IDesktopMessageBoxes CreateMessageBoxes(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return new Gtk4MessageBoxes(owner);
+    }
+
     /// <summary>Creates a portal owner that exports GTK 4 X11 or Wayland parents on demand.</summary>
     public static IPortalWindowOwner CreatePortalWindowOwner(INativeWindowOwner owner)
     {

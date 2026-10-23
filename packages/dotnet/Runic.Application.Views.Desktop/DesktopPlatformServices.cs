@@ -667,8 +667,9 @@ public static partial class DesktopPlatformServices
     /// <remarks>
     /// Windows reads the Network List Manager's connectivity hint (Windows 10 version 2004 and later), whose check also
     /// finds captive portals; macOS follows Network.framework's path monitor, which has no captive-portal check, so its
-    /// connectivity is <see cref="DesktopNetworkConnectivity.Unknown"/> while a network is available. Elsewhere the
-    /// status reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>. It needs no window.
+    /// connectivity is <see cref="DesktopNetworkConnectivity.Unknown"/> while a network is available. Linux asks the
+    /// NetworkMonitor desktop portal, with either toolkit and without loading GTK, and NetworkManager on the system bus
+    /// where no portal answers. It needs no window.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -678,6 +679,7 @@ public static partial class DesktopPlatformServices
         if (OperatingSystem.IsWindows()) status = Optional(CreateWindowsNetworkStatus);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsMacOS()) status = CreateMacOSNetworkStatus();
+        else if (OperatingSystem.IsLinux()) status = CreatePortalNetworkStatus();
 #endif
         return status ?? DesktopNetworkStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -690,6 +692,10 @@ public static partial class DesktopPlatformServices
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNetworkStatus CreateMacOSNetworkStatus() => MacOSPlatformProvider.CreateNetworkStatus();
+
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopNetworkStatus CreatePortalNetworkStatus() => PortalApplication.Inferred.CreateNetworkStatus();
 #endif
 
 #if RUNIC_PORTABLE_PLATFORMS
@@ -1025,7 +1031,8 @@ public static partial class DesktopPlatformServices
     private static NativeServices CreateGtk3(DesktopNativeOwner owner) => new(
         LinuxPlatformProvider.CreateFileDialogs(owner),
         LinuxPlatformProvider.CreateTextClipboard(owner),
-        LinuxPlatformProvider.CreateFileLauncher(owner));
+        LinuxPlatformProvider.CreateFileLauncher(owner),
+        LinuxPlatformProvider.CreateMessageBoxes(owner));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SupportedOSPlatform("linux")]
@@ -1033,7 +1040,7 @@ public static partial class DesktopPlatformServices
     {
         var portalOwner = Gtk4PlatformProvider.CreatePortalWindowOwner(owner);
         return new(PortalApplication.Inferred.CreateFileDialogs(portalOwner), Gtk4PlatformProvider.CreateTextClipboard(owner),
-            PortalApplication.Inferred.CreateFileLauncher(portalOwner));
+            PortalApplication.Inferred.CreateFileLauncher(portalOwner), Gtk4PlatformProvider.CreateMessageBoxes(owner));
     }
 #endif
 
@@ -1233,7 +1240,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
 
     /// <inheritdoc />
     /// <remarks>
-    /// Task dialogs on Windows, also for a WPF window, and sheets on macOS, once the window opens. Before that they report
+    /// Task dialogs on Windows, also for a WPF window, sheets on macOS, and GTK message or alert dialogs on Linux, once the window opens. Before that they report
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and after these services stop
     /// <see cref="PlatformUnavailableReason.OwnerClosed"/>; stopping closes a box that is shown. The instance stays the
     /// same, so a ViewModel can keep it from its constructor.

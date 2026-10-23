@@ -201,6 +201,7 @@ thread the service is on; an exception it throws is ignored.
 | `mimeapps-write-failed` | Warning | The user's `mimeapps.list` could not be written. |
 | `thumbnail-cache-unavailable` | Information | The host's thumbnail cache is not visible inside the sandbox. |
 | `thumbnailer-access-denied` | Warning | The sandbox does not allow talking to the thumbnailer. |
+| `network-monitor-unavailable` | Warning | Neither the NetworkMonitor portal nor NetworkManager answers, so network status is unavailable. |
 
 ## Desktop services
 
@@ -373,6 +374,26 @@ unlocks a LUKS container (`Encrypted.Unlock`) and returns its cleartext
 filesystem, a volume with an `Id` of its own; `MountAsync(id, options, token)`
 passes the options, with `ro` for read-only, as UDisks2's `options`. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+
+## Network status
+
+`PortalApplication.CreateNetworkStatus()` asks the NetworkMonitor portal
+(`org.freedesktop.portal.NetworkMonitor`), which xdg-desktop-portal implements
+itself from GLib's network monitor, so it answers sandboxed and unsandboxed
+applications on every desktop that runs the portal: `GetStatus` from version 3,
+`GetAvailable`, `GetMetered` and `GetConnectivity` in version 2, and the `changed`
+signal. Its connectivity levels 1 to 4 are `Local`, `Limited`, `CaptivePortal` and
+`Internet`. Where no portal answers, such as under a minimal window manager, it
+reads NetworkManager's `State`, `Connectivity` and `Metered` on the system bus and
+follows their `PropertiesChanged`: `Connectivity` 2 is a captive portal, `Metered`
+1 and 3 (yes, guessed yes) are metered and 2 and 4 are not, and a connected
+`State` without a connectivity check is `Local` or `Unknown`. When neither
+answers, reads are `Unavailable(BackendUnavailable)` and the
+`network-monitor-unavailable` diagnostic is reported. A watch reports
+`Unavailable` when its source stops, looks for one again every few seconds and
+reports a fresh state once one answers. It needs no window and no GTK. Inside
+Flatpak the portal needs no permission; NetworkManager needs
+`--system-talk-name=org.freedesktop.NetworkManager`.
 
 ## Desktop applications
 

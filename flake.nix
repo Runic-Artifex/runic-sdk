@@ -110,6 +110,8 @@
           privileged-operations-polkit = (import ./nixos/privileged-operations { inherit pkgs; }).polkit;
           # Volumes against a real UDisks2 and Polkit; see nixos/volumes.
           volumes-udisks2 = (import ./nixos/volumes { inherit pkgs; }).udisks2;
+          # Network status against a real NetworkManager without a portal; see nixos/network-status.
+          network-status-networkmanager = (import ./nixos/network-status { inherit pkgs; }).networkmanager;
           # A packaged application installed through the NixOS module; see nixos/packaging.
           packaging-nixos = import ./nixos/packaging { inherit pkgs self; };
           desktop-flatpak-tools = pkgs.buildEnv {
