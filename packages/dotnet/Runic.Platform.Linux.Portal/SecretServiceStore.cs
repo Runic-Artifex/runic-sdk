@@ -10,8 +10,11 @@ namespace Runic.Platform.Linux.Portal;
 // The freedesktop.org Secret Service API (org.freedesktop.secrets), served by GNOME Keyring, KeePassXC, KWallet and
 // others. Every request opens its own session on the shared connection and closes it, so a restarted service needs no
 // recovery. Items carry libsecret's generic schema attributes, which secret-tool and keytar also use.
+//
+// Text secrets are text/plain, binary ones application/octet-stream. Without user interaction a prompt the service asks
+// for (Unlock, CreateCollection) is dismissed unshown and the request is Locked.
 internal sealed class SecretServiceStore(string? address = null, string destination = SecretServiceStore.ServiceName,
-    PortalApplication? application = null, bool requireEncryption = false) : IDesktopSecretStore
+    PortalApplication? application = null, bool requireEncryption = false, bool interactive = true) : IDesktopSecretStore
 {
     internal const string ServiceName = "org.freedesktop.secrets";
     internal const string GenericSchema = "org.freedesktop.Secret.Generic";
@@ -22,11 +25,17 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
     // Whether a plain session is refused (DesktopSecretStoreOptions.RequireEncryption).
     internal bool RequireEncryption => requireEncryption;
 
-    public ValueTask<PlatformResult<string?>> GetAsync(string service, string account, CancellationToken cancellationToken = default)
+    // Whether prompts may be shown (DesktopSecretStoreOptions.AllowUserInteraction).
+    internal bool Interactive => interactive;
+
+    public async ValueTask<PlatformResult<string?>> GetAsync(string service, string account, CancellationToken cancellationToken = default) =>
+        SecretStoreValidation.DecodeResult(await GetBytesAsync(service, account, cancellationToken).ConfigureAwait(false));
+
+    public ValueTask<PlatformResult<byte[]?>> GetBytesAsync(string service, string account, CancellationToken cancellationToken = default)
     {
         SecretStoreValidation.Validate(service, account);
         cancellationToken.ThrowIfCancellationRequested();
-        return RunAsync<string?>(async (client, token) =>
+        return RunAsync<byte[]?>(async (client, token) =>
         {
             var (unlocked, locked) = await client.SearchAsync(service, account, token).ConfigureAwait(false);
             string? item = unlocked.Length > 0 ? unlocked[0] : null;
@@ -35,15 +44,8 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
                 await client.UnlockAsync(locked[0], token).ConfigureAwait(false);
                 item = locked[0];
             }
-            if (item is null) return new PlatformResult<string?>.Success(null);
-            byte[] stored = await client.GetSecretAsync(item, token).ConfigureAwait(false);
-            try
-            {
-                return SecretStoreValidation.DecodeSecret(stored) is { } secret
-                    ? new PlatformResult<string?>.Success(secret)
-                    : new PlatformResult<string?>.Failed(PlatformFailureCode.InvalidData);
-            }
-            finally { CryptographicOperations.ZeroMemory(stored); }
+            if (item is null) return new PlatformResult<byte[]?>.Success(null);
+            return new PlatformResult<byte[]?>.Success(await client.GetSecretAsync(item, token).ConfigureAwait(false));
         }, cancellationToken);
     }
 
@@ -53,10 +55,23 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
         byte[]? encoded = SecretEncoding.Encode(secret);
         if (encoded is null) return ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.TooLarge));
         if (cancellationToken.IsCancellationRequested) { CryptographicOperations.ZeroMemory(encoded); cancellationToken.ThrowIfCancellationRequested(); }
-        return SetCoreAsync(service, account, encoded, cancellationToken);
+        return SetCoreAsync(service, account, encoded, TextType, cancellationToken);
     }
 
-    private async ValueTask<PlatformResult<PlatformUnit>> SetCoreAsync(string service, string account, byte[] encoded, CancellationToken cancellationToken)
+    public ValueTask<PlatformResult<PlatformUnit>> SetBytesAsync(string service, string account, ReadOnlyMemory<byte> secret,
+        CancellationToken cancellationToken = default)
+    {
+        if (!SecretStoreValidation.ValidateBinary(service, account, secret.Span))
+            return ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.TooLarge));
+        cancellationToken.ThrowIfCancellationRequested();
+        return SetCoreAsync(service, account, secret.ToArray(), BinaryType, cancellationToken);
+    }
+
+    internal const string TextType = "text/plain";
+    internal const string BinaryType = "application/octet-stream";
+
+    private async ValueTask<PlatformResult<PlatformUnit>> SetCoreAsync(string service, string account, byte[] encoded, string contentType,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -64,7 +79,7 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
             {
                 string collection = await client.DefaultCollectionAsync(token).ConfigureAwait(false);
                 await client.UnlockAsync(collection, token).ConfigureAwait(false);
-                await client.CreateItemAsync(collection, service, account, encoded, token).ConfigureAwait(false);
+                await client.CreateItemAsync(collection, service, account, encoded, contentType, token).ConfigureAwait(false);
                 return new PlatformResult<PlatformUnit>.Success(default);
             }, cancellationToken).ConfigureAwait(false);
         }
@@ -92,7 +107,7 @@ internal sealed class SecretServiceStore(string? address = null, string destinat
         SecretServiceClient? client = null;
         try
         {
-            client = await SecretServiceClient.OpenAsync(address, destination, requireEncryption, application, cancellationToken).ConfigureAwait(false);
+            client = await SecretServiceClient.OpenAsync(address, destination, requireEncryption, interactive, application, cancellationToken).ConfigureAwait(false);
             LastAlgorithm = client.Algorithm;
             using var stopped = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, client.OwnerChanged);
             try { return await body(client, stopped.Token).ConfigureAwait(false); }
@@ -162,19 +177,21 @@ internal sealed class SecretServiceClient
     private string _sessionPath = "/";
     private byte[]? _key;
 
-    private SecretServiceClient(PortalConnection session) => _session = session;
+    private readonly bool _interactive;
+
+    private SecretServiceClient(PortalConnection session, bool interactive) { _session = session; _interactive = interactive; }
 
     private DBusConnection Connection => _session.Connection;
     private string Destination => _session.Destination;
     internal CancellationToken OwnerChanged => _session.OwnerChanged;
     internal string? Algorithm { get; private set; }
 
-    internal static async Task<SecretServiceClient> OpenAsync(string? address, string destination, bool requireEncryption,
+    internal static async Task<SecretServiceClient> OpenAsync(string? address, string destination, bool requireEncryption, bool interactive,
         PortalApplication? application, CancellationToken cancellationToken)
     {
         // The Secret Service is no portal: the connection of the application's identity serves it without registering.
         var session = await PortalConnection.OpenAsync(address, destination, null, cancellationToken).ConfigureAwait(false);
-        var client = new SecretServiceClient(session);
+        var client = new SecretServiceClient(session, interactive);
         try
         {
             await client.OpenSessionAsync(requireEncryption, application, cancellationToken).ConfigureAwait(false);
@@ -270,7 +287,7 @@ internal sealed class SecretServiceClient
         return collection;
     }
 
-    internal async Task CreateItemAsync(string collection, string service, string account, byte[] secret, CancellationToken cancellationToken)
+    internal async Task CreateItemAsync(string collection, string service, string account, byte[] secret, string contentType, CancellationToken cancellationToken)
     {
         byte[] parameters = [], value = secret;
         if (_key is not null) (parameters, value) = SecretServiceDh.Encrypt(_key, secret);
@@ -288,7 +305,7 @@ internal sealed class SecretServiceClient
                     KeyValuePair.Create(ItemInterface + ".Label", DBusValue.From(service + " (" + account + ")")),
                     KeyValuePair.Create(ItemInterface + ".Attributes", Attributes(service, account, schema: true)),
                 ]),
-                DBusValue.Struct(DBusValue.From(new DBusObjectPath(_sessionPath)), DBusValue.ByteArray(parameters), sent, DBusValue.From("text/plain")),
+                DBusValue.Struct(DBusValue.From(new DBusObjectPath(_sessionPath)), DBusValue.ByteArray(parameters), sent, DBusValue.From(contentType)),
                 DBusValue.From(true),
             ], cancellationToken).ConfigureAwait(false), "oo");
         }
@@ -312,6 +329,12 @@ internal sealed class SecretServiceClient
     // dismissed reports UserDismissed; cancellation dismisses it.
     private async Task<DBusValue> PromptAsync(string prompt, PlatformFailureCode failure, CancellationToken cancellationToken)
     {
+        if (!_interactive)
+        {
+            // Without user interaction the prompt is never shown: dismissed, the request is Locked.
+            await DismissAsync(prompt).ConfigureAwait(false);
+            throw new SecretServiceFailure(PlatformFailureCode.Locked);
+        }
         var completed = new TaskCompletionSource<(bool Dismissed, DBusValue Result)>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var subscription = await Connection.SubscribeAsync(new DBusSignalFilter
         {

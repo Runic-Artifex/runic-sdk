@@ -192,6 +192,8 @@ thread the service is on; an exception it throws is ignored.
 | `dbus-activation-name-taken` | Warning | Another process owns the application's ID on the session bus, so D-Bus activation is not served. |
 | `secret-service-unavailable` | Warning | No Secret Service answers on the session bus. |
 | `secret-service-plain-session` | Information | The Secret Service offered only an unencrypted session. |
+| `secret-portal-unavailable` | Warning | Inside a sandbox neither the Secret Service nor the Secret portal answered. |
+| `secret-file-invalid` | Warning | The sandbox's libsecret keyring file is damaged or in another format. |
 | `secret-service-encryption-required` | Warning | The Secret Service offered only an unencrypted session, which the store's `RequireEncryption` refuses. |
 | `trash-portal-unavailable` | Warning | The Trash portal could not move the item. |
 | `desktop-applications-sandboxed` | Information | Inside Flatpak or Snap the host's applications are out of reach. |
@@ -378,14 +380,39 @@ knows its users' providers, as GNOME Keyring and KeePassXC support the
 algorithm. Items use
 libsecret's generic schema (`service` and `account` attributes), so
 `secret-tool lookup service <service> account <account>` reads them, and are
-labelled `<service> (<account>)`. A locked keyring is unlocked through the
-service's own prompt; without a prompter the result is `Failed(Locked)`.
+labelled `<service> (<account>)`. Binary secrets (`SetBytesAsync`) are
+stored with the `application/octet-stream` content type, text ones as
+`text/plain`. A locked keyring is unlocked through the service's own prompt;
+without a prompter the result is `Failed(Locked)`. With
+`AllowUserInteraction = false` the store dismisses an unlock or create prompt
+without showing it and reports `Failed(Locked)`.
 
 Without a Secret Service, requests report `Unavailable(BackendUnavailable)` and
-the `secret-service-unavailable` diagnostic. Inside Flatpak, add
-`--talk-name=org.freedesktop.secrets` to the finish arguments; inside Snap,
-connect the `password-manager-service` interface. The Secret portal is not used
-yet. See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
+the `secret-service-unavailable` diagnostic.
+
+Inside Flatpak the store uses the Secret Service when the sandbox may talk to
+it: `--talk-name=org.freedesktop.secrets` (or `--socket=session-bus`) in the
+finish arguments, read from `/.flatpak-info`. Inside Snap it uses the Secret
+Service while the `password-manager-service` interface answers. Otherwise it
+keeps secrets as libsecret does in a sandbox, so libsecret-based code and
+`secret-tool` in the same sandbox share them: the Secret portal
+(`org.freedesktop.portal.Secret`, served by GNOME Keyring's portal backend)
+hands the application a secret that encrypts
+`$XDG_DATA_HOME/keyrings/default.keyring`, in libsecret's file format
+(PBKDF2-SHA256 key, AES-128-CBC items with HMAC-SHA256, hashed attributes).
+The file lives in the application's own data directory. Without the portal,
+requests report `Unavailable(BackendUnavailable)` and the
+`secret-portal-unavailable` diagnostic. A file that is not in that format
+reports `Failed(InvalidData)` and the `secret-file-invalid` diagnostic and is
+never overwritten; an item that fails its MAC reads the same way, and storing
+the secret again replaces it. The portal has no non-interactive flag: its backend
+may ask once to unlock the login keyring.
+
+The Secret Service has no per-application isolation: any process of the same
+user on the session bus can read every item, so a service and account name is
+no access boundary. The Secret portal file is per Flatpak application.
+
+See the [secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md).
 
 ## Trash
 

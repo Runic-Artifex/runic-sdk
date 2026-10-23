@@ -65,8 +65,10 @@ internal sealed class SecretStoreTests
         var application = new PortalApplication();
         Check(application.CreateSecretStore() is SecretServiceStore { RequireEncryption: false }, "a plain fallback by default");
         Check(application.CreateSecretStore(new DesktopSecretStoreOptions()) is SecretServiceStore { RequireEncryption: false }, "default options");
-        Check(application.CreateSecretStore(new DesktopSecretStoreOptions { RequireEncryption = true }) is SecretServiceStore { RequireEncryption: true },
+        Check(application.CreateSecretStore(new DesktopSecretStoreOptions { RequireEncryption = true }) is SecretServiceStore { RequireEncryption: true, Interactive: true },
             "RequireEncryption reaches the store");
+        Check(application.CreateSecretStore(new DesktopSecretStoreOptions { AllowUserInteraction = false }) is SecretServiceStore { Interactive: false, RequireEncryption: false },
+            "AllowUserInteraction reaches the store");
         try { application.CreateSecretStore(null!); throw new InvalidOperationException("Null options were accepted."); }
         catch (ArgumentNullException) { }
     }
@@ -166,6 +168,40 @@ internal sealed class SecretStoreTests
         catch (OperationCanceledException) { }
         Check(fake.Service.Dismissed == 1, "cancellation dismissed the prompt");
         Console.WriteLine("PASS secret store: locked keyring.");
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("secret store: binary secrets are application/octet-stream; without user interaction prompts are dismissed and Locked")]
+    public async Task BinaryAndNonInteractiveAsync()
+    {
+        await using var fake = await FakeSecretService.StartAsync();
+        var store = new SecretServiceStore(destination: fake.Name);
+        byte[] secret = new byte[DesktopSecretStore.MaximumBinarySecretBytes];
+        for (int i = 0; i < secret.Length; i++) secret[i] = (byte)(i * 7 + 0x80);
+        Check(await store.SetBytesAsync(Service, Account, secret).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "64 KiB stored");
+        var item = fake.Service.Items.Values.Single();
+        Check(item.ContentType == "application/octet-stream" && item.Secret.SequenceEqual(secret), $"binary content type, found {item.ContentType}");
+        Check(await store.GetBytesAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var read } && read!.SequenceEqual(secret), "read back");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData }, "not text");
+        Check(await store.SetBytesAsync(Service, Account, new byte[secret.Length + 1]).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed
+            { Code: PlatformFailureCode.TooLarge }, "above 64 KiB");
+        Check(await store.SetAsync(Service, Account, "tøken").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success
+            && fake.Service.Items.Values.Single().ContentType == "text/plain", "text replaces the binary item as text/plain");
+        Check(await store.GetBytesAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var utf8 } && utf8!.SequenceEqual("tøken"u8.ToArray()),
+            "a text item reads as UTF-8 bytes");
+
+        var quiet = new SecretServiceStore(destination: fake.Name, interactive: false);
+        fake.Service.LockAll();
+        int shown = fake.Service.PromptsShown, dismissed = fake.Service.Dismissed;
+        Check(await quiet.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked }, "a locked item is Locked");
+        Check(await quiet.SetBytesAsync(Service, Account, secret).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Locked },
+            "a locked collection is Locked");
+        Check(fake.Service.PromptsShown == shown && fake.Service.Dismissed == dismissed + 2, "the prompts were dismissed, never shown");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "tøken" }, "an interactive store still unlocks");
+
+        fake.Service.DefaultCollection = "/";
+        (shown, dismissed) = (fake.Service.PromptsShown, fake.Service.Dismissed);
+        Check(await quiet.SetAsync(Service, "other", "x").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Locked }
+            && fake.Service.Dismissed == dismissed + 1 && fake.Service.PromptsShown == shown, "creating the default keyring is not prompted");
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("secret store: without a default collection, reads find nothing and a write creates it through a prompt")]
