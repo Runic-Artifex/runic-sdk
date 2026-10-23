@@ -27,11 +27,27 @@ try {
     status: document.querySelector("#status")?.textContent})`);
   await retry(async () => (await state()).status === "Connected to the .NET ViewModel.", "initial connection");
   if ((await state()).count !== "0") throw new Error("Initial count was not zero.");
+  // D040: the page's policy has no 'unsafe-eval'. CDP's own evaluation is exempt unless it asks not to be.
+  const evaluation = (await browser.command("Runtime.evaluate", { returnByValue: true, allowUnsafeEvalBlockedByCSP: false,
+    expression: `(() => { try { new Function("return 1")(); return "allowed"; } catch (error) { return error.name; } })()` })).result.value;
+  if (evaluation !== "EvalError") throw new Error(`The page's Content-Security-Policy allowed string evaluation: ${evaluation}`);
+  // A command's reply also carries state, so count the pushes and the policy's refusals separately.
+  await evaluate(`(() => {
+    globalThis.policyViolations = [];
+    document.addEventListener("securitypolicyviolation", event =>
+      globalThis.policyViolations.push(\`\${event.effectiveDirective} \${event.blockedURI}\`));
+    const callback = globalThis.__counterChanged;
+    globalThis.statePushes = 0;
+    globalThis.__counterChanged = state => { globalThis.statePushes++; return callback?.(state); };
+  })()`);
   await evaluate('document.querySelector("#increment").click()');
   await retry(async () => {
     const current = await state();
     return current.count === "1" && current.status === "Incremented.";
   }, "first command");
+  await retry(async () => await evaluate("globalThis.statePushes") > 0, "state push");
+  const violations = await evaluate("globalThis.policyViolations");
+  if (violations.length > 0) throw new Error(`The page's Content-Security-Policy refused: ${violations.join(", ")}`);
   await evaluate('document.querySelector("#step").focus(); document.querySelector("#step").value = "3"; document.querySelector("#step").blur()');
   await retry(async () => {
     const current = await state();
@@ -42,7 +58,7 @@ try {
   await retry(async () => (await state()).count === "4", "updated command");
   await evaluate("location.reload()");
   await retry(async () => (await state()).count === "4" && (await state()).step === "3", "reload");
-  console.log("FIRST_WINDOW_OK|snapshot|command|property|reload");
+  console.log("FIRST_WINDOW_OK|snapshot|command|state-push-without-eval|property|reload");
 } finally {
   try { await browser?.close(); }
   finally {
