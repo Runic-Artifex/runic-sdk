@@ -963,6 +963,16 @@ jobs:
         if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 5
         run: ./artifacts/administration-aot/Runic.Platform.Administration.Windows.Tests.exe
+      # The read-only console example (examples/dotnet/Runic.Administration.Console) builds against the package source
+      # and its local commands run on the runner.
+      - name: Run the Windows administration console example
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          dotnet build examples/dotnet/Runic.Administration.Console -c Release
+          dotnet run --project examples/dotnet/Runic.Administration.Console -c Release --no-build -- system
+          dotnet run --project examples/dotnet/Runic.Administration.Console -c Release --no-build -- services
       # Privileged actions (W300-025). The NativeElevation cases run the real pipe, its DACL, the client and server
       # checks and the helper's own process state with a stand-in started by CreateProcess. The RealElevation cases
       # start the NativeAOT smoke helper, installed under Program Files, with ShellExecuteExW and runas; the runner's

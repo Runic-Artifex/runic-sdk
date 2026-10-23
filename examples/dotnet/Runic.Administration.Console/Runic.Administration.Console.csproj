@@ -5,10 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
-    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <AdministrationPackageVersion Condition="'$(AdministrationPackageVersion)' == ''">0.2.0-administration.local.2</AdministrationPackageVersion>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Runic.Platform.Administration.Windows" Version="$(AdministrationPackageVersion)" />
+    <!-- Outside this repository, use <PackageReference Include="Runic.Platform.Administration.Windows" Version="..." />. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" />
   </ItemGroup>
 </Project>
