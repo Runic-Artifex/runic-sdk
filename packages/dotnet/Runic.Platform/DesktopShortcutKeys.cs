@@ -244,4 +244,85 @@ internal static class DesktopShortcutKeys
         if ((shortcut.Modifiers & DesktopShortcutModifiers.Shift) != 0) text.Append("SHIFT+");
         return text.Append(key).ToString();
     }
+
+    // A key the desktop names back as a DesktopShortcut key: an XKB keysym name (Return, Page_Up, comma), a Qt key name
+    // (Esc, PgUp, Del), a DesktopShortcut name or one character; null for anything else.
+    internal static string? KeyFromName(string name)
+    {
+        if (name.Length == 0) return null;
+        string? key = name switch
+        {
+            "Return" or "KP_Enter" => "Enter",
+            "Esc" => "Escape",
+            "space" => "Space",
+            "BackSpace" or "Backspace" => "Backspace",
+            "Del" => "Delete",
+            "Page_Up" or "Prior" or "PgUp" => "PageUp",
+            "Page_Down" or "Next" or "PgDown" => "PageDown",
+            "Left" => "ArrowLeft",
+            "Up" => "ArrowUp",
+            "Right" => "ArrowRight",
+            "Down" => "ArrowDown",
+            "plus" or "+" => "Plus",
+            _ => null,
+        };
+        if (key is not null) return key;
+        if (name.Length > 1)
+        {
+            for (char character = '!'; character < (char)0x7F; character++)
+                if (!char.IsAsciiLetterOrDigit(character) && KeysymName(character.ToString()) == name) return character.ToString();
+        }
+        try { return new DesktopShortcut(name, DesktopShortcutModifiers.None).Key; }
+        catch (ArgumentException) { return null; }
+    }
+
+    // Reads the key a desktop reports for a global shortcut, when it has a DesktopShortcut form: the XDG trigger form
+    // (CTRL+SHIFT+s), GTK accelerators (<Control><Shift>s, as GNOME reports them after "Press ") and Qt's text
+    // (Ctrl+Shift+S, KDE's trigger_description). The first of several keys counts. Super, Meta, Hyper and Num Lock have no
+    // DesktopShortcut modifier, so a key with one of them is null, as is localized text.
+    internal static DesktopShortcut? ParseTrigger(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        text = text.Trim();
+        if (text.StartsWith("Press ", StringComparison.Ordinal)) text = text["Press ".Length..];
+        int separator = text.IndexOf(", ", StringComparison.Ordinal);
+        if (separator > 0) text = text[..separator];
+        int or = text.IndexOf(" or ", StringComparison.Ordinal);
+        if (or > 0) text = text[..or];
+        var modifiers = DesktopShortcutModifiers.None;
+        string rest = text;
+        // GTK accelerator modifiers.
+        while (rest.StartsWith('<'))
+        {
+            int end = rest.IndexOf('>');
+            if (end < 0) return null;
+            var modifier = Modifier(rest[1..end]);
+            if (modifier is not { } known) return null;
+            modifiers |= known;
+            rest = rest[(end + 1)..];
+        }
+        if (rest.Length > 1 && rest.Contains('+'))
+        {
+            var parts = rest.Split('+');
+            // "Ctrl++" ends with two empty parts for the plus key.
+            if (parts.Length >= 2 && parts[^1].Length == 0 && parts[^2].Length == 0) parts = [.. parts[..^2], "+"];
+            foreach (var part in parts[..^1])
+            {
+                if (Modifier(part) is not { } known) return null;
+                modifiers |= known;
+            }
+            rest = parts[^1];
+        }
+        if (KeyFromName(rest) is not { } key) return null;
+        try { return new DesktopShortcut(key, modifiers); }
+        catch (ArgumentException) { return null; }
+
+        static DesktopShortcutModifiers? Modifier(string name) => name.ToUpperInvariant() switch
+        {
+            "CTRL" or "CONTROL" or "PRIMARY" => DesktopShortcutModifiers.Primary,
+            "SHIFT" => DesktopShortcutModifiers.Shift,
+            "ALT" or "MOD1" => DesktopShortcutModifiers.Alt,
+            _ => null,
+        };
+    }
 }

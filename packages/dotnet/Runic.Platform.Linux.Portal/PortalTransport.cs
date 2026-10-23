@@ -80,6 +80,86 @@ internal static class PortalRequests
         }
         await CloseAsync(session, handle).ConfigureAwait(false);
     }
+
+    // Sends one request and waits for its Response: subscribes to the caller's request namespace first, as portals may
+    // answer before the method reply, then passes a fresh handle_token to the call. Closes the request unless it answered.
+    /// <exception cref="Runtime.NativeBackendUnavailableException">The portal went away before it answered.</exception>
+    /// <exception cref="IOException">The portal returned a handle outside the caller's request namespace.</exception>
+    internal static async Task<(uint Code, Dictionary<string, DBusValue> Results)> ExchangeAsync(PortalConnection session,
+        Func<string, Task<DBusObjectPath>> call, CancellationToken cancellationToken)
+    {
+        var connection = session.Connection;
+        string prefix = "/org/freedesktop/portal/desktop/request/" + connection.UniqueName.TrimStart(':').Replace('.', '_') + "/";
+        string token = "runic_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        string handle = prefix + token;
+        var responses = Channel.CreateUnbounded<(string Path, uint Code, Dictionary<string, DBusValue> Results)>();
+        await using var subscription = await connection.SubscribeAsync(new DBusSignalFilter
+        {
+            Sender = session.Destination, PathNamespace = new DBusObjectPath(prefix.TrimEnd('/')),
+            Interface = "org.freedesktop.portal.Request", Member = "Response",
+        }, cancellationToken).AsTask().WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
+        _ = PortalValues.PumpAsync(subscription, signal =>
+        {
+            // A malformed response is the portal's "other error".
+            if (PortalValues.TryReadResponse(signal, out uint code, out var results)) responses.Writer.TryWrite((signal.Path.Value, code, results));
+            else responses.Writer.TryWrite((signal.Path.Value, 2, []));
+        }, error => responses.Writer.TryComplete(error));
+        using var ownerGone = session.OwnerChanged.Register(() => responses.Writer.TryComplete(new Runtime.NativeBackendUnavailableException()));
+        Task<DBusObjectPath>? sent = null;
+        bool answered = false;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            sent = call(token);
+            handle = (await sent.WaitAsync(Timeout, CancellationToken.None).ConfigureAwait(false)).Value;
+            if (!handle.StartsWith(prefix, StringComparison.Ordinal)) throw new IOException("The portal returned an invalid request handle.");
+            while (true)
+            {
+                var response = await responses.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                if (response.Path != handle) continue;
+                answered = true;
+                return (response.Code, response.Results);
+            }
+        }
+        catch (ChannelClosedException error) { throw error.InnerException ?? new Runtime.NativeBackendUnavailableException(); }
+        finally
+        {
+            if (!answered && handle.StartsWith(prefix, StringComparison.Ordinal)) _ = CloseAbandonedAsync(session, handle, sent);
+        }
+    }
+}
+
+// org.freedesktop.portal.Session objects on the shared connection: a session lives until it is closed or its portal ends.
+internal static class PortalSessions
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+
+    // The path prefix of this connection's sessions, which a portal's session_handle must have.
+    internal static string Prefix(DBusConnection connection) =>
+        "/org/freedesktop/portal/desktop/session/" + connection.UniqueName.TrimStart(':').Replace('.', '_') + "/";
+
+    // A fresh session_handle_token.
+    internal static string Token() => "runic_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+
+    // The session handle of a CreateSession response: an s, as the portals send it, or an o; null when missing or foreign.
+    internal static string? Handle(PortalConnection session, Dictionary<string, DBusValue> results)
+    {
+        if (!results.TryGetValue("session_handle", out var value)) return null;
+        string? handle = value.Signature.Value switch { "s" => value.GetString(), "o" => value.GetObjectPath().Value, _ => null };
+        return handle is not null && handle.StartsWith(Prefix(session.Connection), StringComparison.Ordinal) ? handle : null;
+    }
+
+    // Closes a session unless its portal was replaced, which ended it.
+    internal static async Task CloseAsync(PortalConnection session, string handle)
+    {
+        if (session.OwnerChanged.IsCancellationRequested) return;
+        try
+        {
+            await new Protocol.Session(session.Connection, session.Destination, new DBusObjectPath(handle)).CloseAsync(cancellationToken: CancellationToken.None).AsTask()
+                .WaitAsync(Timeout).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is DBusException or TimeoutException) { /* The portal also ends a session when its caller's connection closes. */ }
+    }
 }
 
 // Reading values from portal replies and signals. A peer controls them, so a repeated dictionary key keeps its last

@@ -183,6 +183,8 @@ thread the service is on; an exception it throws is ignored.
 | `status-icon-bus-unavailable` | Warning | The session bus could not be reached. |
 | `status-icon-bus-lost` | Information | The session bus connection ended; the icon registers again. |
 | `status-icon-activations-dropped` | Warning | Activations arrived faster than the `Activated` handler returned; those beyond the queue were dropped. |
+| `global-shortcuts-unavailable` | Warning | The desktop has no GlobalShortcuts portal backend, or the portal refused an unidentified application. |
+| `global-shortcuts-events-dropped` | Warning | Activations and binding changes arrived faster than the handlers returned; those beyond the queue were dropped. |
 | `login-startup-identity-unspecified` | Warning | Login startup outside a sandbox needs an application ID. |
 | `login-startup-foreign-entry` | Warning | Another autostart entry uses the application's name. |
 | `login-startup-portal-unavailable` | Warning | The Background portal is missing or failed. |
@@ -252,6 +254,44 @@ of its own, since status areas look for each icon at fixed object paths.
 Plasma fills a submenu when it first opens, so the first hover over a submenu
 can show nothing. The VM checks in `nixos/status-icon` drive the icon through
 Plasma 6 and through Waybar's tray.
+
+## Global shortcuts
+
+`PortalApplication.CreateGlobalShortcuts()` binds keys that start an application's
+actions while another application has the focus, through the
+`org.freedesktop.portal.GlobalShortcuts` portal. The desktop owns the keys: each
+action's `PreferredShortcut` is sent as its `preferred_trigger` in the form of the
+[XDG shortcuts specification](https://specifications.freedesktop.org/shortcuts-spec/latest/)
+(`CTRL+SHIFT+s`), and the desktop decides, asks the user or keeps the key the user
+chose before. It stores the keys per application ID and action ID, so keep the IDs
+stable.
+
+```csharp
+await using var shortcuts = portals.CreateGlobalShortcuts();
+shortcuts.Activated += (_, activation) => { /* worker thread: activation.Id, activation.PlatformContext */ };
+var result = await shortcuts.BindAsync([new DesktopGlobalShortcut("show", "Show the main window")
+{
+    PreferredShortcut = DesktopShortcut.Parse("Primary+Alt+Space"),
+}]);
+```
+
+The portal binds a set once per session, so each `BindAsync` closes the previous
+session and binds the whole set in a new one. A binding is `Bound` when the desktop
+reports a key, with its own text (`trigger_description`, such as GNOME's
+`Press <Control><Alt>space` or KDE's `Ctrl+Alt+Space`) and the key as a
+`DesktopShortcut` where that text has one; otherwise it is `Unbound`. `ListAsync`
+asks the portal again. `BindingsChanged` reports the user's changes from the
+desktop's settings, which `ConfigureAsync` opens where the portal has version 2 of
+the interface. `Activated` reports key presses with the desktop's activation token,
+not releases. When the portal restarts, the set is bound again in a new session and
+`BindingsChanged` reports the result.
+
+The portal requires an application ID: outside Flatpak and Snap, create the
+`PortalApplication` with the installed desktop ID; without it requests fail with
+`PermissionDenied` and `global-shortcuts-unavailable`. KDE Plasma 5.27 and later,
+GNOME 48 and later and Hyprland have a backend; elsewhere, including X11 sessions
+without one, requests report `BackendUnavailable` and `global-shortcuts-unavailable`.
+Runic does not grab keys on X11 itself.
 
 ## Login startup
 

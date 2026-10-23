@@ -372,13 +372,17 @@ internal sealed class WindowServiceChecks
             await using (var first = provider.CreateAsyncScope())
                 Require(ReferenceEquals(shortcuts, first.ServiceProvider.GetRequiredService<IDesktopGlobalShortcuts>()),
                     "A Window scope got its own global shortcuts.");
+            // Linux connects to no bus until BindAsync, so only the type is checked there.
+            if (OperatingSystem.IsLinux())
+                Require(shortcuts.GetType().FullName == "Runic.Platform.Linux.Portal.PortalGlobalShortcuts",
+                    $"Linux did not create the portal's global shortcuts: {shortcuts.GetType().FullName}");
             var expected = OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsGlobalShortcuts"
                 : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacGlobalShortcuts" : null;
             if (expected is not null)
                 Require(shortcuts.GetType().FullName == expected
                     && await shortcuts.ListAsync() is PlatformResult<ImmutableArray<DesktopGlobalShortcutBinding>>.Success({ IsEmpty: true }),
                     $"The operating system's global shortcuts were not registered: {shortcuts.GetType().FullName}");
-            else
+            else if (!OperatingSystem.IsLinux())
                 Require(await shortcuts.ConfigureAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
                     "A platform without a global shortcut provider did not report it unconfigured.");
         }

@@ -607,8 +607,9 @@ window; the web view keeps its own context menu where the page does not handle
 Global shortcuts, which work while another application has the focus, are the
 application's `IDesktopGlobalShortcuts` from Runic.Platform
 (`DesktopPlatformServices.CreateGlobalShortcuts()` or `AddRunicPlatformServices()`):
-`RegisterHotKey` on Windows and Carbon hot keys on macOS, which run in the Desktop
-event loop with or without a window. See
+`RegisterHotKey` on Windows, Carbon hot keys on macOS, which run in the Desktop
+event loop with or without a window, and the desktop's GlobalShortcuts portal on
+Linux, where the user assigns the keys in the desktop's settings. See
 [Global shortcuts](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#global-shortcuts).
 
 ## File drops
