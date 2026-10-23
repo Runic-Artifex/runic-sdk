@@ -34,6 +34,10 @@ public interface IDesktopWindowHostFactory
     /// Keep the check cheap: do not load native libraries. The default reports none.
     /// </remarks>
     IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics() => [];
+
+    /// <summary>Gets the desktop's monitors in the units of this provider's windows, which <see cref="DesktopHost.Monitors"/> returns.</summary>
+    /// <remarks>The default reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</remarks>
+    IDesktopMonitors Monitors => DesktopMonitors.Unavailable(PlatformUnavailableReason.BackendUnavailable);
 }
 
 /// <summary>A window host factory whose windows need it to own the process main thread.</summary>
@@ -95,6 +99,31 @@ public interface IDesktopWindowStateHost : IDesktopWindowHost
 
     /// <summary>Occurs after <see cref="State"/> has changed. It may be raised on the window's owning thread.</summary>
     event EventHandler? StateChanged;
+}
+
+/// <summary>An optional native host that enters full screen and places its window on a chosen monitor.</summary>
+/// <remarks>
+/// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>. Report
+/// <see cref="DesktopWindowCapabilities.FullScreen"/> and <see cref="DesktopWindowCapabilities.MonitorPlacement"/> in
+/// <see cref="IDesktopWindowHost.Capabilities"/> for the operations the window supports; Runic Desktop calls a member only
+/// with its flag. When opening, apply <see cref="DesktopWindowHostOptions.Monitor"/> and a
+/// <see cref="DesktopWindowPlacement.FullScreen"/> placement, and report <see cref="DesktopWindowState.IsFullScreen"/>,
+/// <see cref="DesktopWindowState.MonitorId"/> and <see cref="DesktopWindowPlacement.FullScreen"/> in the state. Monitor
+/// identifiers are those of <see cref="IDesktopWindowHostFactory.Monitors"/>.
+/// </remarks>
+public interface IDesktopPlacementWindowHost : IDesktopWindowHost
+{
+    /// <summary>Enters or leaves full screen; does nothing when the window already is or is not full-screen.</summary>
+    /// <param name="fullScreen"><see langword="true"/> to enter full screen; <see langword="false"/> to leave it.</param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the window has been asked to change.</returns>
+    ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken);
+
+    /// <summary>Moves the window to a monitor, centered on its work area and shrunk to fit it.</summary>
+    /// <param name="monitorId">The <see cref="DesktopMonitor.Id"/> of a connected monitor.</param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the window has moved; it fails with <see cref="ArgumentException"/> when no connected monitor has this identifier.</returns>
+    ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken);
 }
 
 /// <summary>An optional native host that shows the menu bar and context menus.</summary>
@@ -363,6 +392,16 @@ public sealed record DesktopWindowHostOptions
     /// <remarks>A host implementing <see cref="IDesktopMenuWindowHost"/> applies it; others ignore it.</remarks>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
+    /// <summary>Gets the monitor to open on, from <see cref="DesktopWindowOptions.Monitor"/>; <see langword="null"/> when a placement's position or the platform decides.</summary>
+    /// <remarks>A host implementing <see cref="IDesktopPlacementWindowHost"/> applies it; others ignore it.</remarks>
+    public string? Monitor { get; init; }
+
+    /// <summary>Gets the direction of the window's native parts, from <see cref="DesktopWindowOptions.LayoutDirection"/>.</summary>
+    public DesktopLayoutDirection LayoutDirection { get; init; }
+
+    /// <summary>Gets the BCP 47 language of the web view's own text, from <see cref="DesktopWindowOptions.Language"/>, or <see langword="null"/>.</summary>
+    public string? Language { get; init; }
+
     /// <summary>
     /// Gets the callback that reports an event of the open window, such as a crashed web process, to
     /// <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger (event 3010). The host may call it on any
@@ -399,6 +438,16 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             menuHost.MenuBarPlacementChanged += OnMenuBarPlacementChanged;
         }
     }
+
+    public ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default) =>
+        _host is IDesktopPlacementWindowHost placementHost
+            ? placementHost.SetFullScreenAsync(fullScreen, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This window host cannot enter full screen."));
+
+    public ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default) =>
+        _host is IDesktopPlacementWindowHost placementHost
+            ? placementHost.MoveToMonitorAsync(monitorId, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This window host cannot place its window on a monitor."));
 
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
@@ -475,6 +524,9 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
             MenuBarPresentation = options.MenuBarPresentation,
+            Monitor = options.Monitor,
+            LayoutDirection = options.LayoutDirection,
+            Language = options.Language,
         }, cancellationToken);
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>

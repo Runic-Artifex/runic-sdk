@@ -51,6 +51,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     internal static void SetApplicationMenuCommands(IDesktopMenuCommandTarget? target) => Volatile.Write(ref s_applicationMenuCommands, target);
 
+    // The titles of the standard menus (DesktopHostOptions.StandardMenuTitles), applied when the main menu is completed.
+    private static DesktopStandardMenuTitles s_titles = MacOsMainMenu.English;
+    internal static void SetStandardMenuTitles(DesktopStandardMenuTitles titles) => Volatile.Write(ref s_titles, titles);
+
     // The logger of menu command failures (event 3014) while no key window's command path has one.
     private static Microsoft.Extensions.Logging.ILogger? s_menuLogger;
     internal static void SetMenuLogger(Microsoft.Extensions.Logging.ILogger logger) => Volatile.Write(ref s_menuLogger, logger);
@@ -106,7 +110,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
+        DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -426,6 +431,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             FitPlacement(hasPosition: options.X is not null && options.Y is not null);
         }
+        // A monitor to open on replaces the position; a placement with a position leaves it unset.
+        if (options.Monitor is { } monitorId && FindScreen(monitorId) is { } screen)
+        {
+            MoveToScreen(screen);
+        }
+        _kiosk = options.Kiosk;
         if (!string.IsNullOrWhiteSpace(options.IconFile))
         {
             var path = Api.CreateString(options.IconFile);
@@ -448,11 +459,20 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         if (options.Kiosk)
         {
-            Api.SendVoidNint(_window, "toggleFullScreen:", 0);
+            // A borderless window enters full screen only as a full-screen primary window.
+            RequestFullScreen();
         }
-        else if (options.Placement is { Maximized: true } && !Api.SendBool(_window, "isZoomed"))
+        else
         {
-            Api.SendVoidNint(_window, "zoom:", 0);
+            if (options.Placement is { Maximized: true } && !Api.SendBool(_window, "isZoomed"))
+            {
+                Api.SendVoidNint(_window, "zoom:", 0);
+            }
+            // A placement saved full-screen opens full-screen on the screen of its restored bounds.
+            if (options.Placement is { FullScreen: true })
+            {
+                RequestFullScreen();
+            }
         }
         UpdateState();
     }
@@ -511,6 +531,15 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return;
         }
         var fullScreen = (Api.SendUlong(_window, "styleMask") & StyleFullScreen) != 0;
+        if (_fullScreenTransition)
+        {
+            // Reported once the animation ends, so the bounds before full screen stay the restorable ones.
+            return;
+        }
+        if (!fullScreen && _pendingMonitor is not null)
+        {
+            ApplyPendingMonitor();
+        }
         var maximized = !fullScreen && Api.SendBool(_window, "isZoomed");
         var current = ReadBounds();
         if (!maximized && !fullScreen)
@@ -525,7 +554,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Height = current.Height,
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
-            Placement = (_normal ?? current) with { Maximized = maximized },
+            MonitorId = CurrentMonitorId(),
+            Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !_kiosk },
         };
         if (Equals(state, Volatile.Read(ref _state)))
         {
@@ -533,6 +563,55 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Volatile.Write(ref _state, state);
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void FullScreenTransitionStarted(nint self, nint selector, nint notification)
+    {
+        try
+        {
+            if (Hosts.TryGetValue(Api.SendNint(notification, "object"), out var host)) host._fullScreenTransition = true;
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void FullScreenTransitionEnded(nint self, nint selector, nint notification)
+    {
+        try
+        {
+            EndFullScreenTransition(Api.SendNint(notification, "object"));
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void FullScreenTransitionFailed(nint self, nint selector, nint window)
+    {
+        try
+        {
+            EndFullScreenTransition(window);
+            if (Hosts.TryGetValue(window, out var host)) host.RetryFullScreen();
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    private static void EndFullScreenTransition(nint window)
+    {
+        if (Hosts.TryGetValue(window, out var host) && host.IsOpen)
+        {
+            host._fullScreenTransition = false;
+            host.UpdateState();
+        }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -630,6 +709,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidNint(application, "setMainMenu:", mainMenu);
             Api.SendVoid(mainMenu, "release");
         }
+        var titles = Volatile.Read(ref s_titles);
         if (complete)
         {
             var name = Api.Text(Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName"));
@@ -642,16 +722,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
             if (Api.SendNint(applicationMenu, "numberOfItems") == 0)
             {
-                Api.AddItems(applicationMenu, MacOsMainMenu.Application, name, s_menuTarget);
+                Api.AddItems(applicationMenu, MacOsMainMenu.ApplicationItems(titles), name, s_menuTarget);
             }
             if (Api.FindSubmenu(mainMenu, MacOsMainMenu.EditIdentifier, MacOsMainMenu.EditActions) == 0)
             {
-                Api.AddItems(Api.InsertSubmenu(mainMenu, "Edit", 1, MacOsMainMenu.EditIdentifier), MacOsMainMenu.Edit, name, s_menuTarget);
+                Api.AddItems(Api.InsertSubmenu(mainMenu, titles.Edit, 1, MacOsMainMenu.EditIdentifier), MacOsMainMenu.EditItems(titles), name, s_menuTarget);
             }
             // The Cocoa template's File menu: Close sends performClose:, so a window's close guard applies.
             if (Api.FindSubmenu(mainMenu, FileIdentifier, MacOsMainMenu.FileActions) == 0)
             {
-                Api.AddItems(Api.InsertSubmenu(mainMenu, "File", 1, FileIdentifier), MacOsMainMenu.File, name, s_menuTarget);
+                Api.AddItems(Api.InsertSubmenu(mainMenu, titles.File, 1, FileIdentifier), MacOsMainMenu.FileItems(titles), name, s_menuTarget);
             }
         }
         // The zoom items go into any main menu that has no Command and = or + of its own.
@@ -661,13 +741,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             if (view == 0)
             {
                 var edit = Api.IndexOfSubmenu(mainMenu, Api.FindSubmenu(mainMenu, MacOsMainMenu.EditIdentifier, MacOsMainMenu.EditActions));
-                view = Api.InsertSubmenu(mainMenu, "View", edit >= 0 ? edit + 1 : Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.ViewIdentifier);
+                view = Api.InsertSubmenu(mainMenu, titles.View, edit >= 0 ? edit + 1 : Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.ViewIdentifier);
             }
             else if (Api.SendNint(view, "numberOfItems") > 0)
             {
                 Api.SendVoidNint(view, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
             }
-            foreach (var item in MacOsPageZoom.MenuItems)
+            foreach (var item in MacOsPageZoom.Items(titles))
             {
                 Api.AddMenuItem(view, item.Title, MacOsPageZoom.Selector(item.Command), item.KeyEquivalent, MacOsPageZoom.CommandModifier,
                     s_menuTarget, item.Hidden);
@@ -676,8 +756,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (complete && Api.SendNint(application, "windowsMenu") == 0
             && Api.FindSubmenu(mainMenu, MacOsMainMenu.WindowIdentifier, MacOsMainMenu.WindowActions) == 0)
         {
-            var window = Api.InsertSubmenu(mainMenu, "Window", Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.WindowIdentifier);
-            Api.AddItems(window, MacOsMainMenu.Window, "", s_menuTarget);
+            var window = Api.InsertSubmenu(mainMenu, titles.Window, Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.WindowIdentifier);
+            Api.AddItems(window, MacOsMainMenu.WindowItems(titles), "", s_menuTarget);
             Api.SendVoidNint(application, "setWindowsMenu:", window);
         }
     }
@@ -692,7 +772,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         // The standard File menu takes the declared File menu's title, and its own back without one.
         if (Api.FindSubmenu(mainMenu, FileIdentifier, MacOsMainMenu.FileActions) is var standardFile and not 0)
         {
-            Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, standardFile)), standardFile, "File");
+            Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, standardFile)), standardFile,
+                Volatile.Read(ref s_titles).File);
         }
         var menus = Volatile.Read(ref s_menuBar);
         var declared = ImmutableArray.CreateBuilder<DeclaredEntry>();
@@ -1135,9 +1216,23 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Api.AddMethod(type, "windowWillClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowWillClose, "v@:@");
         Api.AddMethod(type, "windowShouldClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&WindowShouldClose, RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
-        foreach (var selector in (string[])["windowDidMove:", "windowDidResize:", "windowDidEnterFullScreen:", "windowDidExitFullScreen:", "windowDidDeminiaturize:"])
+        foreach (var selector in (string[])["windowDidMove:", "windowDidResize:", "windowDidDeminiaturize:", "windowDidChangeScreen:"])
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowGeometryChanged, "v@:@");
+        }
+        // The frame changes during the full-screen animation; the restorable bounds must not follow it.
+        foreach (var selector in (string[])["windowWillEnterFullScreen:", "windowWillExitFullScreen:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionStarted, "v@:@");
+        }
+        foreach (var selector in (string[])["windowDidEnterFullScreen:", "windowDidExitFullScreen:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionEnded, "v@:@");
+        }
+        // These two pass the window itself, not a notification.
+        foreach (var selector in (string[])["windowDidFailToEnterFullScreen:", "windowDidFailToExitFullScreen:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionFailed, "v@:@");
         }
         Api.RegisterClassPair(type);
         return type;
@@ -1718,7 +1813,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     SendVoidNint(menu, "addItem:", SendNint(GetClass("NSMenuItem"), "separatorItem"));
                     continue;
                 }
-                AddMenuItem(menu, string.Format(System.Globalization.CultureInfo.InvariantCulture, item.Title, name), item.Action,
+                AddMenuItem(menu, DesktopStandardMenuTitles.Format(item.Title, name), item.Action,
                     item.KeyEquivalent, item.Modifiers, item.OwnTarget ? target : 0, false);
             }
         }
@@ -1968,6 +2063,41 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal ulong SendUlong(nint receiver, string selector) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, ulong>)_messageSend)(receiver, Selector(selector));
+
+        internal uint SendUint(nint receiver, string selector) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, uint>)_messageSend)(receiver, Selector(selector));
+
+        // [[NSNotificationCenter defaultCenter] addObserver:selector:name:object:nil].
+        internal void AddNotificationObserver(nint observer, string selector, string name)
+        {
+            var text = CreateString(name);
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, void>)_messageSend)(
+                    SendNint(GetClass("NSNotificationCenter"), "defaultCenter"), Selector("addObserver:selector:name:object:"),
+                    observer, Selector(selector), text, 0);
+            }
+            finally
+            {
+                SendVoid(text, "release");
+            }
+        }
+
+        // The CGDirectDisplayID of an NSScreen: deviceDescription[@"NSScreenNumber"].
+        internal uint ScreenNumber(nint screen)
+        {
+            var key = CreateString("NSScreenNumber");
+            try
+            {
+                var description = SendNint(screen, "deviceDescription");
+                var number = description == 0 ? 0 : SendNintNint(description, "objectForKey:", key);
+                return number == 0 ? 0 : SendUint(number, "unsignedIntValue");
+            }
+            finally
+            {
+                SendVoid(key, "release");
+            }
+        }
 
         internal CGRect SendRect(nint receiver, string selector) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, CGRect>)_messageSendStructure)(receiver, Selector(selector));

@@ -217,7 +217,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
     {
         var environmentCompletion = new WebViewCompletion();
         using var environmentHandler = new WebViewComReference<IWebViewEnvironmentCompleted>(environmentCompletion);
-        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(options.BrowserArguments));
+        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(options.BrowserArguments, options.Language));
         WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, environmentHandler.Pointer);
         var environment = await environmentCompletion.Task;
         nint controller = 0;
@@ -571,10 +571,11 @@ internal partial interface IWebViewEnvironmentOptions
 }
 
 [GeneratedComClass]
-internal sealed partial class WebViewEnvironmentOptions(string? arguments) : IWebViewEnvironmentOptions
+// The language is ICoreWebView2EnvironmentOptions::Language: the browser's UI language and its Accept-Language.
+internal sealed partial class WebViewEnvironmentOptions(string? arguments, string? language = null) : IWebViewEnvironmentOptions
 {
     private string? _arguments = arguments;
-    private string? _language;
+    private string? _language = language;
     private string? _version = "154.0.4258.31"; // CORE_WEBVIEW_TARGET_PRODUCT_VERSION in the pinned SDK.
     private int _allowSingleSignOn;
     public int GetAdditionalBrowserArguments(out nint value) { value = Marshal.StringToCoTaskMemUni(_arguments); return 0; }

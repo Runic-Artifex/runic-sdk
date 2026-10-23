@@ -262,6 +262,9 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsCurrentWindow(DesktopWindow window) => ReferenceEquals(Volatile.Read(ref _window), window);
 
+    // The monitors of the host that owns this surface.
+    internal Runic.Platform.IDesktopMonitors Monitors => _host.Monitors;
+
     internal async ValueTask RunWindowOperationAsync(DesktopWindow window,
         DesktopWindowCapabilities capability, Func<ValueTask> operation, CancellationToken cancellationToken)
     {
@@ -411,6 +414,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
+        _engine.SetMonitorAndLanguage(options.Monitor, options.LayoutDirection, options.Language);
     }
 
     private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }
@@ -575,6 +579,35 @@ public sealed class DesktopSurface : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(options),
                 "Width, Height, MinimumWidth and MinimumHeight must be positive numbers of pixels.");
         }
+        if (!Enum.IsDefined(options.LayoutDirection))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "LayoutDirection contains an unsupported value.");
+        }
+        if (options.Monitor is { } monitor && (monitor.Length == 0 || monitor.Contains('\0')))
+        {
+            throw new ArgumentException("Monitor must be a monitor identifier from DesktopHost.Monitors, or null.", nameof(options));
+        }
+        if (options.Language is { } language && !IsLanguageTag(language))
+        {
+            throw new ArgumentException(
+                "Language must be a BCP 47 language tag such as en-US or ar-EG: letters and digits in subtags of 1 to 8, joined by hyphens.",
+                nameof(options));
+        }
+    }
+
+    // The shape of a BCP 47 tag: a 2-3 or 5-8 letter primary subtag (or i/x) and subtags of 1 to 8 letters and digits.
+    internal static bool IsLanguageTag(string tag)
+    {
+        if (tag.Length is 0 or > 85) return false;
+        var subtags = tag.Split('-');
+        for (var index = 0; index < subtags.Length; index++)
+        {
+            var subtag = subtags[index];
+            if (subtag.Length is 0 or > 8 || !subtag.All(char.IsAsciiLetterOrDigit)) return false;
+            if (index == 0 && (!subtag.All(char.IsAsciiLetter) || subtag.Length is 4 || subtag.Length == 1 && subtag is not ("i" or "x" or "I" or "X")))
+                return false;
+        }
+        return true;
     }
 
     private static WebUiBrowser ToCompatibilityBrowser(BrowserKind browser) => browser switch
@@ -1114,6 +1147,50 @@ public sealed class DesktopWindow : IAsyncDisposable
             () => new ValueTask(_engine.MaximizeAsync(cancellationToken)), cancellationToken);
     }
 
+    /// <summary>Enters or leaves full screen.</summary>
+    /// <param name="fullScreen"><see langword="true"/> to fill the window's monitor without a frame; <see langword="false"/> to return to its bounds before.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has been asked to change; <see cref="StateChanged"/> reports the change.</returns>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.FullScreen"/>. Does nothing when the window already is, or is not,
+    /// full-screen. On macOS the window moves into its own full-screen space with AppKit's animation, so
+    /// <see cref="DesktopWindowState.IsFullScreen"/> changes when the animation ends. <see cref="DesktopWindowState.Placement"/>
+    /// records the state, so a window closed full-screen opens full-screen again.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="fullScreen"/> is <see langword="false"/> for a <see cref="DesktopWindowOptions.Kiosk"/> window, which stays full-screen.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default)
+    {
+        if (!fullScreen && IsOpen && _engine.IsKiosk)
+        {
+            throw new InvalidOperationException("A kiosk window stays full-screen.");
+        }
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.FullScreen,
+            () => _engine.SetFullScreenAsync(fullScreen, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>Moves the window to a monitor, centered on its work area and shrunk to fit it.</summary>
+    /// <param name="monitorId">The <see cref="Runic.Platform.DesktopMonitor.Id"/> of a connected monitor, from <see cref="DesktopHost.Monitors"/>.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has moved.</returns>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.MonitorPlacement"/>. A maximized window moves maximized. A
+    /// full-screen window moves full-screen on Windows; macOS keeps a full-screen window in its space, and moves it
+    /// when it leaves full screen.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="monitorId"/> is empty, or no connected monitor has this identifier.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(monitorId);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.MonitorPlacement,
+            () => _engine.MoveToMonitorAsync(monitorId, cancellationToken), cancellationToken);
+    }
+
     /// <summary>Resizes the window.</summary>
     /// <param name="width">The new width in pixels.</param>
     /// <param name="height">The new height in pixels.</param>
@@ -1316,6 +1393,9 @@ public sealed class DesktopWindow : IAsyncDisposable
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Move,
             () => _engine.MovePresentationAsync(x, y, cancellationToken), cancellationToken);
     }
+
+    // The monitors of the window's host, for its platform services.
+    internal Runic.Platform.IDesktopMonitors Monitors => _surface.Monitors;
 
     internal void RequireCapability(DesktopWindowCapabilities capability)
     {

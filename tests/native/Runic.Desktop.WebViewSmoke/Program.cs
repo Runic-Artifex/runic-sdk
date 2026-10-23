@@ -60,6 +60,12 @@ try
         // Must run before the first await, as --zoom.
         MacOsWebContentSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--monitors", StringComparer.Ordinal))
+    {
+        // B12 on Windows and macOS. Must run before the first await, as --event-loop: on macOS the AppKit loop owns the
+        // main thread.
+        Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions() with { StandardMenuTitles = MonitorSmoke.GermanTitles }, MonitorSmoke.RunAsync);
+    }
     else if (args.Contains("--event-loop", StringComparer.Ordinal))
     {
         // Must run before the first await: on macOS the entry point picks the main-thread AppKit loop.

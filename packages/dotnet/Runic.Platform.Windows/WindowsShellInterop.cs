@@ -15,7 +15,48 @@ internal static unsafe partial class WindowsShellInterop
     // Callback events with NOTIFYICON_VERSION_4, in the low word of lParam.
     internal const uint NIN_SELECT = 0x400, NIN_KEYSELECT = 0x401;
     internal const uint TPM_RIGHTBUTTON = 0x2, TPM_LEFTALIGN = 0x0, TPM_RIGHTALIGN = 0x8, TPM_BOTTOMALIGN = 0x20,
-        TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100;
+        TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100, TPM_LAYOUTRTL = 0x8000;
+    // A right-to-left menu item: text read right to left (MFT_RIGHTORDER) and aligned to the right (MFT_RIGHTJUSTIFY).
+    internal const uint MIIM_FTYPE = 0x100, MFT_RIGHTORDER = 0x2000, MFT_RIGHTJUSTIFY = 0x4000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MENUITEMINFOW
+    {
+        internal uint cbSize;
+        internal uint fMask;
+        internal uint fType;
+        internal uint fState;
+        internal uint wID;
+        internal nint hSubMenu;
+        internal nint hbmpChecked;
+        internal nint hbmpUnchecked;
+        internal nuint dwItemData;
+        internal char* dwTypeData;
+        internal uint cch;
+        internal nint hbmpItem;
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMenuItemInfoW")]
+    internal static partial int GetMenuItemInfo(nint menu, uint item, int byPosition, MENUITEMINFOW* info);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetMenuItemInfoW")]
+    internal static partial int SetMenuItemInfo(nint menu, uint item, int byPosition, MENUITEMINFOW* info);
+
+    [LibraryImport("user32.dll")]
+    internal static partial int GetMenuItemCount(nint menu);
+
+    // Marks every item of a menu, not its submenus, right to left.
+    internal static void MarkRightToLeft(nint menu)
+    {
+        int count = GetMenuItemCount(menu);
+        for (uint position = 0; position < count; position++)
+        {
+            var info = new MENUITEMINFOW { cbSize = (uint)sizeof(MENUITEMINFOW), fMask = MIIM_FTYPE };
+            if (GetMenuItemInfo(menu, position, 1, &info) == 0) continue;
+            info.fType |= MFT_RIGHTORDER | MFT_RIGHTJUSTIFY;
+            _ = SetMenuItemInfo(menu, position, 1, &info);
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct NOTIFYICONDATAW

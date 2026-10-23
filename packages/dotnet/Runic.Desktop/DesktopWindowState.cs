@@ -1,6 +1,6 @@
 namespace Runic.Desktop;
 
-/// <summary>The size, position and maximized state to save for a window and restore the next time it opens.</summary>
+/// <summary>The size, position, maximized and full-screen state to save for a window and restore the next time it opens.</summary>
 /// <remarks>
 /// Take it from <see cref="DesktopWindowState.Placement"/> when the window closes, store it with the application's
 /// settings, and pass it back as <see cref="DesktopWindowOptions.Placement"/>. The values use the units that
@@ -27,6 +27,14 @@ public sealed record DesktopWindowPlacement
 
     /// <summary>Gets whether the window was maximized; it then opens maximized and restores to the other values.</summary>
     public bool Maximized { get; init; }
+
+    /// <summary>Gets whether the window was full-screen; it then opens full-screen on the monitor of the other values and leaves full screen to them.</summary>
+    /// <remarks>
+    /// Set while the window was full-screen when the placement was taken, not for a <see cref="DesktopWindowOptions.Kiosk"/>
+    /// window, which opens full-screen anyway. A placement saved by an earlier release has no such value and opens as
+    /// before. A window host without <see cref="DesktopWindowCapabilities.FullScreen"/> ignores it.
+    /// </remarks>
+    public bool FullScreen { get; init; }
 }
 
 /// <summary>The bounds and state of an embedded window, as <see cref="DesktopWindow.State"/> last reported them.</summary>
@@ -77,12 +85,22 @@ public sealed record DesktopWindowState
 
     /// <summary>Gets whether the window is full-screen.</summary>
     /// <remarks>
-    /// A <see cref="DesktopWindowOptions.Kiosk"/> window is full-screen, and on macOS and Linux the user can also make
-    /// a window full-screen. A placement does not restore full-screen; open with <see cref="DesktopWindowOptions.Kiosk"/> instead.
+    /// A <see cref="DesktopWindowOptions.Kiosk"/> window is full-screen, as is a window after
+    /// <see cref="DesktopWindow.SetFullScreenAsync"/>, and on macOS and Linux the user can also make a window full-screen.
+    /// <see cref="Placement"/> records it, so a window closed full-screen opens full-screen again.
     /// </remarks>
     public bool IsFullScreen { get; init; }
 
-    /// <summary>Gets what to save to restore the window: its bounds when last neither maximized nor full-screen, and whether it is maximized.</summary>
+    /// <summary>
+    /// Gets the <see cref="Runic.Platform.DesktopMonitor.Id"/> of the monitor that holds most of the window, or
+    /// <see langword="null"/> where the host does not report it.
+    /// </summary>
+    public string? MonitorId { get; init; }
+
+    /// <summary>
+    /// Gets what to save to restore the window: its bounds when last neither maximized nor full-screen, and whether it is
+    /// maximized or full-screen.
+    /// </summary>
     public DesktopWindowPlacement Placement { get; init; } = new();
 }
 

@@ -16,44 +16,55 @@ internal static class MacOsMainMenu
 
     internal static readonly Item Separator = new("", null);
 
+    // The English titles, which DesktopHostOptions.StandardMenuTitles replaces.
+    internal static readonly DesktopStandardMenuTitles English = new();
+
     // {0} is the application's name.
-    internal static readonly Item[] Application =
+    internal static readonly Item[] Application = ApplicationItems(English);
+
+    internal static Item[] ApplicationItems(DesktopStandardMenuTitles titles) =>
     [
-        new("About {0}", "orderFrontStandardAboutPanel:", "", 0),
+        new(titles.About, "orderFrontStandardAboutPanel:", "", 0),
         Separator,
-        new("Hide {0}", "hide:", "h"),
-        new("Hide Others", "hideOtherApplications:", "h", Command | Option),
-        new("Show All", "unhideAllApplications:", "", 0),
+        new(titles.Hide, "hide:", "h"),
+        new(titles.HideOthers, "hideOtherApplications:", "h", Command | Option),
+        new(titles.ShowAll, "unhideAllApplications:", "", 0),
         Separator,
         // Asks each window to close as its close button does, so close guards apply.
-        new("Quit {0}", QuitAction, "q", Command, OwnTarget: true),
+        new(titles.Quit, QuitAction, "q", Command, OwnTarget: true),
     ];
 
-    internal static readonly Item[] Edit =
+    internal static readonly Item[] Edit = EditItems(English);
+
+    internal static Item[] EditItems(DesktopStandardMenuTitles titles) =>
     [
-        new("Undo", "undo:", "z"),
-        new("Redo", "redo:", "z", Command | Shift),
+        new(titles.Undo, "undo:", "z"),
+        new(titles.Redo, "redo:", "z", Command | Shift),
         Separator,
-        new("Cut", "cut:", "x"),
-        new("Copy", "copy:", "c"),
-        new("Paste", "paste:", "v"),
-        new("Select All", "selectAll:", "a"),
+        new(titles.Cut, "cut:", "x"),
+        new(titles.Copy, "copy:", "c"),
+        new(titles.Paste, "paste:", "v"),
+        new(titles.SelectAll, "selectAll:", "a"),
     ];
 
     // The Cocoa template's File menu. Close sends performClose:, which asks the window's delegate as its close button does.
-    internal static readonly Item[] File =
+    internal static readonly Item[] File = FileItems(English);
+
+    internal static Item[] FileItems(DesktopStandardMenuTitles titles) =>
     [
-        new("Close", "performClose:", "w"),
+        new(titles.Close, "performClose:", "w"),
     ];
 
     internal static readonly string[] FileActions = ["performClose:"];
 
-    internal static readonly Item[] Window =
+    internal static readonly Item[] Window = WindowItems(English);
+
+    internal static Item[] WindowItems(DesktopStandardMenuTitles titles) =>
     [
-        new("Minimize", "performMiniaturize:", "m"),
-        new("Zoom", "performZoom:", "", 0),
+        new(titles.Minimize, "performMiniaturize:", "m"),
+        new(titles.Zoom, "performZoom:", "", 0),
         Separator,
-        new("Bring All to Front", "arrangeInFront:", "", 0),
+        new(titles.BringAllToFront, "arrangeInFront:", "", 0),
     ];
 
     internal const string QuitAction = "runicQuit:";

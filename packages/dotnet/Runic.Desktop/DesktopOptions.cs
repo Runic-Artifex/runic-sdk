@@ -148,6 +148,20 @@ public sealed record DesktopHostOptions
     /// </remarks>
     public IReadOnlyList<DesktopMenu> MenuBar { get; init; } = [];
 
+    /// <summary>
+    /// Gets the titles of the standard macOS menus and their items (application, File, Edit, View and Window), or
+    /// <see langword="null"/>, the default, for the English titles.
+    /// </summary>
+    /// <remarks>
+    /// Runic ships no translations: take the titles from the application's own, for example from its Runic Translations
+    /// catalog for the user's language, as for <see cref="MenuBar"/>. They apply when the first window opens and to
+    /// the menus Runic adds to an empty main menu; an application that builds its own main menu keeps its titles. Windows
+    /// and Linux show no standard menus. Building the host throws <see cref="ArgumentException"/> for an invalid title,
+    /// and <see cref="DesktopHost.Validate"/> reports it as <c>menu-title-invalid</c>; see
+    /// <see cref="DesktopStandardMenuTitles"/>.
+    /// </remarks>
+    public DesktopStandardMenuTitles? StandardMenuTitles { get; init; }
+
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 
@@ -398,6 +412,19 @@ public enum DesktopWindowCapabilities
 
     /// <summary>The window can show native context menus (<see cref="DesktopWindow.ShowContextMenuAsync"/>).</summary>
     ContextMenu = 1 << 12,
+
+    /// <summary>
+    /// The window can enter and leave full screen (<see cref="DesktopWindow.SetFullScreenAsync"/>), and opens full-screen
+    /// from a <see cref="DesktopWindowPlacement.FullScreen"/> placement.
+    /// </summary>
+    FullScreen = 1 << 13,
+
+    /// <summary>
+    /// The window can be placed on a chosen monitor: <see cref="DesktopWindow.MoveToMonitorAsync"/> and
+    /// <see cref="DesktopWindowOptions.Monitor"/>. Wayland lets no application position its windows, so GTK windows
+    /// there do not report it.
+    /// </summary>
+    MonitorPlacement = 1 << 14,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
@@ -561,6 +588,58 @@ public sealed record DesktopWindowOptions
     /// </remarks>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
+    /// <summary>
+    /// Gets the <see cref="Runic.Platform.DesktopMonitor.Id"/> of the monitor the embedded window opens on, centered on
+    /// its work area, or <see langword="null"/>, the default, to let the platform choose.
+    /// </summary>
+    /// <remarks>
+    /// Takes the place of <see cref="X"/>, <see cref="Y"/> and <see cref="Centered"/>. A <see cref="Placement"/> with a
+    /// position decides instead, so a restored window opens where it was. A monitor that is not connected leaves the
+    /// choice to the platform, and a window shrinks to fit the monitor's work area. Requires
+    /// <see cref="DesktopWindowCapabilities.MonitorPlacement"/>; on Wayland the GTK 4 window still opens a
+    /// <see cref="DesktopWindowPlacement.FullScreen"/> placement on this monitor. Installed browsers ignore it.
+    /// </remarks>
+    public string? Monitor { get; init; }
+
+    /// <summary>
+    /// Gets the direction of the embedded window's native parts: <see cref="Runic.Platform.DesktopLayoutDirection.Default"/>,
+    /// the default, keeps the platform's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Runic.Platform.DesktopLayoutDirection.RightToLeft"/> mirrors the Windows window: its title bar, caption
+    /// buttons and system menu (<c>WS_EX_LAYOUTRTL</c>); the WebView2 page keeps its own layout, which it sets with
+    /// <c>&lt;html dir="rtl"&gt;</c>. On Linux it sets the direction of the GTK window and of Runic's widgets in it. macOS
+    /// ignores it: AppKit lays windows out for the application bundle's localization.
+    /// </para>
+    /// <para>
+    /// Choose it with the application's language, for example
+    /// <c>LayoutDirection = culture.TextInfo.IsRightToLeft ? DesktopLayoutDirection.RightToLeft : DesktopLayoutDirection.LeftToRight</c>.
+    /// Installed browsers ignore it.
+    /// </para>
+    /// </remarks>
+    public Runic.Platform.DesktopLayoutDirection LayoutDirection { get; init; }
+
+    /// <summary>
+    /// Gets the BCP 47 language of the embedded web view's own text, such as <c>ar-EG</c>, or <see langword="null"/>, the
+    /// default, for the platform's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The language of the web view's built-in text, such as its context menu and form validation messages, its
+    /// <c>navigator.language</c> and the <c>Accept-Language</c> it sends: WebView2's environment language on Windows and
+    /// WebKitGTK's preferred languages on Linux. WebView2 takes the closest language it ships, such as <c>ar</c> for
+    /// <c>ar-EG</c>, for its own text and <c>navigator.language</c>. macOS ignores it: WKWebView uses the application's
+    /// preferred languages. A page still sets its own <c>lang</c>. Installed browsers ignore it.
+    /// </para>
+    /// <para>
+    /// WebView2 requires every window sharing a <see cref="ProfilePath"/> to use the same language, as for
+    /// <see cref="BrowserArguments"/>: a second window with another language fails to open. Windows without a profile
+    /// path get their own temporary profile.
+    /// </para>
+    /// </remarks>
+    public string? Language { get; init; }
+
     /// <summary>Gets additional command-line arguments for the browser or WebView2 runtime.</summary>
     /// <remarks>
     /// The string is split like a command line and appended to the launch arguments. When set, installed browsers
@@ -584,6 +663,8 @@ public sealed record DesktopWindowOptions
             X = hasPosition ? placement.X : null,
             Y = hasPosition ? placement.Y : null,
             Centered = false,
+            // A restored position decides where the window opens.
+            Monitor = hasPosition ? null : Monitor,
         };
     }
 }

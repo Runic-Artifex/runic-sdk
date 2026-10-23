@@ -342,7 +342,7 @@ settings.MainWindowPlacement = window.State?.Placement;
 ```
 
 `DesktopWindowState.Placement` holds the window's bounds when it was last
-neither maximized nor full-screen, and whether it is maximized. It is a plain
+neither maximized nor full-screen, and whether it is maximized or full-screen. It is a plain
 record that `System.Text.Json` serializes as is. `DesktopWindowOptions.Placement`
 replaces `Width`, `Height`, `X`, `Y` and `Centered`, keeps the window on a
 monitor that exists now, and opens it maximized when the placement was. When the
@@ -353,8 +353,50 @@ overlaps most, or else to the nearest one, and shrinks to fit it. A window that
 spanned two monitors moves onto the one that held most of it. A placement
 without a position keeps the platform's position and is only shrunk. A damaged
 placement never fails the open: a size of zero or less keeps `Width` and
-`Height`, a lone coordinate is ignored and a size above 65535 is reduced. Full-screen is
-reported but not restored; open with `Kiosk` for that.
+`Height`, a lone coordinate is ignored and a size above 65535 is reduced.
+
+A window closed full-screen opens full-screen again: `Placement.FullScreen` is
+set while it is full-screen, and the window opens with the saved bounds, fitted
+as above, then enters full screen on that monitor and leaves it to those bounds.
+A placement saved by Runic 0.10 has no such value and opens as before. A `Kiosk`
+window opens full-screen anyway and does not record it. Windows without
+`DesktopWindowCapabilities.FullScreen` ignore it, and `Validate` reports it for
+an installed browser.
+
+### Monitors and full screen
+
+`DesktopHost.Monitors` lists the desktop's monitors and follows changes; a
+ViewModel takes `IDesktopMonitors`, or `IWindowPlatformServices.Monitors`, from
+`AddRunicPlatformServices`. Each `DesktopMonitor` has an opaque `Id` that stays
+the same across restarts where the operating system has one (the display's
+device path on Windows, its display UUID on macOS), a `DisplayName`, its
+`Bounds` and `WorkArea` in the units of the table below, so a work area can be
+passed to `MoveAsync` as it is, its `Scale` and whether it `IsPrimary`. The
+primary monitor comes first.
+
+```csharp
+await foreach (var result in host.Monitors.WatchAsync(cancellationToken))
+{
+    if (result is PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var monitors })
+        ShowMonitorPicker(monitors); // the whole list, first now and again after each change
+}
+```
+
+`DesktopWindowOptions.Monitor` opens a window centered on a monitor's work
+area; a placement with a position decides instead, so a restored window opens
+where it was. `DesktopWindow.MoveToMonitorAsync` moves an open window there,
+and `DesktopWindowState.MonitorId` reports the monitor that holds most of it.
+`DesktopWindow.SetFullScreenAsync` enters and leaves full screen; a `Kiosk`
+window stays full-screen. These need `DesktopWindowCapabilities.MonitorPlacement`
+and `DesktopWindowCapabilities.FullScreen`:
+
+| Presentation | Monitors | `MonitorPlacement` | `FullScreen` |
+| --- | --- | --- | --- |
+| Windows WebView2 | Yes, without a window too (WPF) | Yes | Yes: the frame goes and the window covers its monitor |
+| macOS WKWebView | Yes, while `DesktopEventLoop` runs | Yes; a full-screen window moves when it leaves full screen | Yes: its own full-screen space |
+| Linux GTK 3 and GTK 4 | No | No | No; the user can make the window full-screen |
+| Installed browser | Yes (the host's) | No | No |
+| Custom `IDesktopWindowHostFactory` | `IDesktopWindowHostFactory.Monitors` | When its host implements `IDesktopPlacementWindowHost` | Same |
 
 The values use the units `MoveAsync` and `ResizeAsync` take on each platform,
 so a placement belongs to the machine and operating system that saved it.
@@ -363,13 +405,13 @@ same place or size.
 
 | Presentation | Bounds | Maximized | Full-screen | Restore fitted to |
 | --- | --- | --- | --- | --- |
-| Windows WebView2 | Position in physical virtual-screen pixels, outer frame size in device-independent pixels at the window's monitor scale | Yes | `Kiosk` only | The monitor work areas, at the target monitor's scale |
+| Windows WebView2 | Position in physical virtual-screen pixels, outer frame size in device-independent pixels at the window's monitor scale | Yes | Yes | The monitor work areas, at the target monitor's scale |
 | macOS WKWebView | AppKit points: the frame's bottom-left corner, measured up from the main screen's bottom, and the content size | Yes (zoomed) | Yes | The screens' visible frames (without the menu bar and Dock), title bar included |
 | Linux GTK 3 (X11) | Logical pixels: the frame's top-left corner and the content size | Yes | Yes | The GDK monitor work areas |
 | Linux GTK 3 (Wayland) | Content size only; the position is `null` | Yes | Yes | The largest monitor's work area, size only |
 | Linux GTK 4 (X11) | Logical pixels: the visible frame's top-left corner and the content size | Yes | Yes | The monitor work areas; see [Runic.Desktop.Gtk4](../Runic.Desktop.Gtk4/README.md) |
 | Linux GTK 4 (Wayland) | Content size only; the position is `null` | Yes | Yes | The largest monitor, size only |
-| Installed browser | None (`State` is `null`) | No | No | Not fitted: the saved size and position open as `Width`, `Height`, `X` and `Y`; `Validate` reports the ignored maximized state |
+| Installed browser | None (`State` is `null`) | No | No | Not fitted: the saved size and position open as `Width`, `Height`, `X` and `Y`; `Validate` reports the ignored maximized and full-screen state |
 | Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowStateHost` | Host-defined | Host-defined | Host-defined, from `DesktopWindowHostOptions.Placement` |
 
 Without a window manager, as under Xvfb, X11 has nobody to maximize a window
@@ -414,8 +456,9 @@ manager.LocaleChanged += (_, _) => host.SetMenuBar(MenuBar(text, wordWrap));
 `text` and `manager` are the application's Runic Translations catalog and
 manager (`AppText`, `ITranslationManager`). `DesktopHost.SetMenuBar` replaces
 the application's menus at run time, so the bar follows a language change
-without a restart; the standard menus keep their English titles in this
-release. A menu's `Role` places it: `Application` adds its items after About,
+without a restart. The standard macOS menus take their titles from
+`DesktopHostOptions.StandardMenuTitles` (see [Keyboard and zoom in embedded
+windows](#keyboard-and-zoom-in-embedded-windows)) when the first window opens. A menu's `Role` places it: `Application` adds its items after About,
 `File` fills the File menu before Close and gives it its title, `Help` goes
 last, and others go between View and Window. Titles are literal text of at
 most 128 characters, and command ids have 1 to 64 ASCII letters, digits, dots,
@@ -787,8 +830,34 @@ languages with WKWebView. GTK 4 mirrors its header bar for a process locale
 whose script is right to left; GTK 3 does so only when its translation for the
 locale is installed. An application whose UI language differs from the process
 locale can set GTK 4's direction with `Gtk.Widget.SetDefaultDirection` on the
-GTK thread, for example through `GLib.Functions.IdleAdd`. On Windows the window frame is not mirrored
-([#389](https://github.com/Runic-Artifex/runic-sdk/issues/389)). The
+GTK thread, for example through `GLib.Functions.IdleAdd`.
+
+Two window options opt in to more, and change nothing unless set:
+
+- `DesktopWindowOptions.LayoutDirection = DesktopLayoutDirection.RightToLeft`
+  mirrors the Windows frame, its caption buttons and system menu
+  (`WS_EX_LAYOUTRTL`, [#389](https://github.com/Runic-Artifex/runic-sdk/issues/389)).
+  The WebView2 page is not mirrored: it renders and takes input as in a
+  left-to-right window and sets its own `dir`. A status icon's menu mirrors with
+  `DesktopStatusIconState.LayoutDirection`. macOS ignores the option: AppKit lays
+  windows out for the bundle's localization.
+- `DesktopWindowOptions.Language`, a BCP 47 tag such as `ar-EG`, sets WebView2's
+  language: its built-in text, `navigator.language` and `Accept-Language`;
+  WebView2 takes the closest language it ships, such as `ar` for `ar-EG`.
+  Windows sharing a `ProfilePath` must use the same language, as for
+  `BrowserArguments`. WKWebView ignores it and uses the application's preferred
+  languages.
+
+```csharp
+var culture = CultureInfo.CurrentUICulture;
+var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    LayoutDirection = culture.TextInfo.IsRightToLeft ? DesktopLayoutDirection.RightToLeft : DesktopLayoutDirection.LeftToRight,
+    Language = culture.Name,
+});
+```
+
+`Validate` reports each option a presentation ignores. The
 [right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)
 lists every native piece per platform.
 
@@ -890,7 +959,29 @@ completes AppKit's empty default menu instead of adding a second one:
   and paste as in Safari;
 - Window: Minimize (Command and M), Zoom and Bring All to Front.
 
-The menu titles are English. CI checks Command and A, C and V between two text
+The titles are English unless `DesktopHostOptions.StandardMenuTitles` supplies
+them. Runic ships no translations: take them from the application's own, such
+as its Runic Translations catalog, for the user's language when the host starts.
+`{0}` in About, Hide and Quit is the application's name, and a translation can
+move or drop it. Every title has 1 to 256 characters; an invalid one fails
+building the host, and `Validate` reports it as `menu-title-invalid`:
+
+```csharp
+var host = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    StandardMenuTitles = new DesktopStandardMenuTitles
+    {
+        About = text.MenuAbout,       // "Über {0}"
+        Quit = text.MenuQuit,         // "{0} beenden"
+        Edit = text.MenuEdit,         // "Bearbeiten"
+        Copy = text.MenuCopy,         // "Kopieren"
+        // … every title the catalog has; the rest stay English.
+    },
+});
+```
+
+Menus keep being found by their identifiers and actions, not their titles, so a
+declared File menu still takes the place of the standard one. CI checks Command and A, C and V between two text
 fields, and Command and Q through a close guard, on the macOS runner. On macOS, Tab reaches
 buttons and links only with Keyboard Navigation turned on in the system settings,
 as in Safari.

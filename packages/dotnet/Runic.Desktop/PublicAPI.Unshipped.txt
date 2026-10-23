@@ -31,3 +31,83 @@ Runic.Desktop.IDesktopMenuWindowHost.SetMenuBarAsync(System.Collections.Generic.
 Runic.Desktop.IDesktopMenuWindowHost.ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> items, Runic.Platform.DesktopContextMenuOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.DesktopMenuItem?>
 Runic.Desktop.LinuxDesktopOptions.GlobalMenu.get -> bool
 Runic.Desktop.LinuxDesktopOptions.GlobalMenu.init -> void
+Runic.Desktop.DesktopHost.Monitors.get -> Runic.Platform.IDesktopMonitors!
+Runic.Desktop.DesktopHostOptions.StandardMenuTitles.get -> Runic.Desktop.DesktopStandardMenuTitles?
+Runic.Desktop.DesktopHostOptions.StandardMenuTitles.init -> void
+Runic.Desktop.DesktopStandardMenuTitles
+Runic.Desktop.DesktopStandardMenuTitles.<Clone>$() -> Runic.Desktop.DesktopStandardMenuTitles!
+Runic.Desktop.DesktopStandardMenuTitles.About.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.About.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.ActualSize.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.ActualSize.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.BringAllToFront.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.BringAllToFront.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Close.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Close.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Copy.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Copy.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Cut.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Cut.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.DesktopStandardMenuTitles() -> void
+Runic.Desktop.DesktopStandardMenuTitles.Edit.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Edit.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Equals(Runic.Desktop.DesktopStandardMenuTitles? other) -> bool
+Runic.Desktop.DesktopStandardMenuTitles.File.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.File.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Hide.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Hide.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.HideOthers.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.HideOthers.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Minimize.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Minimize.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Paste.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Paste.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Quit.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Quit.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Redo.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Redo.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.SelectAll.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.SelectAll.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.ShowAll.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.ShowAll.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Undo.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Undo.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.View.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.View.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Window.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Window.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.Zoom.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.Zoom.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.ZoomIn.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.ZoomIn.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.ZoomOut.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.ZoomOut.init -> void
+Runic.Desktop.DesktopWindow.MoveToMonitorAsync(string! monitorId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.SetFullScreenAsync(bool fullScreen, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowCapabilities.FullScreen = 8192 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowCapabilities.MonitorPlacement = 16384 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowHostOptions.Language.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.Language.init -> void
+Runic.Desktop.DesktopWindowHostOptions.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
+Runic.Desktop.DesktopWindowHostOptions.LayoutDirection.init -> void
+Runic.Desktop.DesktopWindowHostOptions.Monitor.get -> string?
+Runic.Desktop.DesktopWindowHostOptions.Monitor.init -> void
+Runic.Desktop.DesktopWindowOptions.Language.get -> string?
+Runic.Desktop.DesktopWindowOptions.Language.init -> void
+Runic.Desktop.DesktopWindowOptions.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
+Runic.Desktop.DesktopWindowOptions.LayoutDirection.init -> void
+Runic.Desktop.DesktopWindowOptions.Monitor.get -> string?
+Runic.Desktop.DesktopWindowOptions.Monitor.init -> void
+Runic.Desktop.DesktopWindowPlacement.FullScreen.get -> bool
+Runic.Desktop.DesktopWindowPlacement.FullScreen.init -> void
+Runic.Desktop.DesktopWindowState.MonitorId.get -> string?
+Runic.Desktop.DesktopWindowState.MonitorId.init -> void
+Runic.Desktop.IDesktopPlacementWindowHost
+Runic.Desktop.IDesktopPlacementWindowHost.MoveToMonitorAsync(string! monitorId, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopPlacementWindowHost.SetFullScreenAsync(bool fullScreen, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHostFactory.Monitors.get -> Runic.Platform.IDesktopMonitors!
+override Runic.Desktop.DesktopStandardMenuTitles.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopStandardMenuTitles.GetHashCode() -> int
+override Runic.Desktop.DesktopStandardMenuTitles.ToString() -> string!
+static Runic.Desktop.DesktopStandardMenuTitles.operator !=(Runic.Desktop.DesktopStandardMenuTitles? left, Runic.Desktop.DesktopStandardMenuTitles? right) -> bool
+static Runic.Desktop.DesktopStandardMenuTitles.operator ==(Runic.Desktop.DesktopStandardMenuTitles? left, Runic.Desktop.DesktopStandardMenuTitles? right) -> bool

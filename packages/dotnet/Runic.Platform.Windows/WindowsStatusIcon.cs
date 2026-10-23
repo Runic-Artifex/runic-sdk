@@ -327,7 +327,8 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
         {
             var menu = _menu;
             if (_state is null || menu.IsEmpty || _tracking) return;
-            var handle = CreateMenu(menu.Entries);
+            bool rightToLeft = _state.LayoutDirection == DesktopLayoutDirection.RightToLeft;
+            var handle = CreateMenu(menu.Entries, rightToLeft);
             _tracking = true;
             try
             {
@@ -335,7 +336,9 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
                 // Without the foreground the menu does not close when the user clicks elsewhere.
                 PInvoke.SetForegroundWindow(window);
                 uint flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN
-                    | (PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_MENUDROPALIGNMENT) != 0 ? TPM_RIGHTALIGN : TPM_LEFTALIGN);
+                    | (PInvoke.GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_MENUDROPALIGNMENT) != 0 ? TPM_RIGHTALIGN : TPM_LEFTALIGN)
+                    // Mirrors the menu: submenus open to the left and check marks sit on the right.
+                    | (rightToLeft ? TPM_LAYOUTRTL : 0);
                 int chosen = PInvoke.TrackPopupMenuEx(handle, flags, x, y, window, null).Value;
                 // Lets the menu's foreground switch finish before the next one (KB135788).
                 PInvoke.PostMessage(window, PInvoke.WM_NULL, default, default);
@@ -352,7 +355,7 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
     }
 
     // DestroyMenu on the top menu destroys its submenus.
-    internal static unsafe HMENU CreateMenu(ImmutableArray<Model.Entry> entries)
+    internal static unsafe HMENU CreateMenu(ImmutableArray<Model.Entry> entries, bool rightToLeft = false)
     {
         var menu = PInvoke.CreatePopupMenu();
         if (menu == default) throw new InvalidOperationException("The status icon menu could not be created.");
@@ -369,7 +372,7 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
                         Append(menu, flags, command.Id, command.Label);
                         break;
                     case Model.Submenu submenu:
-                        var child = CreateMenu(submenu.Entries);
+                        var child = CreateMenu(submenu.Entries, rightToLeft);
                         var submenuFlags = MENU_ITEM_FLAGS.MF_POPUP | MENU_ITEM_FLAGS.MF_STRING;
                         if (!submenu.Enabled) submenuFlags |= MENU_ITEM_FLAGS.MF_GRAYED;
                         if (!Append(menu, submenuFlags, (nuint)(nint)child.Value, submenu.Label)) PInvoke.DestroyMenu(child);
@@ -379,6 +382,7 @@ internal sealed class WindowsStatusIcon : IDesktopStatusIcon
                         break;
                 }
             }
+            if (rightToLeft) MarkRightToLeft((nint)menu.Value);
             return menu;
         }
         catch { PInvoke.DestroyMenu(menu); throw; }

@@ -107,15 +107,28 @@ reported. Unsupported capabilities return `unavailable`; they must not appear
 to succeed.
 
 A window that reports its state exposes its current bounds, whether it is
-maximized or full-screen, and a restorable placement: its bounds when last
-neither maximized nor full-screen, and whether it is maximized. The last state
+maximized or full-screen, the monitor that holds most of it where the host
+knows, and a restorable placement: its bounds when last neither maximized nor
+full-screen, and whether it is maximized or full-screen (a kiosk window does not
+record full screen). The last state
 stays readable after the window closes. Bounds use the units the window's own
 move and resize operations take, so a placement is specific to the platform and
 machine that produced it; a platform that cannot report a position reports
 none rather than a guess. Opening with a saved placement must leave the window
 inside the work area of a monitor that exists at that time: the work area the
 saved bounds overlap most, or the nearest one, with the window shrunk to fit.
-A saved placement never makes opening fail.
+A saved placement never makes opening fail. A placement saved full-screen opens
+full-screen on the monitor of its fitted bounds, where the window can enter
+full screen, and leaves full screen to those bounds.
+
+A host lists its monitors in the units of its windows' bounds, so a monitor's
+work area moves a window onto it as is, and identifies each with an opaque
+identifier that is stable where the platform has a stable one. Watching
+monitors reports the current list first and the whole list after each change;
+a failed read ends the watch with its result. Placing a window on a monitor
+centers it on that monitor's work area, shrunk to fit; an identifier of a
+monitor that is not connected is a caller error, except when opening, where the
+platform chooses instead.
 
 A window that reports file drops delivers each drop of files with absolute
 local paths taken from the platform's drag and drop, never from page content,

@@ -91,6 +91,9 @@ public sealed partial class RunicWebView : HwndHost
     {
         public bool IsSupported => WindowsWebView2Host.IsSupported;
         public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop;
+
+        // The monitors of Windows, in the WebView2 window's units (physical pixels).
+        public Runic.Platform.IDesktopMonitors Monitors => Runic.Desktop.Internal.WindowsMonitors.Shared;
         public IDesktopWindowHost Create() => new PresentationHost(view);
         public IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) =>
             WpfPresentationOptions.Validate(options);
@@ -133,6 +136,7 @@ public sealed partial class RunicWebView : HwndHost
                 {
                     ProfilePath = options.ProfilePath,
                     BrowserArguments = options.BrowserArguments,
+                    Language = options.Language,
                 });
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);

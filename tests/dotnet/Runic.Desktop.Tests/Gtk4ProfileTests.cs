@@ -294,16 +294,18 @@ public sealed class Gtk4ProfileTests
         const DesktopWindowCapabilities known = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
             DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
             DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
+        const DesktopWindowCapabilities placement = DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
         if (OperatingSystem.IsWindows())
-            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop, advertised);
+            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | placement, advertised);
         else if (OperatingSystem.IsMacOS())
-            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu, advertised);
+            Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement,
+                advertised);
         else if (OperatingSystem.IsLinux())
             Assert.Equal(known, advertised);
         // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
             known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-            DesktopWindowCapabilities.ContextMenu);
+            DesktopWindowCapabilities.ContextMenu | placement);
     }
 
     [Test]
