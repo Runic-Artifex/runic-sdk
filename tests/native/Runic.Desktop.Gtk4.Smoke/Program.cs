@@ -51,6 +51,10 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
     return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe));
 }
 
+// --menus gtk3|gtk4 [--rtl] (B10): the in-window menu bar, its shortcuts and context menus.
+if (Array.IndexOf(args, "--menus") is var menus and >= 0)
+    return MenuSmoke.Run(menus + 1 < args.Length ? args[menus + 1] : "gtk4", args.Contains("--rtl", StringComparer.Ordinal));
+
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)

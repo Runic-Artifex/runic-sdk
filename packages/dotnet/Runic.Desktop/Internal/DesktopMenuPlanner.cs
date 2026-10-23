@@ -60,7 +60,7 @@ internal sealed record PlannedShortcut(
 
 // Plans a declared menu bar or context menu for a renderer: the platform's menu order, stable keys, access keys and
 // escaping, and each shortcut's native forms. Pure, so every renderer (Win32, GTK 3, GTK 4, dbusmenu and the in-page
-// state) shares one result and the rules are tested on every platform.
+// state) shares one result and the rules are tested on every platform; self-contained, as Runic.Desktop.Gtk4 links it.
 internal static class DesktopMenuPlanner
 {
     internal static MenuPlatform CurrentPlatform =>
@@ -164,6 +164,22 @@ internal static class DesktopMenuPlanner
         return text.ToString();
     }
 
+    // The key equivalents of the standard menus Runic Desktop provides on macOS, with their items.
+    internal static readonly (DesktopShortcut Shortcut, string Item)[] ReservedMacOS =
+    [
+        (new("Z"), "Edit ▸ Undo"),
+        (new("Z", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Shift), "Edit ▸ Redo"),
+        (new("X"), "Edit ▸ Cut"),
+        (new("C"), "Edit ▸ Copy"),
+        (new("V"), "Edit ▸ Paste"),
+        (new("A"), "Edit ▸ Select All"),
+        (new("Q"), "Quit"),
+        (new("H"), "Hide"),
+        (new("H", DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Alt), "Hide Others"),
+        (new("W"), "File ▸ Close"),
+        (new("M"), "Window ▸ Minimize"),
+    ];
+
     // The editing and window shortcuts that Windows and Linux keep for the focused control and the window manager.
     internal static readonly (DesktopShortcut Shortcut, string Item)[] ReservedOther =
     [
@@ -189,7 +205,7 @@ internal static class DesktopMenuPlanner
     {
         if (shortcut.Key.Length == 0) return null;
         if (platform == MenuPlatform.MacOS)
-            return DesktopMenuBar.Reserved.FirstOrDefault(reserved => reserved.Shortcut == shortcut).Item;
+            return ReservedMacOS.FirstOrDefault(reserved => reserved.Shortcut == shortcut).Item;
         var normalized = Normalize(shortcut, platform);
         return ReservedOther.FirstOrDefault(reserved => reserved.Shortcut == normalized).Item;
     }

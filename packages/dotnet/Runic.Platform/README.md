@@ -307,8 +307,8 @@ either.
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
-| Menu bar commands, `IRunicMenuCommandSource` | The native menu bar (macOS), while the window is key, and `DesktopWindow.TryExecuteMenuItemAsync` | None | None |
-| Context menus, `IWindowPlatformServices.ShowContextMenuAsync` | The window's native menu where it has `DesktopWindowCapabilities.ContextMenu` (macOS); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Menu bar commands, `IRunicMenuCommandSource` | The native menu bar (macOS; the GTK 3 and GTK 4 windows' own bar), while the window is key, and `DesktopWindow.TryExecuteMenuItemAsync` | None | None |
+| Context menus, `IWindowPlatformServices.ShowContextMenuAsync` | The window's native menu where it has `DesktopWindowCapabilities.ContextMenu` (macOS, GTK 3, GTK 4); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a

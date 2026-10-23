@@ -44,7 +44,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     // Known before GTK loads; DesktopPlatform.GetAvailability advertises these. State and FileDrop need GTK symbols.
     internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
-        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
+        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
@@ -270,12 +271,15 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.GtkWidgetSetSizeRequest(_window, checked((int)minimumWidth), checked((int)minimumHeight));
         }
-        Api.GtkContainerAdd(_window, _webView);
+        // The Native menu bar goes above the view in a box (B10); other windows hold the view alone.
+        var menuBox = CreateMenuBox(options);
+        Api.GtkContainerAdd(_window, menuBox != 0 ? menuBox : _webView);
         // DesktopWindowOptions.LayoutDirection: the window and its widgets; the page keeps its own dir.
         if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
         {
             var direction = options.LayoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? 2 : 1;
             Api.GtkWidgetSetDirection(_window, direction);
+            if (menuBox != 0) Api.GtkWidgetSetDirection(menuBox, direction);
             Api.GtkWidgetSetDirection(_webView, direction);
         }
         Api.GtkWindowSetDecorated(_window, !options.Frameless && !options.Kiosk);
@@ -324,6 +328,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // own only for keys the page did not handle. The keyboard script reports
         // Control and the wheel, which WebKit would otherwise scroll with.
         Api.Connect(_webView, "key-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnUnhandledKeyPress, this, after: true);
+        ConnectMenuEvents();
         Api.Connect(contentManager, "script-message-received::" + WebKitGtkKeyboard.ZoomMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnZoomMessage, this);
         if ((options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0)
         {
@@ -461,6 +466,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // WebKitGTK's GTK 3 backend can drop its internal key-binding widget before the
         // container's disposal enumerates children. Destroy children while the
         // WebView still exposes them, so GTK releases their native resources.
+        ReleaseMenus();
         Api.DestroyWebViewChildren(_webView);
         if (_downloadContext != 0)
         {
@@ -540,14 +546,25 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int OnUnhandledKeyPress(nint webView, nint keyEvent, nint context)
     {
-        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost)
+        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost host)
         {
             return 0;
         }
         var command = Api.GetZoomCommand(keyEvent);
         if (command == PageZoomCommand.None)
         {
-            return 0;
+            // The menu bar's shortcuts (B10), for every presentation.
+            try
+            {
+                var (keyval, state, keycode) = Api.ReadKey(keyEvent);
+                Span<uint> alternates = stackalloc uint[8];
+                return host.TryRunShortcut(keyval, state, alternates[..Api.KeycodeKeyvals(keycode, alternates)]) ? 1 : 0;
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+                return 0;
+            }
         }
         Api.SetZoomLevel(webView, WebKitGtkKeyboard.Apply(command, Api.GetZoomLevel(webView)));
         return 1;
@@ -1938,6 +1955,42 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         // The produced symbol first; when it is no zoom key, the unshifted and shifted
         // symbols of the same physical key in the event's layout group.
+        internal (uint Keyval, uint State, ushort Keycode) ReadKey(nint keyEvent)
+        {
+            var key = (GdkEventKey*)keyEvent;
+            return (key->Keyval, key->State, key->HardwareKeycode);
+        }
+
+        // The keyvals of a physical key on the first two levels of every layout group, so a shortcut declared with a
+        // Latin letter also matches while a non-Latin layout is active.
+        internal int KeycodeKeyvals(ushort keycode, Span<uint> keyvals)
+        {
+            var keymap = ((delegate* unmanaged[Cdecl]<nint, nint>)GdkKeymapGetForDisplayPointer)(
+                ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)());
+            GdkKeymapKey* entries = null;
+            uint* values = null;
+            var count = 0;
+            if (keymap == 0 || ((delegate* unmanaged[Cdecl]<nint, uint, GdkKeymapKey**, uint**, int*, int>)GdkKeymapGetEntriesForKeycodePointer)(
+                keymap, keycode, &entries, &values, &count) == 0)
+            {
+                return 0;
+            }
+            try
+            {
+                var found = 0;
+                for (var index = 0; index < count && found < keyvals.Length; index++)
+                {
+                    if (entries[index].Level is 0 or 1) keyvals[found++] = values[index];
+                }
+                return found;
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<void*, void>)GFreePointer)(entries);
+                ((delegate* unmanaged[Cdecl]<void*, void>)GFreePointer)(values);
+            }
+        }
+
         internal PageZoomCommand GetZoomCommand(nint keyEvent)
         {
             var key = (GdkEventKey*)keyEvent;

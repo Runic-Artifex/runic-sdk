@@ -528,8 +528,9 @@ returns `false` when nothing ran, and works for installed browsers too, so an
 application without Runic Windows can render `DesktopHost.MenuBar` in its page,
 follow `DesktopHost.MenuBarChanged`, and run the chosen items.
 
-This release shows the native bar on macOS. The Windows and GTK embedded windows
-do not show it yet: for a declared bar with `Native` they, an installed browser
+This release shows the native bar on macOS and in the GTK 3 and GTK 4 windows
+(below). The Windows embedded window does not show it yet: for a declared bar
+with `Native` it, an installed browser
 and a window host without `DesktopWindowCapabilities.MenuBar` make
 `DesktopHost.Validate` report `menu-bar-unsupported`, and `Page` or `None`
 avoid it. Windows and Linux bars will have no standard Edit, View or Window
@@ -539,6 +540,29 @@ Runic Desktop calls `SetMenuBarAsync` after the window opens and after every
 `SetMenuBar`, passes `DesktopWindowHostOptions.MenuBarPresentation`, and sets
 `MenuCommands` to the command path above. A failed `SetMenuBarAsync` is
 reported as the window's `menu-bar-failed` diagnostic (event 3010).
+
+### Linux: GTK 3 and GTK 4
+
+A GTK 3 or GTK 4 window with the `Native` presentation shows the bar in the
+window, above the page: a `GtkMenuBar` (GTK 3) or a `GtkPopoverMenuBar` built
+from a `GMenu` (GTK 4), with `MenuBarPlacement` `Window`. Frameless and kiosk
+windows show no bar in the window (placement `None`); `Page` reports `Page`.
+File comes first and Help last, the other menus, including an `Application`
+menu shown with its title, in declaration order. `AccessKey` is underlined,
+and Alt with it opens the menu as in other GTK applications; a title without
+the letter gets it in parentheses, `Title (K)`, and a literal `_` stays one.
+An item shows its shortcut in GTK's own text (`Shift+Ctrl+S`), without
+registering it with GTK: the window answers it only after the page has left the
+key alone, for every presentation. Check and radio items show the declared
+state; a click runs the command, and the bar keeps showing the declaration
+until `SetMenuBar` changes it. A radio group with exactly one checked item is a
+GTK radio group; one with none or several checked is shown with check items
+drawn as radio items. Each menu asks `CanExecute` when it opens. GTK 3 and GTK 4
+also show context menus: a `GtkMenu` (GTK 3), opened with the last button or
+key press on the page as its trigger event, or a `GtkPopoverMenu` (GTK 4)
+pointing at the page point or the last pointer position. `LayoutDirection`
+mirrors both. The desktop's global menu (KDE Plasma) comes in a later release;
+the in-window bar stays its fallback.
 
 ### Context menus
 
@@ -554,7 +578,7 @@ place it in CSS pixels of the page's viewport, the event's `clientX` and
 ordinary command, such as `showRowMenu(key, x, y)` from its `contextmenu`
 handler, after calling `preventDefault()`; ViewModels use
 `IWindowPlatformServices.ShowContextMenuAsync`. The macOS window shows an
-AppKit menu over the web view; the web view keeps its own context menu where
+AppKit menu over the web view, GTK 3 and GTK 4 the menus above; the web view keeps its own context menu where
 the page does not handle `contextmenu`. Global shortcuts are planned for later
 releases.
 
