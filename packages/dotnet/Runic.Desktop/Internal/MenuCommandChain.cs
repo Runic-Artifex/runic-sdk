@@ -19,11 +19,22 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
         set => Volatile.Write(ref _window, value);
     }
 
-    public bool CanExecute(DesktopMenuItem item) => CanExecute(item, Window, application(), logger);
+    private volatile bool _shortcutsSuspended;
 
-    public void Execute(DesktopMenuItem item) => _ = TryExecute(item, Window, application(), logger);
+    // An in-page menu bar that matches its shortcuts itself (the page's shortcuts: "app" lease) suspends the host's
+    // own path: the host's bar, its shortcuts and a global menu then run nothing. Only a window whose bar is in the page
+    // is suspended, so the host shows no bar of its own; TryExecuteMenuItemAsync keeps working.
+    internal bool ShortcutsSuspended
+    {
+        get => _shortcutsSuspended;
+        set => _shortcutsSuspended = value;
+    }
 
-    internal bool TryExecute(DesktopMenuItem item) => TryExecute(item, Window, application(), logger);
+    public bool CanExecute(DesktopMenuItem item) => !_shortcutsSuspended && CanExecute(item, Window, application(), logger);
+
+    public void Execute(DesktopMenuItem item) => _ = TryExecute(item);
+
+    internal bool TryExecute(DesktopMenuItem item) => !_shortcutsSuspended && TryExecute(item, Window, application(), logger);
 
     internal static bool CanExecute(DesktopMenuItem item, IDesktopMenuCommandTarget? window, IDesktopMenuCommandTarget? application,
         ILogger? logger)

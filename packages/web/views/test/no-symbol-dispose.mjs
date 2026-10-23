@@ -23,6 +23,7 @@ const controllers = [
   views.createOperationController(async () => undefined),
   views.createLatestOperationController(),
   views.createCollectionViewportController({ totalCount: 1, rowHeight: 1 }),
+  views.createMenuBarController({ signal: AbortSignal.abort() }),
 ];
 for (const value of controllers) {
   assert.deepEqual(Object.getOwnPropertySymbols(value), []);

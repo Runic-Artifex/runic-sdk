@@ -197,7 +197,12 @@ The same Window and `async host => ...` body run on CS-WebUI with
   runs its own while the Window is key (see
   [Menu bar commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#menu-bar-commands)).
   Declare the menus in `DesktopHostOptions.MenuBar`; macOS and the GTK 3 and GTK 4
-  windows show them. Each
+  windows show them. With `MenuBarPresentation = DesktopMenuBarPresentation.Page`
+  in `WindowOptions` the page renders the bar with its own components through
+  `createMenuBarController` in `@runic-artifex/views`; every Window serves its
+  routes (see
+  [In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#in-page-menu-bar)),
+  and a page's invoke runs through `DesktopWindow.TryExecuteMenuItemAsync`. Each
   item's `CommandParameter` is the command's parameter. A ViewModel that takes
   `IWindowPlatformServices` shows a native context menu with
   `ShowContextMenuAsync`, which `DesktopWindowPlatformServices` implements for the

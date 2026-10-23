@@ -581,6 +581,8 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public bool SupportsDispatch { get; init; } = true;
     public bool Announces { get; init; }
     public bool ContextMenus { get; init; }
+    // Where an open window reports its menu bar; a placement other than None also reports DesktopWindowCapabilities.MenuBar.
+    public DesktopMenuBarPlacement MenuBarPlacement { get; init; }
     // A window host that reports its state, from this state at open, or none when it is null.
     public DesktopWindowState? InitialState { get; init; }
     public bool IsSupported => true;
@@ -589,6 +591,7 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
         var host = new NativeDispatchHost
         {
             SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
+            Placement = MenuBarPlacement,
         };
         Hosts.Add(host);
         return host;
@@ -601,7 +604,8 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
     // Context menus choose their first item.
     public bool ContextMenus { get; init; }
     public IDesktopMenuCommandTarget? MenuCommands { get; set; }
-    public DesktopMenuBarPlacement MenuBarPlacement => DesktopMenuBarPlacement.None;
+    public DesktopMenuBarPlacement Placement { get; init; }
+    public DesktopMenuBarPlacement MenuBarPlacement => _open ? Placement : DesktopMenuBarPlacement.None;
     public event EventHandler? MenuBarPlacementChanged { add { } remove { } }
     public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask<DesktopMenuItem?> ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items,
@@ -631,6 +635,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) |
         (ContextMenus ? DesktopWindowCapabilities.ContextMenu : DesktopWindowCapabilities.None) |
+        (Placement != DesktopMenuBarPlacement.None ? DesktopWindowCapabilities.MenuBar : DesktopWindowCapabilities.None) |
         (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State);
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)

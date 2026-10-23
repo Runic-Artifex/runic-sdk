@@ -116,17 +116,19 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     }
 
     // The root ViewModel runs the menu bar's commands while this window is key.
-    internal void SetMenuCommands(MenuCommandBinding menu)
+    // False when the window is already closing, which disposed the binding.
+    internal bool SetMenuCommands(MenuCommandBinding menu)
     {
         lock (_closeGate)
         {
             if (_close is not null || _presentation is not { } presentation)
             {
                 menu.Dispose();
-                return;
+                return false;
             }
             _menu = menu;
             presentation.MenuCommands = menu;
+            return true;
         }
     }
 

@@ -610,7 +610,10 @@ the Windows window and in GTK 3 and GTK 4 windows. A
 Window whose `DesktopWindowOptions.MenuBarPresentation` is `Page` renders the
 bar in its page instead and runs its items through
 `DesktopWindow.TryExecuteMenuItemAsync`, which uses the same commands; see
-[the Desktop guide](../Runic.Desktop/README.md#where-the-bar-is-shown). On
+[the Desktop guide](../Runic.Desktop/README.md#where-the-bar-is-shown). A Runic
+Window's page does this with `createMenuBarController` from
+`@runic-artifex/views` and its own menubar component; see
+[In-page menu bar](../../web/views/README.md#in-page-menu-bar). On
 CS-WebUI, render menus in the page, bound to the same commands.
 
 A ViewModel shows a context menu with

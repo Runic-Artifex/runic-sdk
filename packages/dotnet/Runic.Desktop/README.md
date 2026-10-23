@@ -526,7 +526,12 @@ as KDE Plasma's; `false` keeps it in the window.
 `CanExecute` before `Execute`, on the window's UI thread where it has one. It
 returns `false` when nothing ran, and works for installed browsers too, so an
 application without Runic Windows can render `DesktopHost.MenuBar` in its page,
-follow `DesktopHost.MenuBarChanged`, and run the chosen items.
+follow `DesktopHost.MenuBarChanged`, and run the chosen items. Runic Windows
+(`Runic.Application.Views.Desktop`) do this for their pages: the page renders the
+bar with `createMenuBarController` from `@runic-artifex/views` and its own
+menubar component, and may take over the shortcut matching with
+`shortcuts: "app"` while the bar is in the page
+([specs/desktop/menu-bar-page.md](../../../specs/desktop/menu-bar-page.md)).
 
 This release shows the native bar on macOS, in the Windows window and in the
 GTK 3 and GTK 4 windows (below). The macOS window shows the declared menus in
