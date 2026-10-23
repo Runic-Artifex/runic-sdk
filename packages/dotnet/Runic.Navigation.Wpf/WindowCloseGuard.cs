@@ -24,6 +24,8 @@ internal sealed class WindowCloseGuard
     // In the order their hosts first loaded.
     private readonly List<WeakReference<NavigationRegion>> _regions = [];
     private bool _checking;
+    // The running check, for WindowCloseConfirmation; guards may read it on another thread.
+    private volatile CloseCheck? _check;
     // The region the running check clears, and whether a close came after that clear stopped transitioning.
     private NavigationRegion? _clearing;
     private bool _closeAgain;
@@ -62,6 +64,13 @@ internal sealed class WindowCloseGuard
         if (!Owners.TryGetValue(region, out var owner)) return;
         Owners.Remove(region);
         if (owner.TryGetTarget(out var guard)) guard.Forget(region);
+    }
+
+    // The close check of the window that lists the region, while that check clears the region; otherwise null. Any thread.
+    public static CloseCheck? ClearingCheck(NavigationRegion region)
+    {
+        if (!Owners.TryGetValue(region, out var owner) || !owner.TryGetTarget(out var guard)) return null;
+        return guard._check is { } check && ReferenceEquals(check.Clearing, region) ? check : null;
     }
 
     // Whether the window lists the region; for tests.
@@ -123,15 +132,17 @@ internal sealed class WindowCloseGuard
     private async Task ClearThenCloseAsync()
     {
         NavigationRegion? clearing = null;
+        var check = new CloseCheck();
         try
         {
             if (PresentationSource.FromVisual(_window) is null) return;
+            _check = check;
             // One region after another. A region that is empty by its turn, such as a child region that an earlier
             // clear closed, is skipped; a clear that doesn't commit keeps the window open and asks no further regions.
             foreach (var region in Regions())
             {
                 if (!HasEntries(region)) continue;
-                clearing = _clearing = region;
+                clearing = _clearing = check.Clearing = region;
                 _closeAgain = false;
                 // The plan of any other clear: every entry's guard and the guards of the child regions the entries own.
                 // Supersede: a close is never refused because the region is busy, also under RejectWhileBusy.
@@ -154,6 +165,8 @@ internal sealed class WindowCloseGuard
         finally
         {
             var again = _closeAgain && !_closed;
+            check.Clearing = null;
+            _check = null;
             _clearing = null;
             _closeAgain = false;
             if (again) Check();
@@ -173,5 +186,18 @@ internal sealed class WindowCloseGuard
                 Owners.Remove(region);
         }
         _regions.Clear();
+    }
+}
+
+// One check of a window's close: the regions it clears one after another, one at a time.
+internal sealed class CloseCheck
+{
+    private volatile NavigationRegion? _clearing;
+
+    // The region whose clear runs; null between clears and after the check.
+    public NavigationRegion? Clearing
+    {
+        get => _clearing;
+        set => _clearing = value;
     }
 }

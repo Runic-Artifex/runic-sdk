@@ -13,7 +13,8 @@ namespace Runic.Navigation.Wpf;
 /// Each entry gets a new <see cref="ContentPresenter"/> and a new view, also when two entries have the same type or the
 /// same borrowed content, so no view state leaks from one entry to the next. By default a retained entry gets a new view
 /// when it becomes current again: keep state that must survive in the ViewModel, or set <see cref="RetainViews"/> to keep
-/// the view of each retained entry and show it again.
+/// the view of each retained entry and show it again. <see cref="NavigationRequestOptions.RetainView"/> decides it for
+/// one entry instead.
 /// </para>
 /// <para>
 /// The view comes from <see cref="ViewLocator"/>, then from an <see cref="INavigationViewLocator"/> registered in the
@@ -179,9 +180,16 @@ public class NavigationHost : ContentControl
     /// element.
     /// </para>
     /// <para>
-    /// The host drops a kept view when it sees that its entry has left the region's stack (the entry retired), when the
-    /// region empties, when <see cref="Region"/> changes, and when it presents an entry while the property is
-    /// <see langword="false"/>. It doesn't dispose views. An unloaded host doesn't follow its region: it keeps its views,
+    /// An entry pushed with <see cref="NavigationRequestOptions.RetainView"/> set (<see cref="NavigationEntry.RetainView"/>)
+    /// uses that value instead of this property: <see langword="true"/> keeps its view also when this property is
+    /// <see langword="false"/>, and <see langword="false"/> never keeps it. The rules below apply to each entry with the
+    /// value that decides for it.
+    /// </para>
+    /// <para>
+    /// The host drops a kept view when it sees that its entry has left the region's stack (the entry retired, also while
+    /// its content's disposal still waits for its operations), when the region empties, when <see cref="Region"/> changes,
+    /// and when it presents an entry while the value that decides for the kept view's entry is <see langword="false"/>.
+    /// It doesn't dispose views. An unloaded host doesn't follow its region: it keeps its views,
     /// also its current one, and when it loads again with the same region it shows the same view if the current entry is
     /// unchanged, and drops the views of entries that retired meanwhile. So the hosts inside a kept view keep their views too.
     /// A host that is never loaded again is collected with its views.
@@ -257,9 +265,10 @@ public class NavigationHost : ContentControl
             if (region is not null) region.PropertyChanged += _regionChanged;
             _attached = region;
         }
-        // Entry ids are unique only within one navigator: another region starts afresh. Without RetainViews, a host that
-        // loads again builds a new view also for the same entry.
-        if (!ReferenceEquals(_presentedRegion, region) || !RetainViews) ForgetPresentations();
+        // Entry ids are unique only within one navigator: another region starts afresh. A host that loads again builds a
+        // new view also for the same entry unless that entry's view is kept, and keeps only the views it may keep.
+        if (!ReferenceEquals(_presentedRegion, region)) ForgetPresentations();
+        else if (region is not null) KeepOnPresent(region, RetainViews);
         _presentedRegion = region;
         Refresh();
     }
@@ -316,6 +325,7 @@ public class NavigationHost : ContentControl
         // RetainViews is read when the host presents, never in a change callback: an inherited value, or one from an
         // ancestor's style, reverts to the default while a kept view that contains this host is out of the visual tree,
         // before this host unloads. Reacting to that would drop the views the option is meant to keep.
+        // A value set on the entry's request (NavigationEntry.RetainView) decides for that entry instead.
         var retain = RetainViews;
         if (_presented == entry.Id && !_showsEmpty)
         {
@@ -323,18 +333,19 @@ public class NavigationHost : ContentControl
             return;
         }
         // The view that leaves stays with its entry while that entry is retained.
-        if (retain && _presenter is { } leaving && _presented is { } leavingId && leavingId != entry.Id && IsRetained(region!, leavingId))
+        if (_presenter is { } leaving && _presented is { } leavingId && leavingId != entry.Id
+            && RetainedEntry(region!, leavingId) is { } leavingEntry && Keeps(leavingEntry, retain))
             (_kept ??= [])[leavingId] = new KeptView(leaving, FocusedWithin(leaving));
         _presenter = null;
         KeptView? kept = null;
-        if (retain && _kept is not null && _kept.Remove(entry.Id, out var found)) kept = found;
+        if (Keeps(entry, retain) && _kept is not null && _kept.Remove(entry.Id, out var found)) kept = found;
         ContentPresenter presenter;
         if (kept is not null) presenter = kept.Presenter;
         else
         {
             // A view that may be kept gets its template set on its presenter, so leaving and re-entering the visual tree
             // never makes the presenter look up its implicit template again and build a new view.
-            try { presenter = NavigationPresenters.Create(this, region!, entry, ViewLocator, explicitTemplate: retain); }
+            try { presenter = NavigationPresenters.Create(this, region!, entry, ViewLocator, explicitTemplate: Keeps(entry, retain)); }
             catch
             {
                 // No stale view: the next change or Loaded tries again.
@@ -353,25 +364,38 @@ public class NavigationHost : ContentControl
         if (kept?.Focused is { } focused) RestoreFocus(presenter, focused);
     }
 
-    // Drops the kept views of entries that are no longer retained in the region, or all of them without RetainViews.
+    // Drops the kept views of entries that are no longer retained in the region, or whose view is no longer kept: without
+    // RetainViews, only the entries pushed with RetainView = true keep theirs.
     private void KeepOnly(NavigationRegion region, bool retain)
     {
         if (_kept is null) return;
-        if (!retain)
-        {
-            _kept = null;
-            return;
-        }
-        HashSet<NavigationEntryId> retained = [.. region.History.Select(entry => entry.Id)];
+        HashSet<NavigationEntryId> retained = [.. region.History.Where(entry => Keeps(entry, retain)).Select(entry => entry.Id)];
         foreach (var id in _kept.Keys.Where(id => !retained.Contains(id)).ToList()) _kept.Remove(id);
         if (_kept.Count == 0) _kept = null;
     }
 
-    private static bool IsRetained(NavigationRegion region, NavigationEntryId id)
+    // On Loaded with the same region: the presented view stays when its entry keeps its view (Refresh shows it again or
+    // keeps it for its retained entry). Refresh then takes the current entry's kept view and prunes the others.
+    private void KeepOnPresent(NavigationRegion region, bool retain)
+    {
+        if (_presented is { } presented && (FindEntry(region, presented) is not { } entry || !Keeps(entry, retain)))
+        {
+            _presented = null;
+            _presenter = null;
+        }
+    }
+
+    private static NavigationEntry? FindEntry(NavigationRegion region, NavigationEntryId id) =>
+        region.CurrentEntry is { } current && current.Id == id ? current : RetainedEntry(region, id);
+
+    // Whether the host keeps the entry's view while the entry is retained.
+    private static bool Keeps(NavigationEntry entry, bool retain) => entry.RetainView ?? retain;
+
+    private static NavigationEntry? RetainedEntry(NavigationRegion region, NavigationEntryId id)
     {
         foreach (var entry in region.History)
-            if (entry.Id == id) return true;
-        return false;
+            if (entry.Id == id) return entry;
+        return null;
     }
 
     // The element inside the leaving view that has keyboard focus, or else the logical focus of its focus scope, as in

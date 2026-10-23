@@ -178,6 +178,14 @@ See [Container-resolved targets](#container-resolved-targets).
   `Rejected.By` set to that entry, unless the entry, and every entry whose
   content owns its region up to a root region, is current at admission and at
   commit. A retained, retired or unknown entry is not current.
+- `NavigationRequestOptions.RetainView` (since 0.11) decides, for the entry a
+  Push, Replace, Reset or `PushForResult` creates, whether a presentation that
+  can keep views keeps that entry's view while it is retained: `true` keeps
+  it, `false` rebuilds it, `null` (the default) follows the presentation's own
+  setting. The entry reports it as `NavigationEntry.RetainView`. It never
+  changes the entry's lifetime. `NavigationHost` in Runic.Navigation.Wpf reads
+  it in place of its `RetainViews`; Runic Views pages, whose frontend owns the
+  DOM, ignore it.
 - A region exposes `Current`, `CurrentEntry`, `History`, `CanGoBack`,
   `IsTransitioning` and `IsBusy`. It raises `PropertyChanged` for them inside a
   model turn, the commit turn for a navigation.
@@ -863,6 +871,8 @@ To ask the guards before a user closes the window, opt in on the window:
 Runic Desktop's embedded window) or `GuardWindowClose` on a WPF
 `NavigationHost` (Runic.Navigation.Wpf). Either clears the window's regions
 before it closes, and a guard that rejects or fails keeps the window open.
+In WPF, `WindowCloseConfirmation` (since 0.11) turns a region guard into one
+that such a close asks once rather than once per region.
 
 `WhenIdleAsync()` waits until no transition or retirement is running, and
 `IsBusy` says whether it would wait now;

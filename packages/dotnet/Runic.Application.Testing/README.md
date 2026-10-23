@@ -252,6 +252,35 @@ using var host = RunicWindowTestHost.Create<ShellViewModel>(scope.ServiceProvide
     new RunicWindowTestHostOptions { TimeProvider = clock });
 ```
 
+A unit test of one page that takes its `NavigationEntryContext`, such as a
+dialog that completes its request, needs no window. `RunicTestNavigationEntry`
+(since 0.11) pushes the page on a test navigator with its own
+`RunicModelContext`, as a region does in the application, and exposes the
+context, the request's completion and the transitions that change the entry's
+state:
+
+```csharp
+await using var dialog = await RunicTestNavigationEntry.CreateAsync(
+    entry => new ConfirmNavigationViewModel(entry, "Discard the unsaved edits?"));
+
+await dialog.Content.ConfirmCommand.ExecuteAsync(null);
+
+await Assert.That(await dialog.Completion).IsEqualTo(new NavigationCompletion<object?>.Completed(true));
+await Assert.That(dialog.Context.State).IsEqualTo(NavigationEntryState.Retired);
+```
+
+- The navigator constructs the content through `create`, so its navigation
+  hooks, guards and `INavigationAware` calls run as in the application, and
+  it owns and disposes the content when the entry retires. Pass `services`
+  for the entry's `Services`.
+- The entry is pushed for an `object` result: `Completion` reports
+  `CompleteAsync` with any value, and `Dismissed` when the entry leaves
+  otherwise.
+- `RetainAsync` pushes another entry over it, `ActivateAsync` goes back to
+  it, and `RetireAsync` clears the region. Each returns the
+  `NavigationResult`, so a guard's veto is visible. `Navigator` and `Region`
+  are there for anything else; disposing the object closes the navigator.
+
 Write navigation tests so they are deterministic:
 
 - Hold a transition in a phase with a `TaskCompletionSource` that a guard,
@@ -282,7 +311,8 @@ Write navigation tests so they are deterministic:
 The [Notes tests](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Tests)
 cover a guard that asks in a dialog region with `PushForResult`, resuming a
 retained entry, retirement of a parent's child regions, racing navigation and
-closing the window while the dialog asks.
+closing the window while the dialog asks; [ConfirmNavigationTests](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-view-first/Tests/ConfirmNavigationTests.cs)
+tests the dialog page on its own with `RunicTestNavigationEntry`.
 
 ### Interactions
 

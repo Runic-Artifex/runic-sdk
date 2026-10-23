@@ -310,6 +310,125 @@ internal sealed class RetainViewsTests
             return new ShellView();
         }
     }
+
+    // I-031: NavigationRequestOptions.RetainView decides for one entry, in either direction, instead of RetainViews.
+    [Test, DisplayName("RetainView per entry"), NotInParallel("WpfSuite", Order = 63)]
+    public void RetainViewPerEntry()
+    {
+        using var fixture = new NavFixture();
+        var region = fixture.Region();
+        var host = new NavigationHost { Region = region };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(DocumentViewModel)));
+        try
+        {
+            // The host keeps no views; the entry pushed with RetainView = true keeps its own.
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("a")), new NavigationRequestOptions { RetainView = true }));
+            var viewA = (TextBox)ViewOf(host)!;
+            viewA.Text = "kept text";
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("b"))));
+            var viewB = ViewOf(host);
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("c"))));
+            Require(host.KeptViewCount == 1, $"Only a's view should be kept; the host kept {host.KeptViewCount}.");
+            Pump(region.BackAsync());
+            Require(ViewOf(host) is TextBox newB && !ReferenceEquals(newB, viewB), "b's view was kept without RetainView.");
+            Pump(region.BackAsync());
+            Drain();
+            Require(ReferenceEquals(ViewOf(host), viewA) && viewA.Text == "kept text" && host.KeptViewCount == 0,
+                "Back did not show a's kept view again.");
+
+            // A host that loads again shows the kept current view; the entry's value is read on Loaded too.
+            window.Content = null;
+            Drain();
+            window.Content = host;
+            Drain();
+            Require(ReferenceEquals(ViewOf(host), viewA), "A host that loaded again rebuilt the view of an entry that keeps it.");
+
+            // The host keeps views; the entry pushed with RetainView = false gets a new view when it returns.
+            host.RetainViews = true;
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("d")), new NavigationRequestOptions { RetainView = false }));
+            var viewD = ViewOf(host);
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("e"))));
+            var viewE = ViewOf(host);
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("f"))));
+            Require(host.KeptViewCount == 2, $"a and e should be kept, d not; the host kept {host.KeptViewCount}.");
+            Pump(region.BackAsync());
+            Require(ReferenceEquals(ViewOf(host), viewE), "RetainViews did not keep e's view.");
+            Pump(region.BackAsync());
+            Require(ViewOf(host) is TextBox newD && !ReferenceEquals(newD, viewD), "d's view was kept despite RetainView = false.");
+
+            // Turning RetainViews off keeps the views of entries that keep their own.
+            host.RetainViews = false;
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("g"))));
+            Require(host.KeptViewCount == 1, $"Only a's view should stay kept; the host kept {host.KeptViewCount}.");
+            Pump(region.BackToAsync(region.History[0].Id));
+            Require(ReferenceEquals(ViewOf(host), viewA), "BackTo did not show a's kept view.");
+        }
+        finally { window.Close(); }
+    }
+
+    // I-031 with B6: a kept view is dropped when its entry retires, also while a presentation holds back the content's
+    // release for work it keeps (RunicOperationRetirement.Cancel or Drain); a retained entry is never forgotten.
+    [Test, DisplayName("RetainView with a deferred release"), NotInParallel("WpfSuite", Order = 64)]
+    public void RetainViewWithDeferredRelease()
+    {
+        using var fixture = new NavFixture();
+        var presentation = new WorkingPresentation();
+        using var attachment = fixture.Navigator.AttachPresentation(presentation);
+        var region = fixture.Region(NavigationTarget.Own<object>(new DocumentViewModel("home")));
+        var home = region.CurrentEntry!.Id;
+        var host = new NavigationHost { Region = region };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(DocumentViewModel)));
+        try
+        {
+            var kept = new DocumentViewModel("kept");
+            var released = new DocumentViewModel("released");
+            Pump(region.PushAsync(NavigationTarget.Own<object>(kept), new NavigationRequestOptions { RetainView = true }));
+            Pump(region.PushAsync(NavigationTarget.Own<object>(released), new NavigationRequestOptions { RetainView = false }));
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("top"))));
+            var keptWork = presentation.Keep(kept);
+            var releasedWork = presentation.Keep(released);
+            Require(host.KeptViewCount == 1 && !presentation.WasForgotten(kept) && !presentation.WasForgotten(released), "Retaining the entries forgot one, or kept the wrong views.");
+
+            // BackTo retires the three entries; the host presents home and drops the view the retired entry kept.
+            Pump(region.BackToAsync(home));
+            PumpUntil(() => presentation.WasForgotten(kept) && presentation.WasForgotten(released), "the retired entries to be forgotten");
+            Drain();
+            Require(host.KeptViewCount == 0 && host.PresentedEntry == home && !keptWork.Task.IsCompleted,
+                $"BackTo left {host.KeptViewCount} kept views while the release waited.");
+            keptWork.SetResult();
+            releasedWork.SetResult();
+            Pump(fixture.Navigator.WhenIdleAsync().AsTask());
+        }
+        finally { window.Close(); }
+    }
+
+    private sealed class WorkingPresentation : INavigationPresentation
+    {
+        private readonly Dictionary<object, TaskCompletionSource> _work = new(ReferenceEqualityComparer.Instance);
+
+        private readonly List<object> _forgotten = [];
+
+        public TaskCompletionSource Keep(object content)
+        {
+            lock (_work) return _work[content] = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        public bool WasForgotten(object content)
+        {
+            lock (_forgotten) return _forgotten.Contains(content);
+        }
+
+        public void Forget(object content)
+        {
+            lock (_forgotten) _forgotten.Add(content);
+        }
+
+        public ValueTask ForgetAsync(object content)
+        {
+            Forget(content);
+            lock (_work) return _work.TryGetValue(content, out var work) ? new(work.Task) : ValueTask.CompletedTask;
+        }
+    }
 }
 
 internal sealed class ShellViewModel;
