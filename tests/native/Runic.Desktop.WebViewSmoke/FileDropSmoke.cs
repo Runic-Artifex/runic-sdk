@@ -160,7 +160,7 @@ internal static partial class WindowsFileDropSmoke
             var drag = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             var thread = new Thread(() =>
             {
-                try { drag.TrySetResult(Drag(handle, [file, folder])); }
+                try { drag.TrySetResult(Drag(handle, [file, folder], null)); }
                 catch (Exception error) { drag.TrySetException(error); }
             })
             { IsBackground = true };
@@ -197,11 +197,24 @@ internal static partial class WindowsFileDropSmoke
             if (pageDrops != "1" || after != before)
                 throw new InvalidOperationException($"The page saw {pageDrops} drop events and moved from {before} to {after}.");
             Console.WriteLine($"File drop passed: native paths [{string.Join(", ", drop.Paths)}], target '{drop.Target}', one page drop event, no navigation.");
+            await DragOutAsync(host, [file, folder]);
         }
         finally
         {
             root.Delete(recursive: true);
         }
+    }
+
+    private static async Task DragOutAsync(DesktopHost host, string[] paths)
+    {
+        // win-arm64: the OLE drag loop does not start on the runner (I-077, I-103).
+        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+        {
+            Console.WriteLine("Drag out and frame drops: unverified on Windows arm64, whose runner does not run the OLE drag loop (I-077).");
+            return;
+        }
+        if (!await RunDragOutAsync(host, paths)) return;
+        await RunFrameDropsAsync(host, paths);
     }
 
     // STA thread: the button goes down outside the window, DoDragDrop runs its modal loop, and another thread moves
@@ -211,7 +224,7 @@ internal static partial class WindowsFileDropSmoke
     // STA thread: as in a real drag source, the button goes down on a window of this thread, so its input state
     // holds the pressed button and DoDragDrop's modal loop can track it; another thread moves the pointer over the
     // WebView and releases it.
-    private static unsafe int Drag(nint window, string[] paths)
+    private static unsafe int Drag(nint window, string[] paths, (int X, int Y)? clientTarget)
     {
         _ = SetThreadDpiAwarenessContext(-4);
         Marshal.ThrowExceptionForHR(OleInitialize(0));
@@ -225,7 +238,9 @@ internal static partial class WindowsFileDropSmoke
             {
                 if (!GetWindowRect(window, out var bounds)) throw new InvalidOperationException("GetWindowRect failed.");
                 var start = (X: bounds.Left - 60, Y: bounds.Top + 40);
-                var target = (X: (bounds.Left + bounds.Right) / 2, Y: (bounds.Top + bounds.Bottom) / 2 + 20);
+                var target = clientTarget is { } point
+                    ? ClientToScreenPoint(window, point)
+                    : (X: (bounds.Left + bounds.Right) / 2, Y: (bounds.Top + bounds.Bottom) / 2 + 20);
                 helper = CreateWindowEx(0x00000008 | 0x00000080, "STATIC", "Runic drag source", 0x80000000 | 0x10000000, // TOPMOST|TOOLWINDOW, POPUP|VISIBLE
                     start.X - 20, start.Y - 20, 40, 40, 0, 0, 0, 0);
                 _ = SetForegroundWindow(helper);
@@ -241,7 +256,7 @@ internal static partial class WindowsFileDropSmoke
                     return NoDesktopInput;
                 }
                 var mover = Task.Run(() => MoveAndReleaseAsync(start, target));
-                var hr = DoDragDrop(dataObject, sourcePointer, 1, out var effect); // DROPEFFECT_COPY
+                var hr = DoDragDrop(dataObject, sourcePointer, clientTarget is null ? 1 : 3, out var effect); // DROPEFFECT_COPY, or COPY | MOVE onto a frame
                 mover.GetAwaiter().GetResult();
                 if (hr < 0) Marshal.ThrowExceptionForHR(hr);
                 return effect;

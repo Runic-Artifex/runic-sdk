@@ -990,6 +990,40 @@ public static partial class DesktopPlatformServices
             window?.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu) == true ? MenuAvailable : MenuBackendUnavailable);
     }
 
+    // The drag-out capability of a Desktop window: available while it is open and can start drags.
+    internal static KeyValuePair<string, CapabilityStatus> DragStatus(DesktopWindow? window) =>
+        new(PlatformCapabilityIds.DragOut, window switch
+        {
+            { IsOpen: false } => MenuOwnerClosed,
+            _ when window?.Capabilities.HasFlag(DesktopWindowCapabilities.FileDrag) == true => MenuAvailable,
+            _ => MenuBackendUnavailable,
+        });
+
+    // IWindowPlatformServices.StartDragAsync for a Desktop window: its native drag, or the reason it has none.
+    internal static async ValueTask<PlatformResult<DesktopDragEffects>> StartDragAsync(DesktopWindow? window, DesktopDragData data,
+        CancellationToken cancellationToken)
+    {
+        DesktopDragRules.Check(data);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (window is null || window.Browser != BrowserKind.Embedded) return DragUnavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (!window.IsOpen) return DragUnavailable(PlatformUnavailableReason.OwnerClosed);
+        if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.FileDrag)) return DragUnavailable(PlatformUnavailableReason.BackendUnavailable);
+        try
+        {
+            return new PlatformResult<DesktopDragEffects>.Success(await window.StartDragAsync(data, cancellationToken).ConfigureAwait(false));
+        }
+        catch (ObjectDisposedException) { return DragUnavailable(PlatformUnavailableReason.OwnerClosed); }
+        // The window closed while the drag was queued for its thread.
+        catch (InvalidOperationException) when (!window.IsOpen) { return DragUnavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (Exception error) when (error is NotSupportedException or DesktopException { Code: "window-capability-unavailable" })
+        {
+            return DragUnavailable(window.IsOpen ? PlatformUnavailableReason.BackendUnavailable : PlatformUnavailableReason.OwnerClosed);
+        }
+    }
+
+    internal static PlatformResult<DesktopDragEffects> DragUnavailable(PlatformUnavailableReason reason) =>
+        new PlatformResult<DesktopDragEffects>.Unavailable(reason);
+
     // IWindowPlatformServices.ShowContextMenuAsync for a Desktop window: its native context menu, or the reason it has none.
     internal static async ValueTask<PlatformResult<DesktopMenuItem?>> ShowContextMenuAsync(DesktopWindow? window,
         ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions? options, CancellationToken cancellationToken)
@@ -1150,7 +1184,8 @@ public static partial class DesktopPlatformServices
 
         public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation,
             _files.GetSnapshot().Statuses.SetItems(_clipboard.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses)
-                .SetItems(_messageBoxes.GetSnapshot().Statuses).SetItems(_taskbar.GetSnapshot().Statuses).SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value));
+                .SetItems(_messageBoxes.GetSnapshot().Statuses).SetItems(_taskbar.GetSnapshot().Statuses).SetItems(MenuStatuses(window: null)).SetItem(MonitorStatus(Monitors).Key, MonitorStatus(Monitors).Value)
+                .SetItem(PlatformCapabilityIds.DragOut, MenuBackendUnavailable));
 
         public async ValueTask DisposeAsync()
         {
@@ -1187,6 +1222,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private DesktopWindow? _window;
     private Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? _announcer;
     private Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? _contextMenu;
+    private Func<DesktopDragData, CancellationToken, ValueTask<PlatformResult<DesktopDragEffects>>>? _dragger;
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
 
@@ -1229,7 +1265,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     [SupportedOSPlatform("windows")]
     internal void BindWindows(INativeWindowOwner owner,
         Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? announcer = null,
-        Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? contextMenu = null)
+        Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? contextMenu = null,
+        Func<DesktopDragData, CancellationToken, ValueTask<PlatformResult<DesktopDragEffects>>>? dragger = null)
     {
         lock (_gate)
         {
@@ -1238,6 +1275,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             _bound = DesktopPlatformServices.CreateForWindowsOwner(owner, out _provider);
             _announcer = announcer;
             _contextMenu = contextMenu;
+            _dragger = dragger;
             Volatile.Write(ref _current, _bound);
         }
     }
@@ -1248,27 +1286,36 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     {
         DesktopWindow? window;
         IWindowPlatformServices current;
+        bool dragging;
         lock (_gate)
         {
             current = Current;
             window = _disposal is null && _bound is not null ? _window : null;
+            dragging = _disposal is null && _bound is not null && _dragger is not null;
         }
         var snapshot = current.GetSnapshot();
         if (window is null)
         {
-            // A window of another host shows its own context menus, and no menu bar of Runic's.
+            // A window of another host shows its own context menus, and no menu bar of Runic's; a WPF window drags through
+            // its own dragger.
             bool hostMenus;
             lock (_gate) hostMenus = _disposal is null && _bound is not null && _contextMenu is not null;
-            return hostMenus
-                ? new(snapshot.Generation, snapshot.Statuses
-                    .SetItem(PlatformCapabilityIds.ContextMenu, new CapabilityStatus.Available())
-                    .SetItem(PlatformCapabilityIds.MenuBar, new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable)))
+            var statuses = snapshot.Statuses;
+            if (hostMenus)
+                statuses = statuses.SetItem(PlatformCapabilityIds.ContextMenu, new CapabilityStatus.Available())
+                    .SetItem(PlatformCapabilityIds.MenuBar, new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+            if (dragging && statuses.ContainsKey(PlatformCapabilityIds.DragOut))
+                statuses = statuses.SetItem(PlatformCapabilityIds.DragOut, new CapabilityStatus.Available());
+            return hostMenus || dragging
+                ? new(snapshot.Generation, statuses)
                 : snapshot;
         }
         var monitors = window.IsOpen
             ? DesktopPlatformServices.MonitorStatus(window.Monitors)
             : new(PlatformCapabilityIds.Monitors, new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed));
-        return new(snapshot.Generation, snapshot.Statuses.SetItems(DesktopPlatformServices.MenuStatuses(window)).SetItem(monitors.Key, monitors.Value));
+        var drag = DesktopPlatformServices.DragStatus(window);
+        return new(snapshot.Generation, snapshot.Statuses.SetItems(DesktopPlatformServices.MenuStatuses(window)).SetItem(monitors.Key, monitors.Value)
+            .SetItem(drag.Key, drag.Value));
     }
 
     /// <inheritdoc />
@@ -1396,6 +1443,25 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         _ = await WindowPlatformServices.Unavailable(PlatformUnavailableReason.BackendUnavailable)
             .ShowContextMenuAsync(items, options, cancellationToken).ConfigureAwait(false);
         return await contextMenu(items, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Explicit, as the default member is: a drag out of the Desktop window, or of the WPF window through its dragger.
+    ValueTask<PlatformResult<DesktopDragEffects>> IWindowPlatformServices.StartDragAsync(DesktopDragData data, CancellationToken cancellationToken)
+    {
+        DesktopWindow? window;
+        Func<DesktopDragData, CancellationToken, ValueTask<PlatformResult<DesktopDragEffects>>>? dragger;
+        lock (_gate)
+        {
+            if (_disposal is not null || _bound is null) return Current.StartDragAsync(data, cancellationToken);
+            window = _window;
+            dragger = _dragger;
+        }
+        if (window is not null) return DesktopPlatformServices.StartDragAsync(window, data, cancellationToken);
+        DesktopDragRules.Check(data);
+        cancellationToken.ThrowIfCancellationRequested();
+        return dragger is not null
+            ? dragger(data, cancellationToken)
+            : ValueTask.FromResult(DesktopPlatformServices.DragUnavailable(PlatformUnavailableReason.BackendUnavailable));
     }
 
     /// <summary>Stops the services: waits for platform operations, then releases file access the window still owns.</summary>

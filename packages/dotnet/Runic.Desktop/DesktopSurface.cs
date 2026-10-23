@@ -899,6 +899,52 @@ public sealed class DesktopWindow : IAsyncDisposable
         return await menu!.ConfigureAwait(false);
     }
 
+    /// <summary>Starts a native drag of files, text or URIs out of the window, and returns the effect of the drop.</summary>
+    /// <param name="data">What to drag; the rules of <see cref="DesktopDragData"/>.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window before the drag starts; a running drag ends with the pointer.</param>
+    /// <returns>
+    /// The effect the drop target chose, one of <see cref="DesktopDragData.AllowedEffects"/>, or
+    /// <see cref="DesktopDragEffects.None"/> when the user cancelled the drag (Escape), dropped it where nothing accepted
+    /// it, or no mouse button was held when the call reached the window.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Requires <see cref="DesktopWindowCapabilities.FileDrag"/>. Call it while the user holds the primary mouse button
+    /// on the window. The page asks for the drag from its <c>dragstart</c> event through an ordinary command, after
+    /// calling <c>event.preventDefault()</c> so the web view starts no HTML5 drag of its own; the application builds
+    /// <paramref name="data"/> from its own state, never from paths the page supplies:
+    /// </para>
+    /// <code>
+    /// row.addEventListener("dragstart", event =&gt; { event.preventDefault(); client.commands.dragItem(row.dataset.key); });
+    /// </code>
+    /// <para>
+    /// The window offers <see cref="DesktopDragData.Paths"/> as the platform's file list (<c>CF_HDROP</c>,
+    /// <c>public.file-url</c>, <c>text/uri-list</c>), <see cref="DesktopDragData.Text"/> as plain text and
+    /// <see cref="DesktopDragData.Uris"/> as links. <see cref="DesktopDragEffects.Move"/> means the target asked for a
+    /// move: the files may already be gone (an optimized move on Windows, a file manager on macOS or Linux), so delete
+    /// what remains.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="data"/> breaks a rule of <see cref="DesktopDragData"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="data"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default)
+    {
+        DesktopDragRules.Check(data);
+        cancellationToken.ThrowIfCancellationRequested();
+        Task<DesktopDragEffects>? drag = null;
+        // Admitted like every window operation, but awaited outside the window gate, as a context menu is: the drag's
+        // modal loop runs while other operations or a closing window proceed.
+        await _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.FileDrag, () =>
+        {
+            drag = _engine.StartDragAsync(data, cancellationToken);
+            return ValueTask.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
+        return DesktopDragRules.Single(await drag!.ConfigureAwait(false), data.AllowedEffects);
+    }
+
     /// <summary>Occurs when the user drops files onto the embedded window, with their native paths.</summary>
     /// <remarks>
     /// <para>
@@ -941,7 +987,13 @@ public sealed class DesktopWindow : IAsyncDisposable
         {
             while (_drops.TryDequeue(out var drop))
             {
-                if (!AcceptsState || FilesDropped is not { } handlers) continue;
+                if (!AcceptsState || FilesDropped is not { } handlers)
+                {
+                    // Nobody can read the staged copies of promised files: delete them.
+                    foreach (var file in drop.PromisedFiles) _ = file.DisposeAsync().AsTask().ContinueWith(static task => _ = task.Exception,
+                        CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+                    continue;
+                }
                 foreach (EventHandler<DesktopFileDropEventArgs> handler in handlers.GetInvocationList())
                 {
                     try

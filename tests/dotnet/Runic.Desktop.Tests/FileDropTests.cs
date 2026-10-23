@@ -1,4 +1,5 @@
 using Runic.Desktop.Internal;
+using Runic.Platform;
 using TUnit.Core;
 
 namespace Runic.Desktop.Tests;
@@ -28,13 +29,21 @@ public sealed class FileDropSupportTests
     }
 
     [Test]
-    public void LabelMessagesDecode()
+    public void ReportMessagesDecode()
     {
-        Assert.Equal("folder-7", FileDropSupport.DecodeLabel("1folder-7"));
-        Assert.Equal("", FileDropSupport.DecodeLabel("1"));
-        Assert.Null(FileDropSupport.DecodeLabel("0"));
+        Assert.Equal("folder-7", FileDropSupport.DecodeLabel("""{"label":"folder-7","effect":"copy","origin":null}"""));
+        Assert.Equal("", FileDropSupport.DecodeLabel("""{"label":""}"""));
+        Assert.Null(FileDropSupport.DecodeLabel("""{"label":null}"""));
         Assert.Null(FileDropSupport.DecodeLabel(null));
         Assert.Null(FileDropSupport.DecodeLabel(""));
+        Assert.Null(FileDropSupport.DecodeLabel("not json"));
+        Assert.Null(FileDropSupport.DecodeLabel("""["label"]"""));
+        var frame = FileDropSupport.DecodeReport("""{"label":"x","effect":"move","origin":"https://editor.example"}""");
+        Assert.Equal(new FileDropReport("x", DesktopDragEffects.Move, "https://editor.example"), frame);
+        Assert.Equal(DesktopDragEffects.Link, FileDropSupport.DecodeReport("""{"effect":"link"}""").Effect);
+        Assert.Equal(DesktopDragEffects.Copy, FileDropSupport.DecodeReport("""{"effect":"none"}""").Effect);
+        Assert.Equal(DesktopDragEffects.Copy, FileDropSupport.DecodeReport("""{"effect":7}""").Effect);
+        Assert.Null(FileDropSupport.DecodeReport("""{"label":"x"}""").Origin);
     }
 
     [Test]
@@ -50,16 +59,32 @@ public sealed class FileDropSupportTests
         Assert.Null(FileDropMessage.Parse("not json", token));
         Assert.Null(FileDropMessage.Parse(null, token));
         Assert.Null(FileDropMessage.Parse("{\"runicFileDrop\":\"0123abcd\",\"pad\":\"" + new string('x', 70_000) + "\"}", token));
+        Assert.Equal(DesktopDragEffects.Move, FileDropMessage.Parse("""{"runicFileDrop":"0123abcd","effect":"move"}""", token)!.Effect);
+        Assert.Equal(DesktopDragEffects.Link, FileDropMessage.Parse("""{"runicFileDrop":"0123abcd","effect":"link"}""", token)!.Effect);
+        Assert.Equal(DesktopDragEffects.Copy, FileDropMessage.Parse("""{"runicFileDrop":"0123abcd","effect":"none"}""", token)!.Effect);
+        Assert.Equal(DesktopDragEffects.Copy, FileDropMessage.Parse("""{"runicFileDrop":"0123abcd"}""", token)!.Effect);
     }
 
     [Test]
-    public void WebView2ScriptCarriesItsTokenAndTopFrameCheck()
+    public void ScriptsRunInEveryFrameAndReadTheDropEffect()
     {
         var script = FileDropSupport.WebView2Script("feedface");
         Assert.Contains("runicFileDrop: \"feedface\"", script);
-        Assert.Contains("globalThis.top !== globalThis", script);
         Assert.Contains("postMessageWithAdditionalObjects", script);
-        Assert.Contains("data-runic-drop-target", FileDropSupport.WebKitScript);
+        // Both scripts run in subframes too; the native side checks the frame's origin.
+        Assert.DoesNotContain("globalThis.top !== globalThis", script);
+        Assert.DoesNotContain("globalThis.top !== globalThis", FileDropSupport.WebKitScript);
+        Assert.Contains("globalThis.top === globalThis ? null : String(globalThis.location?.origin", FileDropSupport.WebKitScript);
+        foreach (var text in (string[])[script, FileDropSupport.WebKitScript])
+        {
+            Assert.Contains("data-runic-drop-target", text);
+            Assert.Contains("[data-runic-drop-effect]", text);
+            Assert.Contains("event.dataTransfer.dropEffect = effect", text);
+            // "none" refuses the drop without navigating: it is cancelled and never reported.
+            Assert.Contains("if (effect === \"none\"", text);
+            Assert.Contains("\"dragenter\", allow, true", text);
+            Assert.Contains("\"dragover\", allow, true", text);
+        }
         Assert.Contains("messageHandlers?.runicFileDrop", FileDropSupport.WebKitScript);
     }
 
@@ -72,7 +97,59 @@ public sealed class FileDropSupportTests
         Assert.Throws<ArgumentException>(() => new DesktopFileDropEventArgs([]));
         Assert.Throws<ArgumentException>(() => new DesktopFileDropEventArgs(["relative.txt"]));
         Assert.Throws<ArgumentException>(() => new DesktopFileDropEventArgs([""]));
+        Assert.Empty(drop.PromisedFiles);
+        Assert.Equal(DesktopDragEffects.Copy, drop.Effect);
+        // A literal null label still binds to the paths-only constructor.
+        Assert.Null(new DesktopFileDropEventArgs([Path.Combine(root, "a.txt")], null).Target);
     }
+
+    [Test]
+    public void PromisedFilesMayStandAlone()
+    {
+        var lease = new TestLease();
+        var drop = new DesktopFileDropEventArgs([], [lease], "inbox") { Effect = DesktopDragEffects.Move };
+        Assert.Empty(drop.Paths);
+        Assert.Same(lease, Assert.Single(drop.PromisedFiles));
+        Assert.Equal("inbox", drop.Target);
+        Assert.Equal(DesktopDragEffects.Move, drop.Effect);
+        Assert.Throws<ArgumentException>(() => new DesktopFileDropEventArgs([], [], null));
+        Assert.Throws<ArgumentException>(() => new DesktopFileDropEventArgs(["relative.txt"], [lease], null));
+        Assert.Throws<ArgumentException>(() => new DesktopFileDropEventArgs([], [null!], null));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DesktopFileDropEventArgs([], [lease], null) { Effect = DesktopDragEffects.None });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new DesktopFileDropEventArgs([], [lease], null) { Effect = DesktopDragEffects.Copy | DesktopDragEffects.Move });
+    }
+
+    [Test]
+    public async Task AStagedLeaseIsReadOnceAndDeletesItsCopy()
+    {
+        var directory = Directory.CreateTempSubdirectory("runic-staged-").FullName;
+        var path = Path.Combine(directory, "mail attachment.pdf");
+        await File.WriteAllTextAsync(path, "content");
+        var lease = new StagedFileLease(path, directory);
+        Assert.Equal("mail attachment.pdf", lease.DisplayName);
+        var stream = await lease.OpenReadAsync();
+        using (var reader = new StreamReader(stream, leaveOpen: true)) Assert.Equal("content", await reader.ReadToEndAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await lease.OpenReadAsync());
+        await lease.DisposeAsync();
+        Assert.False(Directory.Exists(directory));
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await lease.OpenReadAsync());
+
+        var unopened = Directory.CreateTempSubdirectory("runic-staged-").FullName;
+        await File.WriteAllTextAsync(Path.Combine(unopened, "x"), "x");
+        await new StagedFileLease(Path.Combine(unopened, "x"), unopened).DisposeAsync();
+        Assert.False(Directory.Exists(unopened));
+        Assert.Equal("_etc_passwd", StagedFileLease.SafeName("/etc/passwd"));
+        Assert.Equal("file", StagedFileLease.SafeName(".."));
+        Assert.Equal("file", StagedFileLease.SafeName(" "));
+    }
+}
+
+internal sealed class TestLease : IReadFileLease
+{
+    internal int Disposals;
+    public string DisplayName => "promised.txt";
+    public ValueTask<Stream> OpenReadAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult<Stream>(new MemoryStream([1, 2, 3]));
+    public ValueTask DisposeAsync() { Interlocked.Increment(ref Disposals); return ValueTask.CompletedTask; }
 }
 
 public sealed class FileDropPairingTests
@@ -133,12 +210,51 @@ public sealed class FileDropPairingTests
     }
 
     [Test]
+    public void TheNativeEffectAndPromisedFilesTravelWithTheDrop()
+    {
+        var delivered = new List<DesktopFileDropEventArgs>();
+        using var pairing = new FileDropPairing(delivered.Add, TimeSpan.FromSeconds(30));
+        var lease = new TestLease();
+        pairing.NativeDrop([], [lease], DesktopDragEffects.Move);
+        pairing.PageReport("inbox");
+        var drop = Assert.Single(delivered);
+        Assert.Empty(drop.Paths);
+        Assert.Same(lease, Assert.Single(drop.PromisedFiles));
+        Assert.Equal(DesktopDragEffects.Move, drop.Effect);
+        Assert.Equal(0, lease.Disposals);
+        // Nothing dropped is not a drop; an effect the drop cannot have is a copy.
+        pairing.NativeDrop([], [], DesktopDragEffects.Copy);
+        pairing.NativeDrop([File1], [], DesktopDragEffects.None);
+        pairing.PageReport(null);
+        Assert.Equal(2, delivered.Count);
+        Assert.Equal(DesktopDragEffects.Copy, delivered[1].Effect);
+    }
+
+    [Test]
+    public void AReportFromAFrameOfAnotherOriginDiscardsTheDrop()
+    {
+        var delivered = new List<DesktopFileDropEventArgs>();
+        using var pairing = new FileDropPairing(delivered.Add, TimeSpan.FromSeconds(30));
+        var lease = new TestLease();
+        pairing.NativeDrop([File1], [lease], DesktopDragEffects.Copy);
+        pairing.PageReport("third-party", refused: true);
+        Assert.Empty(delivered);
+        Assert.Equal(1, lease.Disposals);
+        // The next drop is unaffected.
+        pairing.NativeDrop([File2]);
+        pairing.PageReport("mine");
+        Assert.Equal("mine", Assert.Single(delivered).Target);
+    }
+
+    [Test]
     public async Task DisposalDropsPendingDrops()
     {
         var delivered = 0;
         var pairing = new FileDropPairing(_ => Interlocked.Increment(ref delivered), TimeSpan.FromMilliseconds(20));
-        pairing.NativeDrop([File1]);
+        var lease = new TestLease();
+        pairing.NativeDrop([File1], [lease], DesktopDragEffects.Copy);
         pairing.Dispose();
+        Assert.Equal(1, lease.Disposals);
         await Task.Delay(100);
         pairing.NativeDrop([File1]);
         pairing.PageReport("x");

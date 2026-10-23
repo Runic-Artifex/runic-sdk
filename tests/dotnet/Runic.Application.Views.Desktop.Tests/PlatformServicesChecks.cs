@@ -285,6 +285,60 @@ internal sealed class PlatformServicesChecks
             "The context menu of stopped services did not report the owner closed.");
     }
 
+    // B11: a ViewModel starts a drag out of the embedded window through IWindowPlatformServices and gets the effect; a
+    // window without drags, or none, reports why, and the snapshot reports the drag capability.
+    [Test, NotInParallel(Order = 17)]
+    public async Task DragsReachTheEmbeddedWindowOrReportWhyNot()
+    {
+        var data = new DesktopDragData { Text = "row 7" };
+        await using (var provider = CreateProvider())
+        {
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = new NativeDispatchFactory { Drags = true }, WaitForConnection = false,
+            });
+            var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            var services = window.ViewModel.Platform;
+            Require(window.ViewModel.SnapshotBeforeOpen.Statuses[PlatformCapabilityIds.DragOut]
+                is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable), "The drag capability was available before the window opened.");
+            try
+            {
+                Require(await services.StartDragAsync(data) is PlatformResult<DesktopDragEffects>.Success(DesktopDragEffects.Copy),
+                    "IWindowPlatformServices.StartDragAsync did not return the window's effect.");
+                Require(services.GetSnapshot().Statuses[PlatformCapabilityIds.DragOut] is CapabilityStatus.Available,
+                    "The snapshot did not report drags.");
+                await ((DesktopBridgeWindow<FileViewModel>)window.Host).Window.CloseAsync();
+                Require(await services.StartDragAsync(data) is PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                    "The drag of a closed window did not report the owner closed.");
+            }
+            finally
+            {
+                await window.DisposeAsync();
+            }
+        }
+
+        await using (var provider = CreateProvider())
+        {
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
+            await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            Require(await window.ViewModel.Platform.StartDragAsync(data) is PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+                "A window host without drags did not report the backend unavailable.");
+            Require(window.ViewModel.Platform.GetSnapshot().Statuses[PlatformCapabilityIds.DragOut]
+                is CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable), "The snapshot reported drags for a window without them.");
+            var rejected = false;
+            try { _ = await window.ViewModel.Platform.StartDragAsync(new DesktopDragData()); }
+            catch (ArgumentException) { rejected = true; }
+            Require(rejected, "An empty drag was accepted.");
+        }
+
+        IWindowPlatformServices unbound = new DesktopWindowPlatformServices();
+        Require(await unbound.StartDragAsync(data) is PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "The drag of a window that has not opened did not report the owner unavailable.");
+        await ((DesktopWindowPlatformServices)unbound).DisposeAsync();
+        Require(await unbound.StartDragAsync(data) is PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "The drag of stopped services did not report the owner closed.");
+    }
+
     // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is
     // shown, so that the compositor gives it focus. Without a context, for a hidden window and for a window without
     // native dispatch nothing is presented, and a presentation that fails does not fail the open.

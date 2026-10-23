@@ -135,12 +135,15 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
 
     private void OnFilesDropped(object? sender, DesktopFileDropEventArgs drop)
     {
-        var files = drop.Paths.Select(RunicDroppedFile.FromPath).ToArray();
-        var delivery = new RunicFileDrop(files, drop.Target);
+        var delivery = DroppedFiles.ToRunicDrop(drop);
         lock (_closeGate)
         {
-            if (_close is not null) return;
-            _drops = _drops.ContinueWith(_ => _content.DeliverFileDropAsync(delivery, _dropStop.Token).AsTask(),
+            if (_close is not null)
+            {
+                _ = DroppedFiles.ReleaseUnopenedAsync(delivery);
+                return;
+            }
+            _drops = _drops.ContinueWith(_ => DroppedFiles.DeliverAsync(_content, delivery, _dropStop.Token),
                 CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
         }
     }

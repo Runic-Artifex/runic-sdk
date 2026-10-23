@@ -583,6 +583,7 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public bool ContextMenus { get; init; }
     // Where an open window reports its menu bar; a placement other than None also reports DesktopWindowCapabilities.MenuBar.
     public DesktopMenuBarPlacement MenuBarPlacement { get; init; }
+    public bool Drags { get; init; }
     // A window host that reports its state, from this state at open, or none when it is null.
     public DesktopWindowState? InitialState { get; init; }
     public bool IsSupported => true;
@@ -592,6 +593,7 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
         {
             SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
             Placement = MenuBarPlacement,
+            Drags = Drags,
         };
         Hosts.Add(host);
         return host;
@@ -599,8 +601,13 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 }
 
 // A headless embedded host whose "native thread" is a dedicated worker.
-sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost
+sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost,
+    IDesktopDragSourceWindowHost
 {
+    // Drags end with a copy.
+    public bool Drags { get; init; }
+    public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(DesktopDragEffects.Copy);
     // Context menus choose their first item.
     public bool ContextMenus { get; init; }
     public IDesktopMenuCommandTarget? MenuCommands { get; set; }
@@ -636,6 +643,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) |
         (ContextMenus ? DesktopWindowCapabilities.ContextMenu : DesktopWindowCapabilities.None) |
         (Placement != DesktopMenuBarPlacement.None ? DesktopWindowCapabilities.MenuBar : DesktopWindowCapabilities.None) |
+        (Drags ? DesktopWindowCapabilities.FileDrag : DesktopWindowCapabilities.None) |
         (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State);
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)

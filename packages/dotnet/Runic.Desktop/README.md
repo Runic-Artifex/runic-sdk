@@ -668,14 +668,37 @@ the nearest element under the drop that has one. The page reports it, so treat
 it as an untrusted routing label, never as a path and never for an access
 decision.
 
-| Presentation | Paths from | Target label | Verified |
-| --- | --- | --- | --- |
-| Windows WebView2 | The `File` objects of the page's drop event, whose paths WebView2 hands only to the host (`postMessageWithAdditionalObjects`) | The same message | CI: an OLE drag of shell files with `SendInput` |
-| macOS WKWebView | The dragging pasteboard's file URLs, in `performDragOperation:` before WebKit performs the drop | A script message from an isolated content world | CI: the pasteboard path; the OS drag loop is not automated |
-| Linux GTK 3 | The drag's `text/uri-list`, which WebKit fetches while the drag moves | A script message from an isolated script world | CI: an XDND drag under Xvfb |
-| Linux GTK 4 | The drop's `GdkFileList`, read from WebKit's own drop target through GLib emission hooks, so WebKit keeps the drop | A script message from an isolated script world | CI: an XDND drag under Xvfb |
-| WPF child web View | As WebView2 | As WebView2 | Windows CI builds; drop delivery shares the WebView2 code |
-| Installed browser, CS-WebUI | None: the page only has HTML5 `File` objects without paths | | |
+`DesktopFileDropEventArgs.Effect` says what the drop performed: `Copy` (the
+default), `Move` or `Link`, as the drag source, the user's modifier keys and the
+page agreed. A page marks where a drop copies, moves, links or is refused with
+`data-runic-drop-effect="copy|move|link|none"` on an element or an ancestor:
+Runic's capture-phase listener sets that `dropEffect` during a file drag, so the
+cursor shows it, and `none` refuses the drop there without navigating. Unmarked
+pages keep the drag source's own effects, and the page's handlers, which run
+after Runic's, may still change `dropEffect`. On WebView2 the page reports the
+effect with its drop, so it is as untrusted as `Target`; macOS reports the
+operation WebKit negotiated with the drag source.
+
+Files that have no local path, such as a macOS Mail attachment or a Photos
+picture (file promises), arrive in `DesktopFileDropEventArgs.PromisedFiles` as
+`IReadFileLease`s: Runic receives each into a private staging directory, and
+reading it once or disposing it deletes the copy. `Paths` may then be empty.
+Dispose every lease when done; the Views binding disposes the ones a handler did
+not open. Dragged text and links stay with the page, which reads them from its
+own `drop` event (`DataTransfer.getData`); they raise no event.
+
+Drops into a frame of the presented origin are delivered like drops onto the
+top-level document, with the label and effect from inside the frame; a frame of
+another origin never delivers a drop, and a drop there navigates nothing.
+
+| Presentation | Paths from | Target label and effect | Promised files | Frames | Verified |
+| --- | --- | --- | --- | --- | --- |
+| Windows WebView2 | The `File` objects of the page's drop event, whose paths WebView2 hands only to the host (`postMessageWithAdditionalObjects`) | The same message | No | Frames of the presented origin, through `ICoreWebView2Frame2` | CI: OLE drags of shell files with `SendInput`, onto the page and into frames |
+| macOS WKWebView | The dragging pasteboard's file URLs, in `performDragOperation:` before WebKit performs the drop | A script message from an isolated content world; the effect from the drag operation | `NSFilePromiseReceiver` | Frames whose `securityOrigin` is the presented origin | CI: the pasteboard and promise paths; the OS drag loop is not automated |
+| Linux GTK 3 | The drag's `text/uri-list`, which WebKit fetches while the drag moves | A script message from an isolated script world; effect `Copy` | No | Top-level document | CI: an XDND drag under Xvfb |
+| Linux GTK 4 | The drop's `GdkFileList`, read from WebKit's own drop target through GLib emission hooks, so WebKit keeps the drop | A script message from an isolated script world; effect `Copy` | No | Top-level document | CI: an XDND drag under Xvfb |
+| WPF child web View | As WebView2 | As WebView2 | No | As WebView2 | Windows CI builds; drop delivery shares the WebView2 code |
+| Installed browser, CS-WebUI | None: the page only has HTML5 `File` objects without paths | | | | |
 
 On WebView2 the page's script runs in the same world as Runic's, so the actual
 guarantee is that page code can only hand over `File` objects the user gave it,
@@ -686,7 +709,46 @@ paths, which the application can open; a macOS App Sandbox grants access to
 dropped files while the application runs. WebKitGTK reports a file drag as
 `text/uri-list` until the drop, so a dragged link is held on the page too
 instead of navigating it; its drop reports no paths and raises no event.
-Dragging files out of a window is not supported yet.
+
+### Dragging files out
+
+`DesktopWindow.StartDragAsync(data)` starts a native drag out of a window with
+`DesktopWindowCapabilities.FileDrag` and returns the drop's effect, one of
+`DesktopDragData.AllowedEffects`, or `None` when the user pressed Escape,
+dropped it where nothing accepted it, or no mouse button was held when the call
+reached the window. `DesktopDragData` carries existing absolute `Paths` (at most
+1024), plain `Text` (at most 1 MiB) and absolute non-`file:` `Uris` (at most
+1024); `Move` and `Link` need paths. Every drag source checks the same rules.
+
+Call it while the user holds the primary button. The page cancels its own HTML5
+drag and asks through an ordinary command; the application builds the data from
+its own state, so the page never names a path:
+
+```js
+row.addEventListener("dragstart", event => {
+  event.preventDefault();
+  client.commands.dragItem(row.dataset.key);
+});
+```
+
+```csharp
+[RelayCommand]
+private async Task DragItemAsync(string key) =>
+    await _platform.StartDragAsync(new DesktopDragData { Paths = [_files[key].Path] });
+```
+
+A `Move` result means the target asked for a move: the files may already be
+gone (an optimized move on Windows, a file manager on macOS or Linux), so delete
+what remains. To drag content that has no file yet, write it to a file first.
+ViewModels use `IWindowPlatformServices.StartDragAsync`, which reports
+`platform.drag.out`.
+
+| Presentation | Drag source | Verified |
+| --- | --- | --- |
+| Windows WebView2 | OLE `SHDoDragDrop` on the window thread with the shell's data object (`CF_HDROP`, the shell ID list), `CF_UNICODETEXT`, `UniformResourceLocatorW` and `Preferred DropEffect`; the browser process gives up its mouse capture to the drag loop | CI: `SendInput` press, page `dragstart`, drop on a window (files and text) and Escape, JIT and NativeAOT; win-arm64 does not run the OLE drag loop (I-077) |
+| WPF child web View (`WpfPlatformServices.ForWindow`) | As WebView2, on the window's dispatcher | CI: a drag from the child web view onto a WPF window |
+| macOS WKWebView | `beginDraggingSessionWithItems:event:source:` with `public.file-url`, `public.utf8-plain-text` and `public.url` items | CI: the dragging source callbacks; the OS drag loop is a manual check |
+| Linux GTK 3, GTK 4 | Not yet: the window does not report `FileDrag` | |
 
 ## Calls, connection events and ordering
 
@@ -1178,6 +1240,7 @@ The optional interfaces each add one feature:
 | `IDesktopNativeDispatchWindowHost` | `DesktopWindow.InvokeNativeAsync` and the platform services' owner thread | `SupportsNativeDispatch` |
 | `IDesktopWindowStateHost` | `DesktopWindow.State`, `StateChanged` and restoring `DesktopWindowHostOptions.Placement` ([Window state and restore](#window-state-and-restore)) | `DesktopWindowCapabilities.State` |
 | `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
+| `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 

@@ -63,6 +63,38 @@ internal sealed class FileDropChecks
         }
     }
 
+    // B11 (D037.3): files without a local path reach the ViewModel as promised files with the drop's effect; the host
+    // disposes the ones the handler did not open once it returns, and leaves an opened one to the handler.
+    [Test, NotInParallel(Order = 19)]
+    public async Task PromisedFilesAndTheEffectReachTheRootViewModel()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<PromisedDropViewModel>();
+        services.AddScoped<Func<IBridgeTransport, PromisedDropViewModel, IDisposable>>(_ => static (_, _) => new NoopAttachment());
+        await using var provider = services.BuildServiceProvider();
+        var factory = new NativeDispatchFactory();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        var window = await TestWindows.EmbeddedHtml(provider, desktop).OpenWindowAsync<PromisedDropWindow>();
+        try
+        {
+            var opened = new RecordingLease("attachment.pdf");
+            var unopened = new RecordingLease("../photo.jpg");
+            factory.Hosts[0].Drop(new DesktopFileDropEventArgs([], [opened, unopened], "inbox") { Effect = Runic.Platform.DesktopDragEffects.Move });
+            var drop = await window.ViewModel.Received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Require(drop.Files.Count == 0 && drop.Target == "inbox" && drop.Effect == RunicDropEffect.Move, "The drop lost its label or effect.");
+            Require(drop.PromisedFiles.Select(static file => file.Name).SequenceEqual(["attachment.pdf", "photo.jpg"]), "The promised file names were not kept or sanitized.");
+            Require(window.ViewModel.Content == "content", "The handler did not read the promised file.");
+            for (var attempt = 0; attempt < 100 && unopened.Disposals == 0; attempt++) await Task.Delay(10);
+            Require(unopened.Disposals == 1 && opened.Disposals == 0, "The host did not dispose only the promised file the handler left unopened.");
+            await drop.PromisedFiles[0].DisposeAsync();
+            Require(opened.Disposals == 1, "Disposing the opened promised file did not reach its lease.");
+        }
+        finally
+        {
+            await window.DisposeAsync();
+        }
+    }
+
     [Test, NotInParallel(Order = 19)]
     public async Task AViewModelWithoutTheInterfaceIgnoresDrops()
     {
@@ -119,6 +151,31 @@ sealed class DropViewModel : INotifyPropertyChanged, IRunicFileDropTarget
 }
 
 sealed class DropWindow : RunicWindow<DropViewModel>;
+
+sealed class PromisedDropViewModel : INotifyPropertyChanged, IRunicFileDropTarget
+{
+    public TaskCompletionSource<RunicFileDrop> Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public string? Content { get; private set; }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+    public async ValueTask OnFilesDroppedAsync(RunicFileDrop drop, CancellationToken cancellationToken)
+    {
+        var stream = await drop.PromisedFiles[0].OpenReadAsync(cancellationToken);
+        using (var reader = new StreamReader(stream, leaveOpen: true)) Content = await reader.ReadToEndAsync(cancellationToken);
+        Received.TrySetResult(drop);
+    }
+}
+
+sealed class PromisedDropWindow : RunicWindow<PromisedDropViewModel>;
+
+sealed class RecordingLease(string name) : Runic.Platform.IReadFileLease
+{
+    public int Disposals;
+    public string DisplayName => name;
+    public ValueTask<Stream> OpenReadAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<Stream>(new MemoryStream("content"u8.ToArray()));
+    public ValueTask DisposeAsync() { Interlocked.Increment(ref Disposals); return ValueTask.CompletedTask; }
+}
 
 sealed class PlainViewModel : INotifyPropertyChanged
 {

@@ -447,3 +447,27 @@ static Runic.Platform.DesktopClipboardContent.operator !=(Runic.Platform.Desktop
 static Runic.Platform.DesktopClipboardContent.operator ==(Runic.Platform.DesktopClipboardContent? left, Runic.Platform.DesktopClipboardContent? right) -> bool
 static Runic.Platform.DesktopProgress.operator !=(Runic.Platform.DesktopProgress? left, Runic.Platform.DesktopProgress? right) -> bool
 static Runic.Platform.DesktopProgress.operator ==(Runic.Platform.DesktopProgress? left, Runic.Platform.DesktopProgress? right) -> bool
+Runic.Platform.DesktopDragData
+Runic.Platform.DesktopDragData.<Clone>$() -> Runic.Platform.DesktopDragData!
+Runic.Platform.DesktopDragData.AllowedEffects.get -> Runic.Platform.DesktopDragEffects
+Runic.Platform.DesktopDragData.AllowedEffects.init -> void
+Runic.Platform.DesktopDragData.DesktopDragData() -> void
+Runic.Platform.DesktopDragData.Equals(Runic.Platform.DesktopDragData? other) -> bool
+Runic.Platform.DesktopDragData.Paths.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopDragData.Paths.init -> void
+Runic.Platform.DesktopDragData.Text.get -> string?
+Runic.Platform.DesktopDragData.Text.init -> void
+Runic.Platform.DesktopDragData.Uris.get -> System.Collections.Immutable.ImmutableArray<System.Uri!>
+Runic.Platform.DesktopDragData.Uris.init -> void
+Runic.Platform.DesktopDragEffects
+Runic.Platform.DesktopDragEffects.Copy = 1 -> Runic.Platform.DesktopDragEffects
+Runic.Platform.DesktopDragEffects.Link = 4 -> Runic.Platform.DesktopDragEffects
+Runic.Platform.DesktopDragEffects.Move = 2 -> Runic.Platform.DesktopDragEffects
+Runic.Platform.DesktopDragEffects.None = 0 -> Runic.Platform.DesktopDragEffects
+Runic.Platform.IWindowPlatformServices.StartDragAsync(Runic.Platform.DesktopDragData! data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopDragEffects>!>
+const Runic.Platform.PlatformCapabilityIds.DragOut = "platform.drag.out" -> string!
+override Runic.Platform.DesktopDragData.Equals(object? obj) -> bool
+override Runic.Platform.DesktopDragData.GetHashCode() -> int
+override Runic.Platform.DesktopDragData.ToString() -> string!
+static Runic.Platform.DesktopDragData.operator !=(Runic.Platform.DesktopDragData? left, Runic.Platform.DesktopDragData? right) -> bool
+static Runic.Platform.DesktopDragData.operator ==(Runic.Platform.DesktopDragData? left, Runic.Platform.DesktopDragData? right) -> bool

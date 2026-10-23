@@ -13,7 +13,7 @@ namespace Runic.Application.Views.Wpf;
 /// <summary>Native platform services for the application's own WPF windows.</summary>
 public static class WpfPlatformServices
 {
-    /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher, screen-reader announcements, message boxes and taskbar badge and progress owned by it.</summary>
+    /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher, screen-reader announcements, message boxes, taskbar badge and progress, and drags owned by it.</summary>
     /// <param name="window">The window, on its own thread.</param>
     /// <returns>
     /// Services for a ViewModel that takes <see cref="IWindowPlatformServices"/>, as on Runic Desktop, where
@@ -35,6 +35,11 @@ public static class WpfPlatformServices
     /// listens.
     /// </para>
     /// <para>
+    /// <see cref="IWindowPlatformServices.StartDragAsync"/> starts an OLE drag from the window, as Runic Desktop's window
+    /// does: call it while the user holds the primary button, for example from a command that a <c>RunicViewHost</c>'s
+    /// page sends in its <c>dragstart</c> event.
+    /// </para>
+    /// <para>
     /// Register them per window, for example <c>services.AddSingleton(WpfPlatformServices.ForWindow(mainWindow))</c>
     /// on the UI thread; each call creates services with their own lifetime. A <c>RunicViewHost</c> in the window
     /// presents a ViewModel that uses them like any other.
@@ -51,7 +56,8 @@ public static class WpfPlatformServices
         {
             if (!owner.Attach()) return;
             services.BindWindows(owner, (message, priority, cancellationToken) => AnnounceAsync(window, owner, message, priority, cancellationToken),
-                (items, options, cancellationToken) => ShowContextMenuAsync(window, owner, items, options, cancellationToken));
+                (items, options, cancellationToken) => ShowContextMenuAsync(window, owner, items, options, cancellationToken),
+                (data, cancellationToken) => StartDragAsync(owner, data, cancellationToken));
             // Explorer's TaskbarButtonCreated, when the button appears and after Explorer restarts, applies the window's
             // badge and progress again.
             if (OperatingSystem.IsWindowsVersionAtLeast(8) && HwndSource.FromHwnd(new WindowInteropHelper(window).Handle) is { } source)
@@ -199,6 +205,23 @@ public static class WpfPlatformServices
                 pending.Push(System.Windows.Media.VisualTreeHelper.GetChild(current, index));
         }
         return first;
+    }
+
+    // An OLE drag out of the window on its dispatcher, as Runic Desktop's WebView2 window starts one, while the primary
+    // button is held over the window or its child web view.
+    private static async ValueTask<PlatformResult<DesktopDragEffects>> StartDragAsync(WpfWindowOwner owner, DesktopDragData data,
+        CancellationToken cancellationToken)
+    {
+        var effect = DesktopDragEffects.None;
+        try
+        {
+            await owner.InvokeAsync(handle => effect = Runic.Desktop.Internal.WindowsDragSource.Run(handle, data), cancellationToken);
+        }
+        catch (OwnerClosedException)
+        {
+            return new PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+        }
+        return new PlatformResult<DesktopDragEffects>.Success(effect);
     }
 
     private static PlatformResult<PlatformUnit> Present(Window window)

@@ -143,6 +143,70 @@ internal sealed class ConformanceTests
         }
     }
 
+    // An implementation written before StartDragAsync keeps compiling: it checks the drag data and reports the owner
+    // unavailable, as WindowPlatformServices.Unavailable reports its own reason. The rules are the ones every drag
+    // source shares.
+    [Test, DisplayName("WINDOW: drags without an implementation report why, and every implementation checks the data")]
+    public async Task DragsWithoutAnImplementation()
+    {
+        var root = Directory.CreateTempSubdirectory("runic-drag-rules-");
+        try
+        {
+            var file = Path.Combine(root.FullName, "report.pdf");
+            await File.WriteAllTextAsync(file, "report");
+            var folder = Directory.CreateDirectory(Path.Combine(root.FullName, "folder")).FullName;
+            IWindowPlatformServices custom = new MinimalWindowServices();
+            var data = new DesktopDragData { Paths = [file, folder], Text = "report", Uris = [new Uri("https://example.com/report")] };
+            if (await custom.StartDragAsync(data) is not PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerUnavailable))
+                throw new InvalidOperationException("The default StartDragAsync did not report the owner unavailable.");
+            if (await WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerClosed).StartDragAsync(new DesktopDragData { Text = "x" })
+                is not PlatformResult<DesktopDragEffects>.Unavailable(PlatformUnavailableReason.OwnerClosed))
+                throw new InvalidOperationException("Unavailable window services did not report their reason for a drag.");
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            foreach (var services in new[] { custom, WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerClosed) })
+            {
+                // Accepted: text alone, URIs alone, empty text, every effect with paths, default arrays.
+                foreach (var accepted in new DesktopDragData[]
+                {
+                    new() { Text = "" }, new() { Uris = [new Uri("mailto:ann@example.com")] },
+                    new() { Paths = [file], AllowedEffects = DesktopDragEffects.Copy | DesktopDragEffects.Move | DesktopDragEffects.Link },
+                    new() { Paths = default, Uris = default, Text = "x" },
+                })
+                    _ = await services.StartDragAsync(accepted);
+                await Rejects<ArgumentNullException>(() => services.StartDragAsync(null!));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData()));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Paths = ["relative.txt"] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Paths = [""] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Paths = [Path.Combine(root.FullName, "missing.txt")] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Paths = [.. Enumerable.Repeat(file, 1025)] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Text = "a\0b" }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Text = new string('x', 1024 * 1024 + 1) }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Uris = [new Uri("relative", UriKind.Relative)] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Uris = [new Uri(file)] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Uris = [null!] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData
+                    { Uris = [.. Enumerable.Repeat(new Uri("https://example.com"), 1025)] }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Paths = [file], AllowedEffects = DesktopDragEffects.None }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Paths = [file], AllowedEffects = (DesktopDragEffects)8 }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Text = "x", AllowedEffects = DesktopDragEffects.Move }));
+                await Rejects<ArgumentException>(() => services.StartDragAsync(new DesktopDragData { Text = "x", AllowedEffects = DesktopDragEffects.Link }));
+                await Rejects<OperationCanceledException>(() => services.StartDragAsync(data, cancelled.Token));
+            }
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+
+        static async Task Rejects<TException>(Func<ValueTask<PlatformResult<DesktopDragEffects>>> drag) where TException : Exception
+        {
+            try { await drag(); }
+            catch (TException) { return; }
+            throw new InvalidOperationException($"StartDragAsync did not throw {typeof(TException).Name}.");
+        }
+    }
+
     private sealed class MinimalWindowServices : IWindowPlatformServices
     {
         private readonly IWindowPlatformServices _inner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);

@@ -449,6 +449,11 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         }
     }
 
+    public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default) =>
+        _host is IDesktopDragSourceWindowHost dragHost
+            ? dragHost.StartDragAsync(data, cancellationToken)
+            : ValueTask.FromException<DesktopDragEffects>(new NotSupportedException("This window host starts no drags."));
+
     public ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default) =>
         _host is IDesktopPlacementWindowHost placementHost
             ? placementHost.SetFullScreenAsync(fullScreen, cancellationToken)

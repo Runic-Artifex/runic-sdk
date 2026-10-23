@@ -429,7 +429,8 @@ either.
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements, `IWindowPlatformServices.AnnounceAsync`, and `DesktopPlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `DesktopPlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
+| Dropped files, `IRunicFileDropTarget` | Native paths and promised files, once per drop | None | None |
+| Drags out, `IWindowPlatformServices.StartDragAsync` | The window's native drag where it has `DesktopWindowCapabilities.FileDrag` (Windows, macOS, a WPF window); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Menu bar commands, `IRunicMenuCommandSource` | The native menu bar (macOS; the GTK 3 and GTK 4 windows' own bar), while the window is key, and `DesktopWindow.TryExecuteMenuItemAsync` | None | None |
 | Context menus, `IWindowPlatformServices.ShowContextMenuAsync` | The window's native menu where it has `DesktopWindowCapabilities.ContextMenu` (macOS, GTK 3, GTK 4); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopNetworkStatus`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
@@ -586,6 +587,28 @@ reported, not releases, and a held key reports one press. `Activated` and
 presentation, passing `PlatformContext` where there is one.
 `DesktopGlobalShortcuts.Unavailable(reason)` stands in on hosts without a
 provider.
+
+## Dragging out of a window
+
+`IWindowPlatformServices.StartDragAsync(data)` checks `DesktopDragData` (at least
+one of existing absolute `Paths`, `Text` without NUL up to 1 MiB, or absolute
+non-`file:` `Uris`, at most 1024 each; `Move` and `Link` need paths), then starts
+the window's native drag and returns the drop's effect, or reports `Unavailable`:
+`OwnerUnavailable` before the window opens and on a host without a native owner,
+`OwnerClosed` after it closed, and `BackendUnavailable` for a window that cannot
+start drags. `Success(None)` means the drag was cancelled, dropped nowhere, or no
+mouse button was held when the call arrived. An implementation written before
+0.11 reports `OwnerUnavailable`. The capability snapshot reports
+`PlatformCapabilityIds.DragOut` (`platform.drag.out`).
+
+```csharp
+// From the page's dragstart event, after event.preventDefault(): dragItem(row.key).
+async Task DragItemAsync(string key)
+{
+    var result = await platform.StartDragAsync(new DesktopDragData { Paths = [Find(key).Path] });
+    if (result is PlatformResult<DesktopDragEffects>.Success { Value: not DesktopDragEffects.None }) Status = "Dragged";
+}
+```
 
 ## Opening files and URLs
 

@@ -479,6 +479,11 @@ public enum DesktopWindowCapabilities
     /// there do not report it.
     /// </summary>
     MonitorPlacement = 1 << 14,
+
+    /// <summary>
+    /// The window can start native drags of files, text and URIs out of it (<see cref="DesktopWindow.StartDragAsync"/>).
+    /// </summary>
+    FileDrag = 1 << 15,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

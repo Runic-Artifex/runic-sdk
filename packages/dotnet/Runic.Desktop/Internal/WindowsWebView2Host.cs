@@ -87,7 +87,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement |
-        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
+        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag;
     // A frameless or kiosk window has no frame for a menu bar.
     public DesktopWindowCapabilities Capabilities => _options is { Frameless: true } or { Kiosk: true }
         ? KnownCapabilities & ~DesktopWindowCapabilities.MenuBar
@@ -200,6 +200,15 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     // (ImportantMostRecent).
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
         => InvokeAsync(() => RaiseNotification(_provider, message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken);
+
+    // An OLE drag on the window thread while the primary button is held (WindowsDragSource); the call completes when the
+    // drag's modal loop ends.
+    public async ValueTask<Runic.Platform.DesktopDragEffects> StartDragAsync(Runic.Platform.DesktopDragData data, CancellationToken cancellationToken = default)
+    {
+        var effect = Runic.Platform.DesktopDragEffects.None;
+        await InvokeAsync(() => effect = WindowsDragSource.Run(_window, data), cancellationToken).ConfigureAwait(false);
+        return effect;
+    }
 
     private static void RaiseNotification(nint provider, string message, bool assertive)
     {

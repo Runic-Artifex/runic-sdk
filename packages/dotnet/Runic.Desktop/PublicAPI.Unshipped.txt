@@ -115,3 +115,11 @@ Runic.Desktop.DesktopSurfaceOptions.ContentSecurityPolicy.get -> string?
 Runic.Desktop.DesktopSurfaceOptions.ContentSecurityPolicy.init -> void
 Runic.Desktop.DesktopWindowHostOptions.GlobalMenu.get -> bool
 Runic.Desktop.DesktopWindowHostOptions.GlobalMenu.init -> void
+Runic.Desktop.DesktopFileDropEventArgs.DesktopFileDropEventArgs(System.Collections.Generic.IReadOnlyList<string!>! paths, System.Collections.Generic.IReadOnlyList<Runic.Platform.IReadFileLease!>! promisedFiles, string? target) -> void
+Runic.Desktop.DesktopFileDropEventArgs.Effect.get -> Runic.Platform.DesktopDragEffects
+Runic.Desktop.DesktopFileDropEventArgs.Effect.init -> void
+Runic.Desktop.DesktopFileDropEventArgs.PromisedFiles.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.IReadFileLease!>!
+Runic.Desktop.DesktopWindow.StartDragAsync(Runic.Platform.DesktopDragData! data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.DesktopDragEffects>
+Runic.Desktop.DesktopWindowCapabilities.FileDrag = 32768 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.IDesktopDragSourceWindowHost
+Runic.Desktop.IDesktopDragSourceWindowHost.StartDragAsync(Runic.Platform.DesktopDragData! data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.DesktopDragEffects>
