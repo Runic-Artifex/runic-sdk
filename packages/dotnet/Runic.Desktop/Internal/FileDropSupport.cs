@@ -166,11 +166,14 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
 
     internal void NativeDrop(IReadOnlyList<string> paths) => NativeDrop(paths, [], DesktopDragEffects.Copy);
 
-    // The native side's paths, promised files and the effect it negotiated with the drag source.
-    internal void NativeDrop(IReadOnlyList<string> paths, IReadOnlyList<IReadFileLease> promisedFiles, DesktopDragEffects effect)
+    // The native side's paths, promised files and the effect it negotiated with the drag source. A native side that
+    // knows only the effects the drop offers (GTK 4) passes them as offered: the page's reported effect, when it is one
+    // of them, replaces the native effect.
+    internal void NativeDrop(IReadOnlyList<string> paths, IReadOnlyList<IReadFileLease> promisedFiles, DesktopDragEffects effect,
+        DesktopDragEffects offered = DesktopDragEffects.None)
     {
         if (paths.Count == 0 && promisedFiles.Count == 0) return;
-        var pending = new Pending(paths, promisedFiles, effect);
+        var pending = new Pending(paths, promisedFiles, effect, offered);
         lock (_gate)
         {
             if (_disposed)
@@ -188,8 +191,9 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     }
 
     // A label without a pending native drop is ignored: the page cannot make a drop of its own. A refused report, from
-    // a frame of another origin, discards the drop it belongs to.
-    internal void PageReport(string? label, bool refused = false)
+    // a frame of another origin, discards the drop it belongs to. The reported effect counts only for a drop whose
+    // native side passed the effects it offers.
+    internal void PageReport(string? label, bool refused = false, DesktopDragEffects reported = DesktopDragEffects.None)
     {
         Pending pending;
         lock (_gate)
@@ -197,7 +201,7 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
             if (_disposed || !_pending.TryDequeue(out pending!)) return;
             pending.Timer?.Dispose();
             if (refused) pending.Discard();
-            else Deliver(pending, label);
+            else Deliver(pending, label, reported);
         }
     }
 
@@ -217,9 +221,11 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     }
 
     // Under the gate, so drops are delivered in order; the receiver only queues them.
-    private void Deliver(Pending pending, string? label)
+    private void Deliver(Pending pending, string? label, DesktopDragEffects reported = DesktopDragEffects.None)
     {
-        try { deliver(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label) { Effect = pending.Effect }); }
+        var effect = reported is DesktopDragEffects.Copy or DesktopDragEffects.Move or DesktopDragEffects.Link
+            && pending.Offered.HasFlag(reported) ? reported : pending.Effect;
+        try { deliver(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label) { Effect = effect }); }
         catch (Exception error) when (error is not OutOfMemoryException) { pending.Discard(); }
     }
 
@@ -236,11 +242,13 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
         }
     }
 
-    private sealed class Pending(IReadOnlyList<string> paths, IReadOnlyList<IReadFileLease> promisedFiles, DesktopDragEffects effect)
+    private sealed class Pending(IReadOnlyList<string> paths, IReadOnlyList<IReadFileLease> promisedFiles, DesktopDragEffects effect,
+        DesktopDragEffects offered)
     {
         internal IReadOnlyList<string> Paths { get; } = paths;
         internal IReadOnlyList<IReadFileLease> PromisedFiles { get; } = promisedFiles;
         internal DesktopDragEffects Effect { get; } = effect is DesktopDragEffects.Move or DesktopDragEffects.Link ? effect : DesktopDragEffects.Copy;
+        internal DesktopDragEffects Offered { get; } = offered;
         internal Timer? Timer { get; set; }
 
         // A drop nobody receives deletes the staged copies of its promised files.

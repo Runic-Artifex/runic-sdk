@@ -69,11 +69,12 @@ if (args.Contains("--message-boxes", StringComparer.Ordinal)) return MessageBoxS
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 
+// The drag-out and frame-drop cases (B11) drive several pointer drags under XTEST.
 using var watchdog = new Timer(static _ =>
 {
-    Console.Error.WriteLine("GTK 4 smoke exceeded its 60-second deadline.");
+    Console.Error.WriteLine("GTK 4 smoke exceeded its 120-second deadline.");
     Environment.Exit(1);
-}, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
+}, null, TimeSpan.FromSeconds(120), Timeout.InfiniteTimeSpan);
 SmokeMode.PortalParentOnly = args.Contains("--portal-parent-only", StringComparer.Ordinal);
 SmokeMode.DirectoryOnly = args.Contains("--directory", StringComparer.Ordinal);
 

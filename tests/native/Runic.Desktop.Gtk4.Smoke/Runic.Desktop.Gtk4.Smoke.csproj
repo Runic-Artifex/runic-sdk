@@ -9,6 +9,7 @@
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/KeyboardSmoke.cs" Link="KeyboardSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/XTestPointer.cs" Link="XTestPointer.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/LinuxDragOutSmoke.cs" Link="LinuxDragOutSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SurfaceScripts.cs" Link="SurfaceScripts.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WebContentSmoke.cs" Link="WebContentSmoke.cs" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />

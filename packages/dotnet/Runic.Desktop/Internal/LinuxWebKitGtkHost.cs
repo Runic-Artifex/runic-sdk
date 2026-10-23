@@ -45,7 +45,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu;
+        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag;
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
@@ -479,6 +479,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             _downloadHandler = 0;
         }
         _webContent?.Clear();
+        ReleaseDragOut();
         _drops?.Dispose();
         _dragContext = 0;
         _dragPaths = null;
@@ -617,6 +618,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             if (GCHandle.FromIntPtr(userData).Target is LinuxWebKitGtkHost { IsOpen: true } host)
             {
+                // The action WebKit chose for the page's dropEffect, kept for a drop whose URIs arrive later.
+                host._dropEffect = DropEffectOf(context);
                 if (host._dragContext == context && host._dragPaths is not null)
                 {
                     host.DeliverNativeDrop();
@@ -642,9 +645,11 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         var paths = _dragPaths;
         _dragPaths = null;
         _dragContext = 0;
-        if (paths is { Count: > 0 }) _drops?.NativeDrop(paths);
+        if (paths is { Count: > 0 }) _drops?.NativeDrop(paths, [], _dropEffect);
     }
 
+    // The script runs in every frame (D037.2); a report from a subframe of another origin than the presented one
+    // refuses the drop.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFileDropMessage(nint manager, nint message, nint context)
     {
@@ -652,7 +657,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host)
             {
-                host._drops?.PageReport(FileDropSupport.DecodeLabel(Api.GetMessageString(message)));
+                var report = FileDropSupport.DecodeReport(Api.GetMessageString(message));
+                host._drops?.PageReport(report.Label, refused: !GtkDragSupport.AcceptsReport(host._presentedUrl, report.Origin));
             }
         }
         catch
@@ -1283,9 +1289,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             finally { ((delegate* unmanaged[Cdecl]<nint, void>)GFreePointer)(text); }
         }
 
-        // The drop script runs in the keyboard script's isolated world, where the page cannot reach its handler.
+        // The drop script runs in the keyboard script's isolated world, where the page cannot reach its handler, in every
+        // frame, so drops into same-origin frames carry their label; the handler checks the reported frame origin.
         internal void AddFileDropScript(nint manager) =>
-            AddIsolatedScript(manager, FileDropSupport.WebKitScript, FileDropSupport.WebKitMessageHandler, allFrames: false, "file drop");
+            AddIsolatedScript(manager, FileDropSupport.WebKitScript, FileDropSupport.WebKitMessageHandler, allFrames: true, "file drop");
 
         // In every frame, in the same isolated world.
         internal void AddMediaFramesScript(nint manager) =>

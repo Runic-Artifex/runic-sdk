@@ -354,6 +354,8 @@ internal sealed partial class LinuxWebKitGtkHost
                 var copy = MenuApi.EventCopy(nativeEvent);
                 if (host._triggerEvent != 0) MenuApi.EventFree(host._triggerEvent);
                 host._triggerEvent = copy;
+                // A primary button press is also the trigger event of a drag out (B11).
+                host.KeepDragPress(nativeEvent);
             }
         }
         catch

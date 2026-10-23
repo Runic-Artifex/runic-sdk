@@ -60,6 +60,36 @@ internal sealed class Pointer : IDisposable
         Button(false);
     }
 
+    // A drag out (B11): the button stays down while the application starts the drag, then the pointer moves on.
+    internal async Task PressAsync(int x, int y)
+    {
+        Move(x, y);
+        await Task.Delay(150);
+        Button(true);
+    }
+
+    internal async Task MoveAsync((int X, int Y) from, (int X, int Y) to, int steps = 30)
+    {
+        for (var step = 1; step <= steps; step++)
+        {
+            Move(from.X + (to.X - from.X) * step / steps, from.Y + (to.Y - from.Y) * step / steps);
+            await Task.Delay(30);
+        }
+    }
+
+    internal void Release() => Button(false);
+
+    // Escape on the test display's keyboard.
+    internal unsafe void Escape()
+    {
+        var keycode = ((delegate* unmanaged[Cdecl]<nint, nuint, byte>)NativeLibrary.GetExport(_x11, "XKeysymToKeycode"))(_display, 0xff1b);
+        var key = (delegate* unmanaged[Cdecl]<nint, uint, int, nuint, int>)NativeLibrary.GetExport(_xtest, "XTestFakeKeyEvent");
+        key(_display, keycode, 1, 0);
+        Flush();
+        key(_display, keycode, 0, 0);
+        Flush();
+    }
+
     private unsafe void Move(int x, int y)
     {
         ((delegate* unmanaged[Cdecl]<nint, int, int, int, nuint, int>)NativeLibrary.GetExport(_xtest, "XTestFakeMotionEvent"))(_display, -1, x, y, 0);

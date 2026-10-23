@@ -4,7 +4,7 @@ using Runic.Desktop;
 
 // W315-006: a real X11 drag and drop from a GTK 3 drag source onto the GTK 3 WebKitGTK window, driven through XTEST
 // under Xvfb. The window reports the native paths with the page's routing label, the page still receives its drop
-// event, and the window does not navigate to the dropped file.
+// event, and the window does not navigate to the dropped file. Then B11's drag out and frame drops (LinuxDragOutSmoke).
 internal static partial class FileDropSmoke
 {
     internal const string Page =
@@ -55,7 +55,7 @@ internal static partial class FileDropSmoke
 
             var uris = new[] { new Uri(file).AbsoluteUri, new Uri(folder).AbsoluteUri };
             nint source = 0;
-            await window.InvokeNativeAsync(_ => source = DragSource.Create(uris, x: 10, y: 10, size: 150));
+            await window.InvokeNativeAsync(_ => source = DragSource.Create(uris, x: 10, y: 10, size: 150, actions: DragSource.Copy));
             try
             {
                 await Task.Delay(500);
@@ -73,6 +73,21 @@ internal static partial class FileDropSmoke
             {
                 if (source != 0) await window.InvokeNativeAsync(_ => DragSource.Destroy(source));
             }
+            await window.CloseAsync();
+            // The page window where FileDropSmoke's was; the test windows where its drag source was.
+            await LinuxDragOutSmoke.RunAsync(host, pointer, [file, folder], new LinuxDragOutSmoke.Toolkit
+            {
+                Name = "GTK 3",
+                PageWindow = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 400, Height = 300, X = 220, Y = 20 },
+                PageCenter = (420, 170),
+                SameFrame = (320, 170),
+                OtherFrame = (520, 170),
+                CreateDropTarget = static () => DropTarget.Create(x: 10, y: 10, size: 150),
+                DropPoint = (85, 85),
+                CreateDragSource = static uris => DragSource.Create(uris, x: 10, y: 10, size: 150, actions: DragSource.Copy | DragSource.Move),
+                SourcePoint = (85, 85),
+                DestroyWindow = static window => DragSource.Destroy(window),
+            });
         }
         finally
         {
@@ -83,9 +98,11 @@ internal static partial class FileDropSmoke
     // A GTK 3 window that offers text/uri-list when dragged.
     private static unsafe partial class DragSource
     {
+        internal const int Copy = 1 << 1;
+        internal const int Move = 1 << 2;
         private static nint[] s_uris = [];
 
-        internal static nint Create(string[] uris, int x, int y, int size)
+        internal static nint Create(string[] uris, int x, int y, int size, int actions)
         {
             foreach (var pointer in s_uris) Marshal.FreeCoTaskMem(pointer);
             s_uris = [.. uris.Select(Marshal.StringToCoTaskMemUTF8), 0];
@@ -94,7 +111,7 @@ internal static partial class FileDropSmoke
             WindowMove(window, x, y);
             var target = Marshal.StringToCoTaskMemUTF8("text/uri-list");
             var entry = new TargetEntry { Target = target, Flags = 0, Info = 0 };
-            DragSourceSet(window, 1 << 8, &entry, 1, 1 << 1); // GDK_BUTTON1_MASK, GDK_ACTION_COPY
+            DragSourceSet(window, 1 << 8, &entry, 1, actions); // GDK_BUTTON1_MASK
             Marshal.FreeCoTaskMem(target);
             SignalConnectData(window, "drag-data-get",
                 (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, uint, uint, nint, void>)&OnDragDataGet, 0, 0, 0);
@@ -102,7 +119,10 @@ internal static partial class FileDropSmoke
             return window;
         }
 
-        internal static void Destroy(nint window) => WidgetDestroy(window);
+        internal static void Destroy(nint window)
+        {
+            if (window != 0) WidgetDestroy(window);
+        }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
         private static void OnDragDataGet(nint widget, nint context, nint data, uint info, uint time, nint userData)
@@ -126,6 +146,56 @@ internal static partial class FileDropSmoke
         [LibraryImport(Gtk, EntryPoint = "gtk_selection_data_set_uris")] private static partial int SelectionDataSetUris(nint data, nint* uris);
         [LibraryImport(Gtk, EntryPoint = "gtk_widget_show_all")] private static partial void WidgetShowAll(nint widget);
         [LibraryImport(Gtk, EntryPoint = "gtk_widget_destroy")] private static partial void WidgetDestroy(nint widget);
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nuint SignalConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
+    }
+
+    // A GTK 3 window that accepts text/uri-list with Copy or Move (GTK_DEST_DEFAULT_ALL answers, reads and finishes the
+    // drop) and records the dropped URIs.
+    private static unsafe partial class DropTarget
+    {
+        internal static nint Create(int x, int y, int size)
+        {
+            var window = WindowNew(0);
+            WindowSetDefaultSize(window, size, size);
+            WindowMove(window, x, y);
+            var target = Marshal.StringToCoTaskMemUTF8("text/uri-list");
+            var entry = new TargetEntry { Target = target, Flags = 0, Info = 0 };
+            DragDestSet(window, 7, &entry, 1, DragSource.Copy | DragSource.Move); // GTK_DEST_DEFAULT_ALL
+            Marshal.FreeCoTaskMem(target);
+            SignalConnectData(window, "drag-data-received",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, nint, uint, uint, nint, void>)&OnDragDataReceived, 0, 0, 0);
+            WidgetShowAll(window);
+            return window;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnDragDataReceived(nint widget, nint context, int x, int y, nint data, uint info, uint time, nint userData)
+        {
+            var uris = SelectionDataGetUris(data);
+            if (uris == null) return;
+            List<string> values = [];
+            for (var entry = uris; *entry != 0; entry++) values.Add(Marshal.PtrToStringUTF8(*entry)!);
+            StrFreev(uris);
+            LinuxDragOutSmoke.RecordDrop([.. values]);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TargetEntry
+        {
+            internal nint Target;
+            internal uint Flags;
+            internal uint Info;
+        }
+
+        private const string Gtk = "libgtk-3.so.0";
+        [LibraryImport(Gtk, EntryPoint = "gtk_window_new")] private static partial nint WindowNew(int type);
+        [LibraryImport(Gtk, EntryPoint = "gtk_window_set_default_size")] private static partial void WindowSetDefaultSize(nint window, int width, int height);
+        [LibraryImport(Gtk, EntryPoint = "gtk_window_move")] private static partial void WindowMove(nint window, int x, int y);
+        [LibraryImport(Gtk, EntryPoint = "gtk_drag_dest_set")] private static partial void DragDestSet(nint widget, int flags, TargetEntry* targets, int count, int actions);
+        [LibraryImport(Gtk, EntryPoint = "gtk_selection_data_get_uris")] private static partial nint* SelectionDataGetUris(nint data);
+        [LibraryImport(Gtk, EntryPoint = "gtk_widget_show_all")] private static partial void WidgetShowAll(nint widget);
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_strfreev")] private static partial void StrFreev(nint* values);
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
         private static partial nuint SignalConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
     }

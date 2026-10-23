@@ -100,6 +100,8 @@ internal static unsafe partial class Gtk4FileDrops
                     if (drop == session.Drop)
                     {
                         session.Dropped = true;
+                        // The actions the drop offers; the page's report chooses among them.
+                        session.Actions = GtkDragSupport.FromGtk4Actions(DropGetActions(drop));
                         if (!session.Reading) Deliver(session);
                     }
                     break;
@@ -138,6 +140,7 @@ internal static unsafe partial class Gtk4FileDrops
         internal bool Dropped;
         internal List<string>? Paths;
         internal bool Reading;
+        internal Runic.Platform.DesktopDragEffects Actions;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
@@ -198,8 +201,9 @@ internal static unsafe partial class Gtk4FileDrops
     private static void Deliver(Session session)
     {
         var paths = session.Paths;
+        var actions = session.Actions;
         Forget(session);
-        if (paths is { Count: > 0 }) session.Host.NativeFileDrop(paths);
+        if (paths is { Count: > 0 }) session.Host.NativeFileDrop(paths, actions);
     }
 
     private static void Forget(Session session)
@@ -209,6 +213,7 @@ internal static unsafe partial class Gtk4FileDrops
         session.Dropped = false;
         session.Reading = false;
         session.Paths = null;
+        session.Actions = Runic.Platform.DesktopDragEffects.None;
     }
 
     [LibraryImport(GObject, EntryPoint = "g_signal_lookup", StringMarshalling = StringMarshalling.Utf8)]
@@ -237,6 +242,8 @@ internal static unsafe partial class Gtk4FileDrops
     private static partial nuint FileListGetType();
     [LibraryImport(Gtk, EntryPoint = "gdk_file_list_get_files")]
     private static partial nint FileListGetFiles(nint fileList);
+    [LibraryImport(Gtk, EntryPoint = "gdk_drop_get_actions")]
+    private static partial int DropGetActions(nint drop);
     [LibraryImport(Gtk, EntryPoint = "gdk_drop_read_value_async")]
     private static partial void DropReadValueAsync(nint drop, nuint type, int priority, nint cancellable, nint callback, nint data);
     [LibraryImport(Gtk, EntryPoint = "gdk_drop_read_value_finish")]

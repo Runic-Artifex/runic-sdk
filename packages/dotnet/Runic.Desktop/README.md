@@ -676,8 +676,10 @@ Runic's capture-phase listener sets that `dropEffect` during a file drag, so the
 cursor shows it, and `none` refuses the drop there without navigating. Unmarked
 pages keep the drag source's own effects, and the page's handlers, which run
 after Runic's, may still change `dropEffect`. On WebView2 the page reports the
-effect with its drop, so it is as untrusted as `Target`; macOS reports the
-operation WebKit negotiated with the drag source.
+effect with its drop, so it is as untrusted as `Target`; macOS and GTK 3 report
+the operation WebKit negotiated with the drag source. GTK 4 sees only the actions
+the source offers: when it offers several, the page's reported effect picks one of
+them, and `Copy` is the fallback.
 
 Files that have no local path, such as a macOS Mail attachment or a Photos
 picture (file promises), arrive in `DesktopFileDropEventArgs.PromisedFiles` as
@@ -695,8 +697,8 @@ another origin never delivers a drop, and a drop there navigates nothing.
 | --- | --- | --- | --- | --- | --- |
 | Windows WebView2 | The `File` objects of the page's drop event, whose paths WebView2 hands only to the host (`postMessageWithAdditionalObjects`) | The same message | No | Frames of the presented origin, through `ICoreWebView2Frame2` | CI: OLE drags of shell files with `SendInput`, onto the page and into frames |
 | macOS WKWebView | The dragging pasteboard's file URLs, in `performDragOperation:` before WebKit performs the drop | A script message from an isolated content world; the effect from the drag operation | `NSFilePromiseReceiver` | Frames whose `securityOrigin` is the presented origin | CI: the pasteboard and promise paths; the OS drag loop is not automated |
-| Linux GTK 3 | The drag's `text/uri-list`, which WebKit fetches while the drag moves | A script message from an isolated script world; effect `Copy` | No | Top-level document | CI: an XDND drag under Xvfb |
-| Linux GTK 4 | The drop's `GdkFileList`, read from WebKit's own drop target through GLib emission hooks, so WebKit keeps the drop | A script message from an isolated script world; effect `Copy` | No | Top-level document | CI: an XDND drag under Xvfb |
+| Linux GTK 3 | The drag's `text/uri-list`, which WebKit fetches while the drag moves | A script message from an isolated script world; the effect from the action WebKit chose for the page (`gdk_drag_context_get_selected_action` at the drop) | No | Frames whose origin, reported by the isolated script in every frame, is the presented origin | CI: XDND drags under Xvfb, onto the page and into frames |
+| Linux GTK 4 | The drop's `GdkFileList`, read from WebKit's own drop target through GLib emission hooks, so WebKit keeps the drop | A script message from an isolated script world; the effect from the actions the drop offers (`gdk_drop_get_actions`): the only one, or among several the page's effect (`Copy` when the page reports none of them) | No | As GTK 3 | CI: XDND drags under Xvfb, onto the page and into frames |
 | WPF child web View | As WebView2 | As WebView2 | No | As WebView2 | Windows CI builds; drop delivery shares the WebView2 code |
 | Installed browser, CS-WebUI | None: the page only has HTML5 `File` objects without paths | | | | |
 
@@ -748,7 +750,10 @@ ViewModels use `IWindowPlatformServices.StartDragAsync`, which reports
 | Windows WebView2 | OLE `SHDoDragDrop` on the window thread with the shell's data object (the shell ID list) plus `CF_HDROP`, `CF_UNICODETEXT`, `UniformResourceLocatorW` and `Preferred DropEffect`; the browser process gives up its mouse capture to the drag loop, and Runic's drop source reads Escape itself because the keyboard focus stays in the web view | CI: `SendInput` press, page `dragstart`, drop on a window (files and text) and Escape, JIT and NativeAOT; win-arm64 does not run the OLE drag loop (I-077) |
 | WPF child web View (`WpfPlatformServices.ForWindow`) | As WebView2, on the window's dispatcher | CI: a drag from the child web view onto a WPF window |
 | macOS WKWebView | `beginDraggingSessionWithItems:event:source:` with `public.file-url`, `public.utf8-plain-text` and `public.url` items | CI: the dragging source callbacks; the OS drag loop is a manual check |
-| Linux GTK 3, GTK 4 | Not yet: the window does not report `FileDrag` | |
+| Linux GTK 3 | `gtk_drag_begin_with_coordinates` on the web view with the last primary button press as the trigger event; GTK's URI targets (`text/uri-list`, and the FileTransfer portal's targets, which GTK 3.24.37 and later serialize itself, so a Flatpak application drags files out to the host) and text targets (`UTF8_STRING`, `text/plain;charset=utf-8`); the effect from `drag-end`, `None` after `drag-failed` | CI: XTEST press, page `dragstart`, drop on a GTK window and Escape under Xvfb; Wayland and Flatpak are manual checks |
+| Linux GTK 4 (4.22 and later) | `gdk_drag_begin` on the window's surface with the default seat's pointer and a content union of a `GdkFileList` (which GDK offers as `text/uri-list` and through the FileTransfer portal) and the text (`text/plain;charset=utf-8`), or `text/uri-list` for URIs without paths; the effect from `dnd-finished`, `None` on `cancel`. On X11, GTK 4 cancels a drag only when it is dropped where nothing accepts it, not on Escape | CI: XTEST press, page `dragstart`, drop on a GTK window and a drop nowhere under Xvfb; Wayland and Flatpak are manual checks |
+
+GTK 4 windows report `FileDrag` from GTK 4.22, where drag-out is verified: on GTK 4.14 (Ubuntu 24.04) under X11 the GTK thread hung when the window closed after a drag out; GTK 4.16 to 4.20 are untested.
 
 ## Calls, connection events and ordering
 
