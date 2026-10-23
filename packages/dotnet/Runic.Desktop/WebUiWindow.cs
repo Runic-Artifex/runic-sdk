@@ -81,6 +81,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     // How far the current presentation got before authentication, for timeout reports.
     private int _connectionProgress;
+    // When the current presentation's first request reached the server (Stopwatch ticks), or 0 before it.
+    private long _firstRequestTimestamp;
     // What the server saw of the current presentation's handshake, for timeout reports.
     private BridgeHandshakeLog _handshakeLog = new();
     // Null when the content serves no local files.
@@ -760,7 +762,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     ProcessEmbeddedHostEvents();
-                    if (DateTime.UtcNow >= deadline)
+                    if (DateTime.UtcNow >= deadline && RemainingAfterFirstRequest(ConnectionTimeout) is null)
                     {
                         throw new TimeoutException(DescribeConnectionTimeout(browserProcess: null));
                     }
@@ -2245,6 +2247,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task BeginConnection()
     {
         Volatile.Write(ref _connectionProgress, (int)ConnectionProgress.NoRequest);
+        Volatile.Write(ref _firstRequestTimestamp, 0);
         Volatile.Write(ref _handshakeLog, new BridgeHandshakeLog());
         _browserConnected = NewCompletionSource();
         return _browserConnected.Task;
@@ -2252,6 +2255,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private void ReportConnectionProgress(ConnectionProgress progress)
     {
+        // Every reported stage is a request that reached the server.
+        Interlocked.CompareExchange(ref _firstRequestTimestamp, Stopwatch.GetTimestamp(), 0);
         var current = Volatile.Read(ref _connectionProgress);
         while (current < (int)progress)
         {
@@ -2280,7 +2285,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             string stalled;
             try
             {
-                await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+                await WaitWithinConnectionDeadlineAsync(connection, cancellationToken).ConfigureAwait(false);
                 return;
             }
             catch (TimeoutException exception)
@@ -2330,6 +2335,35 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             connection = relaunch.Connection!;
             browserProcess = relaunch.Process!;
         }
+    }
+
+    // The connection timeout counts from the launch while nothing has reached the server, and from the first
+    // request once something has. A browser that starts slowly and reaches the server just before the deadline
+    // (27 seconds into 30 on a Windows runner, I-180) still gets the whole timeout to finish the Bridge handshake,
+    // instead of being closed while it connects. A presentation waits at most twice the timeout in all.
+    private async Task WaitWithinConnectionDeadlineAsync(Task connection, CancellationToken cancellationToken)
+    {
+        var timeout = ConnectionTimeout;
+        try
+        {
+            await connection.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException) when (RemainingAfterFirstRequest(timeout) is { } remaining)
+        {
+            await connection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    // How much of the timeout is left since the first request, or null before it or once none is left.
+    private TimeSpan? RemainingAfterFirstRequest(TimeSpan timeout)
+    {
+        var firstRequest = Volatile.Read(ref _firstRequestTimestamp);
+        if (firstRequest == 0)
+        {
+            return null;
+        }
+        var remaining = timeout - Stopwatch.GetElapsedTime(firstRequest);
+        return remaining > TimeSpan.Zero ? remaining : null;
     }
 
     // Checked again under the lifecycle gate before the relaunch commits.
@@ -2408,7 +2442,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             process = "; the browser process exited before it could be relaunched";
         }
         var attemptText = attempts > 1 ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
-        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
+        // With a request, the timeout counted from the first one (WaitWithinConnectionDeadlineAsync).
+        var since = Volatile.Read(ref _firstRequestTimestamp) == 0 ? string.Empty : " of its first request";
+        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{since}{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
     }
 
     private Task HandleRequestAsync(HttpContext context) => PrepareResponseAsync(context, DispatchRequestAsync);

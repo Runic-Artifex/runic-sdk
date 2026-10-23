@@ -153,8 +153,10 @@ public sealed class BrowserHostTests
         // with a fresh profile after 30 seconds (the default two attempts). The
         // whole test stays inside CI's two-minute hang timeout, so a timeout
         // still reports its stage and attempt. Relaunches are written to the
-        // test output. Only a launch that requested nothing is relaunched, so a
-        // launch whose page loaded gets these 30 seconds once. Within them, a Bridge
+        // test output. Only a launch that requested nothing is relaunched. A launch
+        // whose page was requested gets 30 seconds from that first request, so a
+        // Chromium that starts slowly and reaches the server late (27 s into the 30,
+        // I-180) can still finish the handshake. Within them, a Bridge
         // WebSocket that sends no token check is closed after 10 seconds and the page
         // reconnects; that is written to the test output too.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));

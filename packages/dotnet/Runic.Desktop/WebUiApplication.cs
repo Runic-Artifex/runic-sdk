@@ -57,6 +57,10 @@ internal static class WebUiApplication
     }
 
     /// <summary>Sets the maximum number of seconds a show call waits for bridge authentication.</summary>
+    /// <remarks>
+    /// The wait counts from the launch while the page has requested nothing, and from its first request once it has,
+    /// so it can last up to twice this timeout for each launch.
+    /// </remarks>
     public static void SetConnectionTimeout(nuint seconds)
     {
         var clampedSeconds = seconds > 60 ? 60 : (long)seconds;

@@ -1,5 +1,6 @@
 using TUnit.Core;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.WebSockets;
 using Runic.Desktop;
@@ -94,6 +95,45 @@ public sealed class BridgeHandshakeTests
         Assert.Contains("WebSocket rejected: another WebSocket holds the only connection", timeout.Message);
         Assert.DoesNotContain("WebSocket 1: first message", timeout.Message);
         Assert.DoesNotContain("WebSocket 2 opened", timeout.Message);
+    }
+
+    [Test]
+    public async Task APageThatReachesTheServerLateGetsTheWholeTimeoutToAuthenticate()
+    {
+        // On Windows runners a browser sometimes starts slowly: Chromium requested its page 27.4 s into a 30 s
+        // timeout, opened the WebSocket 18 ms later and was closed 2.5 s after that, while it connected (I-180).
+        // Here the page is requested halfway through a 4 s timeout and authenticates after the launch deadline.
+        await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 4, handshakeTimeout: TimeSpan.FromSeconds(10));
+        var launched = Stopwatch.StartNew();
+        await Task.Delay(TimeSpan.FromSeconds(2), fixture.Timeout);
+        using (var client = new HttpClient { BaseAddress = fixture.Url })
+        {
+            await client.GetStringAsync("/", fixture.Timeout);
+        }
+
+        // Past the launch deadline, but within 4 s of the first request.
+        await Task.Delay(TimeSpan.FromSeconds(5) - launched.Elapsed, fixture.Timeout);
+        Assert.False(fixture.Showing.IsCompleted, "The presentation gave up on a page that was still connecting.");
+        using var socket = await ConnectAsync(fixture.Url, fixture.Timeout);
+        await SendCheckTokenAsync(socket, fixture.Token, fixture.Timeout);
+        await fixture.Showing.WaitAsync(fixture.Timeout);
+    }
+
+    [Test]
+    public async Task APageThatStopsAfterItsFirstRequestTimesOutAWholeTimeoutLater()
+    {
+        await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromSeconds(10));
+        await Task.Delay(TimeSpan.FromSeconds(1), fixture.Timeout);
+        var requested = Stopwatch.StartNew();
+        using (var client = new HttpClient { BaseAddress = fixture.Url })
+        {
+            await client.GetStringAsync("/", fixture.Timeout);
+        }
+
+        var timeout = await Assert.ThrowsAsync<TimeoutException>(() => fixture.Showing);
+        output.WriteLine(timeout.Message);
+        Assert.True(requested.Elapsed >= TimeSpan.FromSeconds(1.9), $"The presentation gave up {requested.Elapsed} after the first request.");
+        Assert.Contains("did not connect within 2 seconds of its first request: the page was requested, but not /webui.js", timeout.Message);
     }
 
     [Test]
