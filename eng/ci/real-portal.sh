@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the RealPortalAppearance and RealPortalTrash cases (and RealPortalSecret once) of the portal tests against the real xdg-desktop-portal and its GNOME backend,
+# Runs the RealPortalAppearance, RealPortalTrash and RealPortalSecret cases of the portal tests against the real xdg-desktop-portal and its GNOME backend,
 # inside the digest-pinned Fedora container that .github/workflows/ci.yml starts. Ubuntu 24.04's portal publishes only
 # color-scheme and contrast; Fedora's (1.22 with xdg-desktop-portal-gnome 50) also publishes accent-color and
 # reduced-motion. The container needs no .NET: the job passes the published test executables (self-contained JIT and
@@ -100,18 +100,28 @@ for tests in "$@"; do
   dbus-run-session -- "$tests" --treenode-filter "/*/*/*/*[Category=RealPortalTrash]" --timeout 2m --output detailed
   echo "::endgroup::"
 done
-# The Secret portal once, with the first executable (the JIT build). An unlocked login keyring whose daemon serves
-# org.freedesktop.impl.portal.Secret; the portal asks it for the application's secret, which keys the libsecret file
-# in a temporary directory. The portal offers the Secret interface only if its backend (org.freedesktop.secrets,
-# gnome-keyring.portal) exports it when the portal starts, so the case waits for the exported interface first. In a
-# second session in the same container the portal still intermittently started without its Secret interface
-# (UnknownMethod); the NativeAOT build covers the same client against the fake portal (Category=DBus).
-# shellcheck disable=SC2016 # $0 expands in the inner shell.
-XDG_RUNTIME_DIR=$(mktemp -d) dbus-run-session -- sh -c 'printf runic | gnome-keyring-daemon --unlock --components=secrets >/dev/null &&
-  for _ in $(seq 100); do
-    gdbus introspect --session --dest org.freedesktop.secrets --object-path /org/freedesktop/portal/desktop 2>/dev/null |
-      grep -q "interface org.freedesktop.impl.portal.Secret" && break
-    sleep 0.2
-  done &&
-  exec "$0" --treenode-filter "/*/*/*/*[Category=RealPortalSecret]" --timeout 2m --output detailed' "$1"
-echo "::endgroup::"
+# The Secret portal: an unlocked login keyring whose daemon serves org.freedesktop.impl.portal.Secret; the portal asks
+# it for the application's secret, which keys the libsecret file in a temporary directory. Each run gets its own
+# runtime directory, so --unlock cannot reach the previous run's daemon.
+#
+# The case starts the portal itself and waits until it exports org.freedesktop.portal.Secret, as in a desktop session,
+# where the portal is already running. xdg-desktop-portal 1.22 exports every other portal before it takes its bus name,
+# but creates the Secret backend's proxy asynchronously (secret.c, init_secret) and exports Secret only when that
+# completes, after the name. A call that activates the portal is delivered as soon as the name is taken, so a client
+# that starts fast (the NativeAOT build) could reach the portal before Secret existed and got UnknownMethod.
+for tests in "$@"; do
+  echo "::group::RealPortalSecret with $tests"
+  # shellcheck disable=SC2016 # $0, $1 and $2 expand in the inner shell.
+  XDG_RUNTIME_DIR=$(mktemp -d) dbus-run-session -- sh -c 'printf runic | gnome-keyring-daemon --unlock --components=secrets >/dev/null &&
+    exports() {
+      for _ in $(seq 100); do
+        gdbus introspect --session --dest "$1" --object-path /org/freedesktop/portal/desktop 2>/dev/null | grep -q "interface $2 " && return
+        sleep 0.2
+      done
+      echo "$1 did not export $2 within 20 seconds." >&2
+    }
+    exports org.freedesktop.secrets org.freedesktop.impl.portal.Secret &&
+    exports org.freedesktop.portal.Desktop org.freedesktop.portal.Secret &&
+    exec "$0" --treenode-filter "/*/*/*/*[Category=RealPortalSecret]" --timeout 2m --output detailed' "$tests"
+  echo "::endgroup::"
+done
