@@ -140,9 +140,18 @@ internal static partial class MonitorSmoke
     {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         await using var watch = host.Monitors.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
-        Require(await watch.MoveNextAsync() && watch.Current is PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var first }
-            && first.SequenceEqual(monitors),
-            $"the watch starts with the current monitors; it started with {Describe(watch.Current)}, the list was {string.Join("; ", monitors)}");
+        Require(await watch.MoveNextAsync(), "the watch reports");
+        if (watch.Current is not PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var first })
+            throw new InvalidOperationException($"Monitors: the watch did not start with a list: {watch.Current}.");
+        if (!first.SequenceEqual(monitors))
+        {
+            // The work area can change between the two reads, as when the application finishes launching meanwhile: the
+            // watch starts with the monitors at its start, which a new list then shows too.
+            var now = await host.Monitors.ListAsync(cancellation.Token);
+            Console.WriteLine($"Monitors: the watch started with {Describe(watch.Current)}; the list before it was {string.Join("; ", monitors)}; now {Describe(now)}.");
+            Require(now is PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var current } && first.SequenceEqual(current),
+                "the watch starts with the current monitors");
+        }
         // A resolution change is a monitor change; it alters the session's display, so only on a disposable runner.
         if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("RUNIC_TEST_DISPLAY_SCALING") == "1")
         {

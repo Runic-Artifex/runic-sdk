@@ -6,9 +6,7 @@ namespace Runic.Desktop.Internal;
 // The AppKit application that DesktopEventLoop.Run owns on macOS. Before application code runs, Run creates NSApp, sets
 // Runic's application delegate and installs the open-documents and get-URL Apple event handlers; then the main thread
 // runs [NSApp run], which sends finishLaunching once, and managed work reaches it through the main dispatch queue
-// (MacOsMainThread). The application's work starts when AppKit sends applicationDidFinishLaunching:, so its first
-// main-thread requests do not queue behind the launch, which can take seconds for a new unbundled executable, and see a
-// launched application. The delegate keeps the open events and universal links that arrive before Runic.Platform.MacOS's
+// (MacOsMainThread). The delegate keeps the open events and universal links that arrive before Runic.Platform.MacOS's
 // open requests attach their handler (runicAttachOpenEventHandler:), so the open requests can be created at any time:
 // the launch's own open event, which AppKit sends while it finishes launching, is delivered when they attach.
 internal static unsafe partial class MacOsApplication
@@ -36,11 +34,6 @@ internal static unsafe partial class MacOsApplication
     // Counts Run's loops, so a stop request of an earlier one does nothing.
     private static int s_generation;
     private static int s_loopEnded = 1;
-    // Set once AppKit finished launching; the start of Run's application work while it waits for that.
-    private static int s_didFinishLaunching;
-    private static Action? s_startWhenLaunched;
-    // A launch that never reports itself does not keep the application from starting.
-    private static readonly TimeSpan LaunchTimeout = TimeSpan.FromSeconds(15);
 
     // Whether Run created the application and its delegate: AppKit's run sends finishLaunching then.
     internal static bool IsOwner => Volatile.Read(ref s_delegate) != 0;
@@ -68,27 +61,11 @@ internal static unsafe partial class MacOsApplication
         return application;
     }
 
-    // Main thread. Runs [NSApp run], which sends finishLaunching first; the application's work starts on the thread pool
-    // once the application finished launching. Returns the work, which has completed.
-    internal static Task Run(nint application, Func<Task> applicationWork)
+    // Main thread. Runs [NSApp run] until the work completes; AppKit's run sends finishLaunching first.
+    internal static void Run(nint application, Task work)
     {
         int generation = Interlocked.Increment(ref s_generation);
         Volatile.Write(ref s_loopEnded, 0);
-        var launched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var work = launched.Task.ContinueWith(_ => Task.Run(applicationWork), CancellationToken.None,
-            TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
-        Action start = null!;
-        start = () =>
-        {
-            Interlocked.CompareExchange(ref s_startWhenLaunched, null, start);
-            launched.TrySetResult();
-        };
-        if (HasFinishedLaunching()) start();
-        else
-        {
-            Volatile.Write(ref s_startWhenLaunched, start);
-            MacOsMainThread.PostAfter(LaunchTimeout, start);
-        }
         _ = work.ContinueWith(_ => RequestStop(generation), CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         try
@@ -103,13 +80,7 @@ internal static unsafe partial class MacOsApplication
         finally { Volatile.Write(ref s_loopEnded, 1); }
         // Work the application queued last, such as native release.
         RunLoopOnce();
-        return work;
     }
-
-    // Whether finishLaunching already ran: in an earlier Run, or before it for a window without the event loop. A launch
-    // by another library before Run starts the work after LaunchTimeout.
-    private static bool HasFinishedLaunching() =>
-        Volatile.Read(ref s_didFinishLaunching) != 0 || Volatile.Read(ref s_launchedWithoutOwner) != 0;
 
     // Stops [NSApp run] from any thread. stop: takes effect after the next event, so an event follows it; a modal
     // loop or menu tracking can take both, so the request repeats until the loop ends.
@@ -177,7 +148,6 @@ internal static unsafe partial class MacOsApplication
         if (type == 0) return 0;
         string boolean = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B" : "c";
         AddMethod(type, Sel("applicationWillFinishLaunching:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WillFinishLaunching, "v@:@");
-        AddMethod(type, Sel("applicationDidFinishLaunching:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&DidFinishLaunching, "v@:@");
         AddMethod(type, Sel(HandleOpenSelector), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&HandleOpenEvent, "v@:@@");
         AddMethod(type, Sel(ContinueActivity), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, byte>)&Continue, boolean + "@:@@@?");
         // Without an answer AppKit warns on macOS 14 and later; restorable state is secure-coded either way.
@@ -196,18 +166,6 @@ internal static unsafe partial class MacOsApplication
             Interlocked.Increment(ref s_willFinishLaunching);
             // finishLaunching installs AppKit's open-documents handler again before it sends the launch's open event.
             InstallEventHandlers();
-        }
-        catch { /* A delegate method must not throw into AppKit. */ }
-    }
-
-    // finishLaunching ends with this, after the launch's own open event: Run's application work starts now.
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void DidFinishLaunching(nint self, nint selector, nint notification)
-    {
-        try
-        {
-            Volatile.Write(ref s_didFinishLaunching, 1);
-            Volatile.Read(ref s_startWhenLaunched)?.Invoke();
         }
         catch { /* A delegate method must not throw into AppKit. */ }
     }

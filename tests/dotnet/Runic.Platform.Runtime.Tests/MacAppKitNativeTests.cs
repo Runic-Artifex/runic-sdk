@@ -19,6 +19,7 @@ internal sealed partial class MacAppKitNativeTests
     public async Task NativeAppKitAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The AppKit checks need macOS.");
+        await MainThreadReadyAsync();
         await StatusItemAsync();
         await StatusItemQueueAsync();
         await LoginItemAsync();
@@ -165,6 +166,25 @@ internal sealed partial class MacAppKitNativeTests
         Require(observed is [(3, "Images"), (1, "Text"), (2, "Text"), (0, "All files")],
             "Unexpected filter pop-up: " + string.Join(", ", observed.Select(static item => $"{item.Count} {item.Selected}")));
         Pass("the filter pop-up keeps filters with the same name and swaps the panel's types for the chosen filter");
+    }
+
+    // The event loop's [NSApp run] launches the application while the tests already run; the status item's requests give
+    // up after MacStatusIcon.MainThreadTimeout. Waits until the main thread serves its queue, and reports how long the
+    // launch kept it.
+    private static async Task MainThreadReadyAsync()
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        bool running = false, finished = false;
+        long policy = -1;
+        await MacOsMainQueue.InvokeAsync(() =>
+        {
+            var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+            running = Bool(application, Sel("isRunning")) != 0;
+            finished = Bool(Send(Class("NSRunningApplication"), Sel("currentApplication")), Sel("isFinishedLaunching")) != 0;
+            policy = Send(application, Sel("activationPolicy"));
+        }).AsTask().WaitAsync(TimeSpan.FromSeconds(90));
+        Console.WriteLine($"main thread: first queued work ran after {waited.ElapsedMilliseconds} ms; isRunning={running}, " +
+            $"isFinishedLaunching={finished}, activationPolicy={policy}");
     }
 
     private static async Task StatusItemAsync()

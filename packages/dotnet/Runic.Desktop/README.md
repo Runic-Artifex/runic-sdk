@@ -48,8 +48,7 @@ On macOS, `DesktopEventLoop.Run` (both overloads) creates the shared
 `NSApplication` and sets Runic's application delegate before the application's
 code runs. The process main thread then runs AppKit's own loop (`[NSApp run]`),
 which sends `finishLaunching` once, and sleeps while nothing happens. The
-application's code starts on the thread pool once AppKit has finished
-launching. Runic's main-thread work (window
+application's code runs on the thread pool. Runic's main-thread work (window
 calls, `DesktopWindow.InvokeNativeAsync`, monitors, menus and the
 `Runic.Platform.MacOS` services) goes through the main dispatch queue, which
 AppKit runs in every run loop mode, also while a menu is open, a window is
