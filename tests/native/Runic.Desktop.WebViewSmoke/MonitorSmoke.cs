@@ -141,7 +141,8 @@ internal static partial class MonitorSmoke
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         await using var watch = host.Monitors.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         Require(await watch.MoveNextAsync() && watch.Current is PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var first }
-            && first.SequenceEqual(monitors), "the watch starts with the current monitors");
+            && first.SequenceEqual(monitors),
+            $"the watch starts with the current monitors; it started with {Describe(watch.Current)}, the list was {string.Join("; ", monitors)}");
         // A resolution change is a monitor change; it alters the session's display, so only on a disposable runner.
         if (OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("RUNIC_TEST_DISPLAY_SCALING") == "1")
         {
@@ -163,6 +164,9 @@ internal static partial class MonitorSmoke
         }
         Console.WriteLine("PASS monitors watch.");
     }
+
+    private static string Describe(PlatformResult<ImmutableArray<DesktopMonitor>> result) =>
+        result is PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var list } ? string.Join("; ", list) : result.ToString();
 
     private static void RequireInside(DesktopWindowState state, DesktopRect area, string what)
     {

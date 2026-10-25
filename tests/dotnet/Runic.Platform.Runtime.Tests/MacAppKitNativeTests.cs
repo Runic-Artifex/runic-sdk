@@ -191,7 +191,11 @@ internal sealed partial class MacAppKitNativeTests
                 new DesktopMenuItem("Quit", "quit"),
             ],
         };
-        Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The status item was not shown.");
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var showing = await icon.ShowAsync(state).AsTask().WaitAsync(Step);
+        Console.WriteLine($"status item: the first ShowAsync returned {showing} after {started.ElapsedMilliseconds} ms");
+        Require(showing is PlatformResult<PlatformUnit>.Success,
+            $"The status item was not shown: {showing} after {started.ElapsedMilliseconds} ms (MainThreadTimeout {MacStatusIcon.MainThreadTimeout}).");
         var shown = await icon.InspectAsync();
         Pass($"status item shown: {shown}");
         Require(shown is { Shown: true, HasImage: true, Template: true, Representations: 2, Title: "", ToolTip: "Runic status item\nAll quiet", AccessibilityLabel: "Runic status item" },
