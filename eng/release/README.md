@@ -312,10 +312,12 @@ release with these differences:
    - every `PublicAPI.Unshipped.txt` is empty, its entries in `PublicAPI.Shipped.txt`;
    - delete every `CompatibilitySuppressions.xml`: from now on one is allowed only as
      [Enforcement](#enforcement) describes;
-   - remove the pre-1.0 wording: "Until 1.0" in [`SECURITY.md`](../../SECURITY.md) and in
-     this guide ([Publishing setup and retries](#publishing-setup-and-retries),
-     [Versioning and support from 1.0](#versioning-and-support-from-10) and
-     [Version numbers](#version-numbers)), keeping the rules that hold from 1.0;
+   - remove the pre-1.0 wording: "Until 1.0" in [`SECURITY.md`](../../SECURITY.md) and
+     the "until 1.0" / "Until then" sentences of this guide
+     ([Versioning and support from 1.0](#versioning-and-support-from-10),
+     [Version numbers](#version-numbers) and the `0.y.z` row of
+     [npm and GitHub release channels](#npm-and-github-release-channels)), keeping
+     the rules that hold from 1.0;
    - refresh the docs catalog and deploy the site with the maintainer's approval.
 
 ## After publication: docs catalog
