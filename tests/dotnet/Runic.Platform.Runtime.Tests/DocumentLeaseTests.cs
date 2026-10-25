@@ -265,8 +265,9 @@ internal sealed class DocumentLeaseTests
         await using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
         {
             var result = await WriteAsync(document, "blocked");
-            Check(result is FileCommitResult.NotCommitted { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "HRESULT", Code: 0x80070497L } },
-                "ERROR_UNABLE_TO_REMOVE_REPLACED is a refused replacement: " + result);
+            // Windows reports ERROR_SHARING_VIOLATION or ERROR_UNABLE_TO_REMOVE_REPLACED, depending on where ReplaceFile fails.
+            Check(result is FileCommitResult.NotCommitted { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "HRESULT", Code: 0x80070020L or 0x80070497L } },
+                "a target held open without delete sharing is a refused replacement: " + result);
         }
         Check(await File.ReadAllTextAsync(path) == "original" && directory.Count == 1, "the held file is unchanged and staging is removed");
         Check(await WriteAsync(document, "released") is FileCommitResult.Committed && await File.ReadAllTextAsync(path) == "released",

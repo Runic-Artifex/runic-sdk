@@ -108,9 +108,9 @@ internal sealed partial class LocalAtomicFileReplacement(NativeFileLocation loca
         // A no-overwrite move refuses a destination created since selection.
         catch (IOException error) when (!existed && IsAlreadyExists(error))
         { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict, FileErrors.Diagnose(error))); }
-        // ReplaceFile could not remove the target, which another program holds open without delete sharing. Both
-        // files keep their names, so nothing was replaced.
-        catch (IOException error) when (existed && OperatingSystem.IsWindows() && error.HResult == UnableToRemoveReplaced)
+        // Another program holds the target open without delete sharing: ReplaceFile either fails to open it (a sharing
+        // violation, before it changes anything) or cannot remove it (both files keep their names). Nothing was replaced.
+        catch (IOException error) when (existed && OperatingSystem.IsWindows() && error.HResult is UnableToRemoveReplaced or SharingViolation)
         { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.ResourceBusy, FileErrors.Diagnose(error))); }
         // An IO error can be reported after the filesystem accepted a rename.
         // Never delete the target or automatically retry an uncertain outcome.
@@ -120,6 +120,7 @@ internal sealed partial class LocalAtomicFileReplacement(NativeFileLocation loca
     }
 
     private const int UnableToRemoveReplaced = unchecked((int)0x80070497); // ERROR_UNABLE_TO_REMOVE_REPLACED (1175)
+    private const int SharingViolation = unchecked((int)0x80070020); // ERROR_SHARING_VIOLATION (32)
 
     private static bool IsAlreadyExists(IOException error) => OperatingSystem.IsWindows()
         ? error.HResult is unchecked((int)0x80070050) or unchecked((int)0x800700B7) // ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS
