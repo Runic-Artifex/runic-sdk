@@ -84,12 +84,43 @@ internal sealed partial class DocumentPortalTests
             }
             Check(Listing(root).SequenceEqual(listing) && await File.ReadAllTextAsync(Path.Combine(root, "new.txt")) == "created", "an abort leaves no host file");
 
+            // A document app: open the document view, save it back three times and reopen it, see a host write as a
+            // conflict, overwrite after reading, and reopen it from its bookmark (the view's path) through the view.
+            await File.WriteAllTextAsync(Path.Combine(root, "document.txt"), "original");
+            listing = ["document.txt", "link.txt", "new.txt", "save-target.txt"];
+            string view = await AddAsync(connection, mount, root, "document.txt", documents);
+            string host = Path.Combine(root, "document.txt");
+            System.Collections.Immutable.ImmutableArray<byte> bookmark;
+            await using (var document = await OpenDocumentAsync(owner, view))
+            {
+                Check(document.LocalPath == view && await ReadAsync(document) == "original", "the opened document view reads the host file");
+                for (int index = 1; index <= 3; index++)
+                {
+                    Check(await WriteAsync(document, $"save {index}") is FileCommitResult.Committed && await File.ReadAllTextAsync(host) == $"save {index}",
+                        $"document save {index} replaces the host file");
+                    Check(await ReadAsync(document) == $"save {index}", $"reopen {index} through the view");
+                }
+                await File.WriteAllTextAsync(host, "host edit");
+                Check(await WriteAsync(document, "lost") is FileCommitResult.NotCommitted { Code: PlatformFailureCode.Conflict } && await File.ReadAllTextAsync(host) == "host edit",
+                    "a host write is a conflict");
+                Check(await ReadAsync(document) == "host edit" && await WriteAsync(document, "overwrite") is FileCommitResult.Committed
+                    && await File.ReadAllTextAsync(host) == "overwrite", "read then write overwrites");
+                var bookmarked = await document.CreateBookmarkAsync();
+                bookmark = (bookmarked as PlatformResult<System.Collections.Immutable.ImmutableArray<byte>>.Success)?.Value ?? throw new InvalidOperationException("bookmark: " + bookmarked);
+                Check(System.Text.Encoding.UTF8.GetString(bookmark.AsSpan()) == view, "the bookmark is the document view's path");
+            }
+            var reopened = await new PathFileBookmarks(DocumentPortalPaths.Session.ClassifyAsync).OpenDocumentAsync(bookmark);
+            await using (var document = (reopened as PlatformResult<IDocumentFileLease>.Success)?.Value ?? throw new InvalidOperationException("reopen: " + reopened))
+                Check(await ReadAsync(document) == "overwrite" && await WriteAsync(document, "from bookmark") is FileCommitResult.Committed
+                    && await File.ReadAllTextAsync(host) == "from bookmark", "the bookmark reopens and saves the document view");
+            Check(Listing(root).SequenceEqual(listing), "document saves leave no .xdp-* or .runic-* file on the host");
+
             await CallAsync(connection, "RevokePermissions", (ref MessageWriter writer) => { writer.WriteString(Id(existing)); writer.WriteString(AppId); writer.WriteArray(Write); });
             await using (var lease = await SelectAsync(owner, existing))
                 Check(await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Unavailable { Reason: PlatformUnavailableReason.AtomicReplaceUnavailable },
                     "a revoked write grant reports AtomicReplaceUnavailable");
             Check(await File.ReadAllTextAsync(target) == "again" && Listing(root).SequenceEqual(listing), "a refused save changes nothing on the host");
-            Console.WriteLine($"PASS document portal {version} atomic save: replace, new file, hidden symlink, abort and revoked grant.");
+            Console.WriteLine($"PASS document portal {version} atomic save: replace, new file, hidden symlink, abort, document saves, bookmark and revoked grant.");
         }
         finally
         {
@@ -107,6 +138,33 @@ internal sealed partial class DocumentPortalTests
         var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new UriTransport(new Uri(documentPath).AbsoluteUri)));
         var selected = await backend.SaveFileAsync(new(Path.GetFileName(documentPath)));
         return selected is PickerResult<ISaveFileLease>.Selected(var lease) ? lease : throw new InvalidOperationException("Document selection failed: " + selected);
+    }
+
+    private static async Task<IDocumentFileLease> OpenDocumentAsync(IPortalWindowOwner owner, string documentPath)
+    {
+        var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new UriTransport(new Uri(documentPath).AbsoluteUri)));
+        var selected = await backend.OpenDocumentAsync(new());
+        return selected is PickerResult<IDocumentFileLease>.Selected(var lease) ? lease : throw new InvalidOperationException("Document open failed: " + selected);
+    }
+
+    private static async Task<string> ReadAsync(IDocumentFileLease document)
+    {
+        var read = await document.OpenReadAsync();
+        if (read is not PlatformResult<Stream>.Success(var stream)) throw new InvalidOperationException("Document read failed: " + read);
+        await using (stream)
+        using (var reader = new StreamReader(stream))
+            return await reader.ReadToEndAsync();
+    }
+
+    private static async Task<FileCommitResult> WriteAsync(ISaveFileLease lease, string text)
+    {
+        var begun = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace);
+        if (begun is not PlatformResult<IFileWriteTransaction>.Success(var transaction)) throw new InvalidOperationException("Document staging failed: " + begun);
+        await using (transaction)
+        {
+            await transaction.Content.WriteAsync(System.Text.Encoding.UTF8.GetBytes(text));
+            return await transaction.CommitAsync();
+        }
     }
 
     private static async Task<FileCommitResult> SaveAsync(IPortalWindowOwner owner, string documentPath, string text)

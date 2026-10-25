@@ -44,6 +44,13 @@ its own; a picker reports the filter the user left selected as the first
 selection's `NativeFileSelection.SelectedFilter`, and the backend passes it on as
 `PickerResult<T>.Selected.SelectedFilter` only when it is one of the request's
 filters.
+`NativePickerBackend` implements `OpenDocumentAsync` and `SaveDocumentAsync` for
+every picker and returns `true` from `SupportsDocumentAccess`: an open dialog's
+selection becomes a document lease that stages its writes as a save does
+(`AllowsSiblingReplacement` and `Location` choose how). A custom `IPickerBackend`
+keeps the default `false` until it implements both methods; the
+`platform.files.openDocument` capability follows it, and the window's dialogs
+return `Unavailable(BackendUnavailable)` without calling such a backend.
 The backend releases the access of every selection it does not hand to a lease,
 including after a failure or cancellation, and reports the native error of a failed
 selection or commit in the `Diagnostic` of the result.

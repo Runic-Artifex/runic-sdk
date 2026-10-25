@@ -30,9 +30,10 @@ pretending that Session 0 itself has a desktop:
 The scripts do not install software. Optional Narrator checks start Narrator and
 normal completion and failure restore the clipboard. They create
 and remove receipt-specific input/output files. The native open-file dialog
-returns a real `IReadFileLease`; open and save cancellation must return `Dismissed`.
-The save path acquires an `ISaveFileLease`, stages a `RequireAtomicReplace` write,
-and commits it. It tests a new destination, then declines and accepts native overwrite confirmation for an existing destination, checking that declining preserves its original bytes. The driver independently verifies the saved bytes and unchanged
+returns a real `IDocumentFileLease` (`OpenDocumentAsync`), which reads the selection twice and
+reopens it from its bookmark without writing it; open and save cancellation must return `Dismissed`.
+The save path acquires an `IDocumentFileLease` (`SaveDocumentAsync`), stages and commits three
+`RequireAtomicReplace` writes on the same lease, reads each back, and reopens the document from its bookmark. It tests a new destination, then declines and accepts native overwrite confirmation for an existing destination, checking that declining preserves its original bytes. The driver independently verifies the saved bytes and unchanged
 input file. Both open/save selectors use native control IDs, including the save
 dialog's `FileNameControlHost` and child `Edit`, rather than localized labels. The pointer check uses a UIA
 clickable point for the named target rather than a hard-coded screen coordinate.

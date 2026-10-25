@@ -163,6 +163,69 @@ if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected 
 On macOS a save panel with filters may add the first allowed extension, or with
 `ShowFilterChoice` the chosen filter's, to a name the user types without one.
 
+## Document apps
+
+An editor keeps working on the file the user chose: it reads it, saves back to it
+on Ctrl+S and autosave, and lists it in recent files. `OpenDocumentAsync` and
+`SaveDocumentAsync` (Save As) return an `IDocumentFileLease` for that. Unlike
+`OpenFileAsync`, whose lease reads the file once, a document lease reads the
+current file on each `OpenReadAsync` and writes it through `BeginWriteAsync` as
+often as the application saves. `LocalPath` shows where the document is and
+tells whether it is already open in another window. The `platform.files.openDocument`
+capability reports whether the window's dialogs return documents, and
+`platform.files.save` whether their writes can replace the file.
+
+```csharp
+if (await files.OpenDocumentAsync(new() { Filters = [notes] }) is not PickerResult<IDocumentFileLease>.Selected(var document)) return;
+if (await document.OpenReadAsync() is PlatformResult<Stream>.Success(var stream))
+    await using (stream) { text = await new StreamReader(stream).ReadToEndAsync(); }
+
+// Ctrl+S and autosave: one transaction per save.
+async Task<FileCommitResult> SaveAsync(string text)
+{
+    if (await document.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is not PlatformResult<IFileWriteTransaction>.Success(var write))
+        return new FileCommitResult.NotCommitted(PlatformFailureCode.ResourceBusy); // A save is still running, or saving is unavailable.
+    await using (write)
+    {
+        await write.Content.WriteAsync(Encoding.UTF8.GetBytes(text));
+        return await write.CommitAsync();
+    }
+}
+```
+
+Every save lease writes repeatedly, including the one `SaveFileAsync` returns: a
+write can begin once the previous transaction's commit finished, whatever its
+outcome, or once the transaction was disposed; while one is open,
+`BeginWriteAsync` returns `Failed(ResourceBusy)`. A commit compares the file with
+the content the application last saw: the selected file, then each committed
+write, and for a document each `OpenReadAsync`. So `NotCommitted(Conflict)` means
+another program changed the file. Ask the user, then reload with `OpenReadAsync`,
+or overwrite: read first, which makes the current content the one the commit
+compares with, and write again. After `CommitUnknown` the next commit accepts
+either the previous content or the staged bytes. `OpenReadAsync` during an open
+transaction reads the committed file, never the staged bytes, and the pending
+commit then compares with what it read. A file that disappeared reads as
+`Failed(NotFound)`, and a write after that creates it again.
+
+For recent files, store the bytes of `CreateBookmarkAsync` after open or the first
+save of Save As, and again each time the document is reopened. Reopen with
+`IDesktopFileBookmarks.OpenDocumentAsync`; that lease belongs to no window and
+keeps the bookmark's access until it is disposed, while a dialog's lease is
+released when its window closes. A path from a launch or a drop becomes a
+document through `CreateAsync(path)` and then `OpenDocumentAsync(bookmark)`.
+
+```csharp
+if (await document.CreateBookmarkAsync() is PlatformResult<ImmutableArray<byte>>.Success(var bookmark)) recent.Add(bookmark);
+// Next launch:
+if (await bookmarks.OpenDocumentAsync(recent[0]) is PlatformResult<IDocumentFileLease>.Success(var reopened)) { /* read, save, dispose */ }
+```
+
+| | Windows | Linux (GTK, xdg-desktop-portal, Flatpak) | macOS |
+| --- | --- | --- | --- |
+| Write | Sibling staging file and `ReplaceFile`, which keeps the file's ACL and attributes | Sibling staging file and `rename`; in a document portal view (Flatpak, Snap) through the portal's private temporary file | Sibling staging file and `rename` outside the App Sandbox; inside it saves are unavailable (`AtomicReplaceUnavailable`) for now |
+| Bookmark | The path | The path; in a Flatpak the document portal's path, which the permission store keeps valid | `CreateBookmarkAsync` and `IDesktopFileBookmarks.OpenDocumentAsync` report `Unavailable(BackendUnavailable)` for now |
+| Not possible | Follow a moved or renamed file; replace a file another program holds open without delete sharing (`NotCommitted(ResourceBusy)`) | Follow a moved file; create sibling files, such as lock files, in a document portal view; keep extended attributes and ACLs | |
+
 ## Window services
 
 `IWindowPlatformServices` groups the file dialogs, clipboard and file
@@ -685,7 +748,8 @@ var result = await DesktopPlatformServices.CreateOpenRegistration("org.example.N
 access to a file across launches, as a recent-files list needs: on macOS a
 security-scoped bookmark inside the App Sandbox, elsewhere the path. Store the
 bytes `CreateAsync` returns, and dispose the access `ResolveAsync` returns when
-done with the file; when it `IsStale`, create and store a new bookmark.
+done with the file; when it `IsStale`, create and store a new bookmark. To read and save a bookmarked file, open it as a document instead
+([Document apps](#document-apps)).
 
 ## Secret storage
 
