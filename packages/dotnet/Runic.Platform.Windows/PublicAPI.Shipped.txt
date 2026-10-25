@@ -10,3 +10,8 @@ static Runic.Platform.Windows.WindowsPlatformProvider.CreateThumbnails() -> Runi
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateVolumes() -> Runic.Platform.IDesktopVolumes!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateApplications() -> Runic.Platform.IDesktopApplications!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateStatusIcon() -> Runic.Platform.IDesktopStatusIcon!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateOpenRegistration(string! applicationId) -> Runic.Platform.IDesktopOpenRegistration!
+static Runic.Platform.Windows.WindowsPlatformProvider.GetLaunch(System.Collections.Generic.IEnumerable<string!>! arguments) -> Runic.Platform.ApplicationLaunch!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!

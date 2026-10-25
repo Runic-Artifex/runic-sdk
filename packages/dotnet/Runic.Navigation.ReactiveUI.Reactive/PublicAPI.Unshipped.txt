@@ -1,4 +1,1 @@
 #nullable enable
-Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationRegionGuard
-static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationRegionExtensions.WhenHistoryChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntry<TContent!>!>!>!
-static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationRegionGuard.WithInteraction<TPrompt>(ReactiveUI.Binding.Reactive.IInteraction<TPrompt, bool>! interaction, System.Func<Runic.Navigation.NavigationRegionDeparture!, TPrompt>! prompt, System.Func<Runic.Navigation.NavigationRegionDeparture!, bool>! hasUnsavedChanges, System.Action? discard = null) -> Runic.Navigation.INavigationRegionGuard!

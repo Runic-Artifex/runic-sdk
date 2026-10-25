@@ -1,6 +1,1 @@
 #nullable enable
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileBookmarks() -> Runic.Platform.IDesktopFileBookmarks!
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateOpenRegistration() -> Runic.Platform.IDesktopOpenRegistration!
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!

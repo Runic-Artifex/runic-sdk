@@ -248,3 +248,33 @@ Runic.Application.Testing.RunicDescendantProcess.HasExited() -> bool
 Runic.Application.Testing.RunicDescendantProcess.Id.get -> int
 Runic.Application.Testing.RunicDescendantProcess.StartTime.get -> System.DateTime?
 Runic.Application.Testing.RunicServeOnlyApplication.GetDescendantProcesses() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicDescendantProcess!>!
+Runic.Application.Testing.InMemoryBridgeTransport.PublishUtf8Async(string! name, System.ReadOnlyMemory<byte> stateUtf8, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Testing.RunicOperationStreamPage
+Runic.Application.Testing.RunicOperationStreamPage.Completed.get -> bool
+Runic.Application.Testing.RunicOperationStreamPage.Cursor.get -> long
+Runic.Application.Testing.RunicOperationStreamPage.DeliveryKind.get -> string?
+Runic.Application.Testing.RunicOperationStreamPage.DeliveryMessage.get -> string?
+Runic.Application.Testing.RunicOperationStreamPage.Items.get -> System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>!
+Runic.Application.Testing.RunicOperationStreamPage.Json.get -> string!
+Runic.Application.Testing.RunicOperationStreamPage.Kind.get -> Runic.Application.Testing.RunicOperationStatusKind
+Runic.Application.Testing.RunicPathWatchTester.Dispose() -> void
+Runic.Application.Testing.RunicTestOperation.ReadStream(long cursor = 0) -> Runic.Application.Testing.RunicOperationStreamPage!
+override Runic.Application.Testing.RunicOperationStreamPage.ToString() -> string!
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.get -> int?
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumInputBytes.init -> void
+Runic.Application.Testing.RunicCallReply<TModel>.ErrorReason.get -> string?
+Runic.Application.Testing.RunicTestNavigationEntry
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.ActivateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Navigation.NavigationResult<object!>!>!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Completion.get -> System.Threading.Tasks.Task<Runic.Navigation.NavigationCompletion<object?>!>!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Content.get -> TContent!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Context.get -> Runic.Navigation.NavigationEntryContext!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Entry.get -> Runic.Navigation.NavigationEntry<object!>!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Navigator.get -> Runic.Navigation.RunicNavigator!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.Region.get -> Runic.Navigation.NavigationRegion<object!>!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.RetainAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Navigation.NavigationResult<object!>!>!
+Runic.Application.Testing.RunicTestNavigationEntry<TContent>.RetireAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Navigation.NavigationResult<object!>!>!
+static Runic.Application.Testing.RunicTestNavigationEntry.CreateAsync<TContent>(System.Func<Runic.Navigation.NavigationEntryContext!, TContent!>! create, System.IServiceProvider? services = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestNavigationEntry<TContent!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.CanExecuteAsync(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, string! argumentJson, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Application.Testing.RunicViewDriver<TModel>.StartAsync(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, string? argumentJson = null, string? requestId = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestOperation!>!

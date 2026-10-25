@@ -90,3 +90,6 @@ static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls
 static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.NavigationRegion? region) -> void
 static Runic.Navigation.Wpf.ViewHost.GetServices(System.Windows.DependencyObject! element) -> System.IServiceProvider?
 static Runic.Navigation.Wpf.ViewHost.SetServices(System.Windows.DependencyObject! element, System.IServiceProvider? services) -> void
+Runic.Navigation.Wpf.WindowCloseConfirmation
+static Runic.Navigation.Wpf.WindowCloseConfirmation.Create(System.Func<Runic.Navigation.NavigationRegionDeparture!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>! confirm) -> Runic.Navigation.INavigationRegionGuard!
+static Runic.Navigation.Wpf.WindowCloseConfirmation.OncePerClose(Runic.Navigation.INavigationRegionGuard! guard) -> Runic.Navigation.INavigationRegionGuard!

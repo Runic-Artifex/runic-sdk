@@ -113,8 +113,6 @@ public static class ApplicationInstance
     /// var claim = await ApplicationInstance.ClaimAsync("org.example.App", args);
     /// </code></example>
     // The overloads differ in their second parameter's type; only a null launch, which is refused, could bind to both.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Only a null second argument, which every overload refuses, is ambiguous. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, string[] args,
         CancellationToken cancellationToken = default)
     {
@@ -144,8 +142,6 @@ public static class ApplicationInstance
     /// </para>
     /// </remarks>
     // The overloads differ in their second parameter's type; only a null launch, which is refused, could bind to both.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Only a null second argument, which every overload refuses, is ambiguous. Remove once these lines are in PublicAPI.Shipped.txt.")]
     public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, string[] args,
         ApplicationInstanceOptions options, CancellationToken cancellationToken = default)
     {

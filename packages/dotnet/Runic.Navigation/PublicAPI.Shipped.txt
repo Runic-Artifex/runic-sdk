@@ -444,3 +444,9 @@ static Runic.Navigation.NavigationArrival.operator ==(Runic.Navigation.Navigatio
 Runic.Navigation.NavigationRegion.BackToAsync(Runic.Navigation.NavigationEntryId entry, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
 Runic.Navigation.NavigationRegion.ClearHistoryAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
 Runic.Navigation.RunicNavigator.IsBusy.get -> bool
+Runic.Navigation.INavigationPresentation.ForgetAsync(object! content) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.NavigationRequestOptions.Requester.get -> Runic.Navigation.NavigationEntryId?
+Runic.Navigation.NavigationRequestOptions.Requester.init -> void
+Runic.Navigation.NavigationEntry.RetainView.get -> bool?
+Runic.Navigation.NavigationRequestOptions.RetainView.get -> bool?
+Runic.Navigation.NavigationRequestOptions.RetainView.init -> void

@@ -57,3 +57,8 @@ static Runic.Platform.MacOS.MacOSPlatformProvider.CreateVolumes() -> Runic.Platf
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateApplications() -> Runic.Platform.IDesktopApplications!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateLoginStartup() -> Runic.Platform.IDesktopLoginStartup!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateStatusIcon() -> Runic.Platform.IDesktopStatusIcon!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateFileBookmarks() -> Runic.Platform.IDesktopFileBookmarks!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateOpenRegistration() -> Runic.Platform.IDesktopOpenRegistration!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!
