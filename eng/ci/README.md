@@ -59,7 +59,7 @@ Do not use this runner for untrusted code with credentials in the environment.
 
 The launcher currently supports Linux with an amd64 runner image. Windows x64 and
 macOS Apple Silicon jobs remain native GitHub checks. A passing local Linux run
-is not evidence that the other operating systems passed. Intel macOS is excluded.
+is not evidence that the other operating systems passed. Intel macOS is not supported.
 
 ## Native jobs per runtime identifier
 

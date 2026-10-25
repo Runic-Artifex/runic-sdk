@@ -466,8 +466,11 @@ assets. The 1.0 status:
 | `win-arm64` | Supported | Unsupported | Supported |
 | `linux-musl-x64` | Supported | Unsupported | n/a |
 | `linux-musl-arm64` | Supported | Unsupported | n/a |
-| `osx-x64` | Packaged, best effort | Packaged, best effort | n/a |
+| `osx-x64` | Unsupported | Unsupported | n/a |
 
+- Intel Macs (`osx-x64`) are not a Runic target since 0.12: CI runs only the
+  latest macOS on Apple silicon, and `dotnet runic package macos` makes no
+  universal bundle. `dotnet runic doctor --runtime osx-x64` fails `target-rid`.
 - CS-WebUI ships no native library for musl or `win-arm64`. Publish for a glibc
   RID or `win-x64` (which runs under emulation on Windows on Arm), or use Runic
   Desktop.

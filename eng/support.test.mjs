@@ -71,9 +71,11 @@ const nativeVersion = /<PackageVersion Include="CsWebUi\.Native" Version="([^"]+
 const nativePackage = [process.env.NUGET_PACKAGES, resolve(root, ".cache/nuget"), resolve(homedir(), ".nuget/packages")]
   .filter(Boolean).map(cache => resolve(cache, "cswebui.native", nativeVersion ?? "missing")).find(path => existsSync(path));
 test("CS-WebUI support follows the CsWebUi.Native runtimes", { skip: !nativePackage }, () => {
-  const shipped = readdirSync(resolve(nativePackage, "runtimes")).sort();
-  const listed = support.hosts.find(host => host.id === "cswebui").targets
-    .filter(target => target.status !== "unsupported").map(target => target.rid).sort();
+  // Every shipped runtime is listed; one Runic does not target (osx-x64, Intel Macs) is listed as unsupported.
+  const targets = support.hosts.find(host => host.id === "cswebui").targets;
+  const notTargeted = targets.filter(target => target.status === "unsupported").map(target => target.rid);
+  const shipped = readdirSync(resolve(nativePackage, "runtimes")).filter(rid => !notTargeted.includes(rid)).sort();
+  const listed = targets.filter(target => target.status !== "unsupported").map(target => target.rid).sort();
   assert.deepEqual(listed, shipped, `CS-WebUI entries must match CsWebUi.Native ${nativeVersion} runtimes/`);
 });
 
