@@ -184,6 +184,56 @@ public sealed class ContentLifecycleTests
         }
     }
 
+    // I-079. When an off-turn Forget takes the page's Views before the browser unmount's
+    // release turn runs, the Views are still released in a model turn, as the View lifetime
+    // hooks document. The model thread is held until both flows have queued their turns,
+    // so Forget always wins: the unmount has removed its mount token but not yet released
+    // the View, and Forget's turn comes after the unmount's.
+    [Test]
+    public async Task ForgetThatWinsTheBrowserUnmountReleasesViewsInATurn()
+    {
+        var root = new Item();
+        var page = new Item();
+        var views = new ViewCounter();
+        var context = new CountingThreadContext();
+        using var transport = new InMemoryBridgeTransport();
+        var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = root, ModelContext = context });
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        try
+        {
+            var route = $"content{session.Present(root, "Main", "item", page, (_, current, presentedRoute) =>
+                session.AttachPresentation<CountedView, Item>(current, presentedRoute,
+                    (bridgeTransport, presented, bridgeRoute) => new CheckedBridge(bridgeTransport, presented, bridgeRoute, session),
+                    () => new CountedView(views, context))).Id}";
+            Require(transport.Call($"{route}Mount", Browser("browser:view")) == "ok" && views.Attached == 1,
+                "The page did not mount.");
+
+            Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The model thread did not accept a turn.");
+            Require(started.Wait(TimeSpan.FromSeconds(5)), "The model thread did not start the blocking turn.");
+            var queued = context.Invocations;
+            var unmount = Task.Run(() => transport.Call($"{route}Unmount", Browser("browser:view")));
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 1, TimeSpan.FromSeconds(5)),
+                "The browser unmount did not queue its release turn.");
+            var forget = Task.Run(() => session.Forget(page));
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 2, TimeSpan.FromSeconds(5)),
+                "Forget did not queue a turn.");
+            release.Set();
+
+            await Task.WhenAll(unmount, forget).WaitAsync(TimeSpan.FromSeconds(10));
+            Require(unmount.Result == "ok", $"The browser unmount answered {unmount.Result}.");
+            Require(views.Detached == 1, $"Retiring the page released {views.Detached} Views instead of 1.");
+            Require(views.DetachedOffTurn == 0, "Forget released the page's View outside a model turn.");
+        }
+        finally
+        {
+            // A failed check before the release must not leave the model thread blocked.
+            release.Set();
+            session.Dispose();
+            await context.DisposeAsync();
+        }
+    }
+
     [Test]
     public void CollectionChurnReleasesItemState()
     {
@@ -320,10 +370,13 @@ public sealed class ContentLifecycleTests
     {
         private int _attached;
         private int _detached;
+        private int _detachedOffTurn;
         public int Attached => Volatile.Read(ref _attached);
         public int Detached => Volatile.Read(ref _detached);
+        public int DetachedOffTurn => Volatile.Read(ref _detachedOffTurn);
         public void Attach() => Interlocked.Increment(ref _attached);
         public void Detach() => Interlocked.Increment(ref _detached);
+        public void DetachOffTurn() => Interlocked.Increment(ref _detachedOffTurn);
     }
 
     // An application context with one dedicated thread, such as a UI dispatcher, whose
@@ -374,10 +427,15 @@ public sealed class ContentLifecycleTests
 
     // Implements IRunicView directly so the bridge generator does not treat
     // this private probe as an application View.
-    private sealed class CountedView(ViewCounter counter) : IRunicView, IRunicViewLifetime
+    // With a context, it also counts the detaches that ran outside the context's turns.
+    private sealed class CountedView(ViewCounter counter, IRunicModelContext? context = null) : IRunicView, IRunicViewLifetime
     {
         public object? DataContext { get; set; }
         public void OnAttached() => counter.Attach();
-        public void OnDetached() => counter.Detach();
+        public void OnDetached()
+        {
+            if (context is { IsExecuting: false }) counter.DetachOffTurn();
+            counter.Detach();
+        }
     }
 }
