@@ -9,6 +9,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
 using Runic.Desktop;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Runic.Desktop.Internal;
 
@@ -62,6 +63,26 @@ public sealed class ContentAndLifecycleTests
 
         // ConsoleLifetime would cancel SIGINT and SIGTERM, leaving the process running.
         Assert.IsType<ProcessOwnedLifetime>(host.Services?.GetService(typeof(IHostLifetime)));
+    }
+
+    [Test]
+    public async Task EmbeddedServerWatchesNoFilesUnderTheWorkingDirectory()
+    {
+        await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
+            Port: 0,
+            NetworkExposure: PresentationNetworkExposure.Loopback));
+        await using var window = new WebUiWindow(host, "watch");
+        await window.StartServerAsync("watch");
+
+        // Rooted at the working directory with reload on, the host would watch that whole tree (#606).
+        var configuration = Assert.IsAssignableFrom<IConfigurationRoot>(host.Services?.GetService(typeof(IConfiguration)));
+        Assert.DoesNotContain(
+            configuration.Providers.OfType<FileConfigurationProvider>(),
+            provider => provider.Source.ReloadOnChange);
+        var environment = Assert.IsAssignableFrom<IHostEnvironment>(host.Services?.GetService(typeof(IHostEnvironment)));
+        Assert.Equal(
+            Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory),
+            Path.TrimEndingDirectorySeparator(environment.ContentRootPath));
     }
 
     [Test]

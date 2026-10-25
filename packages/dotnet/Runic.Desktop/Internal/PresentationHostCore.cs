@@ -149,9 +149,17 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             return;
         }
 
+        // The server reads no files. The default content root is the working directory,
+        // often the user's home, and reloading configuration from it would put a recursive
+        // file watcher (one inotify watch per directory on Linux) on that tree.
+        var hostOptions = new WebApplicationOptions
+        {
+            ContentRootPath = AppContext.BaseDirectory,
+            Args = ["--hostBuilder:reloadConfigOnChange=false"],
+        };
         var builder = MinimalHost
-            ? WebApplication.CreateEmptyBuilder(new WebApplicationOptions())
-            : WebApplication.CreateSlimBuilder();
+            ? WebApplication.CreateEmptyBuilder(hostOptions)
+            : WebApplication.CreateSlimBuilder(hostOptions);
         if (MinimalHost) builder.WebHost.UseKestrelCore().UseSockets();
         builder.Logging.ClearProviders();
         // The default console lifetime cancels SIGINT, SIGQUIT and SIGTERM and only
