@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>notes</AssemblyName>
+    <ApplicationId>org.example.Notes</ApplicationId>
+    <ApplicationTitle>Notes &amp; Co</ApplicationTitle>
+    <!-- Upper case, as a project may write them: the package command and the builder lower-case both. -->
+    <RunicApplicationUrlSchemes>org.example.notes;Notes-X</RunicApplicationUrlSchemes>
+    <RunicApplicationFileTypes>.notes=application/x-example-notes;.TAR.GZ</RunicApplicationFileTypes>
+  </PropertyGroup>
+</Project>

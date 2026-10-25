@@ -488,6 +488,21 @@ internal sealed partial class ToolTests
         Equal(PackageCodes.FlathubSourcesUnavailable, document.RootElement.GetProperty("fault").GetProperty("code").GetString());
     }
 
+    [Test, DisplayName("package writes the MIME definitions and MimeType= that the Nix builder installs for the same project")]
+    public void PackageFileTypesMatchNixBuilder()
+    {
+        // nix/tests/file-types.nix builds this project with buildRunicApplication (nix/lib/desktop-integration.py) and
+        // compares its output with the same expected files.
+        string fixture = Path.Combine(RepositoryRoot(), "tests", "fixtures", "nix", "file-types");
+        string project = Path.Combine(fixture, "App", "App.csproj");
+        Dictionary<string, string> properties = XDocument.Load(project).Root!.Elements("PropertyGroup").Elements()
+            .ToDictionary(element => element.Name.LocalName, element => element.Value, StringComparer.Ordinal);
+        PackageIdentity identity = PackageIdentity.Create(project, properties, [], null);
+        Dictionary<string, string> fields = PackageManifests.Fields(identity, PackageTarget.Deb);
+        Equal(File.ReadAllText(Path.Combine(fixture, "expected", "org.example.Notes.xml")), fields["MimeInfo"]);
+        Equal(File.ReadAllText(Path.Combine(fixture, "expected", "MimeType.txt")), fields["MimeTypes"]);
+    }
+
     private static string RepositoryRoot()
     {
         for (string? directory = AppContext.BaseDirectory; directory is not null; directory = Path.GetDirectoryName(directory))
