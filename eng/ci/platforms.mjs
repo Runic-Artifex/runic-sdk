@@ -95,7 +95,9 @@ export const platformRules = [
     "tools/Runic.Application.Views.Codegen*", "tools/Runic.Application.Views.Dev", "examples/notes-reactive-views",
     "packages/dotnet/Runic.Platform.Administration.Windows", "tests/dotnet/Runic.Platform.Administration.Windows.Tests",
     "examples/dotnet/Runic.Administration.Console", "tools/Runic.Administration.Verify"] },
-  { platforms: ["osx-arm64"], paths: ["packages/dotnet/Runic.Platform.MacOS*", "tests/dotnet/Runic.Platform.MacOS*", "tests/native/platform-sandbox"] },
+  // The macOS providers and the App Sandbox fixtures (the sandboxed Runic Desktop app runs in the macOS packaging leg).
+  { platforms: ["osx-arm64"], paths: ["packages/dotnet/Runic.Platform.MacOS*", "tests/dotnet/Runic.Platform.MacOS*", "tests/native/platform-sandbox",
+    "tests/native/Runic.Sandbox.Probe"] },
 ];
 
 // Unowned files that no Windows or macOS job reads: Nix, release tooling, the solutions and the

@@ -15,7 +15,7 @@ below.
 | Target | Builds on | Writes | Install it with |
 | --- | --- | --- | --- |
 | `windows` | Windows | `<id>_<version>_<arch>.msix` | `Add-AppxPackage`, once signed |
-| `macos` | macOS | `<name>.app`, `<name>-<version>.dmg` | Drag the bundle to Applications |
+| `macos` | macOS | `<name>.app`, `<name>-<version>.dmg`; with `--pkg` also `<name>-<version>.pkg` | Drag the bundle to Applications, or open the `.pkg` |
 | `flatpak` | Linux | `<id>.flatpak` and a repository | `flatpak install --user <id>.flatpak` |
 | `appimage` | Linux | `<Name>-<version>-<arch>.AppImage` | `chmod +x` and run it |
 | `deb` | Linux | `<package>_<version>_<arch>.deb` | `sudo apt install ./<file>.deb` |
@@ -97,9 +97,79 @@ silicon and Intel Macs.
 
 Universal links for `RunicApplicationWebLinkHosts` need the
 `com.apple.developer.associated-domains` entitlement and a provisioning
-profile, which an ad-hoc signature cannot carry. Add both to your
-`macos/entitlements.plist` override and embed the profile as
-`Contents/embedded.provisionprofile` before you sign.
+profile, which an ad-hoc signature cannot carry. Add the entitlement to your
+`macos/entitlements.plist` override and pass the profile with
+`--provisioning-profile` (see below).
+
+### App Sandbox and the Mac App Store
+
+Sandboxing is opt-in. `--sandbox`, or `<RunicMacSandbox>true</RunicMacSandbox>`
+in the project, signs the bundle with these entitlements:
+
+| Entitlement | Why Runic needs it |
+| --- | --- |
+| `com.apple.security.app-sandbox` | The App Sandbox itself |
+| `com.apple.security.network.server` | Runic serves the page from a loopback listener and accepts the bridge's WebSocket |
+| `com.apple.security.network.client` | WKWebView connects to that listener |
+| `com.apple.security.files.user-selected.read-write` | File dialogs grant the files the user selects |
+| `com.apple.security.files.bookmarks.app-scope` | `CreateFileBookmarks()` keeps access to them across launches |
+
+The command fills them into `macos/entitlements.plist` where the template has
+`{{Entitlements}}`. An override without that field must list the keys itself:
+with `--sandbox`, a missing key is `RAPPPKG1006` rather than a bundle that
+silently runs unsandboxed. Add camera, microphone or other entitlements your
+application needs to the override.
+
+In the sandbox the application reaches its container, the files the user
+selected or dropped, and bookmarked files; privileged actions and volume
+management are not available, and saving a chosen file through a lease is not
+yet ([Runic.Platform.MacOS: App Sandbox](../packages/dotnet/Runic.Platform.MacOS/README.md#app-sandbox)).
+Sandbox an application when it needs none of those, or when you ship it in the
+Mac App Store.
+
+For the Mac App Store, add these to the sandboxed build:
+
+1. `<RunicMacApplicationCategory>public.app-category.productivity</RunicMacApplicationCategory>`
+   (one of Apple's `public.app-category.*` identifiers), which becomes
+   `LSApplicationCategoryType`; App Store Connect rejects a bundle without it.
+2. A 1024 px `RunicPackageIcon`: the icon set includes the 512 px icon at 2x,
+   which the App Store requires, scaled up from a 512 px source.
+3. An **Apple Distribution** certificate (or **3rd Party Mac Developer
+   Application**) for `--sign`, and a Mac App Store provisioning profile for
+   the `ApplicationId` from your developer account for
+   `--provisioning-profile`. The command embeds it as
+   `Contents/embedded.provisionprofile` and adds its
+   `com.apple.application-identifier` and
+   `com.apple.developer.team-identifier` to the entitlements; a profile for
+   another application is `RAPPPKG1006`.
+4. `--pkg` with `--installer-sign "3rd Party Mac Developer Installer: …"`:
+   `productbuild` writes `<name>-<version>.pkg`, which installs the bundle in
+   `/Applications`, signed with your installer certificate. Upload it with
+   Apple's Transporter app; Runic uploads nothing.
+
+```sh
+dotnet runic package macos --sandbox \
+  --sign "Apple Distribution: Example Ltd (TEAMID)" \
+  --provisioning-profile Notes_Mac_App_Store.provisionprofile \
+  --pkg --installer-sign "3rd Party Mac Developer Installer: Example Ltd (TEAMID)"
+```
+
+If your application uses only the encryption in the operating system, such as
+HTTPS, you can add `ITSAppUsesNonExemptEncryption` with `<false/>` to your
+`macos/Info.plist` override; otherwise App Store Connect asks about export
+compliance for each build. That answer is yours to give, so the command does
+not set it.
+
+Outside the App Store, `--pkg` with a **Developer ID Installer** identity
+writes an installer package that `--notary-profile` notarizes and staples like
+the disk image. A `.pkg` without `--installer-sign` is unsigned
+(`RAPPPKG2001`): it installs on the Mac that built it, for testing.
+
+Runic's CI packages a sandboxed Runic Desktop application with `--pkg`,
+ad-hoc signed and with an unsigned installer package, and runs it in the
+sandbox. It has no Apple certificates or provisioning profiles, so real
+signing, the profile's identifiers, App Store Connect validation and
+TestFlight are checked only by your own distribution build.
 
 ## Flatpak
 

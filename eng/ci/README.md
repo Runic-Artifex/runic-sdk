@@ -187,7 +187,7 @@ rule applies to each file:
 | `Runic.Application.Views`, `.Desktop` and `.CsWebUi`, `examples/first-window`, the CS-WebUI window probes, `Runic.Application.Testing` and its tests | win-x64, osx-arm64 |
 | `Runic.Platform.Windows*` and their tests, the elevation smoke, `windows-notifications` | win-x64, win-arm64 |
 | WPF hosts and their tests, `Runic.Navigation` and its WPF consumer, the Views ReactiveUI adapters (`Runic.Application.Views.ReactiveUI*`, whose failure bookkeeping the WPF suite checks under WPF's dispatcher), `examples/wpf-*`, the WPF Bridge consumer, `Runic.Application.Views.Codegen*`, `Runic.Application.Views.Dev`, `examples/notes-reactive-views`, Windows administration | win-x64 |
-| `Runic.Platform.MacOS*` and their tests, `platform-sandbox` | osx-arm64 |
+| `Runic.Platform.MacOS*` and their tests, `platform-sandbox`, the sandbox probe | osx-arm64 |
 | Nix, `flake.*`, `eng/release`, `eng/verify-packages.mjs`, the solutions, the shipping-project generator (unowned, neutral) | Linux only |
 | any other unowned file: `ci.yml`, `eng/ci`, `.github/actions`, `global.json`, `Directory.*`, `eng/Versions.props`, `eng/build`, `bun.lock`, `eng/workspace.json`, `eng/support.json` | all three |
 | everything else: web packages, templates, assets, the Navigation ReactiveUI adapters, examples, documentation | Linux only |

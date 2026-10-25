@@ -1528,6 +1528,51 @@ jobs:
           receipt="$RUNNER_TEMP/packaged.json"
           open -W -n "$app" --args "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
           bun eng/ci/packaging-probe-check.mjs "$receipt" macos
+      # D045.5, D045.6: the sandboxed Runic Desktop fixture (tests/native/Runic.Sandbox.Probe), packaged for the App
+      # Sandbox (RunicMacSandbox) with its installer package. Both stay ad-hoc signed and unsigned: the maintainers'
+      # Apple certificates and provisioning profiles are not in CI (I-101). The bundle's executable runs in the sandbox,
+      # opens a window whose page answers over the loopback bridge, saves and bookmarks a file in its container, prints
+      # the capability snapshot, and cannot write or bookmark a file outside the container.
+      - name: Package and run the sandboxed Runic Desktop fixture
+        if: matrix.target == 'macos'
+        timeout-minutes: 15
+        shell: bash
+        env:
+          SANDBOX_PROBE: tests/native/Runic.Sandbox.Probe/Runic.Sandbox.Probe.csproj
+        run: |
+          dotnet run --no-build -c Release --project "$TOOL" -- package macos --project "$SANDBOX_PROBE" --output-directory artifacts/package/sandbox \
+            --pkg --format json > "$RUNNER_TEMP/sandbox-package.json"
+          node -e '
+            const { payload } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const kinds = payload.packages.map(item => item.format + ":" + item.signing).join(",");
+            if (payload.identity.id !== "org.runic.tests.SandboxProbe" || kinds !== "app:adhoc,dmg:none,pkg:none"
+              || payload.warnings.map(item => item.code).join(",") !== "RAPPPKG2002,RAPPPKG2001")
+              throw new Error("Unexpected package payload " + JSON.stringify(payload));' "$RUNNER_TEMP/sandbox-package.json"
+          app="artifacts/package/sandbox/Runic Sandbox Probe.app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign --display --entitlements - --xml "$app" > "$RUNNER_TEMP/sandbox-entitlements.plist"
+          for key in app-sandbox network.server network.client files.user-selected.read-write files.bookmarks.app-scope; do
+            test "$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.$key" "$RUNNER_TEMP/sandbox-entitlements.plist")" = true
+          done
+          test "$(plutil -extract LSApplicationCategoryType raw "$app/Contents/Info.plist")" = public.app-category.developer-tools
+          # The 1024 px icon (512 px at 2x) that the Mac App Store requires.
+          iconutil -c iconset "$app/Contents/Resources/icon.icns" -o "$RUNNER_TEMP/sandbox-icon.iconset"
+          test -f "$RUNNER_TEMP/sandbox-icon.iconset/icon_512x512@2x.png"
+          # The product archive installs the same signed bundle in /Applications.
+          pkgutil --expand-full "artifacts/package/sandbox/Runic Sandbox Probe-1.2.3.pkg" "$RUNNER_TEMP/sandbox-pkg"
+          grep -q 'install-location="/Applications"' "$RUNNER_TEMP"/sandbox-pkg/*.pkg/PackageInfo
+          codesign --verify --strict "$(echo "$RUNNER_TEMP"/sandbox-pkg/*.pkg/Payload/"Runic Sandbox Probe.app")"
+          # macOS has no timeout(1); an alarm ends a run that hangs.
+          deadline() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          outside="$HOME/runic-sandbox-outside-$GITHUB_RUN_ID.txt"
+          echo probe > "$outside"
+          status=0
+          deadline 150 "$app/Contents/MacOS/Runic.Sandbox.Probe" --sandbox-probe "$outside" | tee "$RUNNER_TEMP/sandbox-probe.txt" || status=$?
+          content=$(cat "$outside")
+          rm -f "$outside"
+          test "$status" = 0
+          test "$content" = probe
+          grep -qx SANDBOX_PROBE_OK "$RUNNER_TEMP/sandbox-probe.txt"
       # The GNOME runtime and SDK come from Flathub, cached by their branch.
       # flatpak-builder composes the AppStream data with appstream-compose, which reads the SVG icon through
       # librsvg's image loader.

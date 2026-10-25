@@ -53,6 +53,13 @@ internal sealed partial record PackageIdentity
     /// <summary>The rpm License tag, <c>PackageLicenseExpression</c>; <c>LicenseRef-proprietary</c> by default.</summary>
     internal string License { get; init; } = "LicenseRef-proprietary";
 
+    /// <summary>Whether the macOS bundle is signed for the App Sandbox, <c>RunicMacSandbox</c>; <c>--sandbox</c> also turns it on.</summary>
+    internal bool MacSandbox { get; init; }
+
+    /// <summary>The macOS <c>LSApplicationCategoryType</c>, <c>RunicMacApplicationCategory</c>, which the Mac App Store
+    /// requires; none by default.</summary>
+    internal string? MacApplicationCategory { get; init; }
+
     internal string ProjectDirectory => Path.GetDirectoryName(ProjectPath)!;
 
     /// <summary>The SVG beside the PNG icon, when there is one.</summary>
@@ -71,7 +78,7 @@ internal sealed partial record PackageIdentity
         "ApplicationId", "ApplicationTitle", "Version", "RunicApplicationUrlSchemes", "RunicApplicationFileTypes",
         "RunicApplicationWebLinkHosts", "RunicApplicationDBusActivatable", "RunicApplicationPublisher", "Description",
         "PackageProjectUrl", "AssemblyName", "RunicPackageIcon", "RunicPackageName", "RunicPackagingDirectory",
-        "RuntimeIdentifiers", "NuGetLockFilePath", "PackageLicenseExpression",
+        "RuntimeIdentifiers", "NuGetLockFilePath", "PackageLicenseExpression", "RunicMacSandbox", "RunicMacApplicationCategory",
     ];
 
     /// <summary>Evaluates the project with <c>dotnet msbuild -getProperty</c> and validates what it reads.</summary>
@@ -142,6 +149,8 @@ internal sealed partial record PackageIdentity
             RuntimeIdentifiers = Get("RuntimeIdentifiers").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             NuGetLockFile = lockFile,
             License = Get("PackageLicenseExpression").Length != 0 ? Get("PackageLicenseExpression") : "LicenseRef-proprietary",
+            MacSandbox = string.Equals(Get("RunicMacSandbox"), "true", StringComparison.OrdinalIgnoreCase),
+            MacApplicationCategory = CheckApplicationCategory(Get("RunicMacApplicationCategory")),
         };
     }
 
@@ -156,6 +165,22 @@ internal sealed partial record PackageIdentity
                 $"ApplicationId '{id}' must be a reverse-DNS name of ASCII letters and digits, each part starting with a letter, at most 50 characters (org.example.Notes).");
         }
         return id;
+    }
+
+    /// <summary>
+    /// The macOS application category: empty for none, otherwise a <c>public.app-category.*</c> identifier such as
+    /// <c>public.app-category.productivity</c>, in lower case.
+    /// </summary>
+    internal static string? CheckApplicationCategory(string? category)
+    {
+        if (string.IsNullOrWhiteSpace(category)) return null;
+        string value = category.Trim().ToLowerInvariant();
+        if (!ApplicationCategorySyntax().IsMatch(value))
+        {
+            throw new DevUsageException(PackageCodes.IdentityInvalid,
+                $"RunicMacApplicationCategory '{category}' must be an Apple application category such as public.app-category.productivity.");
+        }
+        return value;
     }
 
     /// <summary>
@@ -272,6 +297,9 @@ internal sealed partial record PackageIdentity
 
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)+$")]
     private static partial Regex ApplicationIdSyntax();
+
+    [GeneratedRegex("^public\\.app-category\\.[a-z]+(-[a-z]+)*$")]
+    private static partial Regex ApplicationCategorySyntax();
 
     [GeneratedRegex("^[a-z0-9][a-z0-9+.-]+$")]
     private static partial Regex PackageNameSyntax();

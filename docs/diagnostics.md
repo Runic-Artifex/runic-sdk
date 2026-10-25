@@ -719,7 +719,8 @@ frontend output to the Window with them.
 reverse-DNS name of ASCII letters and digits with each part starting with a
 letter and at most 50 characters, `RunicApplicationUrlSchemes`,
 `RunicApplicationFileTypes` or `RunicApplicationWebLinkHosts` has an entry no
-platform registers, `RunicPackageName` is not a deb or rpm package name, or the
+platform registers, `RunicPackageName` is not a deb or rpm package name,
+`RunicMacApplicationCategory` is not a `public.app-category.*` identifier, or the
 `RunicPackageIcon` file does not exist. The message names the value. Exit code
 2. Since 0.11.
 
@@ -766,11 +767,15 @@ not match `RunicApplicationPublisher`, and run the command again.
 
 A manifest or package failed validation: a manifest in the packaging directory
 uses a `{{Field}}` the target does not fill, or `desktop-file-validate`,
-`appstreamcli validate` or `codesign --verify` rejected the result. Exit code 1.
-Since 0.11.
+`appstreamcli validate` or `codesign --verify` rejected the result. Since 0.12
+also: `macos/entitlements.plist` is not a property list, has a key twice, or
+lacks a key that `--sandbox` or `--provisioning-profile` needs (an override
+without `{{Entitlements}}`), or the provisioning profile is missing, cannot be
+decoded or is for another `ApplicationId` or team. Exit code 1. Since 0.11.
 
 **Fix:** correct the manifest override the message names, or remove it to use
-the tool's default.
+the tool's default; add `{{Entitlements}}` to an entitlements override; use a
+macOS provisioning profile for the application's `ApplicationId`.
 
 ### RAPPPKG1007
 
@@ -786,7 +791,8 @@ does not list both `linux-x64` and `linux-arm64`. Exit code 2. Since 0.11.
 
 Warning: the package is unsigned. `windows` without `--certificate` or
 `--thumbprint` writes an unsigned MSIX; `flatpak` without `--gpg-sign`, `deb`,
-`rpm` and `appimage` never sign. The command succeeds; the JSON payload lists
+`rpm` and `appimage` never sign; `macos --pkg` without `--installer-sign` writes
+an unsigned installer package (since 0.12). The command succeeds; the JSON payload lists
 the warning as `{ "code": "RAPPPKG2001", "message": … }` in `warnings`. Since
 0.11.
 

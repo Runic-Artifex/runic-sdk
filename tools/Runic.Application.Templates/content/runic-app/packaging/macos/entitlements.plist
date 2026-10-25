@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- The hardened runtime's entitlements. A NativeAOT application needs none. For the App Sandbox (the Mac App Store)
-     add com.apple.security.app-sandbox, com.apple.security.network.server and com.apple.security.network.client
-     for the loopback bridge, and com.apple.security.files.user-selected.read-write for file dialogs. -->
+<!-- The hardened runtime's entitlements. A NativeAOT application needs none. The Entitlements field adds the App Sandbox
+     entitlements when the project sets RunicMacSandbox or dotnet runic package macos gets the sandbox option
+     (com.apple.security.app-sandbox, network.server and network.client for the loopback page server and bridge,
+     files.user-selected.read-write for file dialogs, files.bookmarks.app-scope for bookmarks), and the application and
+     team identifiers of the provisioning profile the command embeds. Add your own keys around it. -->
 <plist version="1.0">
-<dict>
+<dict>{{Entitlements}}
 </dict>
 </plist>

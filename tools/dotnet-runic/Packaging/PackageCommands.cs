@@ -41,23 +41,32 @@ internal static class PackageCommands
             TimestampUrl = Value(timestampUrl),
         }, cancellationToken);
 
-    [Command("package macos", Description = "Package the application as an .app bundle in a disk image. Runs on macOS.",
+    [Command("package macos", Description = "Package the application as an .app bundle in a disk image, and with --pkg an installer package. Runs on macOS.",
         Examples = ["dotnet runic package macos", "dotnet runic package macos --runtime osx-arm64,osx-x64",
-            "dotnet runic package macos --sign \"Developer ID Application: Example Ltd (TEAMID)\" --notary-profile notary"])]
+            "dotnet runic package macos --sign \"Developer ID Application: Example Ltd (TEAMID)\" --notary-profile notary",
+            "dotnet runic package macos --sandbox --sign \"Apple Distribution: Example Ltd (TEAMID)\" --provisioning-profile App_Store.provisionprofile --pkg --installer-sign \"3rd Party Mac Developer Installer: Example Ltd (TEAMID)\""])]
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> MacOS(
         CommandExecutionContext context,
+        [Option("--sandbox", Description = "Sign the bundle for the App Sandbox, which the Mac App Store requires, as RunicMacSandbox does: the sandbox, loopback network, user-selected files and bookmark entitlements.")] bool sandbox,
+        [Option("--pkg", Description = "Also write an installer package with productbuild that installs the bundle in /Applications, as App Store Connect takes it.")] bool pkg,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
         [Option("--runtime", "--rid", "-r", Description = RuntimeDescription + " Separate two with a comma, osx-arm64,osx-x64, for a universal bundle.")] string runtime = "",
         [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
-        [Option("--sign", ValueName = "IDENTITY", Description = "Sign with this Developer ID Application identity from the keychain instead of ad hoc.")] string sign = "",
-        [Option("--notary-profile", ValueName = "NAME", Requires = ["sign"], Description = "Notarize and staple the disk image with this notarytool keychain profile.")] string notaryProfile = "") =>
+        [Option("--sign", ValueName = "IDENTITY", Description = "Sign with this identity from the keychain instead of ad hoc: Developer ID Application, or Apple Distribution for the Mac App Store.")] string sign = "",
+        [Option("--notary-profile", ValueName = "NAME", Requires = ["sign"], Description = "Notarize and staple the disk image, and a signed installer package, with this notarytool keychain profile.")] string notaryProfile = "",
+        [Option("--provisioning-profile", ValueName = "FILE", Requires = ["sign"], Description = "Embed this provisioning profile as Contents/embedded.provisionprofile and sign with its application and team identifiers.")] string provisioningProfile = "",
+        [Option("--installer-sign", ValueName = "IDENTITY", Requires = ["pkg"], Description = "Sign the installer package with this installer identity from the keychain, such as 3rd Party Mac Developer Installer or Developer ID Installer.")] string installerSign = "") =>
         RunAsync(context, Common(PackageTarget.MacOS, project, configuration, runtime, outputDirectory) with
         {
             SigningIdentity = Value(sign),
             NotaryProfile = Value(notaryProfile),
+            Sandbox = sandbox,
+            ProvisioningProfile = Value(provisioningProfile),
+            InstallerPackage = pkg,
+            InstallerSigningIdentity = Value(installerSign),
         }, cancellationToken);
 
     [Command("package flatpak", Description = "Package the application as a Flatpak bundle on the GNOME runtime. Runs on Linux with flatpak-builder.",

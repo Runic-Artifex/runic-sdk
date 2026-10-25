@@ -329,6 +329,7 @@
         "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs",
         "tools/Runic.Application.Templates/content/runic-app/icons",
         "tests/native/Runic.Packaging.Probe",
+        "tests/native/Runic.Sandbox.Probe",
         "tests/fixtures/flathub"
       ]
     },

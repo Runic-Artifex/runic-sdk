@@ -223,6 +223,125 @@ internal sealed partial class ToolTests
             PackageManifests.Render(identity, "macos/Info.plist", PackageManifests.Fields(identity, PackageTarget.MacOS))).Code);
     }
 
+    [Test, DisplayName("package macos signs for the App Sandbox with --sandbox and RunicMacSandbox, and only then")]
+    public void PackageMacOSSandboxEntitlements()
+    {
+        PackageIdentity identity = PackageIdentityFor([]);
+        Dictionary<string, string> fields = PackageManifests.Fields(identity, PackageTarget.MacOS);
+        Equal("", fields["Entitlements"]);
+        string plain = PackageManifests.Render(identity, "macos/entitlements.plist", fields);
+        MacOSPackager.CheckEntitlements(plain, sandbox: false, profile: null);
+        SequenceEqual([], PlistKeys(plain));
+
+        fields["Entitlements"] = MacOSPackager.Entitlements(sandbox: true, profile: null);
+        string sandboxed = PackageManifests.Render(identity, "macos/entitlements.plist", fields);
+        MacOSPackager.CheckEntitlements(sandboxed, sandbox: true, profile: null);
+        SequenceEqual(["com.apple.security.app-sandbox", "com.apple.security.network.server", "com.apple.security.network.client",
+            "com.apple.security.files.user-selected.read-write", "com.apple.security.files.bookmarks.app-scope"], PlistKeys(sandboxed));
+        XDocument document = XDocument.Parse(sandboxed);
+        True(document.Root!.Element("dict")!.Elements().Where(element => element.Name != "key").All(element => element.Name == "true"), sandboxed);
+
+        var profile = new MacOSPackager.ProfileIdentity("ABCDE12345.org.example.Notes", "ABCDE12345");
+        fields["Entitlements"] = MacOSPackager.Entitlements(sandbox: true, profile);
+        string store = PackageManifests.Render(identity, "macos/entitlements.plist", fields);
+        MacOSPackager.CheckEntitlements(store, sandbox: true, profile);
+        Contains(store, "<key>com.apple.application-identifier</key><string>ABCDE12345.org.example.Notes</string>");
+        Contains(store, "<key>com.apple.developer.team-identifier</key><string>ABCDE12345</string>");
+
+        // An override copied before 0.12 has no {{Entitlements}}: --sandbox fails instead of signing an unsandboxed bundle.
+        string old = """<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict></dict></plist>""";
+        MacOSPackager.CheckEntitlements(old, sandbox: false, profile: null);
+        Contains(Throws<DevDevelopmentException>(() => MacOSPackager.CheckEntitlements(old, sandbox: true, profile: null)).Message, "{{Entitlements}}");
+        Equal(PackageCodes.ValidationFailed, Throws<DevDevelopmentException>(() => MacOSPackager.CheckEntitlements(old, sandbox: false, profile)).Code);
+        // A key the override already has and the field adds again, a sandbox the override turns off, and no plist.
+        string twice = """<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/><key>com.apple.security.app-sandbox</key><true/></dict></plist>""";
+        Contains(Throws<DevDevelopmentException>(() => MacOSPackager.CheckEntitlements(twice, sandbox: true, profile: null)).Message, "twice");
+        string off = """<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><false/><key>com.apple.security.network.server</key><true/><key>com.apple.security.network.client</key><true/><key>com.apple.security.files.user-selected.read-write</key><true/><key>com.apple.security.files.bookmarks.app-scope</key><true/></dict></plist>""";
+        Contains(Throws<DevDevelopmentException>(() => MacOSPackager.CheckEntitlements(off, sandbox: true, profile: null)).Message, "off");
+        Equal(PackageCodes.ValidationFailed, Throws<DevDevelopmentException>(() => MacOSPackager.CheckEntitlements("<plist", sandbox: false, profile: null)).Code);
+    }
+
+    [Test, DisplayName("package macos writes LSApplicationCategoryType from RunicMacApplicationCategory and reads RunicMacSandbox")]
+    public void PackageMacOSApplicationCategory()
+    {
+        PackageIdentity identity = PackageIdentityFor([]);
+        DoesNotContain(PackageManifests.Render(identity, "macos/Info.plist", PackageManifests.Fields(identity, PackageTarget.MacOS)), "<key>LSApplicationCategoryType</key>");
+        identity = identity with { MacApplicationCategory = "public.app-category.developer-tools" };
+        string info = PackageManifests.Render(identity, "macos/Info.plist", PackageManifests.Fields(identity, PackageTarget.MacOS));
+        XDocument.Parse(info);
+        Contains(info, "<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>");
+
+        Equal(null, PackageIdentity.CheckApplicationCategory(" "));
+        Equal("public.app-category.productivity", PackageIdentity.CheckApplicationCategory(" Public.App-Category.Productivity "));
+        foreach (string category in new[] { "productivity", "public.app-category.", "public.app-category.a_b", "public.app-category.games.puzzle", "com.example.category" })
+            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.CheckApplicationCategory(category)).Code);
+
+        string project = Path.Combine(Path.GetTempPath(), "Notes", "Notes.csproj");
+        var properties = new Dictionary<string, string>(StringComparer.Ordinal) { ["ApplicationId"] = "org.example.Notes" };
+        PackageIdentity unsandboxed = PackageIdentity.Create(project, properties, [], null);
+        False(unsandboxed.MacSandbox, "The bundle is not sandboxed by default (D045.5).");
+        Equal(null, unsandboxed.MacApplicationCategory);
+        properties["RunicMacSandbox"] = "True";
+        properties["RunicMacApplicationCategory"] = "public.app-category.productivity";
+        PackageIdentity sandboxed = PackageIdentity.Create(project, properties, [], null);
+        True(sandboxed.MacSandbox, "RunicMacSandbox is case-insensitive.");
+        Equal("public.app-category.productivity", sandboxed.MacApplicationCategory);
+        True(PackageIdentity.Properties.Contains("RunicMacSandbox") && PackageIdentity.Properties.Contains("RunicMacApplicationCategory"), "package evaluates both properties.");
+    }
+
+    [Test, DisplayName("package macos reads the provisioning profile's team and application identifier")]
+    public void PackageMacOSProvisioningProfile()
+    {
+        static string Profile(string? team, string? application) => $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>AppIDName</key><string>Notes</string>
+              <key>Entitlements</key>
+              <dict>
+                {(application is null ? "" : $"<key>com.apple.application-identifier</key><string>{application}</string>")}
+                <key>com.apple.developer.team-identifier</key><string>{team}</string>
+                <key>keychain-access-groups</key><array><string>{team}.*</string></array>
+              </dict>
+              <key>Name</key><string>Notes Mac App Store</string>
+              {(team is null ? "" : $"<key>TeamIdentifier</key><array><string>{team}</string></array>")}
+            </dict>
+            </plist>
+            """;
+        Equal(new MacOSPackager.ProfileIdentity("ABCDE12345.org.example.Notes", "ABCDE12345"),
+            MacOSPackager.ReadProfile(Profile("ABCDE12345", "ABCDE12345.org.example.Notes"), "org.example.Notes"));
+        // A wildcard profile grants the bundle's own identifier.
+        Equal("ABCDE12345.org.example.Notes", MacOSPackager.ReadProfile(Profile("ABCDE12345", "ABCDE12345.*"), "org.example.Notes").ApplicationIdentifier);
+        Equal("ABCDE12345.org.example.Notes", MacOSPackager.ReadProfile(Profile("ABCDE12345", "ABCDE12345.org.example.*"), "org.example.Notes").ApplicationIdentifier);
+        foreach ((string? team, string? application) in new[]
+        {
+            ("ABCDE12345", "ABCDE12345.org.example.Other"), ("ABCDE12345", "ZYXWV98765.org.example.Notes"), ("ABCDE12345", "ZYXWV98765.*"),
+            ("ABCDE12345", "ABCDE12345.org.other.*"), (null, "ABCDE12345.org.example.Notes"), ("ABCDE12345", null),
+        })
+        {
+            Equal(PackageCodes.ValidationFailed, Throws<DevDevelopmentException>(() => MacOSPackager.ReadProfile(Profile(team, application), "org.example.Notes")).Code);
+        }
+        Equal(PackageCodes.ValidationFailed, Throws<DevDevelopmentException>(() => MacOSPackager.ReadProfile("not a plist", "org.example.Notes")).Code);
+        Equal(Path.Combine("/out/Notes.app", "Contents", "embedded.provisionprofile"), MacOSPackager.ProfilePath("/out/Notes.app"));
+    }
+
+    [Test, DisplayName("package macos signs the bundle and builds the installer package with these command lines")]
+    public void PackageMacOSCommandLines()
+    {
+        SequenceEqual(["--force", "--options", "runtime", "--entitlements", "/out/entitlements.plist", "--sign", "-", "/out/Notes.app"],
+            MacOSPackager.CodesignArguments("-", "/out/entitlements.plist", "/out/Notes.app"));
+        SequenceEqual(["--force", "--options", "runtime", "--timestamp", "--entitlements", "/out/entitlements.plist", "--sign", "Apple Distribution: Example (TEAMID)", "/out/Notes.app"],
+            MacOSPackager.CodesignArguments("Apple Distribution: Example (TEAMID)", "/out/entitlements.plist", "/out/Notes.app"));
+        SequenceEqual(["--component", "/out/Notes.app", "/Applications", "/out/Notes-1.2.3.pkg"],
+            MacOSPackager.ProductbuildArguments("/out/Notes.app", null, "/out/Notes-1.2.3.pkg"));
+        SequenceEqual(["--component", "/out/Notes.app", "/Applications", "--sign", "3rd Party Mac Developer Installer: Example (TEAMID)", "/out/Notes-1.2.3.pkg"],
+            MacOSPackager.ProductbuildArguments("/out/Notes.app", "3rd Party Mac Developer Installer: Example (TEAMID)", "/out/Notes-1.2.3.pkg"));
+    }
+
+    private static string[] PlistKeys(string plist) =>
+        [.. XDocument.Parse(plist).Root!.Element("dict")!.Elements("key").Select(key => key.Value)];
+
     [Test, DisplayName("package checks the host and the runtime identifiers of the target")]
     public void PackageRuntimes()
     {
@@ -256,7 +375,7 @@ internal sealed partial class ToolTests
         foreach (string option in new[] { "--project", "--configuration", "--runtime", "--output-directory", "-o", "--publisher", "--certificate", "--thumbprint", "--timestamp-url" })
             Contains(windows, option);
         (_, string macos) = RunCli("package", "macos", "--help");
-        foreach (string option in new[] { "--sign", "--notary-profile", "osx-arm64,osx-x64" })
+        foreach (string option in new[] { "--sign", "--notary-profile", "osx-arm64,osx-x64", "--sandbox", "--provisioning-profile", "--pkg", "--installer-sign" })
             Contains(macos, option);
         (int completionExit, string completion) = RunCli("completion", "bash");
         Equal(0, completionExit);
@@ -266,6 +385,8 @@ internal sealed partial class ToolTests
         // Conflicting and incomplete signing options are usage errors before any work.
         Equal(2, RunCli("package", "windows", "--certificate", "a.pfx", "--thumbprint", "00").ExitCode);
         Equal(2, RunCli("package", "macos", "--notary-profile", "notary").ExitCode);
+        Equal(2, RunCli("package", "macos", "--provisioning-profile", "App.provisionprofile").ExitCode);
+        Equal(2, RunCli("package", "macos", "--installer-sign", "3rd Party Mac Developer Installer: Example").ExitCode);
 
         // A target of another operating system fails with RAPPPKG1004 and its catalog entry.
         string other = OperatingSystem.IsMacOS() ? "windows" : "macos";
