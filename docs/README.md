@@ -25,3 +25,8 @@ protects by default, which options relax it, and what an application checks itse
 
 The [packaging guide](packaging.md) covers `dotnet runic package`: what each
 format needs, and how you sign the packages with your own credentials.
+
+The [configuration guide](configuration.md) shows how an application configures
+itself with Generic Host and `Microsoft.Extensions.Configuration`, ships
+`appsettings.json`, and stores per-user settings; Runic has no configuration API
+of its own.
