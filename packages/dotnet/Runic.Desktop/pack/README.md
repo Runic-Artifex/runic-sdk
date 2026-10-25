@@ -7,9 +7,6 @@ embedded platform WebView. For calls between JavaScript and .NET, use
 [Runic Windows and Views](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views.Desktop)
 (`Runic.Application.Views.Desktop`), whose Bridge runs on Runic Desktop. It does not load the native WebUI library.
 
-> **Source preview · first package pending.** The API may change before the
-> first published preview.
-
 ## Capabilities
 
 - Embedded HTML, files, folders, external URLs, and fixed or streaming virtual content
