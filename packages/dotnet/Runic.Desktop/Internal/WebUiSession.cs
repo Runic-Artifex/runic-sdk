@@ -166,18 +166,21 @@ internal sealed class WebUiSession : IAsyncDisposable
     // for the grace period (see the README security notes).
     public bool IsHandshakeClosing => _handshake.IsClosing;
 
+    // Whether this socket no longer holds the only connection while it is removed: it is
+    // being closed, or it ended before a token check, which leaves no callbacks or
+    // disconnect to finish.
+    public bool HasGivenUpConnection => _handshake.State is WebUiHandshake.Expired or WebUiHandshake.Rejected or WebUiHandshake.Ended;
+
+    // Whether TryYieldSilentHandshake would close this socket now. It changes nothing.
+    public bool CanYieldSilentHandshake =>
+        _handshake.State == WebUiHandshake.Pending
+        && _handshakeTimeout > TimeSpan.Zero
+        && Stopwatch.GetElapsedTime(_openedAt) >= TimeSpan.FromTicks(Math.Min(_handshakeTimeout.Ticks, MaximumYieldGrace.Ticks));
+
     // Closes this socket for a newer one if it is still silent after the grace
     // period (the shorter of two seconds and the handshake timeout).
-    public bool TryYieldSilentHandshake()
-    {
-        if (_handshakeTimeout <= TimeSpan.Zero
-            || Stopwatch.GetElapsedTime(_openedAt) < TimeSpan.FromTicks(Math.Min(_handshakeTimeout.Ticks, MaximumYieldGrace.Ticks)))
-        {
-            return false;
-        }
-
-        return TryExpireHandshake("a newer WebSocket needed the only connection");
-    }
+    public bool TryYieldSilentHandshake() =>
+        CanYieldSilentHandshake && TryExpireHandshake("a newer WebSocket needed the only connection");
 
     private async Task EnforceHandshakeDeadlineAsync(CancellationToken cancellationToken)
     {
@@ -213,15 +216,28 @@ internal sealed class WebUiSession : IAsyncDisposable
         return true;
     }
 
+    // Nothing awaits this task, so it observes its own failures: a logger that throws
+    // must not keep the socket open.
     private async Task ExpireHandshakeAsync(string reason)
     {
-        var frames = Volatile.Read(ref _framesReceived);
-        RecordHandshake(string.Create(
-            CultureInfo.InvariantCulture,
-            $"closed by the server: {reason} ({frames} {(frames == 1 ? "message" : "messages")} received)"));
-        RevokeAdmission();
-        _window.ReportHandshakeExpired(ConnectionId, Stopwatch.GetElapsedTime(_openedAt), reason);
-        await CloseHandshakeAsync("No WebUI token check arrived in time.").ConfigureAwait(false);
+        try
+        {
+            var frames = Volatile.Read(ref _framesReceived);
+            RecordHandshake(string.Create(
+                CultureInfo.InvariantCulture,
+                $"closed by the server: {reason} ({frames} {(frames == 1 ? "message" : "messages")} received)"));
+            RevokeAdmission();
+            _window.ReportHandshakeExpired(ConnectionId, Stopwatch.GetElapsedTime(_openedAt), reason);
+        }
+        catch (Exception exception)
+        {
+            RevokeAdmission();
+            Trace.TraceWarning($"Reporting the expired Bridge WebSocket {ConnectionId} failed: {exception}");
+        }
+        finally
+        {
+            await CloseHandshakeAsync("No WebUI token check arrived in time.").ConfigureAwait(false);
+        }
     }
 
     private async Task CloseHandshakeAsync(string message)

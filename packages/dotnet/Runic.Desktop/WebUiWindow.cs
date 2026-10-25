@@ -2807,7 +2807,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         bool admitted;
         lock (_connectionGate)
         {
-            admitted = AllowMultipleClients || _activeConnections == 0 || YieldSilentConnections();
+            admitted = AllowMultipleClients || _activeConnections == 0 || YieldSilentConnections(_activeConnections, _sessions.Values);
             if (admitted)
             {
                 _activeConnections++;
@@ -2875,14 +2875,33 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // Called under the connection gate when a new WebSocket finds the only
     // connection taken. A socket that never checked its token, such as one from a
     // replaced page, gives the connection up, and so does one whose token check
-    // failed. An authenticated socket keeps it, and so does one still being accepted.
+    // failed or that ended before its check. An authenticated socket keeps it, and so
+    // does one still being accepted or removed, which the table no longer lists. A
+    // silent socket is closed only when that frees the connection.
     // Returns whether the connection is now free.
-    private bool YieldSilentConnections()
+    internal static bool YieldSilentConnections(int activeConnections, IEnumerable<WebUiSession> sessions)
     {
-        var holding = _activeConnections;
-        foreach (var session in _sessions.Values)
+        var holding = activeConnections;
+        List<WebUiSession> silent = [];
+        foreach (var session in sessions)
         {
-            if (session.IsHandshakeClosing || session.TryYieldSilentHandshake())
+            if (session.HasGivenUpConnection)
+            {
+                holding--;
+            }
+            else if (session.CanYieldSilentHandshake)
+            {
+                silent.Add(session);
+            }
+        }
+        if (holding - silent.Count > 0)
+        {
+            return false;
+        }
+        foreach (var session in silent)
+        {
+            // A token check that arrived meanwhile keeps its socket.
+            if (session.TryYieldSilentHandshake() || session.HasGivenUpConnection)
             {
                 holding--;
             }

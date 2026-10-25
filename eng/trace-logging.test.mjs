@@ -61,6 +61,9 @@ export const traceAllowList = [
     'TraceError($"{diagnostic.Code}: {diagnostic.Message}")',
     'TraceWarning($"{diagnostic.Code}: {diagnostic.Message}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/WebUiWindow.cs', fragment })),
+  // Reporting an expired handshake failed, typically because the application's logger threw (I-081).
+  { file: 'packages/dotnet/Runic.Desktop/Internal/WebUiSession.cs',
+    fragment: 'TraceWarning($"Reporting the expired Bridge WebSocket {ConnectionId} failed: {exception}")' },
   // A CS-WebUI window that could not be shown, without an ILoggerFactory in the Window's scope.
   { file: 'packages/dotnet/Runic.Application.Views.CsWebUi/CsWebUiLog.cs',
     fragment: 'TraceError($"CS-WebUI could not show {window} ({code}): {error.Message}")' },
