@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-example-notes">
+    <comment>Notes &amp; Co document (.notes)</comment>
+    <glob pattern="*.notes"/>
+  </mime-type>
+  <mime-type type="application/x-notes-tar.gz">
+    <comment>Notes &amp; Co document (.tar.gz)</comment>
+    <glob pattern="*.tar.gz"/>
+  </mime-type>
+</mime-info>

@@ -20,6 +20,18 @@ whatever language the SDK uses. `dotnet new uninstall Runic.Application.Template
 removes it.
 Accepting every default creates a Runic Desktop and ReactiveUI project.
 
+On NixOS, or another system with Nix but without a .NET 10 SDK, the Runic SDK
+flake's `create` app runs the creator with a .NET SDK from nixpkgs; its
+arguments follow `--` as well:
+
+```sh
+nix run github:Runic-Artifex/runic-sdk/v<VERSION>#create -- MyApp --nix
+```
+
+`--nix` adds the project's own `flake.nix`, whose `nix develop` shell then has
+the .NET SDK. See the
+[Nix packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#create-a-project).
+
 Pass an option to skip its question, or `--yes` to accept the defaults for
 every option you leave out. The questions are written to standard error and
 asked only when standard input and standard error are a terminal; otherwise, and

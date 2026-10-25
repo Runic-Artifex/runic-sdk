@@ -18,6 +18,15 @@
       # Packaging Runic applications: buildRunicApplication, mkDevShell and the NixOS and Home Manager modules.
       # See nix/README.md.
       lib = import ./nix/lib;
+      # nix run github:Runic-Artifex/runic-sdk/v<version>#create -- MyApp --nix: Runic.Create without a .NET SDK on the
+      # machine. See nix/README.md.
+      apps = forAllSystems (system: {
+        create = {
+          type = "app";
+          program = nixpkgs.lib.getExe self.packages.${system}.create;
+          meta.description = "Create a Runic application with Runic.Create";
+        };
+      });
       overlays.default = final: prev: { buildRunicApplication = self.lib.buildRunicApplication final; };
       nixosModules.runic-applications = import ./nix/modules/nixos.nix;
       homeManagerModules.runic-applications = import ./nix/modules/home-manager.nix;
@@ -53,6 +62,13 @@
           home-manager-module = import ./nix/tests/modules.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;
+          };
+          # The create app's wrapper builds (writeShellApplication runs ShellCheck); nix/README.md describes the
+          # run that creates a project, which needs nuget.org.
+          create = self.packages.x86_64-linux.create;
+          builder-file-types = import ./nix/tests/file-types.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            runic = self.lib;
           };
           builder-locks = import ./nix/tests/locks.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
@@ -101,6 +117,8 @@
       packages = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
+          # Runic.Create with a .NET SDK from nixpkgs, for `nix run .#create`; see nix/create.nix.
+          create = import ./nix/create.nix { inherit pkgs; };
           # Status icon checks on Plasma and Waybar; see nixos/status-icon.
           status-icon-plasma = (import ./nixos/status-icon { inherit pkgs; }).plasma;
           status-icon-waybar = (import ./nixos/status-icon { inherit pkgs; }).waybar;

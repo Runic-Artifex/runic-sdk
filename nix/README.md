@@ -8,10 +8,34 @@ desktop entry, icons and Polkit policy.
 
 `dotnet new runic-app --nix` creates a project with a working `flake.nix`; see
 [the template's guide](../tools/Runic.Application.Templates/content/runic-app/README.md#build-it-with-nix).
+Without a .NET 10 SDK, create it with the flake's `create` app; see
+[Create a project](#create-a-project).
 For working on the SDK itself, see the
 [NixOS development guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/nixos-development.md).
 
 The builder is verified on `x86_64-linux`, under JIT and NativeAOT.
+
+## Create a project
+
+The flake's `create` app runs [Runic.Create](../tools/Runic.Create/README.md)
+with the .NET 10 SDK, Node, pnpm and Bun from nixpkgs, so a NixOS machine
+without a .NET SDK can create a project. Its arguments follow `--`, as they
+do for `dnx Runic.Create`; add `--nix` for the project's `flake.nix`:
+
+```sh
+nix run github:Runic-Artifex/runic-sdk/v0.11.0#create -- MyApp --frontend react --nix
+cd MyApp
+git init && git add -A
+nix develop              # the .NET SDK, Node and the package manager, from the new flake
+```
+
+The app runs Runic.Create of the tag's version (`v0.11.0` runs
+`Runic.Create@0.11.0`), which installs the template of the same version, whose
+flake uses the SDK flake of that tag. Without `--` arguments, or without
+`--yes`, it asks its questions as `dnx Runic.Create` does. It downloads
+Runic.Create and the template from nuget.org (`dotnet dnx`), so it needs the
+network, and installs the template into `~/.templateengine`, as
+`dotnet new install` does.
 
 ## A flake for an application
 
@@ -84,7 +108,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
 | `testRunner` | `"VSTest"` | How `doCheck` runs `testProjectFile`: `"VSTest"` with nixpkgs' `dotnet test`, or `"Microsoft.Testing.Platform"`; see [Tests](#tests). |
 | `completions` | `null` | Shell completions the program prints, installed for bash, zsh and fish: `program` (default `meta.mainProgram`), `command` (default `[ "completion" ]`) and `shells`. See [Shell completions](#shell-completions). |
-| `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. |
+| `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. The project's file types and URL schemes are added to the entry named after `ApplicationId`; see [File types and URL schemes](#file-types-and-url-schemes). |
 | `icons` | `{ }` | `{ scalable = ./app.svg; "256x256" = ./app.png; }`, installed as `$out/share/icons/hicolor/<size>/apps/<iconName>.<svg or png>`. |
 | `iconName` | `pname` | The icon's name, which the desktop entry's `icon` refers to. |
 | `dotnet-sdk` | .NET 10 SDK | The SDK; the runtime is its ASP.NET Core runtime, which Runic's hosts serve the page with. |
@@ -287,6 +311,37 @@ directories). Export anything else it needs in `preFixup`. A script that is
 empty fails the build. A cross build cannot run the program and installs no
 completions.
 
+### File types and URL schemes
+
+The build reads `ApplicationId`, `ApplicationTitle`,
+`RunicApplicationFileTypes` and `RunicApplicationUrlSchemes` from each project
+in `projectFile` (`dotnet msbuild -getProperty`, with `dotnetFlags`) and
+installs them as `dotnet runic package` does in a deb or rpm, so no argument
+repeats them:
+
+- the file types' shared-mime-info definitions in
+  `$out/share/mime/packages/<ApplicationId>.xml`: each extension with its MIME
+  type, or `application/x-<last part of the ID>-<extension>`;
+- in the desktop entry `$out/share/applications/<ApplicationId>.desktop` (or,
+  when no entry has that name, in every entry the package installs), their
+  MIME types and `x-scheme-handler/<scheme>` added to `MimeType=` after any
+  that `makeDesktopItem`'s `mimeTypes` lists, and `%U` added to `Exec=` when
+  it has no `%f`, `%F`, `%u` or `%U`, so the desktop passes the files and URLs
+  it opens.
+
+```xml
+<ApplicationId>org.example.Notes</ApplicationId>
+<RunicApplicationFileTypes>.notes=application/x-example-notes</RunicApplicationFileTypes>
+<RunicApplicationUrlSchemes>org.example.notes</RunicApplicationUrlSchemes>
+```
+
+A file type or scheme that the package command rejects (`RAPPPKG1001`) fails
+the build with the same message. NixOS and Home Manager build the MIME
+database of the profile that the package is installed in
+(`environment.systemPackages`, `home.packages`), so a file manager offers the
+application for the file type. A project without file types or URL schemes is
+built as before.
+
 ### Run time
 
 GTK, WebKitGTK and GLib are loaded with `dlopen`, so they are run-time
@@ -466,6 +521,14 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   store path that only a writable evaluation adds.
 - The `builder-completions` flake check installs the bash, zsh and fish
   completions of a Runic.CommandLine program with `completions`.
+- The `builder-file-types` flake check builds a project with
+  `RunicApplicationFileTypes` and `RunicApplicationUrlSchemes` and compares the
+  installed MIME definitions and `MimeType=` with
+  `tests/fixtures/nix/file-types/expected`, which the package command's tests
+  (`Runic.Application.Tool.Tests`) compare its own output with. The `create`
+  check builds the create app's wrapper. Creating a project downloads from
+  nuget.org, so it runs outside the sandbox:
+  `nix run .#create -- MyApp --yes --nix` in an environment without `dotnet`.
 - `nix build .#packaging-nixos -L` runs a NixOS VM (KVM) that installs the
   NativeAOT status-icon example and the smoke through the NixOS module. It
   checks the desktop entry and icon, that the user service starts with an X

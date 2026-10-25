@@ -502,7 +502,10 @@ The package installs the program in `bin`, the desktop entry
 `share/applications/__RUNIC_APPLICATION_ID__.desktop` with the icons from
 `icons/` under the same name, and GTK and WebKitGTK as run-time libraries.
 `flake.nix` repeats the application ID; change it there too when you change
-`ApplicationId`. `nix develop`
+`ApplicationId`. The build reads `RunicApplicationFileTypes` and
+`RunicApplicationUrlSchemes` from the project: it installs the file types'
+MIME definitions and adds them and the URL schemes to the desktop entry's
+`MimeType=`, as `dotnet runic package` does. `nix develop`
 opens a shell with the .NET SDK, Node, the package manager and those libraries.
 The SDK's
 [Nix packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/nix/README.md)

@@ -1,0 +1,1 @@
+MimeType=x-scheme-handler/org.example.notes;x-scheme-handler/notes-x;application/x-example-notes;application/x-notes-tar.gz;
