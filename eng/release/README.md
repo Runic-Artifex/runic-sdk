@@ -271,6 +271,9 @@ whose release guides add only their own rules. The
 [documentation portal](https://docs.runic-artifex.eu/support/policy/) states the
 same policy.
 
+Applications on 0.9 follow the [migration guide to 1.0](../../docs/migration-1.0.md),
+which collects the breaking and behaviour changes of 0.10.0 and 0.11.0.
+
 ### Version numbers
 
 - Each SDK follows [Semantic Versioning 2.0](https://semver.org/). A major release
