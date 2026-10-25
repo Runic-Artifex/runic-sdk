@@ -30,7 +30,8 @@ internal static class MacOsMainMenu
         new(titles.HideOthers, "hideOtherApplications:", "h", Command | Option),
         new(titles.ShowAll, "unhideAllApplications:", "", 0),
         Separator,
-        // Asks each window to close as its close button does, so close guards apply.
+        // Under the Desktop event loop, AppKit's terminate:, which takes Runic's one quit path
+        // (DesktopHostOptions.ConfirmQuitAsync, then each close guard); without it, asks each window to close.
         new(titles.Quit, QuitAction, "q", Command, OwnTarget: true),
     ];
 

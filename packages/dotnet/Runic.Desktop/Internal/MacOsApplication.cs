@@ -3,12 +3,20 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal;
 
-// The AppKit application that DesktopEventLoop.Run owns on macOS. Before application code runs, Run creates NSApp, sets
+// The AppKit application that DesktopEventLoop.Run owns on macOS (D045.2, D045.4). Before application code runs, Run creates NSApp, sets
 // Runic's application delegate and installs the open-documents and get-URL Apple event handlers; then the main thread
 // runs [NSApp run], which sends finishLaunching once, and managed work reaches it through the main dispatch queue
 // (MacOsMainThread). The delegate keeps the open events and universal links that arrive before Runic.Platform.MacOS's
 // open requests attach their handler (runicAttachOpenEventHandler:), so the open requests can be created at any time:
 // the launch's own open event, which AppKit sends while it finishes launching, is delivered when they attach.
+//
+// Quitting takes one path (DesktopQuitCoordinator): terminate: (Quit, Command and Q, a status item's Quit) reaches
+// applicationShouldTerminate:, which starts the quit and answers NSTerminateCancel; the quit Apple event (the Dock's
+// Quit, a script, logging out, restarting) is suspended until the application's work returns, or answered with
+// userCanceledErr when the application refuses. AppKit's own handling is not used for either: NSTerminateLater would run
+// only the modal-panel run loop mode while the application decides, and terminate: would end the process with exit()
+// before DesktopEventLoop.Run returns the application's result. Reopen raises DesktopHost.ReopenRequested; the Dock menu
+// comes from MacOSDesktopOptions.DockMenu; everything else goes to MacOSDesktopOptions.ForwardingApplicationDelegate.
 internal static unsafe partial class MacOsApplication
 {
     internal const string DelegateClassName = "RunicDesktopApplicationDelegate";
@@ -20,6 +28,12 @@ internal static unsafe partial class MacOsApplication
     // AEEventClass and AEEventID four-character codes.
     private const uint CoreEventClass = 0x61657674, OpenDocuments = 0x6F646F63; // 'aevt', 'odoc'
     private const uint InternetEventClass = 0x4755524C, GetUrl = 0x4755524C;    // 'GURL', 'GURL'
+    private const uint QuitApplication = 0x71756974;                             // 'quit'
+    // keyAEQuitReason, which the system's quit event for log out, restart and shut down carries; keyErrorNumber.
+    private const uint QuitReason = 0x7768793F, ErrorNumber = 0x6572726E;         // 'why?', 'errn'
+    private const int UserCanceled = -128;
+    private const string HandleQuitSelector = "runicHandleQuitEvent:withReplyEvent:";
+    private const ulong TerminateCancel = 0, TerminateNow = 1;
     // Events kept while no open requests are attached; a later one is dropped.
     internal const int MaximumBuffered = 64;
     private const ulong EventTypeApplicationDefined = 15;
@@ -35,6 +49,12 @@ internal static unsafe partial class MacOsApplication
     // Counts Run's loops, so a stop request of an earlier one does nothing.
     private static int s_generation;
     private static int s_loopEnded = 1;
+    // The application delegate of the application's own (MacOSDesktopOptions.ForwardingApplicationDelegate), retained.
+    private static nint s_forward;
+    // Quit Apple events suspended until the application's work returns. Main thread only.
+    private static readonly List<nint> s_pendingQuitReplies = [];
+    // Set when Runic itself terminates the process, which applicationShouldTerminate: then allows.
+    private static int s_terminating;
 
     // Whether Run created the application and its delegate: AppKit's run sends finishLaunching then.
     internal static bool IsOwner => Volatile.Read(ref s_delegate) != 0;
@@ -61,7 +81,9 @@ internal static unsafe partial class MacOsApplication
             // NSApplication does not retain its delegate; this one lives for the process.
             Volatile.Write(ref s_delegate, Send(Send(type, Sel("alloc")), Sel("init")));
         }
-        // AppKit installs its own Apple event handlers when NSApp is created; these replace them.
+        AdoptForwardingDelegate(FirstForwardingDelegate());
+        // AppKit installs its own Apple event handlers when NSApp is created; these replace them. AppKit asks the
+        // delegate which methods it implements when it is set, after the forwarding delegate is known.
         Arg(application, Sel("setDelegate:"), s_delegate);
         InstallEventHandlers();
         return application;
@@ -86,6 +108,8 @@ internal static unsafe partial class MacOsApplication
         finally { Volatile.Write(ref s_loopEnded, 1); }
         // Work the application queued last, such as native release.
         RunLoopOnce();
+        // The application returned after a quit Apple event: the Dock, the script or the logout learns that it quit.
+        ResumeQuitReplies(refused: false);
     }
 
     // Stops [NSApp run] from any thread. stop: takes effect after the next event, so an event follows it; a modal
@@ -172,6 +196,102 @@ internal static unsafe partial class MacOsApplication
         var install = Sel("setEventHandler:andSelector:forEventClass:andEventID:");
         SetHandler(manager, install, s_delegate, handle, CoreEventClass, OpenDocuments);
         SetHandler(manager, install, s_delegate, handle, InternetEventClass, GetUrl);
+        SetHandler(manager, install, s_delegate, Sel(HandleQuitSelector), CoreEventClass, QuitApplication);
+    }
+
+    // A host started or was disposed: the first one with a forwarding delegate supplies it.
+    internal static void HostsChanged()
+    {
+        if (!IsOwner) return;
+        var forward = FirstForwardingDelegate();
+        if (forward == 0 || forward == Volatile.Read(ref s_forward)) return;
+        MacOsMainThread.Post(() =>
+        {
+            if (!AdoptForwardingDelegate(forward)) return;
+            // AppKit caches which methods the delegate implements when it is set.
+            var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+            if (Send(application, Sel("delegate")) != s_delegate) return;
+            Arg(application, Sel("setDelegate:"), 0);
+            Arg(application, Sel("setDelegate:"), s_delegate);
+        });
+    }
+
+    private static nint FirstForwardingDelegate() =>
+        DesktopHost.LiveHosts().Select(static host => host.Options.MacOS.ForwardingApplicationDelegate).FirstOrDefault(static forward => forward != 0);
+
+    // Keeps the first forwarding delegate for the process; later ones do not replace it.
+    private static bool AdoptForwardingDelegate(nint forward)
+    {
+        if (forward == 0 || Volatile.Read(ref s_forward) != 0) return false;
+        Volatile.Write(ref s_forward, Send(forward, Sel("retain")));
+        return true;
+    }
+
+    // The forwarding delegate when it implements the selector.
+    private static nint Forward(nint selector)
+    {
+        var forward = Volatile.Read(ref s_forward);
+        return forward != 0 && BoolArg(forward, Sel("respondsToSelector:"), selector) != 0 ? forward : 0;
+    }
+
+    // From the main thread: quit through the one path. The suspension is that of a quit Apple event, or 0.
+    private static void StartQuit(DesktopQuitSource source, nint suspension)
+    {
+        if (suspension != 0) s_pendingQuitReplies.Add(suspension);
+        _ = DesktopQuitCoordinator.RequestAsync(source).ContinueWith(static quit =>
+        {
+            var outcome = quit.IsCompletedSuccessfully ? quit.Result : DesktopQuitOutcome.Refused;
+            MacOsMainThread.Post(() => FinishQuit(outcome));
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    // Main thread.
+    private static void FinishQuit(DesktopQuitOutcome outcome)
+    {
+        switch (outcome)
+        {
+            case DesktopQuitOutcome.Refused:
+                ResumeQuitReplies(refused: true);
+                break;
+            case DesktopQuitOutcome.Accepted:
+                // The replies wait until the application's work returns (Run).
+                break;
+            default:
+                // Nothing would end the application (no host, or no surface without HandlesShutdownWithoutWindow, as for
+                // a signal): AppKit terminates the process, as it would have without Runic.
+                ResumeQuitReplies(refused: false);
+                Terminate();
+                break;
+        }
+    }
+
+    private static void Terminate()
+    {
+        Volatile.Write(ref s_terminating, 1);
+        Arg(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("terminate:"), 0);
+    }
+
+    // Main thread. Answers the suspended quit Apple events: success, or userCanceledErr when the application refused.
+    private static void ResumeQuitReplies(bool refused)
+    {
+        if (s_pendingQuitReplies.Count == 0) return;
+        var manager = Send(Class("NSAppleEventManager"), Sel("sharedAppleEventManager"));
+        foreach (var suspension in s_pendingQuitReplies.ToArray())
+        {
+            try
+            {
+                if (refused)
+                {
+                    var reply = Arg(manager, Sel("replyAppleEventForSuspensionID:"), suspension);
+                    if (reply != 0)
+                        SetParam(reply, Sel("setParamDescriptor:forKeyword:"),
+                            Int32Descriptor(Class("NSAppleEventDescriptor"), Sel("descriptorWithInt32:"), UserCanceled), ErrorNumber);
+                }
+                Arg(manager, Sel("resumeWithSuspensionID:"), suspension);
+            }
+            catch { /* A reply that cannot be sent leaves the sender to its timeout. */ }
+        }
+        s_pendingQuitReplies.Clear();
     }
 
     private static readonly Lazy<nint> DelegateClass = new(CreateDelegateClass);
@@ -191,6 +311,15 @@ internal static unsafe partial class MacOsApplication
         AddMethod(type, Sel("applicationSupportsSecureRestorableState:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&SupportsSecureRestorableState, boolean + "@:@");
         AddMethod(type, Sel(AttachSelector), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&AttachHandler, "v@:@");
         AddMethod(type, Sel(DetachSelector), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&DetachHandler, "v@:@");
+        AddMethod(type, Sel(HandleQuitSelector), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&HandleQuitEvent, "v@:@@");
+        // NSApplicationTerminateReply is an NSUInteger.
+        AddMethod(type, Sel("applicationShouldTerminate:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nuint>)&ShouldTerminate, "Q@:@");
+        AddMethod(type, Sel("applicationShouldHandleReopen:hasVisibleWindows:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte, byte>)&ShouldHandleReopen,
+            boolean + "@:@" + boolean);
+        AddMethod(type, Sel("applicationDockMenu:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)&DockMenu, "@@:@");
+        // Forwarding to the application's own delegate.
+        AddMethod(type, Sel("respondsToSelector:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&RespondsToSelector, boolean + "@::");
+        AddMethod(type, Sel("forwardingTargetForSelector:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)&ForwardingTarget, "@@::");
         RegisterClass(type);
         return type;
     }
@@ -203,12 +332,93 @@ internal static unsafe partial class MacOsApplication
             Interlocked.Increment(ref s_willFinishLaunching);
             // finishLaunching installs AppKit's open-documents handler again before it sends the launch's open event.
             InstallEventHandlers();
+            if (Forward(selector) is not 0 and var forward) Arg(forward, selector, notification);
         }
         catch { /* A delegate method must not throw into AppKit. */ }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static byte SupportsSecureRestorableState(nint self, nint selector, nint application) => 1;
+    private static byte SupportsSecureRestorableState(nint self, nint selector, nint application)
+    {
+        try { return Forward(selector) is not 0 and var forward ? BoolArg(forward, selector, application) : (byte)1; }
+        catch { return 1; }
+    }
+
+    // terminate: from Quit, Command and Q or any other sender. Runic starts its quit and cancels AppKit's, which would
+    // end the process before DesktopEventLoop.Run returns; without a Desktop host, or when Runic itself terminates, AppKit
+    // goes ahead.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static nuint ShouldTerminate(nint self, nint selector, nint application)
+    {
+        try
+        {
+            if (Volatile.Read(ref s_terminating) != 0 || DesktopHost.LiveHosts().Length == 0) return (nuint)TerminateNow;
+            StartQuit(DesktopQuitSource.Menu, 0);
+            return (nuint)TerminateCancel;
+        }
+        catch { return (nuint)TerminateCancel; /* A delegate method must not throw into AppKit. */ }
+    }
+
+    // The quit Apple event: the Dock's Quit, a script, or the system's for log out, restart and shut down, which names
+    // its reason. The reply waits until the application quit or refused.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void HandleQuitEvent(nint self, nint selector, nint appleEvent, nint reply)
+    {
+        try
+        {
+            if (DesktopHost.LiveHosts().Length == 0)
+            {
+                Terminate();
+                return;
+            }
+            var source = appleEvent != 0 && Arg(appleEvent, Sel("paramDescriptorForKeyword:"), (nint)QuitReason) != 0
+                ? DesktopQuitSource.System
+                : DesktopQuitSource.Dock;
+            var suspension = Send(Send(Class("NSAppleEventManager"), Sel("sharedAppleEventManager")), Sel("suspendCurrentAppleEvent"));
+            StartQuit(source, suspension);
+        }
+        catch { /* An Apple event handler must not throw into AppKit. */ }
+    }
+
+    // A click on the Dock icon, or opening the running application again.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte ShouldHandleReopen(nint self, nint selector, nint application, byte hasVisibleWindows)
+    {
+        try
+        {
+            foreach (var host in DesktopHost.LiveHosts()) host.RaiseReopenRequested(hasVisibleWindows != 0);
+            // YES lets AppKit deminiaturize a minimized window when none is visible.
+            return Forward(selector) is not 0 and var forward ? ReopenWith(forward, selector, application, hasVisibleWindows) : (byte)1;
+        }
+        catch { return 1; /* A delegate method must not throw into AppKit. */ }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static nint DockMenu(nint self, nint selector, nint application)
+    {
+        try
+        {
+            var entries = DesktopHost.LiveHosts().Select(static host => host.Options.MacOS.DockMenu).FirstOrDefault(static menu => menu.Count > 0);
+            if (entries is not null) return MacOsWkWebViewHost.CreateDockMenu(entries);
+            return Forward(selector) is not 0 and var forward ? Arg(forward, selector, application) : 0;
+        }
+        catch { return 0; /* A delegate method must not throw into AppKit. */ }
+    }
+
+    // Runic's methods, then the forwarding delegate's.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte RespondsToSelector(nint self, nint selector, nint asked)
+    {
+        try { return ClassResponds(DelegateClass.Value, asked) != 0 || Forward(asked) != 0 ? (byte)1 : (byte)0; }
+        catch { return 0; }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static nint ForwardingTarget(nint self, nint selector, nint asked)
+    {
+        try { return Forward(asked); }
+        catch { return 0; }
+    }
 
     // An open-documents or get-URL event: to the attached handler, else kept for it.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -236,18 +446,20 @@ internal static unsafe partial class MacOsApplication
         try
         {
             if (activity == 0) return 0;
+            bool browsing = Text(Send(activity, Sel("activityType"))) == BrowsingWeb;
             nint handler;
             lock (Gate)
             {
                 handler = s_handler;
-                if (handler == 0)
+                if (handler == 0 && browsing)
                 {
-                    if (Text(Send(activity, Sel("activityType"))) != BrowsingWeb) return 0;
                     Keep(activity: true, Send(activity, Sel("retain")));
                     return 1;
                 }
             }
-            return ContinueWith(handler, Sel(ContinueActivity), application, activity, restorationHandler);
+            if (handler != 0 && ContinueWith(handler, Sel(ContinueActivity), application, activity, restorationHandler) != 0) return 1;
+            // Not one of the application's universal links: the application's own delegate may take it.
+            return Forward(selector) is not 0 and var forward ? ContinueWith(forward, selector, application, activity, restorationHandler) : (byte)0;
         }
         catch { return 0; /* A delegate method must not throw into AppKit. */ }
     }
@@ -345,6 +557,11 @@ internal static unsafe partial class MacOsApplication
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Args(nint target, nint selector, nint first, nint second);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Bool(nint target, nint selector);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte BoolArg(nint target, nint selector, nint value);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ReopenWith(nint target, nint selector, nint application, byte hasVisibleWindows);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetParam(nint target, nint selector, nint descriptor, uint keyword);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Int32Descriptor(nint target, nint selector, int value);
+    [LibraryImport(ObjC, EntryPoint = "class_respondsToSelector")] private static partial byte ClassResponds(nint type, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ContinueWith(nint target, nint selector, nint application, nint activity, nint restorationHandler);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetHandler(nint target, nint selector, nint handler, nint action, uint eventClass, uint eventId);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint NextEvent(nint target, nint selector, ulong mask, nint date, nint mode, byte dequeue);

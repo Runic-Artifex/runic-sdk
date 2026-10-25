@@ -49,6 +49,12 @@ public static class DesktopEventLoop
     /// <see cref="DesktopHostOptions.HandleShutdownSignals"/> to <see langword="false"/> to keep the default signal
     /// handling.
     /// </para>
+    /// <para>
+    /// On macOS, Quit (Command and Q), the Dock's Quit and logging out take the same order after
+    /// <see cref="DesktopHostOptions.ConfirmQuitAsync"/> and each window's close guard agreed, also with no window open;
+    /// the call then returns the application's result. Runic sets the application delegate before the application
+    /// starts; see <see cref="MacOSDesktopOptions.ForwardingApplicationDelegate"/>.
+    /// </para>
     /// </remarks>
     /// <param name="options">The host options, for example <c>new DesktopHostOptions().WithGtk4()</c>.</param>
     /// <param name="application">The application work. Its result becomes the return value.</param>
