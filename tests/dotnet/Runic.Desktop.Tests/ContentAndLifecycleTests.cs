@@ -379,8 +379,26 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
+    // The port is picked free and released before the window binds it on 0.0.0.0, twice; a parallel test or another
+    // process can take it in between (I-175). Then the check runs again on a new port, at most three times.
     [Test]
     public async Task UsesExplicitPortAndRetainsSettingsAcrossRestart()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await UsesExplicitPortAndRetainsSettingsAcrossRestartOnceAsync();
+                return;
+            }
+            catch (IOException error) when (attempt < 3 && IsAddressInUse(error))
+            {
+                Console.WriteLine($"Attempt {attempt}: {error.Message}; trying another port.");
+            }
+        }
+    }
+
+    private static async Task UsesExplicitPortAndRetainsSettingsAcrossRestartOnceAsync()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -401,6 +419,16 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal(port, second.Port);
         using var client = new HttpClient { BaseAddress = second };
         Assert.Equal("second", await client.GetStringAsync("/"));
+    }
+
+    // Kestrel reports a taken port as an IOException over AddressInUseException over the SocketException.
+    private static bool IsAddressInUse(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse } or Microsoft.AspNetCore.Connections.AddressInUseException) return true;
+        }
+        return false;
     }
 
     [Test]

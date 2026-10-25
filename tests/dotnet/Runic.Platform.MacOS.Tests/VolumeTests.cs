@@ -276,7 +276,7 @@ internal sealed partial class VolumeTests
             var ejected = await EjectAsync(volumes, volumeHfs.Id, timeout.Token);
             Console.WriteLine($"Eject: {ejected}");
             Check(ejected is PlatformResult<PlatformUnit>.Success, $"the image is ejected: {ejected}");
-            await WaitForRemovalAsync(changes.Reader, volumeHfs.Id, timeout.Token);
+            await WaitForRemovalAsync(changes.Reader, volumes, volumeHfs, timeout.Token);
             attached.RemoveAt(attached.Count - 1);
 
             // APFS: the volume is on a synthesized container; it belongs to the image's own whole disk.
@@ -290,12 +290,12 @@ internal sealed partial class VolumeTests
             var ejectedApfs = await EjectAsync(volumes, volumeApfs.Id, timeout.Token);
             Console.WriteLine($"Eject: {ejectedApfs}");
             Check(ejectedApfs is PlatformResult<PlatformUnit>.Success, $"the APFS image is ejected: {ejectedApfs}");
-            await WaitForRemovalAsync(changes.Reader, volumeApfs.Id, timeout.Token);
+            await WaitForRemovalAsync(changes.Reader, volumes, volumeApfs, timeout.Token);
             attached.RemoveAt(attached.Count - 1);
 
             // An encrypted volume needs a container with room for a second volume: APFS allows one per 512 MiB.
             Run("hdiutil", "create", "-size", "1100m", "-type", "SPARSE", "-fs", "APFS", "-volname", unique + "V", Path.Combine(root, "vault"));
-            string vaultOutput = Run("hdiutil", "attach", Path.Combine(root, "vault.sparseimage"));
+            string vaultOutput = HdiutilAttach(Path.Combine(root, "vault.sparseimage"));
             attached.Add(WholeDisk().Match(vaultOutput).Groups[1].Value);
             string container = ApfsContainer().Match(vaultOutput) is { Success: true } found ? found.Groups[1].Value
                 : throw new InvalidOperationException($"hdiutil printed no APFS container: {vaultOutput}");
@@ -309,7 +309,7 @@ internal sealed partial class VolumeTests
             Console.WriteLine($"Attached read-only: {Describe(readOnly)}");
             Check(readOnly.IsReadOnly, $"the read-only volume: {Describe(readOnly)}");
             Check(await EjectAsync(volumes, readOnly.Id, timeout.Token) is PlatformResult<PlatformUnit>.Success, "the read-only image is ejected");
-            await WaitForRemovalAsync(changes.Reader, readOnly.Id, timeout.Token);
+            await WaitForRemovalAsync(changes.Reader, volumes, readOnly, timeout.Token);
             attached.RemoveAt(attached.Count - 1);
             Console.WriteLine("PASS macOS volumes: listing, the startup volume, HFS+ and APFS images mounted, unmounted, busy and ejected, read-only.");
         }
@@ -388,8 +388,23 @@ internal sealed partial class VolumeTests
     // Attaches an image and returns its whole disk's BSD name, the first /dev/diskN that hdiutil prints.
     private static string Attach(string image, params string[] options)
     {
-        string output = Run("hdiutil", ["attach", .. options, image]);
+        string output = HdiutilAttach([.. options, image]);
         return WholeDisk().Match(output) is { Success: true } match ? match.Groups[1].Value : throw new InvalidOperationException($"hdiutil printed no disk: {output}");
+    }
+
+    // hdiutil attach, retried while it reports EAGAIN ("Resource temporarily unavailable"), which the hosted runners
+    // return now and then while Disk Arbitration is busy with another image (I-210): five attempts, 2 to 16 s apart.
+    private static string HdiutilAttach(params string[] arguments)
+    {
+        for (int attempt = 1, delay = 2; ; attempt++, delay *= 2)
+        {
+            (int exitCode, string output) = RunProcess("hdiutil", ["attach", .. arguments]);
+            if (exitCode == 0) return output;
+            if (attempt == 5 || !output.Contains("Resource temporarily unavailable", StringComparison.Ordinal))
+                throw new InvalidOperationException($"hdiutil exited with {exitCode}");
+            Console.WriteLine($"hdiutil attach attempt {attempt}: Resource temporarily unavailable; retrying in {delay} s.");
+            Thread.Sleep(TimeSpan.FromSeconds(delay));
+        }
     }
 
     [GeneratedRegex(@"/dev/(disk\d+)\s")]
@@ -399,14 +414,20 @@ internal sealed partial class VolumeTests
 
     private static string Run(string program, bool check, params string[] arguments)
     {
+        (int exitCode, string output) = RunProcess(program, arguments);
+        if (check && exitCode != 0) throw new InvalidOperationException($"{program} exited with {exitCode}");
+        return output;
+    }
+
+    private static (int ExitCode, string Output) RunProcess(string program, string[] arguments)
+    {
         var start = new ProcessStartInfo(program) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
         string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
         process.WaitForExit();
         Console.WriteLine($"{program} {string.Join(' ', arguments)}: {output.Trim()}");
-        if (check && process.ExitCode != 0) throw new InvalidOperationException($"{program} exited with {process.ExitCode}");
-        return output;
+        return (process.ExitCode, output);
     }
 
     private static async Task<DesktopVolume> WaitForAsync(ChannelReader<PlatformResult<DesktopVolumeChange>> changes, Func<DesktopVolume, bool> match, CancellationToken token)
@@ -425,13 +446,43 @@ internal sealed partial class VolumeTests
         }
     }
 
-    private static async Task WaitForRemovalAsync(ChannelReader<PlatformResult<DesktopVolumeChange>> changes, string id, CancellationToken token)
+    // Waits for the watch to report the ejected volume gone. The watch diffs listings by BSD name, so when macOS hands the
+    // name to another disk within one settle interval, the removal arrives as a change of that name to another volume
+    // (I-217: CoreSimulator mounted its runtimes as the APFS image was ejected, and disk18s1 became "iOS 26.4.1
+    // Simulator"); that counts as the removal. Fails after a minute with what the watch reported and what is listed.
+    private static async Task WaitForRemovalAsync(ChannelReader<PlatformResult<DesktopVolumeChange>> changes, IDesktopVolumes volumes, DesktopVolume volume,
+        CancellationToken token)
     {
-        while (true)
+        var seen = new List<string>();
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+        wait.CancelAfter(TimeSpan.FromMinutes(1));
+        try
         {
-            var change = await changes.ReadAsync(token);
-            Console.WriteLine($"Change: {change}");
-            if (change is PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Removed(var removed) } && removed == id) return;
+            while (true)
+            {
+                var change = await changes.ReadAsync(wait.Token);
+                Console.WriteLine($"Change: {change}");
+                seen.Add(change.ToString()!);
+                if (change is PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Removed(var removed) } && removed == volume.Id) return;
+                var other = change switch
+                {
+                    PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Added(var v) } => v,
+                    PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Changed(var v) } => v,
+                    _ => null,
+                };
+                if (other is not null && other.Id == volume.Id && other.DisplayName != volume.DisplayName)
+                {
+                    Console.WriteLine($"The removal of {volume.Id} '{volume.DisplayName}' was coalesced: the name now belongs to '{other.DisplayName}'.");
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            var listed = await volumes.ListAsync(token);
+            string listing = listed is PlatformResult<ImmutableArray<DesktopVolume>>.Success(var all) ? string.Join("; ", all.Select(Describe)) : listed.ToString()!;
+            throw new InvalidOperationException($"Volume check failed: the watch did not report {volume.Id} '{volume.DisplayName}' removed within a minute. "
+                + $"It reported: [{string.Join("; ", seen)}]. Listed: [{listing}]");
         }
     }
 
