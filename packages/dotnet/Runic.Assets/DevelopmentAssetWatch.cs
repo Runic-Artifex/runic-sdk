@@ -18,6 +18,7 @@ internal sealed class DevelopmentAssetWatch : IDisposable
     private readonly CancellationTokenSource _refreshCancellation = new();
     private bool _disposed;
     private bool _disposeCompleted;
+    private bool _cancellationIssued;
     private bool _refreshing;
     private bool _pending;
     private int _retryAttempts;
@@ -84,6 +85,12 @@ internal sealed class DevelopmentAssetWatch : IDisposable
         }
 
         _refreshCancellation.Cancel();
+        lock (_gate)
+        {
+            // A refresh that ends after this may dispose the source; before it, Cancel would race that disposal.
+            _cancellationIssued = true;
+        }
+
         _watcher.Dispose();
         _timer.Dispose();
 
@@ -195,7 +202,7 @@ internal sealed class DevelopmentAssetWatch : IDisposable
         bool disposeCancellation = false;
         lock (_gate)
         {
-            if (_disposed && !_refreshing && !_disposeCompleted)
+            if (_cancellationIssued && !_refreshing && !_disposeCompleted)
             {
                 _disposeCompleted = true;
                 disposeCancellation = true;
