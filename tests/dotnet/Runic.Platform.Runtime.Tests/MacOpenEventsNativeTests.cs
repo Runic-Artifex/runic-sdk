@@ -7,15 +7,16 @@ using TUnit.Core;
 using static Runic.Platform.MacOS.MacDesktopNative;
 
 // The open-documents and get-URL Apple events, dispatched through NSAppleEventManager's handler table on the main
-// thread while the Desktop event loop runs (Program.cs runs the category inside it). CI runs it on the macOS runner under JIT and
-// NativeAOT. A launch through LaunchServices with a registered bundle is the CI bundle script's job (RunBundleProbe).
+// thread while the Desktop event loop runs (Program.cs runs the category inside it), where Runic Desktop's application
+// delegate owns the handlers. CI runs it on the macOS runner under JIT and NativeAOT. A launch through LaunchServices
+// with a registered bundle is the CI bundle script's job (RunBundleProbe).
 [System.Runtime.Versioning.SupportedOSPlatform("macos")]
 internal sealed partial class MacOpenEventsNativeTests
 {
     private const uint CoreEventClass = 0x61657674, OpenDocuments = 0x6F646F63, InternetEventClass = 0x4755524C, GetUrl = 0x4755524C;
     private const uint DirectObject = 0x2D2D2D2D;
 
-    [Test, Explicit, Category("NativeOpenEvents"), DisplayName("native open events: odoc, GURL and universal links reach the open requests; creating them after launch fails"), Timeout(120_000)]
+    [Test, Explicit, Category("NativeOpenEvents"), DisplayName("native open events: odoc, GURL and universal links reach the open requests; events without them are kept"), Timeout(120_000)]
     public async Task AppleEventsAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Apple events need macOS.");
@@ -25,13 +26,15 @@ internal sealed partial class MacOpenEventsNativeTests
         {
             opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"]) { IncludeFiles = true, WebLinkHosts = ["links.runic.test"] }, null,
                 new ApplicationLaunch(["runic-test://from-arguments"], "/"));
-            // As the first window does.
+            // As the first window does; the event loop has launched the application already.
             MacAppKit.EnsureApplication();
-            // A universal link as AppKit hands it to the delegate while the application launches, before any handler.
+            Check(Bool(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("isRunning")) != 0, "the Desktop event loop runs [NSApp run]");
+            // A universal link as AppKit hands it to the delegate before the handler has received the kept events.
             Check(ContinueActivity("NSUserActivityTypeBrowsingWeb", "https://links.runic.test/at-launch?id=1"), "the delegate takes a link to a web link host");
             var application = Send(Class("NSApplication"), Sel("sharedApplication"));
             var applicationDelegate = Send(application, Sel("delegate"));
-            Check(applicationDelegate != 0 && Text(Send(Send(applicationDelegate, Sel("class")), Sel("description"))) == "RunicApplicationDelegate", "Runic sets the application delegate");
+            Check(applicationDelegate != 0 && Text(Send(Send(applicationDelegate, Sel("class")), Sel("description"))) == "RunicDesktopApplicationDelegate",
+                "the Desktop event loop sets Runic's application delegate");
             Check(BoolArg(applicationDelegate, Sel("applicationSupportsSecureRestorableState:"), application) != 0, "the delegate supports secure restorable state");
         });
         await using (opens!)
@@ -95,19 +98,29 @@ internal sealed partial class MacOpenEventsNativeTests
             finally { File.Delete(file); }
         }
 
-        // The launch's own open event is sent as the application finishes launching, so later creation is refused.
-        Exception? refused = null;
+        // Without open requests Runic Desktop's delegate keeps the events; open requests created later, on another
+        // thread, receive them in order.
         await MacOsMainQueue.InvokeAsync(() =>
         {
-            try { MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"])).DisposeAsync().AsTask().GetAwaiter().GetResult(); }
-            catch (InvalidOperationException error) { refused = error; }
+            using var pool = new Pool();
+            DispatchToSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("runic-test://kept?id=1")));
+            DispatchToSelf(InternetEventClass, GetUrl, Arg(Class("NSAppleEventDescriptor"), Sel("descriptorWithString:"), String("runic-test://kept?id=2")));
         });
-        Check(refused is not null, "creating open requests after the application finished launching throws");
-        Console.WriteLine("PASS native open events: arguments, odoc and GURL delivered in order; late creation refused.");
+        Check(Bool(Class("NSThread"), Sel("isMainThread")) == 0, "the later open requests are created away from the main thread");
+        var kept = Channel.CreateUnbounded<DesktopOpenRequest>();
+        await using (var later = MacOSPlatformProvider.CreateOpenRequests(new(["runic-test"])))
+        {
+            later.Opened += (_, request) => kept.Writer.TryWrite(request);
+            Check(new Uri(await NextAsync(kept, cancellationToken)) == new Uri("runic-test://kept?id=1"), "the first kept event");
+            Check(new Uri(await NextAsync(kept, cancellationToken)) == new Uri("runic-test://kept?id=2"), "the second kept event");
+        }
+        Console.WriteLine("PASS native open events: arguments, odoc and GURL delivered in order; events without open requests kept for later ones.");
     }
 
     // The process launched by LaunchServices from the bundle the CI script builds around the NativeAOT test executable:
-    // it prints the first request's items beside the bundle and exits.
+    // it prints the first request's items beside the bundle and exits. It creates its open requests on the thread pool
+    // after the application finished launching, so the launch's own event arrives only because Runic Desktop's
+    // application delegate kept it.
     internal static int RunBundleProbe(string bundle)
     {
         string output = Path.Combine(Path.GetDirectoryName(bundle)!, Path.GetFileNameWithoutExtension(bundle) + ".log");
@@ -115,15 +128,12 @@ internal sealed partial class MacOpenEventsNativeTests
         DesktopEventLoop.Run(async () =>
         {
             var requests = Channel.CreateUnbounded<DesktopOpenRequest>();
-            IDesktopOpenRequests? opens = null;
-            await MacOsMainQueue.InvokeAsync(() =>
+            await MacOsMainQueue.InvokeAsync(static () => MacAppKit.EnsureApplication());
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            var opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-open-probe"]) { IncludeFiles = true });
+            await using (opens)
             {
-                opens = MacOSPlatformProvider.CreateOpenRequests(new(["runic-open-probe"]) { IncludeFiles = true });
-                MacAppKit.EnsureApplication();
-            });
-            await using (opens!)
-            {
-                opens!.Opened += (_, request) => requests.Writer.TryWrite(request);
+                opens.Opened += (_, request) => requests.Writer.TryWrite(request);
                 try
                 {
                     var request = await requests.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));

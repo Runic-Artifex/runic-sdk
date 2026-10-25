@@ -21,7 +21,6 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private static readonly ObjC Api = new();
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> Hosts = new();
-    private static readonly ConcurrentQueue<NativeDispatchWork> MainQueue = new();
     private static readonly nint DelegateClass = CreateDelegateClass();
     // Hosts by their WKWebView, for the web content delegate, the drop override and the page's drop label.
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> WebViews = new();
@@ -280,22 +279,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    internal static void ProcessApplicationEvents()
-    {
-        var pool = Api.SendNint(Api.SendNint(Api.GetClass("NSAutoreleasePool"), "alloc"), "init");
-        try
-        {
-            ProcessPendingMainThreadWork();
-            // NSApp exists once a window or a window-independent service, such as a status item, created it. Its
-            // events arrive with or without an open window. Before that, the run loop still runs the main dispatch
-            // queue, through which those services start.
-            var application = Api.SharedApplicationIfCreated();
-            if (application != 0) PumpApplicationEvents(application);
-            else Api.RunLoopOnce();
-        }
-        finally { Api.SendVoid(pool, "drain"); }
-    }
-
+    // Runs the main-thread work queued on the main dispatch queue, when called on the main thread without the Desktop
+    // event loop, which runs it itself.
     internal static void ProcessPendingMainThreadWork()
     {
         if (!IsMainThread)
@@ -303,10 +288,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return;
         }
 
-        while (MainQueue.TryDequeue(out var work))
-        {
-            work.Run();
-        }
+        Api.RunLoopOnce();
     }
 
     private async Task CloseCoreAsync(CancellationToken cancellationToken)
@@ -336,16 +318,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     private static ValueTask InvokeOnMainAsync(Action action, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (IsMainThread)
-        {
-            action();
-            return ValueTask.CompletedTask;
-        }
-
-        var work = new NativeDispatchWork(action, cancellationToken);
-        MainQueue.Enqueue(work);
-        return new ValueTask(work.WaitAsync());
+        // The main dispatch queue, which the run loop drains in its common modes: also while a menu tracks or a window
+        // live-resizes.
+        return MacOsMainThread.InvokeAsync(action, cancellationToken);
     }
 
     private void Create(Uri url, WebUiEmbeddedHostOptions options)
@@ -361,7 +336,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             Api.SendBoolLong(_application, "setActivationPolicy:", ApplicationActivationPolicyRegular);
         }
-        Api.SendVoid(_application, "finishLaunching");
+        // DesktopEventLoop.Run's AppKit loop sends finishLaunching once; without it, the first window does.
+        MacOsApplication.EnsureLaunched(_application);
         InstallMainMenu(_application);
         ApplyMenuBar(_application);
 
@@ -984,8 +960,45 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         // A new context menu dismisses the open one, which returns null.
         Volatile.Read(ref s_contextMenu)?.Dismiss();
         var session = new ContextMenuSession(this, cancellationToken);
-        var shown = InvokeAsync(() => ShowContextMenu(session, items, options), cancellationToken);
+        var shown = InvokeAsync(() => ScheduleContextMenu(new PendingContextMenu(this, session, items, options)), cancellationToken);
         return new ValueTask<DesktopMenuItem?>(WaitForContextMenuAsync(session, shown));
+    }
+
+    private sealed record PendingContextMenu(MacOsWkWebViewHost Owner, ContextMenuSession Session, ImmutableArray<DesktopMenuEntry> Items,
+        DesktopContextMenuOptions Options);
+
+    // The context menu that tracks next. Main thread only.
+    private static PendingContextMenu? s_pendingContextMenu;
+    private const string TrackContextMenuAction = "runicTrackContextMenu:";
+
+    // Main thread, inside a block of the main dispatch queue, which the run loop does not drain again while the menu
+    // tracks: the menu tracks from a perform request in the run loop's common modes instead, so main-thread work queued
+    // meanwhile still runs.
+    private static void ScheduleContextMenu(PendingContextMenu pending)
+    {
+        if (s_menuTarget == 0)
+        {
+            pending.Owner.ShowContextMenu(pending.Session, pending.Items, pending.Options);
+            return;
+        }
+        // A later request replaces one that has not tracked yet, which returns null.
+        Interlocked.Exchange(ref s_pendingContextMenu, pending)?.Session.Complete(null);
+        Api.PerformInCommonModes(s_menuTarget, TrackContextMenuAction);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void TrackContextMenu(nint self, nint selector, nint argument)
+    {
+        if (Interlocked.Exchange(ref s_pendingContextMenu, null) is not { } pending) return;
+        try
+        {
+            pending.Owner.ShowContextMenu(pending.Session, pending.Items, pending.Options);
+        }
+        catch (Exception error)
+        {
+            // Never unwind through AppKit; the caller sees the failure.
+            pending.Session.Result.TrySetException(error);
+        }
     }
 
     private static async Task<DesktopMenuItem?> WaitForContextMenuAsync(ContextMenuSession session, ValueTask shown)
@@ -1045,7 +1058,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (selected)
         {
             // AppKit sends the chosen item's action during tracking; should it come later, it is queued before this.
-            MainQueue.Enqueue(new NativeDispatchWork(() => session.Complete(null), CancellationToken.None));
+            MacOsMainThread.Post(() => session.Complete(null));
             return;
         }
         session.Complete(null);
@@ -1601,6 +1614,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.AddMethod(type, MenuCommandAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&MenuCommand, "v@:@");
         Api.AddMethod(type, ContextMenuAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ContextMenuItem, "v@:@");
         Api.AddMethod(type, ContextMenuTickAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ContextMenuTick, "v@:@");
+        Api.AddMethod(type, TrackContextMenuAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&TrackContextMenu, "v@:@");
         Api.AddMethod(type, "validateMenuItem:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&ValidateMenuItem,
             RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
         Api.RegisterClassPair(type);
@@ -2072,6 +2086,22 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 SendVoid(mode, "release");
             }
             return timer;
+        }
+
+        // [target performSelectorOnMainThread:selector withObject:nil waitUntilDone:NO modes:@[kCFRunLoopCommonModes]].
+        internal void PerformInCommonModes(nint target, string selector)
+        {
+            var mode = CreateString("kCFRunLoopCommonModes");
+            try
+            {
+                var modes = SendNintNint(GetClass("NSArray"), "arrayWithObject:", mode);
+                ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, byte, nint, void>)_messageSend)(
+                    target, Selector("performSelectorOnMainThread:withObject:waitUntilDone:modes:"), Selector(selector), 0, 0, modes);
+            }
+            finally
+            {
+                SendVoid(mode, "release");
+            }
         }
 
         internal ulong SendUlong(nint receiver, string selector) =>

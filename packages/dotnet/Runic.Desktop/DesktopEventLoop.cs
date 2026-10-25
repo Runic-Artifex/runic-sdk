@@ -12,7 +12,7 @@ public static class DesktopEventLoop
 {
     // One Desktop event loop per process, on every platform.
     private static int _running;
-    // Whether the macOS AppKit loop is pumping, so native work can be marshalled to the main thread.
+    // Whether the macOS AppKit loop runs, so native work queued for the main thread runs.
     private static int _appKitPumping;
     internal static bool IsRunning => Volatile.Read(ref _appKitPumping) != 0;
 
@@ -122,8 +122,10 @@ public static class DesktopEventLoop
     /// <para>
     /// The low-level loop for a process that uses native platform services but starts no Desktop host, such as a
     /// tool that shows a status icon or calls AppKit APIs on macOS. Call it from the synchronous process entry point.
-    /// On macOS it pumps the AppKit main thread until <paramref name="application"/> completes and through
-    /// asynchronous native release; other platforms join the task.
+    /// On macOS it creates the shared <c>NSApplication</c> with Runic's application delegate before
+    /// <paramref name="application"/> starts, runs AppKit's own loop (<c>[NSApp run]</c>) on the main thread until
+    /// <paramref name="application"/> completes, and then runs the main-thread work it queued last, such as native
+    /// release; other platforms join the task.
     /// </para>
     /// <para>
     /// An application that opens windows uses
@@ -155,16 +157,14 @@ public static class DesktopEventLoop
         if (!OperatingSystem.IsMacOS()) { application().GetAwaiter().GetResult(); return; }
         if (!MacOsWkWebViewHost.IsMainThread)
             throw new InvalidOperationException($"Call {entryPoint} directly from the macOS process main thread, before awaiting application work.");
+        // NSApp and Runic's application delegate exist before the application's code runs; the main thread then runs
+        // AppKit's own loop, which sends finishLaunching once and runs queued main-thread work in every mode.
+        var nativeApplication = MacOsApplication.Start();
         Volatile.Write(ref _appKitPumping, 1);
         try
         {
             var work = Task.Run(application);
-            while (!work.IsCompleted)
-            {
-                MacOsWkWebViewHost.ProcessApplicationEvents();
-                Thread.Sleep(5);
-            }
-            MacOsWkWebViewHost.ProcessApplicationEvents();
+            MacOsApplication.Run(nativeApplication, work);
             work.GetAwaiter().GetResult();
         }
         finally { Volatile.Write(ref _appKitPumping, 0); }

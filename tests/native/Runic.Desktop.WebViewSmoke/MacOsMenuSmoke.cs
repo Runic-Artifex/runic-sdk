@@ -203,6 +203,12 @@ internal static partial class MacOsMenuSmoke
         // Chosen: the first item's action, sent while the menu tracks, then the menu closes.
         var chosen = window.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 40, Y = 30 }).AsTask();
         var menu = await TrackingAsync(0);
+        // Main-thread work queued while the menu tracks runs in the tracking run loop mode, not after the menu closes.
+        string? mode = null;
+        await window.InvokeNativeAsync(_ => mode = CurrentRunLoopMode()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        if (mode is null or "kCFRunLoopDefaultMode" || Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != menu)
+            throw new InvalidOperationException($"Context menu: work queued while the menu tracks ran in mode {mode ?? "(none)"}, not during tracking.");
+        Console.WriteLine($"PASS Main-thread work runs while a context menu tracks ({mode}).");
         PerformInTrackingMode(menu, "performActionForItemAtIndex:", 0);
         PerformInTrackingMode(menu, "cancelTracking", 0);
         var result = await chosen.WaitAsync(TimeSpan.FromSeconds(10));
@@ -255,6 +261,15 @@ internal static partial class MacOsMenuSmoke
 
     private static nint Utf8(string text) => Marshal.StringToCoTaskMemUTF8(text);
 
+    // The mode the main run loop runs in now. Main thread.
+    private static string? CurrentRunLoopMode()
+    {
+        var mode = CopyCurrentMode(GetCurrentRunLoop());
+        if (mode == 0) return null;
+        try { return Text(mode); }
+        finally { CFRelease(mode); }
+    }
+
     private static IEnumerable<nint> Items(nint menu)
     {
         for (long index = 0, count = Send(menu, Sel("numberOfItems")); index < count; index++)
@@ -287,4 +302,6 @@ internal static partial class MacOsMenuSmoke
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventCreateKeyboardEvent")] private static partial nint CreateKeyboardEvent(nint source, ushort key, [MarshalAs(UnmanagedType.U1)] bool down);
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventSetFlags")] private static partial void SetFlags(nint keyEvent, ulong flags);
     [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRelease")] private static partial void CFRelease(nint value);
+    [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRunLoopGetCurrent")] private static partial nint GetCurrentRunLoop();
+    [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRunLoopCopyCurrentMode")] private static partial nint CopyCurrentMode(nint runLoop);
 }

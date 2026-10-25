@@ -7,14 +7,23 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 namespace Runic.Platform.MacOS;
 
 // The open-documents and get-URL Apple events that LaunchServices sends when the user opens a file or URL registered
-// in the bundle's Info.plist, before and after launch. The handlers replace AppKit's, which would look for an
-// NSApplication delegate that Runic does not set. finishLaunching installs AppKit's handlers and then dispatches the
-// launch's own open event, so they are installed again when it posts NSApplicationWillFinishLaunchingNotification,
-// and creating them after launch is refused. With web link hosts, a Runic application delegate (or, when the application
-// set its own, a method added to its class) receives universal links: NSUserActivity web-browsing activities, which
-// AppKit hands only to the delegate, before or after launch.
+// in the bundle's Info.plist, before and after launch, and universal links: NSUserActivity web-browsing activities,
+// which AppKit hands only to the application delegate.
+//
+// Under Runic.Desktop's DesktopEventLoop.Run, Runic Desktop's application delegate owns the Apple event handlers from
+// before the application's code runs and keeps the events and links until a handler attaches
+// (runicAttachOpenEventHandler:); the handler here then receives them in order, so the open requests can be created
+// at any time, on any thread.
+//
+// Without it, the handlers here replace AppKit's, which would look for an NSApplication delegate that Runic does not
+// set. finishLaunching installs AppKit's handlers and then dispatches the launch's own open event, so they are
+// installed again when it posts NSApplicationWillFinishLaunchingNotification, and creating them after launch is
+// refused. With web link hosts, a Runic application delegate (or, when the application set its own, a method added to
+// its class) receives universal links, before or after launch.
 internal static partial class MacOpenEvents
 {
+    // The selectors of Runic Desktop's application delegate (Runic.Desktop's MacOsApplication).
+    private const string AttachSelector = "runicAttachOpenEventHandler:", DetachSelector = "runicDetachOpenEventHandler:";
     // AEEventClass and AEEventID four-character codes.
     internal const uint CoreEventClass = 0x61657674, OpenDocuments = 0x6F646F63; // 'aevt', 'odoc'
     internal const uint InternetEventClass = 0x4755524C, GetUrl = 0x4755524C;    // 'GURL', 'GURL'
@@ -23,12 +32,24 @@ internal static partial class MacOpenEvents
     private static readonly Lock Gate = new();
     private const string ContinueActivity = "application:continueUserActivity:restorationHandler:";
     private const string BrowsingWeb = "NSUserActivityTypeBrowsingWeb";
-    private static nint s_handler, s_delegate;
+    private static nint s_handler, s_delegate, s_observing, s_owner;
     private static OpenRequestQueue? s_queue;
     private static DesktopOpenOptions? s_options;
 
     internal static void Install(OpenRequestQueue queue, DesktopOpenOptions options)
     {
+        // Runic Desktop's event loop owns the application: its delegate keeps the events until this handler attaches.
+        if (LifecycleOwner() is not 0 and var owner)
+        {
+            lock (Gate)
+            {
+                if (s_queue is not null) throw new InvalidOperationException("The application already has open requests; dispose them first.");
+                if (s_handler == 0) s_handler = Send(Send(HandlerClass.Value, Sel("alloc")), Sel("init"));
+                s_queue = queue; s_options = options; s_owner = owner;
+            }
+            Arg(owner, Sel(AttachSelector), s_handler);
+            return;
+        }
         if (Bool(Class("NSThread"), Sel("isMainThread")) == 0)
             throw new InvalidOperationException("Create the open requests on the main thread, before the first window opens.");
         lock (Gate)
@@ -40,9 +61,10 @@ internal static partial class MacOpenEvents
                 || Bool(application, Sel("isRunning")) != 0)
                 throw new InvalidOperationException(
                     "Create the open requests before the first window or status icon: the system sends the launch's open event as the application finishes launching.");
-            if (s_handler == 0)
+            if (s_handler == 0) s_handler = Send(Send(HandlerClass.Value, Sel("alloc")), Sel("init"));
+            if (s_observing == 0)
             {
-                s_handler = Send(Send(HandlerClass.Value, Sel("alloc")), Sel("init"));
+                s_observing = s_handler;
                 // finishLaunching installs AppKit's own open-documents handler, then posts this notification before it
                 // dispatches the launch's open event: install the handlers again there, as an application delegate
                 // would in applicationWillFinishLaunching:.
@@ -124,11 +146,15 @@ internal static partial class MacOpenEvents
 
     internal static void Uninstall(OpenRequestQueue queue)
     {
+        nint owner;
         lock (Gate)
         {
             if (!ReferenceEquals(s_queue, queue)) return;
             s_queue = null; s_options = null;
+            owner = s_owner; s_owner = 0;
         }
+        // Runic Desktop's delegate keeps later events for the next open requests.
+        if (owner != 0) Arg(owner, Sel(DetachSelector), s_handler);
         // Events that arrive later find no queue and are ignored; the handlers stay installed so AppKit's do not
         // look for a delegate.
     }
@@ -141,6 +167,8 @@ internal static partial class MacOpenEvents
         if (type == 0) throw new InvalidOperationException("The open event handler class already exists.");
         AddMethod(type, Sel("handleEvent:withReplyEvent:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&Handle, "v@:@@");
         AddMethod(type, Sel("willFinishLaunching:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WillFinishLaunching, "v@:@");
+        // The universal links that Runic Desktop's application delegate hands on.
+        AddMethod(type, Sel(ContinueActivity), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, byte>)&Continue, ContinueTypes);
         RegisterClass(type);
         return type;
     }
@@ -194,6 +222,18 @@ internal static partial class MacOpenEvents
             if (items.Count > 0) queue.Post(new DesktopOpenRequest(items.ToImmutable()));
         }
         catch { /* An Apple event handler must not throw into AppKit; a malformed event opens nothing. */ }
+    }
+
+    // NSApp's delegate when it is Runic Desktop's, which exists while DesktopEventLoop.Run runs. Reads NSApp without
+    // creating it, so any thread may ask.
+    internal static unsafe nint LifecycleOwner()
+    {
+        if (!NativeLibrary.TryLoad("/System/Library/Frameworks/AppKit.framework/AppKit", out var appKit)
+            || !NativeLibrary.TryGetExport(appKit, "NSApp", out var variable)) return 0;
+        nint application = *(nint*)variable;
+        if (application == 0) return 0;
+        nint owner = Send(application, Sel("delegate"));
+        return owner != 0 && BoolArg(owner, Sel("respondsToSelector:"), Sel(AttachSelector)) != 0 ? owner : 0;
     }
 
     [LibraryImport(ObjC, EntryPoint = "objc_allocateClassPair", StringMarshalling = StringMarshalling.Utf8)] private static partial nint AllocateClass(nint parent, string name, nuint extra);
