@@ -1708,7 +1708,7 @@ No wrapper command is needed.
   parameter cannot have a key.
 
 The generator reports a misplaced attribute or an unusable resolver as
-[`RUNICBRIDGE029`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge029).
+[`RUNICBRIDGE027`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge027).
 
 ## Operation results and parameterised queries
 
