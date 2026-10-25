@@ -33,8 +33,15 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
     {
         ArgumentNullException.ThrowIfNull(request);
         var selections = await SelectCoreAsync(request, false, cancellationToken).ConfigureAwait(false);
-        if (!request.Save || selections is not [var selection]) return selections;
-        return [selection with { Location = await Portal.DocumentPortalPaths.Session.ClassifyAsync(selection.Path, cancellationToken).ConfigureAwait(false) }];
+        if (selections is null) return null;
+        // Saves and opened documents both write back: a document view stages through the portal.
+        var classified = new NativeFileSelection[selections.Count];
+        for (int index = 0; index < classified.Length; index++)
+            classified[index] = selections[index] with
+            {
+                Location = await Portal.DocumentPortalPaths.Session.ClassifyAsync(selections[index].Path, cancellationToken).ConfigureAwait(false),
+            };
+        return classified;
     }
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)

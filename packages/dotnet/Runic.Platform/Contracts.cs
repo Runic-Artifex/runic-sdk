@@ -460,6 +460,16 @@ internal static class FileDialogOptions
         return filters;
     }
 
+    // The checks of a save dialog's options, which every provider shares.
+    internal static void CheckSave(SaveFileOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.SuggestedName);
+        if (options.SuggestedName.IndexOfAny(['/', '\\', '\0']) >= 0 || options.SuggestedName is "." or "..")
+            throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
+    }
+
     internal static string? ValidDirectory(string? directory)
     {
         if (directory is not null && (directory.Contains('\0') || !Path.IsPathFullyQualified(directory)))
@@ -518,6 +528,39 @@ public interface IFileDialogs
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<PickerResult<IDirectoryLeaseList>>(new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
     }
+    /// <summary>Selects an existing document for reading and saving back to it.</summary>
+    /// <remarks>
+    /// Unlike <see cref="OpenFileAsync"/>, which opens the file once for reading, the lease reads the document again
+    /// on each <see cref="IDocumentFileLease.OpenReadAsync"/> and writes it through
+    /// <see cref="ISaveFileLease.BeginWriteAsync"/>. Whether those writes can replace the file is reported by the
+    /// <c>platform.files.save</c> capability; a read-only grant reports
+    /// <see cref="PlatformUnavailableReason.AtomicReplaceUnavailable"/> per write. The default implementation returns
+    /// <see cref="PickerResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>; a
+    /// provider that implements it overrides it and reports the <c>platform.files.openDocument</c> capability.
+    /// </remarks>
+    ValueTask<PickerResult<IDocumentFileLease>> OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PickerResult<IDocumentFileLease>>(new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
+    /// <summary>Selects a save destination, as <see cref="SaveFileAsync"/> does, as a document the application can
+    /// read back and save again, such as for Save As.</summary>
+    /// <remarks>
+    /// The document does not exist until the first committed write: until then
+    /// <see cref="IDocumentFileLease.OpenReadAsync"/> reports <see cref="PlatformFailureCode.NotFound"/>. The default
+    /// implementation returns <see cref="PickerResult{T}.Unavailable"/> with
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>; a provider that implements it overrides it and
+    /// reports the <c>platform.files.openDocument</c> capability.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The suggested name is empty or a path.</exception>
+    ValueTask<PickerResult<IDocumentFileLease>> SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
+    {
+        FileDialogOptions.CheckSave(options);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PickerResult<IDocumentFileLease>>(new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
 }
 
 /// <summary>Owns access to one local directory until disposed or its presentation closes.</summary>
@@ -557,7 +600,67 @@ public interface ISaveFileLease : IAsyncDisposable
     /// <summary>A display filename, without a filesystem path.</summary>
     string DisplayName { get; }
     /// <summary>Begins one staged write, or reports unavailable before modifying the destination.</summary>
+    /// <remarks>
+    /// <para>A lease writes as often as the application saves: a new write can begin once the previous transaction's
+    /// commit finished, whatever its outcome, or once that transaction was disposed. While a transaction is open the
+    /// result is <see cref="PlatformResult{T}.Failed"/> with <see cref="PlatformFailureCode.ResourceBusy"/>. Disposing
+    /// the lease disposes its open transaction.</para>
+    /// <para>A commit is <see cref="FileCommitResult.NotCommitted"/> with <see cref="PlatformFailureCode.Conflict"/>
+    /// when the file no longer holds the content the application last saw: the selected file (or its absence), then
+    /// the bytes of each committed write, and for an <see cref="IDocumentFileLease"/> the content of each
+    /// <see cref="IDocumentFileLease.OpenReadAsync"/>. After <see cref="FileCommitResult.CommitUnknown"/> both the
+    /// previous content and the staged bytes count as the application's own. A conflict therefore means another
+    /// writer changed the file.</para>
+    /// </remarks>
     ValueTask<PlatformResult<IFileWriteTransaction>> BeginWriteAsync(FileWritePolicy policy, CancellationToken cancellationToken = default);
+
+    /// <summary>Creates a bookmark of the file for <see cref="IDesktopFileBookmarks.OpenDocumentAsync"/>, such as for a
+    /// recent-files list.</summary>
+    /// <remarks>
+    /// The file must exist: a save destination that has not been written yet reports
+    /// <see cref="PlatformFailureCode.NotFound"/>; create the bookmark after the first committed write. Store the
+    /// bookmark again each time the document is reopened. Windows and Linux bookmarks are the file's path (in a
+    /// Flatpak the document portal's path, which stays valid across launches). The default implementation returns
+    /// <see cref="PlatformResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>, as
+    /// leases of providers without bookmarks do.
+    /// </remarks>
+    ValueTask<PlatformResult<ImmutableArray<byte>>> CreateBookmarkAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<ImmutableArray<byte>>>(
+            new PlatformResult<ImmutableArray<byte>>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
+}
+
+/// <summary>Owns read and write access to one document the user opened or saved: the application reads it, saves it
+/// back as often as it needs and keeps it in a recent-files list.</summary>
+/// <remarks>
+/// <para>A lease from <see cref="IFileDialogs.OpenDocumentAsync"/> or <see cref="IFileDialogs.SaveDocumentAsync"/>
+/// is released when its presentation closes, as every dialog lease is; one from
+/// <see cref="IDesktopFileBookmarks.OpenDocumentAsync"/> keeps the bookmark's access until it is disposed.</para>
+/// <para>Writes follow <see cref="ISaveFileLease.BeginWriteAsync"/>. To overwrite a file after a
+/// <see cref="PlatformFailureCode.Conflict"/>, read it with <see cref="OpenReadAsync"/>, which makes its current
+/// content the content the application last saw, and write again.</para>
+/// </remarks>
+public interface IDocumentFileLease : ISaveFileLease
+{
+    /// <summary>The document's local path, such as for detecting a document that is already open or showing where it
+    /// is. In a Flatpak it is the document portal's path. Throws after the lease is released.</summary>
+    /// <remarks>Read and write the document through the lease; access to the path itself ends with the lease.</remarks>
+    string LocalPath { get; }
+
+    /// <summary>Opens a new seekable stream of the document's current content, which the caller owns.</summary>
+    /// <remarks>
+    /// Each call opens the file again; during an open write transaction it reads the committed file, never the
+    /// staged bytes. The content read becomes the content a later commit compares with, also for a transaction that
+    /// is already open; a missing file makes its absence that content. Disposing the lease closes the streams still
+    /// open.
+    /// </remarks>
+    /// <returns>The stream; <see cref="PlatformFailureCode.NotFound"/> when the file no longer exists,
+    /// <see cref="PlatformFailureCode.PermissionDenied"/> when it cannot be read and
+    /// <see cref="PlatformFailureCode.IOError"/> for another failure, including a path that is no longer a regular
+    /// file.</returns>
+    ValueTask<PlatformResult<Stream>> OpenReadAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>A single-consumption staged write. Disposal removes uncommitted staging data.</summary>

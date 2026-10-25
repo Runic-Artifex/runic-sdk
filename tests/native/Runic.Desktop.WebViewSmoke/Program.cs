@@ -226,40 +226,55 @@ static async Task RunWindowsUiAutomationSmokeAsync()
         if (finished == "finished") break;
         if (finished == "open")
         {
-            var selected = await picker.OpenFileAsync(new OpenFileOptions(), deadline.Token);
+            // A document lease: it reads the selection twice and reopens it from its bookmark, without writing it.
+            var selected = await picker.OpenDocumentAsync(new OpenFileOptions(), deadline.Token);
             string outcome;
-            if (selected is PickerResult<IReadFileLease>.Selected file)
+            if (selected is PickerResult<IDocumentFileLease>.Selected file)
             {
                 await using var lease = file.Value;
-                await using var stream = await lease.OpenReadAsync(deadline.Token);
-                using var reader = new StreamReader(stream);
-                outcome = "Picked: " + lease.DisplayName + ": " + await reader.ReadToEndAsync(deadline.Token);
+                string text = await ReadDocumentAsync(lease, deadline.Token);
+                if (await ReadDocumentAsync(lease, deadline.Token) != text) throw new InvalidOperationException("A second document read differs.");
+                await using var reopened = await ReopenDocumentAsync(lease, deadline.Token);
+                if (reopened.LocalPath != lease.LocalPath || await ReadDocumentAsync(reopened, deadline.Token) != text)
+                    throw new InvalidOperationException("The document's bookmark did not reopen it.");
+                outcome = "Picked: " + lease.DisplayName + ": " + text;
             }
-            else if (selected is PickerResult<IReadFileLease>.Dismissed) outcome = "Open cancelled";
+            else if (selected is PickerResult<IDocumentFileLease>.Dismissed) outcome = "Open cancelled";
             else throw new InvalidOperationException("Unexpected open result: " + selected);
-            await surface.ExecuteJavaScriptAsync(selected is PickerResult<IReadFileLease>.Dismissed
+            await surface.ExecuteJavaScriptAsync(selected is PickerResult<IDocumentFileLease>.Dismissed
                 ? "window.__runicOpenCancelled=true; return true;" : "window.__runicOpenPassed=true; return true;", cancellationToken: deadline.Token);
             await surface.ExecuteJavaScriptAsync("document.getElementById('picker-result').textContent=" + JavaScriptString(outcome) + "; return true;", cancellationToken: deadline.Token);
         }
         if (finished == "save")
         {
-            var selected = await picker.SaveFileAsync(new SaveFileOptions("runic-uia-saved.txt"), deadline.Token);
+            // Save As as a document, then Save twice more on the same lease, reading each save back, and reopen it from
+            // its bookmark. The driver checks the last save's bytes.
+            var selected = await picker.SaveDocumentAsync(new SaveFileOptions("runic-uia-saved.txt"), deadline.Token);
             string outcome;
-            if (selected is PickerResult<ISaveFileLease>.Selected file)
+            if (selected is PickerResult<IDocumentFileLease>.Selected file)
             {
                 await using var lease = file.Value;
-                var started = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace, deadline.Token);
-                if (started is not PlatformResult<IFileWriteTransaction>.Success success)
-                    throw new InvalidOperationException("Could not stage native save: " + started);
-                await using var transaction = success.Value;
-                await transaction.Content.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Runic Windows native picker output."), deadline.Token);
-                var committed = await transaction.CommitAsync(deadline.Token);
-                if (committed is not FileCommitResult.Committed)
-                    throw new InvalidOperationException("Native save failed: " + committed);
+                string[] saves = ["Runic Windows native picker output (1 of 3).", "Runic Windows native picker output (2 of 3).", "Runic Windows native picker output."];
+                foreach (string text in saves)
+                {
+                    var started = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace, deadline.Token);
+                    if (started is not PlatformResult<IFileWriteTransaction>.Success success)
+                        throw new InvalidOperationException("Could not stage native save: " + started);
+                    await using (var transaction = success.Value)
+                    {
+                        await transaction.Content.WriteAsync(System.Text.Encoding.UTF8.GetBytes(text), deadline.Token);
+                        var committed = await transaction.CommitAsync(deadline.Token);
+                        if (committed is not FileCommitResult.Committed)
+                            throw new InvalidOperationException("Native save failed: " + committed);
+                    }
+                    if (await ReadDocumentAsync(lease, deadline.Token) != text) throw new InvalidOperationException("A saved document read back differently.");
+                }
+                await using (var reopened = await ReopenDocumentAsync(lease, deadline.Token))
+                    if (await ReadDocumentAsync(reopened, deadline.Token) != saves[^1]) throw new InvalidOperationException("The saved document's bookmark did not reopen it.");
                 outcome = "Saved: " + lease.DisplayName;
                 await surface.ExecuteJavaScriptAsync("window.__runicSavePassed=true; return true;", cancellationToken: deadline.Token);
             }
-            else if (selected is PickerResult<ISaveFileLease>.Dismissed)
+            else if (selected is PickerResult<IDocumentFileLease>.Dismissed)
             {
                 outcome = "Save cancelled";
                 await surface.ExecuteJavaScriptAsync("window.__runicSaveCancelled=true; return true;", cancellationToken: deadline.Token);
@@ -271,6 +286,25 @@ static async Task RunWindowsUiAutomationSmokeAsync()
     }
 
     Console.WriteLine("Windows UI Automation WebView2 semantic interaction passed.");
+}
+
+static async Task<string> ReadDocumentAsync(IDocumentFileLease document, CancellationToken cancellationToken)
+{
+    var read = await document.OpenReadAsync(cancellationToken);
+    if (read is not PlatformResult<Stream>.Success(var stream)) throw new InvalidOperationException("Document read failed: " + read);
+    await using (stream)
+    using (var reader = new StreamReader(stream))
+        return await reader.ReadToEndAsync(cancellationToken);
+}
+
+// Windows bookmarks are paths, as DesktopPlatformServices.CreateFileBookmarks returns them.
+static async Task<IDocumentFileLease> ReopenDocumentAsync(IDocumentFileLease document, CancellationToken cancellationToken)
+{
+    var bookmark = await document.CreateBookmarkAsync(cancellationToken);
+    if (bookmark is not PlatformResult<System.Collections.Immutable.ImmutableArray<byte>>.Success(var bytes))
+        throw new InvalidOperationException("Document bookmark failed: " + bookmark);
+    var reopened = await new PathFileBookmarks().OpenDocumentAsync(bytes, cancellationToken);
+    return reopened is PlatformResult<IDocumentFileLease>.Success(var lease) ? lease : throw new InvalidOperationException("Document reopen failed: " + reopened);
 }
 
 static string JavaScriptString(string value) => "'" + value

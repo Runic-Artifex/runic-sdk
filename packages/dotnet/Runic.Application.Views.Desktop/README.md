@@ -306,6 +306,56 @@ The same Window and `async host => ...` body run on CS-WebUI with
   describes the document-view mechanism and the GTK 3 opt-in. CS-WebUI's
   `AddRunicPlatformServices()` registers the same services, which return
   `OwnerUnavailable`.
+
+  An editor that saves back to the file it opened keeps a document lease from
+  `OpenDocumentAsync` (or `SaveDocumentAsync` for Save As) and writes it on every
+  save. A `Conflict` means another program changed the file; reading it again
+  makes its content the one the next save compares with:
+
+  ```csharp
+  public sealed partial class EditorViewModel(IFileDialogs files) : ObservableObject
+  {
+      private IDocumentFileLease? _document;
+      [ObservableProperty] private string _text = "";
+
+      public async Task OpenAsync()
+      {
+          if (await files.OpenDocumentAsync(new() { Filters = [new("Notes", ["txt", "md"])] }) is not PickerResult<IDocumentFileLease>.Selected(var document)) return;
+          if (_document is not null) await _document.DisposeAsync();
+          _document = document;
+          await ReloadAsync();
+      }
+
+      // Also after a conflict, when the user chooses the other program's version.
+      public async Task ReloadAsync()
+      {
+          if (_document is null || await _document.OpenReadAsync() is not PlatformResult<Stream>.Success(var stream)) return;
+          await using (stream)
+          using (var reader = new StreamReader(stream))
+              Text = await reader.ReadToEndAsync();
+      }
+
+      // Ctrl+S and autosave, as often as needed.
+      public async Task<FileCommitResult?> SaveAsync()
+      {
+          if (_document is null || await _document.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace)
+              is not PlatformResult<IFileWriteTransaction>.Success(var transaction)) return null;
+          await using (transaction)
+          {
+              await using (var writer = new StreamWriter(transaction.Content, leaveOpen: true))
+                  await writer.WriteAsync(Text);
+              return await transaction.CommitAsync();
+          }
+      }
+  }
+  ```
+
+  The lease belongs to the window and is released when it closes. Keep a
+  recent-files entry with `CreateBookmarkAsync` and reopen it with
+  `IDesktopFileBookmarks.OpenDocumentAsync`, which `AddRunicPlatformServices()`
+  registers; the
+  [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#document-apps)
+  describes conflicts, bookmarks and what each platform supports.
 - `AddRunicPlatformServices()` also registers `IDesktopSettings`, the
   desktop's appearance preferences (color scheme, accent color, high contrast,
   reduced motion). They belong to the application, not to a window, so there

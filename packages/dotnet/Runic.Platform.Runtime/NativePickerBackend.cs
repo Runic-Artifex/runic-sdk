@@ -1,6 +1,4 @@
 using System.Collections.Immutable;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 
 namespace Runic.Platform.Runtime;
 
@@ -75,7 +73,7 @@ public interface INativeFilePicker
 }
 
 /// <summary>Converts acquired native selections to safe, single-use file leases.</summary>
-public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativeFilePicker picker) : IPickerBackend
+public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePicker picker) : IPickerBackend
 {
     private readonly Guid _generation = owner.Generation;
 
@@ -227,7 +225,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
             if (!multiple && selections.Count != 1) return new PickerResult<ReadFileLeaseList>.Failed(PlatformFailureCode.InvalidData);
             foreach (var selection in selections)
             {
-                var stream = OpenSelected(selection.Path);
+                var stream = RegularFiles.OpenRead(selection.Path);
                 leases.Add(new ReadFileLease(Path.GetFileName(selection.Path), stream, selection.Access));
             }
             transferred = true;
@@ -256,7 +254,66 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
     }
 
     /// <inheritdoc />
-    public async ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
+    public bool SupportsDocumentAccess => true;
+
+    // Windows and Linux keep access through the path. macOS has no lease bookmarks yet: they report unavailable.
+    private static readonly IDesktopFileBookmarks? Bookmarks = OperatingSystem.IsMacOS() ? null : new PathFileBookmarks();
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default) =>
+        SaveAsync<ISaveFileLease>(options, async (selection, token) => await SaveFileLease.CreateAsync(selection.Path, Replacement(selection),
+            selection.Access, Bookmarks, token).ConfigureAwait(false), cancellationToken);
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<IDocumentFileLease>> SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken = default) =>
+        SaveAsync<IDocumentFileLease>(options, async (selection, token) => await DocumentFileLease.CreateAsync(selection.Path, Replacement(selection),
+            selection.Access, Bookmarks, existing: false, token).ConfigureAwait(false), cancellationToken);
+
+    /// <inheritdoc />
+    public async ValueTask<PickerResult<IDocumentFileLease>> OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsAvailable) return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        IReadOnlyList<NativeFileSelection>? selections = null;
+        bool transferred = false;
+        try
+        {
+            selections = await picker.SelectAsync(new NativeFileDialogRequest(false, null)
+            {
+                Filters = options.Filters, InitialDirectory = options.InitialDirectory, ShowFilterChoice = options.ShowFilterChoice,
+            }, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsAvailable) return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+            if (selections is null || selections.Count == 0) return new PickerResult<IDocumentFileLease>.Dismissed();
+            if (selections.Count != 1) return new PickerResult<IDocumentFileLease>.Failed(PlatformFailureCode.InvalidData);
+            var selection = selections[0];
+            // CreateAsync takes ownership of acquired access, including failure paths.
+            transferred = true;
+            var lease = await DocumentFileLease.CreateAsync(selection.Path, Replacement(selection), selection.Access, Bookmarks, existing: true,
+                cancellationToken).ConfigureAwait(false);
+            return new PickerResult<IDocumentFileLease>.Selected(lease) { SelectedFilter = ChosenFilter(options.Filters, selection.SelectedFilter) };
+        }
+        catch (OwnerClosedException) { return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (UnauthorizedAccessException error) { return new PickerResult<IDocumentFileLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
+        catch (IOException error) { return new PickerResult<IDocumentFileLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
+        finally
+        {
+            if (!transferred && selections is not null)
+                foreach (var selection in selections)
+                    if (selection?.Access is { } access) await access.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static IAtomicFileReplacement Replacement(NativeFileSelection selection) =>
+        selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement(selection.Location) : new NoAtomicReplacement();
+
+    private async ValueTask<PickerResult<T>> SaveAsync<T>(SaveFileOptions options,
+        Func<NativeFileSelection, CancellationToken, ValueTask<T>> create, CancellationToken cancellationToken) where T : ISaveFileLease
     {
         ArgumentNullException.ThrowIfNull(options);
         if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
@@ -264,7 +321,7 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
         if (options.SuggestedName.IndexOfAny(['/', '\\', '\0']) >= 0 || options.SuggestedName is "." or "..")
             throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
         cancellationToken.ThrowIfCancellationRequested();
-        if (!IsAvailable) return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (!IsAvailable) return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         try
         {
             var selections = await picker.SelectAsync(new NativeFileDialogRequest(true, options.SuggestedName)
@@ -275,69 +332,35 @@ public sealed partial class NativePickerBackend(INativeWindowOwner owner, INativ
             {
                 foreach (var extra in selections)
                     if (extra?.Access is { } extraAccess) await extraAccess.DisposeAsync().ConfigureAwait(false);
-                return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.InvalidData);
+                return new PickerResult<T>.Failed(PlatformFailureCode.InvalidData);
             }
             var selection = selections is { Count: 1 } ? selections[0] : null;
             if (selection is null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return new PickerResult<ISaveFileLease>.Dismissed();
+                return new PickerResult<T>.Dismissed();
             }
             if (!IsAvailable)
             {
                 if (selection.Access is { } access) await access.DisposeAsync().ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+                return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             }
-            // CreateAsync takes ownership of acquired access, including failure paths.
-            var lease = await SaveFileLease.CreateAsync(selection.Path,
-                selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement(selection.Location) : new NoAtomicReplacement(),
-                selection.Access, cancellationToken).ConfigureAwait(false);
-            return new PickerResult<ISaveFileLease>.Selected(lease) { SelectedFilter = ChosenFilter(options.Filters, selection.SelectedFilter) };
+            // The lease takes ownership of acquired access, including failure paths.
+            var lease = await create(selection, cancellationToken).ConfigureAwait(false);
+            return new PickerResult<T>.Selected(lease) { SelectedFilter = ChosenFilter(options.Filters, selection.SelectedFilter) };
         }
-        catch (OwnerClosedException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
-        catch (DllNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException error) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
-        catch (IOException error) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
+        catch (OwnerClosedException) { return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PickerResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PickerResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PickerResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (UnauthorizedAccessException error) { return new PickerResult<T>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
+        catch (IOException error) { return new PickerResult<T>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
     }
 
     // Only one of the request's own filters is reported; a picker cannot invent one.
     private static FileDialogFilter? ChosenFilter(System.Collections.Immutable.ImmutableArray<FileDialogFilter> filters, FileDialogFilter? chosen) =>
         chosen is not null && !filters.IsDefaultOrEmpty && filters.Contains(chosen) ? chosen : null;
-
-    // Opening a FIFO blocks until a writer appears, and special files may never end.
-    // On Unix, open without blocking and accept only a seekable non-directory file.
-    private static FileStream OpenSelected(string path)
-    {
-        if (OperatingSystem.IsWindows())
-            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
-                4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        var handle = new SafeFileHandle(Open(path, OperatingSystem.IsMacOS() ? 0x1000004 : 0x80800), ownsHandle: true); // O_RDONLY | O_NONBLOCK | O_CLOEXEC
-        if (handle.IsInvalid)
-        {
-            int error = Marshal.GetLastPInvokeError();
-            handle.Dispose();
-            throw error switch
-            {
-                1 or 13 => new UnauthorizedAccessException("The selected file cannot be read."), // EPERM, EACCES
-                2 => new FileNotFoundException("The selected file no longer exists."), // ENOENT
-                _ => new IOException("The selected file cannot be opened."),
-            };
-        }
-        try
-        {
-            if (File.GetAttributes(handle).HasFlag(FileAttributes.Directory)) throw new UnauthorizedAccessException("A directory is not a readable file.");
-            var stream = new FileStream(handle, FileAccess.Read, 4096);
-            if (stream.CanSeek) return stream;
-            stream.Dispose();
-            throw new IOException("The selection is not a regular file.");
-        }
-        catch { handle.Dispose(); throw; }
-    }
-    [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
-    private static partial int Open(string path, int flags);
 
     private sealed class NoAtomicReplacement : IAtomicFileReplacement
     {

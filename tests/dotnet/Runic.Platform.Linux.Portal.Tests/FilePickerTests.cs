@@ -95,6 +95,29 @@ internal sealed class FilePickerTests
         }
         finally { Directory.Delete(saveDirectory, recursive: true); }
 
+        // Open and Save As as documents: read, save back repeatedly and reopen through the portal's host path.
+        string documentDirectory = Path.Combine(Path.GetTempPath(), "runic-portal-document-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(documentDirectory);
+        try
+        {
+            string path = Path.Combine(documentDirectory, "notes.txt");
+            await File.WriteAllTextAsync(path, "opened");
+            var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new FakeTransport(new(0, [new Uri(path).AbsoluteUri]))));
+            Check(backend.SupportsDocumentAccess, "portal dialogs implement documents");
+            var opened = await backend.OpenDocumentAsync(new OpenFileOptions());
+            await using (var document = (opened as PickerResult<IDocumentFileLease>.Selected)?.Value ?? throw new InvalidOperationException("open: " + opened))
+            {
+                Check(document.LocalPath == path && await ReadAsync(document) == "opened", "the opened document reads the selection");
+                for (int index = 1; index <= 3; index++)
+                    Check(await WriteAsync(document, $"save {index}") is FileCommitResult.Committed && await ReadAsync(document) == $"save {index}", $"document save {index}");
+            }
+            var saved = await backend.SaveDocumentAsync(new SaveFileOptions("notes.txt"));
+            await using (var document = (saved as PickerResult<IDocumentFileLease>.Selected)?.Value ?? throw new InvalidOperationException("save: " + saved))
+                Check(await ReadAsync(document) == "save 3" && await WriteAsync(document, "save as") is FileCommitResult.Committed, "Save As over an existing file");
+            Check(await File.ReadAllTextAsync(path) == "save as" && Directory.GetFiles(documentDirectory).Length == 1, "the document is replaced without staging left");
+        }
+        finally { Directory.Delete(documentDirectory, recursive: true); }
+
         // Classification: a document is below the Documents.GetMountPoint mount (or the
         // Flatpak alias) and on FUSE. Nothing else may skip host symlink resolution.
         string? queriedMount = "/run/user/1000/doc";
@@ -116,7 +139,28 @@ internal sealed class FilePickerTests
         Check(await fuse.ClassifyAsync("/srv/runtime/doc/abc123/notes.txt", default) == NativeFileLocation.DocumentPortal, "an atypical XDG_RUNTIME_DIR mount comes from the portal");
         var documentPicker = new PortalFilePicker(owner, new FakeTransport(new(0, ["file:///srv/runtime/doc/abc123/notes.txt"])), documents: fuse);
         Check(await documentPicker.SelectAsync(true, "notes.txt", default) is { AllowsSiblingReplacement: true, Location: NativeFileLocation.DocumentPortal }, "save selection carries its document location");
+        Check(await documentPicker.SelectAsync(false, null, default) is { AllowsSiblingReplacement: true, Location: NativeFileLocation.DocumentPortal }, "open selection carries its document location");
         Console.WriteLine("PASS portal ownership, cancellation, local URI and access-grant checks.");
+    }
+
+    private static async Task<string> ReadAsync(IDocumentFileLease document)
+    {
+        var read = await document.OpenReadAsync();
+        if (read is not PlatformResult<Stream>.Success(var stream)) throw new InvalidOperationException("read: " + read);
+        await using (stream)
+        using (var reader = new StreamReader(stream))
+            return await reader.ReadToEndAsync();
+    }
+
+    private static async Task<FileCommitResult> WriteAsync(ISaveFileLease lease, string text)
+    {
+        var begun = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace);
+        if (begun is not PlatformResult<IFileWriteTransaction>.Success(var transaction)) throw new InvalidOperationException("staging: " + begun);
+        await using (transaction)
+        {
+            await transaction.Content.WriteAsync(System.Text.Encoding.UTF8.GetBytes(text));
+            return await transaction.CommitAsync();
+        }
     }
 
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }

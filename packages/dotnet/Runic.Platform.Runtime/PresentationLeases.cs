@@ -89,4 +89,26 @@ internal sealed class PresentationSaveLease(PresentationLifetime lifetime, ISave
     }
     public ValueTask<PlatformResult<IFileWriteTransaction>> BeginWriteAsync(FileWritePolicy policy, CancellationToken cancellationToken = default)
     { RequireOpen(); return lease.BeginWriteAsync(policy, cancellationToken); }
+    public ValueTask<PlatformResult<System.Collections.Immutable.ImmutableArray<byte>>> CreateBookmarkAsync(CancellationToken cancellationToken = default)
+    { RequireOpen(); return lease.CreateBookmarkAsync(cancellationToken); }
+}
+
+internal sealed class PresentationDocumentLease(PresentationLifetime lifetime, IDocumentFileLease lease)
+    : PresentationLease(lifetime, lease), IDocumentFileLease, ILaunchableFileLease
+{
+    public string DisplayName => lease.DisplayName;
+    public string LocalPath { get { RequireOpen(); return lease.LocalPath; } }
+    public ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(IDesktopFileLauncher launcher,
+        DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+    {
+        RequireOpen();
+        return lease is ILaunchableFileLease file ? file.LaunchAsync(launcher, operation, cancellationToken)
+            : ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
+    public ValueTask<PlatformResult<Stream>> OpenReadAsync(CancellationToken cancellationToken = default)
+    { RequireOpen(); return lease.OpenReadAsync(cancellationToken); }
+    public ValueTask<PlatformResult<IFileWriteTransaction>> BeginWriteAsync(FileWritePolicy policy, CancellationToken cancellationToken = default)
+    { RequireOpen(); return lease.BeginWriteAsync(policy, cancellationToken); }
+    public ValueTask<PlatformResult<System.Collections.Immutable.ImmutableArray<byte>>> CreateBookmarkAsync(CancellationToken cancellationToken = default)
+    { RequireOpen(); return lease.CreateBookmarkAsync(cancellationToken); }
 }

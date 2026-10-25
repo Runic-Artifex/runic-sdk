@@ -242,6 +242,24 @@ public interface IDesktopFileBookmarks
     /// bookmark to forget.</returns>
     /// <exception cref="ArgumentException"><paramref name="bookmark"/> is default or empty.</exception>
     ValueTask<PlatformResult<IDesktopBookmarkAccess>> ResolveAsync(ImmutableArray<byte> bookmark, CancellationToken cancellationToken = default);
+
+    /// <summary>Resolves a bookmark from <see cref="CreateAsync"/> or <see cref="ISaveFileLease.CreateBookmarkAsync"/>
+    /// as a document the application reads and saves back to, such as an entry of a recent-files list.</summary>
+    /// <remarks>
+    /// The lease keeps the bookmark's access until it is disposed; it belongs to no presentation. A path from a launch
+    /// or a drop becomes a document through <see cref="CreateAsync"/> and then this method. The default implementation
+    /// returns <see cref="PlatformResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>,
+    /// as the macOS provider does until it supports documents.
+    /// </remarks>
+    /// <returns>The document; the failures of <see cref="ResolveAsync"/>, and
+    /// <see cref="PlatformFailureCode.InvalidData"/> for a bookmark of a directory.</returns>
+    /// <exception cref="ArgumentException"><paramref name="bookmark"/> is default or empty.</exception>
+    ValueTask<PlatformResult<IDocumentFileLease>> OpenDocumentAsync(ImmutableArray<byte> bookmark, CancellationToken cancellationToken = default)
+    {
+        if (bookmark.IsDefaultOrEmpty) throw new ArgumentException("Supply a bookmark from CreateAsync or CreateBookmarkAsync.", nameof(bookmark));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<IDocumentFileLease>>(new PlatformResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
 }
 
 /// <summary>Access to a bookmarked file, until disposed.</summary>
