@@ -604,7 +604,9 @@ default), `--runtime` (`--rid`, `-r`; the host's architecture by default) and
 `--output-directory` (`-o`; `artifacts/package/<target>` beside the project by
 default). The output directory is not `--output`, which stays the hidden alias
 of `--format`. A target of another operating system, or a runtime identifier of
-another operating system, is refused with `RAPPPKG1004` before anything is built.
+another operating system, several runtime identifiers, or a runtime identifier
+that Runic does not support (`osx-x64`), is refused with `RAPPPKG1004` before
+anything is built.
 
 The package's identity comes from the project file:
 
@@ -648,8 +650,9 @@ them with your own credentials to ship them. Runic signs nothing for you.
   Without `--sign` the bundle is ad-hoc signed. `--sign "Developer ID
   Application: …"` signs the bundle and the disk image with your identity, and
   `--notary-profile <name>` then notarizes and staples the disk image with a
-  `notarytool store-credentials` profile. `--runtime osx-arm64,osx-x64` makes a
-  universal binary with `lipo`.
+  `notarytool store-credentials` profile. It publishes for `osx-arm64`; Runic
+  does not target Intel Macs, so `--runtime osx-x64` and universal bundles
+  are refused with `RAPPPKG1004`.
 - **`flatpak`** publishes into `flatpak-source/`, writes `<ApplicationId>.yml`
   from `linux/flatpak.yml` on the GNOME runtime (which provides GTK 4 and
   WebKitGTK 6, so the project uses `Runic.Desktop.Gtk4`), validates the desktop

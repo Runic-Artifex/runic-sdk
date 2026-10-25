@@ -16,8 +16,8 @@ Native clipboard ABI references: [Apple Pasteboard functions](https://developer.
 
 ## Supported macOS versions
 
-Runic supports macOS 15 and later on `osx-arm64`; `osx-x64` is packaged and
-best effort ([release policy](../../../eng/release/README.md#supported-platforms)).
+Runic supports macOS 15 and later on Apple silicon (`osx-arm64`); Intel Macs
+(`osx-x64`) are not supported ([release policy](../../../eng/release/README.md#supported-platforms)).
 Every service of this package works on those versions. The sections below name
 the older macOS version some services need; Runic does not test or support
 those older versions:

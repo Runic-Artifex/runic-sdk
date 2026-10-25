@@ -92,8 +92,8 @@ internal static class PackageApplication
     }
 
     /// <summary>
-    /// Checks that this OS builds the target and that each runtime is the target's OS. Without <c>--runtime</c>, the
-    /// host's architecture.
+    /// Checks that this OS builds the target and that the one runtime is the target's OS and one Runic supports. Without
+    /// <c>--runtime</c>, the host's architecture.
     /// </summary>
     internal static IReadOnlyList<string> ResolveRuntimes(PackageOptions options, string? currentFamily = null, string? currentArchitecture = null)
     {
@@ -108,16 +108,25 @@ internal static class PackageApplication
         }
         string family = PackageOptions.RuntimeFamily(options.Target);
         IReadOnlyList<string> runtimes = options.Runtimes.Count != 0 ? options.Runtimes : [$"{family}-{currentArchitecture}"];
-        if (runtimes.Count > 1 && options.Target != PackageTarget.MacOS)
-            throw new DevUsageException(PackageCodes.WrongOperatingSystem, $"package {target} takes one runtime identifier; only macos combines several into a universal bundle.");
-        foreach (string runtime in runtimes)
+        if (runtimes.Count > 1)
         {
-            DoctorTargetRid rid = DoctorTargetRid.Parse(runtime);
-            if (rid.Os != family)
-            {
-                throw new DevUsageException(PackageCodes.WrongOperatingSystem,
-                    $"package {target} publishes for {PackageOptions.FamilyName(family)}; --runtime {runtime} is for another operating system.");
-            }
+            throw new DevUsageException(PackageCodes.WrongOperatingSystem, options.Target == PackageTarget.MacOS
+                ? $"package {target} takes one runtime identifier; Runic supports macOS on Apple silicon only and makes no universal bundle. Use --runtime osx-arm64."
+                : $"package {target} takes one runtime identifier.");
+        }
+        string runtime = runtimes[0];
+        DoctorTargetRid rid = DoctorTargetRid.Parse(runtime);
+        if (rid.Os != family)
+        {
+            throw new DevUsageException(PackageCodes.WrongOperatingSystem,
+                $"package {target} publishes for {PackageOptions.FamilyName(family)}; --runtime {runtime} is for another operating system.");
+        }
+        // A RID that every host lists as unsupported, such as osx-x64 (Intel Macs), is refused before anything is built.
+        SupportTarget[] support = [.. CompatibilitySetAuthority.Current.Support.Hosts.SelectMany(host => host.Targets).Where(entry => entry.Rid == runtime)];
+        if (support.Length != 0 && support.All(entry => entry.Status == SupportStatus.Unsupported))
+        {
+            throw new DevUsageException(PackageCodes.WrongOperatingSystem,
+                $"package {target} does not publish for {runtime}: {support[0].Reason} {support[0].Remediation}".TrimEnd());
         }
         return runtimes;
     }

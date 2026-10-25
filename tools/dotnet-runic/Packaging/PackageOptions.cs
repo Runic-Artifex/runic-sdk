@@ -23,7 +23,7 @@ internal sealed record PackageOptions(PackageTarget Target)
     internal string? Project { get; init; }
     internal string Configuration { get; init; } = "Release";
 
-    /// <summary>The runtime identifiers to publish; several only for a universal macOS bundle. Empty selects the host's.</summary>
+    /// <summary>The runtime identifier to publish, as a list so that several are refused; empty selects the host's.</summary>
     internal IReadOnlyList<string> Runtimes { get; init; } = [];
 
     internal string? OutputDirectory { get; init; }
@@ -83,7 +83,7 @@ internal sealed record PackageOptions(PackageTarget Target)
         _ => "x64",
     };
 
-    /// <summary>Splits <c>--runtime</c>, which takes a comma-separated list for a universal macOS bundle.</summary>
+    /// <summary>Splits <c>--runtime</c>; a comma-separated list, which universal macOS bundles took before 0.12, is refused.</summary>
     internal static IReadOnlyList<string> ParseRuntimes(string value) =>
         [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal)];
 

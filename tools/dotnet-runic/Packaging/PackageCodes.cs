@@ -15,7 +15,10 @@ internal static class PackageCodes
     /// <summary><c>dotnet publish</c> failed. Exit 1.</summary>
     internal const string PublishFailed = "RAPPPKG1003";
 
-    /// <summary>The target, or the selected runtime identifier, needs another operating system. Exit 2.</summary>
+    /// <summary>
+    /// The target, or the selected runtime identifier, needs another operating system; several runtime identifiers; or a
+    /// runtime identifier Runic does not support, such as osx-x64. Exit 2.
+    /// </summary>
     internal const string WrongOperatingSystem = "RAPPPKG1004";
 
     /// <summary>A packaging tool exited with an error; the message names it and its exit code. Exit 1.</summary>

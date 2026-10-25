@@ -2041,9 +2041,13 @@ internal sealed partial class ToolTests
         DoctorReport csWebUi = InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, "win-arm64", runtime);
         Equal(DoctorStatus.Failure, Check(csWebUi, "target-rid").Status);
         Contains(Check(csWebUi, "target-rid").Message, "CS-WebUI");
-        // Runic Desktop on win-arm64 and musl is CI-verified; osx-x64 is packaged but not CI-verified.
+        // Runic Desktop on win-arm64 and musl is CI-verified; Intel Macs (osx-x64) are not a Runic target.
         Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "win-arm64", runtime), "target-rid").Status);
-        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "osx-x64", runtime), "target-rid").Status);
+        DoctorReport intel = InspectTarget(desktop, "osx-x64", runtime);
+        Equal(DoctorStatus.Failure, Check(intel, "target-rid").Status);
+        Contains(Check(intel, "target-rid").Message, "Intel Macs");
+        Equal("Publish for osx-arm64.", Check(intel, "target-rid").Remediation);
+        SequenceEqual(["target-rid"], TargetCheckIds(intel));
         foreach (string musl in new[] { "linux-musl-x64", "linux-musl-arm64" })
         {
             DoctorReport cswebuiMusl = InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, musl, runtime);
@@ -2084,8 +2088,9 @@ internal sealed partial class ToolTests
                 else Contains(check.Message, support.CiVerifiedMeaning);
             }
         }
-        DoctorCheck unknownHost = Check(InspectTarget(desktop with { Host = RunicViewsHost.Unknown }, "osx-x64", runtime), "target-rid");
-        Equal(DoctorStatus.Warning, unknownHost.Status);
+        // CS-WebUI does not support win-arm64; Runic Desktop does.
+        DoctorCheck unknownHost = Check(InspectTarget(desktop with { Host = RunicViewsHost.Unknown }, "win-arm64", runtime), "target-rid");
+        Equal(DoctorStatus.Pass, unknownHost.Status);
         Contains(unknownHost.Message, "most permissive host");
     }
 
@@ -2150,7 +2155,7 @@ internal sealed partial class ToolTests
         Equal(DoctorStatus.Failure, Check(noXcode, "target-publish").Status);
         Contains(Check(noXcode, "target-presentation").Message, "15.4");
         var xcode = new FakeDoctorRuntime(authority.Toolchain) { Platform = mac.Platform, Executables = ["xcrun"] };
-        Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-x64", xcode), "target-publish").Status);
+        Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-arm64", xcode), "target-publish").Status);
     }
 
     [Test, DisplayName("doctor --rid checks framework-dependent and RuntimeIdentifiers")]
@@ -2435,7 +2440,7 @@ internal sealed partial class ToolTests
         Equal(DoctorStatus.Warning, neither.Status);
         Contains(neither.Remediation ?? string.Empty, "WebKitGTK 4.1");
         Equal(DoctorStatus.Pass, Check(InspectTarget(csWebUi, "linux-arm64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
-        Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi, "osx-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
+        Equal(DoctorStatus.Failure, Check(InspectTarget(csWebUi, "osx-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
         Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi with { Host = RunicViewsHost.Unknown }, "linux-x64",
             new FakeDoctorRuntime(authority.Toolchain)), "target-presentation").Status);
     }

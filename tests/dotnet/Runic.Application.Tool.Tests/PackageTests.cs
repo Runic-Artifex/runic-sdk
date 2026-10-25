@@ -228,8 +228,8 @@ internal sealed partial class ToolTests
     {
         SequenceEqual(["win-x64"], PackageApplication.ResolveRuntimes(new PackageOptions(PackageTarget.Windows), "win", "x64"));
         SequenceEqual(["osx-arm64"], PackageApplication.ResolveRuntimes(new PackageOptions(PackageTarget.MacOS), "osx", "arm64"));
-        SequenceEqual(["osx-arm64", "osx-x64"], PackageApplication.ResolveRuntimes(
-            new PackageOptions(PackageTarget.MacOS) { Runtimes = PackageOptions.ParseRuntimes("osx-arm64, osx-x64,osx-arm64") }, "osx", "arm64"));
+        SequenceEqual(["osx-arm64"], PackageApplication.ResolveRuntimes(
+            new PackageOptions(PackageTarget.MacOS) { Runtimes = PackageOptions.ParseRuntimes("osx-arm64, osx-arm64") }, "osx", "arm64"));
         SequenceEqual(["win-arm64"], PackageApplication.ResolveRuntimes(
             new PackageOptions(PackageTarget.Windows) { Runtimes = ["win-arm64"] }, "win", "x64"));
         foreach ((PackageOptions options, string host) in new[]
@@ -238,10 +238,17 @@ internal sealed partial class ToolTests
             (new PackageOptions(PackageTarget.MacOS), "win"),
             (new PackageOptions(PackageTarget.Windows) { Runtimes = ["linux-x64"] }, "win"),
             (new PackageOptions(PackageTarget.Windows) { Runtimes = ["win-x64", "win-arm64"] }, "win"),
+            // Intel Macs are not a Runic target: no osx-x64 bundle, and no universal one (0.11 made it with lipo).
+            (new PackageOptions(PackageTarget.MacOS) { Runtimes = PackageOptions.ParseRuntimes("osx-arm64,osx-x64") }, "osx"),
+            (new PackageOptions(PackageTarget.MacOS) { Runtimes = ["osx-x64"] }, "osx"),
+            (new PackageOptions(PackageTarget.MacOS), "osx"),
         })
         {
             Equal(PackageCodes.WrongOperatingSystem, Throws<DevUsageException>(() => PackageApplication.ResolveRuntimes(options, host, "x64")).Code);
         }
+        string intel = Throws<DevUsageException>(() => PackageApplication.ResolveRuntimes(new PackageOptions(PackageTarget.MacOS), "osx", "x64")).Message;
+        Contains(intel, "Intel Macs");
+        Contains(intel, "Publish for osx-arm64.");
         Equal("RAPPCLI1011", Throws<DevUsageException>(() => PackageApplication.ResolveRuntimes(
             new PackageOptions(PackageTarget.Windows) { Runtimes = ["Windows X64"] }, "win", "x64")).Code);
     }
@@ -256,7 +263,7 @@ internal sealed partial class ToolTests
         foreach (string option in new[] { "--project", "--configuration", "--runtime", "--output-directory", "-o", "--publisher", "--certificate", "--thumbprint", "--timestamp-url" })
             Contains(windows, option);
         (_, string macos) = RunCli("package", "macos", "--help");
-        foreach (string option in new[] { "--sign", "--notary-profile", "osx-arm64,osx-x64" })
+        foreach (string option in new[] { "--sign", "--notary-profile", "osx-arm64" })
             Contains(macos, option);
         (int completionExit, string completion) = RunCli("completion", "bash");
         Equal(0, completionExit);

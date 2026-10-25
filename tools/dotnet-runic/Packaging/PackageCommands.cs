@@ -42,7 +42,7 @@ internal static class PackageCommands
         }, cancellationToken);
 
     [Command("package macos", Description = "Package the application as an .app bundle in a disk image. Runs on macOS.",
-        Examples = ["dotnet runic package macos", "dotnet runic package macos --runtime osx-arm64,osx-x64",
+        Examples = ["dotnet runic package macos",
             "dotnet runic package macos --sign \"Developer ID Application: Example Ltd (TEAMID)\" --notary-profile notary"])]
     [CommandResult(PackageCommandResult.PayloadType, typeof(PackageCommandJsonContext))]
     internal static Task<CommandOutcome<PackageCommandResult>> MacOS(
@@ -50,7 +50,7 @@ internal static class PackageCommands
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = ConfigurationDescription)] string configuration = "Release",
-        [Option("--runtime", "--rid", "-r", Description = RuntimeDescription + " Separate two with a comma, osx-arm64,osx-x64, for a universal bundle.")] string runtime = "",
+        [Option("--runtime", "--rid", "-r", Description = RuntimeDescription + " Runic supports osx-arm64 (Apple silicon) only.")] string runtime = "",
         [Option("--output-directory", "-o", Description = OutputDescription)] string outputDirectory = "",
         [Option("--sign", ValueName = "IDENTITY", Description = "Sign with this Developer ID Application identity from the keychain instead of ad hoc.")] string sign = "",
         [Option("--notary-profile", ValueName = "NAME", Requires = ["sign"], Description = "Notarize and staple the disk image with this notarytool keychain profile.")] string notaryProfile = "") =>
