@@ -18,15 +18,20 @@ releases and their evidence remain historical records.
 5. The workflow finds the successful CI run of the dispatched commit, downloads
    its `runic-sdk-<run id>` package artifact, verifies the inventory against the
    requested version and commit, attests their build provenance and SBOM, publishes
-   those exact packages, creates the GitHub prerelease with generated change notes, a
-   package bundle, a CycloneDX SBOM and one checksum file, and moves npm `latest`.
+   those exact packages, creates the GitHub release with generated change notes, a
+   package bundle, a CycloneDX SBOM and one checksum file, and moves npm `latest`
+   when the version may have it (see [npm and GitHub release channels](#npm-and-github-release-channels)).
+   The release is a GitHub prerelease for `0.y.z` and every prerelease version
+   (`1.0.0-rc.N`); a stable version from `1.0.0` is a full release.
 6. Wait for the run's `indexed` job: it ends once nuget.org lists every NuGet package
    of the release, which can take up to an hour after the push. Until then a restore of
    the new version fails with NU1102, so push the post-release commit after it. Then
    move each library's `PublicAPI.Unshipped.txt` entries into
    `PublicAPI.Shipped.txt`. A `*REMOVED*` entry is not moved: delete it together
    with the Shipped line it names. Then set `RunicPackageValidationBaselineVersion`
-   in `eng/Versions.props` to the published version, and
+   in `eng/Versions.props` to the published version (from 1.0 only to a stable
+   version: after `1.0.0-rc.N` it stays at the last stable release, see
+   [Release candidates and 1.0.0](#release-candidates-and-100)), and
    `RunicCsWebUiPackageValidationBaselineVersion` to the version
    `Runic.Application.Views.CsWebUi` was published as, then delete the
    `CompatibilitySuppressions.xml` files, which describe breaks from the old baseline.
@@ -160,10 +165,11 @@ Commit the next preview version first; a dry run is meaningful from then on.
 Keep the existing `preview` environment and trusted publishers for
 `Runic-Artifex/runic-sdk`, workflow `publish-preview.yml`, environment `preview`.
 NuGet uses `NuGet/login` and `vars.NUGET_USER` (the profile username); npm publishes
-through OIDC with the `preview` tag. Until 1.0, every release is a preview, so after the
-GitHub release the workflow moves npm `latest` to it, never to an older version.
+through OIDC with the `preview` tag, and after the GitHub release the workflow may move
+npm `latest` (see [npm and GitHub release channels](#npm-and-github-release-channels)).
 Each npm trusted publisher therefore also needs **Allow npm dist-tag** enabled.
-The filename is retained so installed trusted-publisher registrations keep working.
+The filename is retained so installed trusted-publisher registrations keep working;
+1.0.0 and later stable releases are published by the same `publish-preview.yml`.
 A new npm package name may still need its trusted publisher configured; a new NuGet
 package ID must be covered by the NuGet policy (see
 [New NuGet package IDs](#new-nuget-package-ids)). That is account setup, not a
@@ -197,6 +203,7 @@ bun run test eng/release/contracts.test.mjs
 bun run test eng/release/workflow.test.mjs
 bun test eng/release/nuget-policy.test.mjs
 bun test eng/release/github.test.mjs eng/release/sbom.test.mjs
+bun test eng/version.test.mjs
 bun run test eng/release/ci-run.test.mjs
 bun test eng/release/template-locks.test.mjs
 ```
@@ -247,6 +254,70 @@ Pushing a throwaway package to probe the key would itself publish, and a step af
 `NuGet/login` could only try the real push. Keep the mirror in step when the policy
 changes.
 
+## npm and GitHub release channels
+
+The version alone decides where a release goes (`latestEligible` in `registry.mjs`,
+`githubPrerelease` in `tags.mjs`; `workflow.test.mjs` and `github.test.mjs` pin them):
+
+| Version | Example | npm `preview` | npm `latest` | GitHub release |
+| --- | --- | --- | --- | --- |
+| `0.y.z` (any 0.x version) | `0.11.0` | yes | moves to it if higher | prerelease |
+| prerelease from 1.0 | `1.0.0-rc.1`, `1.1.0-preview.1` | yes | unchanged | prerelease |
+| stable from 1.0 | `1.0.0`, `1.0.1` | yes | moves to it if higher | release (not a prerelease) |
+
+Every npm package is published with `--tag preview`, so `preview` always names the
+newest publication, and `tag-latest` then moves `latest` only to an eligible, higher
+version, never backwards on a late rerun. During the release candidates npm `latest`
+therefore stays at 0.11.0 until 1.0.0 is published (D043.5), as NuGet clients skip
+prereleases by default. The **Check requested version** step accepts any SemVer
+version without build metadata that `eng/workspace.json` commits: `0.y.z`, a
+prerelease such as `1.0.0-rc.1`, or a stable `x.y.z`.
+
+## Release candidates and 1.0.0
+
+1.0.0 follows `1.0.0-rc.N` (D026.5, D028.6). Each rc, and 1.0.0 itself, is a routine
+release with these differences:
+
+1. `bun run version:bump 1.0.0-rc.N` (then `1.0.0`). `Runic.Application.Views.CsWebUi`
+   stays a prerelease with its own counter (D043.6): `1.0.0-preview.N` would sort
+   below `1.0.0-rc.N`, so it keeps the `preview` label throughout. Its version is
+   always `<train major.minor.patch>-preview.N` (`bun eng/version.mjs check` enforces
+   it), and `version:bump` advances it to the next `-preview.N` of the new train
+   version, starting at `-preview.1` on a new major.minor.patch:
+
+   | Release train | `Runic.Application.Views.CsWebUi` |
+   | --- | --- |
+   | 0.11.0 | 0.11.0-preview.1 |
+   | 1.0.0-rc.1 | 1.0.0-preview.1 |
+   | 1.0.0-rc.2 | 1.0.0-preview.2 |
+   | 1.0.0 | 1.0.0-preview.3 (one more than the last rc) |
+   | 1.0.1 | 1.0.1-preview.1 |
+
+   `--cswebui <version>` sets another `-preview.N` of the same major.minor.patch, for
+   example to skip a number that was published by mistake.
+2. Package validation runs without `CompatibilitySuppressions.xml`: an rc takes no API
+   or behaviour changes. In the dry run of an rc, `tag-latest` reports
+   `1.0.0-rc.N is a prerelease: npm latest stays where it is` and `github.mjs release`
+   `Would create the prerelease`; for 1.0.0 they report
+   `Would move <package> latest from 0.11.0 to 1.0.0` and `Would create the release`.
+3. After each rc, move any `PublicAPI.Unshipped.txt` entries to Shipped as in step 6
+   (only rc.1 may have some), but leave `RunicPackageValidationBaselineVersion` at the
+   last stable release, 0.11.0: from 1.0 the baseline is never a prerelease, and
+   `bun eng/version.mjs check` fails once the train is 1.0 or later and the baseline
+   has a prerelease suffix. `RunicCsWebUiPackageValidationBaselineVersion` moves to
+   the published CsWebUi version as before.
+4. After 1.0.0 (the train Command Line → Translations → Runic SDK has finished):
+   - set `RunicPackageValidationBaselineVersion` to `1.0.0` and
+     `RunicCsWebUiPackageValidationBaselineVersion` to the published CsWebUi version;
+   - every `PublicAPI.Unshipped.txt` is empty, its entries in `PublicAPI.Shipped.txt`;
+   - delete every `CompatibilitySuppressions.xml`: from now on one is allowed only as
+     [Enforcement](#enforcement) describes;
+   - remove the pre-1.0 wording: "Until 1.0" in [`SECURITY.md`](../../SECURITY.md) and in
+     this guide ([Publishing setup and retries](#publishing-setup-and-retries),
+     [Versioning and support from 1.0](#versioning-and-support-from-10) and
+     [Version numbers](#version-numbers)), keeping the rules that hold from 1.0;
+   - refresh the docs catalog and deploy the site with the maintainer's approval.
+
 ## After publication: docs catalog
 
 The release workflow does not push to other repositories. After publication,
@@ -278,9 +349,9 @@ same policy.
   a patch release only fixes.
 - All packages of one repository share its version (`eng/workspace.json` here).
 - From 1.0, previews of the next version, `x.y.0-preview.N` or `x.y.0-rc.N`, remain
-  possible. They go to the npm `preview` dist-tag, and npm `latest` moves only to
-  stable versions; until 1.0 it moves to every `0.y.z` release (see
-  [Publishing setup and retries](#publishing-setup-and-retries)).
+  possible, starting with `1.0.0-rc.N`. They go to the npm `preview` dist-tag, and npm
+  `latest` moves only to stable versions; until 1.0 it moves to every `0.y.z` release
+  (see [npm and GitHub release channels](#npm-and-github-release-channels)).
 - APIs marked `[Experimental]` and the preview package (see
   [Package tiers](#package-tiers)) are outside these rules.
 
@@ -536,12 +607,13 @@ requirement, not a consumer one.
   a minor release; graduation moves an export to the root entry. No npm API is
   experimental since 0.10.0, which removed every `./experimental` entry.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
-  depends on the prerelease `CsWebUi`, so it ships with each stable release on a
-  prerelease version and may change in any release. `RunicCsWebUiPackageVersion`
-  in `eng/Versions.props` sets that version (the release train's until they
-  differ); the `runic-app` template's `--host cswebui` references it.
-  `bun run version:bump <version> --cswebui <cswebui-version>` sets the two
-  versions separately.
+  depends on the prerelease `CsWebUi`, so it ships with each release on a
+  prerelease version, `<release major.minor.patch>-preview.N` with a counter of its
+  own, and may change in any release. `RunicCsWebUiPackageVersion` in
+  `eng/Versions.props` sets that version; the `runic-app` template's
+  `--host cswebui` references it. `bun run version:bump <version>` advances it, and
+  `--cswebui <cswebui-version>` sets it explicitly (see
+  [Release candidates and 1.0.0](#release-candidates-and-100)).
 
 ### Deprecation
 

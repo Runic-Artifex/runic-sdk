@@ -11,10 +11,17 @@
 // A NuGet package listed in `separateVersions` may ship on a version of its own:
 // its eng/workspace.json entry has a "version" right after "name" (absent means
 // the train version), and eng/Versions.props carries a literal copy in the listed
-// property. `packageVersion` gives the version of any package. `bump <version>`
-// moves such a package with the train while their versions are equal and leaves
-// it otherwise; `bump <version> --cswebui <cswebui-version>` sets the
-// Runic.Application.Views.CsWebUi version explicitly.
+// property. `packageVersion` gives the version of any package. Such a version is
+// `<train major.minor.patch>-preview.N`: Runic.Application.Views.CsWebUi stays a
+// prerelease (D026.4) and keeps its own counter through 1.0.0-rc.N and 1.0.0
+// (D043.6), because `1.0.0-preview.N` would sort below `1.0.0-rc.N`.
+// `bump <version>` advances it to the next `-preview.N` of the new train version
+// (`-preview.1` on a new major.minor.patch); `bump <version> --cswebui
+// <cswebui-version>` sets it explicitly.
+//
+// From 1.0 (including 1.0.0-rc.N) RunicPackageValidationBaselineVersion is a stable
+// version: package validation compares with the latest stable release, never a
+// prerelease (eng/release/README.md, Enforcement).
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -32,6 +39,15 @@ const viewsVersion = /^(export const viewsVersion = ")([^"]*)(";)$/m;
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
 // The eng/Versions.props property that carries each separately versioned package's version.
 export const separateVersions = { "Runic.Application.Views.CsWebUi": "RunicCsWebUiPackageVersion" };
+const baselineVersion = /(<RunicPackageValidationBaselineVersion>)([^<]*)(<\/RunicPackageValidationBaselineVersion>)/;
+const core = version => version.split(/[-+]/)[0];
+const ownVersion = train => new RegExp(`^${escapeRegExp(core(train))}-preview\\.[1-9][0-9]*$`);
+// The next -preview.N of a separately versioned package for a new train version.
+export function nextSeparateVersion(current, previousTrain, train) {
+  if (train === previousTrain) return current;
+  const counter = core(current) === core(train) ? Number(/-preview\.([0-9]+)$/.exec(current)?.[1] ?? 0) : 0;
+  return `${core(train)}-preview.${counter + 1}`;
+}
 const propertyVersion = property => new RegExp(`(<${property}\\b[^>]*>)([^<]*)(</${property}>)`);
 const entryVersion = name => new RegExp(`("name": "${escapeRegExp(name)}",\\s*"version": ")([^"]*)(")`);
 const findEntry = (workspace, name) => [...workspace.nuget ?? [], ...workspace.npm ?? []]
@@ -120,8 +136,13 @@ export function checkVersions(files) {
   for (const entry of (workspace.nuget ?? []).filter(entry => entry.version !== undefined)) {
     assert(Object.hasOwn(separateVersions, entry.name), `${entry.name} has a version of its own but no eng/Versions.props property in eng/version.mjs separateVersions`);
     assert.match(entry.version, versionPattern, `${entry.name} version in eng/workspace.json is not a SemVer version`);
+    assert.match(entry.version, ownVersion(authority), `${entry.name} ${entry.version}: a package with a version of its own ships as ${core(authority)}-preview.N with the release train ${authority}`);
     single(files["eng/workspace.json"], entryVersion(entry.name), `"version" right after "name" in the ${entry.name} entry`);
   }
+  // From 1.0 package validation compares with a stable release, never a prerelease such as 1.0.0-rc.1.
+  const baseline = /^0\./.test(authority) ? undefined : files["eng/Versions.props"].match(baselineVersion)?.[2];
+  if (baseline !== undefined)
+    assert.doesNotMatch(baseline, /-/, `RunicPackageValidationBaselineVersion ${baseline} is a prerelease; from 1.0 it stays at the latest stable release`);
   for (const [path, { value, expected }] of Object.entries(versionCopies(files)))
     assert.equal(value, expected, `${path} has ${value}; eng/workspace.json has ${expected}. Run ${isNugetLock(path.split(" ")[0]) ? "bun run lock:nuget" : `bun run version:bump ${authority}`}`);
   return authority;
@@ -139,9 +160,9 @@ export function bumpVersionFiles(files, version, packageVersions = {}) {
     assert.match(separate ?? "", versionPattern, `${name} version is not a SemVer version`);
     assert.notEqual(findEntry(before, name)?.version, undefined, `Add "version" after "name" to the ${name} entry in eng/workspace.json`);
   }
-  // A separate version moves with the train while they are equal; an absent one follows it implicitly.
+  // A separate version advances to the next -preview.N of the new train; an absent one follows the train implicitly.
   for (const entry of (before.nuget ?? []).filter(entry => entry.version !== undefined)) {
-    const target = packageVersions[entry.name] ?? (entry.version === previous ? version : entry.version);
+    const target = packageVersions[entry.name] ?? nextSeparateVersion(entry.version, previous, version);
     workspaceText = replaceVersion(workspaceText, entryVersion(entry.name), target);
   }
   const after = JSON.parse(workspaceText);
@@ -188,7 +209,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     execFileSync(process.execPath, ["install", "--lockfile-only"], { cwd: root, stdio: "inherit" });
     assert.equal(checkVersions(readVersionFiles()), version, "bun install --lockfile-only changed a version copy");
     execFileSync(process.execPath, [resolve(root, "tools/dotnet-runic/metadata/generate.mjs"), "--write"], { stdio: "inherit" });
-    console.log(`Set the release-train version to ${version}. Record user-facing changes in eng/release/notes/${version}.md; RunicPackageValidationBaselineVersion stays at the last published release.`);
+    const workspace = JSON.parse(readFileSync(resolve(root, "eng/workspace.json"), "utf8"));
+    const separate = Object.keys(separateVersions).filter(name => packageVersion(workspace, name) !== version)
+      .map(name => ` ${name} is ${packageVersion(workspace, name)}.`).join("");
+    console.log(`Set the release-train version to ${version}.${separate} Record user-facing changes in eng/release/notes/${version}.md; RunicPackageValidationBaselineVersion stays at the last published release (from 1.0, the last stable one).`);
   } else {
     throw new Error(usage);
   }

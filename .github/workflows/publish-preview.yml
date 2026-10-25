@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Preview version committed in eng/workspace.json
+        description: Version committed in eng/workspace.json (0.y.z, x.y.z-rc.N or a stable x.y.z from 1.0.0)
         required: true
         type: string
       dry-run:
@@ -31,14 +31,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check requested preview version
+      - name: Check requested version
         env:
           VERSION: ${{ inputs.version }}
         run: |
           committed=$(node -p 'require("./eng/workspace.json").version')
-          # A preview is any 0.y.z release or a prerelease of a later version (eng/release/README.md).
-          if [[ "$committed" != "$VERSION" || ! "$committed" =~ ^(0\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+)$ ]]; then
-            echo "Commit the requested preview version before publishing" >&2
+          # Any SemVer version without build metadata: a 0.y.z preview, a prerelease such as
+          # 1.0.0-rc.1, or a stable release from 1.0.0 (eng/release/README.md).
+          if [[ "$committed" != "$VERSION" || ! "$committed" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Commit the requested version before publishing" >&2
             exit 1
           fi
       - name: Find the successful CI run for this commit
@@ -185,11 +186,13 @@ jobs:
         env:
           NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
         run: bun eng/release/cli.mjs publish artifacts/packages artifacts/release/packages.json
-      - name: Create GitHub prerelease
+      # A prerelease before 1.0 and for every x.y.z-rc.N; a stable version from 1.0.0 is a full release.
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun eng/release/github.mjs release artifacts/release
-      - name: Move npm latest to this preview
+      # Only a stable version or a 0.y.z preview moves latest; 1.0.0-rc.N stays on the preview dist-tag.
+      - name: Move npm latest to this release
         run: bun eng/release/cli.mjs tag-latest artifacts/release/packages.json
       - name: Note the documentation catalog step
         env:

@@ -6,17 +6,19 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { REPOSITORY, VERSION, sha256 } from './artifacts.mjs';
 import { packageVersion } from '../version.mjs';
-import { tagCommit, releaseFor } from './tags.mjs';
+import { tagCommit, releaseFor, githubPrerelease } from './tags.mjs';
 // describe <packages> <release>: writes the release assets locally (no network): the package
 //   bundle, a CycloneDX SBOM of the packages and SHA256SUMS. Both are deterministic for a commit.
 // release <release> [--dry-run]: checks that the tag and any existing release belong to this
-//   source, then (not in a dry run) creates or resumes the prerelease with those assets.
+//   source, then (not in a dry run) creates or resumes the release with those assets, marked as
+//   a prerelease unless the version is stable and at least 1.0.0 (githubPrerelease).
 const dryRun = process.argv.includes('--dry-run');
 const [command, ...args] = process.argv.slice(2).filter(arg => arg !== '--dry-run');
 const source = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
 const tag = `v${VERSION}`;
 const archive = `runic-sdk-${VERSION}-packages.tar.gz`, sbom = `runic-sdk-${VERSION}.cdx.json`, sums = 'SHA256SUMS';
 const assets = [archive, sbom, sums];
+const prerelease = githubPrerelease(VERSION);
 if (command === 'describe' && args.length === 2 && !dryRun) {
   const [packages, output] = args.map(path => resolve(path));
   const epoch = execFileSync('git', ['show', '-s', '--format=%ct', source], {encoding: 'utf8'}).trim();
@@ -50,15 +52,16 @@ if (release && !release.isDraft) {
   if (release) assert.equal(release.targetCommitish, source, 'Existing draft belongs to different source');
   if (tagged !== undefined) assert.equal(tagged, source, 'Tag belongs to different source');
   for (const name of assets) assert(existsSync(join(directory, name)), `Missing ${name}; run github.mjs describe first`);
+  const kind = prerelease ? 'prerelease' : 'release';
   if (dryRun) {
-    console.log(`Would ${release ? 'resume the draft' : 'create the prerelease'} ${tag} at ${source} with ${assets.join(', ')}.`);
+    console.log(`Would ${release ? 'resume the draft' : `create the ${kind}`} ${tag} at ${source} with ${assets.join(', ')}.`);
     process.exit(0);
   }
   const notes = resolve('eng', 'release', 'notes', `${VERSION}.md`);
   const noteArguments = existsSync(notes) ? ['--notes-file', notes]
     : ['--notes', `Install matching ${VERSION} packages from NuGet and npm. See the repository README for getting started.`];
   if (!release) gh(['release', 'create', tag, '--repo', REPOSITORY, '--target', source, '--title', `Runic SDK ${VERSION}`,
-    '--generate-notes', ...noteArguments, '--prerelease', '--draft']);
+    '--generate-notes', ...noteArguments, ...(prerelease ? ['--prerelease'] : []), '--draft']);
   // Upload while still a draft, so retries can finish an interrupted upload
   // before GitHub makes an immutable public release.
   gh(['release', 'upload', tag, '--repo', REPOSITORY, '--clobber', ...assets.map(name => join(directory, name))]);

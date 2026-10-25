@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authority, scan, json, sha256, validateCandidate, VERSION, REPOSITORY } from './artifacts.mjs';
-import { registryMatches, needsLatest, npmLatest, waitForNuget } from './registry.mjs';
+import { registryMatches, needsLatest, latestEligible, npmLatest, waitForNuget } from './registry.mjs';
 import { publishMissing } from './nuget-policy.mjs';
 import { runChecked } from './process.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -56,7 +56,9 @@ else if (command === 'registry') {
 } else if (command === 'tag-latest') {
   const candidate = json(args[0]); validateCandidate(candidate);
   if (!dryRun) assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
-  for (const p of candidate.packages.filter(p => p.registry === 'npm')) {
+  // A prerelease from 1.0 (1.0.0-rc.1) stays on the preview dist-tag that publish gave it.
+  if (!latestEligible(VERSION)) console.log(`${VERSION} is a prerelease: npm latest stays where it is; ${VERSION} is on the preview dist-tag`);
+  else for (const p of candidate.packages.filter(p => p.registry === 'npm')) {
     // A dry run precedes publication, so a package without dist-tags is simply not published yet.
     const current = await npmLatest(p.name, {waitForAvailability: !dryRun});
     if (!needsLatest(current, VERSION)) console.log(`Keeping ${p.name} latest at ${current}`);

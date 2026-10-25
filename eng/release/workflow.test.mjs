@@ -1,5 +1,8 @@
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 const workflow = name => Bun.YAML.parse(readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8'));
 const runs = job => job.steps.filter(s => s.run).map(s => s.run).join('\n');
 test('publication reuses the package artifact of the successful CI push run without rerunning CI', () => {
@@ -108,8 +111,8 @@ test('a job after publish waits for nuget.org to list the packages without holdi
   expect(indexed['timeout-minutes']).toBeGreaterThan(60);
   expect(runs(publish)).not.toContain('wait-indexed');
 });
-test('npm latest follows the preview after its GitHub release, never backwards', async () => {
-  const { needsLatest } = await import('./registry.mjs');
+test('npm latest follows a 0.y.z preview or a stable release after its GitHub release, never backwards or to an rc (D043.5)', async () => {
+  const { needsLatest, latestEligible } = await import('./registry.mjs');
   const steps = workflow('publish-preview.yml').jobs.publish.steps;
   expect(steps.findIndex(s => s.run?.includes('github.mjs'))).toBeLessThan(steps.findIndex(s => s.run?.includes('cli.mjs tag-latest')));
   expect(needsLatest(undefined, '0.6.0-preview.1')).toBe(true);
@@ -117,6 +120,39 @@ test('npm latest follows the preview after its GitHub release, never backwards',
   expect(needsLatest('0.6.0-preview.1', '0.6.0-preview.2')).toBe(true);
   expect(needsLatest('0.6.0-preview.1', '0.6.0-preview.1')).toBe(false);
   expect(needsLatest('0.7.0-preview.1', '0.6.0-preview.2')).toBe(false);
+  expect(needsLatest('0.10.0', '0.11.0')).toBe(true);
+  // From 1.0 a prerelease stays on the preview dist-tag; latest moves only to stable versions.
+  expect(needsLatest('0.11.0', '1.0.0-rc.1')).toBe(false);
+  expect(needsLatest('0.11.0', '1.0.0-rc.2')).toBe(false);
+  expect(needsLatest(undefined, '1.0.0-rc.1')).toBe(false);
+  expect(needsLatest('0.11.0', '1.0.0')).toBe(true);
+  expect(needsLatest('1.0.0-rc.2', '1.0.0')).toBe(true);
+  expect(needsLatest('1.0.0', '1.0.0')).toBe(false);
+  expect(needsLatest('1.0.0', '1.0.1-rc.1')).toBe(false);
+  expect(needsLatest('1.0.0', '1.1.0-preview.1')).toBe(false);
+  expect(needsLatest('1.0.0', '1.0.1')).toBe(true);
+  expect(needsLatest('1.0.0', '1.1.0')).toBe(true);
+  expect(needsLatest('1.1.0', '1.0.1')).toBe(false);
+  expect(['0.11.0', '0.6.0-preview.1', '1.0.0', '2.3.4'].every(latestEligible)).toBe(true);
+  expect(['1.0.0-rc.1', '1.0.0-preview.1', '2.0.0-rc.1+build.5'].some(latestEligible)).toBe(false);
+});
+// Runs the preflight version check, as the workflow does, over a checkout that commits `committed`.
+function versionCheck(committed, requested) {
+  const step = workflow('publish-preview.yml').jobs.preflight.steps.find(s => s.name === 'Check requested version');
+  const directory = mkdtempSync(join(tmpdir(), 'runic-version-check-'));
+  try {
+    mkdirSync(join(directory, 'eng'));
+    writeFileSync(join(directory, 'eng/workspace.json'), JSON.stringify({version: committed}));
+    return spawnSync('bash', ['-e', '-c', step.run], {cwd: directory, encoding: 'utf8', env: {...process.env, VERSION: requested}}).status;
+  } finally { rmSync(directory, {recursive: true, force: true}); }
+}
+test('the workflow publishes 0.y.z previews, prereleases such as 1.0.0-rc.1 and stable versions from 1.0.0', () => {
+  for (const version of ['0.11.0', '0.6.0-preview.1', '1.0.0-rc.1', '1.0.0', '1.0.1', '1.1.0-preview.2', '10.20.30'])
+    expect([version, versionCheck(version, version)]).toEqual([version, 0]);
+  for (const version of ['1.0', 'v1.0.0', '01.0.0', '1.0.0+build.1', '1.0.0-', '1.0.0-rc_1'])
+    expect([version, versionCheck(version, version)]).toEqual([version, 1]);
+  expect(versionCheck('1.0.0-rc.1', '1.0.0')).toBe(1);
+  expect(versionCheck('1.0.0', '1.0.0-rc.1')).toBe(1);
 });
 test('every publishing workflow waits in one fixed concurrency group, so publications never overlap', () => {
   const names = readdirSync(new URL('../../.github/workflows/', import.meta.url)).filter(name => /\.ya?ml$/.test(name));
