@@ -176,15 +176,37 @@ internal sealed partial class MacAppKitNativeTests
         var waited = System.Diagnostics.Stopwatch.StartNew();
         bool running = false, finished = false;
         long policy = -1;
-        await MacOsMainQueue.InvokeAsync(() =>
+        var ready = MacOsMainQueue.InvokeAsync(() =>
         {
             var application = Send(Class("NSApplication"), Sel("sharedApplication"));
             running = Bool(application, Sel("isRunning")) != 0;
             finished = Bool(Send(Class("NSRunningApplication"), Sel("currentApplication")), Sel("isFinishedLaunching")) != 0;
             policy = Send(application, Sel("activationPolicy"));
-        }).AsTask().WaitAsync(TimeSpan.FromSeconds(90));
+        }).AsTask();
+        if (await Task.WhenAny(ready, Task.Delay(TimeSpan.FromSeconds(20))) != ready)
+        {
+            // Where the main thread is instead: sample(1) prints every thread's stack.
+            Console.WriteLine($"main thread: no queued work ran within 20 s; sampling process {Environment.ProcessId}");
+            Console.WriteLine(await SampleAsync());
+        }
+        await ready.WaitAsync(TimeSpan.FromSeconds(70));
         Console.WriteLine($"main thread: first queued work ran after {waited.ElapsedMilliseconds} ms; isRunning={running}, " +
             $"isFinishedLaunching={finished}, activationPolicy={policy}");
+    }
+
+    private static async Task<string> SampleAsync()
+    {
+        try
+        {
+            using var sample = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/bin/sample",
+                [Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), "1", "-mayDie"])
+            { RedirectStandardOutput = true, RedirectStandardError = true })!;
+            var output = sample.StandardOutput.ReadToEndAsync();
+            var error = sample.StandardError.ReadToEndAsync();
+            await sample.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            return await output + await error;
+        }
+        catch (Exception failure) { return $"sample failed: {failure.Message}"; }
     }
 
     private static async Task StatusItemAsync()

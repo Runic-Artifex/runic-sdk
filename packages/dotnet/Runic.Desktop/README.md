@@ -47,7 +47,9 @@ yourself. Hosts created with `DesktopHost.StartAsync` do not handle signals.
 On macOS, `DesktopEventLoop.Run` (both overloads) creates the shared
 `NSApplication` and sets Runic's application delegate before the application's
 code runs. The process main thread then runs AppKit's own loop (`[NSApp run]`),
-which sends `finishLaunching` once, and sleeps while nothing happens. The
+which sends `finishLaunching` once, and sleeps while nothing happens. A process
+outside an application bundle launches as an accessory application, without a
+Dock icon, until its first window opens. The
 application's code runs on the thread pool. Runic's main-thread work (window
 calls, `DesktopWindow.InvokeNativeAsync`, monitors, menus and the
 `Runic.Platform.MacOS` services) goes through the main dispatch queue, which

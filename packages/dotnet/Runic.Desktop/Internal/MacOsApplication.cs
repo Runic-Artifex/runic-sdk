@@ -23,6 +23,7 @@ internal static unsafe partial class MacOsApplication
     // Events kept while no open requests are attached; a later one is dropped.
     internal const int MaximumBuffered = 64;
     private const ulong EventTypeApplicationDefined = 15;
+    private const nint ActivationPolicyAccessory = 1, ActivationPolicyProhibited = 2;
     private static readonly TimeSpan StopRetry = TimeSpan.FromMilliseconds(100);
 
     private static readonly Lock Gate = new();
@@ -55,6 +56,12 @@ internal static unsafe partial class MacOsApplication
             // NSApplication does not retain its delegate; this one lives for the process.
             Volatile.Write(ref s_delegate, Send(Send(type, Sel("alloc")), Sel("init")));
         }
+        // An unbundled process starts with the prohibited activation policy. It launches as an accessory application,
+        // without a Dock icon, as Runic.Platform.MacOS's windowless services and 0.11's first window launched it, until a
+        // window makes it a regular one. Under the prohibited policy the main queue went unserved in processes that .NET
+        // starts, such as test hosts and their child processes (finishLaunching is the suspect; not confirmed on hardware).
+        if (Send(application, Sel("activationPolicy")) == ActivationPolicyProhibited)
+            _ = Arg(application, Sel("setActivationPolicy:"), ActivationPolicyAccessory);
         // AppKit installs its own Apple event handlers when NSApp is created; these replace them.
         Arg(application, Sel("setDelegate:"), s_delegate);
         InstallEventHandlers();
