@@ -22,6 +22,11 @@ test("the template's packaging folder holds the manifests the command embeds, wi
   for (const file of files) assert.doesNotMatch(readFileSync(resolve(packaging, file), "utf8"), /package\.mjs/, file);
 });
 
+test("the template's flatpak manifest lets the app reach the global menu registrar", () => {
+  const manifest = readFileSync(resolve(packaging, "linux/flatpak.yml"), "utf8");
+  assert.match(manifest, /^  - --talk-name=com\.canonical\.AppMenu\.Registrar$/m);
+});
+
 test("the packaging probe declares what the template's packaging reads", () => {
   const probe = readFileSync(resolve(root, "tests/native/Runic.Packaging.Probe/Runic.Packaging.Probe.csproj"), "utf8");
   const template = readFileSync(resolve(packaging, "../RunicWindowApp.csproj"), "utf8");

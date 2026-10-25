@@ -355,6 +355,7 @@ internal static class FlathubPackager
         text.Append("command: ").Append(exe).Append('\n');
         text.Append("finish-args:\n  - --share=ipc\n  - --socket=wayland\n  - --socket=fallback-x11\n  - --device=dri\n");
         text.Append("  # Runic serves the page to the WebView over loopback.\n  - --share=network\n");
+        text.Append("  # The Linux global menu: KDE Plasma's menu registrar (Runic.Desktop, global-menu-permission).\n  - --talk-name=com.canonical.AppMenu.Registrar\n");
         text.Append("build-options:\n  append-path: /usr/lib/sdk/dotnet10/bin").Append(build.HasNpmSources ? ":/usr/lib/sdk/node24/bin" : "").Append('\n');
         text.Append("  append-ld-library-path: /usr/lib/sdk/dotnet10/lib\n");
         text.Append("  env:\n    DOTNET_CLI_TELEMETRY_OPTOUT: '1'\n    DOTNET_NOLOGO: '1'\n    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'\n");

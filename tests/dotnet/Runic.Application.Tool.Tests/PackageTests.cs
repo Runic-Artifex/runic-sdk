@@ -181,6 +181,8 @@ internal sealed partial class ToolTests
                         break;
                     case "linux/flatpak.yml":
                         True(Regex.IsMatch(text, "^app-id: org\\.example\\.Notes$", RegexOptions.Multiline), text);
+                        // Every generated manifest lets the app reach the global menu registrar, with or without a menu bar.
+                        Contains(text, "  - --talk-name=com.canonical.AppMenu.Registrar\n");
                         // Filled fields never land in the header comment, where a multi-line field breaks the YAML.
                         True(text.Split('\n').TakeWhile(line => !line.StartsWith("app-id:", StringComparison.Ordinal)).All(line => line.StartsWith('#')), text);
                         True(text.IndexOf("      - install", StringComparison.Ordinal) > text.IndexOf("build-commands:", StringComparison.Ordinal), text);
@@ -448,6 +450,7 @@ internal sealed partial class ToolTests
         foreach (string line in new[]
         {
             "app-id: org.example.Notes\n", "runtime: org.gnome.Platform\nruntime-version: '50'\nsdk: org.gnome.Sdk\n",
+            "  - --share=network\n  # The Linux global menu: KDE Plasma's menu registrar (Runic.Desktop, global-menu-permission).\n  - --talk-name=com.canonical.AppMenu.Registrar\n",
             "  - org.freedesktop.Sdk.Extension.dotnet10\n  - org.freedesktop.Sdk.Extension.node24\n",
             "append-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/node24/bin\n", "RUNIC_RUNTIME: linux-arm64\n",
             "cd ''src/Notes App/Frontend'' && npm ci --offline", "dotnet publish ''src/Notes App/Notes.csproj'' -c Release -r \"$RUNIC_RUNTIME\" -p:PublishAot=true -p:RuntimeFrameworkVersion=10.0.12 -p:RestoreLockedMode=true",
