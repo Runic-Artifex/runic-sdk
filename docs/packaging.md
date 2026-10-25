@@ -227,8 +227,9 @@ fork `flathub/flathub`, add the manifest directory on a branch from
 `new-pr`, and open a pull request. Flathub's review asks for a complete
 metainfo file (license, description, screenshots, release notes) and the
 narrowest `finish-args`; the manifest's `--share=network` is needed because
-Runic serves the page to the WebView over loopback, so explain it in the
-submission.
+Runic serves the page to the WebView over loopback, and its
+`--talk-name=com.canonical.AppMenu.Registrar` lets the Linux global menu reach
+KDE Plasma's menu registrar, so explain both in the submission.
 
 For a project without lock files, or with another package manager, generate
 the sources with [flatpak-builder-tools](https://github.com/flatpak/flatpak-builder-tools)

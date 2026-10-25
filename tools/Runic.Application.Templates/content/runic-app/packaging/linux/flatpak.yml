@@ -16,6 +16,8 @@ finish-args:
   - --device=dri
   # Runic serves the page to the WebView over loopback.
   - --share=network
+  # The Linux global menu: KDE Plasma's menu registrar (Runic.Desktop, global-menu-permission).
+  - --talk-name=com.canonical.AppMenu.Registrar
 modules:
   - name: application
     buildsystem: simple

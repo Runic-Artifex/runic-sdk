@@ -627,9 +627,9 @@ window, the window reports `global-menu-failed` (a warning, logged as event
 = false` always keeps the bar in the window; a custom window host receives it as
 `DesktopWindowHostOptions.GlobalMenu`.
 
-A Flatpak needs `--talk-name=com.canonical.AppMenu.Registrar` in its finish
-arguments; without it the registrar looks absent and the bar stays in the
-window. On KDE Plasma, a Flatpak without a visible registrar reports
+A Flatpak made by `dotnet runic package` includes `--talk-name=com.canonical.AppMenu.Registrar`
+in its finish arguments. A hand-written manifest needs it too; without it the
+registrar looks absent and the bar stays in the window. On KDE Plasma, a Flatpak without a visible registrar reports
 `global-menu-permission` once (a warning, logged as event 3015). No `--own-name`
 is needed: the global menu calls the application's unique bus name. On Wayland
 the compositor's protocol comes through the Wayland socket (`--socket=wayland`),
