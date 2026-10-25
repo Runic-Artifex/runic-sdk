@@ -4,6 +4,7 @@
        probe mode (README.md). macOS only. -->
   <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
     <InvariantGlobalization>true</InvariantGlobalization>
