@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { VERSION } from './artifacts.mjs';
+import { githubPrerelease } from './tags.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const source = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
 const ghScript = String.raw`
@@ -44,6 +45,7 @@ test('new release uploads the described bundle, SBOM and checksums', () => fixtu
   expect(result.status).toBe(0);
   const create = calls.find(args => args[0] === 'release' && args[1] === 'create');
   expect(create).toContain('--draft');
+  expect(create.includes('--prerelease')).toBe(githubPrerelease(VERSION));
   const upload = calls.find(args => args[1] === 'upload');
   expect(upload.slice(-3)).toEqual(assets.map(name => join(output, name)));
   expect(calls.at(-1)).toContain('--draft=false');
@@ -99,3 +101,10 @@ test('an annotated tag is followed to its commit', () => fixture('annotated', (r
   expect(calls.filter(args => args[0] === 'api').map(args => args[1])).toEqual(
     [`repos/Runic-Artifex/runic-sdk/git/ref/tags/v${VERSION}`, `repos/Runic-Artifex/runic-sdk/git/tags/${'e'.repeat(40)}`]);
 }, ['--dry-run']));
+
+test('GitHub marks 0.y.z and every prerelease version as a prerelease, and a stable version from 1.0.0 as a release', () => {
+  for (const version of ['0.11.0', '0.6.0-preview.1', '1.0.0-rc.1', '1.0.0-rc.12', '1.0.1-rc.1', '1.1.0-preview.1', '2.0.0-rc.1+build.5'])
+    expect([version, githubPrerelease(version)]).toEqual([version, true]);
+  for (const version of ['1.0.0', '1.0.1', '1.1.0', '2.0.0', '1.0.0+build.5'])
+    expect([version, githubPrerelease(version)]).toEqual([version, false]);
+});

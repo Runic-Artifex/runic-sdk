@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { nugetPackArguments, root } from "./run.mjs";
-import { bumpVersionFiles, checkVersions, packageVersion, readVersionFiles } from "./version.mjs";
+import { bumpVersionFiles, checkVersions, nextSeparateVersion, packageVersion, readVersionFiles } from "./version.mjs";
 
 const files = () => ({
   "eng/workspace.json": '{\n  "schemaVersion": 2,\n  "version": "0.6.0-preview.1",\n  "npm": [\n    { "name": "@runic-artifex/views", "path": "packages/web/views" },\n    { "name": "@runic-artifex/react", "path": "packages/web/react" }\n  ]\n}\n',
-  "eng/Versions.props": "<Project>\n  <PropertyGroup>\n    <RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>\n    <RunicPackageValidationBaselineVersion>0.6.0-preview.1</RunicPackageValidationBaselineVersion>\n  </PropertyGroup>\n</Project>\n",
+  "eng/Versions.props": "<Project>\n  <PropertyGroup>\n    <RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>\n    <RunicPackageValidationBaselineVersion>0.5.0</RunicPackageValidationBaselineVersion>\n  </PropertyGroup>\n</Project>\n",
   "bun.lock": '{\n  "lockfileVersion": 1,\n  "workspaces": {\n    "packages/web/views": {\n      "name": "@runic-artifex/views",\n      "version": "0.6.0-preview.1",\n    },\n    "packages/web/react": {\n      "name": "@runic-artifex/react",\n      "version": "0.6.0-preview.1",\n    },\n  },\n}\n',
   "packages/web/views/package.json": '{\n  "name": "@runic-artifex/views",\n  "version": "0.6.0-preview.1",\n  "devDependencies": { "typescript": "6.0.3" }\n}\n',
   "packages/web/views/src/version.ts": '// The release this package belongs to.\nexport const viewsVersion = "0.6.0-preview.1";\n',
@@ -47,7 +47,7 @@ test("a mismatched version copy fails", () => {
 test("version bump rewrites every copy and keeps the validation baseline", () => {
   const next = bumpVersionFiles(files(), "0.7.0-preview.1");
   assert.equal(checkVersions(next), "0.7.0-preview.1");
-  assert.match(next["eng/Versions.props"], /<RunicPackageValidationBaselineVersion>0\.6\.0-preview\.1</);
+  assert.match(next["eng/Versions.props"], /<RunicPackageValidationBaselineVersion>0\.5\.0</);
   assert.match(next["packages/web/views/src/version.ts"], /viewsVersion = "0\.7\.0-preview\.1"/);
   assert.match(next["packages/web/react/package.json"], /"react": "0\.6\.0-preview\.1"/, "external dependencies are untouched");
   assert.match(next["examples/app/packages.lock.json"], /"Runic\.Platform": "\[0\.7\.0-preview\.1, \)"/);
@@ -97,40 +97,64 @@ test("packageVersion gives a package's own version, else the release train", () 
 });
 
 test("check compares the CsWebUi copies with its own version", () => {
-  assert.equal(checkVersions(separateFiles("1.0.0-preview.1")), "0.6.0-preview.1");
+  assert.equal(checkVersions(separateFiles("0.6.0-preview.2")), "0.6.0-preview.1");
   assert.equal(checkVersions(separateFiles("0.6.0-preview.1", { workspaceEntry: null })), "0.6.0-preview.1");
   for (const [path, from, to] of [
-    ["eng/Versions.props", ">1.0.0-preview.1</RunicCsWebUiPackageVersion>", ">0.6.0-preview.1</RunicCsWebUiPackageVersion>"],
-    ["eng/Versions.props", ">1.0.0-preview.1</RunicCsWebUiPackageVersion>", ">$(RunicSdkVersion)</RunicCsWebUiPackageVersion>"],
-    ["examples/web/packages.lock.json", `"${cswebui}": "[1.0.0-preview.1, )"`, `"${cswebui}": "[0.6.0-preview.1, )"`],
-    ["eng/workspace.json", '"version": "1.0.0-preview.1"', '"version": "1.0"'],
-    ["eng/workspace.json", `"name": "${cswebui}", "version": "1.0.0-preview.1", "project": "packages/dotnet/${cswebui}/${cswebui}.csproj"`,
-      `"name": "${cswebui}", "project": "packages/dotnet/${cswebui}/${cswebui}.csproj", "version": "1.0.0-preview.1"`],
+    ["eng/Versions.props", ">0.6.0-preview.2</RunicCsWebUiPackageVersion>", ">0.6.0-preview.1</RunicCsWebUiPackageVersion>"],
+    ["eng/Versions.props", ">0.6.0-preview.2</RunicCsWebUiPackageVersion>", ">$(RunicSdkVersion)</RunicCsWebUiPackageVersion>"],
+    ["examples/web/packages.lock.json", `"${cswebui}": "[0.6.0-preview.2, )"`, `"${cswebui}": "[0.6.0-preview.1, )"`],
+    ["eng/workspace.json", '"version": "0.6.0-preview.2"', '"version": "1.0"'],
+    ["eng/workspace.json", `"name": "${cswebui}", "version": "0.6.0-preview.2", "project": "packages/dotnet/${cswebui}/${cswebui}.csproj"`,
+      `"name": "${cswebui}", "project": "packages/dotnet/${cswebui}/${cswebui}.csproj", "version": "0.6.0-preview.2"`],
     ["eng/workspace.json", '"name": "Runic.Platform",', '"name": "Runic.Platform", "version": "0.6.0-preview.1",'],
   ]) {
-    const value = separateFiles("1.0.0-preview.1");
+    const value = separateFiles("0.6.0-preview.2");
     assert.notEqual(value[path].replace(from, to), value[path], `${path}: ${from}`);
     value[path] = value[path].replace(from, to);
     assert.throws(() => checkVersions(value), undefined, `${path}: ${to}`);
   }
 });
 
-test("bump moves an equal CsWebUi version with the train, keeps a distinct one, and --cswebui sets it", () => {
+test("CsWebUi ships as <train major.minor.patch>-preview.N, also through 1.0.0-rc.N and 1.0.0 (D043.6)", () => {
+  // 1.0.0-preview.N sorts below 1.0.0-rc.N, so CsWebUi keeps one prerelease label of its own.
+  for (const invalid of ["0.7.0-preview.1", "0.6.0-rc.1", "0.6.0", "0.6.0-preview.0", "0.6.0-preview.1.1"])
+    assert.throws(() => checkVersions(separateFiles(invalid)), /ships as 0\.6\.0-preview\.N/, invalid);
+  assert.equal(nextSeparateVersion("0.11.0-preview.1", "0.11.0", "1.0.0-rc.1"), "1.0.0-preview.1");
+  assert.equal(nextSeparateVersion("1.0.0-preview.1", "1.0.0-rc.1", "1.0.0-rc.2"), "1.0.0-preview.2");
+  assert.equal(nextSeparateVersion("1.0.0-preview.2", "1.0.0-rc.2", "1.0.0"), "1.0.0-preview.3");
+  assert.equal(nextSeparateVersion("1.0.0-preview.3", "1.0.0", "1.0.1"), "1.0.1-preview.1");
+  assert.equal(nextSeparateVersion("1.0.0-preview.3", "1.0.0", "1.0.0"), "1.0.0-preview.3", "the same train keeps the version");
+});
+
+test("bump advances CsWebUi to the next -preview.N of the train, and --cswebui sets it", () => {
   const equal = bumpVersionFiles(separateFiles("0.6.0-preview.1"), "0.7.0-preview.1");
   assert.deepEqual(cswebuiCopies(equal), ["0.7.0-preview.1", "0.7.0-preview.1", "[0.7.0-preview.1, )"]);
   const implicit = bumpVersionFiles(separateFiles("0.6.0-preview.1", { workspaceEntry: null }), "0.7.0-preview.1");
   assert.match(implicit["eng/Versions.props"], />0\.7\.0-preview\.1<\/RunicCsWebUiPackageVersion>/);
-  const distinct = bumpVersionFiles(separateFiles("1.0.0-preview.1"), "1.0.0");
-  assert.equal(checkVersions(distinct), "1.0.0");
-  assert.deepEqual(cswebuiCopies(distinct), ["1.0.0-preview.1", "1.0.0-preview.1", "[1.0.0-preview.1, )"]);
-  assert.match(distinct["examples/web/packages.lock.json"], /"Runic\.Platform": "\[1\.0\.0, \)"/);
-  const set = bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { [cswebui]: "1.0.0-preview.1" });
+  // The 1.0 train: every rc and 1.0.0 itself take the next CsWebUi preview.
+  let value = separateFiles("0.6.0-preview.2");
+  for (const [train, own] of [["1.0.0-rc.1", "1.0.0-preview.1"], ["1.0.0-rc.2", "1.0.0-preview.2"], ["1.0.0", "1.0.0-preview.3"], ["1.0.1", "1.0.1-preview.1"]]) {
+    value = bumpVersionFiles(value, train);
+    assert.equal(checkVersions(value), train);
+    assert.deepEqual(cswebuiCopies(value), [own, own, `[${own}, )`], train);
+    assert.match(value["examples/web/packages.lock.json"], new RegExp(`"Runic\\.Platform": "\\[${train.replaceAll(".", "\\.")}, \\)"`));
+  }
+  const set = bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { [cswebui]: "1.0.0-preview.4" });
   assert.equal(checkVersions(set), "1.0.0");
-  assert.deepEqual(cswebuiCopies(set), ["1.0.0-preview.1", "1.0.0-preview.1", "[1.0.0-preview.1, )"]);
+  assert.deepEqual(cswebuiCopies(set), ["1.0.0-preview.4", "1.0.0-preview.4", "[1.0.0-preview.4, )"]);
   assert.match(set["eng/Versions.props"], /<RunicSdkVersion>1\.0\.0</);
-  assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { [cswebui]: "1.0" }));
+  for (const invalid of ["1.0", "1.0.0-rc.1", "1.0.0", "0.6.0-preview.3"])
+    assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { [cswebui]: invalid }), undefined, invalid);
   assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1"), "1.0.0", { "Runic.Platform": "1.0.0-preview.1" }));
   assert.throws(() => bumpVersionFiles(separateFiles("0.6.0-preview.1", { workspaceEntry: null }), "1.0.0", { [cswebui]: "1.0.0-preview.1" }));
+});
+
+test("from 1.0 the package validation baseline is a stable release, never a prerelease", () => {
+  const prerelease = value => ({ ...value, "eng/Versions.props": value["eng/Versions.props"].replace(">0.5.0<", ">1.0.0-rc.1<") });
+  assert.doesNotThrow(() => bumpVersionFiles(files(), "1.0.0-rc.1"), "a stable baseline stays through the rcs");
+  assert.throws(() => checkVersions(prerelease(bumpVersionFiles(files(), "1.0.0-rc.2"))), /RunicPackageValidationBaselineVersion 1\.0\.0-rc\.1 is a prerelease/);
+  assert.throws(() => checkVersions(prerelease(bumpVersionFiles(files(), "1.0.0"))), /is a prerelease/);
+  assert.equal(checkVersions(prerelease(files())), "0.6.0-preview.1", "before 1.0 any baseline is accepted");
 });
 
 test("each NuGet package packs at its own version", () => {

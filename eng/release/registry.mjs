@@ -94,10 +94,13 @@ export async function waitForNuget(packages, {timeoutMs=60*60000, intervalMs=300
   }
 }
 
-// Until 1.0 every release is a preview, so npm latest follows the newest one.
+// npm latest moves to a stable version (no prerelease suffix) and, as every release
+// before 1.0 is a preview (D026.3), to any 0.y.z version. From 1.0 a prerelease such
+// as 1.0.0-rc.1 stays on the preview dist-tag and leaves latest alone (D043.5).
+export const latestEligible = version => /^0\./.test(version) || !version.split('+')[0].includes('-');
 // Never move latest back to an older version, for example on a late rerun.
 export function needsLatest(current, version) {
-  return current === undefined || Bun.semver.order(current, version) < 0;
+  return latestEligible(version) && (current === undefined || Bun.semver.order(current, version) < 0);
 }
 // npm answers the dist-tags of an unpublished scoped name with 401. Without waiting
 // for availability (a dry run before publication), a missing package has no latest.
