@@ -10,6 +10,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>dotnet-runic</ToolCommandName>
+    <!-- Build tool: run on a newer .NET runtime when the 10.0 runtime is absent (#614). With 10.0 installed it still runs on 10.0. -->
+    <RollForward>Major</RollForward>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- Faults link to their catalog entry at the release tag. -->

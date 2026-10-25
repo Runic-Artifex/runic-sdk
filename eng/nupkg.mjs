@@ -42,6 +42,13 @@ export function nupkgFiles(file) {
     .sort();
 }
 
+// The text of one package file, by its path in the package.
+export function nupkgFileText(file, path) {
+  const entry = zipEntries(file).find(candidate => decodeURIComponent(candidate.name) === path);
+  if (!entry) throw new Error(`${file} does not contain ${path}`);
+  return entry.read().toString("utf8");
+}
+
 function nuspecText(file) {
   const nuspec = zipEntries(file).find(entry => !entry.name.includes("/") && entry.name.endsWith(".nuspec"));
   if (!nuspec) throw new Error(`${file} has no nuspec`);

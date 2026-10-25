@@ -37,7 +37,7 @@ try {
     "@runic-artifex/angular": `file:${archive}`, "@runic-artifex/views": `file:${views}`,
     "@angular/common": "22.2.3", "@angular/core": "22.2.3", "@angular/platform-browser": "22.2.3", "rxjs": "7.8.2"
   }, devDependencies: {
-    "@angular/build": "22.2.3", "@angular/cli": "22.2.3", "@angular/compiler": "22.2.3",
+    "@angular/build": "22.2.4", "@angular/cli": "22.2.4", "@angular/compiler": "22.2.3",
     "@angular/compiler-cli": "22.2.3", "typescript": "6.0.3"
   } }), "utf8");
   await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], { cwd: root });
