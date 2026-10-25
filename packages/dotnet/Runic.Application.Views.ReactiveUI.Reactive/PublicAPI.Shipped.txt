@@ -38,3 +38,6 @@ static Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulers.For(Runic.
 static Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulers.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
 Runic.Application.Views.ReactiveUI.Reactive.ReactiveUIBuilderExtensions
 static Runic.Application.Views.ReactiveUI.Reactive.ReactiveUIBuilderExtensions.WithRunicModelContext(this ReactiveUI.Reactive.Builder.IReactiveUIBuilder! builder) -> ReactiveUI.Reactive.Builder.IReactiveUIBuilder!
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecutionExtensions
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecutionExtensions.RunAsync<TInput, TResult>(this ReactiveUI.IReactiveCommand<TInput, TResult>! command, TInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveSchedulers.For(object! viewModel) -> System.Reactive.Concurrency.IScheduler!

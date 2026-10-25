@@ -220,3 +220,33 @@ virtual Runic.Platform.Linux.DBus.DBusObject.IntrospectionXml.get -> string!
 virtual Runic.Platform.Linux.DBus.DBusObject.SetPropertyAsync(string! interfaceName, string! name, Runic.Platform.Linux.DBus.DBusValue value, Runic.Platform.Linux.DBus.DBusMethodContext! context) -> System.Threading.Tasks.ValueTask
 Runic.Platform.Linux.DBus.DBusValue.GetByteArray() -> System.Collections.Immutable.ImmutableArray<byte>
 Runic.Platform.Linux.DBus.DBusValue.IsDefault.get -> bool
+Runic.Platform.Linux.DBus.DBusInterfaceChanges
+Runic.Platform.Linux.DBus.DBusInterfaceChanges.Added.get -> System.Collections.Immutable.ImmutableDictionary<string!, System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>!>!
+Runic.Platform.Linux.DBus.DBusInterfaceChanges.Equals(Runic.Platform.Linux.DBus.DBusInterfaceChanges? other) -> bool
+Runic.Platform.Linux.DBus.DBusInterfaceChanges.Path.get -> Runic.Platform.Linux.DBus.DBusObjectPath
+Runic.Platform.Linux.DBus.DBusInterfaceChanges.Removed.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.Linux.DBus.DBusMethodCall.Timeout.get -> System.TimeSpan?
+Runic.Platform.Linux.DBus.DBusMethodCall.Timeout.init -> void
+Runic.Platform.Linux.DBus.DBusObjectManagerProxy
+Runic.Platform.Linux.DBus.DBusObjectManagerProxy.DBusObjectManagerProxy(Runic.Platform.Linux.DBus.DBusConnection! connection, string? destination, Runic.Platform.Linux.DBus.DBusObjectPath path) -> void
+Runic.Platform.Linux.DBus.DBusObjectManagerProxy.GetManagedObjectsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Immutable.ImmutableDictionary<Runic.Platform.Linux.DBus.DBusObjectPath, System.Collections.Immutable.ImmutableDictionary<string!, System.Collections.Immutable.ImmutableDictionary<string!, Runic.Platform.Linux.DBus.DBusValue>!>!>!>
+Runic.Platform.Linux.DBus.DBusObjectManagerProxy.SubscribeInterfaceChangesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.Linux.DBus.DBusSignalSubscription!>
+Runic.Platform.Linux.DBus.DBusObjectManagerProxy.WatchInterfaceChangesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.Linux.DBus.DBusInterfaceChanges!>!
+Runic.Platform.Linux.DBus.DBusProxy.Timeout.get -> System.TimeSpan?
+Runic.Platform.Linux.DBus.DBusProxy.Timeout.init -> void
+Runic.Platform.Linux.DBus.DBusSignalFilter.Arg0Namespace.get -> string?
+Runic.Platform.Linux.DBus.DBusSignalFilter.Arg0Namespace.init -> void
+Runic.Platform.Linux.DBus.DBusSignalFilter.ArgumentPaths.get -> System.Collections.Immutable.ImmutableDictionary<int, string!>!
+Runic.Platform.Linux.DBus.DBusSignalFilter.ArgumentPaths.init -> void
+Runic.Platform.Linux.DBus.DBusSignalFilter.Arguments.get -> System.Collections.Immutable.ImmutableDictionary<int, string!>!
+Runic.Platform.Linux.DBus.DBusSignalFilter.Arguments.init -> void
+const Runic.Platform.Linux.DBus.DBusException.NoReply = "org.freedesktop.DBus.Error.NoReply" -> string!
+const Runic.Platform.Linux.DBus.DBusObjectManagerProxy.InterfaceName = "org.freedesktop.DBus.ObjectManager" -> string!
+override Runic.Platform.Linux.DBus.DBusInterfaceChanges.Equals(object? obj) -> bool
+override Runic.Platform.Linux.DBus.DBusInterfaceChanges.GetHashCode() -> int
+override Runic.Platform.Linux.DBus.DBusInterfaceChanges.ToString() -> string!
+static Runic.Platform.Linux.DBus.DBusInterfaceChanges.operator !=(Runic.Platform.Linux.DBus.DBusInterfaceChanges? left, Runic.Platform.Linux.DBus.DBusInterfaceChanges? right) -> bool
+static Runic.Platform.Linux.DBus.DBusInterfaceChanges.operator ==(Runic.Platform.Linux.DBus.DBusInterfaceChanges? left, Runic.Platform.Linux.DBus.DBusInterfaceChanges? right) -> bool
+static Runic.Platform.Linux.DBus.DBusObjectManagerProxy.ReadInterfaceChanges(Runic.Platform.Linux.DBus.DBusSignal! signal) -> Runic.Platform.Linux.DBus.DBusInterfaceChanges?
+const Runic.Platform.Linux.DBus.DBusException.LimitsExceeded = "org.freedesktop.DBus.Error.LimitsExceeded" -> string!
+virtual Runic.Platform.Linux.DBus.DBusObject.MaxConcurrentCalls.get -> int

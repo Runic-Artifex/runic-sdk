@@ -1635,3 +1635,6 @@ static Runic.Platform.Administration.Windows.WindowsSecurityDescriptor.FromBinar
 static Runic.Platform.Administration.Windows.WindowsSecurityDescriptor.FromSddl(string! sddl) -> Runic.Platform.Administration.Windows.WindowsSecurityDescriptor!
 static Runic.Platform.Administration.Windows.WindowsSecurityDescriptor.operator !=(Runic.Platform.Administration.Windows.WindowsSecurityDescriptor? left, Runic.Platform.Administration.Windows.WindowsSecurityDescriptor? right) -> bool
 static Runic.Platform.Administration.Windows.WindowsSecurityDescriptor.operator ==(Runic.Platform.Administration.Windows.WindowsSecurityDescriptor? left, Runic.Platform.Administration.Windows.WindowsSecurityDescriptor? right) -> bool
+Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions.ReuseConnection.get -> bool
+Runic.Platform.Administration.Windows.DirectoryServices.DirectoryConnectionOptions.ReuseConnection.init -> void
+Runic.Platform.Administration.Windows.DirectoryServices.WindowsDirectoryClient.Dispose() -> void

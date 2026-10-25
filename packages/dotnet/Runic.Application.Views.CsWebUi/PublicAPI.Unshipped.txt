@@ -1,9 +1,1 @@
 #nullable enable
-Runic.Application.Views.CsWebUi.CsWebUiPlatformServices
-static Runic.Application.Views.CsWebUi.CsWebUiPlatformServices.GetWebUiWindow(Runic.Application.Views.IRunicWindow! window) -> CsWebUi.WebUiWindow?
-Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumInputBytes.get -> int?
-Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumInputBytes.init -> void
-Runic.Application.Views.CsWebUi.RunicCsWebUiHost.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
-Runic.Application.Views.CsWebUi.RunicCsWebUiHost.SetMenuBar(System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>! menus) -> void
-Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
-Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MenuBar.init -> void

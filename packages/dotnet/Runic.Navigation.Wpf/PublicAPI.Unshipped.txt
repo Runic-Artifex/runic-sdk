@@ -1,4 +1,1 @@
 #nullable enable
-Runic.Navigation.Wpf.WindowCloseConfirmation
-static Runic.Navigation.Wpf.WindowCloseConfirmation.Create(System.Func<Runic.Navigation.NavigationRegionDeparture!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>! confirm) -> Runic.Navigation.INavigationRegionGuard!
-static Runic.Navigation.Wpf.WindowCloseConfirmation.OncePerClose(Runic.Navigation.INavigationRegionGuard! guard) -> Runic.Navigation.INavigationRegionGuard!

@@ -106,3 +106,14 @@ Runic.Platform.Runtime.NativePickerBackend.NativePickerBackend(Runic.Platform.Ru
 Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException(string? message) -> void
 Runic.Platform.Runtime.OwnerClosedException.OwnerClosedException(string? message, System.Exception? innerException) -> void
 static Runic.Platform.Runtime.ApplicationInstance.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
+static Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string! applicationId, string![]! args, Runic.Platform.Runtime.ApplicationInstanceOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.ApplicationInstanceClaim!>!>
+static Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string! applicationId, string![]! args, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.ApplicationInstanceClaim!>!>
+Runic.Platform.Runtime.INativeDirectoryPicker.SelectDirectoriesAsync(string? initialDirectory, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Runic.Platform.Runtime.NativeDirectorySelection!>?>
+Runic.Platform.Runtime.INativeDirectoryPicker.SupportsMultipleDirectorySelection.get -> bool
+Runic.Platform.Runtime.IPickerBackend.SupportsMultipleDirectorySelection.get -> bool
+Runic.Platform.Runtime.NativeFileDialogRequest.ShowFilterChoice.get -> bool
+Runic.Platform.Runtime.NativeFileDialogRequest.ShowFilterChoice.init -> void
+Runic.Platform.Runtime.NativeFileSelection.SelectedFilter.get -> Runic.Platform.FileDialogFilter?
+Runic.Platform.Runtime.NativeFileSelection.SelectedFilter.init -> void
+Runic.Platform.Runtime.NativePickerBackend.OpenDirectoriesAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLeaseList!>!>
+Runic.Platform.Runtime.NativePickerBackend.SupportsMultipleDirectorySelection.get -> bool

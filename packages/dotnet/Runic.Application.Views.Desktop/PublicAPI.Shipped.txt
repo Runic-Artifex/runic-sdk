@@ -92,3 +92,22 @@ static Runic.Application.Views.Desktop.DesktopPlatformServices.PresentAsync(Runi
 static Runic.Application.Views.Desktop.DesktopPlatformServices.PresentAsync(Runic.Application.Views.IRunicWindow! window, Runic.Platform.DesktopActivationContext? context = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 static Runic.Application.Views.Desktop.DesktopPlatformServices.AnnounceAsync(Runic.Application.Views.IRunicWindow! window, string! message, Runic.Desktop.DesktopAnnouncementPriority priority = Runic.Desktop.DesktopAnnouncementPriority.Polite, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 static Runic.Application.Views.Desktop.DesktopPlatformServices.GetWindowState(Runic.Application.Views.IRunicWindow! window) -> Runic.Platform.PlatformResult<Runic.Desktop.DesktopWindowState!>!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateApplications(string! applicationId) -> Runic.Platform.IDesktopApplications!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string! applicationId) -> Runic.Platform.IDesktopSecretStore!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.GetDesktopWindow(Runic.Application.Views.IRunicWindow! window) -> Runic.Desktop.DesktopWindow?
+Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishUtf8Async(string! name, System.ReadOnlyMemory<byte> stateUtf8, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.get -> int?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.init -> void
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.Monitors.get -> Runic.Platform.IDesktopMonitors!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateFileBookmarks() -> Runic.Platform.IDesktopFileBookmarks!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateOpenRegistration(string! applicationId) -> Runic.Platform.IDesktopOpenRegistration!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.ExportApplicationAsync(string! applicationId, Runic.Platform.IApplicationInstance! instance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.IAsyncDisposable!>!>
+static Runic.Application.Views.Desktop.DesktopPlatformServices.GetLaunch(System.Collections.Generic.IEnumerable<string!>! arguments) -> Runic.Platform.ApplicationLaunch!
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.ContentSecurityPolicy.get -> string?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.ContentSecurityPolicy.init -> void
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.Assets.get -> Runic.Assets.IAssetSource?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.Assets.init -> void
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.MessageBoxes.get -> Runic.Platform.IDesktopMessageBoxes!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateGlobalShortcuts(string? applicationId = null) -> Runic.Platform.IDesktopGlobalShortcuts!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string? applicationId, Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!
