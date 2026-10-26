@@ -392,8 +392,15 @@ await surface.OpenWindowAsync(new DesktopWindowOptions
 `AllowInWindow` loads other origins in the window, as before 0.10.0, and loads
 an external new-window request there too. With `AllowDownloads`, WebView2 shows
 its download dialog and WebKitGTK saves `<a download>` links and
-`Content-Disposition: attachment` responses to the download folder; WKWebView
-cannot download, so macOS refuses downloads either way. WebView2 and WebKitGTK
+`Content-Disposition: attachment` responses to the download folder. The macOS
+window (WKDownload) saves `<a download>` links, including a page's `blob:`
+export, attachments and responses WKWebView cannot show to the user's
+Downloads folder under the suggested name; it never replaces a file but saves
+`report (1).csv` next to `report.csv`, and it marks the file with the
+quarantine of web downloads, so Gatekeeper checks it when it is opened. A
+sandboxed application needs `com.apple.security.files.downloads.read-write` for
+that folder ([packaging](../../../docs/packaging.md#app-sandbox-and-the-mac-app-store)).
+WebView2 and WebKitGTK
 tell a click from a script's `click()` on a link; WKWebView does not, so on
 macOS a page script can still open an external `http`, `https` or `mailto` URL
 in the browser. WebKitGTK cannot tell which frame a navigation is for until the

@@ -10,7 +10,9 @@ using Runic.Desktop.Internal;
 // navigation loads. A click cannot be synthesized for WebKit's navigation type, so the gesture paths send the
 // delegate's own selectors with stand-in WKNavigationAction, WKFrameInfo and WKNavigationResponse objects and a decision
 // handler block, as WebKit would after a click. The external opener is replaced to observe what would open in the
-// browser. Run with --web-content on macOS.
+// browser. Downloads (G-9) run for real: <a download>, a blob export and a Content-Disposition attachment are saved, under
+// names that never replace a file, to a temporary folder in place of ~/Downloads when AllowDownloads is set, and nothing
+// is saved by default. Run with --web-content on macOS.
 internal static partial class MacOsWebContentSmoke
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(15);
@@ -48,6 +50,7 @@ internal static partial class MacOsWebContentSmoke
                 try { await ExerciseBlockAsync(window); }
                 finally { if (window.IsOpen) await window.CloseAsync(); }
             }
+            await ExerciseDownloadsAsync(host);
             Console.WriteLine("WEB CONTENT DONE");
         }
         finally
@@ -133,6 +136,122 @@ internal static partial class MacOsWebContentSmoke
         ExpectNothingOpened("Block");
         Pass("Block cancels clicked external links and window.open without opening them; isInspectable follows DevTools.");
     }
+
+    private static readonly byte[] FileBytes = "runic binary\0\x01\x02"u8.ToArray();
+
+    // The page and the files it downloads.
+    private static ContentResponse? Serve(string path) => path switch
+    {
+        "/" or "/index.html" => ContentResponse.Text(DownloadPage),
+        "/file.bin" => new ContentResponse(FileBytes, "application/octet-stream"),
+        "/attachment.txt" => new ContentResponse(FileBytes, "text/plain",
+            headers: new Dictionary<string, string> { ["Content-Disposition"] = "attachment; filename=notes.txt" }),
+        _ => null,
+    };
+
+    private static async Task ExerciseDownloadsAsync(DesktopHost host)
+    {
+        var originalDirectory = MacOsWkWebViewHost.DownloadDirectory;
+        var directory = Directory.CreateTempSubdirectory("runic-downloads-");
+        MacOsWkWebViewHost.DownloadDirectory = () => directory.FullName;
+        try
+        {
+            await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Handler((request, _) => ValueTask.FromResult(Serve(request.Path))),
+            });
+            // Default policy: nothing is saved, and the page stays.
+            await using (var window = await surface.OpenWindowAsync(DownloadWindow(DesktopWebContentPolicy.Default with { DevTools = false })))
+            {
+                try
+                {
+                    var page = await surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", StepTimeout);
+                    await surface.ExecuteJavaScriptAsync("document.getElementById('download').click(); exportBlob(); return 'ok';", StepTimeout);
+                    await surface.ExecuteJavaScriptAsync("location = 'attachment.txt'; return 'ok';", StepTimeout);
+                    await Task.Delay(TimeSpan.FromSeconds(1.5));
+                    await surface.ExecuteJavaScriptAsync("location = 'file.bin'; return 'ok';", StepTimeout);
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                    var saved = directory.GetFileSystemInfos();
+                    if (saved.Length != 0)
+                        throw new InvalidOperationException($"Downloads were saved without AllowDownloads: {string.Join(", ", saved.Select(file => file.Name))}.");
+                    var after = await surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", StepTimeout);
+                    if (after != page) throw new InvalidOperationException($"A refused download replaced the page: {after}, was {page}.");
+                    Pass("without AllowDownloads, <a download>, a blob export, an attachment and an unshowable response save nothing and the page stays.");
+                }
+                finally { if (window.IsOpen) await window.CloseAsync(); }
+            }
+            // AllowDownloads: each is saved, a second copy under a new name, and the page stays.
+            await using (var window = await surface.OpenWindowAsync(DownloadWindow(DesktopWebContentPolicy.Default with { AllowDownloads = true, DevTools = false })))
+            {
+                try
+                {
+                    var page = await surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", StepTimeout);
+                    Expect(await NativeAsync(window, webView =>
+                        Decide(webView, page.Split(' ')[0] + "file.bin", MainFrame.Main, LinkActivated, expected: 2, download: true)
+                        ?? Respond(webView, canShow: false, expected: 2)
+                        ?? Respond(webView, canShow: true, expected: 1)));
+                    await surface.ExecuteJavaScriptAsync("document.getElementById('download').click(); return 'ok';", StepTimeout);
+                    await WaitForFileAsync(directory, "runic-download.bin", FileBytes);
+                    await surface.ExecuteJavaScriptAsync("document.getElementById('download').click(); return 'ok';", StepTimeout);
+                    await WaitForFileAsync(directory, "runic-download (1).bin", FileBytes);
+                    await surface.ExecuteJavaScriptAsync("exportBlob(); return 'ok';", StepTimeout);
+                    await WaitForFileAsync(directory, "runic-export.csv", "a,b\n"u8.ToArray());
+                    await surface.ExecuteJavaScriptAsync("location = 'attachment.txt'; return 'ok';", StepTimeout);
+                    await WaitForFileAsync(directory, "notes.txt", FileBytes);
+                    var after = await surface.ExecuteJavaScriptAsync("return location.href + ' ' + window.documentId;", StepTimeout);
+                    if (after != page) throw new InvalidOperationException($"A download replaced the page: {after}, was {page}.");
+                    var names = directory.GetFiles().Select(file => file.Name).Order(StringComparer.Ordinal).ToArray();
+                    string[] expected = ["notes.txt", "runic-download (1).bin", "runic-download.bin", "runic-export.csv"];
+                    if (!names.SequenceEqual(expected))
+                        throw new InvalidOperationException($"Expected the downloads {string.Join(", ", expected)}; found {string.Join(", ", names)}.");
+                    var unquarantined = names.Where(name => !HasQuarantine(Path.Combine(directory.FullName, name))).ToArray();
+                    if (unquarantined.Length != 0)
+                        throw new InvalidOperationException($"Downloads without com.apple.quarantine: {string.Join(", ", unquarantined)}.");
+                    Pass("with AllowDownloads, <a download>, a blob export and an attachment are saved with the quarantine, a second copy as 'name (1)', and the page stays.");
+                }
+                finally { if (window.IsOpen) await window.CloseAsync(); }
+            }
+        }
+        finally
+        {
+            MacOsWkWebViewHost.DownloadDirectory = originalDirectory;
+            directory.Delete(recursive: true);
+        }
+    }
+
+    private static DesktopWindowOptions DownloadWindow(DesktopWebContentPolicy policy) => new()
+    {
+        Browser = BrowserKind.Embedded,
+        Width = 640,
+        Height = 480,
+        WebContent = policy,
+    };
+
+    // Waits until the file is complete and marked, as WebKit writes it and the download delegate finishes it.
+    private static async Task WaitForFileAsync(DirectoryInfo directory, string name, byte[] content)
+    {
+        var path = Path.Combine(directory.FullName, name);
+        var deadline = DateTime.UtcNow + StepTimeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (File.Exists(path) && File.ReadAllBytes(path).AsSpan().SequenceEqual(content) && HasQuarantine(path)) return;
+            }
+            catch (IOException)
+            {
+                // Still being written.
+            }
+            await Task.Delay(100);
+        }
+        var found = directory.GetFiles().Select(file => $"{file.Name} ({file.Length} bytes{(HasQuarantine(file.FullName) ? ", quarantined" : "")})");
+        throw new TimeoutException($"Timed out waiting for the download {name}; the folder has [{string.Join(", ", found)}].");
+    }
+
+    private static bool HasQuarantine(string path) => GetXattr(path, "com.apple.quarantine", 0, 0, 0, 0x0001 /* XATTR_NOFOLLOW */) >= 0;
+
+    [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "getxattr", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial nint GetXattr(string path, string name, nint value, nuint size, uint position, int options);
 
     private enum MainFrame { None, Main, Sub }
 
@@ -324,6 +443,23 @@ internal static partial class MacOsWebContentSmoke
     [LibraryImport(ObjC, EntryPoint = "objc_registerClassPair")] private static partial void RegisterClassPair(nint type);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Send(nint target, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
+
+    private const string DownloadPage = """
+        <!doctype html><html lang="en"><head><meta charset="utf-8"><script src="webui.js"></script>
+        <title>Runic download smoke</title>
+        <script>
+        window.documentId = Date.now().toString(36) + Math.random().toString(36);
+        function exportBlob() {
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(new Blob(['a,b\n'], { type: 'text/csv' }));
+          link.download = 'runic-export.csv';
+          document.body.append(link);
+          link.click();
+          link.remove();
+        }
+        </script></head>
+        <body><main><h1>Downloads</h1><a id="download" download="runic-download.bin" href="file.bin">Download</a></main></body></html>
+        """;
 
     private const string Page = """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><script src="webui.js"></script>

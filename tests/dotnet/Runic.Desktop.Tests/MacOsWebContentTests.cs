@@ -12,6 +12,7 @@ public sealed unsafe class MacOsWebContentTests
     private const string Page = "http://127.0.0.1:5000/surface-1/";
     private const nint LinkActivated = 0, FormSubmitted = 1, Reload = 3, Other = -1;
     private static readonly WebContentRules Rules = new(DesktopWebContentPolicy.Default with { DevTools = false }, new Uri(Page), []);
+    private static readonly WebContentRules Allowing = new(DesktopWebContentPolicy.Default with { AllowDownloads = true, DevTools = false }, new Uri(Page), []);
 
     [Test]
     public void WebKitConstantsMatchTheirHeaders()
@@ -19,6 +20,7 @@ public sealed unsafe class MacOsWebContentTests
         // WKNavigationActionPolicy / WKNavigationResponsePolicy: Cancel 0, Allow 1; WKNavigationTypeLinkActivated 0.
         Assert.Equal(0, (int)MacOsWebContent.PolicyCancel);
         Assert.Equal(1, (int)MacOsWebContent.PolicyAllow);
+        Assert.Equal(2, (int)MacOsWebContent.PolicyDownload);
         Assert.Equal(0, (int)MacOsWebContent.NavigationTypeLinkActivated);
         // isa, int flags, int reserved, then invoke: offset 16 on 64-bit.
         Assert.Equal(16, (int)Marshal.OffsetOf<MacOsWebContent.BlockLiteral>(nameof(MacOsWebContent.BlockLiteral.Invoke)));
@@ -39,13 +41,22 @@ public sealed unsafe class MacOsWebContentTests
     }
 
     [Test]
-    public void FramesAreNotDecidedButDownloadsAreCancelledEverywhere()
+    public void FramesAreNotDecidedAndDownloadsFollowAllowDownloadsEverywhere()
     {
         Assert.Equal(new MacOsWebContent.Outcome(MacOsWebContent.PolicyAllow), Decide("https://example.org/embed", false, Other));
         Assert.Equal(MacOsWebContent.Cancel, Decide(Page + "file.zip", true, LinkActivated, download: true));
         Assert.Equal(MacOsWebContent.Cancel, Decide("https://example.org/embed.zip", false, Other, download: true));
-        var allowing = new WebContentRules(DesktopWebContentPolicy.Default with { AllowDownloads = true, DevTools = false }, new Uri(Page), []);
-        Assert.Equal(MacOsWebContent.Cancel, MacOsWebContent.ForNavigationAction(allowing, Page + "file.zip", true, LinkActivated, true));
+        Assert.Equal(MacOsWebContent.Cancel, Decide(Page + "file.zip", null, LinkActivated, download: true));
+        var download = new MacOsWebContent.Outcome(MacOsWebContent.PolicyDownload);
+        foreach (var mainFrame in new bool?[] { true, false, null })
+        {
+            Assert.Equal(download, MacOsWebContent.ForNavigationAction(Allowing, Page + "file.zip", mainFrame, LinkActivated, true));
+            // A script's click() and a blob: or data: export from the page download too.
+            Assert.Equal(download, MacOsWebContent.ForNavigationAction(Allowing, "blob:http://127.0.0.1:5000/1d2c", mainFrame, Other, true));
+            Assert.Equal(download, MacOsWebContent.ForNavigationAction(Allowing, "data:text/csv,a", mainFrame, Other, true));
+        }
+        // Without the download attribute the rules decide as before.
+        Assert.Equal(new MacOsWebContent.Outcome(MacOsWebContent.PolicyAllow), MacOsWebContent.ForNavigationAction(Allowing, Page + "file.zip", true, LinkActivated, false));
     }
 
     [Test]
@@ -71,10 +82,48 @@ public sealed unsafe class MacOsWebContentTests
     }
 
     [Test]
-    public void ResponsesWebKitCannotShowAreCancelled()
+    public void ResponsesWebKitCannotShowAndAttachmentsAreDownloadsThePolicyDecides()
     {
-        Assert.Equal(MacOsWebContent.PolicyAllow, MacOsWebContent.ForNavigationResponse(canShowMimeType: true));
-        Assert.Equal(MacOsWebContent.PolicyCancel, MacOsWebContent.ForNavigationResponse(canShowMimeType: false));
+        Assert.Equal(MacOsWebContent.PolicyAllow, MacOsWebContent.ForNavigationResponse(Rules, canShowMimeType: true, null));
+        Assert.Equal(MacOsWebContent.PolicyAllow, MacOsWebContent.ForNavigationResponse(Rules, canShowMimeType: true, "inline; filename=a.txt"));
+        Assert.Equal(MacOsWebContent.PolicyCancel, MacOsWebContent.ForNavigationResponse(Rules, canShowMimeType: false, null));
+        Assert.Equal(MacOsWebContent.PolicyCancel, MacOsWebContent.ForNavigationResponse(Rules, canShowMimeType: true, "attachment; filename=a.txt"));
+        Assert.Equal(MacOsWebContent.PolicyAllow, MacOsWebContent.ForNavigationResponse(Allowing, canShowMimeType: true, ""));
+        Assert.Equal(MacOsWebContent.PolicyDownload, MacOsWebContent.ForNavigationResponse(Allowing, canShowMimeType: false, null));
+        Assert.Equal(MacOsWebContent.PolicyDownload, MacOsWebContent.ForNavigationResponse(Allowing, canShowMimeType: true, " Attachment ; filename=\"a.txt\""));
+        Assert.Equal(MacOsWebContent.PolicyDownload, MacOsWebContent.ForNavigationResponse(Allowing, canShowMimeType: true, "ATTACHMENT"));
+        Assert.Equal(MacOsWebContent.PolicyAllow, MacOsWebContent.ForNavigationResponse(Allowing, canShowMimeType: true, "attachments"));
+    }
+
+    [Test]
+    public void ADownloadGetsTheSuggestedNameAndNeverAnExistingFile()
+    {
+        const string Directory = "/Users/me/Downloads";
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+        string? Name(string? suggested) => MacOsWebContent.DownloadPath(Directory, suggested, taken.Contains) is { } path
+            ? Path.GetFileName(path) : null;
+
+        Assert.Equal("/Users/me/Downloads/report.csv", MacOsWebContent.DownloadPath(Directory, "report.csv", taken.Contains));
+        taken.Add("/Users/me/Downloads/report.csv");
+        Assert.Equal("report (1).csv", Name("report.csv"));
+        taken.Add("/Users/me/Downloads/report (1).csv");
+        Assert.Equal("report (2).csv", Name("report.csv"));
+        taken.Add("/Users/me/Downloads/archive.tar.gz");
+        Assert.Equal("archive.tar (1).gz", Name("archive.tar.gz"));
+        // No path, separators, control characters or hidden names; an empty name is "download".
+        Assert.Equal("_.._etc_passwd", Name("/../etc/passwd"));
+        Assert.Equal("a_b_c_d", Name("a\\b:c\nd"));
+        Assert.Equal("zshrc", Name(".zshrc"));
+        Assert.Equal("download", Name(null));
+        Assert.Equal("download", Name("  "));
+        Assert.Equal("download", Name(".."));
+        Assert.Equal("notes", Name("notes"));
+        // At most 255 UTF-8 bytes, keeping the extension and whole characters.
+        var longName = Name(new string('\u00e9', 300) + ".txt")!;
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(longName) <= 255);
+        Assert.True(longName.EndsWith(".txt", StringComparison.Ordinal) && longName.TrimEnd(".txt".ToCharArray()).All(c => c == '\u00e9'));
+        // A directory where every name is taken gets none.
+        Assert.Null(MacOsWebContent.DownloadPath(Directory, "full.bin", _ => true));
     }
 
     [Test]

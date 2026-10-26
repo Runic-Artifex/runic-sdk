@@ -181,7 +181,12 @@ The command fills them into `macos/entitlements.plist` where the template has
 with `--sandbox`, a missing key is `RAPPPKG1006` rather than a bundle that
 silently runs unsandboxed. Add other entitlements your application needs to the
 override; the camera and microphone entitlements come
-from their usage descriptions (see above).
+from their usage descriptions (see above). A window whose
+`DesktopWebContentPolicy.AllowDownloads` is set saves downloads to the user's
+Downloads folder, which a sandboxed application reaches only with
+`com.apple.security.files.downloads.read-write`; Runic does not add it, because
+downloads are refused by default, so add it to the override when you allow
+them. Without it a download fails and nothing is saved.
 
 In the sandbox the application reaches its container, the files the user
 selected or dropped, and bookmarked files; privileged actions and volume

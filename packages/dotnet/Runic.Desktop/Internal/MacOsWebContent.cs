@@ -6,9 +6,11 @@ namespace Runic.Desktop.Internal;
 // report to WebContentRules, and answers WebKit's decision handlers. MacOsWkWebViewHost reads the native values.
 internal static class MacOsWebContent
 {
-    // WKNavigationActionPolicyCancel and WKNavigationResponsePolicyCancel; ...Allow is 1 in both (NSInteger enums).
+    // WKNavigationActionPolicyCancel and WKNavigationResponsePolicyCancel; ...Allow is 1 and ...Download (macOS 11.3)
+    // is 2 in both (NSInteger enums).
     internal const nint PolicyCancel = 0;
     internal const nint PolicyAllow = 1;
+    internal const nint PolicyDownload = 2;
 
     // WKNavigationTypeLinkActivated: a link the user clicked or activated with the keyboard.
     internal const nint NavigationTypeLinkActivated = 0;
@@ -25,8 +27,9 @@ internal static class MacOsWebContent
     internal static Outcome ForNavigationAction(WebContentRules rules, string? url, bool? mainFrame, nint navigationType, bool shouldPerformDownload)
     {
         ArgumentNullException.ThrowIfNull(rules);
-        // <a download> (shouldPerformDownload, macOS 11.3): the window has no downloads, nor does it show the file.
-        if (shouldPerformDownload) return Cancel;
+        // <a download> (shouldPerformDownload, macOS 11.3) becomes a WKDownload when the policy allows downloads, in any
+        // frame; otherwise the window neither downloads nor shows the file.
+        if (shouldPerformDownload) return rules.AllowsDownloads ? new(PolicyDownload) : Cancel;
         var userInitiated = navigationType == NavigationTypeLinkActivated;
         if (mainFrame is null) return ForNewWindow(rules, url, userInitiated);
         if (mainFrame == false) return new(PolicyAllow);
@@ -51,10 +54,72 @@ internal static class MacOsWebContent
         };
     }
 
-    // webView:decidePolicyForNavigationResponse:decisionHandler:. A response WebKit cannot show would be a download,
-    // which WKWebView does not perform for the window: it is cancelled in every frame, as WebKit does without a
-    // navigation delegate, whatever AllowDownloads says.
-    internal static nint ForNavigationResponse(bool canShowMimeType) => canShowMimeType ? PolicyAllow : PolicyCancel;
+    // webView:decidePolicyForNavigationResponse:decisionHandler:. A Content-Disposition attachment and a response WebKit
+    // cannot show are downloads, in every frame: they become a WKDownload when the policy allows downloads and are
+    // cancelled otherwise, as WebKit does without a navigation delegate. Everything else loads.
+    internal static nint ForNavigationResponse(WebContentRules rules, bool canShowMimeType, string? contentDisposition)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        if (canShowMimeType && !IsAttachment(contentDisposition)) return PolicyAllow;
+        return rules.AllowsDownloads ? PolicyDownload : PolicyCancel;
+    }
+
+    // RFC 6266: the disposition type is the first token, case-insensitive.
+    internal static bool IsAttachment(string? contentDisposition)
+    {
+        if (string.IsNullOrEmpty(contentDisposition)) return false;
+        var end = contentDisposition.IndexOf(';', StringComparison.Ordinal);
+        var type = (end < 0 ? contentDisposition : contentDisposition[..end]).Trim();
+        return type.Equals("attachment", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The most names DownloadPath tries before it gives up on a crowded directory.
+    internal const int MaximumDownloadNames = 1000;
+
+    // download:decideDestinationUsingResponse:suggestedFilename:completionHandler:. The file WebKit's suggested name gets
+    // in the directory, never an existing one: "name (1).ext", "name (2).ext" and so on, as Safari names them. Null when
+    // every name is taken; WebKit also fails a download whose destination exists rather than replace it. The name loses
+    // path separators, control characters and leading dots, and is at most 255 UTF-8 bytes.
+    internal static string? DownloadPath(string directory, string? suggestedFilename, Func<string, bool> exists)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(directory);
+        ArgumentNullException.ThrowIfNull(exists);
+        var name = SafeFileName(suggestedFilename);
+        var extension = Path.GetExtension(name);
+        if (extension.Length > 32 || extension == name) extension = "";
+        var stem = name[..^extension.Length];
+        for (var attempt = 0; attempt < MaximumDownloadNames; attempt++)
+        {
+            var suffix = attempt == 0 ? extension : $" ({attempt.ToString(System.Globalization.CultureInfo.InvariantCulture)}){extension}";
+            var candidate = Path.Combine(directory, Truncate(stem, MaximumFileNameBytes - System.Text.Encoding.UTF8.GetByteCount(suffix)) + suffix);
+            if (!exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private const int MaximumFileNameBytes = 255;
+    private const string DefaultDownloadName = "download";
+
+    private static string SafeFileName(string? suggested)
+    {
+        if (string.IsNullOrWhiteSpace(suggested)) return DefaultDownloadName;
+        var builder = new System.Text.StringBuilder(suggested.Length);
+        foreach (var character in suggested)
+            builder.Append(character is '/' or '\\' or ':' || char.IsControl(character) ? '_' : character);
+        var name = builder.ToString().Trim().TrimStart('.').Trim();
+        return name.Length == 0 ? DefaultDownloadName : name;
+    }
+
+    // The longest prefix of value within the UTF-8 byte budget that does not split a surrogate pair.
+    private static string Truncate(string value, int bytes)
+    {
+        if (System.Text.Encoding.UTF8.GetByteCount(value) <= bytes) return value;
+        var length = value.Length;
+        while (length > 0 && System.Text.Encoding.UTF8.GetByteCount(value.AsSpan(0, length)) > bytes) length--;
+        if (length > 0 && char.IsHighSurrogate(value[length - 1])) length--;
+        var truncated = value[..length].TrimEnd();
+        return truncated.Length == 0 ? DefaultDownloadName : truncated;
+    }
 
     // WKPermissionDecisionGrant and WKPermissionDecisionDeny (NSInteger, macOS 12); Prompt (0) is never answered.
     internal const nint PermissionGrant = 1;
