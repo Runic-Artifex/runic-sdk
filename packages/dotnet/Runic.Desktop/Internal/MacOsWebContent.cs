@@ -91,7 +91,8 @@ internal static class MacOsWebContent
         for (var attempt = 0; attempt < MaximumDownloadNames; attempt++)
         {
             var suffix = attempt == 0 ? extension : $" ({attempt.ToString(System.Globalization.CultureInfo.InvariantCulture)}){extension}";
-            var candidate = Path.Combine(directory, Truncate(stem, MaximumFileNameBytes - System.Text.Encoding.UTF8.GetByteCount(suffix)) + suffix);
+            // A macOS path, joined with '/' whatever OS the shared tests run on.
+            var candidate = directory.TrimEnd('/') + "/" + Truncate(stem, MaximumFileNameBytes - System.Text.Encoding.UTF8.GetByteCount(suffix)) + suffix;
             if (!exists(candidate)) return candidate;
         }
         return null;

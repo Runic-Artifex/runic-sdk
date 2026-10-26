@@ -101,7 +101,7 @@ public sealed unsafe class MacOsWebContentTests
         const string Directory = "/Users/me/Downloads";
         var taken = new HashSet<string>(StringComparer.Ordinal);
         string? Name(string? suggested) => MacOsWebContent.DownloadPath(Directory, suggested, taken.Contains) is { } path
-            ? Path.GetFileName(path) : null;
+            ? path[(path.LastIndexOf('/') + 1)..] : null;
 
         Assert.Equal("/Users/me/Downloads/report.csv", MacOsWebContent.DownloadPath(Directory, "report.csv", taken.Contains));
         taken.Add("/Users/me/Downloads/report.csv");
@@ -122,6 +122,8 @@ public sealed unsafe class MacOsWebContentTests
         var longName = Name(new string('\u00e9', 300) + ".txt")!;
         Assert.True(System.Text.Encoding.UTF8.GetByteCount(longName) <= 255);
         Assert.True(longName.EndsWith(".txt", StringComparison.Ordinal) && longName.TrimEnd(".txt".ToCharArray()).All(c => c == '\u00e9'));
+        // The folder joins with '/' alone.
+        Assert.Equal("/Users/me/Downloads/a.txt", MacOsWebContent.DownloadPath(Directory + "/", "a.txt", taken.Contains));
         // A directory where every name is taken gets none.
         Assert.Null(MacOsWebContent.DownloadPath(Directory, "full.bin", _ => true));
     }
