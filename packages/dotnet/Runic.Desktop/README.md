@@ -232,10 +232,18 @@ it does not hold the connection, and it is never authenticated. A WebSocket whos
 token matched is never closed by the handshake deadline. The timeout message lists
 what the server saw of the handshake, with times since launch. On Windows, the
 WebView2 window (and a WPF `RunicWebView`) adds what WebView2 did before its page
-connected: `WebView2 controller created`, `WebView2 navigation started`, the first
-navigation's end (`completed`, or `failed:` with WebView2's error status) and any
-failed process. A timeout that lists `WebView2 navigation started` but no request
-was spent inside WebView2, after it had started loading the page.
+connected: `WebView2 controller created` (with the runtime's version), `WebView2
+navigation started`, the first navigation's end (`completed`, or `failed:` with
+WebView2's error status) and any failed process. A timeout that lists `WebView2 navigation started` but no request
+was spent inside WebView2, after it had started loading the page. The first document
+request's own start and end are listed too, as WebView2's network stack reports them
+through the DevTools protocol while that request is pending (`WebView2 network events
+on` once they are reported): `WebView2 document request started`, then `WebView2 document response: HTTP <status>` or `WebView2 document request
+failed: <error>`. A stall before `document request started` is spent before WebView2
+sends the request; one after it, in WebView2's network stack. When no request reached
+the server, the last entry says whether the server still accepted a loopback connection
+at the timeout and how long a small write-through to the profile's folder (or the
+temporary folder) took, which tells a WebView that waited from a machine that stalled.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the

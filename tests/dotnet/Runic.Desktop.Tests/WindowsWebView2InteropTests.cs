@@ -33,6 +33,7 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2Controller", "get_CoreWebView2", WindowsWebView2Interop.ControllerWebViewSlot),
             ("ICoreWebView2Controller2", "put_DefaultBackgroundColor", WindowsWebView2Interop.ControllerBackgroundSlot),
             ("ICoreWebView2Environment", "CreateCoreWebView2Controller", WindowsWebView2Interop.EnvironmentCreateControllerSlot),
+            ("ICoreWebView2Environment", "get_BrowserVersionString", WindowsWebView2Interop.EnvironmentBrowserVersionSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "get_Uri", WindowsWebView2Interop.PermissionUriSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "get_PermissionKind", WindowsWebView2Interop.PermissionKindSlot),
             ("ICoreWebView2PermissionRequestedEventArgs", "put_State", WindowsWebView2Interop.PermissionStateSlot),
@@ -54,6 +55,10 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2NavigationCompletedEventArgs", "get_IsSuccess", WindowsWebView2Interop.NavigationCompletedIsSuccessSlot),
             ("ICoreWebView2NavigationCompletedEventArgs", "get_WebErrorStatus", WindowsWebView2Interop.NavigationCompletedWebErrorStatusSlot),
             ("ICoreWebView2ProcessFailedEventArgs", "get_ProcessFailedKind", WindowsWebView2Interop.ProcessFailedKindSlot),
+            ("ICoreWebView2", "GetDevToolsProtocolEventReceiver", WindowsWebView2Interop.GetDevToolsProtocolEventReceiverSlot),
+            ("ICoreWebView2DevToolsProtocolEventReceiver", "add_DevToolsProtocolEventReceived", WindowsWebView2Interop.DevToolsProtocolEventReceivedSlot),
+            ("ICoreWebView2DevToolsProtocolEventReceiver", "remove_DevToolsProtocolEventReceived", WindowsWebView2Interop.DevToolsProtocolEventReceivedSlot + 1),
+            ("ICoreWebView2DevToolsProtocolEventReceivedEventArgs", "get_ParameterObjectAsJson", WindowsWebView2Interop.DevToolsProtocolEventParametersSlot),
             ("ICoreWebView2", "remove_NavigationStarting", WindowsWebView2Interop.NavigationStartingSlot + 1),
             ("ICoreWebView2", "add_NewWindowRequested", WindowsWebView2Interop.NewWindowRequestedSlot),
             ("ICoreWebView2", "remove_NewWindowRequested", WindowsWebView2Interop.NewWindowRequestedSlot + 1),
@@ -163,6 +168,7 @@ public sealed partial class WindowsWebView2InteropTests
         Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
         Assert.Equal(Interface("ICoreWebView2NavigationCompletedEventHandler"), typeof(IWebViewNavigationCompleted).GUID);
         Assert.Equal(Interface("ICoreWebView2ProcessFailedEventHandler"), typeof(IWebViewProcessFailed).GUID);
+        Assert.Equal(Interface("ICoreWebView2DevToolsProtocolEventReceivedEventHandler"), typeof(IWebViewDevToolsEventReceived).GUID);
     }
 
     [Test]
