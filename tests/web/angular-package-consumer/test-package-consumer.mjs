@@ -57,7 +57,7 @@ try {
   await writeFile(join(root, "src/index.html"), "<!doctype html><html><head><meta charset=\"utf-8\"><base href=\"/\"></head><body><consumer-root></consumer-root></body></html>", "utf8");
   await writeFile(join(root, "src/main.ts"), `import { Component, input, provideZonelessChangeDetection, type InputSignal } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
-import { injectBridgeConnection, injectCommand, ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
+import { injectBridgeConnection, injectCommand, RunicViewOutlet, ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 type Page = { readonly kind: "counter"; connect(): Promise<unknown> };
 @Component({ selector: "counter-page", standalone: true, template: "{{ page().kind }}" })
 class CounterPage { readonly page: InputSignal<Page> = input.required<Page>(); }
@@ -70,6 +70,14 @@ class ConsumerRoot {
   readonly registry = { counter: CounterPage } satisfies ViewRegistry<Page>;
   readonly refresh = injectCommand(async (count: number) => count + 1);
   readonly connection = injectBridgeConnection();
+}
+// The deprecated alias is the same class, so an AOT build resolves it as the outlet component (#643).
+@Component({ selector: "legacy-outlet", standalone: true, imports: [RunicViewOutlet],
+  template: '<runic-view-outlet [content]="current" [registry]="registry" />' })
+export class LegacyOutlet {
+  readonly current: Page = { kind: "counter", connect: async () => undefined };
+  readonly registry = { counter: CounterPage } satisfies ViewRegistry<Page>;
+  readonly outlet: RunicViewOutlet<Page> | undefined = undefined;
 }
 void bootstrapApplication(ConsumerRoot, { providers: [provideZonelessChangeDetection()] });
 `, "utf8");

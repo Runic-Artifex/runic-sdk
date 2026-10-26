@@ -97,8 +97,8 @@ React's `fallback`, Vue's default slot and Svelte's `fallback` snippet.
 `ViewOutlet` is the outlet's name in every Runic frontend package (React, Vue,
 Svelte and Angular); its element keeps Angular's prefix convention,
 `<runic-view-outlet>`. Before 0.7.0-preview.7 the Angular class was
-`RunicViewOutlet`. That name is still exported as a deprecated subclass that
-renders the same element, and is removed in the next major release.
+`RunicViewOutlet`. That name is still exported as a deprecated alias of the
+same class, and is removed in the next major release.
 
 The outlet is generic over the reference union it receives, so the registry
 must have a component for every kind whose `page` input accepts that reference.

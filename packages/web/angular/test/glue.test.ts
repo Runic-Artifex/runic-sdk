@@ -2,7 +2,7 @@ import "@angular/compiler";
 import { Component, createEnvironmentInjector, effect, EnvironmentInjector, Injector, NgZone, PLATFORM_ID, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
-import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
+import { afterEach, beforeAll, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
   injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
   ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle, type ViewRegistry,
@@ -14,6 +14,15 @@ import {
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
 import { installMockMenuBar } from "@runic-artifex/views/mock";
+
+// Hoisted above the imports, so it sees the warnings Angular logs while the package's
+// partially compiled components are defined (NG0912 for two components with one ID, #643).
+const warnings = vi.hoisted(() => {
+  const logged: string[] = [];
+  const warn = console.warn.bind(console);
+  console.warn = (...values: unknown[]) => { logged.push(values.map(String).join(" ")); warn(...values); };
+  return logged;
+});
 
 type Page =
   | { readonly kind: "counter"; connect(): Promise<unknown> }
@@ -174,7 +183,16 @@ describe("ViewOutlet", () => {
     const fixture = TestBed.createComponent(LegacyHost);
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent?.trim()).toBe("welcome:welcome");
-    expect(Object.getPrototypeOf(RunicViewOutlet)).toBe(ViewOutlet);
+    // #643: the alias is the same class, not a second component with the same selector.
+    expect(RunicViewOutlet).toBe(ViewOutlet);
+    expectTypeOf<RunicViewOutlet<Page>>().toEqualTypeOf<ViewOutlet<Page>>();
+    expectTypeOf<RunicViewOutlet>().toEqualTypeOf<ViewOutlet>();
+  });
+
+  test("importing and rendering both outlet names logs no component ID collision (#643)", () => {
+    TestBed.createComponent(Host).detectChanges();
+    TestBed.createComponent(LegacyHost).detectChanges();
+    expect(warnings.filter(warning => warning.includes("NG0912"))).toEqual([]);
   });
 });
 
