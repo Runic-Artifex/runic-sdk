@@ -741,6 +741,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             {
                 Api.AddItems(Api.InsertSubmenu(mainMenu, titles.File, 1, FileIdentifier), MacOsMainMenu.FileItems(titles), name, s_menuTarget);
             }
+            InstallOpenRecent(mainMenu, titles);
         }
         // The zoom items go into any main menu that has no Command and = or + of its own.
         if (!Api.HasCommandKey(mainMenu, "=") && !Api.HasCommandKey(mainMenu, "+"))
@@ -810,7 +811,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     else
                     {
                         Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, file)), file, menu.Title);
-                        AddEntries(file, menu.Items, insertAt: 0, separate: true, menu.IsEnabled, declared);
+                        // Open Recent follows the declared items, such as Open…, without a separator, as in the Cocoa template.
+                        AddEntries(file, menu.Items, insertAt: 0, separate: FindOpenRecent(file) == 0, menu.IsEnabled, declared);
                     }
                     break;
                 default:

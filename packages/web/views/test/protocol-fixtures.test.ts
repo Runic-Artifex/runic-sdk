@@ -92,3 +92,71 @@ test("the mock speaks protocol 3 and answers released everywhere .NET does", asy
   const control = JSON.parse(await bridge.call("__runicInteractionControlWait", JSON.stringify({ route: "page", presentationId: "gone:1" })));
   assert.deepEqual(control, { kind: "released" });
 });
+
+// Issue #642: only a snapshot read checks the protocol. A command or setter whose
+// member name ends in "Snapshot" gets an ordinary reply, which never states one.
+async function withDiagnostics<T>(run: (diagnostics: BridgeDiagnostic[]) => Promise<T>): Promise<T> {
+  const diagnostics: BridgeDiagnostic[] = [];
+  const stop = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
+  try { return await run(diagnostics); } finally { stop(); }
+}
+
+test("a command named CreateSnapshot succeeds although its reply states no protocol", async () => {
+  const bridge = fresh();
+  await withDiagnostics(async diagnostics => {
+    const client = await connectView({ contract, route: "page", mount: false, hydrate, operations: bridgeOperations });
+    try {
+      bridge.route("pageCreateSnapshot", () => JSON.stringify({ ok: true, state: { revision: 2, title: "created" }, error: null }));
+      assert.deepEqual(await client.command("pageCreateSnapshot"), { revision: 2, title: "created" });
+      const outcome = await client.commandOutcome("pageCreateSnapshot", value => value);
+      assert.ok(outcome.ok);
+      assert.deepEqual(outcome.value, { revision: 2, title: "created" });
+      assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), []);
+    } finally { client.dispose(); }
+  });
+});
+
+test("a command named CreateSnapshot that released its View resolves with the last state", async () => {
+  const bridge = fresh();
+  await withDiagnostics(async diagnostics => {
+    const client = await connectView({ contract, route: "page", mount: false, hydrate, operations: bridgeOperations });
+    try {
+      const before = client.snapshot;
+      bridge.route("pageCreateSnapshot", () => JSON.stringify({ ok: true, state: null, error: null, released: true }));
+      assert.equal(await client.command("pageCreateSnapshot"), before);
+      assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), []);
+    } finally { client.dispose(); }
+  });
+});
+
+test("the setter of a property named LastSnapshot succeeds although its reply states no protocol", async () => {
+  const bridge = fresh();
+  await withDiagnostics(async diagnostics => {
+    const client = await connectView({ contract, route: "page", mount: false, hydrate });
+    try {
+      bridge.route("pageSetLastSnapshot", (value: unknown) => JSON.stringify({ ok: true, state: { revision: 2, lastSnapshot: value }, error: null }));
+      assert.deepEqual(await client.invoke("pageSetLastSnapshot", "s1"), { revision: 2, lastSnapshot: "s1" });
+      assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), []);
+    } finally { client.dispose(); }
+  });
+});
+
+test("a snapshot read without a protocol still fails with the protocol diagnostic", async () => {
+  const bridge = fresh();
+  await withDiagnostics(async diagnostics => {
+    bridge.route("pageSnapshot", () => JSON.stringify({ ok: true, state: {}, error: null }));
+    await assert.rejects(connectView({ contract, route: "page", mount: false, hydrate }), (error: unknown) =>
+      error instanceof BridgeError && error.kind === "failed" && error.message.includes("does not state a Views protocol"));
+    assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.code, diagnostic.route]), [["protocol", "pageSnapshot"]]);
+  });
+});
+
+test("a snapshot read with another protocol still fails with the protocol diagnostic", async () => {
+  const bridge = fresh();
+  await withDiagnostics(async diagnostics => {
+    bridge.route("pageSnapshot", () => JSON.stringify({ ok: true, state: {}, error: null, protocol: 4 }));
+    await assert.rejects(connectView({ contract, route: "page", mount: false, hydrate }), (error: unknown) =>
+      error instanceof BridgeError && error.kind === "failed" && error.message.includes("uses Views protocol 4"));
+    assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.code, diagnostic.route]), [["protocol", "pageSnapshot"]]);
+  });
+});

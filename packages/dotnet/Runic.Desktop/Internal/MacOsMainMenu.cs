@@ -58,6 +58,24 @@ internal static class MacOsMainMenu
 
     internal static readonly string[] FileActions = ["performClose:"];
 
+    // Open Recent (MacOSDesktopOptions.OpenRecentMenu), first in the standard File menu: a submenu that Runic fills from
+    // NSDocumentController's recent documents as it opens, above Clear Menu, which sends clearRecentDocuments: to the
+    // document controller. A chosen document is delivered as an open-documents event (MacOsApplication.OpenFileUrls).
+    internal const string OpenRecentIdentifier = "runic.menu.file.openRecent";
+    internal const string OpenRecentAction = "runicOpenRecentDocument:";
+    internal const string ClearRecentAction = "clearRecentDocuments:";
+
+    /// <summary>
+    /// The title of a recent document's item: its display name, and, as AppKit's own menu does, the name of its folder
+    /// after an en dash when another recent document has the same display name.
+    /// </summary>
+    internal static string RecentDocumentTitle(string name, string path, IEnumerable<(string Path, string Name)> documents)
+    {
+        if (!documents.Any(other => other.Name == name && other.Path != path)) return name;
+        var folder = Path.GetFileName(Path.GetDirectoryName(path.TrimEnd('/')) ?? "");
+        return folder.Length == 0 ? name : $"{name} – {folder}";
+    }
+
     internal static readonly Item[] Window = WindowItems(English);
 
     internal static Item[] WindowItems(DesktopStandardMenuTitles titles) =>

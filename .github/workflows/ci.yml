@@ -1276,6 +1276,13 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --lifecycle
+      # M5: the represented file and edited state of the window, the recent documents, and Open Recent, whose chosen
+      # document arrives as an open request.
+      - name: Exercise macOS document conventions
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --documents
+
       # M4: a Hidden title bar keeps its traffic lights, a mouse-down in a drag region drags the window and elsewhere
       # reaches the page, and a frameless window that cannot be resized becomes key and takes typed keys.
       - name: Exercise the macOS window chrome and drag regions

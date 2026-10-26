@@ -249,7 +249,7 @@ public sealed class MonitorsAndFullScreenTests
     {
         var titles = new DesktopStandardMenuTitles();
         Assert.Empty(titles.Check());
-        Assert.Equal(22, titles.Titles().Count());
+        Assert.Equal(24, titles.Titles().Count());
         Assert.Equal(["About {0}", "", "Hide {0}", "Hide Others", "Show All", "", "Quit {0}"],
             MacOsMainMenu.ApplicationItems(titles).Select(static item => item.Title));
         Assert.Equal(MacOsMainMenu.Edit, MacOsMainMenu.EditItems(titles));
