@@ -497,6 +497,29 @@ window opens full-screen anyway and does not record it. Windows without
 `DesktopWindowCapabilities.FullScreen` ignore it, and `Validate` reports it for
 an installed browser.
 
+### Coordinates
+
+Every built-in window host measures positions right and down from the top-left
+corner of the primary monitor, as Electron and Tauri do: `MoveAsync`, `X` and `Y`
+of `DesktopWindowOptions`, `DesktopWindowState` and its `Placement`, and
+`DesktopMonitor.Bounds` and `WorkArea`. A monitor above or left of the primary
+one has negative coordinates. The units differ: physical pixels on Windows,
+points on macOS and logical pixels on Linux (see the table under
+[Monitors and full screen](#monitors-and-full-screen)). On macOS the primary
+screen is the one with the menu bar; its work area starts below the menu bar, so
+`MoveAsync(workArea.X, workArea.Y)` puts the title bar right below it.
+`ResizeAsync` keeps the window's top-left corner in place there too.
+
+Before Runic 0.12 macOS used AppKit's coordinates instead: the frame's
+bottom-left corner, measured up from the bottom of the primary screen. Runic
+0.12 converts placements saved that way once: `DesktopWindowPlacement.Origin` is
+`DesktopCoordinateOrigin.TopLeft` in every placement a built-in host reports,
+and a placement without it (`null`, as saved by 0.11) or with `BottomLeft` opens
+at the same place on a Mac; the placement the window then reports is top-left.
+Windows and Linux ignore `Origin`. Code that computed macOS positions itself,
+for example from `NSScreen` frames, has to flip them:
+`top = primaryScreenHeight - (bottom + frameHeight)`.
+
 ### Monitors and full screen
 
 `DesktopHost.Monitors` lists the desktop's monitors and follows changes; a
@@ -541,7 +564,7 @@ same place or size.
 | Presentation | Bounds | Maximized | Full-screen | Restore fitted to |
 | --- | --- | --- | --- | --- |
 | Windows WebView2 | Position in physical virtual-screen pixels, outer frame size in device-independent pixels at the window's monitor scale | Yes | Yes | The monitor work areas, at the target monitor's scale |
-| macOS WKWebView | AppKit points: the frame's bottom-left corner, measured up from the main screen's bottom, and the content size | Yes (zoomed) | Yes | The screens' visible frames (without the menu bar and Dock), title bar included |
+| macOS WKWebView | Points: the frame's top-left corner, title bar included, measured down from the primary screen's top, and the content size | Yes (zoomed) | Yes | The screens' visible frames (without the menu bar and Dock), title bar included |
 | Linux GTK 3 (X11) | Logical pixels: the frame's top-left corner and the content size | Yes | Yes | The GDK monitor work areas |
 | Linux GTK 3 (Wayland) | Content size only; the position is `null` | Yes | Yes | The largest monitor's work area, size only |
 | Linux GTK 4 (X11) | Logical pixels: the visible frame's top-left corner and the content size | Yes | Yes | The monitor work areas; see [Runic.Desktop.Gtk4](../Runic.Desktop.Gtk4/README.md) |
