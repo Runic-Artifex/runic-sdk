@@ -26,6 +26,8 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
     private GCHandle _self;
     private nint _session, _queue;
     private bool _started, _disposed;
+    // Counts the disks' appearances: each appearance is a disk's identity under its BSD name.
+    private long _appearances;
 
     public PlatformResult<ImmutableArray<MacDisk>> Disks()
     {
@@ -169,13 +171,13 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void Appeared(nint disk, nint context) => Update(disk, context, removed: false);
+    private static void Appeared(nint disk, nint context) => Update(disk, context, DiskEvent.Appeared);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void Disappeared(nint disk, nint context) => Update(disk, context, removed: true);
+    private static void Disappeared(nint disk, nint context) => Update(disk, context, DiskEvent.Disappeared);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void DescriptionChanged(nint disk, nint keys, nint context) => Update(disk, context, removed: false);
+    private static void DescriptionChanged(nint disk, nint keys, nint context) => Update(disk, context, DiskEvent.DescriptionChanged);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void Idle(nint context)
@@ -184,18 +186,27 @@ internal sealed unsafe partial class MacVolumeSource : IMacVolumeSource, IDispos
         catch (Exception) { /* No exception may unwind into Disk Arbitration. */ }
     }
 
-    private static void Update(nint disk, nint context, bool removed)
+    private enum DiskEvent { Appeared, Disappeared, DescriptionChanged }
+
+    // An appeared disk is a new appearance even under a BSD name already known; a description change keeps the
+    // appearance of the disk it describes.
+    private static void Update(nint disk, nint context, DiskEvent kind)
     {
         try
         {
             var source = (MacVolumeSource)GCHandle.FromIntPtr(context).Target!;
             if (Marshal.PtrToStringUTF8(DADiskGetBSDName(disk)) is not { Length: > 0 } name) return;
-            var described = removed ? null : Describe(disk, name);
+            var described = kind == DiskEvent.Disappeared ? null : Describe(disk, name);
             Action[] subscribers;
             lock (source._lock)
             {
                 if (described is null) source._disks.Remove(name);
-                else source._disks[name] = described;
+                else
+                {
+                    string identity = kind == DiskEvent.DescriptionChanged && source._disks.TryGetValue(name, out var known) && known.Identity is { } kept
+                        ? kept : (++source._appearances).ToString(global::System.Globalization.CultureInfo.InvariantCulture);
+                    source._disks[name] = described with { Identity = identity };
+                }
                 subscribers = [.. source._subscribers];
             }
             foreach (var subscriber in subscribers) subscriber();

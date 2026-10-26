@@ -299,6 +299,12 @@ messages.
 - **Watching.** Disk Arbitration reports every appearance, disappearance and
   description change, including mounts and unmounts, so the watch lists again
   only after a callback (and 100 ms more, so a burst is one listing).
+  macOS hands a freed BSD name to the next disk that appears, so the watch
+  compares listings by each disk's appearance as well as its BSD name: a disk
+  that disappeared and a different one that appeared under its name before the
+  next listing are `Removed` and then `Added`, never `Changed`. `Changed` is
+  only the same appearance with other properties. `Id` stays the BSD name.
+  (I-218: 0.11 reported such a pair as one `Changed`.)
 
 ## Out of scope for 1.0
 

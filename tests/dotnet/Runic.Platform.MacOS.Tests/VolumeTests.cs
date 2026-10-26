@@ -175,7 +175,7 @@ internal sealed partial class VolumeTests
         await using (var watch = volumes.WatchAsync(timeout.Token).GetAsyncEnumerator(timeout.Token))
         {
             Check(await Next(watch) is DesktopVolumeChange.Snapshot { Volumes.Length: 9 }, "a snapshot comes first");
-            source.Disks = [.. Layout.Where(static d => !d.BsdName.StartsWith("disk4", StringComparison.Ordinal)), new MacDisk("disk9") { Whole = true, VolumeKind = "hfs", Mountable = true, VolumeName = "Image" }];
+            source.Disks = [.. Layout.Where(static d => !d.BsdName.StartsWith("disk4", StringComparison.Ordinal)), new MacDisk("disk9") { Whole = true, VolumeKind = "hfs", Mountable = true, VolumeName = "Image", Identity = "1" }];
             source.Notify();
             Check(await Next(watch) is DesktopVolumeChange.Removed("disk4s1") && await Next(watch) is DesktopVolumeChange.Removed("disk4s2")
                 && await Next(watch) is DesktopVolumeChange.Removed("disk4s3"), "the stick's volumes are removed");
@@ -183,6 +183,15 @@ internal sealed partial class VolumeTests
             source.Disks = source.Disks.Replace(source.Disks[^1], source.Disks[^1] with { VolumePath = "/Volumes/Image" });
             source.Notify();
             Check(await Next(watch) is DesktopVolumeChange.Changed { Volume.MountPaths: ["/Volumes/Image"] }, "a mount is a change");
+
+            // I-218: disk9 is ejected and, before the watch lists again, another disk appears under its name.
+            source.Disks = source.Disks.Replace(source.Disks[^1], new MacDisk("disk9") { Whole = true, VolumeKind = "apfs", Mountable = true, VolumeName = "Simulator", Identity = "2" });
+            source.Notify();
+            Check(await Next(watch) is DesktopVolumeChange.Removed("disk9") && await Next(watch) is DesktopVolumeChange.Added { Volume: { Id: "disk9", DisplayName: "Simulator" } },
+                "a BSD name that passed to another disk is a removal and an addition");
+            source.Disks = source.Disks.Replace(source.Disks[^1], source.Disks[^1] with { VolumePath = "/Volumes/Simulator" });
+            source.Notify();
+            Check(await Next(watch) is DesktopVolumeChange.Changed { Volume.MountPaths: ["/Volumes/Simulator"] }, "the same disk's mount is a change");
         }
         Check(source.Subscribers == 0, "ending the watch removes its subscription");
 
@@ -446,10 +455,10 @@ internal sealed partial class VolumeTests
         }
     }
 
-    // Waits for the watch to report the ejected volume gone. The watch diffs listings by BSD name, so when macOS hands the
-    // name to another disk within one settle interval, the removal arrives as a change of that name to another volume
-    // (I-217: CoreSimulator mounted its runtimes as the APFS image was ejected, and disk18s1 became "iOS 26.4.1
-    // Simulator"); that counts as the removal. Fails after a minute with what the watch reported and what is listed.
+    // Waits for the watch to report the ejected volume gone. When macOS hands the BSD name to another disk within one
+    // settle interval (I-217: CoreSimulator mounted its runtimes as the APFS image was ejected, and disk18s1 became
+    // "iOS 26.4.1 Simulator"), the watch still reports the removal, then the other disk's addition (I-218). Fails after
+    // a minute with what the watch reported and what is listed.
     private static async Task WaitForRemovalAsync(ChannelReader<PlatformResult<DesktopVolumeChange>> changes, IDesktopVolumes volumes, DesktopVolume volume,
         CancellationToken token)
     {
@@ -464,17 +473,11 @@ internal sealed partial class VolumeTests
                 Console.WriteLine($"Change: {change}");
                 seen.Add(change.ToString()!);
                 if (change is PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Removed(var removed) } && removed == volume.Id) return;
-                var other = change switch
-                {
-                    PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Added(var v) } => v,
-                    PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Changed(var v) } => v,
-                    _ => null,
-                };
-                if (other is not null && other.Id == volume.Id && other.DisplayName != volume.DisplayName)
-                {
-                    Console.WriteLine($"The removal of {volume.Id} '{volume.DisplayName}' was coalesced: the name now belongs to '{other.DisplayName}'.");
-                    return;
-                }
+                // A change can only be the same disk's; another disk under the name must come after a removal.
+                if (change is PlatformResult<DesktopVolumeChange>.Success { Value: DesktopVolumeChange.Changed(var other) } && other.Id == volume.Id
+                    && (other.DisplayName != volume.DisplayName || other.DriveId != volume.DriveId))
+                    throw new InvalidOperationException($"Volume check failed: {volume.Id} '{volume.DisplayName}' on {volume.DriveId} was reported changed into "
+                        + $"'{other.DisplayName}' on {other.DriveId}, without its removal (I-218). It reported: [{string.Join("; ", seen)}]");
             }
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
