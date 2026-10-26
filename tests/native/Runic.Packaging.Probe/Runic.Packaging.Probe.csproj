@@ -46,4 +46,7 @@
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
   </ItemGroup>
+  <!-- As Runic.Application.Views.Desktop brings them to an application: on macOS, dotnet run starts the probe from its
+       development bundle (G-8), which the macOS packaging leg checks. -->
+  <Import Project="../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/Runic.Platform.MacOS.targets" />
 </Project>

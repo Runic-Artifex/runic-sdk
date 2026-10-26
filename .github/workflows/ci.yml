@@ -1551,6 +1551,34 @@ jobs:
           receipt="$RUNNER_TEMP/packaged.json"
           open -W -n "$app" --args "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
           bun eng/ci/packaging-probe-check.mjs "$receipt" macos
+      # G-8: dotnet run on macOS starts the probe from its development bundle (Runic.Platform.MacOS's targets), an
+      # ad-hoc signed .app in obj/ with the project's Info.plist that links the build output, so the process has its
+      # bundle identifier. Its links point out of the bundle, so the signature is verified without --strict.
+      - name: Run the probe from its development bundle
+        if: matrix.target == 'macos'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          receipt="$RUNNER_TEMP/development.json"
+          dotnet run -c Release -p:CI=true --project "$PROBE" -- "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
+          bundle=tests/native/Runic.Packaging.Probe/obj/Release/net10.0/runic-macos/Runic.Packaging.Probe.app
+          test -f "$bundle/Contents/MacOS/Runic.Packaging.Probe" && test ! -L "$bundle/Contents/MacOS/Runic.Packaging.Probe"
+          test -L "$bundle/Contents/MacOS/Runic.Packaging.Probe.dll"
+          plutil -lint "$bundle/Contents/Info.plist"
+          test "$(plutil -extract CFBundleIdentifier raw "$bundle/Contents/Info.plist")" = org.runic.tests.PackagingProbe
+          test "$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$bundle/Contents/Info.plist")" = runic-packaging-probe
+          test "$(plutil -extract CFBundleDocumentTypes.0.LSHandlerRank raw "$bundle/Contents/Info.plist")" = Alternate
+          codesign --verify --verbose=2 "$bundle"
+          codesign --display --verbose=2 "$bundle" 2>&1 | tee "$RUNNER_TEMP/development-signature.txt"
+          grep -qx 'Identifier=org.runic.tests.PackagingProbe' "$RUNNER_TEMP/development-signature.txt"
+          grep -qE '^Info\.plist entries=[0-9]+' "$RUNNER_TEMP/development-signature.txt"
+          bun eng/ci/packaging-probe-check.mjs "$receipt" macos development
+          # RunicMacDevelopmentBundle=false starts the build output itself, without a bundle identifier.
+          receipt="$RUNNER_TEMP/unbundled.json"
+          dotnet run -c Release -p:CI=true -p:RunicMacDevelopmentBundle=false --project "$PROBE" -- \
+            "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
+          node -e 'const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (r.packageIdentity !== null) throw new Error("unbundled identity " + r.packageIdentity);' "$receipt"
       # D045.5, D045.6: the sandboxed Runic Desktop fixture (tests/native/Runic.Sandbox.Probe), packaged for the App
       # Sandbox (RunicMacSandbox) with its installer package. Both stay ad-hoc signed and unsigned: the maintainers'
       # Apple certificates and provisioning profiles are not in CI (I-101). The bundle's executable runs in the sandbox,

@@ -324,4 +324,235 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
     <Error Condition="'$(RunicMacPrivilegedDaemon)' != 'true' and '$(RunicMacPrivilegedDevelopmentSigning)' != 'true'" Code="RUNICPA107" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicpa107"
            Text="An application that runs macOS privileged actions must be published with PublishAot set to true: a JIT runtime reads startup hooks and debugger or profiler settings from whoever starts it, so code with the application's signature could run code it does not contain." />
   </Target>
+  <!--
+    The development bundle (G-8). On macOS, dotnet run, and so dotnet watch and dotnet runic dev, start the application
+    from a generated, ad-hoc signed bundle instead of the bare build output, so the services that need a bundle
+    (notifications, login startup, open registration, the URL schemes and file types of Info.plist) work during
+    development:
+
+      $(IntermediateOutputPath)runic-macos/$(AssemblyName).app
+        Contents/Info.plist      CFBundleIdentifier (RunicMacBundleIdentifier, else ApplicationId), the name
+                                 (ApplicationTitle), the version, RunicApplicationUrlSchemes, RunicApplicationFileTypes
+                                 (by extension, with the Alternate rank) and RunicMacCameraUsageDescription and
+                                 RunicMacMicrophoneUsageDescription.
+        Contents/MacOS/<name>    a copy of the application host, which the bundle's signature covers
+        Contents/MacOS/*         links to every other file and directory of the build output, so a rebuild or a
+                                 frontend written to www/ needs no copy
+
+    The bundle is refreshed and signed again (codesign -sign -) when dotnet run computes the command (ComputeRunArguments),
+    so dotnet run with no-build sees the latest build. It has no hardened runtime and no entitlements: the debugger,
+    hot reload and the JIT work as before. Universal links and the data-protection keychain also need entitlements
+    that only a provisioning profile grants, so they still need a packaged bundle (dotnet runic package macos).
+
+    RunicMacDevelopmentBundle=false runs the build output directly, as before 0.12. The bundle is made only for an
+    executable with an application host and an ApplicationId (or RunicMacBundleIdentifier), not for test projects or
+    the privileged daemon.
+  -->
+  <PropertyGroup>
+    <_RunicMacDevelopmentBundleHost Condition="'$(_RunicMacDevelopmentBundleHost)' == ''">$([MSBuild]::IsOSPlatform('OSX'))</_RunicMacDevelopmentBundleHost>
+    <_RunicMacCodesign Condition="'$(_RunicMacCodesign)' == ''">/usr/bin/codesign</_RunicMacCodesign>
+  </PropertyGroup>
+
+  <UsingTask TaskName="RunicWriteMacDevelopmentBundle" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <OutputDirectory ParameterType="System.String" Required="true" />
+      <Bundle ParameterType="System.String" Required="true" />
+      <Executable ParameterType="System.String" Required="true" />
+      <BundleIdentifier ParameterType="System.String" Required="true" />
+      <Name ParameterType="System.String" />
+      <Version ParameterType="System.String" />
+      <UrlSchemes ParameterType="System.String" />
+      <FileTypes ParameterType="System.String" />
+      <CameraUsageDescription ParameterType="System.String" />
+      <MicrophoneUsageDescription ParameterType="System.String" />
+      <Changed ParameterType="System.Boolean" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using Microsoft.Build.Framework;
+using Microsoft.Build.Utilities;
+
+public sealed class RunicWriteMacDevelopmentBundle : Task
+{
+    [Required] public string OutputDirectory { get; set; } = "";
+    [Required] public string Bundle { get; set; } = "";
+    [Required] public string Executable { get; set; } = "";
+    [Required] public string BundleIdentifier { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Version { get; set; } = "";
+    public string UrlSchemes { get; set; } = "";
+    public string FileTypes { get; set; } = "";
+    public string CameraUsageDescription { get; set; } = "";
+    public string MicrophoneUsageDescription { get; set; } = "";
+    [Output] public bool Changed { get; set; }
+
+    public override bool Execute()
+    {
+        string output = Path.GetFullPath(OutputDirectory);
+        string host = Path.Combine(output, Executable);
+        string contents = Path.Combine(Bundle, "Contents");
+        string macOS = Path.Combine(contents, "MacOS");
+        Directory.CreateDirectory(macOS);
+
+        // The application host: a copy, which codesign signs. Every other entry of the output is linked. The stamp
+        // beside the bundle records the build's host and the linked entries; when either changed, the bundle is made
+        // again.
+        var source = new FileInfo(host);
+        var names = Directory.EnumerateFileSystemEntries(output).Select(Path.GetFileName)
+            .Where(name => name != Executable && !name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(name => name, StringComparer.Ordinal).ToList();
+        string stamp = Bundle + ".stamp";
+        string stamped = source.Length + ":" + source.LastWriteTimeUtc.Ticks + "\n" + output + "\n" + string.Join("\n", names);
+        string copy = Path.Combine(macOS, Executable);
+        if (!File.Exists(copy) || !File.Exists(stamp) || File.ReadAllText(stamp) != stamped)
+        {
+            foreach (string entry in Directory.EnumerateFileSystemEntries(macOS)) Remove(entry);
+            // File.Copy keeps the Unix mode.
+            File.Copy(host, copy, true);
+            foreach (string name in names)
+            {
+                string entry = Path.Combine(output, name);
+                Link(Path.Combine(macOS, name), entry, Directory.Exists(entry));
+            }
+            File.WriteAllText(stamp, stamped);
+            Changed = true;
+        }
+
+        string info = Path.Combine(contents, "Info.plist");
+        string text = InfoPlist();
+        if (!File.Exists(info) || File.ReadAllText(info) != text)
+        {
+            File.WriteAllText(info, text, new UTF8Encoding(false));
+            Changed = true;
+        }
+        // A bundle that was never signed, or whose signature failed, is signed now.
+        if (!Directory.Exists(Path.Combine(contents, "_CodeSignature"))) Changed = true;
+        return !Log.HasLoggedErrors;
+    }
+
+    private string InfoPlist()
+    {
+        string name = Escape(string.IsNullOrWhiteSpace(Name) ? Executable : Name.Trim());
+        var text = new StringBuilder();
+        text.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        text.Append("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n");
+        text.Append("<!-- The Runic development bundle, written by RunicMacDevelopmentBundle; dotnet runic package macos writes the shipped one. -->\n");
+        text.Append("<plist version=\"1.0\">\n<dict>\n");
+        Entry(text, "CFBundleIdentifier", Escape(BundleIdentifier.Trim()));
+        Entry(text, "CFBundleName", name);
+        Entry(text, "CFBundleDisplayName", name);
+        Entry(text, "CFBundleExecutable", Escape(Executable));
+        Entry(text, "CFBundlePackageType", "APPL");
+        string version = NumericVersion(Version);
+        Entry(text, "CFBundleShortVersionString", version);
+        Entry(text, "CFBundleVersion", version);
+        text.Append("  <key>NSHighResolutionCapable</key><true/>\n");
+        string[] schemes = Split(UrlSchemes).Select(scheme => scheme.ToLowerInvariant()).ToArray();
+        if (schemes.Length > 0)
+        {
+            text.Append("  <key>CFBundleURLTypes</key>\n  <array>\n    <dict>\n");
+            text.Append("      <key>CFBundleURLName</key><string>" + Escape(BundleIdentifier.Trim()) + "</string>\n");
+            text.Append("      <key>CFBundleURLSchemes</key><array>");
+            foreach (string scheme in schemes) text.Append("<string>" + Escape(scheme) + "</string>");
+            text.Append("</array>\n    </dict>\n  </array>\n");
+        }
+        // By extension with the Alternate rank: the development bundle opens the files, it does not claim their types.
+        string[] extensions = Split(FileTypes).Select(entry => entry.Split('=')[0].TrimStart('.').ToLowerInvariant())
+            .Where(extension => extension.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+        if (extensions.Length > 0)
+        {
+            text.Append("  <key>CFBundleDocumentTypes</key>\n  <array>\n");
+            foreach (string extension in extensions)
+            {
+                text.Append("    <dict>\n");
+                Entry(text, "CFBundleTypeName", name + " document (." + Escape(extension) + ")", "      ");
+                Entry(text, "CFBundleTypeRole", "Editor", "      ");
+                Entry(text, "LSHandlerRank", "Alternate", "      ");
+                text.Append("      <key>CFBundleTypeExtensions</key><array><string>" + Escape(extension) + "</string></array>\n");
+                text.Append("    </dict>\n");
+            }
+            text.Append("  </array>\n");
+        }
+        if (!string.IsNullOrWhiteSpace(CameraUsageDescription)) Entry(text, "NSCameraUsageDescription", Escape(CameraUsageDescription.Trim()));
+        if (!string.IsNullOrWhiteSpace(MicrophoneUsageDescription)) Entry(text, "NSMicrophoneUsageDescription", Escape(MicrophoneUsageDescription.Trim()));
+        text.Append("</dict>\n</plist>\n");
+        return text.ToString();
+    }
+
+    private static void Remove(string path)
+    {
+        // A link, also to a directory, is removed itself.
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 || !Directory.Exists(path)) File.Delete(path);
+        else Directory.Delete(path, true);
+    }
+
+    // File.CreateSymbolicLink and Directory.CreateSymbolicLink, which the task's reference assemblies (netstandard) lack.
+    private static void Link(string path, string target, bool directory) =>
+        (directory ? typeof(Directory) : typeof(File)).GetMethod("CreateSymbolicLink", new[] { typeof(string), typeof(string) })
+            .Invoke(null, new object[] { path, target });
+
+    private static void Entry(StringBuilder text, string key, string value, string indent = "  ") =>
+        text.Append(indent + "<key>" + key + "</key><string>" + value + "</string>\n");
+
+    private static string[] Split(string value) =>
+        (value ?? "").Split(new[] { ';', ',', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+    // As dotnet runic package: 1.2.3-preview.4 becomes 1.2.3.
+    private static string NumericVersion(string version)
+    {
+        string core = (string.IsNullOrWhiteSpace(version) ? "1.0.0" : version.Trim()).Split('-', '+')[0];
+        var parts = core.Split('.').Select(part => new string(part.TakeWhile(char.IsDigit).ToArray())).Select(part => part.Length == 0 ? "0" : part.TrimStart('0').Length == 0 ? "0" : part.TrimStart('0')).ToList();
+        while (parts.Count < 3) parts.Add("0");
+        return string.Join(".", parts.Take(3));
+    }
+
+    private static string Escape(string text) =>
+        text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+}
+]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="RunicMacDevelopmentBundle" AfterTargets="ComputeRunArguments"
+          Condition="'$(RunicMacDevelopmentBundle)' != 'false' and '$(_RunicMacDevelopmentBundleHost)' == 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(UseAppHost)' == 'true' and '$(ApplicationId)$(RunicMacBundleIdentifier)' != '' and '$(IsTestProject)' != 'true' and '$(RunicMacPrivilegedDaemon)' != 'true' and ('$(RuntimeIdentifier)' == '' or $(RuntimeIdentifier.StartsWith('osx')))">
+    <PropertyGroup>
+      <_RunicMacDevelopmentBundleIdentifier>$([MSBuild]::ValueOrDefault('$(RunicMacBundleIdentifier)', '$(ApplicationId)'))</_RunicMacDevelopmentBundleIdentifier>
+      <_RunicMacDevelopmentBundleDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'runic-macos'))</_RunicMacDevelopmentBundleDirectory>
+      <_RunicMacDevelopmentBundle>$(_RunicMacDevelopmentBundleDirectory)$(AssemblyName).app</_RunicMacDevelopmentBundle>
+      <_RunicMacDevelopmentExecutable>$(AssemblyName)$(_NativeExecutableExtension)</_RunicMacDevelopmentExecutable>
+    </PropertyGroup>
+    <Message Importance="high" Condition="!Exists('$(TargetDir)$(_RunicMacDevelopmentExecutable)')"
+             Text="Runic: $(TargetDir)$(_RunicMacDevelopmentExecutable) does not exist, so the application runs without its development bundle. Build it first." />
+    <RunicWriteMacDevelopmentBundle Condition="Exists('$(TargetDir)$(_RunicMacDevelopmentExecutable)')"
+                                    OutputDirectory="$(TargetDir)"
+                                    Bundle="$(_RunicMacDevelopmentBundle)"
+                                    Executable="$(_RunicMacDevelopmentExecutable)"
+                                    BundleIdentifier="$(_RunicMacDevelopmentBundleIdentifier)"
+                                    Name="$(ApplicationTitle)"
+                                    Version="$(Version)"
+                                    UrlSchemes="$(RunicApplicationUrlSchemes)"
+                                    FileTypes="$(RunicApplicationFileTypes)"
+                                    CameraUsageDescription="$(RunicMacCameraUsageDescription)"
+                                    MicrophoneUsageDescription="$(RunicMacMicrophoneUsageDescription)">
+      <Output TaskParameter="Changed" PropertyName="_RunicMacDevelopmentBundleChanged" />
+    </RunicWriteMacDevelopmentBundle>
+    <!-- Ad hoc, without the hardened runtime. A failed signature leaves the bundle unsigned: the application still runs,
+         and the services that check the signature report it. -->
+    <Exec Condition="'$(_RunicMacDevelopmentBundleChanged)' == 'true'"
+          Command="&quot;$(_RunicMacCodesign)&quot; --force --sign - --timestamp=none &quot;$(_RunicMacDevelopmentBundle)&quot;"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicMacDevelopmentBundleSigned" />
+    </Exec>
+    <Message Importance="high" Condition="'$(_RunicMacDevelopmentBundleChanged)' == 'true' and '$(_RunicMacDevelopmentBundleSigned)' != '0'"
+             Text="Runic: codesign could not sign the development bundle $(_RunicMacDevelopmentBundle) (exit code $(_RunicMacDevelopmentBundleSigned)); login startup reports its signature invalid." />
+    <PropertyGroup Condition="Exists('$(TargetDir)$(_RunicMacDevelopmentExecutable)')">
+      <RunCommand>$(_RunicMacDevelopmentBundle)/Contents/MacOS/$(_RunicMacDevelopmentExecutable)</RunCommand>
+    </PropertyGroup>
+  </Target>
 </Project>
