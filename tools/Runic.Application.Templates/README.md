@@ -46,7 +46,9 @@ builds the app without its frontend, and a `global.json` selects
 Microsoft.Testing.Platform for `dotnet test`.
 
 You need the .NET 10 SDK and either Node.js 24 or 26 with npm or pnpm, or
-Bun 1.4. Each generated project contains only the selected package manager's
+Bun 1.4. Runic is tested with .NET 10; its build tools (the Bridge generator,
+the assets packer, `dotnet-runic` and `runic-create`) also start on a newer
+.NET runtime when the 10.0 runtime is not installed. Each generated project contains only the selected package manager's
 lock file and a local `dotnet-runic` tool manifest. The project sets
 `RestorePackagesWithLockFile`, so its first restore writes `packages.lock.json`,
 which pins every NuGet package to its version and content hash; commit it with

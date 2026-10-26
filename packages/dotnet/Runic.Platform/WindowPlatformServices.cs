@@ -251,6 +251,10 @@ public static class PlatformCapabilityIds
     public const string TaskbarProgress = "platform.taskbar.progress";
     /// <summary>Starting drags out of the window through <see cref="IWindowPlatformServices.StartDragAsync"/>.</summary>
     public const string DragOut = "platform.drag.out";
+    /// <summary>Selecting documents to read and save back to through <see cref="IFileDialogs.OpenDocumentAsync"/> and
+    /// <see cref="IFileDialogs.SaveDocumentAsync"/>. Whether their writes can replace the file is
+    /// <see cref="FilesSave"/>.</summary>
+    public const string FilesOpenDocument = "platform.files.openDocument";
 }
 
 /// <summary>Window platform services for hosts that cannot provide them.</summary>
@@ -267,6 +271,7 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors, PlatformCapabilityIds.MessageBoxes,
         PlatformCapabilityIds.ClipboardReadData, PlatformCapabilityIds.ClipboardWriteData, PlatformCapabilityIds.ClipboardWatch,
         PlatformCapabilityIds.TaskbarBadge, PlatformCapabilityIds.TaskbarProgress, PlatformCapabilityIds.DragOut,
+        PlatformCapabilityIds.FilesOpenDocument,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>
@@ -348,6 +353,18 @@ public static class WindowPlatformServices
         {
             ArgumentNullException.ThrowIfNull(options);
             return Pick<ISaveFileLease>(cancellationToken);
+        }
+
+        public ValueTask<PickerResult<IDocumentFileLease>> OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            return Pick<IDocumentFileLease>(cancellationToken);
+        }
+
+        public ValueTask<PickerResult<IDocumentFileLease>> SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            return Pick<IDocumentFileLease>(cancellationToken);
         }
 
         public ValueTask<PlatformResult<string?>> ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken = default)

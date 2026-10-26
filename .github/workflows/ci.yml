@@ -1521,7 +1521,7 @@ jobs:
           test -f "$app/Contents/Resources/www/index.html"
           test ! -e "$app/Contents/MacOS/www"
           mount="$RUNNER_TEMP/probe-dmg"
-          hdiutil attach "artifacts/package/macos/Runic Packaging Probe-1.2.3.dmg" -mountpoint "$mount" -nobrowse -readonly
+          eng/ci/hdiutil-attach.sh "artifacts/package/macos/Runic Packaging Probe-1.2.3.dmg" -mountpoint "$mount" -nobrowse -readonly
           test -d "$mount/Runic Packaging Probe.app" && test -L "$mount/Applications"
           codesign --verify --strict "$mount/Runic Packaging Probe.app"
           hdiutil detach "$mount"

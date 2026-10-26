@@ -844,7 +844,7 @@ API shapes were removed rather than deprecated. Since 0.9 the old build property
 and item names no longer apply: each fails the build with
 [RUNICBRIDGE017](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge017),
 which names the new one. Angular's `RunicViewOutlet` remains a deprecated alias,
-removed in the next preview. The old package IDs get no further releases, so replace them
+removed in the next major release. The old package IDs get no further releases, so replace them
 in `PackageReference` and `Directory.Packages.props`; namespaces are unchanged.
 
 | Before | Now |

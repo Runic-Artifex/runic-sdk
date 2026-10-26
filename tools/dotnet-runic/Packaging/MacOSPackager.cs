@@ -14,7 +14,7 @@ namespace Runic.Application.Tool.Packaging;
 /// <summary>
 /// <c>package macos</c>: an .app bundle (the executable in Contents/MacOS, the frontend and icon in Contents/Resources)
 /// signed with the hardened runtime, in a disk image. Ad-hoc signed unless the consumer passes a Developer ID with
-/// <c>--sign</c>; notarized and stapled with <c>--notary-profile</c>. Several runtimes make a universal binary.
+/// <c>--sign</c>; notarized and stapled with <c>--notary-profile</c>. For osx-arm64 only: Runic does not target Intel Macs.
 /// <c>--sandbox</c> (<c>RunicMacSandbox</c>) signs it for the App Sandbox, <c>--provisioning-profile</c> embeds a profile
 /// and its identifiers, and <c>--pkg</c> also writes an installer package with productbuild, as App Store Connect
 /// takes it (D045.5, D045.6). Nothing is uploaded.
@@ -30,7 +30,6 @@ internal static class MacOSPackager
         string iconutil = PackageTools.Require("iconutil", "the Xcode command line tools (xcode-select --install)");
         string ditto = PackageTools.Require("ditto", "macOS");
         string hdiutil = PackageTools.Require("hdiutil", "macOS");
-        string? lipo = context.Runtimes.Count > 1 ? PackageTools.Require("lipo", "the Xcode command line tools (xcode-select --install)") : null;
         string? xcrun = context.Options.NotaryProfile is { Length: > 0 } ? PackageTools.Require("xcrun", "the Xcode command line tools (xcode-select --install)") : null;
         string? productbuild = context.Options.InstallerPackage ? PackageTools.Require("productbuild", "the Xcode command line tools (xcode-select --install)") : null;
         string? security = context.Options.ProvisioningProfile is { Length: > 0 } ? PackageTools.Require("security", "macOS") : null;
@@ -55,28 +54,14 @@ internal static class MacOSPackager
         string resources = Path.Combine(app, "Contents", "Resources");
         Directory.CreateDirectory(macOS);
         Directory.CreateDirectory(resources);
-        var published = new List<string>();
-        foreach (string runtime in context.Runtimes)
-        {
-            string directory = Path.Combine(output, $"publish-{runtime}");
-            await context.PublishAsync(runtime, directory, cancellationToken).ConfigureAwait(false);
-            published.Add(directory);
-        }
-        string executable = Path.Combine(macOS, identity.Executable);
-        if (published.Count == 1)
-        {
-            PackageTools.CopyFile(Path.Combine(published[0], identity.Executable), executable);
-        }
-        else
-        {
-            await PackageTools.RunAsync(lipo!, ["-create", "-output", executable, .. published.Select(directory => Path.Combine(directory, identity.Executable))],
-                output, cancellationToken).ConfigureAwait(false);
-        }
+        string published = Path.Combine(output, $"publish-{context.Runtime}");
+        await context.PublishAsync(context.Runtime, published, cancellationToken).ConfigureAwait(false);
+        PackageTools.CopyFile(Path.Combine(published, identity.Executable), Path.Combine(macOS, identity.Executable));
         // Apple expects only code in Contents/MacOS; Runic finds the frontend in Contents/Resources/www. An application
         // that embeds its frontend (RunicApplicationFrontendDelivery=Embedded) publishes none.
-        string www = Path.Combine(published[0], "www");
+        string www = Path.Combine(published, "www");
         if (Directory.Exists(www)) PackageTools.CopyDirectory(www, Path.Combine(resources, "www"));
-        foreach (string entry in Directory.EnumerateFileSystemEntries(published[0]))
+        foreach (string entry in Directory.EnumerateFileSystemEntries(published))
         {
             string name = Path.GetFileName(entry);
             if (name == identity.Executable || name == "www") continue;

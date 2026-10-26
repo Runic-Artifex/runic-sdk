@@ -14,6 +14,7 @@
   clang,
   zlib,
   libxml2,
+  buildPackages,
   installShellFiles,
   nodejs_24,
   pnpm,
@@ -504,6 +505,20 @@ buildDotnetModule (
     '';
 
     postFixup = ''
+      # The file types and URL schemes that the project declares (RunicApplicationFileTypes,
+      # RunicApplicationUrlSchemes), installed as dotnet runic package installs them in a deb or rpm: the shared-mime-info
+      # definitions, and MimeType= and %U in the desktop entry named after ApplicationId.
+      local -a runicProjectFiles runicFlags
+      concatTo runicProjectFiles dotnetProjectFiles
+      concatTo runicFlags dotnetFlags
+      local projectFile
+      for projectFile in "''${runicProjectFiles[@]}"; do
+        dotnet msbuild "$projectFile" -nologo -p:Configuration="''${dotnetBuildType-Release}" "''${runicFlags[@]}" \
+          -getProperty:ApplicationId,ApplicationTitle,AssemblyName,RunicApplicationFileTypes,RunicApplicationUrlSchemes \
+          > "$TMPDIR/runic-application-properties.json"
+        ${buildPackages.python3.interpreter} -I ${./desktop-integration.py} "$TMPDIR/runic-application-properties.json" "$projectFile" "$out"
+      done
+
       # pkexec runs a privileged action's program as root, from the policy's exec.path: it must be a program of
       # this package, a regular file at its real path.
       for policy in $out/share/polkit-1/actions/*.policy; do

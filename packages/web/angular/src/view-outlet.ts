@@ -80,7 +80,7 @@ export class ViewOutlet<R extends PageReference = PageReference> {
 /**
  * The name of {@link ViewOutlet} before 0.7.0-preview.7, where React, Vue and Svelte already used
  * `ViewOutlet`. It renders the same `<runic-view-outlet>` element.
- * @deprecated Import `ViewOutlet` instead; this alias is removed in the next preview.
+ * @deprecated Import `ViewOutlet` instead; this alias is removed in the next major release.
  */
 @Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
 export class RunicViewOutlet<R extends PageReference = PageReference> extends ViewOutlet<R> {}

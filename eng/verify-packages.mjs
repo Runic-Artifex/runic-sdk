@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { basename, extname, resolve, join } from "node:path";
 import { root, workspace, run, configuration } from "./run.mjs";
-import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions } from "./nupkg.mjs";
+import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText } from "./nupkg.mjs";
 import { packageVersion } from "./version.mjs";
 
 const nativeProviders = new Set([
@@ -72,10 +72,15 @@ export const packageLayouts = {
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i],
   },
   // The props default RunicAssetsDistExclude before the project file, so a project can empty it.
-  "Runic.Assets": { includes: ["buildTransitive/Runic.Assets.props", "buildTransitive/Runic.Assets.HelpLinks.props", "buildTransitive/Runic.Assets.targets"] },
+  // The packer runs on a newer major runtime when 10.0 is absent (#614).
+  "Runic.Assets": {
+    includes: ["buildTransitive/Runic.Assets.props", "buildTransitive/Runic.Assets.HelpLinks.props", "buildTransitive/Runic.Assets.targets"],
+    rollForwardMajor: ["tools/net10.0/Runic.Assets.Packer.runtimeconfig.json"],
+  },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application.Views": {
     includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets"],
+    rollForwardMajor: ["tools/net10.0/BridgeCodegen.runtimeconfig.json"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },
@@ -122,6 +127,8 @@ export const packageLayouts = {
     dependencies: ["Runic.Platform.Runtime"],
     exactDependencies: ["Runic.Platform.Runtime"],
   },
+  "dotnet-runic": { rollForwardMajor: ["tools/net10.0/any/dotnet-runic.runtimeconfig.json"] },
+  "Runic.Create": { rollForwardMajor: ["tools/net10.0/any/runic-create.runtimeconfig.json"] },
 };
 
 export function verifyPackageLayout(nupkg, name, version, layout = packageLayouts[name]) {
@@ -140,6 +147,9 @@ export function verifyPackageLayout(nupkg, name, version, layout = packageLayout
   for (const id of layout.requires ?? []) assert.ok(dependencies.includes(id), `${name} does not depend on ${id}`);
   for (const pattern of layout.forbidden ?? [])
     assert.ok(!dependencies.some(id => pattern.test(id)), `${name} depends on ${dependencies.filter(id => pattern.test(id)).join(", ")}`);
+  for (const file of layout.rollForwardMajor ?? [])
+    assert.equal(JSON.parse(nupkgFileText(nupkg, file)).runtimeOptions?.rollForward, "Major",
+      `${name}: ${file} does not roll forward to a newer major runtime`);
 }
 export function dotnetBuildArguments(projectFile, selectedConfiguration = configuration, additional = []) {
   return ["build", projectFile, "--configuration", selectedConfiguration, ...additional];

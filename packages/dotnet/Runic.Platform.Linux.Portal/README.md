@@ -97,6 +97,21 @@ mid-save, a hidden `.xdp-*` tempfile can remain beside the document. Document
 portals older than 1.14 reject `RENAME_NOREPLACE`; a new file is then created after
 re-checking that the name is still absent.
 
+### Document apps
+
+`OpenDocumentAsync` and `SaveDocumentAsync` (Runic.Platform README, "Document apps")
+classify their selection the same way, so a document opened from a document view
+saves back through the view, as many times as the application saves. Writing needs
+the portal's write grant: an `OpenFile` result the backend granted read-only (such
+as through a chooser's read-only choice) or a revoked grant returns
+`Unavailable(AtomicReplaceUnavailable)` from `BeginWriteAsync`, while
+`OpenReadAsync` keeps reading. A document's bookmark (`CreateBookmarkAsync`) is its
+path, also in a document view: the permission store keeps a persistent document's
+path valid across launches, so `IDesktopFileBookmarks.OpenDocumentAsync` reopens it
+and saves through the view again. A view cannot follow a file moved on the host
+(`NotFound`) and cannot hold sibling files: a new name in the document directory is
+a private temporary file, so lock files beside the document do not work.
+
 There is no automatic fallback to GTK's own dialogs, including when a portal fails.
 
 File dialog filters become FileChooser `filters` (case-insensitive glob patterns,

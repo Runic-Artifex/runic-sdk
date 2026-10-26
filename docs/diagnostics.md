@@ -749,11 +749,13 @@ checks the Native AOT prerequisites.
 
 The target runs on another operating system (`windows` on Windows, `macos` on
 macOS, the Linux formats on Linux), `--runtime` names a runtime identifier of
-another operating system, or a target other than `macos` got several runtime
-identifiers. Exit code 2. Since 0.11.
+another operating system or one that Runic does not support (`osx-x64`: Intel
+Macs are not a Runic target), or the target got several runtime identifiers.
+Since 0.12 `macos` also takes one, `osx-arm64`, and makes no universal bundle.
+Exit code 2. Since 0.11.
 
 **Fix:** run the target on its operating system, for example in a CI job of that
-OS, with a runtime identifier of that OS.
+OS, with one supported runtime identifier of that OS (`osx-arm64` for `macos`).
 
 ### RAPPPKG1005
 

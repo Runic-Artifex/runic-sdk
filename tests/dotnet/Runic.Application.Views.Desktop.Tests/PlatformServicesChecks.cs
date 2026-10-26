@@ -101,6 +101,8 @@ internal sealed class PlatformServicesChecks
         Require(services.IsBound && services.Provider == DesktopPlatformProvider.None,
             "A window without native dispatch selected a provider.");
         Require(await services.FileDialogs.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && await services.FileDialogs.OpenDocumentAsync(new()) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && await services.FileDialogs.SaveDocumentAsync(new("notes.txt")) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && await services.FileLauncher.LaunchAsync(Path.Combine(Path.GetTempPath(), "notes.txt")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             "A window without native dispatch did not report the owner unavailable.");
     }
@@ -402,6 +404,9 @@ internal sealed class PlatformServicesChecks
         var notes = new ReadmeNotesViewModel(scope.ServiceProvider.GetRequiredService<IFileDialogs>()) { Text = "unchanged" };
         await notes.OpenAsync();
         Require(notes.Text == "unchanged" && !await notes.SaveAsync(), "The README sample read or saved without a window.");
+        var editor = new ReadmeEditorViewModel(scope.ServiceProvider.GetRequiredService<IFileDialogs>()) { Text = "unchanged" };
+        await editor.OpenAsync();
+        Require(editor.Text == "unchanged" && await editor.SaveAsync() is null, "The README document sample read or saved without a window.");
     }
 
     // Claims GTK 4 for this process, so it runs last.
@@ -491,6 +496,41 @@ sealed class ReadmeNotesViewModel(IFileDialogs files)
                     await writer.WriteAsync(Text);
                 return await transaction.CommitAsync() is FileCommitResult.Committed;
             }
+        }
+    }
+}
+
+// The document sample in the package README, without the MVVM toolkit, so it keeps compiling.
+sealed class ReadmeEditorViewModel(IFileDialogs files)
+{
+    private IDocumentFileLease? _document;
+    public string Text { get; set; } = "";
+
+    public async Task OpenAsync()
+    {
+        if (await files.OpenDocumentAsync(new() { Filters = [new("Notes", ["txt", "md"])] }) is not PickerResult<IDocumentFileLease>.Selected(var document)) return;
+        if (_document is not null) await _document.DisposeAsync();
+        _document = document;
+        await ReloadAsync();
+    }
+
+    public async Task ReloadAsync()
+    {
+        if (_document is null || await _document.OpenReadAsync() is not PlatformResult<Stream>.Success(var stream)) return;
+        await using (stream)
+        using (var reader = new StreamReader(stream))
+            Text = await reader.ReadToEndAsync();
+    }
+
+    public async Task<FileCommitResult?> SaveAsync()
+    {
+        if (_document is null || await _document.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace)
+            is not PlatformResult<IFileWriteTransaction>.Success(var transaction)) return null;
+        await using (transaction)
+        {
+            await using (var writer = new StreamWriter(transaction.Content, leaveOpen: true))
+                await writer.WriteAsync(Text);
+            return await transaction.CommitAsync();
         }
     }
 }

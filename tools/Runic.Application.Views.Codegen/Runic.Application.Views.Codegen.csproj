@@ -5,6 +5,8 @@
     <!-- This executable is a build tool, never part of the app's runtime closure. -->
     <ShouldBeValidatedAsExecutableReference>false</ShouldBeValidatedAsExecutableReference>
     <AssemblyName>BridgeCodegen</AssemblyName>
+    <!-- Build tool: run on a newer .NET runtime when the 10.0 runtime is absent (#614). With 10.0 installed it still runs on 10.0. -->
+    <RollForward>Major</RollForward>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Internal build tool shipped inside Runic.Application.Views; it has no public API surface. -->

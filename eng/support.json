@@ -4,7 +4,7 @@
   "statuses": {
     "ci-verified": "Runic CI builds and runs the host's native window layer on this RID for changes that affect it.",
     "packaged-unverified": "The packages ship native assets for it, but Runic CI does not run it. Test the published application on a real target machine.",
-    "unsupported": "Runic does not ship the native assets the host needs."
+    "unsupported": "Runic does not support the host on this RID: it ships no native assets for it, or the platform is not a Runic target."
   },
   "hosts": [
     {
@@ -19,7 +19,7 @@
         { "rid": "linux-musl-x64", "status": "ci-verified", "reason": "Covered by the Native / linux-musl-x64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1." },
         { "rid": "linux-musl-arm64", "status": "ci-verified", "reason": "Covered by the Native / linux-musl-arm64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1." },
         { "rid": "win-arm64", "status": "ci-verified", "reason": "Covered by the Native / win-arm64 CI job." },
-        { "rid": "osx-x64", "status": "packaged-unverified", "reason": "Uses the system WKWebView; no Intel macOS CI runner." }
+        { "rid": "osx-x64", "status": "unsupported", "reason": "Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only.", "remediation": "Publish for osx-arm64." }
       ]
     },
     {
@@ -34,7 +34,7 @@
         { "rid": "linux-musl-x64", "status": "unsupported", "reason": "CS-WebUI ships no native library for linux-musl-x64; its Linux library needs glibc 2.34 or newer.", "remediation": "Publish for a glibc distribution (linux-x64 or linux-arm64), or use the Runic Desktop host." },
         { "rid": "linux-musl-arm64", "status": "unsupported", "reason": "CS-WebUI ships no native library for linux-musl-arm64; its Linux library needs glibc 2.34 or newer.", "remediation": "Publish for a glibc distribution (linux-x64 or linux-arm64), or use the Runic Desktop host." },
         { "rid": "win-arm64", "status": "unsupported", "reason": "CS-WebUI ships no native library for win-arm64.", "remediation": "Publish for win-x64, which runs under emulation on Windows on Arm, or use the Runic Desktop host." },
-        { "rid": "osx-x64", "status": "packaged-unverified", "reason": "CsWebUi.Native ships an osx-x64 library; no Intel macOS CI runner." }
+        { "rid": "osx-x64", "status": "unsupported", "reason": "Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only, although CsWebUi.Native ships an osx-x64 library.", "remediation": "Publish for osx-arm64." }
       ]
     }
   ],

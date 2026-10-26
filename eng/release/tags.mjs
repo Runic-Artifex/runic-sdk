@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 const gh = args => spawnSync('gh', args, {encoding: 'utf8'});
-const failure = (what, result) => new Error(`${what} failed: ${(result.stderr ?? '').trim() || `exit ${result.status ?? 'unavailable'}`}`);
+// GitHub marks every release before 1.0 as a prerelease (D026.3), and from 1.0 every
+// version with a prerelease suffix (1.0.0-rc.1); a stable version from 1.0.0 is a release.
+export const githubPrerelease = version => /^0\./.test(version) || version.split('+')[0].includes('-');
+const failure =(what, result) => new Error(`${what} failed: ${(result.stderr ?? '').trim() || `exit ${result.status ?? 'unavailable'}`}`);
 // The commit a tag points at, or undefined only when GitHub answers 404 for the tag
 // ref. git/ref/tags/<tag> matches exactly that tag (commits/<ref> would also match a
 // branch); annotated tags are followed to their commit. Any other error fails.

@@ -1,4 +1,6 @@
 using TUnit.Core;
+using System.Net.WebSockets;
+using Microsoft.Extensions.Logging;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
@@ -72,5 +74,75 @@ public sealed class WebUiHandshakeStateTests
         Assert.Equal(WebUiHandshake.TokenChecked, handshake.CheckToken(tokenIsValid: true));
         Assert.Equal(WebUiHandshake.TokenChecked, handshake.CheckToken(tokenIsValid: false));
         Assert.Equal(WebUiHandshake.Rejected, handshake.State);
+    }
+
+    // I-081 (1). Counted connections that no session in the table stands for, such as an
+    // older socket that is closing and has left the table but is not counted down yet,
+    // keep the connection taken. A silent socket must not be closed for a newer one that
+    // is turned away anyway; it yields once the connection can be freed.
+    [Test]
+    public async Task ASilentSocketYieldsOnlyWhenThatFreesTheConnection()
+    {
+        await using var window = new WebUiWindow();
+        await using var silent = await SilentSessionAsync(window, new MemoryStream());
+
+        Assert.False(WebUiWindow.YieldSilentConnections(activeConnections: 2, [silent]));
+        Assert.False(silent.IsHandshakeClosing);
+
+        Assert.True(WebUiWindow.YieldSilentConnections(activeConnections: 1, [silent]));
+        Assert.True(silent.IsHandshakeClosing);
+    }
+
+    // I-081 (2). A socket that ended before its token check has no callbacks or disconnect
+    // to finish, so it no longer holds the connection while it is removed.
+    [Test]
+    public async Task ASocketThatEndedBeforeItsTokenCheckGivesUpTheConnection()
+    {
+        await using var window = new WebUiWindow();
+        // The empty stream ends the socket at its first receive.
+        await using var ended = new WebUiSession(window, Socket(new MemoryStream()), 1, 1, string.Empty, TimeSpan.FromMinutes(1));
+        await Assert.ThrowsAsync<WebSocketException>(() => ended.RunAsync(CancellationToken.None));
+
+        Assert.True(WebUiWindow.YieldSilentConnections(activeConnections: 1, [ended]));
+    }
+
+    // I-081 (3). Expiring a silent socket logs on the thread pool. A logger that throws
+    // must not keep the server from closing the socket.
+    [Test]
+    public async Task AnExpiredSocketIsClosedWhenTheLoggerThrows()
+    {
+        var options = new PresentationSurfaceRuntimeOptions(null, null, new EmbeddedHostTests.RecordingHostFactory(),
+            WaitForConnection: false, TimeSpan.FromSeconds(10), DiagnosticSink: null, Logger: new ThrowingLogger());
+        await using var window = new WebUiWindow(host: null, pathBase: string.Empty, runtimeOptions: options);
+        var stream = new MemoryStream();
+        var socket = Socket(stream);
+        await using var silent = await SilentSessionAsync(window, socket);
+
+        Assert.True(silent.TryYieldSilentHandshake());
+        Assert.True(SpinWait.SpinUntil(() => socket.State == WebSocketState.CloseSent, TimeSpan.FromSeconds(10)),
+            $"The expired socket was not closed; it is {socket.State}.");
+    }
+
+    private static WebSocket Socket(Stream stream) =>
+        WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = true });
+
+    private static Task<WebUiSession> SilentSessionAsync(WebUiWindow window, Stream stream) =>
+        SilentSessionAsync(window, Socket(stream));
+
+    // A socket that never sent its token check and is past the yield grace period (here
+    // the 1 ms handshake timeout). Its receive loop is not started, so no deadline runs.
+    private static async Task<WebUiSession> SilentSessionAsync(WebUiWindow window, WebSocket socket)
+    {
+        var session = new WebUiSession(window, socket, 1, 1, string.Empty, TimeSpan.FromMilliseconds(1));
+        await Task.Delay(50);
+        return session;
+    }
+
+    private sealed class ThrowingLogger : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => throw new InvalidOperationException("The logger failed.");
     }
 }

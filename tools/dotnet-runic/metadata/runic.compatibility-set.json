@@ -205,7 +205,7 @@
     "statuses": {
       "ci-verified": "Runic CI builds and runs the host's native window layer on this RID for changes that affect it.",
       "packaged-unverified": "The packages ship native assets for it, but Runic CI does not run it. Test the published application on a real target machine.",
-      "unsupported": "Runic does not ship the native assets the host needs."
+      "unsupported": "Runic does not support the host on this RID: it ships no native assets for it, or the platform is not a Runic target."
     },
     "hosts": [
       {
@@ -250,8 +250,9 @@
           },
           {
             "rid": "osx-x64",
-            "status": "packaged-unverified",
-            "reason": "Uses the system WKWebView; no Intel macOS CI runner."
+            "status": "unsupported",
+            "reason": "Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only.",
+            "remediation": "Publish for osx-arm64."
           }
         ]
       },
@@ -300,8 +301,9 @@
           },
           {
             "rid": "osx-x64",
-            "status": "packaged-unverified",
-            "reason": "CsWebUi.Native ships an osx-x64 library; no Intel macOS CI runner."
+            "status": "unsupported",
+            "reason": "Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only, although CsWebUi.Native ships an osx-x64 library.",
+            "remediation": "Publish for osx-arm64."
           }
         ]
       }

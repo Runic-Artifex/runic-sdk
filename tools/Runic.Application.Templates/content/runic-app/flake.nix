@@ -64,12 +64,14 @@
           host = "__RUNIC_HOST__";
           inherit nativeAot;
           executables = [ "RunicWindowApp" ];
-          # The desktop entry and icon are named after ApplicationId in the project file.
+          # The desktop entry and icon are named after ApplicationId in the project file. The build adds the
+          # project's RunicApplicationFileTypes and RunicApplicationUrlSchemes to this entry (MimeType=) and installs
+          # the file types' MIME definitions; %U passes the files and URLs the desktop opens.
           desktopItems = [
             (pkgs.makeDesktopItem {
               name = "__RUNIC_APPLICATION_ID__";
               desktopName = "__RUNIC_APPLICATION_NAME__";
-              exec = "RunicWindowApp";
+              exec = "RunicWindowApp %U";
               icon = "__RUNIC_APPLICATION_ID__";
               categories = [ "Utility" ];
             })

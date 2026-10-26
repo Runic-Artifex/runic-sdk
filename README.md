@@ -49,11 +49,11 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 | `linux-musl-x64` | CI-verified | Unsupported |
 | `linux-musl-arm64` | CI-verified | Unsupported |
 | `win-arm64` | CI-verified | Unsupported |
-| `osx-x64` | Packaged, not CI-verified | Packaged, not CI-verified |
+| `osx-x64` | Unsupported | Unsupported |
 
 - CI-verified: Runic CI builds and runs the host's native window layer on this RID for changes that affect it.
 - Packaged, not CI-verified: The packages ship native assets for it, but Runic CI does not run it. Test the published application on a real target machine.
-- Unsupported: Runic does not ship the native assets the host needs.
+- Unsupported: Runic does not support the host on this RID: it ships no native assets for it, or the platform is not a Runic target.
 
 | OS | Host | Requirement | Notes |
 | --- | --- | --- | --- |
@@ -69,11 +69,11 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 
 Notes on targets that CI does not verify:
 
-- Runic Desktop, `osx-x64`: Uses the system WKWebView; no Intel macOS CI runner.
+- Runic Desktop, `osx-x64`: Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only.
 - CS-WebUI, `linux-musl-x64`: CS-WebUI ships no native library for linux-musl-x64; its Linux library needs glibc 2.34 or newer.
 - CS-WebUI, `linux-musl-arm64`: CS-WebUI ships no native library for linux-musl-arm64; its Linux library needs glibc 2.34 or newer.
 - CS-WebUI, `win-arm64`: CS-WebUI ships no native library for win-arm64.
-- CS-WebUI, `osx-x64`: CsWebUi.Native ships an osx-x64 library; no Intel macOS CI runner.
+- CS-WebUI, `osx-x64`: Intel Macs are not a Runic target; Runic supports macOS on Apple silicon only, although CsWebUi.Native ships an osx-x64 library.
 <!-- support-matrix:end -->
 
 ## Start developing

@@ -386,7 +386,7 @@ for each format's tools and for signing.
 | Platform | Package | Without credentials | To ship it |
 | --- | --- | --- | --- |
 | Windows | `<id>_<version>_x64.msix` from `windows/AppxManifest.xml` | Unsigned; Windows installs only signed packages. Sign it with a test certificate to try it. | A code-signing certificate whose subject is `RunicApplicationPublisher`: `--certificate app.pfx` (password in `RUNIC_SIGNING_PASSWORD`) or `--thumbprint <sha1>` from the certificate store, and `--timestamp-url` from your provider. A cloud signing service signs the unsigned package with its own `signtool` options. The Microsoft Store signs packages itself. |
-| macOS | `<name>.app` and `<name>-<version>.dmg` from `macos/Info.plist` and `entitlements.plist` | Ad-hoc signed with the hardened runtime: it runs on this Mac; Gatekeeper blocks it elsewhere. | An Apple Developer Program membership with a Developer ID Application certificate in the keychain (`--sign "Developer ID Application: Example Ltd (TEAMID)"`), and notarization credentials stored once with `xcrun notarytool store-credentials <profile>` (`--notary-profile <profile>`), which notarizes and staples the disk image. `--runtime osx-arm64,osx-x64` builds a universal executable. For the App Sandbox and the Mac App Store, `--sandbox` (or `RunicMacSandbox`), `RunicMacApplicationCategory`, `--provisioning-profile` and `--pkg` with `--installer-sign`; see the packaging guide. |
+| macOS | `<name>.app` and `<name>-<version>.dmg` from `macos/Info.plist` and `entitlements.plist` | Ad-hoc signed with the hardened runtime: it runs on this Mac; Gatekeeper blocks it elsewhere. | An Apple Developer Program membership with a Developer ID Application certificate in the keychain (`--sign "Developer ID Application: Example Ltd (TEAMID)"`), and notarization credentials stored once with `xcrun notarytool store-credentials <profile>` (`--notary-profile <profile>`), which notarizes and staples the disk image. Apple silicon (`osx-arm64`) only; Runic does not target Intel Macs. For the App Sandbox and the Mac App Store, `--sandbox` (or `RunicMacSandbox`), `RunicMacApplicationCategory`, `--provisioning-profile` and `--pkg` with `--installer-sign`; see the packaging guide. |
 | Linux | `<id>.flatpak` and a repository from `linux/flatpak.yml`, `app.desktop` and `app.metainfo.xml` | Unsigned: install the bundle with `flatpak install --user <id>.flatpak`. | A GPG key for your own repository (`--gpg-sign <key id>`). |
 | Linux | `<Name>-<version>-<arch>.AppImage` | Unsigned; it uses the system's GTK and WebKitGTK. | `appimagetool --sign` with your key; see the packaging guide. |
 | Linux | `<package>_<version>_<arch>.deb` and `<package>-<version>-1.<arch>.rpm` | Unsigned; they depend on the distribution's GTK and WebKitGTK. | Sign the apt repository, or the rpm with `rpmsign`. |
@@ -502,7 +502,10 @@ The package installs the program in `bin`, the desktop entry
 `share/applications/__RUNIC_APPLICATION_ID__.desktop` with the icons from
 `icons/` under the same name, and GTK and WebKitGTK as run-time libraries.
 `flake.nix` repeats the application ID; change it there too when you change
-`ApplicationId`. `nix develop`
+`ApplicationId`. The build reads `RunicApplicationFileTypes` and
+`RunicApplicationUrlSchemes` from the project: it installs the file types'
+MIME definitions and adds them and the URL schemes to the desktop entry's
+`MimeType=`, as `dotnet runic package` does. `nix develop`
 opens a shell with the .NET SDK, Node, the package manager and those libraries.
 The SDK's
 [Nix packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/nix/README.md)

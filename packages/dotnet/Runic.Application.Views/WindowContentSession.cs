@@ -360,6 +360,7 @@ public sealed class WindowContentSession : IDisposable
         {
             bridge = attachBridge(_transport, viewModel, route);
             attachment = new ViewPresentationAttachment(
+                this,
                 bridge!,
                 () =>
                 {
@@ -1530,6 +1531,7 @@ public sealed class WindowContentSession : IDisposable
     }
 
     private sealed class ViewPresentationAttachment(
+        WindowContentSession session,
         IDisposable bridge,
         Func<IRunicView> createView,
         Action<IRunicView> bindView,
@@ -1593,7 +1595,9 @@ public sealed class WindowContentSession : IDisposable
         // (issue #245). The state change happens under _gate, so each View is released
         // exactly once and a concurrent unmount finds nothing to release. Taking _gate also
         // waits for a release that OnWebUnmounted has already begun, so every View is still
-        // released before the bridge is disposed.
+        // released before the bridge is disposed. Views still presented here, such as
+        // one whose browser unmount has not reached its release turn yet, are released
+        // in a model turn too, as every other View release is.
         public void Dispose()
         {
             IRunicView[] views;
@@ -1606,8 +1610,12 @@ public sealed class WindowContentSession : IDisposable
             }
             try
             {
-                foreach (var view in views)
-                    ReleasePresentation(view, attached: true, mounted: true);
+                if (views.Length != 0)
+                    RunicModelTurns.RunForTeardown(session.ModelContext, () =>
+                    {
+                        foreach (var view in views)
+                            ReleasePresentation(view, attached: true, mounted: true);
+                    });
             }
             finally { bridge.Dispose(); }
         }

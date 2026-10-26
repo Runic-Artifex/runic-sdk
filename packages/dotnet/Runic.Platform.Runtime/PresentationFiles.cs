@@ -20,12 +20,15 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         CapabilityStatus multipleDirectories = files is CapabilityStatus.Available && backend?.SupportsMultipleDirectorySelection != true
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
+        CapabilityStatus documents = files is CapabilityStatus.Available && backend?.SupportsDocumentAccess != true
+            ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
             .Add(PlatformCapabilityIds.FilesOpen, files).Add(PlatformCapabilityIds.FilesSave, save)
             .Add(PlatformCapabilityIds.DirectoriesOpen, directories)
             .Add(PlatformCapabilityIds.DialogsOwned, files)
             .Add(PlatformCapabilityIds.FilesOpenMultiple, multiple)
-            .Add(PlatformCapabilityIds.DirectoriesOpenMultiple, multipleDirectories));
+            .Add(PlatformCapabilityIds.DirectoriesOpenMultiple, multipleDirectories)
+            .Add(PlatformCapabilityIds.FilesOpenDocument, documents));
     }
 
     /// <inheritdoc />
@@ -94,6 +97,28 @@ internal sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBa
             throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
         return PickAsync(options.OwnerPolicy, token => backend!.SaveFileAsync(options, token), value => new PresentationSaveLease(lifetime, value), cancellationToken);
     }
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<IDocumentFileLease>> OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return PickAsync(options.OwnerPolicy, token => backend!.SupportsDocumentAccess ? backend.OpenDocumentAsync(options, token) : NoDocuments(),
+            value => new PresentationDocumentLease(lifetime, value), cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<IDocumentFileLease>> SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.SuggestedName);
+        if (options.SuggestedName.IndexOfAny(['/', '\\', '\0']) >= 0 || options.SuggestedName is "." or "..")
+            throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
+        return PickAsync(options.OwnerPolicy, token => backend!.SupportsDocumentAccess ? backend.SaveDocumentAsync(options, token) : NoDocuments(),
+            value => new PresentationDocumentLease(lifetime, value), cancellationToken);
+    }
+
+    private static ValueTask<PickerResult<IDocumentFileLease>> NoDocuments() =>
+        ValueTask.FromResult<PickerResult<IDocumentFileLease>>(new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
 
     private async ValueTask<PickerResult<T>> PickAsync<T>(OwnerPolicy policy,
         Func<CancellationToken, ValueTask<PickerResult<T>>> invoke, Func<T, PresentationLease> wrap, CancellationToken caller) where T : IAsyncDisposable

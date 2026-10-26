@@ -437,7 +437,7 @@ internal sealed class WindowServiceChecks
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];
         Type[] notServices = [typeof(IPlatformCapabilities), typeof(IDesktopServiceStatus), typeof(IDirectoryLease), typeof(IReadFileLease),
-            typeof(IReadFileLeaseList), typeof(IDirectoryLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
+            typeof(IReadFileLeaseList), typeof(IDirectoryLeaseList), typeof(ISaveFileLease), typeof(IDocumentFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
             typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply), typeof(IDesktopBookmarkAccess)];
         var contracts = typeof(IFileDialogs).Assembly.GetExportedTypes().Where(static type => type.IsInterface).ToHashSet();
         var unclassified = contracts.Except(window).Except(application).Except(withApplicationId).Except(composed).Except(notServices).Select(static type => type.Name).ToArray();
@@ -496,6 +496,9 @@ internal sealed class WindowServiceChecks
             var bookmarks = DesktopPlatformServices.CreateFileBookmarks();
             Require((await bookmarks.CreateAsync(file)).TryGetValue(out var bookmark) && (await bookmarks.ResolveAsync(bookmark)).TryGetValue(out var access)
                 && access.LocalPath == file, "A path bookmark resolves to its file.");
+            Require((await bookmarks.OpenDocumentAsync(bookmark)).TryGetValue(out var document) && document.LocalPath == file,
+                "A path bookmark opens its file as a document.");
+            await document!.DisposeAsync();
         }
         finally { File.Delete(file); }
     }

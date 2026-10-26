@@ -22,7 +22,8 @@ below.
 | `rpm` | Linux, also Debian and Ubuntu | `<package>-<version>-1.<arch>.rpm` | `sudo dnf install ./<file>.rpm` |
 | `flathub` | Any OS; `--build` on Linux | A manifest directory for a Flathub submission | From Flathub, once accepted |
 
-Each target refuses to run on another operating system (`RAPPPKG1004`), and a
+Each target refuses to run on another operating system, and takes one runtime
+identifier of its operating system that Runic supports (`RAPPPKG1004`); a
 missing tool stops it before it builds anything (`RAPPPKG1002`, which names the
 package that provides the tool). Run every target in a CI job of its operating
 system to ship all of them.
@@ -73,7 +74,7 @@ payload then reports `"signing": "test"`.
 ## macOS
 
 Install Xcode's command line tools (`xcode-select --install`), which provide
-`codesign`, `lipo`, `iconutil` and `notarytool`. The command signs the bundle
+`codesign`, `iconutil` and `notarytool`. The command signs the bundle
 with the hardened runtime and `macos/entitlements.plist`, and checks it with
 `codesign --verify --strict`.
 
@@ -92,8 +93,9 @@ Program membership:
 In CI, import the certificate into a temporary keychain first (for example with
 `security create-keychain` and `security import`), and keep the certificate
 and the notarization key in your CI system's secrets.
-`--runtime osx-arm64,osx-x64` builds a universal executable for both Apple
-silicon and Intel Macs.
+The bundle is for Apple silicon (`osx-arm64`). Runic does not target Intel
+Macs: `--runtime osx-x64` and universal bundles (`osx-arm64,osx-x64`), which
+0.11 made with `lipo`, are refused with `RAPPPKG1004`.
 
 Universal links for `RunicApplicationWebLinkHosts` need the
 `com.apple.developer.associated-domains` entitlement and a provisioning

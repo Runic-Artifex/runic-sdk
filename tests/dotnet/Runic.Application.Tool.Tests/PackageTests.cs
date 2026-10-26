@@ -347,8 +347,8 @@ internal sealed partial class ToolTests
     {
         SequenceEqual(["win-x64"], PackageApplication.ResolveRuntimes(new PackageOptions(PackageTarget.Windows), "win", "x64"));
         SequenceEqual(["osx-arm64"], PackageApplication.ResolveRuntimes(new PackageOptions(PackageTarget.MacOS), "osx", "arm64"));
-        SequenceEqual(["osx-arm64", "osx-x64"], PackageApplication.ResolveRuntimes(
-            new PackageOptions(PackageTarget.MacOS) { Runtimes = PackageOptions.ParseRuntimes("osx-arm64, osx-x64,osx-arm64") }, "osx", "arm64"));
+        SequenceEqual(["osx-arm64"], PackageApplication.ResolveRuntimes(
+            new PackageOptions(PackageTarget.MacOS) { Runtimes = PackageOptions.ParseRuntimes("osx-arm64, osx-arm64") }, "osx", "arm64"));
         SequenceEqual(["win-arm64"], PackageApplication.ResolveRuntimes(
             new PackageOptions(PackageTarget.Windows) { Runtimes = ["win-arm64"] }, "win", "x64"));
         foreach ((PackageOptions options, string host) in new[]
@@ -357,10 +357,17 @@ internal sealed partial class ToolTests
             (new PackageOptions(PackageTarget.MacOS), "win"),
             (new PackageOptions(PackageTarget.Windows) { Runtimes = ["linux-x64"] }, "win"),
             (new PackageOptions(PackageTarget.Windows) { Runtimes = ["win-x64", "win-arm64"] }, "win"),
+            // Intel Macs are not a Runic target: no osx-x64 bundle, and no universal one (0.11 made it with lipo).
+            (new PackageOptions(PackageTarget.MacOS) { Runtimes = PackageOptions.ParseRuntimes("osx-arm64,osx-x64") }, "osx"),
+            (new PackageOptions(PackageTarget.MacOS) { Runtimes = ["osx-x64"] }, "osx"),
+            (new PackageOptions(PackageTarget.MacOS), "osx"),
         })
         {
             Equal(PackageCodes.WrongOperatingSystem, Throws<DevUsageException>(() => PackageApplication.ResolveRuntimes(options, host, "x64")).Code);
         }
+        string intel = Throws<DevUsageException>(() => PackageApplication.ResolveRuntimes(new PackageOptions(PackageTarget.MacOS), "osx", "x64")).Message;
+        Contains(intel, "Intel Macs");
+        Contains(intel, "Publish for osx-arm64.");
         Equal("RAPPCLI1011", Throws<DevUsageException>(() => PackageApplication.ResolveRuntimes(
             new PackageOptions(PackageTarget.Windows) { Runtimes = ["Windows X64"] }, "win", "x64")).Code);
     }
@@ -375,7 +382,7 @@ internal sealed partial class ToolTests
         foreach (string option in new[] { "--project", "--configuration", "--runtime", "--output-directory", "-o", "--publisher", "--certificate", "--thumbprint", "--timestamp-url" })
             Contains(windows, option);
         (_, string macos) = RunCli("package", "macos", "--help");
-        foreach (string option in new[] { "--sign", "--notary-profile", "osx-arm64,osx-x64", "--sandbox", "--provisioning-profile", "--pkg", "--installer-sign" })
+        foreach (string option in new[] { "--sign", "--notary-profile", "osx-arm64", "--sandbox", "--provisioning-profile", "--pkg", "--installer-sign" })
             Contains(macos, option);
         (int completionExit, string completion) = RunCli("completion", "bash");
         Equal(0, completionExit);
@@ -607,6 +614,21 @@ internal sealed partial class ToolTests
         Equal(2, exitCode);
         using JsonDocument document = JsonDocument.Parse(output);
         Equal(PackageCodes.FlathubSourcesUnavailable, document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+    }
+
+    [Test, DisplayName("package writes the MIME definitions and MimeType= that the Nix builder installs for the same project")]
+    public void PackageFileTypesMatchNixBuilder()
+    {
+        // nix/tests/file-types.nix builds this project with buildRunicApplication (nix/lib/desktop-integration.py) and
+        // compares its output with the same expected files.
+        string fixture = Path.Combine(RepositoryRoot(), "tests", "fixtures", "nix", "file-types");
+        string project = Path.Combine(fixture, "App", "App.csproj");
+        Dictionary<string, string> properties = XDocument.Load(project).Root!.Elements("PropertyGroup").Elements()
+            .ToDictionary(element => element.Name.LocalName, element => element.Value, StringComparer.Ordinal);
+        PackageIdentity identity = PackageIdentity.Create(project, properties, [], null);
+        Dictionary<string, string> fields = PackageManifests.Fields(identity, PackageTarget.Deb);
+        Equal(File.ReadAllText(Path.Combine(fixture, "expected", "org.example.Notes.xml")), fields["MimeInfo"]);
+        Equal(File.ReadAllText(Path.Combine(fixture, "expected", "MimeType.txt")), fields["MimeTypes"]);
     }
 
     private static string RepositoryRoot()

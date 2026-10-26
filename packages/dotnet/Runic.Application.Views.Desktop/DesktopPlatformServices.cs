@@ -446,9 +446,18 @@ public static partial class DesktopPlatformServices
     {
 #if RUNIC_PORTABLE_PLATFORMS
         if (OperatingSystem.IsMacOS()) return CreateMacOSFileBookmarks();
+        // A document portal path, such as a Flatpak's, saves through the portal's view.
+        if (OperatingSystem.IsLinux()) return CreateLinuxFileBookmarks();
 #endif
         return new PathFileBookmarks();
     }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static PathFileBookmarks CreateLinuxFileBookmarks() =>
+        new PathFileBookmarks(Runic.Platform.Linux.Portal.DocumentPortalPaths.Session.ClassifyAsync);
+#endif
 
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("macos")]
@@ -1536,6 +1545,10 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         Current.FileDialogs.OpenFilesAsync(options, cancellationToken);
     ValueTask<PickerResult<ISaveFileLease>> IFileDialogs.SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken) =>
         Current.FileDialogs.SaveFileAsync(options, cancellationToken);
+    ValueTask<PickerResult<IDocumentFileLease>> IFileDialogs.OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken) =>
+        Current.FileDialogs.OpenDocumentAsync(options, cancellationToken);
+    ValueTask<PickerResult<IDocumentFileLease>> IFileDialogs.SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken) =>
+        Current.FileDialogs.SaveDocumentAsync(options, cancellationToken);
     ValueTask<PlatformResult<string?>> ITextClipboard.ReadTextAsync(int maximumCharacters, CancellationToken cancellationToken) =>
         Current.Clipboard.ReadTextAsync(maximumCharacters, cancellationToken);
     ValueTask<PlatformResult<PlatformUnit>> ITextClipboard.WriteTextAsync(string text, CancellationToken cancellationToken) =>

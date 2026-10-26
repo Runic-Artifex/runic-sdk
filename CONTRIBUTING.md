@@ -284,7 +284,7 @@ Repository scripts, build tools and verification use the Bun version pinned in
 also run under Bun. Node is retained for npm/pnpm package and template compatibility checks, not the default workspace
 runtime. `node:` imports refer to compatible APIs and do not require launching Node.
 Native CI targets Linux x64, Windows x64 and macOS Apple Silicon; Intel macOS is
-not a CI certification target.
+not supported.
 
 The optional Vite DevTools dock supports Bun and is also exercised by an
 installed npm/Node consumer. See the

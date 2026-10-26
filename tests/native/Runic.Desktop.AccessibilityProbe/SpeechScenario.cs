@@ -30,14 +30,14 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
             // fails.
             await FocusAsync(slider, keep, "slider-focus", Fixture.Volume, cancellationToken);
             await SettleAsync(slider, cancellationToken);
-            await ExpectAsync("slider-value", Value("6"), () => client.StepWithKeysAsync(slider, -1, cancellationToken), cancellationToken);
+            await ExpectStepAsync("slider-value", Value("6"), slider, -1, cancellationToken);
             await FocusAsync(keep, slider, "spinbutton-focus", Fixture.Keep, cancellationToken);
             try
             {
                 // aria-valuetext: without it VoiceOver reads an ARIA spin button's value as a percentage of its range.
                 await SettleAsync(keep, cancellationToken);
-                await ExpectAsync("spinbutton-value", Contains((kept + 1).ToString(CultureInfo.InvariantCulture) + " restore points"),
-                    () => client.StepWithKeysAsync(keep, 1, cancellationToken), cancellationToken);
+                await ExpectStepAsync("spinbutton-value", Contains((kept + 1).ToString(CultureInfo.InvariantCulture) + " restore points"),
+                    keep, 1, cancellationToken);
             }
             catch (NotSupportedException reason)
             {
@@ -180,6 +180,41 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
                 continue;
             }
             await RecordAsync(check, expected, mark, cancellationToken, press == 2 ? " on the second press" : "");
+            return;
+        }
+    }
+
+    // A step made while the screen reader is still between a control's name and its hint can go unsaid: VoiceOver read
+    // the stepper's hint instead of "8 restore points" (I-166, PR #620). The step waits until the screen reader has been
+    // quiet for a moment. When the screen reader does not say the new value, the step is undone and made once more from
+    // the same value, so the check still needs the screen reader to say the value after a real step; it reports the
+    // second step. A step whose undo does not restore the value is not repeated and fails on what the first step heard.
+    private async Task ExpectStepAsync(string check, Expected expected, Control control, int direction, CancellationToken cancellationToken)
+    {
+        var before = (await client.ReadRangeAsync(control, cancellationToken)).Value;
+        for (var step = 1; step <= 2; step++)
+        {
+            await QuietAsync(cancellationToken);
+            var mark = Mark();
+            await client.StepWithKeysAsync(control, direction, cancellationToken);
+            if (step == 1 && await HeardAsync(mark, expected, SpeechTimeout, cancellationToken) is null)
+            {
+                string heard;
+                lock (_lock) heard = string.Join(" | ", _phrases.Skip(mark));
+                var after = (await client.ReadRangeAsync(control, cancellationToken)).Value;
+                if (after != before)
+                {
+                    await client.StepWithKeysAsync(control, -direction, cancellationToken);
+                    after = (await client.ReadRangeAsync(control, cancellationToken)).Value;
+                }
+                if (after == before)
+                {
+                    Console.WriteLine($"  {reader.Name} did not say '{expected.Text}' after the first step (it said: {heard}); stepping '{control.Name}' again from {before}.");
+                    continue;
+                }
+                Console.WriteLine($"  '{control.Name}' is {after} after undoing the first step, not {before}; not stepping again.");
+            }
+            await RecordAsync(check, expected, mark, cancellationToken, step == 2 ? " on the second step" : "");
             return;
         }
     }

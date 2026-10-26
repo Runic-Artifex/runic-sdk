@@ -147,7 +147,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
                 || !uri.IsFile || !string.IsNullOrEmpty(uri.Host) && uri.Host != "localhost"
                 || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.LocalPath.Contains('\0'))
                 throw new IOException("The portal did not return a local file.");
-            if (!save) { selections.Add(new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true)); continue; }
+            // Saves and opened documents both write back: a document view stages through the portal.
             var location = await (documents ?? DocumentPortalPaths.Session).ClassifyAsync(uri.LocalPath, cancellationToken).ConfigureAwait(false);
             selections.Add(new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true) { Location = location });
         }

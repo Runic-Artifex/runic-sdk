@@ -32,6 +32,14 @@ public interface IPickerBackend : IFileDialogs
     /// calling a backend that reports <see langword="false"/>.
     /// </remarks>
     bool SupportsMultipleDirectorySelection => false;
+    /// <summary>Whether this backend implements <see cref="IFileDialogs.OpenDocumentAsync"/> and
+    /// <see cref="IFileDialogs.SaveDocumentAsync"/>.</summary>
+    /// <remarks>
+    /// <see cref="PresentationFiles"/> reports the <c>platform.files.openDocument</c> capability from this value and
+    /// returns <see cref="PlatformUnavailableReason.BackendUnavailable"/> from both methods without calling a backend
+    /// that reports <see langword="false"/>.
+    /// </remarks>
+    bool SupportsDocumentAccess => false;
 }
 
 /// <summary>A verified presentation owner. Native handles stay in C# and are usable only during dispatch.</summary>

@@ -5,6 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RunicAssetsShippingProject>true</RunicAssetsShippingProject>
     <AssemblyName>Runic.Assets.Packer</AssemblyName>
+    <!-- Build tool: run on a newer .NET runtime when the 10.0 runtime is absent (#614). With 10.0 installed it still runs on 10.0. -->
+    <RollForward>Major</RollForward>
     <RootNamespace>Runic.Assets.Packer</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
