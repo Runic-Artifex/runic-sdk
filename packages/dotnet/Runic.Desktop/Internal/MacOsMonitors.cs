@@ -7,10 +7,10 @@ using Runic.Platform;
 namespace Runic.Desktop.Internal;
 
 // Monitors, full screen and placement on a monitor for the macOS WKWebView window. NSScreen.screens on the main thread:
-// frame and visibleFrame in points of AppKit screen coordinates, the window's units, backingScaleFactor and
-// localizedName (macOS 10.15); the identifier is the display's UUID (CGDisplayCreateUUIDFromDisplayID), which survives
-// restarts and reconnection. screens[0] holds the menu bar: the primary screen. Changes come from
-// NSApplicationDidChangeScreenParametersNotification.
+// frame and visibleFrame in points of AppKit screen coordinates, reported top-left like the window's position
+// (MacOsCoordinates), backingScaleFactor and localizedName (macOS 10.15); the identifier is the display's UUID
+// (CGDisplayCreateUUIDFromDisplayID), which survives restarts and reconnection. screens[0] holds the menu bar: the
+// primary screen, whose height defines the flip. Changes come from NSApplicationDidChangeScreenParametersNotification.
 internal sealed partial class MacOsWkWebViewHost
 {
     internal static IDesktopMonitors Monitors { get; } = new MonitorSource();
@@ -57,6 +57,7 @@ internal sealed partial class MacOsWkWebViewHost
         var all = Api.SendNint(Api.GetClass("NSScreen"), "screens");
         if (all == 0) return screens;
         var count = (long)Api.SendUlong(all, "count");
+        var primaryHeight = PrimaryScreenHeight();
         for (long index = 0; index < count; index++)
         {
             var screen = Api.SendNintNint(all, "objectAtIndex:", (nint)index);
@@ -67,8 +68,8 @@ internal sealed partial class MacOsWkWebViewHost
             var name = Api.RespondsToSelector(screen, "localizedName") ? Api.Text(Api.SendNint(screen, "localizedName")) : "";
             screens.Add(new Screen(screen, new DesktopMonitor(id, name.Length > 0 ? name : id)
             {
-                Bounds = ToRect(frame),
-                WorkArea = ToRect(visible),
+                Bounds = MacOsCoordinates.ToTopLeft(frame.X, frame.Y, frame.Width, frame.Height, primaryHeight),
+                WorkArea = MacOsCoordinates.ToTopLeft(visible.X, visible.Y, visible.Width, visible.Height, primaryHeight),
                 Scale = Api.SendDouble(screen, "backingScaleFactor") is > 0 and var scale ? scale : 1,
                 IsPrimary = index == 0,
             }, frame, visible));
@@ -76,8 +77,17 @@ internal sealed partial class MacOsWkWebViewHost
         return screens;
     }
 
-    private static DesktopRect ToRect(CGRect rect) => new((int)Math.Round(rect.X), (int)Math.Round(rect.Y),
-        (int)Math.Round(rect.Width), (int)Math.Round(rect.Height));
+    // The height of the primary screen (screens[0], origin 0,0), which turns AppKit's upward y into Runic's downward y;
+    // 0 without screens, as headless, which keeps the flip its own inverse. Main thread only.
+    private static double PrimaryScreenHeight()
+    {
+        var all = Api.SendNint(Api.GetClass("NSScreen"), "screens");
+        if (all == 0 || Api.SendUlong(all, "count") == 0) return 0;
+        var primary = Api.SendNintNint(all, "objectAtIndex:", 0);
+        if (primary == 0) return 0;
+        var frame = Api.SendRect(primary, "frame");
+        return frame.Y + frame.Height;
+    }
 
     // Main thread only.
     private static string ScreenId(nint screen)

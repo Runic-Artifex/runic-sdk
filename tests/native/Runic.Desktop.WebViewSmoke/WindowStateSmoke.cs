@@ -21,7 +21,10 @@ internal static class WindowStateSmoke
     internal static DesktopWindowOptions DisconnectedMonitorOptions() => new()
     {
         Browser = BrowserKind.Embedded,
-        Placement = new DesktopWindowPlacement { X = -100_000, Y = -100_000, Width = 20_000, Height = 15_000 },
+        Placement = new DesktopWindowPlacement
+        {
+            X = -100_000, Y = -100_000, Width = 20_000, Height = 15_000, Origin = DesktopCoordinateOrigin.TopLeft,
+        },
     };
 
     internal static DesktopWindowOptions RestoreOptions(DesktopWindowPlacement placement) => new()
@@ -105,8 +108,9 @@ internal static class WindowStateSmoke
 
     private static void CheckRestoreBounds(DesktopWindowPlacement placement, bool moves)
     {
+        // Every built-in host measures from the top-left (B-3).
         if (!Near(placement.Width, ResizedWidth) || !Near(placement.Height, ResizedHeight)
-            || (moves && (placement.X != MovedX || placement.Y != MovedY)))
+            || (moves && (placement.X != MovedX || placement.Y != MovedY)) || placement.Origin != DesktopCoordinateOrigin.TopLeft)
             throw new InvalidOperationException($"The placement did not keep the restored bounds: {placement}.");
     }
 

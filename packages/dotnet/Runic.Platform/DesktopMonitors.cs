@@ -3,9 +3,9 @@ using System.Runtime.CompilerServices;
 
 namespace Runic.Platform;
 
-/// <summary>A rectangle in a platform's screen coordinates.</summary>
+/// <summary>A rectangle in a platform's screen coordinates, which grow right and down from the primary monitor's top-left corner.</summary>
 /// <param name="X">The left edge.</param>
-/// <param name="Y">The top edge, or the bottom edge on macOS, whose screen coordinates grow upwards.</param>
+/// <param name="Y">The top edge.</param>
 /// <param name="Width">The width.</param>
 /// <param name="Height">The height.</param>
 public readonly record struct DesktopRect(int X, int Y, int Width, int Height);
@@ -20,8 +20,9 @@ public readonly record struct DesktopRect(int X, int Y, int Width, int Height);
 /// <remarks>
 /// <see cref="Bounds"/> and <see cref="WorkArea"/> use the units the platform's windows use for their position and size,
 /// so a work area can be passed to <c>DesktopWindow.MoveAsync</c> as it is: physical virtual-screen pixels on Windows,
-/// points in AppKit screen coordinates (bottom-left origin, measured up from the bottom of the main screen) on macOS, and
-/// logical pixels on Linux.
+/// points on macOS and logical pixels on Linux. Every platform measures right and down from the top-left corner of the
+/// primary monitor, so a monitor above or left of it has negative coordinates; on macOS before Runic 0.12 they were
+/// AppKit's, measured up from the bottom of the primary screen.
 /// </remarks>
 public sealed record DesktopMonitor(string Id, string DisplayName)
 {

@@ -429,8 +429,11 @@ public sealed record DesktopWebContentPolicy
     /// <remarks>
     /// When <see langword="true"/>, WebView2 and WebKitGTK download with their own behaviour: WebView2 shows its
     /// download dialog; WebKitGTK saves <c>&lt;a download&gt;</c> links and <c>Content-Disposition: attachment</c>
-    /// responses to the user's download folder and still ignores other content it cannot show. WKWebView has no
-    /// download support, so macOS windows refuse downloads either way.
+    /// responses to the user's download folder and still ignores other content it cannot show. The macOS window saves
+    /// <c>&lt;a download&gt;</c> links, attachments and responses WKWebView cannot show to the user's Downloads folder
+    /// under the suggested name, as <c>name (1).ext</c> rather than replace an existing file, and marks them with the
+    /// quarantine of web downloads. A sandboxed macOS application needs the
+    /// <c>com.apple.security.files.downloads.read-write</c> entitlement for that folder.
     /// </remarks>
     public bool AllowDownloads { get; init; }
 

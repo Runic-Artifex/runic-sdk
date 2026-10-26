@@ -199,11 +199,30 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidNint(_window, "zoom:", 0), cancellationToken);
 
+    // setContentSize: keeps the frame's AppKit origin, its bottom-left corner; the top-left corner stays instead, as on
+    // Windows and GTK, so a resize leaves X and Y as they were.
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
-        => InvokeAsync(() => Api.SendVoidSize(_window, "setContentSize:", new CGSize(width, height)), cancellationToken);
+        => InvokeAsync(() =>
+        {
+            var before = Api.SendRect(_window, "frame");
+            Api.SendVoidSize(_window, "setContentSize:", new CGSize(width, height));
+            if (IsFullScreen) return;
+            var after = Api.SendRect(_window, "frame");
+            Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(after.X, before.Y + before.Height - after.Height));
+        }, cancellationToken);
 
+    // x and y are the frame's top-left corner, measured down from the primary screen's top (MacOsCoordinates).
     public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
-        => InvokeAsync(() => Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, y)), cancellationToken);
+        => InvokeAsync(() => SetFramePosition(x, y, bottomLeft: false), cancellationToken);
+
+    // Main thread only. Moves the frame's corner to x, y: its top-left corner in Runic's coordinates, or for a placement
+    // saved by Runic 0.11 or earlier its bottom-left corner in AppKit's, which setFrameOrigin: takes as it is.
+    private void SetFramePosition(int x, int y, bool bottomLeft)
+    {
+        var frame = Api.SendRect(_window, "frame");
+        Api.SendVoidPoint(_window, "setFrameOrigin:",
+            new CGPoint(x, MacOsCoordinates.FrameBottom(y, frame.Height, PrimaryScreenHeight(), bottomLeft)));
+    }
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
@@ -399,7 +418,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         else if (options.X is { } x && options.Y is { } y)
         {
-            Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, y));
+            // X and Y come from the placement when there is one; a placement from Runic 0.11 or earlier converts here,
+            // and the window then reports a top-left placement.
+            SetFramePosition(x, y, MacOsCoordinates.IsBottomLeft(options.Placement));
         }
         if (options.Placement is not null)
         {
@@ -483,17 +504,20 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         _normal = ReadBounds();
     }
 
-    // Main thread only. The frame origin and the content size, the units of setFrameOrigin: and setContentSize:.
+    // Main thread only. The frame's top-left corner, the units of SetPositionAsync, and the content size, the units of
+    // setContentSize:.
     private DesktopWindowPlacement ReadBounds()
     {
         var frame = Api.SendRect(_window, "frame");
         var content = Api.SendRectRect(_window, "contentRectForFrameRect:", frame);
+        var (x, y) = MacOsCoordinates.FrameTopLeft(frame.X, frame.Y, frame.Height, PrimaryScreenHeight());
         return new DesktopWindowPlacement
         {
-            X = (int)Math.Round(frame.X),
-            Y = (int)Math.Round(frame.Y),
+            X = x,
+            Y = y,
             Width = (int)Math.Max(1, Math.Round(content.Width)),
             Height = (int)Math.Max(1, Math.Round(content.Height)),
+            Origin = DesktopCoordinateOrigin.TopLeft,
         };
     }
 
@@ -1443,6 +1467,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&DecidePolicyForNavigationAction, "v@:@@@?");
         Api.AddMethod(type, "webView:decidePolicyForNavigationResponse:decisionHandler:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&DecidePolicyForNavigationResponse, "v@:@@@?");
+        // macOS 11.3: an <a download> or an attachment answered with the Download policy becomes a WKDownload.
+        Api.AddMethod(type, "webView:navigationAction:didBecomeDownload:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&NavigationBecameDownload, "v@:@@@");
+        Api.AddMethod(type, "webView:navigationResponse:didBecomeDownload:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&NavigationBecameDownload, "v@:@@@");
         Api.AddMethod(type, "webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint>)&CreateWebView, "@@:@@@@");
         // WKUIDelegate, macOS 12: camera and microphone requests follow AllowedPermissions (SEC-37).
@@ -1506,9 +1535,15 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static void DecidePolicyForNavigationResponse(nint self, nint selector, nint webView, nint navigationResponse, nint decisionHandler)
     {
         var policy = MacOsWebContent.PolicyCancel;
+        nint pool = 0;
         try
         {
-            policy = MacOsWebContent.ForNavigationResponse(Api.SendBool(navigationResponse, "canShowMIMEType"));
+            pool = Api.SendNint(Api.SendNint(Api.GetClass("NSAutoreleasePool"), "alloc"), "init");
+            if (WebViews.TryGetValue(webView, out var host) && host._webContent is { } rules)
+            {
+                policy = MacOsWebContent.ForNavigationResponse(rules, Api.SendBool(navigationResponse, "canShowMIMEType"),
+                    Api.ContentDisposition(navigationResponse));
+            }
         }
         catch
         {
@@ -1517,6 +1552,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         try
         {
             MacOsWebContent.InvokePolicyHandler(decisionHandler, policy);
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+        try
+        {
+            if (pool != 0) Api.SendVoid(pool, "drain");
         }
         catch
         {
@@ -1889,6 +1932,24 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             var url = request == 0 ? 0 : SendNint(request, "URL");
             var text = url == 0 ? 0 : SendNint(url, "absoluteString");
             return text == 0 ? null : Text(text);
+        }
+
+        // The Content-Disposition header of navigationResponse.response when it is an HTTP response, or null.
+        internal string? ContentDisposition(nint navigationResponse)
+        {
+            if (navigationResponse == 0 || !RespondsToSelector(navigationResponse, "response")) return null;
+            var response = SendNint(navigationResponse, "response");
+            if (response == 0 || !RespondsToSelector(response, "valueForHTTPHeaderField:")) return null;
+            var name = CreateString("Content-Disposition");
+            try
+            {
+                var value = SendNintNint(response, "valueForHTTPHeaderField:", name);
+                return value == 0 ? null : Text(value);
+            }
+            finally
+            {
+                SendVoid(name, "release");
+            }
         }
 
         // [[NSWorkspace sharedWorkspace] openURL:], as Runic.Platform.MacOS's MacUriLauncher: the default browser or
@@ -2500,6 +2561,71 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 SendVoid(userInfo, "release");
                 SendVoid(level, "release");
                 SendVoid(text, "release");
+            }
+        }
+
+        // [[NSFileManager defaultManager] URLsForDirectory:NSDownloadsDirectory inDomains:NSUserDomainMask].firstObject.path
+        internal string? UserDownloadsDirectory()
+        {
+            const ulong DownloadsDirectory = 15, UserDomainMask = 1;
+            var manager = SendNint(GetClass("NSFileManager"), "defaultManager");
+            var urls = ((delegate* unmanaged[Cdecl]<nint, nint, ulong, ulong, nint>)_messageSend)(
+                manager, Selector("URLsForDirectory:inDomains:"), DownloadsDirectory, UserDomainMask);
+            var url = urls == 0 ? 0 : SendNint(urls, "firstObject");
+            var path = url == 0 ? 0 : SendNint(url, "path");
+            return path == 0 ? null : Text(path);
+        }
+
+        // An autoreleased file NSURL for the path.
+        internal nint FileUrl(string path)
+        {
+            var text = CreateString(path);
+            try
+            {
+                return ((delegate* unmanaged[Cdecl]<nint, nint, nint, byte, nint>)_messageSend)(
+                    GetClass("NSURL"), Selector("fileURLWithPath:isDirectory:"), text, 0);
+            }
+            finally
+            {
+                SendVoid(text, "release");
+            }
+        }
+
+        // Marks a downloaded file as from the web (com.apple.quarantine), with the URL it came from, as browsers do: Gatekeeper
+        // then checks it when it is opened. NSURLQuarantinePropertiesKey with Launch Services' quarantine keys.
+        internal void SetDownloadQuarantine(string path, string? source)
+        {
+            if (!NativeLibrary.TryLoad("/System/Library/Frameworks/CoreServices.framework/CoreServices", out var coreServices)
+                || !NativeLibrary.TryLoad("/System/Library/Frameworks/Foundation.framework/Foundation", out var foundation)
+                || !NativeLibrary.TryGetExport(foundation, "NSURLQuarantinePropertiesKey", out var propertiesKey)
+                || !NativeLibrary.TryGetExport(coreServices, "kLSQuarantineTypeKey", out var typeKey)
+                || !NativeLibrary.TryGetExport(coreServices, "kLSQuarantineTypeWebDownload", out var webDownload)
+                || !NativeLibrary.TryGetExport(coreServices, "kLSQuarantineDataURLKey", out var dataUrlKey))
+            {
+                return;
+            }
+            var url = FileUrl(path);
+            if (url == 0)
+            {
+                return;
+            }
+            var properties = SendNint(SendNint(GetClass("NSMutableDictionary"), "alloc"), "init");
+            var sourceText = source is null ? 0 : CreateString(source);
+            try
+            {
+                SetObject(properties, *(nint*)webDownload, *(nint*)typeKey);
+                var sourceUrl = sourceText == 0 ? 0 : SendNintNint(GetClass("NSURL"), "URLWithString:", sourceText);
+                if (sourceUrl != 0)
+                {
+                    SetObject(properties, sourceUrl, *(nint*)dataUrlKey);
+                }
+                _ = ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, byte>)_messageSend)(
+                    url, Selector("setResourceValue:forKey:error:"), properties, *(nint*)propertiesKey, 0);
+            }
+            finally
+            {
+                if (sourceText != 0) SendVoid(sourceText, "release");
+                SendVoid(properties, "release");
             }
         }
 
