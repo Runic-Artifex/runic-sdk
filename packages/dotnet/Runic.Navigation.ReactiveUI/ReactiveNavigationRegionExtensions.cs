@@ -172,8 +172,9 @@ public static class ReactiveNavigationRegionExtensions
     }
 
     // Emits whether both sources' latest values are true, once both have emitted, distinct until changed. It emits under
-    // its lock, like RegionObservable; an error of either source ends it, and completion keeps the last value.
-    private sealed class BothTrue(IObservable<bool> first, IObservable<bool> second) : IObservable<bool>
+    // its lock, like RegionObservable; an error of either source ends it, and completion keeps the last value. Also used
+    // by ReactiveNavigationSelectionExtensions.
+    internal sealed class BothTrue(IObservable<bool> first, IObservable<bool> second) : IObservable<bool>
     {
         public IDisposable Subscribe(IObserver<bool> observer)
         {
@@ -264,7 +265,7 @@ public static class ReactiveNavigationRegionExtensions
         public int GetHashCode(IReadOnlyList<NavigationEntry<TContent>> value) => value.Count;
     }
 
-    private sealed class Same<T> : IEqualityComparer<T> where T : class?
+    internal sealed class Same<T> : IEqualityComparer<T> where T : class?
     {
         public static readonly Same<T> Instance = new();
 

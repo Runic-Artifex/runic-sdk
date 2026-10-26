@@ -25,6 +25,7 @@
     <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationEntryExtensions.cs" Link="Shared/ReactiveNavigationEntryExtensions.cs" />
     <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveLeaveConfirmation.cs" Link="Shared/ReactiveLeaveConfirmation.cs" />
     <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationRegionGuard.cs" Link="Shared/ReactiveNavigationRegionGuard.cs" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationSelectionExtensions.cs" Link="Shared/ReactiveNavigationSelectionExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <!-- RUNICNAV002: both navigation flavors in one application. -->
     <None Include="../Runic.Navigation.ReactiveUI/buildTransitive/Runic.Navigation.ReactiveUI.targets" Pack="true" PackagePath="buildTransitive/Runic.Navigation.ReactiveUI.Reactive.targets" />

@@ -36,6 +36,13 @@ Views app that calls `AddRunicReactiveModelContext()` from
 `Runic.Application.Views.ReactiveUI.Reactive`, the dispatcher in WPF; see
 [Scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#scheduling).
 
+The selection API is the same source as the default flavor's
+([selecting tabs](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#selecting-tabs)):
+`WhenSelectedChanged()`, `WhenSelectedIndexChanged()`, `WhenIsTransitioningChanged()`
+and `WhenIsBusyChanged()` observe a `NavigationSelection`, and
+`CreateSelectCommand()` returns a `ReactiveCommand<int, NavigationOutcome>` and
+takes an optional `IScheduler` (since 0.12).
+
 The entry API is the same source as the default flavor's
 ([entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands),
 [leave confirmation through an interaction](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#leave-confirmation-through-an-interaction)),
