@@ -97,6 +97,15 @@ window.Show();
 `RUNICNAV002` is a new warning. Details: 0.10.0
 [Navigation](../eng/release/notes/0.10.0.md#navigation).
 
+Tabs that each keep their own stack of pages need no tab models since 0.12. The
+page owns the tab regions and a `NavigationSelection` among them
+(`navigator.CreateSelection(this, [a, b])`), and WPF binds it with
+`rn:NavigationSelector.Selection` instead of `rn:NavigationSelector.Region`.
+Switching tabs then asks the pages of the tab left, and retiring the page or
+closing the window asks every tab. Keep `NavigationSelector.Region` for
+borrowed models without stacks of their own, such as settings pages. See
+[Selecting tabs](../packages/dotnet/Runic.Navigation.Wpf/README.md#selecting-tabs).
+
 ## Desktop and hosts
 
 ### Availability

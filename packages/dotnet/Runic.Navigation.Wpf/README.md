@@ -11,8 +11,9 @@ is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 - `NavigationHost`, a `ContentControl` that presents a region's current entry.
 - `NavigationDialogHost`, which shows each entry of a region in its own owned
   dialog window.
-- `NavigationSelector.Region`, which connects a single-selection control to
-  a region, and `ViewHost`, which presents plain content without navigation.
+- `NavigationSelector`, which connects a single-selection control, such as a
+  `TabControl`, to a selection among regions or to a region, and `ViewHost`,
+  which presents plain content without navigation.
 - `AddRunicWpfNavigation()`, which registers the navigator on the dispatcher.
 
 The package targets `net10.0-windows` and isn't trimmable, because WPF isn't.
@@ -363,7 +364,7 @@ tab is asked when the window closes even while another tab is selected:
 
 1. The user edits a customer on the Customers tab, then selects Reports.
    When the Customers model owns `Pages`, the edit page's guard is asked as a
-   retained departure (see "Selecting tabs and other existing models"). A
+   retained departure (see "Existing models without stacks"). A
    `LeaveConfirmation` without `askOnRetain` allows it: the edit page stays
    the region's current entry with its draft, and its View is discarded.
 2. The user closes the window. The window clears the Customers page region,
@@ -371,7 +372,10 @@ tab is asked when the window closes even while another tab is selected:
    closes it.
 
 A window guards a region from the first time a guarding host loads with it,
-so a tab that was never selected isn't asked. It stops when the region
+so a tab that was never selected isn't asked. Tabs that keep their own stacks
+avoid this: when a page owns the tab regions and selects among them with
+`NavigationSelector.Selection` (see "Tabs with their own stacks"), the close
+of the region that shows the page asks every tab. It stops when the region
 closes, when the window closes, when a guarding host loads with the region in
 another window (the region follows the host), or when a host of the region
 sets `GuardWindowClose` to `false`. A host whose `Region` changes keeps the
@@ -509,12 +513,109 @@ navigator.AddDepartureGuard(WindowCloseConfirmation.OncePerClose(
 - An `OnCommitted` action of the guard runs when the clear that asked
   commits, also when a later region's clear then keeps the window open.
 
-## Selecting tabs and other existing models
+## Selecting tabs
 
-The optional selector adapter uses the same engine with either Toolkit or
-ReactiveUI ViewModels. Bind a region to a `TabControl`, `ComboBox` or
-single-selection `ListBox` whose items are existing models assignable to the
-region's content type and owned by the application or its container:
+`NavigationSelector` connects a `TabControl`, `ComboBox` or single-selection
+`ListBox` to navigation. It has two attached properties. Choose by whether a
+tab keeps its own pages while another tab is shown:
+
+| Tabs | Property | Choosing a tab |
+| --- | --- | --- |
+| Each tab keeps its own stack of pages, such as a tabbed page, a navigation rail or document tabs | `Selection` (since 0.12) | `NavigationSelection.SelectAsync`. Asks the tab left as `Retain` and changes no stack. |
+| Existing models with no stacks of their own, such as settings pages | `Region` | A borrowed `Replace` in the region. Creates a new entry for each choice. |
+
+A control takes one of them. Setting both throws `InvalidOperationException`.
+
+Both modes have the same selection rules:
+
+- The committed state selects the control's item, initially and after
+  programmatic navigation.
+- A user choice runs the departure guards. A veto, failure, cancellation or
+  supersession restores the committed selection. The latest choice wins; a
+  late answer for an older choice can't restore it.
+- Selecting the committed item again cancels an outstanding choice.
+  Deselection alone changes nothing.
+- On unload, the adapter detaches its handlers and cancels its pending
+  request. On reload, it reads the committed state again.
+- A `TabControl` with no content template or template selector gets a
+  default template containing a `NavigationHost`. It keeps entry
+  presentation, per-entry services and View lifetimes. Supplied templates
+  and selectors are kept.
+- Don't also navigate from a `SelectedItem` or `SelectedIndex` setter: the
+  adapter owns that coordination. It never owns the items, and never closes
+  a region or a selection.
+- Multiple selection is not supported. A selection request that throws, or a
+  failed reconciliation, logs event 1087.
+
+### Tabs with their own stacks
+
+Make each tab a region owned by the page, and a `NavigationSelection` the
+choice among them (see
+[Selecting among sibling regions](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#selecting-among-sibling-regions)):
+
+```csharp
+public sealed class CustomersPage
+{
+    public CustomersPage(RunicNavigator navigator)
+    {
+        List = navigator.CreateRegion<object>(this, NavigationTarget.Create<CustomerListViewModel>());
+        Reports = navigator.CreateRegion<object>(this, NavigationTarget.Create<ReportsViewModel>());
+        Tabs = navigator.CreateSelection(this, [List, Reports]);
+    }
+
+    public NavigationRegion<object> List { get; }
+    public NavigationRegion<object> Reports { get; }
+    public NavigationSelection Tabs { get; }
+}
+```
+
+```xml
+<!-- CustomersPageView.xaml -->
+<TabControl rn:NavigationSelector.Selection="{Binding Tabs}">
+  <TabItem Header="Customers" />
+  <TabItem Header="Reports" />
+</TabControl>
+```
+
+- The control's items correspond to `Selection.Regions` by position. Static
+  `TabItem`s map in declaration order. `ItemsSource="{Binding Tabs.Regions}"`
+  maps one to one and follows `Add` and `RemoveAsync`; give it an
+  `ItemTemplate` for the headers. An `ItemsSource` of header models works
+  too, in the same order as the regions. While the item count differs from
+  the region count, a choice is ignored and the committed tab stays
+  selected.
+- The default content template binds its `NavigationHost` to
+  `Selection.Selected`, so it presents the current page of the selected tab.
+- Choosing a tab calls `SelectAsync` for its region. The current page of the
+  tab left, and of the regions below it, is asked as `Retain`, so a page with
+  unsaved edits can refuse. `LeaveConfirmation` asks on a tab switch only
+  with `askOnRetain`. A committed switch changes no stack: the tab left keeps
+  its pages and drafts, and selecting it again presents the same page. No
+  `INavigationInitialize` or arrival hook runs again.
+- The control follows a programmatic `SelectAsync`, `Add` or `RemoveAsync`.
+- Retiring the page asks every page of every tab as `Retire`, whichever tab
+  is selected. So a `GuardWindowClose` host of the region that shows the page
+  asks every tab when the window closes, also tabs that were never selected.
+  Own the tab regions and the selection by a page entry, not by the window's
+  ViewModel.
+
+Moving from tab models selected with `Region` (0.11) to `Selection`:
+
+1. The page owns the tab regions and creates
+   `Tabs = navigator.CreateSelection(this, [a, b, c])`.
+2. Tab header models become plain data, or are replaced by static
+   `TabItem`s.
+3. Replace `rn:NavigationSelector.Region="{Binding Tab}"` with
+   `rn:NavigationSelector.Selection="{Binding Tabs}"`.
+4. Delete hand-written "can I leave this tab?" checks next to the pages'
+   departure guards: the switch asks those guards.
+
+### Existing models without stacks
+
+`NavigationSelector.Region` selects existing models, for example the pages of
+a settings dialog. Bind a region to a control whose items are existing models
+assignable to the region's content type and owned by the application or its
+container:
 
 ```xml
 <TabControl ItemsSource="{Binding Tabs}"
@@ -531,36 +632,26 @@ Each successful replacement creates a fresh entry, so a reusable model's
 the model and avoid resetting it merely because it was selected again.
 The core serializes a region's guards: if a cancelled hook ignores its token,
 the next choice waits for that hook to finish.
-Vetoes, failures and cancellation restore the committed selection; a late
-superseded response cannot restore an older choice. A selection's request
-completes only after the new tab's arrival hook (`INavigationArrived`),
-such as a data load; reselecting the current tab meanwhile waits only until
-the pending request's commit is decided, not for that hook, and selecting
-another tab replaces the loading one, which cancels its hook. Programmatic navigation
-also updates selection. Selecting the current item cancels an outstanding
-choice, and deselection alone does not clear navigation. Clear the region
-explicitly to make it empty. The items collection should contain the current
-model. Multiple selection is not supported.
-
-A `TabControl` with no application content template gets a default template
-containing `NavigationHost`. It retains entry presentation, per-entry services
-and view lifetime semantics. Supplied templates and template selectors are
-preserved. Do not also navigate from a `SelectedItem` property setter: the
-adapter owns that coordination. On unload it detaches handlers and cancels its
-pending request; on reload it reads the committed region again. The adapter
-never owns the items or closes the region.
+A selection's request completes only after the new tab's arrival hook
+(`INavigationArrived`), such as a data load; reselecting the current tab
+meanwhile waits only until the pending request's commit is decided, not for
+that hook, and selecting another tab replaces the loading one, which cancels
+its hook. Clear the region explicitly to make it empty. The items collection
+should contain the current model.
 
 Selecting another tab is a departure from the tab's page regions. The
 selection asks the current page of each region the tab's model owns, and of
 the regions below it, as a retained departure, then the guard of the tab's
-own model. A guard that keeps its page keeps the tab selected. The page
-regions keep their entries, and their drafts, while another tab is selected.
-A region the tab only refers to, owned by the application or another model,
-is not asked, so create a tab's page regions with the tab's model as their
-owner. A `LeaveConfirmation` asks on a tab switch only with `askOnRetain`.
+own model, as `Retire`. A guard that keeps its page keeps the tab selected.
+The page regions keep their entries, and their drafts, while another tab is
+selected. A region the tab only refers to, owned by the application or another
+model, is not asked, so create a tab's page regions with the tab's model as
+their owner. These regions belong to no page entry, so retiring the page that
+shows the tabs asks only the selected tab, and a window close asks only the
+regions of hosts with `GuardWindowClose` (see "Tabs and other hosts that
+unload"). For tabs with page stacks, prefer `Selection`.
 [Which departures ask a child region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#which-departures-ask-a-child-region)
-lists every case. To ask the pages when the window closes, set
-`GuardWindowClose` on their host (see "Tabs and other hosts that unload").
+lists every case.
 
 ## Plain content without navigation
 

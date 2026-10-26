@@ -97,6 +97,19 @@ internal sealed class PagesTab
     public override string ToString() => Name;
 }
 
+// A page whose tabs each keep their own stack (#648): one region per tab, owned by the page, and a selection among them.
+internal sealed class TabsPage : Page
+{
+    public TabsPage(string name, RunicNavigator navigator, params Page[] roots) : base(name)
+    {
+        Tabs = [.. roots.Select(root => navigator.CreateRegion(this, NavigationTarget.Own<object>(root)))];
+        Selection = navigator.CreateSelection(this, Tabs);
+    }
+
+    public NavigationRegion<object>[] Tabs { get; }
+    public NavigationSelection Selection { get; }
+}
+
 // Changes a DispatcherObject in its hooks, which throws off the UI thread, and records where they ran.
 internal sealed class AffinePage(DispatcherModelContext context) : Page("affine"), INavigationInitialize, INavigationDepartureGuard, IDisposable
 {

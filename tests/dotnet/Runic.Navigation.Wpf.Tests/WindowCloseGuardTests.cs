@@ -317,6 +317,79 @@ internal sealed class WindowCloseGuardTests
         }
     }
 
+    // #648 rule 13: a page that owns its tab regions and their selection retires when the window's close clears its
+    // region, so the close asks every tab as Retire in one transition, also one that was never selected.
+    [Test, DisplayName("GuardWindowClose asks every tab of a tabbed page"), NotInParallel("WpfSuite", Order = 73)]
+    public void TabbedPageAsksUnselectedTabs()
+    {
+        using var fixture = new NavFixture();
+        var asked = new List<string>();
+        var answers = new Queue<TaskCompletionSource<bool>>();
+        var shown = new DeparturePage("shown", (departure, _) =>
+        {
+            asked.Add($"shown {departure.Kind}");
+            return ValueTask.FromResult(true);
+        });
+        var hidden = new DeparturePage("hidden", (departure, _) =>
+        {
+            asked.Add($"hidden {departure.Kind}");
+            var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            answers.Enqueue(answer);
+            return new ValueTask<bool>(answer.Task);
+        });
+        var page = new TabsPage("page", fixture.Navigator, shown, hidden);
+        var main = fixture.Region(NavigationTarget.Own<object>(page));
+        var window = ShowWindow(new NavigationHost { Region = main, GuardWindowClose = true }, window =>
+        {
+            AddTemplates(window, typeof(Page), typeof(DeparturePage));
+            window.Resources.Add(new DataTemplateKey(typeof(TabsPage)), TabsPageTemplate());
+        });
+        try
+        {
+            Require(HostsOf(window, page.Tabs[0]) is [{ IsLoaded: true } tab] && ViewOf(tab) is TextBox { DataContext: DeparturePage }
+                    && HostsOf(window, page.Tabs[1]).Count == 0 && page.Selection.SelectedIndex == 0,
+                "The tabbed page doesn't present only its first tab.");
+
+            // Keep: the never-selected tab's page vetoes; the window stays open with the page and every tab.
+            window.Close();
+            PumpUntil(() => answers.Count == 1, "the unselected tab's guard");
+            Require(IsOpen(window) && asked is ["shown Retire", "hidden Retire"], $"The close asked {string.Join(", ", asked)}.");
+            answers.Dequeue().SetResult(false);
+            PumpUntil(() => !main.IsTransitioning, "the kept page");
+            Drain();
+            Require(IsOpen(window) && ReferenceEquals(main.Current, page) && ReferenceEquals(page.Tabs[0].Current, shown)
+                    && ReferenceEquals(page.Tabs[1].Current, hidden) && page.Selection.SelectedIndex == 0,
+                "A veto of the unselected tab closed the window or changed the page.");
+
+            // Discard: the page retires with its tabs, and the window closes.
+            window.Close();
+            PumpUntil(() => answers.Count == 1, "the unselected tab's second guard");
+            answers.Dequeue().SetResult(true);
+            PumpUntil(() => !IsOpen(window), "the window to close");
+            Require(main.CurrentEntry is null
+                    && Pump(page.Selection.SelectAsync(page.Tabs[1])) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }
+                    && asked is ["shown Retire", "hidden Retire", "shown Retire", "hidden Retire"],
+                $"The close didn't retire every tab: {string.Join(", ", asked)}.");
+        }
+        finally
+        {
+            WindowCloseGuard.Remove(main);
+            while (answers.TryDequeue(out var answer)) answer.TrySetResult(false);
+            if (IsOpen(window)) window.Close();
+        }
+    }
+
+    // The tabbed page's view: a TabControl over its regions, presented by the default content template.
+    private static DataTemplate TabsPageTemplate()
+    {
+        var tabs = new FrameworkElementFactory(typeof(TabControl));
+        tabs.SetBinding(ItemsControl.ItemsSourceProperty, new Binding($"{nameof(TabsPage.Selection)}.{nameof(NavigationSelection.Regions)}"));
+        tabs.SetBinding(NavigationSelector.SelectionProperty, new Binding(nameof(TabsPage.Selection)));
+        var template = new DataTemplate(typeof(TabsPage)) { VisualTree = tabs };
+        template.Seal();
+        return template;
+    }
+
     // The Customers tab's view: a host of its page region that guards the window's close.
     private static DataTemplate GuardedPagesTemplate()
     {
