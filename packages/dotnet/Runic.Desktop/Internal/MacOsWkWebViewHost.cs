@@ -926,13 +926,27 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     // The context menu that is tracking, or about to; AppKit tracks one menu at a time.
     private static ContextMenuSession? s_contextMenu;
 
+    // The last steps of the context menus, with Environment.TickCount64 and whether on the main thread; for the native
+    // smoke to print.
+    internal static readonly ConcurrentQueue<string> ContextMenuTrace = new();
+
+    private static void TraceContextMenu(string step)
+    {
+        ContextMenuTrace.Enqueue($"{Environment.TickCount64}{(IsMainThread ? " main" : "")} {step}");
+        while (ContextMenuTrace.Count > 64) ContextMenuTrace.TryDequeue(out _);
+    }
+
     // The NSMenu of the context menu that is tracking now, or zero; for the native smoke.
     internal static nint TrackingContextMenu => Volatile.Read(ref s_contextMenu) is { Menu: not 0 and var menu } ? menu : 0;
 
     // One context menu: its items by tag minus one, and how it ended.
     private sealed class ContextMenuSession(MacOsWkWebViewHost owner, CancellationToken cancellationToken)
     {
+        private static int s_lastId;
         private int _dismissed;
+        // For the trace of the native smoke.
+        internal int Id { get; } = Interlocked.Increment(ref s_lastId);
+        internal int CancelTraced;
         internal MacOsWkWebViewHost Owner { get; } = owner;
         internal CancellationToken CancellationToken { get; } = cancellationToken;
         internal TaskCompletionSource<DesktopMenuItem?> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -943,10 +957,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         internal bool IsDismissed => Volatile.Read(ref _dismissed) != 0 || CancellationToken.IsCancellationRequested;
 
         // Asks the tracking menu to close from any thread; the tracking run loop's timer closes it.
-        internal void Dismiss() => Volatile.Write(ref _dismissed, 1);
+        internal void Dismiss()
+        {
+            if (Interlocked.Exchange(ref _dismissed, 1) == 0) TraceContextMenu($"dismiss #{Id}");
+        }
 
         internal void Complete(DesktopMenuItem? chosen)
         {
+            if (!Result.Task.IsCompleted) TraceContextMenu($"complete #{Id} {(chosen?.Title ?? (CancellationToken.IsCancellationRequested ? "cancelled" : "null"))}");
             if (chosen is null && CancellationToken.IsCancellationRequested) Result.TrySetCanceled(CancellationToken);
             else Result.TrySetResult(chosen);
         }
@@ -960,6 +978,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         // A new context menu dismisses the open one, which returns null.
         Volatile.Read(ref s_contextMenu)?.Dismiss();
         var session = new ContextMenuSession(this, cancellationToken);
+        TraceContextMenu($"request #{session.Id}");
         var shown = InvokeAsync(() => ScheduleContextMenu(new PendingContextMenu(this, session, items, options)), cancellationToken);
         return new ValueTask<DesktopMenuItem?>(WaitForContextMenuAsync(session, shown));
     }
@@ -982,8 +1001,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             pending.Owner.ShowContextMenu(pending.Session, pending.Items, pending.Options);
             return;
         }
-        // A later request replaces one that has not tracked yet, which returns null.
+        TraceContextMenu($"schedule #{pending.Session.Id}");
+        // A later request replaces one that has not tracked yet, which returns null, and closes the one that tracks:
+        // this runs in the common modes, during that tracking, which the menu's timer then ends. The request's own
+        // check on the calling thread can miss a menu that starts tracking after it.
         Interlocked.Exchange(ref s_pendingContextMenu, pending)?.Session.Complete(null);
+        if (Volatile.Read(ref s_contextMenu) is { } tracking && !ReferenceEquals(tracking, pending.Session)) tracking.Dismiss();
         Api.PerformInDefaultMode(s_menuTarget, TrackContextMenuAction);
     }
 
@@ -991,8 +1014,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static void TrackContextMenu(nint self, nint selector, nint argument)
     {
         // A menu that still tracks, as from a nested modal loop that runs the default mode, ends first.
-        if (Volatile.Read(ref s_contextMenu) is { Menu: not 0 })
+        if (Volatile.Read(ref s_contextMenu) is { Menu: not 0 } stillTracking)
         {
+            TraceContextMenu($"defer while #{stillTracking.Id} tracks");
             if (Volatile.Read(ref s_pendingContextMenu) is not null) Api.PerformInDefaultMode(s_menuTarget, TrackContextMenuAction);
             return;
         }
@@ -1031,6 +1055,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         previous?.Dismiss();
         var timer = Api.NewRepeatingTimer(0.05, s_menuTarget, ContextMenuTickAction);
         var selected = false;
+        TraceContextMenu($"track #{session.Id}");
         try
         {
             CGPoint location;
@@ -1059,6 +1084,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoid(timer, "release");
             Interlocked.CompareExchange(ref s_contextMenu, null, session);
             session.Menu = 0;
+            TraceContextMenu($"tracked #{session.Id}{(selected ? " selected" : "")}");
             Api.SendVoid(menu, "release");
         }
         if (session.Result.Task.IsCompleted) return;
@@ -1133,7 +1159,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         try
         {
             if (Volatile.Read(ref s_contextMenu) is { Menu: not 0 } session && (session.IsDismissed || !session.Owner.IsOpen))
+            {
+                if (Interlocked.Exchange(ref session.CancelTraced, 1) == 0) TraceContextMenu($"cancelTracking #{session.Id}");
                 Api.SendVoid(session.Menu, "cancelTracking");
+            }
         }
         catch
         {

@@ -192,6 +192,18 @@ internal static partial class MacOsMenuSmoke
     // as a user's click would.
     private static async Task ExerciseContextMenuAsync(DesktopWindow window)
     {
+        try { await ExerciseContextMenuCoreAsync(window); }
+        catch
+        {
+            // The steps of the context menus, to tell which menu tracked, was dismissed or never started.
+            Console.WriteLine("Context menu trace: " + string.Join("; ", Runic.Desktop.Internal.MacOsWkWebViewHost.ContextMenuTrace));
+            throw;
+        }
+        Console.WriteLine("Context menu trace: " + string.Join("; ", Runic.Desktop.Internal.MacOsWkWebViewHost.ContextMenuTrace));
+    }
+
+    private static async Task ExerciseContextMenuCoreAsync(DesktopWindow window)
+    {
         if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu))
             throw new InvalidOperationException("Context menu: the window does not report the capability.");
         System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items =
@@ -213,6 +225,8 @@ internal static partial class MacOsMenuSmoke
         PerformInTrackingMode(menu, "cancelTracking", 0);
         var result = await chosen.WaitAsync(TimeSpan.FromSeconds(10));
         if (!ReferenceEquals(result, items[0])) throw new InvalidOperationException($"Context menu: returned {result?.Title ?? "null"}, not Rename.");
+        // The chosen item's action completes the request while the menu still tracks; it closes right after.
+        await NotTrackingAsync();
 
         // Dismissed: a later menu of the window closes the open one, which returns null; cancellation closes the later one.
         var first = window.ShowContextMenuAsync(items).AsTask();
@@ -231,6 +245,15 @@ internal static partial class MacOsMenuSmoke
         catch (OperationCanceledException) { }
         if (Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0)
             throw new InvalidOperationException("Context menu: a menu still tracks after the last one closed.");
+    }
+
+    private static async Task NotTrackingAsync()
+    {
+        for (var waited = 0; Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0; waited += 20)
+        {
+            if (waited > 10_000) throw new InvalidOperationException("Context menu: the chosen menu still tracks after 10 seconds.");
+            await Task.Delay(20);
+        }
     }
 
     // Waits until a context menu other than the given one tracks.
