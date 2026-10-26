@@ -1,1 +1,4 @@
 #nullable enable
+static readonly Runic.Navigation.Wpf.NavigationSelector.SelectionProperty -> System.Windows.DependencyProperty!
+static Runic.Navigation.Wpf.NavigationSelector.GetSelection(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.NavigationSelection?
+static Runic.Navigation.Wpf.NavigationSelector.SetSelection(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.NavigationSelection? selection) -> void
