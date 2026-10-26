@@ -106,6 +106,10 @@ internal static class DesktopWindowOptionValidation
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.Language),
                 "WKWebView uses the application's preferred languages. Remove the option on macOS."));
         }
+        if (OperatingSystem.IsMacOS())
+        {
+            AddMacOSTitleBarChecks(options, platform, diagnostics);
+        }
         if (!string.IsNullOrWhiteSpace(options.ProfilePath))
         {
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.ProfilePath), remediation));
@@ -113,6 +117,25 @@ internal static class DesktopWindowOptionValidation
         if (!string.IsNullOrWhiteSpace(options.BrowserArguments))
         {
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.BrowserArguments), remediation));
+        }
+    }
+
+    private const string MacOSTitleBarOption = nameof(DesktopWindowOptions.MacOS) + "." + nameof(MacOSWindowOptions.TitleBar);
+    private const string MacOSTrafficLightOption = nameof(DesktopWindowOptions.MacOS) + "." + nameof(MacOSWindowOptions.TrafficLightPosition);
+
+    // A frameless or kiosk window has no title bar, and the traffic lights keep AppKit's place in a standard one.
+    internal static void AddMacOSTitleBarChecks(DesktopWindowOptions options, string presentation, List<DesktopDiagnostic> diagnostics)
+    {
+        var noTitleBar = options.Frameless || options.Kiosk;
+        if (noTitleBar && options.MacOS.TitleBar != MacOSTitleBarStyle.Default)
+        {
+            diagnostics.Add(Ignored(presentation, MacOSTitleBarOption,
+                "A frameless or kiosk window has no title bar. Remove MacOS.TitleBar, or Frameless and Kiosk."));
+        }
+        if (options.MacOS.TrafficLightPosition is not null && (noTitleBar || options.MacOS.TitleBar == MacOSTitleBarStyle.Default))
+        {
+            diagnostics.Add(Ignored(presentation, MacOSTrafficLightOption,
+                "The traffic lights move only under a Hidden or Transparent MacOS.TitleBar of a window with a frame."));
         }
     }
 
@@ -181,6 +204,11 @@ internal static class DesktopWindowOptionValidation
         if (options.ColorScheme != Runic.Platform.DesktopColorScheme.NoPreference)
         {
             diagnostics.Add(ColorSchemeUnsupported(presentation, "A browser follows its own and the system's theme. " + remediation));
+        }
+        // Only the macOS window has these; elsewhere every presentation ignores them without a report.
+        if (OperatingSystem.IsMacOS() && options.MacOS.TitleBar != MacOSTitleBarStyle.Default)
+        {
+            diagnostics.Add(Ignored(presentation, MacOSTitleBarOption, remediation));
         }
 
         if (options.ConfirmCloseAsync is not null)

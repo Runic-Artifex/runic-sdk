@@ -442,6 +442,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
         _engine.SetColorScheme(options.ColorScheme);
         _engine.SetMonitorAndLanguage(options.MonitorId, options.LayoutDirection, options.Language);
+        _engine.SetMacOS(options.MacOS);
     }
 
     private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }
@@ -623,6 +624,18 @@ public sealed class DesktopSurface : IAsyncDisposable
             throw new ArgumentException(
                 "Language must be a BCP 47 language tag such as en-US or ar-EG: letters and digits in subtags of 1 to 8, joined by hyphens.",
                 nameof(options));
+        }
+        if (options.MacOS is null)
+        {
+            throw new ArgumentNullException(nameof(options), "MacOS must not be null.");
+        }
+        if (!Enum.IsDefined(options.MacOS.TitleBar))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "MacOS.TitleBar contains an unsupported value.");
+        }
+        if (options.MacOS.TrafficLightPosition is { } trafficLights && (trafficLights.X < 0 || trafficLights.Y < 0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "MacOS.TrafficLightPosition must not have a negative coordinate.");
         }
     }
 

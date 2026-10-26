@@ -35,6 +35,7 @@
     <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <InternalsVisibleTo Include="Runic.Desktop.Gtk4.Smoke" />
     <EmbeddedResource Include="Internal/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />
+    <EmbeddedResource Include="Internal/MacOsWindowChrome.js" LogicalName="Runic.Desktop.MacOsWindowChrome.js" />
     <!-- The optional WPF presentation reuses our native WebView2 controller. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf" />
     <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Tests" />
