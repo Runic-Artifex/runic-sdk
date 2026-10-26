@@ -100,7 +100,7 @@
         "dependencies": {
           "Runic.CommandLine": "[0.9.1, )",
           "Runic.CommandLine.Spectre": "[0.9.1, )",
-          "Runic.Platform.Administration.Windows": "[0.11.0, )"
+          "Runic.Platform.Administration.Windows": "[0.12.0, )"
         }
       },
       "runic.platform.administration.windows": {
