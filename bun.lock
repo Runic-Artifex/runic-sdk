@@ -23,7 +23,7 @@
         "@angular/core": "22.2.3",
         "@angular/platform-browser": "22.2.3",
         "@runic-artifex/views": "workspace:*",
-        "happy-dom": "20.14.5",
+        "happy-dom": "21.0.4",
         "typescript": "6.0.3",
         "vitest": "5.0.3",
       },
@@ -39,7 +39,7 @@
         "@runic-artifex/views": "workspace:*",
         "@types/react": "19.3.0",
         "@types/react-dom": "19.3.0",
-        "happy-dom": "20.14.5",
+        "happy-dom": "21.0.4",
         "react": "19.3.0",
         "react-dom": "19.3.0",
         "typescript": "6.0.3",
@@ -60,7 +60,7 @@
         "@sveltejs/package": "3.0.0",
         "@sveltejs/vite-plugin-svelte": "7.3.1",
         "@types/node": "24.19.1",
-        "happy-dom": "^20.14.5",
+        "happy-dom": "^21.0.4",
         "svelte": "5.57.1",
         "svelte-check": "4.7.6",
         "typescript": "6.0.3",
@@ -81,7 +81,7 @@
         "@sveltejs/package": "3.0.0",
         "@sveltejs/vite-plugin-svelte": "7.3.1",
         "@types/node": "24.19.1",
-        "happy-dom": "^20.14.5",
+        "happy-dom": "^21.0.4",
         "svelte": "5.57.1",
         "svelte-check": "4.7.6",
         "typescript": "6.0.3",
@@ -112,7 +112,7 @@
         "@types/react": "19.3.0",
         "@types/react-dom": "19.3.0",
         "effect": "4.0.1",
-        "happy-dom": "20.14.5",
+        "happy-dom": "21.0.4",
         "react": "19.3.0",
         "react-dom": "19.3.0",
         "typescript": "6.0.3",
@@ -150,7 +150,7 @@
       "version": "0.11.0",
       "devDependencies": {
         "@runic-artifex/views": "workspace:*",
-        "happy-dom": "20.14.5",
+        "happy-dom": "21.0.4",
         "typescript": "6.0.3",
         "vitest": "5.0.3",
         "vue": "3.5.43",
@@ -498,7 +498,7 @@
 
     "h3": ["h3@2.0.1", "", { "dependencies": { "rou3": "^1.0.0", "srvx": "^1.0.5" }, "peerDependencies": { "crossws": "^0.4.12", "ocache": ">=0.3.0" }, "optionalPeers": ["crossws", "ocache"], "bin": { "h3": "bin/h3.mjs" } }, "sha512-trUtZ82iNkfYi8An9M2kIM/SPlomO59pTRMt4zMBffuVPdwv5v1Bxs7uShxi7bOIAuZne6zq6TsD9hVYdNgo+A=="],
 
-    "happy-dom": ["happy-dom@20.14.5", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-x/RzkpWO40bTjIoT30iQtt64FLLmH/iRcUCN2X//bLx7H3ifkdfPXyqsro/OYtqzIAhiLMMA7mmiOR9C3NOKjQ=="],
+    "happy-dom": ["happy-dom@21.0.4", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw=="],
 
     "import-meta-resolve": ["import-meta-resolve@4.2.0", "", {}, "sha512-Iqv2fzaTQN28s/FwZAoFq0ZSs/7hMAHJVX+w8PZl3cY19Pxk6jFFalxQoIfW2826i/fDLXv8IiEZRIT0lDuWcg=="],
 
