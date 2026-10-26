@@ -209,11 +209,17 @@ public sealed class ConfigurationValidationTests
     {
         await using var host = await StartGtk4HostAsync();
 
-        var validation = host.Validate(new DesktopWindowOptions { HighContrast = false, ColorScheme = Runic.Platform.DesktopColorScheme.Light });
+        var options = new DesktopWindowOptions { HighContrast = false, ColorScheme = Runic.Platform.DesktopColorScheme.Light };
 
-        Assert.True(validation.IsValid);
-        var warning = Assert.Single(validation.Warnings, static item => item.Option == "DesktopWindowOptions.ColorScheme");
-        Assert.Equal("color-scheme-unsupported", warning.Code);
+        // The option diagnostics, as the other GTK 4 preflight tests: without GTK 4 on the machine, Validate also reports
+        // the unavailable presentation, so it is not valid there whatever the options say.
+        var warning = Assert.Single(host.GetPresentationPreflight(options).OptionDiagnostics);
+        Assert.Equal(("color-scheme-unsupported", DesktopDiagnosticSeverity.Warning, "DesktopWindowOptions.ColorScheme"),
+            (warning.Code, warning.Severity, warning.Option));
+        var validation = host.Validate(options);
+        Assert.Equal("", string.Join("; ", validation.Errors.Where(static item => item.Option == "DesktopWindowOptions.ColorScheme")
+            .Select(static item => $"{item.Code}: {item.Message}")));
+        Assert.Contains(validation.Warnings, static item => item.Code == "color-scheme-unsupported");
     }
 
     [Test]
