@@ -972,8 +972,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private const string TrackContextMenuAction = "runicTrackContextMenu:";
 
     // Main thread, inside a block of the main dispatch queue, which the run loop does not drain again while the menu
-    // tracks: the menu tracks from a perform request in the run loop's common modes instead, so main-thread work queued
-    // meanwhile still runs.
+    // tracks: the menu tracks from a perform request instead, so main-thread work queued meanwhile still runs. The request
+    // runs in the default mode only: a menu asked for while another menu tracks, such as the context menu it replaces,
+    // starts once that tracking has ended rather than inside it, where AppKit would not track it.
     private static void ScheduleContextMenu(PendingContextMenu pending)
     {
         if (s_menuTarget == 0)
@@ -983,12 +984,18 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         // A later request replaces one that has not tracked yet, which returns null.
         Interlocked.Exchange(ref s_pendingContextMenu, pending)?.Session.Complete(null);
-        Api.PerformInCommonModes(s_menuTarget, TrackContextMenuAction);
+        Api.PerformInDefaultMode(s_menuTarget, TrackContextMenuAction);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void TrackContextMenu(nint self, nint selector, nint argument)
     {
+        // A menu that still tracks, as from a nested modal loop that runs the default mode, ends first.
+        if (Volatile.Read(ref s_contextMenu) is { Menu: not 0 })
+        {
+            if (Volatile.Read(ref s_pendingContextMenu) is not null) Api.PerformInDefaultMode(s_menuTarget, TrackContextMenuAction);
+            return;
+        }
         if (Interlocked.Exchange(ref s_pendingContextMenu, null) is not { } pending) return;
         try
         {
@@ -2088,10 +2095,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             return timer;
         }
 
-        // [target performSelectorOnMainThread:selector withObject:nil waitUntilDone:NO modes:@[kCFRunLoopCommonModes]].
-        internal void PerformInCommonModes(nint target, string selector)
+        // [target performSelectorOnMainThread:selector withObject:nil waitUntilDone:NO modes:@[kCFRunLoopDefaultMode]].
+        internal void PerformInDefaultMode(nint target, string selector)
         {
-            var mode = CreateString("kCFRunLoopCommonModes");
+            var mode = CreateString("kCFRunLoopDefaultMode");
             try
             {
                 var modes = SendNintNint(GetClass("NSArray"), "arrayWithObject:", mode);
