@@ -83,6 +83,7 @@ internal static partial class PackageManifests
                 fields["BundleVersion"] = PackageIdentity.NumericVersion(identity.Version, 3);
                 fields["UrlSchemes"] = MacOSUrlSchemes(identity);
                 fields["DocumentTypes"] = MacOSDocumentTypes(identity, name);
+                fields["UsageDescriptions"] = MacOSUsageDescriptions(identity);
                 fields["ApplicationCategory"] = identity.MacApplicationCategory is { } category
                     ? $"\n  <key>LSApplicationCategoryType</key><string>{category}</string>" : "";
                 // The sandbox and provisioning profile entitlements; MacOSPackager fills them for its options.
@@ -161,43 +162,61 @@ internal static partial class PackageManifests
   </array>
 """;
 
-    // Each file type is the application's own: a document type and the uniform type identifier it exports.
+    // A document type for each file type: the application's own exports its type with the Owner rank; a type the
+    // system or another application declares, such as public.plain-text, has the Alternate or Default rank, and its
+    // declaration is imported when macOS may not have it (MacFileTypes).
     private static string MacOSDocumentTypes(PackageIdentity identity, string name)
     {
         if (identity.FileTypes.Count == 0) return "";
+        MacFileType[] types = [.. identity.FileTypes.Select(type => MacFileTypes.Resolve(identity, type))];
         var text = new StringBuilder("\n  <key>CFBundleDocumentTypes</key>\n  <array>");
-        foreach (PackageFileType type in identity.FileTypes)
+        foreach (MacFileType type in types)
         {
             text.Append(CultureInfo.InvariantCulture, $"""
 
     <dict>
-      <key>CFBundleTypeName</key><string>{name} document ({type.Extension})</string>
+      <key>CFBundleTypeName</key><string>{name} document ({type.Type.Extension})</string>
       <key>CFBundleTypeRole</key><string>Editor</string>
-      <key>LSHandlerRank</key><string>Owner</string>
-      <key>LSItemContentTypes</key><array><string>{PackageIdentity.TypeIdentifier(identity.Id, type.Extension)}</string></array>
+      <key>LSHandlerRank</key><string>{(type.Owned ? "Owner" : identity.MacFileTypeHandlerRank)}</string>
+      <key>LSItemContentTypes</key><array><string>{type.Identifier}</string></array>
     </dict>
 """);
         }
-        text.Append("\n  </array>\n  <key>UTExportedTypeDeclarations</key>\n  <array>");
-        foreach (PackageFileType type in identity.FileTypes)
+        text.Append("\n  </array>");
+        AppendTypeDeclarations(text, "UTExportedTypeDeclarations", [.. types.Where(type => type.Owned)], name);
+        AppendTypeDeclarations(text, "UTImportedTypeDeclarations", [.. types.Where(type => type.Imported)], name);
+        return text.ToString();
+    }
+
+    private static void AppendTypeDeclarations(StringBuilder text, string key, MacFileType[] types, string name)
+    {
+        if (types.Length == 0) return;
+        text.Append(CultureInfo.InvariantCulture, $"\n  <key>{key}</key>\n  <array>");
+        foreach (MacFileType type in types)
         {
-            string mime = type.MimeType is null ? "" : $"\n        <key>public.mime-type</key><array><string>{EscapeXml(type.MimeType)}</string></array>";
+            string mime = type.Type.MimeType is null ? "" : $"\n        <key>public.mime-type</key><array><string>{EscapeXml(type.Type.MimeType)}</string></array>";
+            string description = type.Owned ? $"{name} document ({type.Type.Extension})" : $"{type.Type.Extension[1..]} document";
             text.Append(CultureInfo.InvariantCulture, $"""
 
     <dict>
-      <key>UTTypeIdentifier</key><string>{PackageIdentity.TypeIdentifier(identity.Id, type.Extension)}</string>
-      <key>UTTypeDescription</key><string>{name} document ({type.Extension})</string>
-      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+      <key>UTTypeIdentifier</key><string>{type.Identifier}</string>
+      <key>UTTypeDescription</key><string>{EscapeXml(description)}</string>
+      <key>UTTypeConformsTo</key><array><string>{type.ConformsTo}</string></array>
       <key>UTTypeTagSpecification</key>
       <dict>
-        <key>public.filename-extension</key><array><string>{type.Extension[1..]}</string></array>{mime}
+        <key>public.filename-extension</key><array><string>{type.Type.Extension[1..]}</string></array>{mime}
       </dict>
     </dict>
 """);
         }
         text.Append("\n  </array>");
-        return text.ToString();
     }
+
+    // The privacy usage descriptions macOS shows when the application, or its WKWebView, first uses the camera or the
+    // microphone; MacOSPackager adds the matching device entitlements.
+    private static string MacOSUsageDescriptions(PackageIdentity identity) =>
+        (identity.MacCameraUsageDescription is { } camera ? $"\n  <key>NSCameraUsageDescription</key><string>{EscapeXml(camera)}</string>" : "")
+        + (identity.MacMicrophoneUsageDescription is { } microphone ? $"\n  <key>NSMicrophoneUsageDescription</key><string>{EscapeXml(microphone)}</string>" : "");
 
     private static void AddLinuxFields(Dictionary<string, string> fields, PackageIdentity identity, PackageTarget target, string name, DateTimeOffset now)
     {

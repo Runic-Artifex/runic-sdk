@@ -76,7 +76,17 @@ payload then reports `"signing": "test"`.
 Install Xcode's command line tools (`xcode-select --install`), which provide
 `codesign`, `iconutil` and `notarytool`. The command signs the bundle
 with the hardened runtime and `macos/entitlements.plist`, and checks it with
-`codesign --verify --strict`.
+`codesign --verify --deep --strict`.
+
+The bundle keeps only code in `Contents/MacOS`, as notarization expects: the
+executable and any other Mach-O file the project publishes, such as a native
+library or a helper tool. The frontend goes to `Contents/Resources/www`, where
+Runic looks for it, and every other published file or directory (configuration,
+data) to `Contents/Resources`, with a relative symbolic link in its place in
+`Contents/MacOS`, so code that reads it next to the executable
+(`AppContext.BaseDirectory`) still finds it. Nested libraries and executables are
+signed one by one with the hardened runtime, deepest first, before the bundle; in
+the App Sandbox a nested executable gets `com.apple.security.inherit`.
 
 Without options the bundle is ad-hoc signed: it runs on the Mac that built it,
 and Gatekeeper blocks it on other Macs. To ship it you need an Apple Developer
@@ -103,6 +113,56 @@ profile, which an ad-hoc signature cannot carry. Add the entitlement to your
 `macos/entitlements.plist` override and pass the profile with
 `--provisioning-profile` (see below).
 
+### File types
+
+Each extension in `RunicApplicationFileTypes` becomes a document type in
+`Info.plist`. A type the application does not own must not claim the `Owner`
+rank, or macOS treats the application as the creator of every `.txt` or `.png`
+file. The command therefore distinguishes:
+
+- **System types.** `.txt`/`.text`, `.md`/`.markdown`, `.log`, `.json`, `.xml`,
+  `.yaml`/`.yml`, `.csv`, `.tsv`, `.html`/`.htm`, `.rtf`, `.pdf`, `.js`, `.sh`,
+  `.py`, `.png`, `.jpg`/`.jpeg`, `.gif`, `.heic`, `.tif`/`.tiff`, `.bmp`, `.ico`,
+  `.webp`, `.svg`, `.mp3`, `.wav`, `.mp4`, `.mov`, `.zip`, `.vcf` and `.ics` name
+  the system's uniform type identifier (`public.plain-text`, `public.png`, …)
+  with the `Alternate` rank: Finder offers the application under *Open With*
+  without making it the default. `net.daringfireball.markdown` is also imported
+  (`UTImportedTypeDeclarations`), because not every macOS version declares it.
+- **Your own types,** any other extension, export
+  `<ApplicationId>.<extension>` (`UTExportedTypeDeclarations`, conforming to
+  `public.data`) with the `Owner` rank.
+
+Two properties adjust it:
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `RunicMacFileTypeIdentifiers` | none | `.extension=identifier` pairs, separated by `;`, for types that another application or the system declares but the list above does not know, such as `.log=public.log` or `.sketch=com.bohemiancoding.sketch.drawing.single`. The bundle imports their declaration (unless it is one of the system types above) and uses the handler rank. |
+| `RunicMacFileTypeHandlerRank` | `Alternate` | `Default` asks to be the default application for the types the application does not own. |
+
+### Camera and microphone
+
+A page that calls `getUserMedia` in a window with
+`DesktopPermissionGrant.MediaCapture` needs the application's own camera or
+microphone access. macOS grants it only to a bundle that explains why in
+`Info.plist` and, under the hardened runtime or the App Sandbox, has the device
+entitlement. Set the explanation, which macOS shows when it first asks the
+user:
+
+```xml
+<RunicMacCameraUsageDescription>Notes shows your camera in video notes.</RunicMacCameraUsageDescription>
+<RunicMacMicrophoneUsageDescription>Notes records voice notes.</RunicMacMicrophoneUsageDescription>
+```
+
+Each adds `NSCameraUsageDescription` or `NSMicrophoneUsageDescription`
+(the `{{UsageDescriptions}}` field of `macos/Info.plist`) and
+`com.apple.security.device.camera` or `com.apple.security.device.audio-input`
+(the `{{Entitlements}}` field of `macos/entitlements.plist`). An override
+without the field fails with `RAPPPKG1006` rather than shipping a bundle that
+cannot use the device. Without the properties, WKWebView rejects
+`getUserMedia` with `NotAllowedError` and macOS never asks the user, even with
+the `MediaCapture` grant; an application whose own code opens the device
+without a usage description is terminated by macOS.
+
 ### App Sandbox and the Mac App Store
 
 Sandboxing is opt-in. `--sandbox`, or `<RunicMacSandbox>true</RunicMacSandbox>`
@@ -119,8 +179,9 @@ in the project, signs the bundle with these entitlements:
 The command fills them into `macos/entitlements.plist` where the template has
 `{{Entitlements}}`. An override without that field must list the keys itself:
 with `--sandbox`, a missing key is `RAPPPKG1006` rather than a bundle that
-silently runs unsandboxed. Add camera, microphone or other entitlements your
-application needs to the override.
+silently runs unsandboxed. Add other entitlements your application needs to the
+override; the camera and microphone entitlements come
+from their usage descriptions (see above).
 
 In the sandbox the application reaches its container, the files the user
 selected or dropped, and bookmarked files; privileged actions and volume

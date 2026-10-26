@@ -33,6 +33,15 @@
     <Compile Include="../../../tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs" Link="ApplicationIdentity.cs" />
     <None Update="www/index.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The macOS packaging leg publishes a library, a helper executable and data files from this directory, which
+       dotnet runic package lays out (code in Contents/MacOS, the rest in Contents/Resources) and signs inside out. The
+       wildcard is a property set only with the directory: MSBuild refuses an Include of "/**" even when it is not used. -->
+  <PropertyGroup Condition="'$(RunicPackagingProbeExtraFiles)' != ''">
+    <RunicPackagingProbeExtraFilesGlob>$(RunicPackagingProbeExtraFiles)/**</RunicPackagingProbeExtraFilesGlob>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(RunicPackagingProbeExtraFilesGlob)" Link="%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />

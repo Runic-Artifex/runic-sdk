@@ -4,7 +4,9 @@
      entitlements when the project sets RunicMacSandbox or dotnet runic package macos gets the sandbox option
      (com.apple.security.app-sandbox, network.server and network.client for the loopback page server and bridge,
      files.user-selected.read-write for file dialogs, files.bookmarks.app-scope for bookmarks), and the application and
-     team identifiers of the provisioning profile the command embeds. Add your own keys around it. -->
+     team identifiers of the provisioning profile the command embeds, and com.apple.security.device.camera and
+     device.audio-input for RunicMacCameraUsageDescription and RunicMacMicrophoneUsageDescription. Add your own keys
+     around it. -->
 <plist version="1.0">
 <dict>{{Entitlements}}
 </dict>

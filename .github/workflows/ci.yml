@@ -1504,8 +1504,17 @@ jobs:
         if: matrix.target == 'macos'
         shell: bash
         run: |
-          dotnet run --no-build -c Release --project "$TOOL" -- package macos --project "$PROBE" --output-directory artifacts/package/macos \
-            --format json > "$RUNNER_TEMP/package.json"
+          # G-7: a library, a helper executable and data files beside the probe, also in a subdirectory, which the
+          # package lays out (code in Contents/MacOS, the rest in Contents/Resources linked back) and signs inside out.
+          extra="$RUNNER_TEMP/probe-extra"
+          mkdir -p "$extra/plugins"
+          printf 'int runic_probe(void) { return 1; }\n' | clang -dynamiclib -x c - -o "$extra/libprobe.dylib"
+          printf 'int main(void) { return 0; }\n' | clang -x c - -o "$extra/probe-helper"
+          cp "$extra/libprobe.dylib" "$extra/plugins/libplugin.dylib"
+          echo probe > "$extra/probe-data.txt"
+          echo '{}' > "$extra/plugins/plugin.json"
+          RunicPackagingProbeExtraFiles="$extra" dotnet run --no-build -c Release --project "$TOOL" -- package macos --project "$PROBE" \
+            --output-directory artifacts/package/macos --format json > "$RUNNER_TEMP/package.json"
           node -e '
             const { payload } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
             const kinds = payload.packages.map(item => item.format + ":" + item.signing).join(",");
@@ -1513,13 +1522,27 @@ jobs:
               || payload.warnings.map(item => item.code).join(",") !== "RAPPPKG2002")
               throw new Error("Unexpected package payload " + JSON.stringify(payload));' "$RUNNER_TEMP/package.json"
           app="artifacts/package/macos/Runic Packaging Probe.app"
-          codesign --verify --strict --verbose=2 "$app"
-          # Ad hoc, with the hardened runtime that notarization requires.
+          codesign --verify --deep --strict --verbose=2 "$app"
+          # Ad hoc, with the hardened runtime that notarization requires, also each nested library and executable,
+          # which the linker had signed without it.
           codesign --display --verbose=2 "$app" 2>&1 | grep -E '^CodeDirectory .*flags=0x[0-9a-f]+\(adhoc,runtime\)'
+          for code in libprobe.dylib probe-helper plugins/libplugin.dylib; do
+            test -f "$app/Contents/MacOS/$code" && test ! -L "$app/Contents/MacOS/$code"
+            codesign --verify --strict "$app/Contents/MacOS/$code"
+            codesign --display --verbose=2 "$app/Contents/MacOS/$code" 2>&1 | grep -E '^CodeDirectory .*flags=0x[0-9a-f]+\(adhoc,runtime\)'
+          done
           plutil -lint "$app/Contents/Info.plist"
           test -f "$app/Contents/Resources/icon.icns"
           test -f "$app/Contents/Resources/www/index.html"
           test ! -e "$app/Contents/MacOS/www"
+          for data in probe-data.txt plugins/plugin.json; do
+            test -f "$app/Contents/Resources/$data" && test -L "$app/Contents/MacOS/$data"
+          done
+          # Only Mach-O files (and links) in Contents/MacOS.
+          test -z "$(find "$app/Contents/MacOS" -type f -exec sh -c 'file -b "$1" | grep -q Mach-O || echo "$1"' _ {} \;)"
+          # The probe's .runicprobe type is its own, exported with the Owner rank.
+          test "$(plutil -extract CFBundleDocumentTypes.0.LSHandlerRank raw "$app/Contents/Info.plist")" = Owner
+          test "$(plutil -extract UTExportedTypeDeclarations.0.UTTypeIdentifier raw "$app/Contents/Info.plist")" = org.runic.tests.PackagingProbe.runicprobe
           mount="$RUNNER_TEMP/probe-dmg"
           eng/ci/hdiutil-attach.sh "artifacts/package/macos/Runic Packaging Probe-1.2.3.dmg" -mountpoint "$mount" -nobrowse -readonly
           test -d "$mount/Runic Packaging Probe.app" && test -L "$mount/Applications"
@@ -1549,7 +1572,7 @@ jobs:
               || payload.warnings.map(item => item.code).join(",") !== "RAPPPKG2002,RAPPPKG2001")
               throw new Error("Unexpected package payload " + JSON.stringify(payload));' "$RUNNER_TEMP/sandbox-package.json"
           app="artifacts/package/sandbox/Runic Sandbox Probe.app"
-          codesign --verify --strict --verbose=2 "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
           codesign --display --entitlements - --xml "$app" > "$RUNNER_TEMP/sandbox-entitlements.plist"
           for key in app-sandbox network.server network.client files.user-selected.read-write files.bookmarks.app-scope; do
             test "$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.$key" "$RUNNER_TEMP/sandbox-entitlements.plist")" = true

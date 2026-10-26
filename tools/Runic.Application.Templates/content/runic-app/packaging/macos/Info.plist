@@ -2,7 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- The bundle's Info.plist that dotnet runic package macos fills in from the project file (the fields in double braces). macOS sends an opened URL or
      document to the running application as an Apple event. RunicMacApplicationCategory adds LSApplicationCategoryType, which the Mac App Store
-     requires. -->
+     requires. RunicMacCameraUsageDescription and RunicMacMicrophoneUsageDescription add NSCameraUsageDescription and
+     NSMicrophoneUsageDescription (UsageDescriptions). File types with a system type, such as .txt or .png, are declared
+     with the Alternate rank (RunicMacFileTypeHandlerRank), the application's own types exported with the Owner rank. -->
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>{{ApplicationId}}</string>
@@ -14,7 +16,7 @@
   <key>CFBundleVersion</key><string>{{BundleVersion}}</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
-  <key>NSHighResolutionCapable</key><true/>{{ApplicationCategory}}{{UrlSchemes}}{{DocumentTypes}}
+  <key>NSHighResolutionCapable</key><true/>{{ApplicationCategory}}{{UrlSchemes}}{{DocumentTypes}}{{UsageDescriptions}}
   <!-- Universal links for RunicApplicationWebLinkHosts need the com.apple.developer.associated-domains entitlement
        (applinks:<host>), which a provisioning profile grants, and an apple-app-site-association file on each host;
        see the README. -->

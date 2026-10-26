@@ -326,17 +326,179 @@ internal sealed partial class ToolTests
         Equal(Path.Combine("/out/Notes.app", "Contents", "embedded.provisionprofile"), MacOSPackager.ProfilePath("/out/Notes.app"));
     }
 
-    [Test, DisplayName("package macos signs the bundle and builds the installer package with these command lines")]
+    [Test, DisplayName("package macos signs nested code inside out, then the bundle, and builds the installer package with these command lines")]
     public void PackageMacOSCommandLines()
     {
         SequenceEqual(["--force", "--options", "runtime", "--entitlements", "/out/entitlements.plist", "--sign", "-", "/out/Notes.app"],
-            MacOSPackager.CodesignArguments("-", "/out/entitlements.plist", "/out/Notes.app"));
-        SequenceEqual(["--force", "--options", "runtime", "--timestamp", "--entitlements", "/out/entitlements.plist", "--sign", "Apple Distribution: Example (TEAMID)", "/out/Notes.app"],
-            MacOSPackager.CodesignArguments("Apple Distribution: Example (TEAMID)", "/out/entitlements.plist", "/out/Notes.app"));
+            MacOSBundleLayout.Codesign("-", "/out/entitlements.plist", "/out/Notes.app"));
+        NestedCode[] nested =
+        [
+            new("/out/Notes.app/Contents/MacOS/plugins/libdeep.dylib", MachOKind.Library),
+            new("/out/Notes.app/Contents/MacOS/helper", MachOKind.Executable),
+            new("/out/Notes.app/Contents/MacOS/libnative.dylib", MachOKind.Library),
+        ];
+        string identity = "Apple Distribution: Example (TEAMID)";
+        IReadOnlyList<IReadOnlyList<string>> commands = MacOSBundleLayout.SigningCommands(identity, "/out/entitlements.plist", "/out/inherit.plist", "/out/Notes.app", nested);
+        Equal(4, commands.Count);
+        SequenceEqual(["--force", "--options", "runtime", "--timestamp", "--sign", identity, "/out/Notes.app/Contents/MacOS/plugins/libdeep.dylib"], commands[0]);
+        // In the sandbox a helper executable inherits the application's sandbox; libraries take no entitlements.
+        SequenceEqual(["--force", "--options", "runtime", "--timestamp", "--entitlements", "/out/inherit.plist", "--sign", identity, "/out/Notes.app/Contents/MacOS/helper"], commands[1]);
+        SequenceEqual(["--force", "--options", "runtime", "--timestamp", "--sign", identity, "/out/Notes.app/Contents/MacOS/libnative.dylib"], commands[2]);
+        SequenceEqual(["--force", "--options", "runtime", "--timestamp", "--entitlements", "/out/entitlements.plist", "--sign", identity, "/out/Notes.app"], commands[3]);
+        SequenceEqual(["--force", "--options", "runtime", "--sign", "-", "/out/Notes.app/Contents/MacOS/helper"],
+            MacOSBundleLayout.SigningCommands("-", "/out/entitlements.plist", null, "/out/Notes.app", nested)[1]);
+        DoesNotContain(string.Join(' ', commands.SelectMany(command => command)), "--deep");
+        Contains(MacOSBundleLayout.InheritEntitlements, "<key>com.apple.security.inherit</key><true/>");
+        XDocument.Parse(MacOSBundleLayout.InheritEntitlements);
         SequenceEqual(["--component", "/out/Notes.app", "/Applications", "/out/Notes-1.2.3.pkg"],
             MacOSPackager.ProductbuildArguments("/out/Notes.app", null, "/out/Notes-1.2.3.pkg"));
         SequenceEqual(["--component", "/out/Notes.app", "/Applications", "--sign", "3rd Party Mac Developer Installer: Example (TEAMID)", "/out/Notes-1.2.3.pkg"],
             MacOSPackager.ProductbuildArguments("/out/Notes.app", "3rd Party Mac Developer Installer: Example (TEAMID)", "/out/Notes-1.2.3.pkg"));
+    }
+
+    [Test, DisplayName("package macos puts code in Contents/MacOS and other published files in Contents/Resources, linked back")]
+    public void PackageMacOSBundleLayout()
+    {
+        // Symbolic links need privileges on Windows; the bundle is made on macOS.
+        if (OperatingSystem.IsWindows()) return;
+        using var workspace = new TestWorkspace();
+        string published = Path.Combine(workspace.Root, "publish");
+        static byte[] MachO(uint fileType, bool fat = false)
+        {
+            var thin = new byte[32];
+            BitConverter.GetBytes(0xFEEDFACFu).CopyTo(thin, 0); // little-endian 64-bit, as arm64 writes it
+            BitConverter.GetBytes(fileType).CopyTo(thin, 12);
+            if (!fat) return thin;
+            var file = new byte[64 + thin.Length];
+            byte[] BigEndian(uint value) { byte[] bytes = BitConverter.GetBytes(value); Array.Reverse(bytes); return bytes; }
+            BigEndian(0xCAFEBABE).CopyTo(file, 0);
+            BigEndian(1).CopyTo(file, 4);
+            BigEndian(64).CopyTo(file, 16);
+            thin.CopyTo(file, 64);
+            return file;
+        }
+        void Write(string relative, byte[] content)
+        {
+            string path = Path.Combine(published, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, content);
+        }
+        Write("Notes", MachO(2));
+        Write("libnative.dylib", MachO(6));
+        Write("helper", MachO(2, fat: true));
+        Write("appsettings.json", "{}"u8.ToArray());
+        Write("www/index.html", "<p>notes</p>"u8.ToArray());
+        Write("data/words.txt", "words"u8.ToArray());
+        Write("plugins/libdeep.dylib", MachO(8));
+        Write("plugins/plugin.json", "{}"u8.ToArray());
+        Write("Example.class", [0xCA, 0xFE, 0xBA, 0xBE, 0x00, 0x00, 0x00, 0x41, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+        string app = Path.Combine(workspace.Root, "Notes.app");
+        IReadOnlyList<NestedCode> nested = MacOSBundleLayout.Place(published, app, "Notes");
+        string macOS = Path.Combine(app, "Contents", "MacOS"), resources = Path.Combine(app, "Contents", "Resources");
+        // Deepest first, the main executable not at all: it is signed with the bundle.
+        SequenceEqual([Path.Combine(macOS, "plugins", "libdeep.dylib"), Path.Combine(macOS, "helper"), Path.Combine(macOS, "libnative.dylib")],
+            [.. nested.Select(code => code.Path)]);
+        SequenceEqual([MachOKind.Library, MachOKind.Executable, MachOKind.Library], [.. nested.Select(code => code.Kind)]);
+        True(File.Exists(Path.Combine(macOS, "Notes")) && new FileInfo(Path.Combine(macOS, "Notes")).LinkTarget is null, "The executable is in Contents/MacOS.");
+        True(File.Exists(Path.Combine(resources, "www", "index.html")) && !Path.Exists(Path.Combine(macOS, "www")), "The frontend is only in Contents/Resources.");
+        foreach ((string relative, string target) in new[]
+        {
+            ("appsettings.json", "../Resources/appsettings.json"), ("data", "../Resources/data"), ("Example.class", "../Resources/Example.class"),
+            (Path.Combine("plugins", "plugin.json"), "../../Resources/plugins/plugin.json"),
+        })
+        {
+            Equal(target.Replace('/', Path.DirectorySeparatorChar), new FileInfo(Path.Combine(macOS, relative)).LinkTarget);
+            True(Path.Exists(Path.Combine(resources, relative)), $"{relative} is in Contents/Resources.");
+        }
+        Equal("words", File.ReadAllText(Path.Combine(macOS, "data", "words.txt")));
+        Equal(null, new FileInfo(Path.Combine(macOS, "plugins", "libdeep.dylib")).LinkTarget);
+        Equal(MachOKind.None, MacOSBundleLayout.Classify(Path.Combine(published, "appsettings.json")));
+    }
+
+    [Test, DisplayName("package macos declares system file types with the Alternate or Default rank and exports only its own")]
+    public void PackageMacOSFileTypes()
+    {
+        PackageFileType[] types = [new(".notes", null), new(".txt", null), new(".md", "text/markdown"), new(".png", null), new(".logx", null)];
+        PackageIdentity identity = PackageIdentityFor([], types);
+        string info = PackageManifests.Render(identity, "macos/Info.plist", PackageManifests.Fields(identity, PackageTarget.MacOS));
+        XElement root = XDocument.Parse(info).Root!.Element("dict")!;
+        XElement Value(XElement dict, string key) => dict.Elements("key").Single(element => element.Value == key).ElementsAfterSelf().First();
+        var documents = Value(root, "CFBundleDocumentTypes").Elements("dict")
+            .ToDictionary(dict => Value(dict, "LSItemContentTypes").Element("string")!.Value, dict => Value(dict, "LSHandlerRank").Value);
+        Equal("Owner", documents["org.example.Notes.notes"]);
+        Equal("Owner", documents["org.example.Notes.logx"]);
+        Equal("Alternate", documents["public.plain-text"]);
+        Equal("Alternate", documents["net.daringfireball.markdown"]);
+        Equal("Alternate", documents["public.png"]);
+        string[] Declared(string key) => [.. Value(root, key).Elements("dict").Select(dict => Value(dict, "UTTypeIdentifier").Value)];
+        SequenceEqual(["org.example.Notes.notes", "org.example.Notes.logx"], Declared("UTExportedTypeDeclarations"));
+        // Markdown is imported, as macOS may not declare it; public.plain-text and public.png are the system's.
+        SequenceEqual(["net.daringfireball.markdown"], Declared("UTImportedTypeDeclarations"));
+        Contains(info, "<key>UTTypeConformsTo</key><array><string>public.plain-text</string></array>");
+        Contains(info, "<key>public.mime-type</key><array><string>text/markdown</string></array>");
+
+        // RunicMacFileTypeIdentifiers names the type of an extension the tool does not know; RunicMacFileTypeHandlerRank
+        // makes the application the default handler of types it does not own.
+        identity = identity with
+        {
+            MacFileTypeIdentifiers = PackageIdentity.ParseFileTypeIdentifiers(".logx=com.example.log; .TXT=public.plain-text", types),
+            MacFileTypeHandlerRank = PackageIdentity.CheckHandlerRank("default"),
+        };
+        info = PackageManifests.Render(identity, "macos/Info.plist", PackageManifests.Fields(identity, PackageTarget.MacOS));
+        root = XDocument.Parse(info).Root!.Element("dict")!;
+        documents = Value(root, "CFBundleDocumentTypes").Elements("dict")
+            .ToDictionary(dict => Value(dict, "LSItemContentTypes").Element("string")!.Value, dict => Value(dict, "LSHandlerRank").Value);
+        Equal("Default", documents["com.example.log"]);
+        Equal("Default", documents["public.plain-text"]);
+        Equal("Owner", documents["org.example.Notes.notes"]);
+        SequenceEqual(["org.example.Notes.notes"], Declared("UTExportedTypeDeclarations"));
+        SequenceEqual(["net.daringfireball.markdown", "com.example.log"], Declared("UTImportedTypeDeclarations"));
+
+        Equal("Alternate", PackageIdentity.CheckHandlerRank(""));
+        Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.CheckHandlerRank("Owner")).Code);
+        foreach (string entry in new[] { ".logx", ".logx=log", ".other=com.example.other", ".logx=com.example.a;.logx=com.example.b", ".logx=com.example_a" })
+            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.ParseFileTypeIdentifiers(entry, types)).Code);
+        True(PackageIdentity.Properties.Contains("RunicMacFileTypeIdentifiers") && PackageIdentity.Properties.Contains("RunicMacFileTypeHandlerRank"),
+            "package evaluates both properties.");
+    }
+
+    [Test, DisplayName("package macos writes the camera and microphone usage descriptions with their device entitlements")]
+    public void PackageMacOSUsageDescriptions()
+    {
+        PackageIdentity identity = PackageIdentityFor([]);
+        Dictionary<string, string> fields = PackageManifests.Fields(identity, PackageTarget.MacOS);
+        string info = PackageManifests.Render(identity, "macos/Info.plist", fields);
+        DoesNotContain(info, "UsageDescription</key>");
+        SequenceEqual([], MacOSPackager.DeviceEntitlements(identity));
+        MacOSPackager.CheckInfo(info, identity);
+
+        string project = Path.Combine(Path.GetTempPath(), "Notes", "Notes.csproj");
+        identity = PackageIdentity.Create(project, new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ApplicationId"] = "org.example.Notes",
+            ["RunicMacCameraUsageDescription"] = "Notes shows your camera in video <notes>.",
+            ["RunicMacMicrophoneUsageDescription"] = " Notes records voice notes. ",
+        }, [], null);
+        fields = PackageManifests.Fields(identity, PackageTarget.MacOS);
+        info = PackageManifests.Render(identity, "macos/Info.plist", fields);
+        XDocument.Parse(info);
+        Contains(info, "<key>NSCameraUsageDescription</key><string>Notes shows your camera in video &lt;notes&gt;.</string>");
+        Contains(info, "<key>NSMicrophoneUsageDescription</key><string>Notes records voice notes.</string>");
+        MacOSPackager.CheckInfo(info, identity);
+        string[] devices = MacOSPackager.DeviceEntitlements(identity);
+        SequenceEqual(["com.apple.security.device.camera", "com.apple.security.device.audio-input"], devices);
+        foreach (bool sandbox in new[] { false, true })
+        {
+            fields["Entitlements"] = MacOSPackager.Entitlements(sandbox, profile: null, devices);
+            string entitlements = PackageManifests.Render(identity, "macos/entitlements.plist", fields);
+            MacOSPackager.CheckEntitlements(entitlements, sandbox, profile: null, devices);
+            True(devices.All(PlistKeys(entitlements).Contains), entitlements);
+        }
+        // An override copied before 0.12 has neither field: the command fails instead of shipping a bundle without them.
+        string old = """<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict></dict></plist>""";
+        Contains(Throws<DevDevelopmentException>(() => MacOSPackager.CheckInfo(old, identity)).Message, "{{UsageDescriptions}}");
+        Contains(Throws<DevDevelopmentException>(() => MacOSPackager.CheckEntitlements(old, sandbox: false, profile: null, devices)).Message, "com.apple.security.device.camera");
     }
 
     private static string[] PlistKeys(string plist) =>

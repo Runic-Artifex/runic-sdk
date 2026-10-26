@@ -60,6 +60,23 @@ internal sealed partial record PackageIdentity
     /// requires; none by default.</summary>
     internal string? MacApplicationCategory { get; init; }
 
+    /// <summary>
+    /// The uniform type identifiers of file types the application does not own, <c>RunicMacFileTypeIdentifiers</c>
+    /// (<c>.md=net.daringfireball.markdown</c>), by extension; they add to and replace <see cref="MacFileTypes.Known"/>.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> MacFileTypeIdentifiers { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The <c>LSHandlerRank</c> for file types the application does not own, <c>RunicMacFileTypeHandlerRank</c>:
+    /// <c>Alternate</c>, the default, or <c>Default</c>.</summary>
+    internal string MacFileTypeHandlerRank { get; init; } = "Alternate";
+
+    /// <summary>The camera's usage description, <c>RunicMacCameraUsageDescription</c>, which also adds the camera entitlement.</summary>
+    internal string? MacCameraUsageDescription { get; init; }
+
+    /// <summary>The microphone's usage description, <c>RunicMacMicrophoneUsageDescription</c>, which also adds the
+    /// audio-input entitlement.</summary>
+    internal string? MacMicrophoneUsageDescription { get; init; }
+
     internal string ProjectDirectory => Path.GetDirectoryName(ProjectPath)!;
 
     /// <summary>The SVG beside the PNG icon, when there is one.</summary>
@@ -79,6 +96,7 @@ internal sealed partial record PackageIdentity
         "RunicApplicationWebLinkHosts", "RunicApplicationDBusActivatable", "RunicApplicationPublisher", "Description",
         "PackageProjectUrl", "AssemblyName", "RunicPackageIcon", "RunicPackageName", "RunicPackagingDirectory",
         "RuntimeIdentifiers", "NuGetLockFilePath", "PackageLicenseExpression", "RunicMacSandbox", "RunicMacApplicationCategory",
+        "RunicMacFileTypeIdentifiers", "RunicMacFileTypeHandlerRank", "RunicMacCameraUsageDescription", "RunicMacMicrophoneUsageDescription",
     ];
 
     /// <summary>Evaluates the project with <c>dotnet msbuild -getProperty</c> and validates what it reads.</summary>
@@ -124,6 +142,7 @@ internal sealed partial record PackageIdentity
         string Resolve(string value, string fallback) =>
             Path.GetFullPath(value.Length != 0 ? value : fallback, directory);
         string lockFile = Resolve(Get("NuGetLockFilePath"), "packages.lock.json");
+        IReadOnlyList<PackageFileType> fileTypes = ParseFileTypes(Get("RunicApplicationFileTypes"));
         return new PackageIdentity
         {
             ProjectPath = project,
@@ -131,7 +150,7 @@ internal sealed partial record PackageIdentity
             Name = title,
             Version = Get("Version").Length != 0 ? Get("Version") : "1.0.0",
             UrlSchemes = ParseUrlSchemes(Get("RunicApplicationUrlSchemes")),
-            FileTypes = ParseFileTypes(Get("RunicApplicationFileTypes")),
+            FileTypes = fileTypes,
             WebLinkHosts = ParseWebLinkHosts(Get("RunicApplicationWebLinkHosts")),
             DBusActivatable = string.Equals(Get("RunicApplicationDBusActivatable"), "true", StringComparison.OrdinalIgnoreCase),
             Publisher = !string.IsNullOrWhiteSpace(publisher) ? publisher
@@ -151,6 +170,10 @@ internal sealed partial record PackageIdentity
             License = Get("PackageLicenseExpression").Length != 0 ? Get("PackageLicenseExpression") : "LicenseRef-proprietary",
             MacSandbox = string.Equals(Get("RunicMacSandbox"), "true", StringComparison.OrdinalIgnoreCase),
             MacApplicationCategory = CheckApplicationCategory(Get("RunicMacApplicationCategory")),
+            MacFileTypeIdentifiers = ParseFileTypeIdentifiers(Get("RunicMacFileTypeIdentifiers"), fileTypes),
+            MacFileTypeHandlerRank = CheckHandlerRank(Get("RunicMacFileTypeHandlerRank")),
+            MacCameraUsageDescription = Get("RunicMacCameraUsageDescription") is { Length: > 0 } camera ? camera : null,
+            MacMicrophoneUsageDescription = Get("RunicMacMicrophoneUsageDescription") is { Length: > 0 } microphone ? microphone : null,
         };
     }
 
@@ -181,6 +204,43 @@ internal sealed partial record PackageIdentity
                 $"RunicMacApplicationCategory '{category}' must be an Apple application category such as public.app-category.productivity.");
         }
         return value;
+    }
+
+    /// <summary>
+    /// <c>RunicMacFileTypeIdentifiers</c>: <c>.extension=identifier</c> pairs, each for one of the file types, whose
+    /// identifier is a uniform type identifier such as <c>net.daringfireball.markdown</c>.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, string> ParseFileTypeIdentifiers(string? value, IReadOnlyList<PackageFileType> fileTypes)
+    {
+        var identifiers = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string entry in Split(value))
+        {
+            string[] parts = entry.Split('=');
+            string extension = parts[0].ToLowerInvariant();
+            if (parts.Length != 2 || !TypeIdentifierSyntax().IsMatch(parts[1]))
+            {
+                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                    $"RunicMacFileTypeIdentifiers has '{entry}', which is not an extension and a uniform type identifier, such as .md=net.daringfireball.markdown.");
+            }
+            if (!fileTypes.Any(type => type.Extension == extension))
+            {
+                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                    $"RunicMacFileTypeIdentifiers has {extension}, which is not in RunicApplicationFileTypes.");
+            }
+            if (!identifiers.TryAdd(extension, parts[1]))
+                throw new DevUsageException(PackageCodes.IdentityInvalid, $"RunicMacFileTypeIdentifiers has {extension} twice.");
+        }
+        return identifiers;
+    }
+
+    /// <summary><c>RunicMacFileTypeHandlerRank</c>: <c>Alternate</c> (the default) or <c>Default</c>, in any case.</summary>
+    internal static string CheckHandlerRank(string? rank)
+    {
+        if (string.IsNullOrWhiteSpace(rank)) return "Alternate";
+        foreach (string allowed in new[] { "Alternate", "Default" })
+            if (string.Equals(rank.Trim(), allowed, StringComparison.OrdinalIgnoreCase)) return allowed;
+        throw new DevUsageException(PackageCodes.IdentityInvalid,
+            $"RunicMacFileTypeHandlerRank '{rank}' must be Alternate or Default: an application owns only its own file types.");
     }
 
     /// <summary>
@@ -300,6 +360,9 @@ internal sealed partial record PackageIdentity
 
     [GeneratedRegex("^public\\.app-category\\.[a-z]+(-[a-z]+)*$")]
     private static partial Regex ApplicationCategorySyntax();
+
+    [GeneratedRegex("^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$")]
+    private static partial Regex TypeIdentifierSyntax();
 
     [GeneratedRegex("^[a-z0-9][a-z0-9+.-]+$")]
     private static partial Regex PackageNameSyntax();

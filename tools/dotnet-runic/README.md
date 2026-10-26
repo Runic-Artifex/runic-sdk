@@ -644,11 +644,13 @@ them with your own credentials to ship them. Runic signs nothing for you.
   `--thumbprint <sha1>` with a certificate from the store; `--timestamp-url`
   adds an RFC 3161 timestamp. `makeappx` and `signtool` are found on `PATH` or
   in the newest Windows SDK folder.
-- **`macos`** builds `<ApplicationTitle>.app` (the executable in
-  `Contents/MacOS`, the frontend in `Contents/Resources/www`, none when the
-  application embeds it, and an `.icns` made with `sips` and `iconutil`), signs
-  it with the hardened runtime and `macos/entitlements.plist`, verifies it with
-  `codesign --verify --strict` and writes `<ApplicationTitle>-<version>.dmg`.
+- **`macos`** builds `<ApplicationTitle>.app` (the executable and other Mach-O
+  files in `Contents/MacOS`, the frontend in `Contents/Resources/www`, none when
+  the application embeds it, other published files in `Contents/Resources` with
+  a link in `Contents/MacOS`, and an `.icns` made with `sips` and `iconutil`),
+  signs each nested library and executable, then the bundle with the hardened
+  runtime and `macos/entitlements.plist`, verifies it with
+  `codesign --verify --deep --strict` and writes `<ApplicationTitle>-<version>.dmg`.
   Without `--sign` the bundle is ad-hoc signed. `--sign "Developer ID
   Application: …"` signs the bundle and the disk image with your identity, and
   `--notary-profile <name>` then notarizes and staples the disk image with a

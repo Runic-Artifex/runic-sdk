@@ -73,6 +73,12 @@ reads the SDK's `ApplicationId`, `ApplicationTitle`, `Version`, `Description`,
 | `RunicPackageIcon` | `icons/icon.png` | The 512 px PNG icon. |
 | `RunicPackageName` | the lower-cased assembly name | The deb and rpm package name. |
 | `RunicPackagingDirectory` | `packaging/` | Manifest overrides. |
+| `RunicMacSandbox` | `false` | Sign the macOS bundle for the App Sandbox. |
+| `RunicMacApplicationCategory` | none | The macOS `LSApplicationCategoryType`. |
+| `RunicMacFileTypeIdentifiers` | none | Uniform type identifiers of file types the application does not own. |
+| `RunicMacFileTypeHandlerRank` | `Alternate` | The macOS handler rank of those types: `Alternate` or `Default`. |
+| `RunicMacCameraUsageDescription` | none | `NSCameraUsageDescription` and the camera entitlement. |
+| `RunicMacMicrophoneUsageDescription` | none | `NSMicrophoneUsageDescription` and the audio-input entitlement. |
 
 ## Runic.Assets
 
