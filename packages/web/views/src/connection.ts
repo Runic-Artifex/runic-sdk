@@ -127,21 +127,24 @@ function replyError(error: EnvelopeError | null, route: string, fallback: string
 }
 
 // Parses a reply and accepts its state. Returns the envelope and the accepted
-// state, which is undefined when the reply carries none.
-function parse(json: string, entry: SharedEntry, route: string): { readonly reply: Envelope; readonly state: unknown } {
+// state, which is undefined when the reply carries none. Only a snapshot read
+// checks the host's protocol: .NET states it in snapshot replies alone, and the
+// caller says which read it is, so a command or setter whose member name ends
+// in "Snapshot" (such as `CreateSnapshot` or `SetLastSnapshot`) is not one.
+function parse(json: string, entry: SharedEntry, route: string, snapshot: boolean): { readonly reply: Envelope; readonly state: unknown } {
   let reply: Envelope;
   try { reply = JSON.parse(json) as Envelope; }
   catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route }); }
   if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.", { route });
-  if (route.endsWith("Snapshot")) checkSnapshotProtocol(reply, entry.bridge, route);
+  if (snapshot) checkSnapshotProtocol(reply, entry.bridge, route);
   let state: unknown;
   try { state = reply.state === null ? undefined : entry.accept(reply.state); }
   catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route }); }
   return { reply, state };
 }
 
-function unpack(json: string, entry: SharedEntry, route: string): unknown {
-  const { reply, state } = parse(json, entry, route);
+function unpack(json: string, entry: SharedEntry, route: string, snapshot: boolean): unknown {
+  const { reply, state } = parse(json, entry, route, snapshot);
   if (!reply.ok) throw replyError(reply.error, route, "The call failed.");
   return state ?? releasedState(reply, entry, route);
 }
@@ -165,7 +168,7 @@ const stateNotSent = " The updated state could not be sent: ";
 // without state from a released View needs no report.
 function unpackOutcome<TFailure>(json: string, entry: SharedEntry, route: string,
   decodeFailure: (value: unknown) => TFailure): BridgeOutcome<unknown, TFailure> {
-  const { reply, state } = parse(json, entry, route);
+  const { reply, state } = parse(json, entry, route, false);
   if (!reply.ok && reply.error?.kind === "domain-failed") {
     let failure: TFailure;
     try { failure = decodeFailure(reply.error.failure); }
@@ -204,7 +207,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
         try { reply = await bridge.call(snapshotRoute); }
         catch (cause) { throw callFailed(bridge, "The state could not be re-read after an unusable collection change.", snapshotRoute, cause); }
         if (!live()) return false;
-        unpack(reply, entry, snapshotRoute);
+        unpack(reply, entry, snapshotRoute, true);
         return true;
       } catch (error) {
         if (!live()) return false;
@@ -318,7 +321,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
     let reply: string;
     try { reply = await bridge.call(`${route}Snapshot`); }
     catch (cause) { throw callFailed(bridge, "The Bridge call could not complete.", `${route}Snapshot`, cause); }
-    unpack(reply, entry, `${route}Snapshot`);
+    unpack(reply, entry, `${route}Snapshot`, true);
   })();
   entry.initializing = initialization;
   const settle = () => { if (entry.initializing === initialization) entry.initializing = undefined; };
@@ -383,7 +386,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     return reply;
   }
   async function invoke(name: string, ...args: unknown[]): Promise<TState> {
-    return unpack(await call(name, args), shared, name) as TState;
+    return unpack(await call(name, args), shared, name, false) as TState;
   }
   function dispose(): void {
     if (lease.disposed) return;

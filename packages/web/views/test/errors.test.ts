@@ -149,6 +149,33 @@ test("an unusable collection change is reported before the client recovers", asy
   }
 });
 
+test("a recovery read without a protocol still fails with the protocol diagnostic (#642)", async () => {
+  delete host[runtimeKey];
+  const bridge = installMockBridge(createMockBridge());
+  bridge.view("rowsp", { state: { rows: [{ id: 1 }] } });
+  const decodeRow = (wire: unknown) => ({ id: bridgeWire.integer(bridgeWire.object(wire, value => value)["id"], 0, 100) });
+  const client = await connectView({ contract: "rowsp:errors", route: "rowsp", mount: false,
+    collections: defineCollections({ rows: defineCollection(decodeRow, row => String(row.id)) }),
+    hydrate: (wire: { rows: unknown[] }) => ({ rows: wire.rows.map(decodeRow) }) });
+  const { diagnostics, restore } = observe();
+  try {
+    let recoveries = 0;
+    bridge.route("rowspSnapshot", () => { recoveries++; return JSON.stringify({ ok: true, state: { revision: 5, rows: [{ id: 5 }] }, error: null }); });
+    const push = host["__rowspChanged"] as (wire: unknown) => void;
+    push({ __runicDelta: 1, baseRevision: 1, revision: 2,
+      changes: [{ field: "rows", kind: "remove", index: 0, oldIndex: 0, keys: ["missing"], items: [] }] });
+    // Four attempts, 250 + 500 + 1,000 ms apart.
+    for (let waited = 0; recoveries < 4 && waited < 5000; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
+    await settle();
+    assert.equal(recoveries, 4);
+    assert.deepEqual(diagnostics.filter(diagnostic => diagnostic.code === "protocol").map(diagnostic => diagnostic.route), ["rowspSnapshot"]);
+    assert.deepEqual(client.snapshot.rows, [{ id: 1 }]);
+  } finally {
+    restore();
+    client.dispose();
+  }
+});
+
 test("a failed remount after a reconnect is reported instead of dropped", async () => {
   const bridge = freshBridge();
   bridge.view("contenterr", { state: { count: 1, label: "one" } });
