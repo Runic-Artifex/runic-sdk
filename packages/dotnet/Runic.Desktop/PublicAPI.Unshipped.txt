@@ -42,3 +42,5 @@ Runic.Desktop.DesktopCoordinateOrigin.BottomLeft = 1 -> Runic.Desktop.DesktopCoo
 Runic.Desktop.DesktopCoordinateOrigin.TopLeft = 0 -> Runic.Desktop.DesktopCoordinateOrigin
 Runic.Desktop.DesktopWindowPlacement.Origin.get -> Runic.Desktop.DesktopCoordinateOrigin?
 Runic.Desktop.DesktopWindowPlacement.Origin.init -> void
+static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync<T>(System.Func<T>! func, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
