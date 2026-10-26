@@ -295,9 +295,10 @@ The same Window and `async host => ...` body run on CS-WebUI with
   sibling file and replaces the selection in one step. On Linux this also works
   inside Flatpak: the xdg-desktop-portal document view stages the sibling as a
   private host file and renames it onto the chosen file. A sandboxed macOS
-  selection cannot stage a sibling yet, so there `BeginWriteAsync` returns
-  `Unavailable(AtomicReplaceUnavailable)` before it changes the file. Linux can
-  return the same result for a read-only or revoked grant, and `CommitAsync`
+  selection stages in the volume's item replacement directory instead and
+  `NSFileManager` replaces the chosen file. `BeginWriteAsync` returns
+  `Unavailable(AtomicReplaceUnavailable)` on Linux for a read-only or revoked
+  grant before it changes the file, and `CommitAsync`
   returns `NotCommitted(Conflict)` when the file changed or appeared since
   selection. A `false` result therefore means the file was not changed: tell the
   user and offer Save As to another destination. Runic never falls back to

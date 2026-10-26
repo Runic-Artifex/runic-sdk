@@ -124,8 +124,8 @@ application needs to the override.
 
 In the sandbox the application reaches its container, the files the user
 selected or dropped, and bookmarked files; privileged actions and volume
-management are not available, and saving a chosen file through a lease is not
-yet ([Runic.Platform.MacOS: App Sandbox](../packages/dotnet/Runic.Platform.MacOS/README.md#app-sandbox)).
+management are not available, and a document app cannot create sibling files
+such as lock files ([Runic.Platform.MacOS: App Sandbox](../packages/dotnet/Runic.Platform.MacOS/README.md#app-sandbox)).
 Sandbox an application when it needs none of those, or when you ship it in the
 Mac App Store.
 

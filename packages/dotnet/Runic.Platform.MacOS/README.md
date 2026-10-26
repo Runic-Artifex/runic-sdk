@@ -2,7 +2,7 @@
 
 The macOS provider of the Runic.Platform services for macOS arm64. `MacOSPlatformProvider` creates the application-scoped services, including the status icon and login startup, without a window; the services take no application ID because macOS identifies the application by its bundle. Every factory is annotated `[SupportedOSPlatform("macos")]` and throws `PlatformNotSupportedException` on another operating system; the privileged actions report unavailable instead, because generated code registers them everywhere. The window services (AppKit file dialogs, the clipboard, file handoff, message boxes and the Dock tile's badge and progress) belong to a window: Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and `AddRunicPlatformServices()` create them for each window. Native handles and selected paths remain in C#.
 
-File panels are owned sheets. Filters restrict the panel to the union of their extensions and MIME types through `UTType` content types (macOS 11 and later; `image/*` and the other top-level wildcards map to their abstract types), and a save panel may add the first allowed extension to a name typed without one. AppKit shows no filter pop-up of its own: with `ShowFilterChoice`, Runic adds an `NSPopUpButton` accessory listing the filters, which switches the panel to the chosen filter's types and is reported as the result's `SelectedFilter`; without it the user cannot switch between filters and `SelectedFilter` is `null`. `OpenFilesAsync` and `OpenDirectoriesAsync` use `allowsMultipleSelection`, with security-scoped access for each selected URL, and the initial folder sets `directoryURL`. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: atomic replacement reports unavailable before changing the target. Keeping access across launches is `CreateFileBookmarks()` (below).
+File panels are owned sheets. Filters restrict the panel to the union of their extensions and MIME types through `UTType` content types (macOS 11 and later; `image/*` and the other top-level wildcards map to their abstract types), and a save panel may add the first allowed extension to a name typed without one. AppKit shows no filter pop-up of its own: with `ShowFilterChoice`, Runic adds an `NSPopUpButton` accessory listing the filters, which switches the panel to the chosen filter's types and is reported as the result's `SelectedFilter`; without it the user cannot switch between filters and `SelectedFilter` is `null`. `OpenFilesAsync` and `OpenDirectoriesAsync` use `allowsMultipleSelection`, with security-scoped access for each selected URL, and the initial folder sets `directoryURL`. The retained selected NSURL keeps its security-scoped access until its lease closes; each successful scope start has exactly one stop. A sandboxed selection, or one requiring a security scope, cannot authorize sibling staging: its lease stages each write in the volume's item replacement directory (`NSItemReplacementDirectory`) and replaces the file with `NSFileManager.replaceItemAtURL`, which keeps the file's metadata, as `NSDocument` does; a new file is renamed into place with `renamex_np(RENAME_EXCL)`, which never replaces a name that appeared since selection. Keeping access across launches is `CreateFileBookmarks()` (below); a lease's `CreateBookmarkAsync` creates the same `NSURL` bookmark, and `OpenDocumentAsync` reopens it as a document ([Document apps](../Runic.Platform/README.md#document-apps)).
 
 Clipboard reads distinguish no text (`null`) from empty text, enforce a UTF-16 character bound before copying to managed memory, and detect concurrent pasteboard replacement. The clipboard uses ApplicationServices C Pasteboard APIs and CoreFoundation to report OSStatus failures without Objective-C exception unwinding. Writes use the native API's actual outcome once native mutation begins. Presentation dispatch must stop accepting new work before scoped shutdown; existing panel cancellation and native resource release drain on AppKit's main queue even after the owner becomes unavailable.
 
@@ -32,9 +32,19 @@ sandbox changes:
   argument or a fixed location in the user's home folder, fails with
   `PermissionDenied`, and a bookmark of it fails too.
 - **Saving a chosen file.** The user's selection grants the selected file, not
-  a staging file beside it, so the window's `platform.files.save` capability
-  reports `Unavailable(AtomicReplaceUnavailable)` in the sandbox and
-  `SaveFileAsync` cannot write through a lease yet.
+  a staging file beside it, so a lease stages its writes in the item
+  replacement directory and replaces the file through `NSFileManager`; saving
+  and documents (`platform.files.save`, `platform.files.openDocument`) are
+  available as outside the sandbox. A document app cannot create sibling
+  files, such as lock files or a backup beside the document: that needs
+  related-item declarations (`NSIsRelatedItemType`) and an `NSFilePresenter`,
+  which Runic does not provide. Recent files need
+  `com.apple.security.files.bookmarks.app-scope`, which `--sandbox` adds:
+  store the bytes of the lease's `CreateBookmarkAsync` and reopen them with
+  `CreateFileBookmarks().OpenDocumentAsync`, whose lease keeps the bookmark's
+  security-scoped access until it is disposed. CI saves a container file this
+  way three times and reopens it in a second launch; a file chosen in a panel
+  outside the container needs a person to choose it.
 - **Privileged actions** are not supported in the sandbox: the Mac App Store
   does not accept a bundle with a launch daemon, and Runic does not test the
   daemon's registration or its XPC connection from a sandboxed application.

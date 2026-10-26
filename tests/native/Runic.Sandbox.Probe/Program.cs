@@ -2,7 +2,7 @@ using Runic.Sandbox.Probe;
 
 // The sandboxed Runic Desktop application CI runs from its signed bundle (README.md). Each mode opens a real window
 // in the App Sandbox and exits 0 when its checks pass, 1 when one fails and 2 for a wrong command line. Later batches
-// add their own mode here, such as --document-probe for document replacement (M2).
+// add their own mode here.
 using var watchdog = new Timer(static _ =>
 {
     Console.Error.WriteLine("FAIL the sandbox probe exceeded its 120-second deadline.");
@@ -18,11 +18,13 @@ if (!OperatingSystem.IsMacOS())
 return args switch
 {
     ["--sandbox-probe", var outside] => SandboxProbe.Run(outside),
+    ["--document-probe"] => DocumentProbe.Run(),
+    ["--document-reopen"] => DocumentProbe.Reopen(),
     _ => Usage(),
 };
 
 static int Usage()
 {
-    Console.Error.WriteLine("Usage: Runic.Sandbox.Probe --sandbox-probe <file outside the container>");
+    Console.Error.WriteLine("Usage: Runic.Sandbox.Probe --sandbox-probe <file outside the container> | --document-probe | --document-reopen");
     return 2;
 }

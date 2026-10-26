@@ -247,9 +247,9 @@ public interface IDesktopFileBookmarks
     /// as a document the application reads and saves back to, such as an entry of a recent-files list.</summary>
     /// <remarks>
     /// The lease keeps the bookmark's access until it is disposed; it belongs to no presentation. A path from a launch
-    /// or a drop becomes a document through <see cref="CreateAsync"/> and then this method. The default implementation
-    /// returns <see cref="PlatformResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>,
-    /// as the macOS provider does until it supports documents.
+    /// or a drop becomes a document through <see cref="CreateAsync"/> and then this method. Inside the macOS App Sandbox
+    /// the lease keeps the bookmark's security-scoped access started until it is disposed. The default implementation
+    /// returns <see cref="PlatformResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
     /// </remarks>
     /// <returns>The document; the failures of <see cref="ResolveAsync"/>, and
     /// <see cref="PlatformFailureCode.InvalidData"/> for a bookmark of a directory.</returns>

@@ -620,7 +620,8 @@ public interface ISaveFileLease : IAsyncDisposable
     /// The file must exist: a save destination that has not been written yet reports
     /// <see cref="PlatformFailureCode.NotFound"/>; create the bookmark after the first committed write. Store the
     /// bookmark again each time the document is reopened. Windows and Linux bookmarks are the file's path (in a
-    /// Flatpak the document portal's path, which stays valid across launches). The default implementation returns
+    /// Flatpak the document portal's path, which stays valid across launches); macOS bookmarks are <c>NSURL</c>
+    /// bookmarks, security-scoped inside the App Sandbox. The default implementation returns
     /// <see cref="PlatformResult{T}.Unavailable"/> with <see cref="PlatformUnavailableReason.BackendUnavailable"/>, as
     /// leases of providers without bookmarks do.
     /// </remarks>
