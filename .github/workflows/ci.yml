@@ -1259,6 +1259,12 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
+      # D046.2: DesktopEventLoop.InvokeOnMainThreadAsync without a window: the main thread, a result, an exception,
+      # cancellation, a call before the loop, and work while a context menu tracks.
+      - name: Run windowless work on the macOS main thread
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --main-thread
       # SEC-04: the WKWebView's navigation and UI delegate apply DesktopWebContentPolicy (external links, window.open,
       # downloads, isInspectable).
       - name: Apply the web content policy in the macOS window

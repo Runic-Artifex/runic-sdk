@@ -28,6 +28,39 @@ internal static unsafe partial class MacOsMainThread
         return new ValueTask(work.WaitAsync());
     }
 
+    // The work of DesktopEventLoop.InvokeOnMainThreadAsync that has not run yet, which fails when the event loop ends.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<NativeDispatchWork, byte> Pending = new();
+
+    // DesktopEventLoop.InvokeOnMainThreadAsync: now on the main thread, else queued while the event loop runs.
+    internal static Task InvokeTrackedAsync(Action action, Func<bool> loopRunning, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (IsMainThread)
+        {
+            try { action(); return Task.CompletedTask; }
+            catch (Exception error) { return Task.FromException(error); }
+        }
+        if (!loopRunning()) throw NotRunning();
+        var work = new NativeDispatchWork(action, cancellationToken);
+        Pending.TryAdd(work, 0);
+        var completion = work.WaitAsync();
+        _ = work.Completion.Task.ContinueWith(_ => Pending.TryRemove(work, out byte _), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        Queue(work);
+        // The loop may have ended between the check and the queueing.
+        if (!loopRunning()) FailPending();
+        return completion;
+    }
+
+    // The event loop ended: queued work that has not started never runs.
+    internal static void FailPending()
+    {
+        foreach (var work in Pending.Keys) work.Fail(NotRunning());
+    }
+
+    private static InvalidOperationException NotRunning() => new(
+        "The macOS main thread runs queued work only while DesktopEventLoop.Run runs; call DesktopEventLoop.Run first, from Main.");
+
     // Queues the action on the main thread without waiting for it. The action reports its own failures.
     internal static void Post(Action action) => Queue(new NativeDispatchWork(action, CancellationToken.None));
 
