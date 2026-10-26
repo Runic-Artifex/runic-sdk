@@ -75,7 +75,7 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
-          "Runic.Navigation.Wpf": "[0.11.0, )"
+          "Runic.Navigation.Wpf": "[0.12.0, )"
         }
       },
       "runic.navigation": {
@@ -90,7 +90,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.11.0, )"
+          "Runic.Navigation": "[0.12.0, )"
         }
       },
       "CommunityToolkit.Mvvm": {
