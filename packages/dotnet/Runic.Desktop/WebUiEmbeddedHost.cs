@@ -192,6 +192,9 @@ internal sealed record WebUiEmbeddedHostOptions
     /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
+    /// <summary>The window's light or dark appearance (DesktopWindowOptions.ColorScheme).</summary>
+    public DesktopColorScheme ColorScheme { get; init; }
+
     /// <summary>Whether a Native bar may go into the Linux desktop's global menu (LinuxDesktopOptions.GlobalMenu).</summary>
     public bool GlobalMenu { get; init; } = true;
 

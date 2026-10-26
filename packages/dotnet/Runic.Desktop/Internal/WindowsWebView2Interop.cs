@@ -79,6 +79,20 @@ internal static partial class WindowsWebView2Interop
     internal static readonly Guid Frame7Interface = new("3598cfa2-d85d-5a9f-9228-4dde1f59ec64");
     internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
     internal static readonly Guid WebView4Interface = new("20d02d59-6df2-42dc-bd06-f98a694b1302");
+    // ICoreWebView2_13::get_Profile and ICoreWebView2Profile::put_PreferredColorScheme (COREWEBVIEW2_PREFERRED_COLOR_SCHEME
+    // Auto 0, Light 1, Dark 2), WebView2 runtime 114.
+    internal static readonly Guid WebView13Interface = new("f75f09a8-667e-4983-88d6-c8773f315e84");
+    internal const int WebView13ProfileSlot = 105;
+    internal const int ProfileGetPreferredColorSchemeSlot = 8;
+    internal const int ProfilePreferredColorSchemeSlot = 9;
+
+    // The COREWEBVIEW2_PREFERRED_COLOR_SCHEME for DesktopWindowOptions.ColorScheme.
+    internal static int PreferredColorScheme(Runic.Platform.DesktopColorScheme colorScheme) => colorScheme switch
+    {
+        Runic.Platform.DesktopColorScheme.Light => 1,
+        Runic.Platform.DesktopColorScheme.Dark => 2,
+        _ => 0,
+    };
     internal static readonly Guid FileInterface = new("f2c19559-6bc1-4583-a757-90021be9afec");
     private static readonly Lazy<nint> Loader = new(LoadLoader);
 
@@ -356,6 +370,28 @@ internal sealed class WindowsWebView2Controller : IDisposable
         WindowsWebView2Interop.AddScriptToExecuteOnDocumentCreated(_webView, script, handler.Pointer);
         await completion.Task;
     }
+    // DesktopWindowOptions.ColorScheme for the page's prefers-color-scheme and WebView2's own controls. The preferred color
+    // scheme belongs to the profile, so windows sharing a ProfilePath share it; NoPreference leaves the profile as it is.
+    // A runtime without ICoreWebView2_13 keeps the system's scheme.
+    internal void SetPreferredColorScheme(Runic.Platform.DesktopColorScheme colorScheme)
+    {
+        if (colorScheme == Runic.Platform.DesktopColorScheme.NoPreference) return;
+        nint webView13;
+        try { webView13 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView13Interface); }
+        catch (InvalidCastException) { return; }
+        try
+        {
+            var profile = WindowsWebView2Interop.GetPointer(webView13, WindowsWebView2Interop.WebView13ProfileSlot);
+            try
+            {
+                WindowsWebView2Interop.SetInteger(profile, WindowsWebView2Interop.ProfilePreferredColorSchemeSlot,
+                    WindowsWebView2Interop.PreferredColorScheme(colorScheme));
+            }
+            finally { WindowsWebView2Interop.Release(profile); }
+        }
+        finally { WindowsWebView2Interop.Release(webView13); }
+    }
+
     internal void SetTransparent()
     {
         var controller2 = WindowsWebView2Interop.Query(_controller, new Guid("c979903e-d4ca-4228-92eb-47ee3fa96eab"));

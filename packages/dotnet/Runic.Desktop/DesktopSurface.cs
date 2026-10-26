@@ -440,6 +440,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
+        _engine.SetColorScheme(options.ColorScheme);
         _engine.SetMonitorAndLanguage(options.MonitorId, options.LayoutDirection, options.Language);
         _engine.SetMacOS(options.MacOS);
     }
@@ -588,6 +589,10 @@ public sealed class DesktopSurface : IAsyncDisposable
         if (!Enum.IsDefined(options.MenuBarPresentation))
         {
             throw new ArgumentOutOfRangeException(nameof(options), "MenuBarPresentation contains an unsupported value.");
+        }
+        if (!Enum.IsDefined(options.ColorScheme))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "ColorScheme contains an unsupported value.");
         }
         if ((options.AllowedPermissions & ~supported) != 0)
         {

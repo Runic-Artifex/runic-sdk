@@ -12,6 +12,7 @@ internal static class DesktopWindowOptionValidation
     internal const string GrantWithheldCode = "permission-grant-withheld";
     internal const string BrowserUnsupportedCode = "browser-unsupported";
     internal const string CloseConfirmationUnavailableCode = "close-confirmation-unavailable";
+    internal const string ColorSchemeUnsupportedCode = "color-scheme-unsupported";
 
     private const string Prefix = "DesktopWindowOptions.";
 
@@ -88,6 +89,12 @@ internal static class DesktopWindowOptionValidation
             return;
         }
         var platform = OperatingSystem.IsMacOS() ? "The macOS WKWebView window" : "The GTK 3 WebKitGTK 4.1 window";
+        // WebKitGTK follows the GTK theme, which is the application's, not a window's.
+        if (!OperatingSystem.IsMacOS() && options.ColorScheme != Runic.Platform.DesktopColorScheme.NoPreference)
+        {
+            diagnostics.Add(ColorSchemeUnsupported(platform,
+                "WebKitGTK follows the GTK theme for every window. Remove the option on Linux, or style the page with its own light and dark themes."));
+        }
         // AppKit lays the window out, and WKWebView picks its language, from the application's localizations.
         if (OperatingSystem.IsMacOS() && options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
         {
@@ -194,6 +201,10 @@ internal static class DesktopWindowOptionValidation
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.IconFile), remediation));
         }
+        if (options.ColorScheme != Runic.Platform.DesktopColorScheme.NoPreference)
+        {
+            diagnostics.Add(ColorSchemeUnsupported(presentation, "A browser follows its own and the system's theme. " + remediation));
+        }
         // Only the macOS window has these; elsewhere every presentation ignores them without a report.
         if (OperatingSystem.IsMacOS() && options.MacOS.TitleBar != MacOSTitleBarStyle.Default)
         {
@@ -272,6 +283,19 @@ internal static class DesktopWindowOptionValidation
         Option = Prefix + nameof(DesktopWindowOptions.ConfirmCloseAsync),
     };
 
+    // DesktopWindowOptions.ColorScheme on a presentation that cannot set a window's light or dark appearance: the window
+    // follows the system instead.
+    internal static DesktopDiagnostic ColorSchemeUnsupported(string presentation, string remediation) => new(
+        DesktopErrorCategory.CapabilityDenied,
+        ColorSchemeUnsupportedCode,
+        $"{presentation} ignores {Prefix}{nameof(DesktopWindowOptions.ColorScheme)} and follows the system's light or dark appearance.",
+        Retryable: false,
+        Remediation: remediation)
+    {
+        Severity = DesktopDiagnosticSeverity.Warning,
+        Option = Prefix + nameof(DesktopWindowOptions.ColorScheme),
+    };
+
     internal static DesktopDiagnostic GrantWithheld(string presentation) => new(
         DesktopErrorCategory.CapabilityDenied,
         GrantWithheldCode,
@@ -310,6 +334,7 @@ internal static class DesktopWindowOptionValidation
             ? WebContentRules.Resolve(webContent, Environment.GetEnvironmentVariable)
             : DesktopWindowHostOptions.SafeWebContent,
         MenuBarPresentation = options.MenuBarPresentation,
+        ColorScheme = options.ColorScheme,
         MonitorId = options.MonitorId,
         LayoutDirection = options.LayoutDirection,
         Language = options.Language,

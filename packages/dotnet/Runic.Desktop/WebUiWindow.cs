@@ -1408,6 +1408,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // Where the next embedded window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).
     internal void SetMenuBarPresentation(DesktopMenuBarPresentation presentation) => _menuBarPresentation = presentation;
 
+    // The light or dark appearance of the next embedded window (DesktopWindowOptions.ColorScheme).
+    internal void SetColorScheme(Runic.Platform.DesktopColorScheme colorScheme) => _colorScheme = colorScheme;
+
     // The saved placement the next embedded window restores; ApplyWindowOptions already set its size and position.
     internal void SetPlacement(DesktopWindowPlacement placement) => _placement = placement;
 
@@ -1443,6 +1446,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private EmbeddedMenuChain? _menuChain;
 
     private DesktopMenuBarPresentation _menuBarPresentation;
+    private Runic.Platform.DesktopColorScheme _colorScheme;
     private int _menuBarSubscribed;
 
     // The host whose menu bar the windows show, and whose MenuCommands come after the window's.
@@ -1910,6 +1914,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             // The log of the open in progress: BeginConnection replaced it before the window is shown.
             StartupProgress = description => HandshakeLog.Record(description),
             MenuBarPresentation = _menuBarPresentation,
+            ColorScheme = _colorScheme,
             GlobalMenu = _runtimeOptions?.GlobalMenu ?? true,
             MonitorId = _monitor,
             LayoutDirection = _layoutDirection,
