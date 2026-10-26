@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The sandboxed Runic Desktop application of the packaging job's macOS leg: dotnet runic package macos packages it
+       for the App Sandbox (RunicMacSandbox) with an installer package, and CI runs the signed bundle's executable with a
+       probe mode (README.md). macOS only. -->
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>Runic.Sandbox.Probe</RootNamespace>
+    <!-- The identity and packaging properties dotnet runic package reads. -->
+    <ApplicationId>org.runic.tests.SandboxProbe</ApplicationId>
+    <ApplicationTitle>Runic Sandbox Probe</ApplicationTitle>
+    <Version>1.2.3</Version>
+    <Description>Runs Runic Desktop in the macOS App Sandbox</Description>
+    <PackageProjectUrl>https://github.com/Runic-Artifex/runic-sdk</PackageProjectUrl>
+    <RunicMacSandbox>true</RunicMacSandbox>
+    <RunicMacApplicationCategory>public.app-category.developer-tools</RunicMacApplicationCategory>
+    <RunicPackageIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.png</RunicPackageIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+  </ItemGroup>
+</Project>

@@ -621,6 +621,8 @@ The package's identity comes from the project file:
 | `RunicPackageIcon` | The 512 px PNG icon; `icons/icon.png` by default. An `icon.svg` beside it is the scalable icon on Linux |
 | `RunicPackageName` | The deb and rpm package name; the lower-cased assembly name by default, with characters a package name cannot have replaced by `-` |
 | `PackageLicenseExpression` | The rpm `License`; `LicenseRef-proprietary` by default |
+| `RunicMacSandbox` | `true` signs the macOS bundle for the App Sandbox, as `--sandbox` does; off by default |
+| `RunicMacApplicationCategory` | The macOS `LSApplicationCategoryType`, a `public.app-category.*` identifier, which the Mac App Store requires; none by default (`RAPPPKG1001` for another value) |
 | `RunicPackagingDirectory` | The manifest overrides; `packaging/` by default |
 
 The tool embeds the manifests it fills: `windows/AppxManifest.xml`,
@@ -652,7 +654,17 @@ them with your own credentials to ship them. Runic signs nothing for you.
   `--notary-profile <name>` then notarizes and staples the disk image with a
   `notarytool store-credentials` profile. It publishes for `osx-arm64`; Runic
   does not target Intel Macs, so `--runtime osx-x64` and universal bundles
-  are refused with `RAPPPKG1004`.
+  are refused with `RAPPPKG1004`. `--sandbox` (or `RunicMacSandbox`) signs it
+  for the App Sandbox: `app-sandbox`, `network.server` and `network.client`
+  for the loopback page server and bridge, `files.user-selected.read-write`
+  and `files.bookmarks.app-scope`, filled into the `{{Entitlements}}` field of
+  `macos/entitlements.plist`. `--provisioning-profile <file>` (with `--sign`)
+  embeds the profile as `Contents/embedded.provisionprofile` and signs with its
+  application and team identifiers. `--pkg` also writes
+  `<ApplicationTitle>-<version>.pkg` with `productbuild`, which installs the
+  bundle in `/Applications`, and `--installer-sign <identity>` signs it with an
+  installer certificate; with `--notary-profile` a signed `.pkg` is notarized
+  too. The command uploads nothing to App Store Connect.
 - **`flatpak`** publishes into `flatpak-source/`, writes `<ApplicationId>.yml`
   from `linux/flatpak.yml` on the GNOME runtime (which provides GTK 4 and
   WebKitGTK 6, so the project uses `Runic.Desktop.Gtk4`), validates the desktop
@@ -728,7 +740,7 @@ CI) or `identity` (your certificate or Developer ID):
         "required": ["path", "format", "signing"],
         "properties": {
           "path": { "type": "string", "description": "Absolute path of the package file or directory." },
-          "format": { "type": "string", "description": "msix, app, dmg, flatpak, appimage, deb, rpm or flathub-manifest." },
+          "format": { "type": "string", "description": "msix, app, dmg, pkg, flatpak, appimage, deb, rpm or flathub-manifest." },
           "signing": { "enum": ["none", "adhoc", "test", "identity"] }
         }
       }

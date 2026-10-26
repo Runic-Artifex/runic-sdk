@@ -83,6 +83,10 @@ internal static partial class PackageManifests
                 fields["BundleVersion"] = PackageIdentity.NumericVersion(identity.Version, 3);
                 fields["UrlSchemes"] = MacOSUrlSchemes(identity);
                 fields["DocumentTypes"] = MacOSDocumentTypes(identity, name);
+                fields["ApplicationCategory"] = identity.MacApplicationCategory is { } category
+                    ? $"\n  <key>LSApplicationCategoryType</key><string>{category}</string>" : "";
+                // The sandbox and provisioning profile entitlements; MacOSPackager fills them for its options.
+                fields["Entitlements"] = "";
                 break;
             default:
                 AddLinuxFields(fields, identity, target, name, now ?? ReleaseTime());

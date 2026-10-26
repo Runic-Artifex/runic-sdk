@@ -14,6 +14,39 @@ The native clipboard executable in `tests/dotnet/Runic.Platform.MacOS.Tests` tes
 
 Native clipboard ABI references: [Apple Pasteboard functions](https://developer.apple.com/documentation/applicationservices/applicationservices_functions) and [PasteboardCreate](https://developer.apple.com/documentation/applicationservices/1461248-pasteboardcreate). No extra native shim is packaged.
 
+## App Sandbox
+
+`dotnet runic package macos --sandbox`, or `RunicMacSandbox` in the project,
+signs the bundle for the App Sandbox, which the Mac App Store requires
+([packaging guide](../../../docs/packaging.md#app-sandbox-and-the-mac-app-store)).
+Sandboxing is opt-in. A sandboxed Runic Desktop application opens its windows
+as usual: the page comes from Runic's loopback server and talks to it over the
+bridge, which the `network.server` and `network.client` entitlements allow.
+CI runs such an application (`tests/native/Runic.Sandbox.Probe`). What the
+sandbox changes:
+
+- **Files.** The application reads and writes its container (`HOME`,
+  `Library/Application Support`, the temporary directory), the files the user
+  selects in a dialog or drops on a window, and files it keeps through
+  `CreateFileBookmarks()`. Any other path, such as one from a setting, an
+  argument or a fixed location in the user's home folder, fails with
+  `PermissionDenied`, and a bookmark of it fails too.
+- **Saving a chosen file.** The user's selection grants the selected file, not
+  a staging file beside it, so the window's `platform.files.save` capability
+  reports `Unavailable(AtomicReplaceUnavailable)` in the sandbox and
+  `SaveFileAsync` cannot write through a lease yet.
+- **Privileged actions** are not supported in the sandbox: the Mac App Store
+  does not accept a bundle with a launch daemon, and Runic does not test the
+  daemon's registration or its XPC connection from a sandboxed application.
+  Ship an application that needs them outside the sandbox, signed with a
+  Developer ID.
+- **Volumes.** Listing reads Disk Arbitration. Mounting, unmounting and
+  ejecting ask Disk Arbitration to act for the application, and `UnlockAsync`
+  runs `diskutil`, which inherits the sandbox; expect them to fail with
+  `PermissionDenied` or `Other` there. Runic does not test them in the sandbox.
+  An application that manages disks ships outside the sandbox.
+- **Other programs.** A program the application starts inherits its sandbox.
+
 ## Supported macOS versions
 
 Runic supports macOS 15 and later on Apple silicon (`osx-arm64`); Intel Macs
@@ -192,8 +225,8 @@ registry entry's `Locked`), and `MountAsync` reports it `Failed(Locked)`.
 -stdinpassphrase` with the passphrase on its standard input, which also mounts
 the volume; a wrong passphrase is `Failed(Other)` with diskutil's exit status.
 `MountAsync(id, options, token)` passes `rdonly` and the options to
-`DADiskMountWithArguments`. See the
-[volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+`DADiskMountWithArguments`. In the App Sandbox, see [App Sandbox](#app-sandbox).
+See the [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
 
 ## Desktop applications
 
@@ -386,7 +419,8 @@ runs at most 2 actions for one client process and 8 in total.
 
 ### Packaging
 
-Copy the property list to `Contents/Library/LaunchDaemons/` and the daemon to
+Privileged actions need a bundle outside the App Sandbox and the Mac App Store
+(see [App Sandbox](#app-sandbox)). Copy the property list to `Contents/Library/LaunchDaemons/` and the daemon to
 the path in `RunicMacPrivilegedDaemonProgram`. Sign the daemon, every program
 the daemon runs from the bundle and the application with the hardened runtime,
 a Developer ID Application certificate and their identifiers (`codesign

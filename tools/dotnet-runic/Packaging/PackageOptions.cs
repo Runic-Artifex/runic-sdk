@@ -38,6 +38,18 @@ internal sealed record PackageOptions(PackageTarget Target)
     internal string? SigningIdentity { get; init; }
     internal string? NotaryProfile { get; init; }
 
+    /// <summary><c>--sandbox</c>: sign with the App Sandbox entitlements, as <c>RunicMacSandbox</c> does.</summary>
+    internal bool Sandbox { get; init; }
+
+    /// <summary><c>--provisioning-profile</c>: the profile embedded as <c>Contents/embedded.provisionprofile</c>.</summary>
+    internal string? ProvisioningProfile { get; init; }
+
+    /// <summary><c>--pkg</c>: also write an installer package with productbuild, as App Store Connect takes.</summary>
+    internal bool InstallerPackage { get; init; }
+
+    /// <summary><c>--installer-sign</c>: the installer identity that signs the <c>.pkg</c>.</summary>
+    internal string? InstallerSigningIdentity { get; init; }
+
     // flatpak
     internal string? GpgKey { get; init; }
 
