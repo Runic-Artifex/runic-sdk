@@ -12,8 +12,8 @@ using System.Xml.Linq;
 namespace Runic.Application.Tool.Packaging;
 
 /// <summary>
-/// <c>package macos</c>: an .app bundle (the executable in Contents/MacOS, the frontend and icon in Contents/Resources)
-/// signed with the hardened runtime, in a disk image. Ad-hoc signed unless the consumer passes a Developer ID with
+/// <c>package macos</c>: an .app bundle (code in Contents/MacOS; the frontend, icon and other files in Contents/Resources)
+/// signed inside out with the hardened runtime, in a disk image. Ad-hoc signed unless the consumer passes a Developer ID with
 /// <c>--sign</c>; notarized and stapled with <c>--notary-profile</c>. For osx-arm64 only: Runic does not target Intel Macs.
 /// <c>--sandbox</c> (<c>RunicMacSandbox</c>) signs it for the App Sandbox, <c>--provisioning-profile</c> embeds a profile
 /// and its identifiers, and <c>--pkg</c> also writes an installer package with productbuild, as App Store Connect
@@ -50,40 +50,41 @@ internal static class MacOSPackager
 
         string app = Path.Combine(output, $"{identity.Name}.app");
         PackageTools.Delete(app);
-        string macOS = Path.Combine(app, "Contents", "MacOS");
         string resources = Path.Combine(app, "Contents", "Resources");
-        Directory.CreateDirectory(macOS);
-        Directory.CreateDirectory(resources);
         string published = Path.Combine(output, $"publish-{context.Runtime}");
         await context.PublishAsync(context.Runtime, published, cancellationToken).ConfigureAwait(false);
-        PackageTools.CopyFile(Path.Combine(published, identity.Executable), Path.Combine(macOS, identity.Executable));
-        // Apple expects only code in Contents/MacOS; Runic finds the frontend in Contents/Resources/www. An application
-        // that embeds its frontend (RunicApplicationFrontendDelivery=Embedded) publishes none.
-        string www = Path.Combine(published, "www");
-        if (Directory.Exists(www)) PackageTools.CopyDirectory(www, Path.Combine(resources, "www"));
-        foreach (string entry in Directory.EnumerateFileSystemEntries(published))
-        {
-            string name = Path.GetFileName(entry);
-            if (name == identity.Executable || name == "www") continue;
-            if (Directory.Exists(entry)) PackageTools.CopyDirectory(entry, Path.Combine(macOS, name));
-            else PackageTools.CopyFile(entry, Path.Combine(macOS, name));
-        }
+        // Code in Contents/MacOS, everything else in Contents/Resources: the frontend, which Runic finds in
+        // Contents/Resources/www, and other files with a link in Contents/MacOS. An application that embeds its frontend
+        // (RunicApplicationFrontendDelivery=Embedded) publishes none.
+        IReadOnlyList<NestedCode> nested = MacOSBundleLayout.Place(published, app, identity.Executable);
         await IcnsAsync(sips, iconutil, icon, Path.Combine(resources, "icon.icns"), output, cancellationToken).ConfigureAwait(false);
         Dictionary<string, string> fields = PackageManifests.Fields(identity, PackageTarget.MacOS);
-        await File.WriteAllTextAsync(Path.Combine(app, "Contents", "Info.plist"),
-            PackageManifests.Render(identity, "macos/Info.plist", fields), cancellationToken).ConfigureAwait(false);
-        fields["Entitlements"] = Entitlements(sandbox, profileIdentity);
+        string info = PackageManifests.Render(identity, "macos/Info.plist", fields);
+        CheckInfo(info, identity);
+        await File.WriteAllTextAsync(Path.Combine(app, "Contents", "Info.plist"), info, cancellationToken).ConfigureAwait(false);
+        string[] devices = DeviceEntitlements(identity);
+        fields["Entitlements"] = Entitlements(sandbox, profileIdentity, devices);
         string entitlementsText = PackageManifests.Render(identity, "macos/entitlements.plist", fields);
-        CheckEntitlements(entitlementsText, sandbox, profileIdentity);
+        CheckEntitlements(entitlementsText, sandbox, profileIdentity, devices);
         string entitlements = Path.Combine(output, "entitlements.plist");
         await File.WriteAllTextAsync(entitlements, entitlementsText, cancellationToken).ConfigureAwait(false);
+        string? inherit = null;
+        if (sandbox && nested.Any(code => code.Kind == MachOKind.Executable))
+        {
+            inherit = Path.Combine(output, "inherit-entitlements.plist");
+            await File.WriteAllTextAsync(inherit, MacOSBundleLayout.InheritEntitlements, cancellationToken).ConfigureAwait(false);
+        }
         if (profile is not null) PackageTools.CopyFile(profile, ProfilePath(app));
 
         string signingIdentity = context.Options.SigningIdentity is { Length: > 0 } selected ? selected : "-";
         bool adhoc = signingIdentity == "-";
-        await PackageTools.RunAsync(codesign, CodesignArguments(signingIdentity, entitlements, app), output, cancellationToken).ConfigureAwait(false);
-        await PackageTools.RunAsync(codesign, ["--verify", "--strict", "--verbose=2", app], output, cancellationToken, PackageCodes.ValidationFailed).ConfigureAwait(false);
+        // Inside out, each nested library and executable before the bundle, as notarization requires; --deep would sign
+        // them all with the bundle's entitlements.
+        foreach (IReadOnlyList<string> arguments in MacOSBundleLayout.SigningCommands(signingIdentity, entitlements, inherit, app, nested))
+            await PackageTools.RunAsync(codesign, arguments, output, cancellationToken).ConfigureAwait(false);
+        await PackageTools.RunAsync(codesign, ["--verify", "--deep", "--strict", "--verbose=2", app], output, cancellationToken, PackageCodes.ValidationFailed).ConfigureAwait(false);
         File.Delete(entitlements);
+        if (inherit is not null) File.Delete(inherit);
         context.Add(app, "app", adhoc ? "adhoc" : "identity");
 
         string staging = Path.Combine(output, "dmg");
@@ -150,15 +151,24 @@ internal static class MacOSPackager
     /// <summary>What a provisioning profile grants the bundle: its application identifier and team.</summary>
     internal sealed record ProfileIdentity(string ApplicationIdentifier, string TeamIdentifier);
 
-    /// <summary>The Entitlements field: the sandbox entitlements, and the profile's identifiers, which App Store Connect
-    /// checks against the embedded profile.</summary>
-    internal static string Entitlements(bool sandbox, ProfileIdentity? profile)
+    /// <summary>
+    /// The device entitlements the hardened runtime and the App Sandbox require before macOS lets the application, or
+    /// the WKWebView in it, use the camera or the microphone: one for each usage description the project sets
+    /// (<c>RunicMacCameraUsageDescription</c>, <c>RunicMacMicrophoneUsageDescription</c>).
+    /// </summary>
+    internal static string[] DeviceEntitlements(PackageIdentity identity) =>
+    [
+        .. identity.MacCameraUsageDescription is null ? Array.Empty<string>() : ["com.apple.security.device.camera"],
+        .. identity.MacMicrophoneUsageDescription is null ? Array.Empty<string>() : ["com.apple.security.device.audio-input"],
+    ];
+
+    /// <summary>The Entitlements field: the sandbox entitlements, the device entitlements, and the profile's identifiers,
+    /// which App Store Connect checks against the embedded profile.</summary>
+    internal static string Entitlements(bool sandbox, ProfileIdentity? profile, IReadOnlyList<string>? devices = null)
     {
         var text = new StringBuilder();
-        if (sandbox)
-        {
-            foreach (string key in SandboxEntitlements) text.Append(CultureInfo.InvariantCulture, $"\n  <key>{key}</key><true/>");
-        }
+        IEnumerable<string> keys = [.. sandbox ? SandboxEntitlements : [], .. devices ?? []];
+        foreach (string key in keys) text.Append(CultureInfo.InvariantCulture, $"\n  <key>{key}</key><true/>");
         if (profile is not null)
         {
             text.Append(CultureInfo.InvariantCulture, $"\n  <key>com.apple.application-identifier</key><string>{PackageManifests.EscapeXml(profile.ApplicationIdentifier)}</string>");
@@ -169,10 +179,10 @@ internal static class MacOSPackager
 
     /// <summary>
     /// Checks the filled entitlements: a property list without a key twice, which enables the sandbox when it was asked
-    /// for and carries the profile's identifiers. An override without the Entitlements field fails here instead of
-    /// signing a bundle that silently lacks them.
+    /// for and carries the device entitlements and the profile's identifiers. An override without the Entitlements field
+    /// fails here instead of signing a bundle that silently lacks them.
     /// </summary>
-    internal static void CheckEntitlements(string text, bool sandbox, ProfileIdentity? profile)
+    internal static void CheckEntitlements(string text, bool sandbox, ProfileIdentity? profile, IReadOnlyList<string>? devices = null)
     {
         Dictionary<string, XElement> entries;
         try
@@ -192,17 +202,38 @@ internal static class MacOSPackager
         }
         var required = new List<string>();
         if (sandbox) required.AddRange(SandboxEntitlements);
+        required.AddRange(devices ?? []);
         if (profile is not null) required.AddRange(["com.apple.application-identifier", "com.apple.developer.team-identifier"]);
         foreach (string key in required)
         {
             if (!entries.ContainsKey(key))
             {
                 throw new DevDevelopmentException(PackageCodes.ValidationFailed,
-                    $"The manifest macos/entitlements.plist has no {key}. Add {{{{Entitlements}}}} to its dict, which fills it for --sandbox and --provisioning-profile.");
+                    $"The manifest macos/entitlements.plist has no {key}. Add {{{{Entitlements}}}} to its dict, which fills it for --sandbox, --provisioning-profile and the usage descriptions.");
             }
         }
         if (sandbox && entries["com.apple.security.app-sandbox"].Name != "true")
             throw new DevDevelopmentException(PackageCodes.ValidationFailed, "The manifest macos/entitlements.plist turns com.apple.security.app-sandbox off.");
+    }
+
+    /// <summary>
+    /// Checks the filled Info.plist for the usage descriptions the project sets: macOS ends or refuses camera and
+    /// microphone access without them, so an override without the UsageDescriptions field fails here.
+    /// </summary>
+    internal static void CheckInfo(string text, PackageIdentity identity)
+    {
+        foreach ((string key, string? value, string property) in new[]
+        {
+            ("NSCameraUsageDescription", identity.MacCameraUsageDescription, "RunicMacCameraUsageDescription"),
+            ("NSMicrophoneUsageDescription", identity.MacMicrophoneUsageDescription, "RunicMacMicrophoneUsageDescription"),
+        })
+        {
+            if (value is not null && !text.Contains($"<key>{key}</key>", StringComparison.Ordinal))
+            {
+                throw new DevDevelopmentException(PackageCodes.ValidationFailed,
+                    $"The manifest macos/Info.plist has no {key}, which {property} sets. Add {{{{UsageDescriptions}}}} to its dict.");
+            }
+        }
     }
 
     /// <summary>
@@ -240,14 +271,6 @@ internal static class MacOSPackager
 
     /// <summary>Where the bundle carries its provisioning profile.</summary>
     internal static string ProfilePath(string app) => Path.Combine(app, "Contents", "embedded.provisionprofile");
-
-    /// <summary>
-    /// codesign for the bundle: the hardened runtime and the entitlements; a secure timestamp with a real identity, none
-    /// ad hoc (<c>-</c>), which has no timestamp server.
-    /// </summary>
-    internal static IReadOnlyList<string> CodesignArguments(string signingIdentity, string entitlements, string app) =>
-        ["--force", "--options", "runtime", .. signingIdentity == "-" ? Array.Empty<string>() : ["--timestamp"],
-            "--entitlements", entitlements, "--sign", signingIdentity, app];
 
     /// <summary>
     /// productbuild for the bundle as a product archive that installs it in /Applications, as App Store Connect and

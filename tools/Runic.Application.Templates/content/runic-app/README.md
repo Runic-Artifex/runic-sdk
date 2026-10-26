@@ -425,10 +425,16 @@ an Apple event.
 
 `RunicApplicationFileTypes` lists the file types the application opens, such
 as `.notes=application/x-example-notes;.md`: an extension with its dot and,
-optionally, its MIME type. In `Info.plist` each becomes a document type with
-an exported uniform type identifier `<ApplicationId>.<extension>` that
-conforms to `public.data`, as the application's own type; for a standard type,
-such as Markdown, edit the generated entry to name the system's type instead.
+optionally, its MIME type. In `Info.plist` each becomes a document type. An
+extension with a system type, such as `.txt` (`public.plain-text`), `.md`
+(`net.daringfireball.markdown`) or `.png` (`public.png`), names that type with
+the `Alternate` rank, so the application is offered for such files without
+taking them over; `RunicMacFileTypeHandlerRank` set to `Default` asks to be
+their default application instead. Any other extension is the application's
+own: an exported uniform type identifier `<ApplicationId>.<extension>` that
+conforms to `public.data`, with the `Owner` rank. For a standard type the
+command does not know, name it with `RunicMacFileTypeIdentifiers`, such as
+`.log=public.log` (see the [packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/packaging.md#file-types)).
 In the MSIX manifest each becomes a `uap3:FileTypeAssociation` with
 `MultiSelectModel="Player"`, so files the user opens together reach one
 process; read them with `DesktopPlatformServices.GetLaunch(args)`. In the

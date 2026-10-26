@@ -36,6 +36,9 @@ using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = 
     json.WriteString("contentRoot", contentRoot);
     json.WriteBoolean("contentRootHasIndex", File.Exists(Path.Combine(contentRoot, "index.html")));
     json.WriteString("diagnosticsLog", DiagnosticsLog.Path);
+    // A data file published next to the executable, which the macOS bundle keeps in Contents/Resources with a link.
+    string extraFile = Path.Combine(AppContext.BaseDirectory, "probe-data.txt");
+    json.WriteString("extraFile", File.Exists(extraFile) ? File.ReadAllText(extraFile).Trim() : null);
     json.WriteStartArray("files");
     foreach (string file in files) json.WriteStringValue(file);
     json.WriteEndArray();

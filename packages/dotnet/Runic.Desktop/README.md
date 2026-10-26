@@ -153,7 +153,10 @@ Sensitive permissions remain denied unless the window opts into a typed grant.
 WebView2, WKWebView, WebKitGTK and GTK4 windows grant `MediaCapture` only to the
 presented origin: the requesting frame and the top-level document must both have
 it. Without the grant they deny camera and microphone; on macOS the system still
-asks the user once for the application's own access. WebKitGTK does not say
+asks the user once for the application's own access, which a packaged bundle
+gets only with `RunicMacCameraUsageDescription` or
+`RunicMacMicrophoneUsageDescription`
+([packaging guide](../../../docs/packaging.md#camera-and-microphone)). WebKitGTK does not say
 which frame asks, so while the page contains a frame of another origin, the
 window denies every camera and microphone request, and WebKit then refuses the
 page's later requests until it reloads. Frames of another origin can ask only

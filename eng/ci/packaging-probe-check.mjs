@@ -41,6 +41,8 @@ if (mode === "unpackaged") {
 } else if (platform === "macos") {
   expect(receipt.packageIdentity === id, `the bundle identifier is ${receipt.packageIdentity}`);
   expect(/\.app\/Contents\/Resources\/www\/?$/.test(receipt.contentRoot ?? ""), `the bundle's content root is ${receipt.contentRoot}`);
+  // probe-data.txt is in Contents/Resources; the link in Contents/MacOS keeps it next to the executable.
+  expect(receipt.extraFile === "probe", `the data file next to the executable reads ${receipt.extraFile}`);
 } else if (platform === "flatpak") {
   expect(receipt.packageIdentity === id, `FLATPAK_ID is ${receipt.packageIdentity}`);
   expect(receipt.contentRoot === "/app/lib/Runic.Packaging.Probe/www", `the Flatpak's content root is ${receipt.contentRoot}`);
