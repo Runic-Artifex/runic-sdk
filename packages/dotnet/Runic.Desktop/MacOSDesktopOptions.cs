@@ -2,7 +2,7 @@ using Runic.Platform;
 
 namespace Runic.Desktop;
 
-/// <summary>macOS application configuration: the Dock menu and an application delegate of the application's own.</summary>
+/// <summary>macOS application configuration: the Dock menu, Open Recent and an application delegate of the application's own.</summary>
 /// <remarks>Other platforms ignore these options.</remarks>
 public sealed record MacOSDesktopOptions
 {
@@ -20,6 +20,34 @@ public sealed record MacOSDesktopOptions
     /// </para>
     /// </remarks>
     public IReadOnlyList<DesktopMenuEntry> DockMenu { get; init; } = [];
+
+    /// <summary>
+    /// Gets whether the standard File menu starts with Open Recent, the submenu of the documents noted with
+    /// <see cref="DesktopHost.NoteRecentDocumentAsync"/>; <see langword="false"/>, the default, for none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each time the submenu opens, Runic lists the application's recent documents
+    /// (<c>NSDocumentController.recentDocumentURLs</c>, the list the Dock menu also shows), most recent first, with
+    /// their display names and file icons, above a Clear Menu item that empties the list and is disabled while it is
+    /// empty. Choosing a document delivers its path as an open request (<c>IDesktopOpenRequests.Opened</c> of
+    /// Runic.Platform.MacOS with <c>DesktopOpenOptions.IncludeFiles</c>), as choosing it in the Dock or opening it in the
+    /// Finder does; the open requests keep it until they are created. Declared items of a
+    /// <see cref="DesktopMenuRole.File"/> menu, such as Open…, come before it.
+    /// </para>
+    /// <para>
+    /// The menu uses public AppKit API only, so the App Sandbox grants no access to a document chosen in it: a
+    /// sandboxed application keeps a bookmark of each document (A1: <c>ISaveFileLease.CreateBookmarkAsync</c>), finds
+    /// the one for the delivered path and reopens the document with <c>IDesktopFileBookmarks.OpenDocumentAsync</c>.
+    /// </para>
+    /// <para>
+    /// Runic adds Open Recent to the main menu that it completes, as the other standard menus, not to a main menu of
+    /// the application's own. <see cref="DesktopStandardMenuTitles.OpenRecent"/> and
+    /// <see cref="DesktopStandardMenuTitles.ClearMenu"/> give the titles. The first host started with this option
+    /// adds it; the menu stays for the process.
+    /// </para>
+    /// </remarks>
+    public bool OpenRecentMenu { get; init; }
 
     /// <summary>
     /// Gets an Objective-C object that implements <c>NSApplicationDelegate</c> methods of the application's own, or 0,

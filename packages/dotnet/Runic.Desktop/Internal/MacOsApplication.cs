@@ -29,6 +29,7 @@ internal static unsafe partial class MacOsApplication
     private const uint CoreEventClass = 0x61657674, OpenDocuments = 0x6F646F63; // 'aevt', 'odoc'
     private const uint InternetEventClass = 0x4755524C, GetUrl = 0x4755524C;    // 'GURL', 'GURL'
     private const uint QuitApplication = 0x71756974;                             // 'quit'
+    private const uint DirectObject = 0x2D2D2D2D;                                 // '----'
     // keyAEQuitReason, which the system's quit event for log out, restart and shut down carries; keyErrorNumber.
     private const uint QuitReason = 0x7768793F, ErrorNumber = 0x6572726E;         // 'why?', 'errn'
     private const string HandleQuitSelector = "runicHandleQuitEvent:withReplyEvent:";
@@ -433,19 +434,50 @@ internal static unsafe partial class MacOsApplication
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void HandleOpenEvent(nint self, nint selector, nint appleEvent, nint reply)
     {
+        try { DeliverOpenEvent(appleEvent, reply); }
+        catch { /* An Apple event handler must not throw into AppKit; a malformed event opens nothing. */ }
+    }
+
+    private static void DeliverOpenEvent(nint appleEvent, nint reply)
+    {
+        if (appleEvent == 0) return;
+        nint handler;
+        lock (Gate)
+        {
+            handler = s_handler;
+            // A copy owns its descriptor, which AppKit releases after the handler returns.
+            if (handler == 0) Keep(activity: false, Send(appleEvent, Sel("copy")));
+        }
+        if (handler != 0) Args(handler, Sel("handleEvent:withReplyEvent:"), appleEvent, reply);
+    }
+
+    // A document chosen in Runic's Open Recent menu (MacOsWkWebViewHost.Documents) reaches the open requests as the
+    // open-documents event that the Dock's recent documents and the Finder send, so the application receives it through
+    // the same IDesktopOpenRequests.Opened. Main thread: the file URLs become one open-documents Apple event addressed to
+    // this process.
+    internal static bool OpenFileUrls(nint[] urls)
+    {
+        var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
         try
         {
-            if (appleEvent == 0) return;
-            nint handler;
-            lock (Gate)
+            var descriptor = Class("NSAppleEventDescriptor");
+            var list = Send(descriptor, Sel("listDescriptor"));
+            foreach (var url in urls)
             {
-                handler = s_handler;
-                // A copy owns its descriptor, which AppKit releases after the handler returns.
-                if (handler == 0) Keep(activity: false, Send(appleEvent, Sel("copy")));
+                // Index 0 appends.
+                if (url != 0 && Bool(url, Sel("isFileURL")) != 0)
+                    Args(list, Sel("insertDescriptor:atIndex:"), Arg(descriptor, Sel("descriptorWithFileURL:"), url), 0);
             }
-            if (handler != 0) Args(handler, Sel("handleEvent:withReplyEvent:"), appleEvent, reply);
+            if (Send(list, Sel("numberOfItems")) == 0) return false;
+            // kAutoGenerateReturnID and kAnyTransactionID.
+            var appleEvent = CreateEvent(descriptor, Sel("appleEventWithEventClass:eventID:targetDescriptor:returnID:transactionID:"),
+                CoreEventClass, OpenDocuments, Send(descriptor, Sel("currentProcessDescriptor")), -1, 0);
+            if (appleEvent == 0) return false;
+            SetParam(appleEvent, Sel("setParamDescriptor:forKeyword:"), list, DirectObject);
+            DeliverOpenEvent(appleEvent, 0);
+            return true;
         }
-        catch { /* An Apple event handler must not throw into AppKit; a malformed event opens nothing. */ }
+        finally { Send(pool, Sel("drain")); }
     }
 
     // A universal link: to the attached handler, else kept for it when it is a web-browsing activity.
@@ -570,6 +602,7 @@ internal static unsafe partial class MacOsApplication
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ReopenWith(nint target, nint selector, nint application, byte hasVisibleWindows);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetParam(nint target, nint selector, nint descriptor, uint keyword);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Int32Descriptor(nint target, nint selector, int value);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint CreateEvent(nint target, nint selector, uint eventClass, uint eventId, nint targetDescriptor, short returnId, int transactionId);
     [LibraryImport(ObjC, EntryPoint = "class_respondsToSelector")] private static partial byte ClassResponds(nint type, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ContinueWith(nint target, nint selector, nint application, nint activity, nint restorationHandler);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetHandler(nint target, nint selector, nint handler, nint action, uint eventClass, uint eventId);

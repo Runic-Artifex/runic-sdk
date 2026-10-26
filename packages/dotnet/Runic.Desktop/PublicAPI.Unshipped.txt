@@ -54,6 +54,16 @@ static Runic.Desktop.DesktopQuitRequest.operator !=(Runic.Desktop.DesktopQuitReq
 static Runic.Desktop.DesktopQuitRequest.operator ==(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator !=(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator ==(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
+Runic.Desktop.DesktopHost.ClearRecentDocumentsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopHost.NoteRecentDocumentAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopStandardMenuTitles.ClearMenu.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.ClearMenu.init -> void
+Runic.Desktop.DesktopStandardMenuTitles.OpenRecent.get -> string!
+Runic.Desktop.DesktopStandardMenuTitles.OpenRecent.init -> void
+Runic.Desktop.DesktopWindow.SetDocumentEditedAsync(bool edited, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.SetRepresentedFileAsync(string? path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.MacOSDesktopOptions.OpenRecentMenu.get -> bool
+Runic.Desktop.MacOSDesktopOptions.OpenRecentMenu.init -> void
 Runic.Desktop.DesktopWindowHostOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme
 Runic.Desktop.DesktopWindowHostOptions.ColorScheme.init -> void
 Runic.Desktop.DesktopWindowOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme

@@ -111,6 +111,85 @@ visible. `MacOSDesktopOptions.DockMenu` adds items, separators and submenus to
 the Dock menu; their commands run through `host.MenuCommands` and are enabled
 from its `CanExecute` each time the menu opens.
 
+### Document apps on macOS
+
+A document app on macOS shows which file a window edits and whether it has
+unsaved changes, and lists the documents it opened in Open Recent and the Dock.
+Runic.Platform's [Document apps](../Runic.Platform/README.md#document-apps)
+section covers opening, saving and bookmarking the files; these calls add the
+macOS conventions on top:
+
+| Call | macOS | Windows, Linux |
+| --- | --- | --- |
+| `window.SetRepresentedFileAsync(path)` | The title bar's proxy icon and the path menu of Command-click on the title (`NSWindow.representedURL`); `null` removes them | Nothing |
+| `window.SetDocumentEditedAsync(edited)` | The dot in the close button (`NSWindow.documentEdited`) | Nothing |
+| `host.NoteRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Nothing |
+| `host.ClearRecentDocumentsAsync()` | Empties them, as Clear Menu does | Nothing |
+| `MacOSDesktopOptions.OpenRecentMenu` | Adds Open Recent at the top of the standard File menu | Ignored |
+
+```csharp
+var options = new DesktopHostOptions
+{
+    MenuBar = [new DesktopMenu("File", [new DesktopMenuItem("Open…", "file.open") { Shortcut = DesktopShortcut.Parse("Primary+O") }])
+        { Role = DesktopMenuRole.File }],
+    MacOS = new MacOSDesktopOptions { OpenRecentMenu = true },
+};
+return DesktopEventLoop.Run(options, async host =>
+{
+    // Open Recent, the Dock's recent documents and the Finder deliver the documents' paths the same way.
+    await using var opens = MacOSPlatformProvider.CreateOpenRequests(new DesktopOpenOptions([]) { IncludeFiles = true });
+    opens.Opened += (_, request) => editor.OpenAll(request.Items);
+    // After the user opened a document, or saved it with Save As:
+    await window.SetRepresentedFileAsync(document.LocalPath);
+    await host.NoteRecentDocumentAsync(document.LocalPath);
+    // On each edit and each save:
+    await window.SetDocumentEditedAsync(editor.HasUnsavedChanges);
+    ...
+});
+```
+
+The window's title stays the page's `document.title`; set it to the document's
+name. `SetDocumentEditedAsync` only marks the window: the close guard
+(`ConfirmCloseAsync`) and `ConfirmQuitAsync` still decide about unsaved changes.
+Runic builds Open Recent itself with public AppKit API: each time it opens, it
+lists the recent documents, most recent first, with their display names and
+file icons (and the folder's name when two have the same name), then Clear
+Menu, which is disabled while the list is empty. Choosing a document delivers
+its path as an open request of Runic.Platform.MacOS, kept until the open
+requests are created, so the application handles it as a document opened in
+the Finder or chosen in the Dock's recent documents. Open Recent and its Clear
+Menu item take their titles from `DesktopStandardMenuTitles.OpenRecent` and
+`ClearMenu`, and Runic adds it to the main menu that it completes, not to a main
+menu of the application's own. The recent documents are the system's list,
+which the user's System Settings limit.
+
+In the App Sandbox the system does not grant access to a document chosen in
+Runic's Open Recent: a sandboxed application keeps its own recent documents as
+A1 bookmarks and reopens them itself. Store `CreateBookmarkAsync`'s bytes with
+the document's `LocalPath` after open and Save As, and note that path with
+`NoteRecentDocumentAsync` for the menu and the Dock, while the lease is open
+(AppKit's own bookmark of the noted file needs its access). When an open request
+arrives, look up the bookmark stored for its path and reopen the document with
+`IDesktopFileBookmarks.OpenDocumentAsync`:
+
+```csharp
+opens.Opened += async (_, request) =>
+{
+    foreach (var item in request.Items.Where(static item => item.IsFile))
+    {
+        // Open Recent and the Dock deliver the noted path; the bookmark holds the access.
+        if (recent.TryGetBookmark(item.LocalPath, out var bookmark)
+            && await bookmarks.OpenDocumentAsync(bookmark) is PlatformResult<IDocumentFileLease>.Success(var document))
+            editor.Open(document);
+    }
+};
+```
+
+Set the represented file from the open lease's `LocalPath` too. The calls run
+on the main thread, which `DesktopEventLoop.Run` serves. A custom window host or
+an installed browser has no window of Runic's to mark, so the window calls do
+nothing there.
+
 ### Native work without a window on macOS
 
 AppKit must be called on the process main thread, which `DesktopEventLoop.Run`

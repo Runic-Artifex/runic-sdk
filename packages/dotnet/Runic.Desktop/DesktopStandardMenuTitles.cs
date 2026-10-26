@@ -45,6 +45,12 @@ public sealed record DesktopStandardMenuTitles
     /// <summary>Gets the File menu's Close item.</summary>
     public string Close { get; init; } = "Close";
 
+    /// <summary>Gets the File menu's Open Recent submenu (<see cref="MacOSDesktopOptions.OpenRecentMenu"/>).</summary>
+    public string OpenRecent { get; init; } = "Open Recent";
+
+    /// <summary>Gets the Open Recent submenu's Clear Menu item.</summary>
+    public string ClearMenu { get; init; } = "Clear Menu";
+
     /// <summary>Gets the Edit menu's title.</summary>
     public string Edit { get; init; } = "Edit";
 
@@ -103,6 +109,8 @@ public sealed record DesktopStandardMenuTitles
         yield return (nameof(Quit), Quit, true);
         yield return (nameof(File), File, false);
         yield return (nameof(Close), Close, false);
+        yield return (nameof(OpenRecent), OpenRecent, false);
+        yield return (nameof(ClearMenu), ClearMenu, false);
         yield return (nameof(Edit), Edit, false);
         yield return (nameof(Undo), Undo, false);
         yield return (nameof(Redo), Redo, false);
