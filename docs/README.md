@@ -26,6 +26,9 @@ protects by default, which options relax it, and what an application checks itse
 The [packaging guide](packaging.md) covers `dotnet runic package`: what each
 format needs, and how you sign the packages with your own credentials.
 
+The [MSBuild reference](msbuild.md) lists every MSBuild property and item that
+the SDK packages and tools read, with links to where each is described.
+
 The [configuration guide](configuration.md) shows how an application configures
 itself with Generic Host and `Microsoft.Extensions.Configuration`, ships
 `appsettings.json`, and stores per-user settings; Runic has no configuration API

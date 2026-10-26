@@ -327,6 +327,18 @@ application's origins besides the presented URL's in
 `DesktopWindowHostOptions.AdditionalOrigins`; `RunicWebView` applies it as the
 built-in hosts do.
 
+### Printing
+
+Runic has no printing API: the page prints itself with `window.print()`, and an
+`@media print` stylesheet chooses what goes on paper. WebView2, also in WPF's
+`RunicViewHost`, shows its print preview, WebKitGTK the GTK print dialog, and an
+installed browser or a CS-WebUI window the browser's. WKWebView leaves
+`window.print()` to its host, and the macOS window does not handle it, so on
+macOS nothing happens. To print there, or to print a document rather than the
+page, write it to a PDF or HTML file in .NET and open it with
+`IDesktopFileLauncher.LaunchAsync` from Runic.Platform; the user prints it from
+the default application, such as Preview. CI does not check printing.
+
 ## Window state and restore
 
 An embedded window whose `Capabilities` include `DesktopWindowCapabilities.State`

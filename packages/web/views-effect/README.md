@@ -201,6 +201,22 @@ export function EditorPage({ page }: { page: EditorPageReference }) {
 }
 ```
 
+Outside React, wrap `createEffectAction` in your framework's store and call
+`dispose()` when the component is destroyed. In Vue:
+
+```ts
+import { createEffectAction, operation } from "@runic-artifex/views-effect";
+import { onScopeDispose, shallowRef } from "vue";
+
+const save = createEffectAction(() => operation(() => client.value!.startSave(), { timeout: "10 seconds" }));
+const saveState = shallowRef(save.current);
+const stop = save.subscribe(() => { saveState.value = save.current; });
+onScopeDispose(() => { stop(); void save.dispose(); });
+```
+
+Svelte does the same with `$state` and an `$effect` cleanup, and Angular with a
+`signal` and `DestroyRef.onDestroy`.
+
 A program that needs services runs through your runtime:
 `createEffectAction(program, { runFork: runtime.runFork })`, with `runtime` a
 `ManagedRuntime`. Helpers based on `effect/reactivity` atoms will follow when

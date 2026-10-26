@@ -305,6 +305,8 @@ window opens and on hosts without a native owner, `OwnerClosed` after it closed
 activate Common Controls 6 or GTK 4 is older than 4.10.
 `DesktopMessageBoxes.Unavailable(reason)` stands in where there are none, and an
 implementation that does not override the member reports `OwnerUnavailable`.
+A message box has no "Don't ask again" check box: keep that choice in the
+application's settings and skip the box when it is set.
 
 ### Clipboard
 
@@ -529,6 +531,35 @@ The application composes `IDesktopPrivilegedActions` itself, because it needs
 declared actions and a provider package, and claims `ApplicationInstance` before
 it starts a host.
 
+### Events and watches as observables
+
+The services raise ordinary .NET events and return `IAsyncEnumerable<T>` from
+`WatchAsync`, so they need no adapter package. With System.Reactive,
+`Observable.FromEventPattern` turns an event into an observable, and
+`Observable.Create` turns a watch into one that cancels the watch when the
+subscription is disposed:
+
+```csharp
+using System.Reactive.Linq;
+
+IObservable<DesktopGlobalShortcutActivation> activations = Observable
+    .FromEventPattern<DesktopGlobalShortcutActivation>(
+        handler => shortcuts.Activated += handler,
+        handler => shortcuts.Activated -= handler)
+    .Select(pattern => pattern.EventArgs);
+
+IObservable<PlatformResult<DesktopNetworkState>> networkStates = Observable.Create<PlatformResult<DesktopNetworkState>>(
+    async (observer, cancellationToken) =>
+    {
+        await foreach (var result in network.WatchAsync(cancellationToken)) observer.OnNext(result);
+        observer.OnCompleted();
+    });
+```
+
+Each service's section says on which thread its events arrive (global shortcuts
+on a worker thread), and a watch continues on the thread pool, so observe on the
+ViewModel's scheduler before changing its state.
+
 ## Menus
 
 Status icon menus (`DesktopStatusIconState.Menu`), context menus
@@ -657,7 +688,10 @@ and the result is still `Success`. `ListAsync` returns the current bindings, and
 The Linux portal needs the application's ID: outside Flatpak and Snap, pass the
 installed desktop ID (`AddRunicPlatformServices("org.example.App")` or
 `new PortalApplication("org.example.App")`); without one it reports
-`Failed(PermissionDenied)`. Runic does not grab keys on X11 itself.
+`Failed(PermissionDenied)`. Runic does not grab keys on X11 itself: without a
+GlobalShortcuts portal there are no global shortcuts on Linux.
+`DesktopShortcutModifiers` has no Super or Windows-key modifier, because the
+desktops keep most of those combinations for themselves.
 
 On Windows and macOS the application owns the binding: record the user's choice
 in a settings page with `shortcutFromEvent` from `@runic-artifex/views`, keep its
@@ -1175,6 +1209,27 @@ a type no thumbnailer handles or one whose thumbnailing failed, is
 Hosts without a provider register `DesktopThumbnails.Unavailable(reason)`. The
 [thumbnails design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/thumbnails.md)
 has the per-platform behaviour and its verification.
+
+## Screenshots and colour picking
+
+Runic has no screenshot or screen colour-picking API: both let the user choose
+what to capture, and each desktop has its own tool for that. Use the page, the
+clipboard or the desktop portal instead:
+
+- **A colour.** `<input type="color">` opens the web engine's colour chooser:
+  the macOS colour panel in WKWebView, the GTK colour chooser in WebKitGTK and
+  Chromium's in WebView2. Engines with the EyeDropper API (Chromium-based ones;
+  check `"EyeDropper" in window`) also pick a colour anywhere on the screen after
+  the user's click with `new EyeDropper().open()`.
+- **A screenshot.** The user takes it with the system's tool, to the clipboard
+  (Windows+Shift+S on Windows, Control+Shift+Command+4 on macOS, the desktop's
+  screenshot tool on Linux), and the application pastes it with
+  `IDesktopClipboard.ReadImageAsync` (see [Clipboard](#clipboard)), or the user
+  saves it to a file and opens or drops that.
+- **Linux portal.** `org.freedesktop.portal.Screenshot` has `Screenshot` and
+  `PickColor`, which ask the user and also work inside Flatpak. Call them with
+  `DBusProxy` from Runic.Platform.Linux.DBus and wait for the request's
+  `Response` signal, as the portal documentation describes.
 
 ## Privileged actions
 

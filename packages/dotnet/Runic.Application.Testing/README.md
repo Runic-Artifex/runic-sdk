@@ -198,7 +198,9 @@ already have. A `RunicViewDriver<T>` has:
   after `cursor` as the generated client's `stream(cursor)` does: a
   `RunicOperationStreamPage` with the status `Kind`, the encoded `Items`, the
   `Cursor` of the next page, `Completed`, and `DeliveryKind` and
-  `DeliveryMessage` when items were dropped (`stream-overflow`, ...).
+  `DeliveryMessage` when items were dropped (`stream-overflow`, ...). The
+  delivery kinds, like `BridgeOperationDeliveryFailureKind` in .NET and
+  TypeScript, are open: a minor release may add one.
 - `Write(vm => vm.Title, value, expectedVersion)` for a checked write. It uses the
   current value and version as the baseline unless `expectedVersion` is given, so a
   stale version tests the `Conflict` receipt. A receipt has a

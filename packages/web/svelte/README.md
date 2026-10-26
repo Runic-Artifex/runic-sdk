@@ -120,6 +120,11 @@ and `navigate.run("showWelcome")`. Called during component initialization, it
 stops publishing state when the component is destroyed, even before its first
 effect flush; a run in flight is not cancelled and its promise still settles.
 
+`pending` covers only this component's run. Whether .NET can run the command is
+the View's state: a command without an argument publishes `can<Name>` (such as
+`state.canSave`), so disable a button while either says no. A command with an
+argument has the `can<Name>(input)` query on the client instead.
+
 For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
 `BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed
 from the outcome, while `error` keeps unexpected failures. Starting a run and

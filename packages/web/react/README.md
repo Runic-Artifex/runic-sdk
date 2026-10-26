@@ -35,7 +35,7 @@ export function CounterPage({ page }: { page: CounterPageReference }) {
   const { state, client } = useView(page);
   const increment = useCommand(() => client?.increment());
   return <>
-    <button disabled={!client || increment.pending} onClick={() => void increment.run()}>{state?.count ?? "…"}</button>
+    <button disabled={!state?.canIncrement || increment.pending} onClick={() => void increment.run()}>{state?.count ?? "…"}</button>
     {increment.error !== undefined && <p role="alert">{String(increment.error)}</p>}
   </>;
 }
@@ -155,6 +155,12 @@ flight still resolves. One command can serve several buttons:
 const navigate = useCommand((name: "showWelcome" | "showCounter") => client?.[name]());
 <button onClick={() => void navigate.run("showWelcome")}>Welcome</button>
 ```
+
+`pending` covers only this component's run. Whether .NET can run the command is
+the View's state: a command without an argument publishes `can<Name>`, so a
+button combines both, as in `disabled={!state?.canSave || save.pending}`, and is
+disabled before the client connects. A command with an argument has the
+`can<Name>(input)` query on the client instead.
 
 For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
 `BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed

@@ -12,7 +12,8 @@ export default defineConfig({ plugins: [runic({ desktop: true })] });
 ```
 
 `desktop: true` inserts the Desktop bootstrap script and sets a relocatable
-production base. For a CS-WebUI frontend, use `runic({ devtools: false })` or
+production base. `desktop` stays opt-in: Views pages and CS-WebUI do not need
+it. For a CS-WebUI frontend, use `runic({ devtools: false })` or
 omit the plugin entirely. A Runic Views frontend needs neither: its page loads
 `runic-views.js`, the Views client that every host provides, so `runic()` with
 `base: "./"` builds one page for Runic Desktop and CS-WebUI. The Views build
