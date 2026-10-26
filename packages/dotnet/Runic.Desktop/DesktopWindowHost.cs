@@ -393,6 +393,16 @@ public sealed record DesktopWindowHostOptions
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 
     /// <summary>
+    /// Gets the light or dark appearance of the window and its page, from <see cref="DesktopWindowOptions.ColorScheme"/>;
+    /// <see cref="DesktopColorScheme.NoPreference"/> follows the system.
+    /// </summary>
+    /// <remarks>
+    /// A host that applies it sets the page's <c>prefers-color-scheme</c> and, where it can, its window's appearance. A
+    /// host that cannot reports <c>color-scheme-unsupported</c> from <see cref="IDesktopWindowHostFactory.ValidateOptions"/>.
+    /// </remarks>
+    public DesktopColorScheme ColorScheme { get; init; }
+
+    /// <summary>
     /// Gets whether a <see cref="DesktopMenuBarPresentation.Native"/> bar may go into the Linux desktop's global menu,
     /// from <see cref="LinuxDesktopOptions.GlobalMenu"/>; <see langword="true"/> by default.
     /// </summary>
@@ -559,6 +569,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             DiagnosticSink = options.ReportDiagnostic,
             StartupProgress = options.StartupProgress,
             MenuBarPresentation = options.MenuBarPresentation,
+            ColorScheme = options.ColorScheme,
             GlobalMenu = options.GlobalMenu,
             MonitorId = options.MonitorId,
             LayoutDirection = options.LayoutDirection,

@@ -352,6 +352,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         _delegate = Api.SendNint(Api.SendNint(DelegateClass, "alloc"), "init");
         Api.SendVoidNint(_window, "setDelegate:", _delegate);
+        // DesktopWindowOptions.ColorScheme: the window, its web view and the page's prefers-color-scheme follow the
+        // window's appearance; nil, the default, follows the system.
+        if (Api.NamedAppearance(options.ColorScheme) is var appearance and not 0)
+        {
+            Api.SendVoidNint(_window, "setAppearance:", appearance);
+        }
         Api.SendVoidBool(_window, "setReleasedWhenClosed:", false);
         Api.SendVoidBool(_window, "setMovableByWindowBackground:", options.Frameless);
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
@@ -2485,6 +2491,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 SendVoid(level, "release");
                 SendVoid(text, "release");
             }
+        }
+
+        // [NSAppearance appearanceNamed:NSAppearanceNameAqua or NSAppearanceNameDarkAqua], or 0 for NoPreference.
+        internal nint NamedAppearance(DesktopColorScheme colorScheme)
+        {
+            var name = colorScheme switch
+            {
+                DesktopColorScheme.Light => "NSAppearanceNameAqua",
+                DesktopColorScheme.Dark => "NSAppearanceNameDarkAqua",
+                _ => null,
+            };
+            if (name is null || !NativeLibrary.TryGetExport(_appKit, name, out var constant)) return 0;
+            return SendNintNint(GetClass("NSAppearance"), "appearanceNamed:", *(nint*)constant);
         }
 
         private void SetObject(nint dictionary, nint value, nint key) =>

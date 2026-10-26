@@ -8,6 +8,8 @@ namespace Runic.Desktop.Internal;
 
 internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 {
+    // DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1 and later).
+    internal const int DwmUseImmersiveDarkMode = 20;
     private const uint WmAppDispatch = 0x8001;
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
@@ -62,6 +64,14 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private readonly ConcurrentQueue<NativeDispatchWork> _nativeWork = new();
     private WindowsWebView2Controller? _controller;
     private WebUiEmbeddedHostOptions? _options;
+
+    // The DWMWA_USE_IMMERSIVE_DARK_MODE value for DesktopWindowOptions.ColorScheme, or null to leave the title bar alone.
+    internal static int? ImmersiveDarkMode(Runic.Platform.DesktopColorScheme colorScheme) => colorScheme switch
+    {
+        Runic.Platform.DesktopColorScheme.Dark => 1,
+        Runic.Platform.DesktopColorScheme.Light => 0,
+        _ => null,
+    };
     private Thread? _thread;
     private GCHandle _selfHandle;
     private nint _window;
@@ -603,6 +613,11 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 host window could not be created.");
             }
             _provider = WindowsAnnouncementProvider.Create(_window);
+            // DesktopWindowOptions.ColorScheme: a dark or light title bar. Without it a Win32 title bar stays light.
+            if (WindowsWebView2Host.ImmersiveDarkMode(options.ColorScheme) is { } darkMode)
+            {
+                _ = Native.DwmSetWindowAttribute(_window, DwmUseImmersiveDarkMode, ref darkMode, sizeof(int));
+            }
 
             width = ScaleForWindow(logicalWidth, _window);
             height = ScaleForWindow(logicalHeight, _window);
@@ -669,6 +684,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 _controller.SetTransparent();
             }
+            _controller.SetPreferredColorScheme(options.ColorScheme);
             _controller.RegisterEvents(
                 title => Native.SetWindowText(_window, title),
                 () => Native.PostMessage(_window, WmClose, 0, 0),
@@ -1064,6 +1080,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
         [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", StringMarshalling = StringMarshalling.Utf16)]
         internal static partial uint RegisterWindowMessage(string name);
+
+        [LibraryImport("dwmapi.dll")]
+        internal static partial int DwmSetWindowAttribute(nint window, int attribute, ref int value, int size);
 
         [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
         internal static partial nint CreateWindowEx(uint extendedStyle, string className, string windowName, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint parameter);

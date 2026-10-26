@@ -353,6 +353,33 @@ call on the handle to `InvokeNativeAsync`, which runs it there with the handle.
 which decides a window's initial theme when `DesktopWindowOptions.HighContrast`
 is not set. To follow changes, observe `IDesktopSettings` from Runic.Platform.
 
+### Light and dark windows
+
+`DesktopWindowOptions.ColorScheme` forces a window light or dark;
+`DesktopColorScheme.NoPreference`, the default, follows the system. The page's
+`prefers-color-scheme` follows it, and so does the window itself:
+
+```csharp
+await surface.OpenWindowAsync(new DesktopWindowOptions { ColorScheme = DesktopColorScheme.Dark });
+```
+
+| Window host | What `Light` and `Dark` set |
+| --- | --- |
+| Windows, WebView2 | The WebView2 profile's preferred color scheme and the title bar's dark mode |
+| macOS, WKWebView | `NSWindow.appearance` (Aqua or Dark Aqua), which the web view inherits |
+| WPF `RunicWebView` | The child WebView2's preferred color scheme; the WPF window keeps its own chrome |
+| Linux, GTK 3 and GTK 4 | Nothing: WebKitGTK follows the GTK theme for every window |
+| Installed browsers | Nothing |
+
+WebView2 keeps the preferred color scheme per profile, so windows that share a
+`ProfilePath` show the scheme of the last one opened with a scheme; each
+window has its own profile unless `ProfilePath` is set. Without the option, a
+Windows title bar stays light as before. Where the option has no effect,
+`DesktopHost.Validate` warns with `color-scheme-unsupported` and the window
+follows the system. A [custom window host](#custom-window-hosts) receives the
+option in `DesktopWindowHostOptions.ColorScheme`, and reports
+`color-scheme-unsupported` from `ValidateOptions` if it cannot apply it.
+
 ## Links, new windows, downloads and developer tools
 
 Since 0.10.0 an embedded window keeps its page on the application.

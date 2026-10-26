@@ -37,3 +37,7 @@ static Runic.Desktop.DesktopQuitRequest.operator !=(Runic.Desktop.DesktopQuitReq
 static Runic.Desktop.DesktopQuitRequest.operator ==(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator !=(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator ==(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
+Runic.Desktop.DesktopWindowHostOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Desktop.DesktopWindowHostOptions.ColorScheme.init -> void
+Runic.Desktop.DesktopWindowOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Desktop.DesktopWindowOptions.ColorScheme.init -> void

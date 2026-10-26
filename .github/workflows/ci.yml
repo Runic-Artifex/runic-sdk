@@ -908,6 +908,12 @@ jobs:
         env:
           RUNIC_TEST_DISPLAY_SCALING: "1"
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --monitors
+      # DesktopWindowOptions.ColorScheme: for Dark and Light the page's prefers-color-scheme follows, and so does the
+      # window (NSWindow.effectiveAppearance on macOS, the DWM dark title bar on Windows).
+      - name: Apply the window color scheme on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
       # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
       # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page

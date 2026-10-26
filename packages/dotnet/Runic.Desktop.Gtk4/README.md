@@ -68,7 +68,9 @@ Each view owns a separate WebKit context.
 GTK4 rejects centering, transparent, high-contrast, profile-path,
 custom-argument, and icon-file options, and on Wayland a global position;
 `DesktopHost.Validate` reports each one as a `window-option-unsupported`
-error before a window opens. It supports independent minimum dimensions.
+error before a window opens. It ignores `ColorScheme`, because WebKitGTK follows
+the GTK theme for every window, and reports it as a `color-scheme-unsupported`
+warning. It supports independent minimum dimensions.
 Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` selects the
 GTK 4 window services when the process runs this backend: portal-first file dialogs,
 parented through `Runic.Platform.Linux.Gtk4`, so KDE uses its own picker.

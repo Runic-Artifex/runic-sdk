@@ -179,6 +179,8 @@ public sealed partial class RunicWebView : HwndHost
                     target => WindowsWebView2Interop.OpenExternally(target),
                     // From a WebView2 event: navigate once the event has returned.
                     target => view.Dispatcher.BeginInvoke(() => _controller?.Navigate(target)));
+                // The page's prefers-color-scheme (DesktopWindowHostOptions.ColorScheme); the WPF window keeps its own chrome.
+                initializing.SetPreferredColorScheme(options.ColorScheme);
                 if (options.DocumentStartScript is { } script)
                     await initializing.AddDocumentStartScriptAsync(script);
                 await initializing.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));

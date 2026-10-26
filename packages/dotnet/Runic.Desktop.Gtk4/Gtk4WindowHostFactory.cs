@@ -299,10 +299,11 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
     /// <inheritdoc />
     /// <remarks>
     /// GTK 4 windows reject Centered, Transparent, HighContrast, ProfilePath, BrowserArguments and IconFile, and X and
-    /// Y except on X11.
+    /// Y except on X11. They ignore ColorScheme (<c>color-scheme-unsupported</c>): WebKitGTK follows the GTK theme for
+    /// every window.
     /// </remarks>
     public IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) =>
-        Gtk4WindowHost.GetUnsupportedOptions(options);
+        [.. Gtk4WindowHost.GetUnsupportedOptions(options), .. Gtk4WindowHost.GetIgnoredOptions(options)];
 
     // Explicit, so the factory gains no public member: DesktopHost.Monitors returns these.
     Runic.Platform.IDesktopMonitors IDesktopWindowHostFactory.Monitors => Gtk4Monitors.Source;
@@ -984,6 +985,26 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 "GTK 4 on Wayland ignores DesktopWindowOptions.MonitorId except for a full-screen placement; the compositor places the window.",
                 "Remove the option on Wayland, or rely on the compositor's placement.") with { Severity = DesktopDiagnosticSeverity.Warning });
         return diagnostics;
+    }
+
+    // Options the window opens without applying.
+    internal static IReadOnlyList<DesktopDiagnostic> GetIgnoredOptions(DesktopWindowHostOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.ColorScheme == Runic.Platform.DesktopColorScheme.NoPreference) return [];
+        return
+        [
+            new DesktopDiagnostic(
+                DesktopErrorCategory.CapabilityDenied,
+                "color-scheme-unsupported",
+                "The GTK 4 WebKitGTK 6.0 window ignores DesktopWindowOptions.ColorScheme and follows the system's light or dark appearance.",
+                Retryable: false,
+                Remediation: "WebKitGTK follows the GTK theme for every window. Remove the option on Linux, or style the page with its own light and dark themes.")
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopWindowOptions." + nameof(DesktopWindowOptions.ColorScheme),
+            },
+        ];
     }
 
     private static DesktopDiagnostic Unsupported(string option, string message, string? remediation = null) => new(

@@ -73,6 +73,9 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2NewWindowRequestedEventArgs", "put_Handled", WindowsWebView2Interop.NewWindowHandledSlot),
             ("ICoreWebView2NewWindowRequestedEventArgs", "get_IsUserInitiated", WindowsWebView2Interop.NewWindowUserInitiatedSlot),
             ("ICoreWebView2DownloadStartingEventArgs", "put_Cancel", WindowsWebView2Interop.DownloadStartingCancelSlot),
+            ("ICoreWebView2_13", "get_Profile", WindowsWebView2Interop.WebView13ProfileSlot),
+            ("ICoreWebView2Profile", "get_PreferredColorScheme", WindowsWebView2Interop.ProfileGetPreferredColorSchemeSlot),
+            ("ICoreWebView2Profile", "put_PreferredColorScheme", WindowsWebView2Interop.ProfilePreferredColorSchemeSlot),
         })
         {
             var start = header.IndexOf($"typedef struct {type}Vtbl", StringComparison.Ordinal);
@@ -169,6 +172,26 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.Equal(Interface("ICoreWebView2NavigationCompletedEventHandler"), typeof(IWebViewNavigationCompleted).GUID);
         Assert.Equal(Interface("ICoreWebView2ProcessFailedEventHandler"), typeof(IWebViewProcessFailed).GUID);
         Assert.Equal(Interface("ICoreWebView2DevToolsProtocolEventReceivedEventHandler"), typeof(IWebViewDevToolsEventReceived).GUID);
+    }
+
+    [Test]
+    public void ColorSchemeMatchesThePinnedMicrosoftSdkHeaderAndDwm()
+    {
+        var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
+        Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
+        Assert.Equal(Interface("ICoreWebView2_13"), WindowsWebView2Interop.WebView13Interface);
+        int Constant(string name) => int.Parse(new Regex($@"\b{name}\s*=\s*(\d+)").Match(header).Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(Constant("COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO"), WindowsWebView2Interop.PreferredColorScheme(Runic.Platform.DesktopColorScheme.NoPreference));
+        // LIGHT and DARK are declared as AUTO + 1 and LIGHT + 1.
+        Assert.Contains("COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT\t= ( COREWEBVIEW2_PREFERRED_COLOR_SCHEME_AUTO + 1 )", header);
+        Assert.Contains("COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK\t= ( COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT + 1 )", header);
+        Assert.Equal(1, WindowsWebView2Interop.PreferredColorScheme(Runic.Platform.DesktopColorScheme.Light));
+        Assert.Equal(2, WindowsWebView2Interop.PreferredColorScheme(Runic.Platform.DesktopColorScheme.Dark));
+        // DWMWA_USE_IMMERSIVE_DARK_MODE; a window without a scheme keeps Windows' default title bar.
+        Assert.Equal(20, WindowsWebView2Host.DwmUseImmersiveDarkMode);
+        Assert.Equal(1, WindowsWebView2Host.ImmersiveDarkMode(Runic.Platform.DesktopColorScheme.Dark));
+        Assert.Equal(0, WindowsWebView2Host.ImmersiveDarkMode(Runic.Platform.DesktopColorScheme.Light));
+        Assert.Null(WindowsWebView2Host.ImmersiveDarkMode(Runic.Platform.DesktopColorScheme.NoPreference));
     }
 
     [Test]
