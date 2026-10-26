@@ -2339,6 +2339,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
                 if (attempt >= attempts || !IsStalledBeforeFirstRequest(browserProcess))
                 {
+                    if (await ProbeStalledConnectionAsync().ConfigureAwait(false))
+                    {
+                        stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                    }
                     var timeout = new TimeoutException(stalled, exception);
                     await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
                     throw timeout;
@@ -2379,6 +2383,59 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ReportStalledLaunch(stalled, attempt, attempts);
             connection = relaunch.Connection!;
             browserProcess = relaunch.Process!;
+        }
+    }
+
+    // I-176: when nothing reached the server, records whether the server still accepted a loopback connection at the
+    // timeout, and how long a small write-through to the profile's disk (or the temporary folder's) took. A browser
+    // that stalled while both were quick waited inside itself. Each probe is bounded; true when it recorded them.
+    private async Task<bool> ProbeStalledConnectionAsync()
+    {
+        if ((ConnectionProgress)Volatile.Read(ref _connectionProgress) != ConnectionProgress.NoRequest || Url is not { } url)
+        {
+            return false;
+        }
+        var connect = await MeasureProbeAsync(async cancellationToken =>
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            await client.ConnectAsync(url.Host, url.Port, cancellationToken).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        var profile = _profileConfigured ? null : _generatedProfilePath;
+        var folder = profile ?? Path.GetTempPath();
+        var write = await MeasureProbeAsync(cancellationToken => Task.Run(() =>
+        {
+            using var stream = new FileStream(
+                Path.Combine(folder, $".runic-probe-{Guid.NewGuid():N}"),
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 1,
+                FileOptions.WriteThrough | FileOptions.DeleteOnClose);
+            stream.Write(new byte[4096]);
+            stream.Flush(flushToDisk: true);
+        }, cancellationToken)).ConfigureAwait(false);
+        HandshakeLog.Record($"at the timeout: loopback connect {connect}; {(profile is null ? "temporary" : "profile")} folder write {write}");
+        return true;
+    }
+
+    private static async Task<string> MeasureProbeAsync(Func<CancellationToken, Task> probe)
+    {
+        var limit = TimeSpan.FromSeconds(5);
+        using var cancellation = new CancellationTokenSource(limit);
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            await probe(cancellation.Token).WaitAsync(limit).ConfigureAwait(false);
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Stopwatch.GetElapsedTime(started).TotalMilliseconds:0} ms");
+        }
+        catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
+        {
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"not done within {limit.TotalSeconds:0} s");
+        }
+        catch (Exception exception) when (exception is System.Net.Sockets.SocketException or IOException or UnauthorizedAccessException)
+        {
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"failed after {Stopwatch.GetElapsedTime(started).TotalMilliseconds:0} ms ({exception.GetType().Name})");
         }
     }
 

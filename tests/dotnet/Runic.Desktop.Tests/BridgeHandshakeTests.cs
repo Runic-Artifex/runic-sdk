@@ -110,7 +110,12 @@ public sealed class BridgeHandshakeTests
         var timeout = await Assert.ThrowsAsync<TimeoutException>(() => fixture.Showing);
         output.WriteLine(timeout.Message);
         Assert.Contains("did not connect within 2 seconds: no request reached the server", timeout.Message);
-        Assert.Matches(@"Bridge handshake: \+\d+\.\d{3}s WebView2 controller created; \+\d+\.\d{3}s WebView2 navigation started\.$", timeout.Message);
+        // At the timeout the window also says whether its server still accepted a loopback connection and how long a
+        // small write to the profile's (or the temporary folder's) disk took, to tell a stalled WebView from a stalled machine.
+        Assert.Matches(
+            @"Bridge handshake: \+\d+\.\d{3}s WebView2 controller created; \+\d+\.\d{3}s WebView2 navigation started; " +
+            @"\+\d+\.\d{3}s at the timeout: loopback connect \d+ ms; (profile|temporary) folder write \d+ ms\.$",
+            timeout.Message);
     }
 
     [Test]

@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 
@@ -43,12 +44,18 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
     internal const int EnvironmentCreateControllerSlot = 3;
+    internal const int EnvironmentBrowserVersionSlot = 5;
     internal const int PermissionUriSlot = 3;
     internal const int PermissionKindSlot = 4;
     internal const int PermissionStateSlot = 7;
     internal const int PermissionHandledSlot = 10;
     internal const int WebMessageReceivedSlot = 34;
     internal const int CallDevToolsProtocolMethodSlot = 36;
+    // ICoreWebView2::GetDevToolsProtocolEventReceiver, ICoreWebView2DevToolsProtocolEventReceiver::add_DevToolsProtocolEventReceived
+    // and ICoreWebView2DevToolsProtocolEventReceivedEventArgs::get_ParameterObjectAsJson.
+    internal const int GetDevToolsProtocolEventReceiverSlot = 42;
+    internal const int DevToolsProtocolEventReceivedSlot = 3;
+    internal const int DevToolsProtocolEventParametersSlot = 3;
     internal const int MoveFocusReasonSlot = 3;
     internal const int MoveFocusHandledSlot = 5;
     internal const int WebMessageSourceSlot = 3;
@@ -196,6 +203,15 @@ internal static partial class WindowsWebView2Interop
                 webView, name, json, callback));
     }
 
+    internal static unsafe nint GetDevToolsProtocolEventReceiver(nint webView, string eventName)
+    {
+        nint receiver;
+        fixed (char* name = eventName)
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, nint*, int>)Slot(webView, GetDevToolsProtocolEventReceiverSlot))(
+                webView, name, &receiver));
+        return receiver;
+    }
+
     internal static unsafe void SetBounds(nint controller, Rectangle bounds)
     {
         var rect = new NativeRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom);
@@ -234,6 +250,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
     private nint _framesSource;
     private WebViewFrames? _frames;
     private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
+    private readonly List<nint> _receivers = [];
 
     private WindowsWebView2Controller(nint environment, nint controller)
     {
@@ -494,13 +511,19 @@ internal sealed class WindowsWebView2Controller : IDisposable
         }
     }
 
-    // What the WebView did before its page connected, for the connection timeout's description (I-176): the first
-    // navigation's start and end, and a process that failed. A page that never reaches the server is otherwise
+    // What the WebView did before its page connected, for the connection timeout's description (I-176): the controller's
+    // creation with the runtime's version, the first navigation's start and end, and a process that failed. A page that never reaches the server is otherwise
     // reported with "nothing recorded".
     internal void RegisterStartupProgress(Action<string> record)
     {
+        // The runtime's version, to tell a runtime update from a change of the application.
+        string? version;
+        try { version = GetString(_environment, WindowsWebView2Interop.EnvironmentBrowserVersionSlot); }
+        catch (Exception exception) when (exception is COMException or ArgumentException) { version = null; }
+        record(string.IsNullOrEmpty(version) ? "WebView2 controller created" : $"WebView2 controller created (runtime {version})");
         var started = false;
         var completed = false;
+        var endTrace = TraceFirstDocumentRequest(record);
         AddEvent<IWebViewNavigationStarting>(WindowsWebView2Interop.NavigationStartingSlot, new WebViewEvent(_ =>
         {
             if (started) return;
@@ -511,6 +534,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
         {
             if (completed) return;
             completed = true;
+            endTrace();
             record(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedIsSuccessSlot) != 0
                 ? "WebView2 navigation completed"
                 : "WebView2 navigation failed: " + WebErrorStatus(
@@ -518,6 +542,91 @@ internal sealed class WindowsWebView2Controller : IDisposable
         }));
         AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
             record("WebView2 " + ProcessFailure(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot)))));
+    }
+
+    // The first document request as WebView2's network stack reports it through the DevTools protocol (I-176): when
+    // the request started and how it ended. A stall between "navigation started" and "document request started" is
+    // spent before WebView2 issues the request; one after it, inside WebView2's network stack. The Network domain is
+    // on from before the navigation until that request or the first navigation ends; the returned action ends it.
+    private Action TraceFirstDocumentRequest(Action<string> record)
+    {
+        string? requestId = null;
+        var ended = false;
+        void End()
+        {
+            if (ended) return;
+            ended = true;
+            // The call's failure is the async method's task; only observed.
+            if (_webView != 0) _ = CallDevToolsProtocolMethodAsync("Network.disable", "{}").ContinueWith(
+                static task => _ = task.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+        bool IsFirstDocumentRequest(JsonElement parameters) =>
+            requestId is not null && parameters.TryGetProperty("requestId", out var id) && id.ValueEquals(requestId);
+        try
+        {
+            AddDevToolsEvent("Network.requestWillBeSent", parameters =>
+            {
+                if (ended || requestId is not null || !parameters.TryGetProperty("type", out var type) || !type.ValueEquals("Document")) return;
+                requestId = parameters.GetProperty("requestId").GetString();
+                record("WebView2 document request started");
+            });
+            AddDevToolsEvent("Network.responseReceived", parameters =>
+            {
+                if (ended || !IsFirstDocumentRequest(parameters)) return;
+                var status = parameters.GetProperty("response").GetProperty("status").GetDouble();
+                record(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"WebView2 document response: HTTP {status:0}"));
+                End();
+            });
+            AddDevToolsEvent("Network.loadingFailed", parameters =>
+            {
+                if (ended || !IsFirstDocumentRequest(parameters)) return;
+                var error = parameters.TryGetProperty("errorText", out var text) ? text.GetString() : null;
+                var canceled = parameters.TryGetProperty("canceled", out var flag) && flag.ValueKind == JsonValueKind.True;
+                record($"WebView2 document request failed: {(string.IsNullOrEmpty(error) ? "no error text" : error)}{(canceled ? " (canceled)" : string.Empty)}");
+                End();
+            });
+        }
+        catch (Exception exception) when (exception is COMException or InvalidCastException or ArgumentException)
+        {
+            // A runtime without DevTools protocol events keeps the other entries.
+            record("WebView2 network events unavailable");
+            return () => { };
+        }
+        _ = EnableNetworkTraceAsync();
+        return End;
+
+        async Task EnableNetworkTraceAsync()
+        {
+            try
+            {
+                await CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+                if (!ended) record("WebView2 network events on");
+            }
+            catch (Exception exception) when (exception is COMException or InvalidOperationException or ArgumentException or UnauthorizedAccessException)
+            {
+                record("WebView2 network events unavailable");
+            }
+        }
+    }
+
+    // Events of the DevTools protocol, with their parameters; the receiver is kept until Dispose removes the handler.
+    private void AddDevToolsEvent(string eventName, Action<JsonElement> received)
+    {
+        var receiver = WindowsWebView2Interop.GetDevToolsProtocolEventReceiver(_webView, eventName);
+        _receivers.Add(receiver);
+        AddEvent<IWebViewDevToolsEventReceived>(receiver, WindowsWebView2Interop.DevToolsProtocolEventReceivedSlot, new WebViewEvent(args =>
+        {
+            if (GetString(args, WindowsWebView2Interop.DevToolsProtocolEventParametersSlot) is not { Length: > 0 } json) return;
+            try
+            {
+                using var parameters = JsonDocument.Parse(json);
+                received(parameters.RootElement);
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+            {
+                // Not the documented shape: no entry.
+            }
+        }));
     }
 
     // COREWEBVIEW2_WEB_ERROR_STATUS.
@@ -580,6 +689,8 @@ internal sealed class WindowsWebView2Controller : IDisposable
             {
                 foreach (var entry in _events) entry.Handler.Dispose();
                 _events.Clear();
+                foreach (var receiver in _receivers) WindowsWebView2Interop.Release(receiver);
+                _receivers.Clear();
                 _frames?.Dispose();
                 _frames = null;
                 WindowsWebView2Interop.Release(_framesSource);
@@ -637,6 +748,8 @@ internal partial interface IWebViewFrameDestroyed { [PreserveSig] int Invoke(nin
 internal partial interface IWebViewNavigationCompleted { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("79e0aea4-990b-42d9-aa1d-0fcc2e5bc7f1")]
 internal partial interface IWebViewProcessFailed { [PreserveSig] int Invoke(nint sender, nint args); }
+[GeneratedComInterface, Guid("e2fda4be-5456-406c-a261-3d452138362c")]
+internal partial interface IWebViewDevToolsEventReceived { [PreserveSig] int Invoke(nint sender, nint args); }
 [GeneratedComInterface, Guid("5c4889f0-5ef6-4c5a-952c-d8f1b92d0574")]
 internal partial interface IWebViewDevToolsCompleted { [PreserveSig] int Invoke(int errorCode, nint result); }
 
@@ -697,7 +810,7 @@ internal sealed partial class WebViewScriptCompletion : IWebViewScriptAdded
 internal sealed partial class WebViewEvent(Action<nint> callback) : IWebViewTitleChanged, IWebViewCloseRequested, IWebViewPermissionRequested,
     IWebViewWebMessageReceived, IWebViewMoveFocusRequested, IWebViewNavigationStarting, IWebViewNewWindowRequested, IWebViewDownloadStarting,
     IWebViewAcceleratorKeyPressed,
-    IWebViewFrameCreated, IWebViewFrameWebMessageReceived, IWebViewNavigationCompleted, IWebViewProcessFailed
+    IWebViewFrameCreated, IWebViewFrameWebMessageReceived, IWebViewNavigationCompleted, IWebViewProcessFailed, IWebViewDevToolsEventReceived
 {
     public int Invoke(nint sender, nint args)
     {
