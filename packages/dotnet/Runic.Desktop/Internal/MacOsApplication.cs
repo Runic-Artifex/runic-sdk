@@ -31,7 +31,6 @@ internal static unsafe partial class MacOsApplication
     private const uint QuitApplication = 0x71756974;                             // 'quit'
     // keyAEQuitReason, which the system's quit event for log out, restart and shut down carries; keyErrorNumber.
     private const uint QuitReason = 0x7768793F, ErrorNumber = 0x6572726E;         // 'why?', 'errn'
-    private const int UserCanceled = -128;
     private const string HandleQuitSelector = "runicHandleQuitEvent:withReplyEvent:";
     private const ulong TerminateCancel = 0, TerminateNow = 1;
     // Events kept while no open requests are attached; a later one is dropped.
@@ -53,6 +52,8 @@ internal static unsafe partial class MacOsApplication
     private static nint s_forward;
     // Quit Apple events suspended until the application's work returns. Main thread only.
     private static readonly List<nint> s_pendingQuitReplies = [];
+    // The error numbers of the quit replies Runic resumed, in order (0 for success); for the native smoke.
+    internal static readonly System.Collections.Concurrent.ConcurrentQueue<int> ResumedQuitReplies = new();
     // Set when Runic itself terminates the process, which applicationShouldTerminate: then allows.
     private static int s_terminating;
 
@@ -237,7 +238,7 @@ internal static unsafe partial class MacOsApplication
     // From the main thread: quit through the one path. The suspension is that of a quit Apple event, or 0.
     private static void StartQuit(DesktopQuitSource source, nint suspension)
     {
-        if (suspension != 0) s_pendingQuitReplies.Add(suspension);
+        if (suspension != 0) lock (s_pendingQuitReplies) s_pendingQuitReplies.Add(suspension);
         _ = DesktopQuitCoordinator.RequestAsync(source).ContinueWith(static quit =>
         {
             var outcome = quit.IsCompletedSuccessfully ? quit.Result : DesktopQuitOutcome.Refused;
@@ -248,12 +249,12 @@ internal static unsafe partial class MacOsApplication
     // Main thread.
     private static void FinishQuit(DesktopQuitOutcome outcome)
     {
-        switch (outcome)
+        switch (DesktopQuitCoordinator.ReplyFor(outcome))
         {
-            case DesktopQuitOutcome.Refused:
+            case DesktopQuitReply.Refuse:
                 ResumeQuitReplies(refused: true);
                 break;
-            case DesktopQuitOutcome.Accepted:
+            case DesktopQuitReply.AfterApplication:
                 // The replies wait until the application's work returns (Run).
                 break;
             default:
@@ -274,24 +275,32 @@ internal static unsafe partial class MacOsApplication
     // Main thread. Answers the suspended quit Apple events: success, or userCanceledErr when the application refused.
     private static void ResumeQuitReplies(bool refused)
     {
-        if (s_pendingQuitReplies.Count == 0) return;
+        nint[] suspensions;
+        lock (s_pendingQuitReplies)
+        {
+            suspensions = [.. s_pendingQuitReplies];
+            s_pendingQuitReplies.Clear();
+        }
+        if (suspensions.Length == 0) return;
         var manager = Send(Class("NSAppleEventManager"), Sel("sharedAppleEventManager"));
-        foreach (var suspension in s_pendingQuitReplies.ToArray())
+        int error = refused ? DesktopQuitCoordinator.UserCanceled : 0;
+        foreach (var suspension in suspensions)
         {
             try
             {
                 if (refused)
                 {
+                    // The reply event of the suspended quit event, which the sender receives when it resumes.
                     var reply = Arg(manager, Sel("replyAppleEventForSuspensionID:"), suspension);
                     if (reply != 0)
                         SetParam(reply, Sel("setParamDescriptor:forKeyword:"),
-                            Int32Descriptor(Class("NSAppleEventDescriptor"), Sel("descriptorWithInt32:"), UserCanceled), ErrorNumber);
+                            Int32Descriptor(Class("NSAppleEventDescriptor"), Sel("descriptorWithInt32:"), error), ErrorNumber);
                 }
                 Arg(manager, Sel("resumeWithSuspensionID:"), suspension);
+                ResumedQuitReplies.Enqueue(error);
             }
             catch { /* A reply that cannot be sent leaves the sender to its timeout. */ }
         }
-        s_pendingQuitReplies.Clear();
     }
 
     private static readonly Lazy<nint> DelegateClass = new(CreateDelegateClass);

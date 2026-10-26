@@ -12,6 +12,17 @@ internal enum DesktopQuitOutcome
     NoHost,
 }
 
+// How the platform answers a quit request after the decision: macOS replies to a suspended quit Apple event.
+internal enum DesktopQuitReply
+{
+    // The application refused: reply userCanceledErr now, which cancels a logout.
+    Refuse,
+    // Reply success once the application's work returned and the event loop ended.
+    AfterApplication,
+    // Reply success now and let the platform end the process: nothing would end the application.
+    Terminate,
+}
+
 // One quit path (D045.2): the application's decision (DesktopHostOptions.ConfirmQuitAsync), then each window's close
 // guard, then the shutdown that cancels DesktopHost.ShutdownRequested and closes the remaining windows. The platform's
 // requests (on macOS Quit, the Dock and the system) ask every live host; a request while one is deciding joins it.
@@ -47,6 +58,16 @@ internal static class DesktopQuitCoordinator
         foreach (var host in hosts) host.RequestShutdown(Reason(source), quit: true);
         return inOrder ? DesktopQuitOutcome.Accepted : DesktopQuitOutcome.AcceptedWithoutOrder;
     }
+
+    // userCanceledErr, the error number of a refused quit Apple event's reply.
+    internal const int UserCanceled = -128;
+
+    internal static DesktopQuitReply ReplyFor(DesktopQuitOutcome outcome) => outcome switch
+    {
+        DesktopQuitOutcome.Refused => DesktopQuitReply.Refuse,
+        DesktopQuitOutcome.Accepted => DesktopQuitReply.AfterApplication,
+        _ => DesktopQuitReply.Terminate,
+    };
 
     internal static string Reason(DesktopQuitSource source) => source switch
     {

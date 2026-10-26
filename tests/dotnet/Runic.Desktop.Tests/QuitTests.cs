@@ -167,6 +167,18 @@ public sealed class QuitTests
     }
 
     [Test]
+    public void EachOutcomeMapsToTheReplyOfTheQuitEvent()
+    {
+        // A refusal answers userCanceledErr at once, which cancels a logout; an accepted quit answers when the application
+        // returned; a quit that nothing would end lets the platform terminate after answering.
+        Assert.Equal(DesktopQuitReply.Refuse, DesktopQuitCoordinator.ReplyFor(DesktopQuitOutcome.Refused));
+        Assert.Equal(DesktopQuitReply.AfterApplication, DesktopQuitCoordinator.ReplyFor(DesktopQuitOutcome.Accepted));
+        Assert.Equal(DesktopQuitReply.Terminate, DesktopQuitCoordinator.ReplyFor(DesktopQuitOutcome.AcceptedWithoutOrder));
+        Assert.Equal(DesktopQuitReply.Terminate, DesktopQuitCoordinator.ReplyFor(DesktopQuitOutcome.NoHost));
+        Assert.Equal(-128, DesktopQuitCoordinator.UserCanceled);
+    }
+
+    [Test]
     public async Task MacOSOptionsAreValidated()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(async () => await DesktopHost.StartAsync(new DesktopHostOptions { MacOS = null! }));

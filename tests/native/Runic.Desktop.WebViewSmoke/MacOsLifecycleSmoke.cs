@@ -7,22 +7,24 @@ using Runic.Platform;
 // M1 (D045.2, D045.4) on the macOS runner: the application lifecycle that DesktopEventLoop.Run owns. finishLaunching
 // once, Runic's application delegate, the Dock menu and its commands, reopen, and the quit Apple event: refused by
 // ConfirmQuitAsync, refused by a window's close guard, and accepted with no window open, which cancels
-// ShutdownRequested and lets Run return the application's result. The events are sent to the process's own ID from a
-// background thread that waits for the reply, as the Dock, a script or loginwindow send them from their own processes (the
-// logout one names its reason): Runic holds the reply until the application decided, so a sender on the main thread
-// would wait for itself. Run with --lifecycle on macOS.
+// ShutdownRequested and lets Run return the application's result. The events are sent to the process itself from the
+// main thread, where AppKit handles them, as the Dock, a script or loginwindow send them (the logout one names its
+// reason). The Apple Event Manager hands an event a process sends itself straight to the handler, and AESend reports
+// errAETimeout as soon as Runic's handler suspends it to wait for the decision, so the sender cannot see the reply that
+// Runic resumes later: the smoke reads the replies Runic resumed (MacOsApplication.ResumedQuitReplies) instead. Another
+// process, such as the Dock, receives the reply when Runic resumes it. Run with --lifecycle on macOS.
 internal static partial class MacOsLifecycleSmoke
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(15);
     private const int ApplicationResult = 7;
     private const uint CoreEventClass = 0x61657674, QuitApplication = 0x71756974, ReopenApplication = 0x72617070; // 'aevt', 'quit', 'rapp'
     private const uint QuitReason = 0x7768793F, LogOut = 0x6C6F676F;                                               // 'why?', 'logo'
-    private const long UserCanceled = -128;
+    private const int UserCanceled = -128;
+    private const long AppleEventTimeout = -1712;
 
     internal static void Run(DesktopHostOptions hostOptions)
     {
         var sources = new ConcurrentQueue<DesktopQuitSource>();
-        Task<long>? accepted = null;
         var quitAnswer = 0;
         var options = hostOptions with
         {
@@ -58,7 +60,8 @@ internal static partial class MacOsLifecycleSmoke
             await ExerciseReopenAsync(host);
 
             // The logout's quit event: ConfirmQuitAsync refuses, so no close guard is asked.
-            var refusedLogout = await SendAsync(QuitApplication, reason: LogOut);
+            await SendAsync(QuitApplication, reason: LogOut);
+            var refusedLogout = await ReplyAsync(1);
             Expect(refusedLogout == UserCanceled, $"the refused logout's reply carries userCanceledErr, not {refusedLogout}");
             Expect(sources.Count == 1, $"ConfirmQuitAsync was asked once for the logout: {string.Join(",", sources)}");
             Expect(sources.Last() == DesktopQuitSource.System, $"the logout's source is System, not {sources.Last()}");
@@ -68,7 +71,8 @@ internal static partial class MacOsLifecycleSmoke
 
             // The Dock's quit event: the application accepts, the window's close guard refuses.
             Volatile.Write(ref quitAnswer, 1);
-            var refusedByGuard = await SendAsync(QuitApplication, reason: null);
+            await SendAsync(QuitApplication, reason: null);
+            var refusedByGuard = await ReplyAsync(2);
             Expect(refusedByGuard == UserCanceled, $"the reply of a quit a close guard refused carries userCanceledErr, not {refusedByGuard}");
             Expect(Volatile.Read(ref closeRequests) == 1, $"the close guard was asked once after ConfirmQuitAsync agreed: {closeRequests}");
             Expect(sources.Last() == DesktopQuitSource.Dock, $"the Dock's source is Dock, not {sources.Last()}");
@@ -81,15 +85,15 @@ internal static partial class MacOsLifecycleSmoke
 
             // With no window open, the quit event cancels ShutdownRequested; the application then returns, and its reply
             // follows when Run's loop ends.
-            accepted = SendAsync(QuitApplication, reason: null);
+            await SendAsync(QuitApplication, reason: null);
             await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitAsync(StepTimeout);
             Expect(sources.Count == 3 && sources.Last() == DesktopQuitSource.Dock, $"the third quit asked ConfirmQuitAsync: {string.Join(",", sources)}");
             Pass("the quit event with no window open cancels ShutdownRequested.");
             return ApplicationResult;
         });
         Expect(result == ApplicationResult, $"DesktopEventLoop.Run returned {result} instead of the application's result after the quit");
-        var acceptedReply = accepted!.WaitAsync(StepTimeout).GetAwaiter().GetResult();
-        Expect(acceptedReply == 0, $"the accepted quit's reply reports success, not {acceptedReply}");
+        var replies = MacOsApplication.ResumedQuitReplies.ToArray();
+        Expect(replies is [UserCanceled, UserCanceled, 0], $"the accepted quit's reply was resumed with success when Run's loop ended: {string.Join(",", replies)}");
         Expect(MacOsApplication.WillFinishLaunchingCount == 1, $"finishLaunching was sent {MacOsApplication.WillFinishLaunchingCount} times");
         Pass("DesktopEventLoop.Run returned the application's result after the quit event, whose reply then reported success.");
     }
@@ -145,32 +149,44 @@ internal static partial class MacOsLifecycleSmoke
         var reopened = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         host.ReopenRequested += (_, e) => reopened.TrySetResult(e.HasVisibleWindows);
         var replied = await SendAsync(ReopenApplication, reason: null);
-        Expect(replied == 0, $"the reopen event's reply reports success, not {replied}");
+        Expect(replied == 0, $"sending the reopen event, which AppKit answers at once, reports {replied}");
         bool visible = await reopened.Task.WaitAsync(StepTimeout);
         Pass($"the reopen event raises ReopenRequested (HasVisibleWindows={visible}).");
     }
 
-    // Sends the Apple event to this process's ID from a background thread and waits up to 30 s for the reply: 0, or the
-    // error number of the reply (userCanceledErr when the application refused to quit) or of the send.
-    private static Task<long> SendAsync(uint eventId, uint? reason) => Task.Factory.StartNew(() =>
+    // Sends the Apple event to this process from the main thread without waiting for a reply, and returns AESend's
+    // status: errAETimeout when the handler suspended the event.
+    private static async Task<long> SendAsync(uint eventId, uint? reason)
     {
-        var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
-        try
+        long status = 0;
+        await MacOsMainThread.InvokeAsync(() =>
         {
-            var descriptor = Class("NSAppleEventDescriptor");
-            var target = ProcessDescriptor(descriptor, Sel("descriptorWithProcessIdentifier:"), Environment.ProcessId);
-            var appleEvent = Create(descriptor, Sel("appleEventWithEventClass:eventID:targetDescriptor:returnID:transactionID:"),
-                CoreEventClass, eventId, target, -1, 0);
-            if (reason is { } why)
-                SetParam(appleEvent, Sel("setParamDescriptor:forKeyword:"), EnumDescriptor(descriptor, Sel("descriptorWithEnumCode:"), why), QuitReason);
-            nint error = 0;
-            // NSAppleEventSendWaitForReply (kAEWaitReply).
-            var reply = SendEvent(appleEvent, Sel("sendEventWithOptions:timeout:error:"), 3, 30, ref error);
-            if (error != 0) return (long)Send(error, Sel("code"));
-            return reply == 0 ? -1 : 0;
-        }
-        finally { Send(pool, Sel("drain")); }
-    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
+            try
+            {
+                var descriptor = Class("NSAppleEventDescriptor");
+                var appleEvent = Create(descriptor, Sel("appleEventWithEventClass:eventID:targetDescriptor:returnID:transactionID:"),
+                    CoreEventClass, eventId, Send(descriptor, Sel("currentProcessDescriptor")), -1, 0);
+                if (reason is { } why)
+                    SetParam(appleEvent, Sel("setParamDescriptor:forKeyword:"), EnumDescriptor(descriptor, Sel("descriptorWithEnumCode:"), why), QuitReason);
+                nint error = 0;
+                // NSAppleEventSendNoReply.
+                SendEvent(appleEvent, Sel("sendEventWithOptions:timeout:error:"), 1, 10, ref error);
+                if (error != 0) status = (long)Send(error, Sel("code"));
+            }
+            finally { Send(pool, Sel("drain")); }
+        }, CancellationToken.None);
+        if (status is not (0 or AppleEventTimeout))
+            throw new InvalidOperationException($"Lifecycle: sending the Apple event failed with {status}.");
+        return status;
+    }
+
+    // The error number of the count-th quit reply Runic resumed.
+    private static async Task<long> ReplyAsync(int count)
+    {
+        await WaitAsync(() => MacOsApplication.ResumedQuitReplies.Count >= count, $"the quit reply {count} resumed");
+        return MacOsApplication.ResumedQuitReplies.ElementAt(count - 1);
+    }
 
     private static nint Application() => Send(Class("NSApplication"), Sel("sharedApplication"));
 
@@ -200,7 +216,6 @@ internal static partial class MacOsLifecycleSmoke
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Bool(nint target, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Create(nint target, nint selector, uint eventClass, uint eventId, nint targetDescriptor, short returnId, int transactionId);
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint ProcessDescriptor(nint target, nint selector, int processIdentifier);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint EnumDescriptor(nint target, nint selector, uint code);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetParam(nint target, nint selector, nint descriptor, uint keyword);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint SendEvent(nint target, nint selector, nuint options, double timeout, ref nint error);
