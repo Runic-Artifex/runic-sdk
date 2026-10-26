@@ -41,3 +41,5 @@ Runic.Desktop.DesktopWindowHostOptions.ColorScheme.get -> Runic.Platform.Desktop
 Runic.Desktop.DesktopWindowHostOptions.ColorScheme.init -> void
 Runic.Desktop.DesktopWindowOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme
 Runic.Desktop.DesktopWindowOptions.ColorScheme.init -> void
+static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync<T>(System.Func<T>! func, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>

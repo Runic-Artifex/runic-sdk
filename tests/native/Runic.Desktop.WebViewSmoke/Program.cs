@@ -64,6 +64,11 @@ try
         // Must run before the first await, as --zoom.
         MacOsLifecycleSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--main-thread", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
+    {
+        // Must run before the first await, as --zoom.
+        MacOsMainThreadSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--web-content", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
     {
         // Must run before the first await, as --zoom.
