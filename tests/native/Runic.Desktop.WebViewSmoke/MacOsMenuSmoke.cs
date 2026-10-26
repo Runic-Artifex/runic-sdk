@@ -192,6 +192,18 @@ internal static partial class MacOsMenuSmoke
     // as a user's click would.
     private static async Task ExerciseContextMenuAsync(DesktopWindow window)
     {
+        try { await ExerciseContextMenuCoreAsync(window); }
+        catch
+        {
+            // The steps of the context menus, to tell which menu tracked, was dismissed or never started.
+            Console.WriteLine("Context menu trace: " + string.Join("; ", Runic.Desktop.Internal.MacOsWkWebViewHost.ContextMenuTrace));
+            throw;
+        }
+        Console.WriteLine("Context menu trace: " + string.Join("; ", Runic.Desktop.Internal.MacOsWkWebViewHost.ContextMenuTrace));
+    }
+
+    private static async Task ExerciseContextMenuCoreAsync(DesktopWindow window)
+    {
         if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu))
             throw new InvalidOperationException("Context menu: the window does not report the capability.");
         System.Collections.Immutable.ImmutableArray<DesktopMenuEntry> items =
@@ -203,10 +215,18 @@ internal static partial class MacOsMenuSmoke
         // Chosen: the first item's action, sent while the menu tracks, then the menu closes.
         var chosen = window.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 40, Y = 30 }).AsTask();
         var menu = await TrackingAsync(0);
+        // Main-thread work queued while the menu tracks runs in the tracking run loop mode, not after the menu closes.
+        string? mode = null;
+        await window.InvokeNativeAsync(_ => mode = CurrentRunLoopMode()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        if (mode is null or "kCFRunLoopDefaultMode" || Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != menu)
+            throw new InvalidOperationException($"Context menu: work queued while the menu tracks ran in mode {mode ?? "(none)"}, not during tracking.");
+        Console.WriteLine($"PASS Main-thread work runs while a context menu tracks ({mode}).");
         PerformInTrackingMode(menu, "performActionForItemAtIndex:", 0);
         PerformInTrackingMode(menu, "cancelTracking", 0);
         var result = await chosen.WaitAsync(TimeSpan.FromSeconds(10));
         if (!ReferenceEquals(result, items[0])) throw new InvalidOperationException($"Context menu: returned {result?.Title ?? "null"}, not Rename.");
+        // The chosen item's action completes the request while the menu still tracks; it closes right after.
+        await NotTrackingAsync();
 
         // Dismissed: a later menu of the window closes the open one, which returns null; cancellation closes the later one.
         var first = window.ShowContextMenuAsync(items).AsTask();
@@ -225,6 +245,15 @@ internal static partial class MacOsMenuSmoke
         catch (OperationCanceledException) { }
         if (Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0)
             throw new InvalidOperationException("Context menu: a menu still tracks after the last one closed.");
+    }
+
+    private static async Task NotTrackingAsync()
+    {
+        for (var waited = 0; Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0; waited += 20)
+        {
+            if (waited > 10_000) throw new InvalidOperationException("Context menu: the chosen menu still tracks after 10 seconds.");
+            await Task.Delay(20);
+        }
     }
 
     // Waits until a context menu other than the given one tracks.
@@ -254,6 +283,15 @@ internal static partial class MacOsMenuSmoke
     }
 
     private static nint Utf8(string text) => Marshal.StringToCoTaskMemUTF8(text);
+
+    // The mode the main run loop runs in now. Main thread.
+    private static string? CurrentRunLoopMode()
+    {
+        var mode = CopyCurrentMode(GetCurrentRunLoop());
+        if (mode == 0) return null;
+        try { return Text(mode); }
+        finally { CFRelease(mode); }
+    }
 
     private static IEnumerable<nint> Items(nint menu)
     {
@@ -287,4 +325,6 @@ internal static partial class MacOsMenuSmoke
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventCreateKeyboardEvent")] private static partial nint CreateKeyboardEvent(nint source, ushort key, [MarshalAs(UnmanagedType.U1)] bool down);
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventSetFlags")] private static partial void SetFlags(nint keyEvent, ulong flags);
     [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRelease")] private static partial void CFRelease(nint value);
+    [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRunLoopGetCurrent")] private static partial nint GetCurrentRunLoop();
+    [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRunLoopCopyCurrentMode")] private static partial nint CopyCurrentMode(nint runLoop);
 }

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Opens a file and a URL through LaunchServices with an app bundle built around the NativeAOT
 # Runic.Platform.Runtime.Tests executable, whose Info.plist registers a URL scheme and plain text. The executable
-# notices it runs from a bundle (MacOpenEventsNativeTests.RunBundleProbe), creates its open requests before
-# finishing launching, and writes the first request's items to <bundle name>.log beside the bundle.
+# notices it runs from a bundle (MacOpenEventsNativeTests.RunBundleProbe), creates its open requests a second after
+# it finished launching, which Runic Desktop's application delegate kept the launch's event for, and writes the first
+# request's items to <bundle name>.log beside the bundle.
 # Before that, the bundle registers itself through IDesktopOpenRegistration (--registration-probe).
 # CI runners only: it registers the bundle with LaunchServices, and unregisters it at the end.
 # Usage: macos-open-probe.sh <directory of the NativeAOT test executable>

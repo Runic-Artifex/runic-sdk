@@ -197,16 +197,26 @@ login item's status reports that as `Other`.
 the open-documents and get-URL Apple events that LaunchServices sends for the
 `CFBundleDocumentTypes` and `CFBundleURLTypes` of the bundle's `Info.plist`, at
 launch and while the application runs, and the arguments of launches from a
-terminal. Create it on the main thread before the first window or status icon:
-the launch's own event is sent as the application finishes launching, so
-creating it later throws `InvalidOperationException`. The events arrive while
-the Desktop event loop runs. URLs with schemes not in the options are ignored.
+terminal. The events arrive while the Desktop event loop runs. URLs with
+schemes not in the options are ignored.
+
+Under Runic Desktop's `DesktopEventLoop.Run`, Runic's application delegate
+receives the open events and universal links from before the application's code
+runs and keeps them (up to 64) until open requests exist. Create them on any
+thread, also after the first window or status icon: the launch's own event,
+which the system sends as the application finishes launching, follows the
+launch's arguments. After the open requests are disposed, the delegate keeps
+later events for the next ones. Without that event loop, create them on the main
+thread before the first window or status icon: the launch's own event is sent
+as the application finishes launching, so creating them later throws
+`InvalidOperationException`.
 
 With `WebLinkHosts`, universal links to those hosts are requests too. AppKit
 hands a universal link (an `NSUserActivity` of type
-`NSUserActivityTypeBrowsingWeb`) only to the application delegate, so Runic
-sets a delegate that implements `application:continueUserActivity:restorationHandler:`
-and `applicationSupportsSecureRestorableState:` (YES) and nothing else; an
+`NSUserActivityTypeBrowsingWeb`) only to the application delegate: Runic
+Desktop's under the Desktop event loop. Without it, Runic sets a delegate that
+implements `application:continueUserActivity:restorationHandler:` and
+`applicationSupportsSecureRestorableState:` (YES) and nothing else; an
 application with its own delegate, set before or after, gets the first method
 added to the delegate's class where it has none. macOS delivers universal links
 only to a bundle signed with the Associated Domains entitlement

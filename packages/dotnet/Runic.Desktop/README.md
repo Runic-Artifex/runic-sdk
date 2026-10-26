@@ -44,6 +44,22 @@ and `dotnet runic dev` forward do not. Set
 `DesktopHostOptions.HandleShutdownSignals` to `false` to handle these signals
 yourself. Hosts created with `DesktopHost.StartAsync` do not handle signals.
 
+On macOS, `DesktopEventLoop.Run` (both overloads) creates the shared
+`NSApplication` and sets Runic's application delegate before the application's
+code runs. The process main thread then runs AppKit's own loop (`[NSApp run]`),
+which sends `finishLaunching` once, and sleeps while nothing happens. The
+application's code runs on the thread pool. Runic's main-thread work (window
+calls, `DesktopWindow.InvokeNativeAsync`, monitors, menus and the
+`Runic.Platform.MacOS` services) goes through the main dispatch queue, which
+AppKit runs in every run loop mode, also while a menu is open, a window is
+resized live or a modal panel runs. When the application's work completes,
+Runic stops the loop and `Run` returns. Runic's delegate receives the
+open-documents and get-URL Apple events and universal links from the start and
+keeps them until the application creates its open requests
+(`MacOSPlatformProvider.CreateOpenRequests`), which it may do at any time. Runic
+owns the application delegate: an application that sets `NSApp.delegate`
+itself replaces it and loses these events.
+
 `DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
 
 | Case | Serves |

@@ -57,18 +57,24 @@ public static class MacOSPlatformProvider
     /// <param name="instance">The running instance, or <see langword="null"/> without single instance.</param>
     /// <param name="launch">This process's launch, or <see langword="null"/>.</param>
     /// <remarks>
-    /// <para>Call it on the main thread before the first window or status icon, because the system sends the open event of
-    /// the launch itself as the application finishes launching; one instance per process. The events arrive while
-    /// the Desktop event loop runs.</para>
+    /// <para>One instance per process; the events arrive while the Desktop event loop runs. Under Runic Desktop's
+    /// <c>DesktopEventLoop.Run</c>, Runic's application delegate receives the open events and universal links from
+    /// before the application's code runs and keeps them (up to 64) until open requests exist, so call this on any
+    /// thread at any time, also after the first window or status icon: the launch's own open event, which the system
+    /// sends as the application finishes launching, is then the first request after the launch's arguments. Disposing
+    /// the instance makes the delegate keep later events for the next one.</para>
+    /// <para>Without that event loop, call it on the main thread before the first window or status icon, because the
+    /// system sends the open event of the launch itself as the application finishes launching.</para>
     /// <para>With <see cref="DesktopOpenOptions.WebLinkHosts"/>, universal links to those hosts are requests too: AppKit
-    /// hands them to the application delegate (<c>application:continueUserActivity:restorationHandler:</c>), so Runic
-    /// sets one that answers only that and <c>applicationSupportsSecureRestorableState:</c> (YES); an application that
-    /// sets its own delegate, before or after, gets the method added to the delegate's class where it has none. The
-    /// bundle needs the Associated Domains entitlement (<c>applinks:</c> each host, which a provisioning profile grants)
-    /// and each host an <c>apple-app-site-association</c> file.</para>
+    /// hands them to the application delegate (<c>application:continueUserActivity:restorationHandler:</c>). Under the
+    /// Desktop event loop that is Runic Desktop's delegate. Without it, Runic sets one that answers only that and
+    /// <c>applicationSupportsSecureRestorableState:</c> (YES); an application that sets its own delegate, before or
+    /// after, gets the method added to the delegate's class where it has none. The bundle needs the Associated Domains
+    /// entitlement (<c>applinks:</c> each host, which a provisioning profile grants) and each host an
+    /// <c>apple-app-site-association</c> file.</para>
     /// </remarks>
-    /// <exception cref="InvalidOperationException">Not on the main thread, after the application finished launching,
-    /// or while another instance is alive.</exception>
+    /// <exception cref="InvalidOperationException">Another instance is alive; or, without the Desktop event loop, not on
+    /// the main thread or after the application finished launching.</exception>
     public static IDesktopOpenRequests CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null)
     {
         ArgumentNullException.ThrowIfNull(options);

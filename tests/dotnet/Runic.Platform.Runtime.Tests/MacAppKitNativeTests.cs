@@ -19,6 +19,7 @@ internal sealed partial class MacAppKitNativeTests
     public async Task NativeAppKitAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The AppKit checks need macOS.");
+        await MainThreadReadyAsync();
         await StatusItemAsync();
         await StatusItemQueueAsync();
         await LoginItemAsync();
@@ -167,6 +168,55 @@ internal sealed partial class MacAppKitNativeTests
         Pass("the filter pop-up keeps filters with the same name and swaps the panel's types for the chosen filter");
     }
 
+    // The event loop's [NSApp run] launches the application while the tests already run; the status item's requests give
+    // up after MacStatusIcon.MainThreadTimeout. Waits until the main thread serves its queue, and reports how long the
+    // launch kept it.
+    private static async Task MainThreadReadyAsync()
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        bool running = false, finished = false;
+        long policy = -1;
+        var ready = MacOsMainQueue.InvokeAsync(() =>
+        {
+            var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+            running = Bool(application, Sel("isRunning")) != 0;
+            finished = Bool(Send(Class("NSRunningApplication"), Sel("currentApplication")), Sel("isFinishedLaunching")) != 0;
+            policy = Send(application, Sel("activationPolicy"));
+        }).AsTask();
+        if (await Task.WhenAny(ready, Task.Delay(TimeSpan.FromSeconds(20))) != ready)
+        {
+            // Where the main thread is instead: sample(1) prints every thread's stack.
+            Console.WriteLine($"main thread: no queued work ran within 20 s; sampling process {Environment.ProcessId}");
+            Console.WriteLine(await SampleAsync());
+            Console.WriteLine("main thread: " + EventLoopState());
+        }
+        await ready.WaitAsync(TimeSpan.FromSeconds(70));
+        Console.WriteLine($"main thread: first queued work ran after {waited.ElapsedMilliseconds} ms; isRunning={running}, " +
+            $"isFinishedLaunching={finished}, activationPolicy={policy}; {EventLoopState()}");
+    }
+
+    // Runic.Desktop's record of how the event loop served the main thread.
+    private static string EventLoopState() =>
+        $"[NSApp run] returned early after {Runic.Desktop.Internal.MacOsApplication.RunReturnedEarlyAfterMilliseconds} ms (-1: not); " +
+        $"fallback run loop results (0 other, 1 finished, 2 stopped, 3 timed out, 4 handled) {string.Join("/", Runic.Desktop.Internal.MacOsApplication.FallbackRunLoopResults)}; " +
+        $"loops {Runic.Desktop.Internal.MacOsApplication.Generation}, stop: sent {Runic.Desktop.Internal.MacOsApplication.StopsSent} " +
+        $"({Runic.Desktop.Internal.MacOsApplication.StopsSentBeforeRun} before this loop); launches {Runic.Desktop.Internal.MacOsApplication.WillFinishLaunchingCount}";
+
+    private static async Task<string> SampleAsync()
+    {
+        try
+        {
+            using var sample = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/usr/bin/sample",
+                [Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), "1", "-mayDie"])
+            { RedirectStandardOutput = true, RedirectStandardError = true })!;
+            var output = sample.StandardOutput.ReadToEndAsync();
+            var error = sample.StandardError.ReadToEndAsync();
+            await sample.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            return await output + await error;
+        }
+        catch (Exception failure) { return $"sample failed: {failure.Message}"; }
+    }
+
     private static async Task StatusItemAsync()
     {
         var activations = Channel.CreateUnbounded<DesktopStatusIconActivation>();
@@ -191,7 +241,11 @@ internal sealed partial class MacAppKitNativeTests
                 new DesktopMenuItem("Quit", "quit"),
             ],
         };
-        Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The status item was not shown.");
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var showing = await icon.ShowAsync(state).AsTask().WaitAsync(Step);
+        Console.WriteLine($"status item: the first ShowAsync returned {showing} after {started.ElapsedMilliseconds} ms");
+        Require(showing is PlatformResult<PlatformUnit>.Success,
+            $"The status item was not shown: {showing} after {started.ElapsedMilliseconds} ms (MainThreadTimeout {MacStatusIcon.MainThreadTimeout}).");
         var shown = await icon.InspectAsync();
         Pass($"status item shown: {shown}");
         Require(shown is { Shown: true, HasImage: true, Template: true, Representations: 2, Title: "", ToolTip: "Runic status item\nAll quiet", AccessibilityLabel: "Runic status item" },

@@ -342,6 +342,13 @@ static void RunEventLoopSmoke()
             throw new InvalidOperationException($"The event-loop window reported title '{title}'.");
         }
         await window.CloseAsync();
+        if (OperatingSystem.IsMacOS())
+        {
+            // A second window does not launch the application again.
+            await using var second = await surface.OpenWindowAsync(FirstWindowOptions());
+            await second.CloseAsync();
+            ExpectLaunchedOnce("the event loop's two windows");
+        }
         return 42;
     });
     if (exitCode != 42)
@@ -420,6 +427,7 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
         }
         SmokeSoak.Completed();
         }
+        ExpectLaunchedOnce("the macOS smoke's windows");
     }
     finally
     {
@@ -427,6 +435,14 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
         await host.DisposeAsync();
     }
 });
+
+// DesktopEventLoop.Run's AppKit loop sends finishLaunching once, not once per window.
+static void ExpectLaunchedOnce(string after)
+{
+    var launches = Runic.Desktop.Internal.MacOsApplication.WillFinishLaunchingCount;
+    if (launches != 1) throw new InvalidOperationException($"The application finished launching {launches} times after {after}; expected once.");
+    Console.WriteLine($"PASS finishLaunching was sent once after {after}.");
+}
 
 static Task RunMacOsWindowAsync(
     DesktopHost host,
