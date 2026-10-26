@@ -70,6 +70,12 @@ try
         // main thread.
         Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions() with { StandardMenuTitles = MonitorSmoke.GermanTitles }, MonitorSmoke.RunAsync);
     }
+    else if (args.Contains("--file-drop", StringComparer.Ordinal) && OperatingSystem.IsLinux())
+    {
+        // Only the GTK 3 file drop, drag out and frame drops (W315-006, B11), for repeated local runs.
+        await using var host = await DesktopHost.StartAsync(CreateHostOptions());
+        await FileDropSmoke.RunAsync(host);
+    }
     else if (args.Contains("--event-loop", StringComparer.Ordinal))
     {
         // Must run before the first await: on macOS the entry point picks the main-thread AppKit loop.

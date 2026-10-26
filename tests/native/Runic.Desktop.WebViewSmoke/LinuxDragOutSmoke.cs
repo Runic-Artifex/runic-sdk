@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Runic.Desktop;
 using Runic.Platform;
@@ -41,9 +43,21 @@ internal static class LinuxDragOutSmoke
         """;
 
     private static TaskCompletionSource<string[]> s_dropped = NewDrop();
+    // I-214: the stages of the running drag and what its drop target saw, with their times, for a failure's message.
+    private static readonly Stopwatch s_clock = new();
+    private static readonly ConcurrentQueue<string> s_stages = new();
 
     // The toolkit's drop target window reports the URIs of a drop here (GTK thread).
-    internal static void RecordDrop(string[] uris) => s_dropped.TrySetResult(uris);
+    internal static void RecordDrop(string[] uris)
+    {
+        Stage($"the drop target received {uris.Length} URIs");
+        s_dropped.TrySetResult(uris);
+    }
+
+    // A stage of the running drag, or what the toolkit's drop target saw (any thread).
+    internal static void Stage(string stage) => s_stages.Enqueue($"{s_clock.ElapsedMilliseconds} ms {stage}");
+
+    private static string Stages() => string.Join("; ", s_stages);
 
     // The toolkit's test windows and where things are on the test screen. The page window opens with PageWindow and
     // its web view covers PageCenter; the Create functions run on the GTK thread.
@@ -129,6 +143,8 @@ internal static class LinuxDragOutSmoke
         Pointer pointer, Toolkit toolkit, DesktopDragData data, bool escape)
     {
         s_dropped = NewDrop();
+        s_stages.Clear();
+        s_clock.Restart();
         var startsBefore = await surface.ExecuteJavaScriptAsync("return String(window.__dragStarts);");
         var press = toolkit.PageCenter;
         await pointer.PressAsync(press.X, press.Y);
@@ -142,19 +158,23 @@ internal static class LinuxDragOutSmoke
             if (waited.Elapsed > TimeSpan.FromSeconds(10))
             {
                 pointer.Release();
-                throw new TimeoutException($"The {toolkit.Name} page saw no dragstart.");
+                throw new TimeoutException($"The {toolkit.Name} page saw no dragstart. Stages: {Stages()}");
             }
             await Task.Delay(50);
         }
+        Stage("the page saw dragstart");
         var drag = window.StartDragAsync(data).AsTask();
         await Task.Delay(300);
         if (drag.IsCompleted)
         {
             pointer.Release();
-            throw new InvalidOperationException($"The {toolkit.Name} drag out ended at once with {await drag} while the button was held.");
+            throw new InvalidOperationException($"The {toolkit.Name} drag out ended at once with {await drag} while the button was held. Stages: {Stages()}");
         }
+        _ = drag.ContinueWith(static (ended, _) => Stage($"the drag ended with {(ended.IsCompletedSuccessfully ? ended.Result : ended.Status)}"),
+            null, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         var end = escape && toolkit.NowherePoint is { } nowhere ? nowhere : toolkit.DropPoint;
         await pointer.MoveAsync(moved, end);
+        Stage($"the pointer reached ({end.X}, {end.Y})");
         // Let the target answer the last position before the drop.
         for (var wiggle = 0; wiggle < 6; wiggle++)
         {
@@ -164,9 +184,11 @@ internal static class LinuxDragOutSmoke
         await Task.Delay(500);
         if (escape && toolkit.NowherePoint is null)
         {
+            Stage("Escape");
             pointer.Escape();
             await Task.Delay(300);
         }
+        Stage("the button was released");
         pointer.Release();
         DesktopDragEffects effect;
         try
@@ -176,12 +198,24 @@ internal static class LinuxDragOutSmoke
         catch (TimeoutException)
         {
             pointer.Escape();
-            throw new TimeoutException($"The {toolkit.Name} drag out did not end within 15 seconds.");
+            throw new TimeoutException($"The {toolkit.Name} drag out did not end within 15 seconds. Stages: {Stages()}");
         }
         string[]? uris = null;
         if (!escape)
         {
-            uris = await s_dropped.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            // A drag that ended without a drop delivers no URIs; say so at once instead of waiting for them.
+            if (effect == DesktopDragEffects.None)
+                throw new InvalidOperationException($"The {toolkit.Name} drag out onto the drop target ended with None. Stages: {Stages()}");
+            try
+            {
+                uris = await s_dropped.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (TimeoutException)
+            {
+                throw new TimeoutException(
+                    $"The {toolkit.Name} drag out ended with {effect}, but its drop target received no URIs within 10 seconds. Stages: {Stages()}");
+            }
+            Console.WriteLine($"{toolkit.Name} drag out stages: {Stages()}.");
         }
         else
         {

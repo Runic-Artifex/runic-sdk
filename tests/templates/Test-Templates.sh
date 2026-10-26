@@ -190,6 +190,9 @@ configure_candidate_registry() {
   local manager="$1"
   local output="$2"
   (cd "$output/Frontend" && npm config set --location=project @runic-artifex:registry "$registry_url")
+  # I-167: npm waits 5 minutes for a stalled registry response before it retries, as long as the whole
+  # URL wait below. A minute lets its retries (fetch-retries, 2 by default) recover from one stall.
+  (cd "$output/Frontend" && npm config set --location=project fetch-timeout 60000)
   if [[ "$manager" == npm ]]; then
     RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
       "$output/Frontend/package-lock.json" "${npm_archives[@]}"
@@ -207,6 +210,12 @@ frontend_script() {
   esac
 }
 
+# Whether dotnet runic dev's log shows its frontend dependency install running.
+installing_frontend() {
+  grep -Fq '[dev] Installing Views Window frontend dependencies...' "$1" \
+    && ! grep -Eq '^\[dev\] Installing Views Window frontend dependencies (completed|failed)' "$1"
+}
+
 # Starts a command in its own process group with RUNIC_APPLICATION_SERVE_ONLY,
 # waits for the application's URL, and fetches the served document. The
 # development document points at the frontend development server; a production
@@ -217,18 +226,37 @@ serve_and_fetch() {
   local document="$3"
   local expect_development="$4"
   shift 4
+  local started=$SECONDS
   setsid env -C "$directory" RUNIC_APPLICATION_SERVE_ONLY=1 "$@" > "$log" 2>&1 < /dev/null &
   served_group=$!
   local url=""
-  for _ in $(seq 1 600); do
+  # I-167: dotnet runic dev installs the frontend dependencies from the registries before it starts
+  # anything. The install has its own 10 minutes; restore, build and start keep 5 minutes besides.
+  local waited=0 install_limit=1200 install_waited=0
+  while (( waited < 600 )); do
     url="$(grep -o 'RUNIC_APPLICATION_URL=[^[:space:]]*' "$log" | head -n 1 | cut -d= -f2- || true)"
     [[ -n "$url" ]] && break
     if ! kill -0 "$served_group" 2>/dev/null; then break; fi
     sleep 0.5
+    if installing_frontend "$log"; then
+      (( install_waited += 1 ))
+      (( install_waited < install_limit )) || break
+    else
+      (( waited += 1 ))
+    fi
   done
   if [[ -z "$url" ]]; then
-    echo "The application did not report its URL: $*" >&2
+    local stage
+    stage="$(grep -E '^\[dev\] ' "$log" | tail -n 1 || true)"
+    echo "The application did not report its URL within $((SECONDS - started)) s (the frontend install took $((install_waited / 2)) s; last stage: ${stage:-none}): $*" >&2
     tail -n 80 "$log" >&2
+    # npm writes what each request waited for to its debug log, which dev does not show before the install ends.
+    local npm_log
+    npm_log="$(ls -t "${npm_config_cache:-$HOME/.npm}"/_logs/*-debug-0.log 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$npm_log" ]] && installing_frontend "$log"; then
+      echo "The newest npm debug log ($npm_log):" >&2
+      tail -n 40 "$npm_log" >&2
+    fi
     exit 1
   fi
   # WebUI admits one client and identifies it by the cookie set on the first

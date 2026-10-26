@@ -132,12 +132,17 @@ export function killTree(child) {
  * the full `timeout`. A launch whose Chromium exited or whose DevTools
  * answered is not retried. The final error names every launch's failure, and
  * `browser.launches` tells how many launches a connection took.
+ *
+ * With `webSocketEvents`, `diagnostics()` also lists how the page's
+ * WebSockets closed or failed (DevTools Network domain), with each event's
+ * time since the connection. Chromium then starts on about:blank and opens
+ * `url` once the Network domain is enabled, so the first WebSocket is seen.
  */
-export async function launchChromium(url, { profilePrefix = "runic-smoke-", timeout = 12_000, relaunches = 1 } = {}) {
+export async function launchChromium(url, { profilePrefix = "runic-smoke-", timeout = 12_000, relaunches = 1, webSocketEvents = false } = {}) {
   const failures = [];
   for (let launch = 1; ; launch++) {
     const started = performance.now();
-    const { browser, connect, silent } = await startChromium(url, profilePrefix);
+    const { browser, connect, silent } = await startChromium(url, profilePrefix, webSocketEvents);
     try {
       await connect(timeout);
       browser.launches = launch;
@@ -158,16 +163,17 @@ export async function launchChromium(url, { profilePrefix = "runic-smoke-", time
   }
 }
 
-async function startChromium(url, profilePrefix) {
+async function startChromium(url, profilePrefix, webSocketEvents) {
   const profile = await mkdtemp(join(tmpdir(), profilePrefix));
+  const first = webSocketEvents ? "about:blank" : url;
   const child = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? "chromium", [
     "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
     "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`, url,
+    `--user-data-dir=${profile}`, first,
   ], { stdio: "ignore" });
   const consoleLines = [];
   const pending = new Map();
-  let socket, nextId = 0, closed = false, answered = false;
+  let socket, nextId = 0, closed = false, answered = false, connected = performance.now();
 
   const remember = line => { consoleLines.push(line); if (consoleLines.length > 100) consoleLines.shift(); };
   const browser = {
@@ -239,9 +245,9 @@ async function startChromium(url, profilePrefix) {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal });
       answered = true;
       targets = await response.json();
-      return targets.find(entry => entry.type === "page" && entry.url.startsWith(url));
+      return targets.find(entry => entry.type === "page" && entry.url.startsWith(first));
     }, {
-      label: `the Chromium page for ${url}`, timeout, attemptTimeout: 5_000,
+      label: `the Chromium page for ${first}`, timeout, attemptTimeout: 5_000,
       detail: () => `Chromium ${exited(child) ? `exited: ${child.exitCode ?? child.signalCode}` : "is running"}; DevTools port ${port}; ` +
         `last targets: ${targets ? describe(targets.map(entry => ({ type: entry.type, url: entry.url }))) : "(no reply)"}`,
     });
@@ -261,6 +267,12 @@ async function startChromium(url, profilePrefix) {
         remember(`[exception] ${details.exception?.description ?? details.text}`);
       } else if (message.method === "Log.entryAdded") {
         remember(`[${message.params.entry.source}.${message.params.entry.level}] ${message.params.entry.text}`);
+      } else if (message.method === "Network.webSocketCreated") {
+        remember(`[websocket ${message.params.requestId}] created at ${Math.round(performance.now() - connected)} ms: ${message.params.url}`);
+      } else if (message.method === "Network.webSocketFrameError") {
+        remember(`[websocket ${message.params.requestId}] frame error at ${Math.round(performance.now() - connected)} ms: ${message.params.errorMessage}`);
+      } else if (message.method === "Network.webSocketClosed") {
+        remember(`[websocket ${message.params.requestId}] closed at ${Math.round(performance.now() - connected)} ms`);
       }
     });
     socket.addEventListener("close", () => {
@@ -269,6 +281,11 @@ async function startChromium(url, profilePrefix) {
     });
     await browser.command("Runtime.enable");
     await browser.command("Log.enable");
+    connected = performance.now();
+    if (webSocketEvents) {
+      await browser.command("Network.enable");
+      await browser.command("Page.navigate", { url });
+    }
   }
 
   // True while Chromium runs and no DevTools request has been answered: the
