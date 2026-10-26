@@ -2126,6 +2126,68 @@ capture. Until then it may still hold the old reference. An invocation on that
 reference is rejected like any forgotten route, and the outlet may briefly
 show the old View or nothing. The next capture converges.
 
+**Tabs with a stack each (since 0.12).** Expose each tab's region as its own
+`NavigationRegion<TContent>` slot, and the
+[`NavigationSelection`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#selecting-among-sibling-regions)
+that chooses among them as a get-only property. That property is a state slot:
+its wire value is `SelectedIndex`, the index in `Regions`, or `null` when the
+selection has no region, and its TypeScript type is `number | null`. The
+generated Bridge observes the selection's `SelectedIndex` as it observes a
+region's `Current`, so a committed switch publishes the new index and a vetoed
+one publishes nothing. A selection with a public setter is `RUNICBRIDGE008`.
+The web view selects through a command that calls `SelectAsync` and returns the
+request's `NavigationOutcome`, so the frontend learns whether a departure guard
+kept the tab:
+
+```csharp
+public sealed partial class CustomersPageViewModel : ObservableObject
+{
+    public CustomersPageViewModel(RunicNavigator navigator)
+    {
+        List = navigator.CreateRegion<IPage>(this, NavigationTarget.Create<CustomerListViewModel>());
+        Reports = navigator.CreateRegion<IPage>(this, NavigationTarget.Create<ReportsViewModel>());
+        Tabs = navigator.CreateSelection(this, [List, Reports]);
+    }
+
+    public NavigationRegion<IPage> List { get; }
+    public NavigationRegion<IPage> Reports { get; }
+    public NavigationSelection Tabs { get; } // TypeScript: readonly tabs: number | null
+
+    [RelayCommand] // selectTab(index) in TypeScript
+    private async Task<NavigationOutcome> SelectTabAsync(int index) =>
+        (await Tabs.SelectAsync(Tabs.Regions[index])).Outcome;
+}
+```
+
+With ReactiveUI, expose `Tabs.CreateSelectCommand()` from Runic.Navigation.ReactiveUI
+as the command. The frontend shows the slot at the selected index. It can also
+keep every tab's outlet mounted and hide the others, which keeps each tab's DOM,
+such as scroll positions and unsent input:
+
+```tsx
+function CustomersPage({ view, state }: { view: CustomersPageClient; state: CustomersPageState }) {
+  const tabs = [state.list, state.reports];
+  return (
+    <>
+      <nav>
+        <button aria-pressed={state.tabs === 0} onClick={() => void view.selectTab(0)}>Customers</button>
+        <button aria-pressed={state.tabs === 1} onClick={() => void view.selectTab(1)}>Reports</button>
+      </nav>
+      <ViewOutlet content={state.tabs === null ? null : tabs[state.tabs]} registry={pages} />
+      {/* or keep every tab mounted:
+      {tabs.map((tab, index) => (
+        <section key={index} hidden={state.tabs !== index}><ViewOutlet content={tab} registry={pages} /></section>
+      ))} */}
+    </>
+  );
+}
+```
+
+Don't move the highlighted tab before the command settles: `state.tabs`
+changes only when the switch commits, so the tab bar shows the kept tab after
+a veto. The tab set is static; Runic Views presents no collection of region
+slots.
+
 ### Navigation command results
 
 A command that navigates returns the request's `NavigationOutcome`, as

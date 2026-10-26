@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Runic.Application.Views;
 using Runic.Navigation;
 
@@ -25,6 +26,31 @@ public sealed class NavShellViewModel : INotifyPropertyChanged
 
     /// <summary>The main content; the navigator changes it.</summary>
     public NavigationRegion<INavPageViewModel> Main { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+// A NavigationSelection slot (#648): the shown tab's index, with one region slot per tab.
+public sealed partial class NavTabsWindow : RunicWindow<NavTabsViewModel>;
+
+public sealed partial class NavTabsViewModel : INotifyPropertyChanged
+{
+    public NavTabsViewModel(RunicNavigator navigator, INavPageViewModel inbox, INavPageViewModel archive)
+    {
+        Inbox = navigator.CreateRegion<INavPageViewModel>(this, NavigationTarget.Borrow(inbox));
+        Archive = navigator.CreateRegion<INavPageViewModel>(this, NavigationTarget.Borrow(archive));
+        Tabs = navigator.CreateSelection(this, [Inbox, Archive]);
+    }
+
+    public NavigationRegion<INavPageViewModel> Inbox { get; }
+
+    public NavigationRegion<INavPageViewModel> Archive { get; }
+
+    /// <summary>The shown tab.</summary>
+    public NavigationSelection Tabs { get; }
+
+    [RelayCommand]
+    private async Task<NavigationOutcome> SelectTabAsync(int index) => (await Tabs.SelectAsync(Tabs.Regions[index])).Outcome;
 
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }

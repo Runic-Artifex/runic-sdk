@@ -263,6 +263,15 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class MissingRegionWindow : RunicWindow<MissingRegionViewModel>;
                 """, "RUNICBRIDGE008", "public NavigationRegion<IMissingPage>? Main",
                 "no ViewModel with a registered View is a IMissingPage").ConfigureAwait(false);
+            // NavigationSelection slots (#648): get-only, like a region slot; a command selects.
+            await RejectAt("SettableSelection", """
+                public sealed class SettableSelectionViewModel : FixtureModel
+                {
+                    public NavigationSelection? Tabs { get; set; }
+                }
+                public sealed partial class SettableSelectionWindow : RunicWindow<SettableSelectionViewModel>;
+                """, "RUNICBRIDGE008", "public NavigationSelection? Tabs",
+                "SettableSelectionViewModel.Tabs: a NavigationSelection slot must be get-only").ConfigureAwait(false);
             await RejectAt("UnkeyedCollection", """
                 public sealed class Item { public string Label { get; init; } = ""; }
                 public sealed class ItemsViewModel : FixtureModel

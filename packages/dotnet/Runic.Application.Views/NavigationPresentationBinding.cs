@@ -31,6 +31,20 @@ internal static class NavigationPresentationBinding
         return new Subscription(region, handler);
     }
 
+    // A Bridge selection slot presents SelectedIndex and republishes when it changes, as a region slot does for
+    // Current. It binds no session: the selection's regions are slots of their own, and those bind it.
+    public static IDisposable Observe(NavigationSelection selection, Action changed)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentNullException.ThrowIfNull(changed);
+        PropertyChangedEventHandler handler = (_, args) =>
+        {
+            if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(NavigationSelection.SelectedIndex)) changed();
+        };
+        selection.PropertyChanged += handler;
+        return new Subscription(selection, handler);
+    }
+
     /// <exception cref="InvalidOperationException">
     /// The session uses a different model context, or another live session is already bound.
     /// </exception>
@@ -117,13 +131,13 @@ internal static class NavigationPresentationBinding
         }
     }
 
-    private sealed class Subscription(NavigationRegion region, PropertyChangedEventHandler handler) : IDisposable
+    private sealed class Subscription(INotifyPropertyChanged source, PropertyChangedEventHandler handler) : IDisposable
     {
         private int _disposed;
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) region.PropertyChanged -= handler;
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) source.PropertyChanged -= handler;
         }
     }
 }

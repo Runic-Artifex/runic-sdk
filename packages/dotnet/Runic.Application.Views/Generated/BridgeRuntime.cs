@@ -36,7 +36,8 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
     /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created and
     /// again when the ViewModel reports a change, and publishes when the sub-object changes. A
     /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
-    /// its navigator's presentation; another <see cref="INotifyPropertyChanged"/> publishes on every change.
+    /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes;
+    /// another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
     public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
         : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
@@ -1803,6 +1804,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var subscription = next switch
             {
                 NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, Publish),
+                NavigationSelection selection => NavigationPresentationBinding.Observe(selection, Publish),
                 INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, Publish),
                 _ => null,
             };
