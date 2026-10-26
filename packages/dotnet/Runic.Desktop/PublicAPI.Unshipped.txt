@@ -5,6 +5,9 @@ override Runic.Desktop.DesktopQuitRequest.ToString() -> string!
 override Runic.Desktop.MacOSDesktopOptions.Equals(object? obj) -> bool
 override Runic.Desktop.MacOSDesktopOptions.GetHashCode() -> int
 override Runic.Desktop.MacOSDesktopOptions.ToString() -> string!
+override Runic.Desktop.MacOSWindowOptions.Equals(object? obj) -> bool
+override Runic.Desktop.MacOSWindowOptions.GetHashCode() -> int
+override Runic.Desktop.MacOSWindowOptions.ToString() -> string!
 Runic.Desktop.DesktopHostOptions.ConfirmQuitAsync.get -> System.Func<Runic.Desktop.DesktopQuitRequest!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>?
 Runic.Desktop.DesktopHostOptions.ConfirmQuitAsync.init -> void
 Runic.Desktop.DesktopHostOptions.MacOS.get -> Runic.Desktop.MacOSDesktopOptions!
@@ -25,6 +28,8 @@ Runic.Desktop.DesktopQuitSource.System = 2 -> Runic.Desktop.DesktopQuitSource
 Runic.Desktop.DesktopReopenEventArgs
 Runic.Desktop.DesktopReopenEventArgs.DesktopReopenEventArgs(bool hasVisibleWindows) -> void
 Runic.Desktop.DesktopReopenEventArgs.HasVisibleWindows.get -> bool
+Runic.Desktop.DesktopWindowOptions.MacOS.get -> Runic.Desktop.MacOSWindowOptions!
+Runic.Desktop.DesktopWindowOptions.MacOS.init -> void
 Runic.Desktop.MacOSDesktopOptions
 Runic.Desktop.MacOSDesktopOptions.<Clone>$() -> Runic.Desktop.MacOSDesktopOptions!
 Runic.Desktop.MacOSDesktopOptions.DockMenu.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenuEntry!>!
@@ -33,6 +38,18 @@ Runic.Desktop.MacOSDesktopOptions.Equals(Runic.Desktop.MacOSDesktopOptions? othe
 Runic.Desktop.MacOSDesktopOptions.ForwardingApplicationDelegate.get -> nint
 Runic.Desktop.MacOSDesktopOptions.ForwardingApplicationDelegate.init -> void
 Runic.Desktop.MacOSDesktopOptions.MacOSDesktopOptions() -> void
+Runic.Desktop.MacOSTitleBarStyle
+Runic.Desktop.MacOSTitleBarStyle.Default = 0 -> Runic.Desktop.MacOSTitleBarStyle
+Runic.Desktop.MacOSTitleBarStyle.Hidden = 1 -> Runic.Desktop.MacOSTitleBarStyle
+Runic.Desktop.MacOSTitleBarStyle.Transparent = 2 -> Runic.Desktop.MacOSTitleBarStyle
+Runic.Desktop.MacOSWindowOptions
+Runic.Desktop.MacOSWindowOptions.<Clone>$() -> Runic.Desktop.MacOSWindowOptions!
+Runic.Desktop.MacOSWindowOptions.Equals(Runic.Desktop.MacOSWindowOptions? other) -> bool
+Runic.Desktop.MacOSWindowOptions.MacOSWindowOptions() -> void
+Runic.Desktop.MacOSWindowOptions.TitleBar.get -> Runic.Desktop.MacOSTitleBarStyle
+Runic.Desktop.MacOSWindowOptions.TitleBar.init -> void
+Runic.Desktop.MacOSWindowOptions.TrafficLightPosition.get -> System.Drawing.Point?
+Runic.Desktop.MacOSWindowOptions.TrafficLightPosition.init -> void
 static Runic.Desktop.DesktopQuitRequest.operator !=(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
 static Runic.Desktop.DesktopQuitRequest.operator ==(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator !=(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
@@ -47,6 +64,8 @@ Runic.Desktop.DesktopWindow.SetDocumentEditedAsync(bool edited, System.Threading
 Runic.Desktop.DesktopWindow.SetRepresentedFileAsync(string? path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.MacOSDesktopOptions.OpenRecentMenu.get -> bool
 Runic.Desktop.MacOSDesktopOptions.OpenRecentMenu.init -> void
+static Runic.Desktop.MacOSWindowOptions.operator !=(Runic.Desktop.MacOSWindowOptions? left, Runic.Desktop.MacOSWindowOptions? right) -> bool
+static Runic.Desktop.MacOSWindowOptions.operator ==(Runic.Desktop.MacOSWindowOptions? left, Runic.Desktop.MacOSWindowOptions? right) -> bool
 Runic.Desktop.DesktopCoordinateOrigin
 Runic.Desktop.DesktopCoordinateOrigin.BottomLeft = 1 -> Runic.Desktop.DesktopCoordinateOrigin
 Runic.Desktop.DesktopCoordinateOrigin.TopLeft = 0 -> Runic.Desktop.DesktopCoordinateOrigin

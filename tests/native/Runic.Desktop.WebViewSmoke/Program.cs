@@ -79,6 +79,11 @@ try
         // Must run before the first await, as --zoom.
         MacOsWebContentSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--window-chrome", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
+    {
+        // Must run before the first await, as --zoom.
+        MacOsWindowChromeSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--monitors", StringComparer.Ordinal))
     {
         // B12 on Windows and macOS. Must run before the first await, as --event-loop: on macOS the AppKit loop owns the
