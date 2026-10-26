@@ -509,6 +509,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             Y = frame.Top,
             Width = (int)UnscaleForDpi(frame.Right - frame.Left, dpi),
             Height = (int)UnscaleForDpi(frame.Bottom - frame.Top, dpi),
+            Origin = DesktopCoordinateOrigin.TopLeft,
         };
         if (!maximized && !fullScreen)
         {
@@ -571,7 +572,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 // Keep a restored window on a monitor that exists now, also without a saved position.
                 (x, y, logicalWidth, logicalHeight) = FitPlacement(x, y, logicalWidth, logicalHeight);
-                _normal = new DesktopWindowPlacement { X = x, Y = y, Width = (int)logicalWidth, Height = (int)logicalHeight };
+                _normal = new DesktopWindowPlacement
+                {
+                    X = x, Y = y, Width = (int)logicalWidth, Height = (int)logicalHeight, Origin = DesktopCoordinateOrigin.TopLeft,
+                };
             }
             var width = checked((int)logicalWidth);
             var height = checked((int)logicalHeight);

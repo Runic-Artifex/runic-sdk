@@ -1700,6 +1700,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 Height = restoredHeight,
                 Maximized = maximized,
                 FullScreen = fullScreen && _options?.Kiosk != true,
+                Origin = DesktopCoordinateOrigin.TopLeft,
             },
         };
         if (Equals(state, Volatile.Read(ref _state)))
