@@ -714,12 +714,78 @@ internal sealed partial class NavigationTests
         var page = new ParentPage("page", navigator);
         await Wait(main.PushAsync(NavigationTarget.Own<Page>(page)));
         await Wait(main.BackAsync());
-        Require(Throws<ArgumentException>(() => navigator.CreateSelection(page, [page.Child])), "A closed region was selectable.");
         var retired = navigator.CreateSelection(page, []);
         Require(Throws<ObjectDisposedException>(() => retired.Add(navigator.CreateRegion<Page>(page))), "A retired owner's selection did not start closed.");
+        Require(Throws<ArgumentException>(() => navigator.CreateSelection(owner, [navigator.CreateRegion<Page>(page)])),
+            "A retired owner's region was selectable by another owner.");
 
         await navigator.DisposeAsync();
         Require(Throws<ObjectDisposedException>(() => navigator.CreateSelection(new object(), [])), "A closed navigator created a selection.");
+    }
+
+    // Rule 1: a selection whose owner is retiring starts closed and takes the owner's regions, which that retirement closed
+    // or which CreateRegion created closed, so code of a page that was backed out can still create its tabs. A region
+    // closed for another reason, by a removal, is still refused.
+    [Test]
+    public async Task RetiringOwnerSelectionStartsClosedWithItsRegionsAsync()
+    {
+        await using var fixture = new Fixture();
+        var navigator = fixture.Navigator;
+        var main = navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var page = new Page("page");
+        var list = navigator.CreateRegion<Page>(page, NavigationTarget.Borrow(new Page("list")));
+        var removed = navigator.CreateRegion<Page>(page, NavigationTarget.Borrow(new Page("removed")));
+        var tabs = navigator.CreateSelection(page, [list, removed]);
+        var free = navigator.CreateRegion<Page>(page, NavigationTarget.Borrow(new Page("free")));
+        await Wait(main.PushAsync(NavigationTarget.Own(page)));
+        Require(await Wait(tabs.RemoveAsync(removed)) is NavigationResult<object>.Committed, "The removal did not commit.");
+        await Wait(main.BackAsync());
+        Require(AtOnce(((NavigationRegion)free).BackAsync()) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed },
+            "The page's retirement did not close its region.");
+
+        var later = navigator.CreateRegion<Page>(page, NavigationTarget.Borrow(new Page("later")));
+        var reports = navigator.CreateRegion<Page>(page, NavigationTarget.Borrow(new Page("reports")));
+        var selection = navigator.CreateSelection(page, [later, reports], new() { SelectedIndex = 1 });
+        Require(selection.Regions.SequenceEqual([later, reports]) && selection.Selected == reports
+                && AtOnce(selection.SelectAsync(later)) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }
+                && AtOnce(selection.RemoveAsync(later)) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }
+                && Throws<ObjectDisposedException>(() => selection.Add(navigator.CreateRegion<Page>(page))),
+            "A selection over a retired owner's new regions did not start closed.");
+        var closedByRetirement = navigator.CreateSelection(page, [free]);
+        Require(closedByRetirement.Selected == free && AtOnce(closedByRetirement.SelectAsync(free)) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed },
+            "A region closed by its owner's retirement was not taken by a closed selection.");
+        Require(Throws<ArgumentException>(() => navigator.CreateSelection(page, [removed])) && Throws<ArgumentException>(() => navigator.CreateSelection(page, [list])),
+            "A removed region, or one already in a selection, was selectable.");
+    }
+
+    // Rule 5: switching away from an empty region keeps it in the switch's basis, so a page pushed into it before the
+    // commit, which the switch never asked, supersedes the switch.
+    [Test]
+    public async Task PushIntoTheEmptyLeftRegionSupersedesTheSelectAsync()
+    {
+        await using var fixture = new Fixture();
+        var owner = new object();
+        var empty = fixture.Navigator.CreateRegion<Page>(owner);
+        var full = fixture.Navigator.CreateRegion<Page>(owner, NavigationTarget.Borrow(new Page("full")));
+        var selection = fixture.Navigator.CreateSelection(owner, [empty, full]);
+        var unit = selection.Core.Unit;
+        var pushed = new Page("pushed");
+        var asked = new Journal();
+        pushed.Guard = (departure, _) => Answer(asked, "pushed", departure, true);
+        Task<NavigationResult<Page>>? push = null;
+        fixture.Navigator.BeforeBasisCheck = async (region, phase) =>
+        {
+            if (!ReferenceEquals(region, unit) || phase != NavigationPhase.Preparing || push is not null) return;
+            push = empty.PushAsync(NavigationTarget.Own(pushed)).AsTask();
+            await push;
+        };
+        var switched = await Wait(selection.SelectAsync(full));
+        Require(switched is NavigationResult<object>.Superseded && push is { IsCompletedSuccessfully: true, Result: NavigationResult<Page>.Committed }
+                && selection.Selected == empty && empty.Current == pushed && asked.Text == "",
+            $"A push into the empty region left before the switch's commit gave {switched}.");
+        fixture.Navigator.BeforeBasisCheck = null;
+        Require(await Wait(selection.SelectAsync(full)) is NavigationResult<object>.Committed && asked.Text == "pushed Retain Select",
+            $"The next switch did not ask the pushed page: {asked.Text}.");
     }
 
     // The outcome of a request that ended at admission, or null while it runs.
@@ -743,6 +809,9 @@ internal sealed partial class NavigationTests
         await Wait(editor.Child.PushAsync(NavigationTarget.Own<Page>(detail)));
         var other = new NotedPage("other");
         await Wait(page.Tabs[1].PushAsync(NavigationTarget.Own<Page>(other)));
+        // The regions' change to idle is raised in a later turn; let it pass before a test attaches its handlers.
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        await fixture.Context.InvokeAsync(() => { });
         return new(main, page, editor, detail, other);
     }
 

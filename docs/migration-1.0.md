@@ -2,9 +2,11 @@
 
 This guide collects what an application written against Runic SDK 0.9.x changes
 to run on 1.0. 0.10.0 made every breaking change planned before 1.0; 0.11.0 only
-added APIs but changed some defaults; the `1.0.0-rc.N` releases and 1.0.0 take
-fixes only. Each section links the release notes, which give the full detail and
-the pull requests:
+added APIs but changed some defaults; 0.12.0 changed macOS behaviour and macOS
+packaging, which needed breaking changes; the `1.0.0-rc.N` releases and 1.0.0
+take fixes only. An application already on 0.11 needs only
+[From 0.11 to 0.12](#from-011-to-012). Each section links the release notes,
+which give the full detail and the pull requests:
 
 - 0.10.0: [Upgrading](../eng/release/notes/0.10.0.md#upgrading),
   [Behaviour changes](../eng/release/notes/0.10.0.md#behaviour-changes),
@@ -12,6 +14,9 @@ the pull requests:
 - 0.11.0: [Upgrading](../eng/release/notes/0.11.0.md#upgrading),
   [Behaviour changes](../eng/release/notes/0.11.0.md#behaviour-changes),
   [Security](../eng/release/notes/0.11.0.md#security)
+- 0.12.0: [Upgrading](../eng/release/notes/0.12.0.md#upgrading),
+  [Behaviour changes](../eng/release/notes/0.12.0.md#behaviour-changes),
+  [Breaking changes](../eng/release/notes/0.12.0.md#breaking-changes)
 
 ## Before you start
 
@@ -32,6 +37,8 @@ depends on it), CsWebUi 2.5.0-beta.4.8 or later, Vite `>=8.3.3 <9`, TypeScript 5
 or later, Node `^24.18.0 || ^26.0.0` (Node 24 is the certified version).
 `Runic.Desktop` now brings `Runic.Platform` and `Runic.Platform.Linux.DBus` at its
 own exact version, and Tmds.DBus.Protocol, on every OS.
+On macOS, Runic supports macOS 15 or later on Apple silicon (`osx-arm64`) only;
+see [From 0.11 to 0.12](#from-011-to-012).
 
 ## MSBuild
 
@@ -356,3 +363,178 @@ Existing projects are not rewritten. To match a new `runic-app` project:
 Projects created from the 0.9.0 template also take the 0.9.1 frontend
 dependency updates ([0.9.1 notes](../eng/release/notes/0.9.1.md)). Details: 0.11.0
 [Templates](../eng/release/notes/0.11.0.md#templates).
+
+## From 0.11 to 0.12
+
+0.12.0 changes behaviour on macOS, the supported macOS architectures and the
+layout of macOS packages. No public API is removed, so code that compiled
+against 0.11 compiles unchanged; outside macOS only file saves change. The
+tables also apply to an application coming from 0.9.
+
+### macOS quit and lifecycle
+
+Every quit takes one path, also with no window open: Command and Q, Dock › Quit,
+a script's quit Apple event, and logout, restart or shutdown. Runic asks
+`DesktopHostOptions.ConfirmQuitAsync`, then each window's close guard in turn,
+then cancels `host.ShutdownRequested` and closes the remaining windows; the quit
+completes when the application's code returns. A refusal keeps the application
+running and cancels a logout.
+
+| 0.11 | 0.12 |
+| --- | --- |
+| Command and Q asked each window to close | `ConfirmQuitAsync`, the close guards, then `ShutdownRequested` is cancelled |
+| Dock › Quit, scripts and logout ended the process from AppKit, skipping close guards and `ShutdownRequested` | The same path as Command and Q; they can be refused |
+| A quit with no window open did nothing | `ShutdownRequested` is cancelled. Without a surface and without `HandlesShutdownWithoutWindow`, the process is then terminated |
+| Save prompts in close guards only, never on logout | `ConfirmQuitAsync`, which also runs on logout, and on Ctrl+C, SIGTERM and SIGHUP when set (`DesktopQuitSource.Signal`, every OS) |
+| A Dock click with no window did nothing | `DesktopHost.ReopenRequested` (`HasVisibleWindows`) |
+| No Dock menu | `DesktopHostOptions.MacOS.DockMenu`, run through `host.MenuCommands` |
+| `NSApp.delegate = …` | `DesktopHostOptions.MacOS.ForwardingApplicationDelegate`; Runic's delegate forwards what it does not handle. Setting `NSApp.delegate` loses open events, universal links, quitting, reopening and the Dock menu |
+
+An application that keeps running behind a status icon, or that asks about
+unsaved documents, moves to:
+
+```csharp
+var options = new DesktopHostOptions
+{
+    // 0.11: only the close guards asked, and never on Dock › Quit or logout.
+    ConfirmQuitAsync = async (request, cancellationToken) =>
+        !documents.HasUnsavedChanges || await documents.SaveAllOrAskAsync(request.Source, cancellationToken),
+    // Keep running with no window open, and end on ShutdownRequested.
+    HandlesShutdownWithoutWindow = true,
+    // 0.11: NSApp.delegate = myDelegate (an Objective-C object).
+    MacOS = new MacOSDesktopOptions { ForwardingApplicationDelegate = myDelegate },
+};
+return DesktopEventLoop.Run(options, async host =>
+{
+    host.ReopenRequested += (_, e) => { if (!e.HasVisibleWindows) OpenMainWindow(); };
+    await RunUntilAsync(host.ShutdownRequested);
+    return 0;
+});
+```
+
+`DesktopEventLoop.Run` now runs AppKit's own loop (`[NSApp run]`) with Runic's
+delegate instead of polling every 5 ms:
+
+| 0.11 | 0.12 |
+| --- | --- |
+| Native callbacks and Runic's main-thread work ran between polls, in the default run loop mode only | In every mode, also while a menu tracks, a window resizes live or a modal panel runs: queued work can run while a menu or panel is open |
+| `MacOSPlatformProvider.CreateOpenRequests` on the main thread before the first window or status icon, else `InvalidOperationException` | Under `DesktopEventLoop.Run`, on any thread at any time; open events that arrive earlier are kept (up to 64) and delivered in order. The launch's own open event arrives after the launch's arguments |
+| `Run(Func<Task>)` created `NSApp` only when a service needed it | Always creates it on macOS |
+| AppKit calls without a window needed a window's `InvokeNativeAsync` | `DesktopEventLoop.InvokeOnMainThreadAsync` |
+
+### macOS window coordinates
+
+Positions on macOS are points measured right and down from the primary
+screen's top-left corner, as on Windows and Linux. The primary screen is the one
+with the menu bar.
+
+| 0.11 | 0.12 |
+| --- | --- |
+| `MoveAsync(x, y)`, `DesktopWindowOptions.X`/`Y`: the frame's bottom-left corner, measured up from the primary screen's bottom | The frame's top-left corner, measured down from the primary screen's top. `MoveAsync(workArea.X, workArea.Y)` puts the title bar below the menu bar |
+| `DesktopWindowState.X`/`Y` and `Placement`: bottom-left, no `Origin` | Top-left, `Placement.Origin = DesktopCoordinateOrigin.TopLeft` |
+| `DesktopMonitor.Bounds`/`WorkArea`: `Y` is the bottom edge | `Y` is the top edge; a monitor above the primary has a negative `Y`; the primary's `WorkArea.Y` is the menu bar's height |
+| Saved placements | Nothing to do: a placement without `Origin` (`null`) opens where it did and is reported top-left from then on |
+| `ResizeAsync` kept the bottom-left corner; the window grew upward | It keeps the top-left corner |
+
+Positions the application computed itself, for example from `NSScreen` frames,
+are flipped once, or marked as bottom-left so that Runic converts them:
+
+```csharp
+// 0.11: AppKit's bottom-left corner of the frame.
+await window.MoveAsync(frame.X, frame.Y);
+// 0.12: the top-left corner, measured down from the primary screen's top.
+await window.MoveAsync(frame.X, primaryScreenHeight - (frame.Y + frame.Height));
+
+// Or keep a stored bottom-left position and let Runic convert it when the window opens.
+var placement = stored with { Origin = DesktopCoordinateOrigin.BottomLeft };
+```
+
+Windows and Linux ignore `Origin`; every built-in host writes `TopLeft`
+(`"Origin":0` in JSON), which 0.11 readers ignore.
+
+### macOS architectures and packaging
+
+| 0.11 | 0.12 |
+| --- | --- |
+| `osx-x64` (Intel) publishes and packages | Not a Runic target: publish for `osx-arm64`. `dotnet runic package` refuses `osx-x64` with `RAPPPKG1004`, and `dotnet runic doctor --runtime osx-x64` fails `target-rid` |
+| `dotnet runic package macos --runtime osx-arm64,osx-x64` built a universal bundle | Refused with `RAPPPKG1004`: every target takes one runtime identifier |
+| Every published file in `Contents/MacOS` | Only Mach-O files; the others move to `Contents/Resources` with a symbolic link left in `Contents/MacOS`. `AppContext.BaseDirectory` lookups work unchanged; code that enumerates `Contents/MacOS` sees links |
+| `.txt`, `.md`, `.png` and other system types exported as `<ApplicationId>.<ext>` with rank `Owner` | The system type with rank `Alternate`. Set `RunicMacFileTypeHandlerRank=Default` to ask to be the default handler, and `RunicMacFileTypeIdentifiers` (`.log=public.log`) for a type the built-in list does not know. Your own extensions stay exported with `Owner` |
+| Nested libraries and executables left unsigned, or signing failed | Each is signed with the hardened runtime, deepest first; the bundle is verified with `codesign --verify --deep --strict` |
+| No camera or microphone usage strings | `RunicMacCameraUsageDescription`, `RunicMacMicrophoneUsageDescription`; without them a page's `getUserMedia` fails with `NotAllowedError`, even with `MediaCapture` |
+| No sandbox, no `.pkg` | Opt in with `--sandbox` (`RunicMacSandbox`), `--provisioning-profile`, `--pkg`, `--installer-sign` and `RunicMacApplicationCategory` |
+
+An `Info.plist` or `entitlements.plist` override in `packaging/macos/` takes the
+new fields where the project uses the matching options; an `Info.plist` override
+without `{{UsageDescriptions}}` fails with `RAPPPKG1006` once a usage
+description is set, as does an `entitlements.plist` override without
+`{{Entitlements}}` that lacks a key `--sandbox` or `--provisioning-profile`
+needs:
+
+```xml
+<!-- packaging/macos/Info.plist -->
+  <key>NSHighResolutionCapable</key><true/>{{ApplicationCategory}}{{UrlSchemes}}{{DocumentTypes}}{{UsageDescriptions}}
+
+<!-- packaging/macos/entitlements.plist -->
+<dict>{{Entitlements}}
+```
+
+```xml
+<PropertyGroup>
+  <RunicMacCameraUsageDescription>Video calls show your camera.</RunicMacCameraUsageDescription>
+  <RunicMacFileTypeHandlerRank>Default</RunicMacFileTypeHandlerRank>
+</PropertyGroup>
+```
+
+A sandboxed application that sets `AllowDownloads` adds
+`com.apple.security.files.downloads.read-write` to its entitlements override.
+
+### macOS development bundle
+
+`dotnet run`, `dotnet watch` and `dotnet runic dev` on macOS start
+`obj/…/runic-macos/<AssemblyName>.app/Contents/MacOS/<AssemblyName>`, an ad-hoc
+signed bundle, instead of `bin/…/<AssemblyName>`. Notifications, login startup,
+open registration and the `Info.plist` URL schemes and file types work as in a
+packaged application, and macOS keeps one set of permissions for the
+development bundle and the shipped application. `AppContext.BaseDirectory` is
+still the build output. To run the build output directly, as in 0.11:
+
+```xml
+<PropertyGroup>
+  <RunicMacDevelopmentBundle>false</RunicMacDevelopmentBundle>
+</PropertyGroup>
+```
+
+Launch profiles with `commandName: Executable` and IDEs that start the output
+directly are unaffected.
+
+### Saves and downloads
+
+| 0.11 | 0.12 |
+| --- | --- |
+| Windows: replacing a file another program holds open without delete sharing was `CommitUnknown(IOError)` | `NotCommitted(ResourceBusy)`: the file was not replaced; try again later |
+| A second `BeginWriteAsync` on a save lease was `Failed(ResourceBusy)` | Repeatable: a new write begins once the previous commit finished or its transaction was disposed; `Failed(ResourceBusy)` only while one is open |
+| A commit compared the file with the selection | With the content the application last saw: the last committed write, or a document's last `OpenReadAsync`. After `NotCommitted(Conflict)`, read with `OpenReadAsync` and write again to overwrite |
+| macOS App Sandbox: `platform.files.save` unavailable, `BeginWriteAsync` `Unavailable(AtomicReplaceUnavailable)` | Available: selections save through item replacement |
+| A document editor kept the path and reopened it with `OpenFileAsync` and `SaveFileAsync` | `IFileDialogs.OpenDocumentAsync`/`SaveDocumentAsync` return one `IDocumentFileLease` that reads and saves repeatedly; `CreateBookmarkAsync` and `IDesktopFileBookmarks.OpenDocumentAsync` keep recent files |
+| macOS window with downloads refused: an attachment WebKit can show was shown in the window | Cancelled, as on Linux. With `AllowDownloads` the file goes to Downloads, as in the other embedded windows |
+
+A save loop that treated the second `BeginWriteAsync` as the end of the lease,
+or `CommitUnknown(IOError)` on Windows as "maybe written", checks the new
+outcomes:
+
+```csharp
+switch (await write.CommitAsync())
+{
+    case FileCommitResult.NotCommitted { Code: PlatformFailureCode.ResourceBusy }:
+        // Windows: another program holds the file open; nothing was written.
+        break;
+    case FileCommitResult.NotCommitted { Code: PlatformFailureCode.Conflict }:
+        // Another program changed the file: reload, or read and write again to overwrite.
+        break;
+}
+```
+
+Details: 0.12.0 [Upgrading](../eng/release/notes/0.12.0.md#upgrading),
+[Behaviour changes](../eng/release/notes/0.12.0.md#behaviour-changes) and
+[Breaking changes](../eng/release/notes/0.12.0.md#breaking-changes).

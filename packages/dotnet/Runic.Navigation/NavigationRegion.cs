@@ -479,6 +479,8 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public NavigationEntryCore[] Stack { get => _stack; set => _stack = value; }
     public long Version { get; set; }
     public bool Closed { get; set; }
+    // Closed by a selection's removal (NavigationSelection.RemoveAsync), not by its owner's retirement.
+    public bool Removed { get; set; }
     // An initial entry was taken by CreateRegion or Start; Start is then refused.
     public bool Started { get; set; }
     // A request reached the region (admitted or not); Start is then refused.
